@@ -1,0 +1,192 @@
+/**************
+		COLORS
+***************/
+
+$white: #ffffff;
+$black: #000000;
+$main-color: #2a2a2a;
+$landing-color: #f4fbf6;
+$highlight-color: #dcfae2;
+$gray-1: #fafafa;
+$gray-2: #e3e5ea;
+$gray-3: #aaaaaa;
+$gray-4: #7f7f7f;
+$gray-5: #3f3f3f;
+$gray-6: #f4f4f4;
+$gray-7: #e3e3e3;
+$gray-8: #eaeaea;
+$blue: #0054e6;
+$twitter-blue: #4a99e9;
+$success: #98e562;
+$warning: #ef9b0d;
+$error: #ff233e;
+
+$primary-text-color: $main-color;
+$secondary-text-color: $gray-4;
+$hover-color: $gray-6;
+
+$common-colors: (
+	"primary": $main-color,
+	"secondary": $gray-4,
+	"error": $error,
+	"success": $success,
+	"warning": $warning,
+	"blue": $blue,
+);
+
+/**************
+		TYPOGRAPHY
+***************/
+
+// In Pixels
+$font-size-base: 10;
+
+$font-size: (
+	"xs": 1rem,
+	"sm": 1.2rem,
+	"md": 1.4rem,
+	"lg": 1.6rem,
+);
+
+$font-line-height: (
+	"xs": 1.2rem,
+	"sm": 1.5rem,
+	"md": 1.7rem,
+	"lg": 1.9rem,
+);
+
+$header-font-size: (
+	"1": 3.2rem,
+	"2": 2.4rem,
+	"3": 2rem,
+	"4": 1.8rem,
+	"5": 1.4rem,
+	"6": 1.2rem,
+);
+
+$header-line-height: (
+	"1": 3.6rem,
+	"2": 2.8rem,
+	"3": 2.5rem,
+	"4": 2.2rem,
+	"5": 1.7rem,
+	"6": 1.4rem,
+);
+
+$h1-size-huge: 5rem;
+$h2-size-huge: 4rem;
+$h3-size-huge: 3.2rem;
+$h4-size-huge: 3rem;
+$h5-size-huge: 2.4rem;
+$h6-size-huge: 1.8rem;
+
+$h1-line-height-huge: 5.2rem;
+$h2-line-height-huge: 4.8rem;
+$h3-line-height-huge: 3.9rem;
+$h4-line-height-huge: 3.7rem;
+$h5-line-height-huge: 2.88rem;
+$h6-line-height-huge: 2.2rem;
+
+/**************
+		SPACING
+***************/
+
+$spacing: (
+	"1": 0.2rem,
+	"2": 0.4rem,
+	"3": 0.8rem,
+	"4": 1rem,
+	"5": 1.2rem,
+	"6": 1.6rem,
+	"7": 2.4rem,
+	"8": 3.2rem,
+	"9": 3.6rem,
+	"10": 4rem,
+);
+
+/**************
+		BORDERS
+***************/
+
+$border-radius-base: 0.4rem;
+$border-color: $gray-2;
+$border-base: 1px solid $border-color;
+
+/**************
+		BREAKPOINTS
+***************/
+
+$breakpoints: (
+	"xs": 480px,
+	"sm": 768px,
+	"md": 992px,
+	"lg": 1200px,
+);
+
+/**************
+		BOX SHADOW
+***************/
+
+$box-shadow-base: 0 0.5rem 1.5rem $gray-8;
+
+/**************
+		SCROLL BAR
+***************/
+
+$scroll-bar-size: 8px;
+
+/**************
+		INPUT
+***************/
+
+$input-height: (
+	"sm": 2.8rem,
+	"md": 3.2rem,
+	"lg": 3.6rem,
+);
+
+/**************
+		BUTTON
+***************/
+
+$button-bg: (
+	"primary": $main-color,
+	"secondary": $gray-4,
+	"error": $error,
+	"success": $success,
+	"warning": $warning,
+	"blue": $blue,
+	"primary-outlined": $main-color,
+	"secondary-outlined": $gray-4,
+	"error-outlined": $error,
+	"success-outlined": $success,
+	"warning-outlined": $warning,
+	"blue-outlined": $blue,
+	"disabled": $gray-3,
+);
+
+$button-color: (
+	"primary": $white,
+	"secondary": $white,
+	"error": $white,
+	"success": $white,
+	"warning": $white,
+	"blue": $white,
+	"primary-outlined": $main-color,
+	"secondary-outlined": $gray-4,
+	"error-outlined": $error,
+	"success-outlined": $success,
+	"warning-outlined": $warning,
+	"blue-outlined": $blue,
+	"disabled": $white,
+);
+
+$hover-darken: 5%;
+$visited-lighten: 12%;
+
+/**************
+		transition
+***************/
+
+	$transition-duration-base: .2s;
+	$transition-bg: background $transition-duration-base ease-in-out;

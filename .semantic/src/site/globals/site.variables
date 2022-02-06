@@ -1,0 +1,61 @@
+/*******************************
+     User Global Variables
+*******************************/
+
+/*-------------------
+  Fonts
+--------------------*/
+
+@importGoogleFonts : false;
+
+@emSize   : 10px;
+@fontSize : 10px;
+@inputVerticalPadding: 1em;
+
+@fontName          : 'Inter';
+@headerFontName          : 'Freizeit';
+@landingFontName         : 'Roquefort-Standard';
+
+@headerFont        : @headerFontName, 'Helvetica Neue', Arial, Helvetica, sans-serif;
+@pageFont          : @fontName, 'Helvetica Neue', Arial, Helvetica, sans-serif;
+
+/*-------------------
+    Brand Colors
+--------------------*/
+
+/*---  Colors  ---*/
+@red              : #DB2828;
+@orange           : #F2711C;
+@yellow           : #FBBD08;
+@olive            : #B5CC18;
+@green            : #21BA45;
+@teal             : #00B5AD;
+@blue             : #2a2a2a;
+@violet           : #6435C9;
+@purple           : #A333C8;
+@pink             : #E03997;
+@brown            : #A5673F;
+@grey             : #767676;
+@black            : #1B1C1D;
+
+@primaryColor        : @blue;
+@secondaryColor      : @black;
+@lightPrimaryColor   : @lightBlue;
+@lightSecondaryColor : @lightBlack;
+@textColor           : rgba(0, 0, 0, 0.87);
+@highlightColor           : @textColor;
+@disabledTextColor: rgba(40, 40, 40, 0.3);
+@primaryHeaderColor   : darken(@primaryTextColor, 5);
+@secondaryHeaderColor : darken(@secondaryTextColor, 5);
+
+@pageBackground      : #FFFFFF;
+@primaryBackground   : #DFF0FF;
+@secondaryBackground : #F4F4F4;
+@highlightBackground      : #CCE2FF;
+
+/*-------------------
+       Links
+--------------------*/
+
+@linkColor           : #4183C4;
+@linkHoverColor      : darken(saturate(@linkColor, 20), 15, relative);

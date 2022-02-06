@@ -1,0 +1,40 @@
+@mixin no-select {
+	user-select: none;
+	-moz-user-select: none;
+	-webkit-user-select: none;
+}
+
+@mixin button-color ($color, $bg, $darken, $lighten, $transition, $outlined: false) {
+	@if $outlined {
+		background-color: $bg;
+		border: 1px solid $color;
+		color: $color;
+
+		&:hover {
+			transition: $transition;
+			color: darken($color, $darken);
+			border-color: darken($color, $darken);
+		}
+
+		&:active,
+		&:visited {
+			transition: none;
+			color: lighten($color, $lighten);
+			border-color: lighten($color, $lighten);
+		}
+	} @else {
+		background-color: $bg;
+		color: $color;
+
+		&:hover {
+			transition: $transition;
+			background-color: darken($bg, $darken);
+		}
+
+		&:active,
+		&:visited {
+			transition: none;
+			background-color: lighten($bg, $lighten);
+		}
+	}
+}

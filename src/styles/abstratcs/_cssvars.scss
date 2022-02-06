@@ -1,0 +1,22 @@
+@import "./variables";
+
+:root {
+	--ias-main: #{$main-color};
+	--ias-gray-1: #{$gray-1};
+	--ias-gray-2: #{$gray-2};
+	--ias-gray-3: #{$gray-3};
+	--ias-gray-4: #{$gray-4};
+	--ias-gray-5: #{$gray-5};
+	--ias-gray-6: #{$gray-6};
+	--twitter-blue: #{$twitter-blue};
+
+	--ias-spacing-1: .5rem;
+	--ias-spacing-2: .8rem;
+	--ias-spacing-3: 1rem;
+	--ias-spacing-4: 1.2rem;
+	--ias-spacing-5: 1.6rem;
+	--ias-spacing-6: 2.4rem;
+	--ias-spacing-7: 3.2rem;
+	--ias-spacing-8: 3.6rem;
+
+}

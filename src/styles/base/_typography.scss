@@ -1,0 +1,25 @@
+@import "../abstratcs/variables";
+
+html {
+	font-size: $font-size-base + px;
+}
+
+body {
+	font-family: Inter;
+	font-size: map-get($font-size, "md");
+	line-height: map-get($font-line-height, "md");
+	color: $primary-text-color;
+	background-color: $white;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	text-align: center;
+	font-family: Freizeit;
+}
+
+@for $i from 1 through 6 {
+	h#{$i} {
+		font-size: map-get($header-font-size, #{$i});
+		line-height: map-get($header-line-height, #{$i});
+	}
+}

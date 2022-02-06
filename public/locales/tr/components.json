@@ -1,0 +1,11 @@
+{
+	"loginForm": {
+		"title": "Kaydol",
+		"subtitle": "veya",
+		"create": "yeni bir hesap oluştur",
+		"googleBtn": "Google ile giriş yap",
+		"twitterBtn": "Twitter ile giriş yap",
+		"signIn": "Eposta ve şifre ile giriş yap",
+		"emailInput": "Eposta veya kullanıcı adı"
+	}
+}

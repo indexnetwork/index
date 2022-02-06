@@ -1,0 +1,18 @@
+@import "../abstratcs/variables";
+
+.idx-text {
+	color: $main-color;
+
+	@each $key, $value in $common-colors {
+		&-#{$key} {
+			color: $value;
+		}
+	}
+
+	@each $key, $value in $font-size {
+		&-#{$key} {
+			font-size: $value;
+			line-height: map-get($font-line-height, $key);
+		}
+	}
+}

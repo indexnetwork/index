@@ -1,0 +1,15 @@
+@use 'sass:math';
+
+@function toRem($base, $value) {
+	$remValue: ($value / $base) + rem; 
+	@return $remValue;
+}
+
+@function toPx($base, $value) {
+	$pxValue: ($value * $base) + px; 
+	@return $pxValue;
+}
+
+@function strip-units($number) {
+  @return math.div($number, ($number * 0 + 1));
+}

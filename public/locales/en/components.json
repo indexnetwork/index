@@ -1,0 +1,11 @@
+{
+	"loginForm": {
+		"title": "Sign In",
+		"subtitle": "or",
+		"create": "create a new account",
+		"googleBtn": "Sign in with Google",
+		"twitterBtn": "Sign in with Twitter",
+		"signIn": "or sign in with email and password",
+		"emailInput": "Email or username"
+	}
+}
