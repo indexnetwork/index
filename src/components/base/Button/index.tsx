@@ -2,12 +2,12 @@ import React from "react";
 import cc from "classcat";
 import IconGoogle from "components/base/Icon/IconGoogle";
 import IconTwitter from "components/base/Icon/IconTwitter";
-import { ButtonSizeType, ButtonThemeType } from "types";
+import { InputSizeType, ButtonThemeType } from "types";
 
 export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> {
 	customType?: "google" | "twitter";
 	theme?: ButtonThemeType;
-	size?: ButtonSizeType;
+	size?: InputSizeType;
 	block?: boolean;
 	outlined?: boolean;
 }
@@ -17,7 +17,7 @@ const Button: React.FC<ButtonProps> = ({
 }) => {
 	switch (customType) {
 		case "google":
-			return <button {...props}className={cc(
+			return <button {...props} className={cc(
 				[
 					"idx-button",
 					`idx-button-${theme}`,

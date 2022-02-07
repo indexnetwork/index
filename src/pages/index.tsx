@@ -1,9 +1,9 @@
 import React from "react";
 import type { NextPage } from "next";
 import SiteHeader from "layout/site/SiteHeader";
-import Container from "layout/base/Container";
-import Row from "layout/base/Row";
-import Col from "layout/base/Col";
+import Container from "layout/base/Grid/Container";
+import Row from "layout/base/Grid/Row";
+import Col from "layout/base/Grid/Col";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
 import CopyInput from "components/base/CopyInput";

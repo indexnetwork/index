@@ -1,4 +1,4 @@
-import Flex from "layout/base/Flex";
+import Flex from "layout/base/Grid/Flex";
 import React, { useEffect, useRef, useState } from "react";
 import { copyToClipboard } from "utils/helper";
 import cc from "classcat";

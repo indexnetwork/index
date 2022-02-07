@@ -1,4 +1,4 @@
-import Container from "layout/base/Container";
+import Container from "layout/base/Grid/Container";
 import SiteHeader from "layout/site/SiteHeader";
 import React from "react";
 

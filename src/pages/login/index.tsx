@@ -6,7 +6,7 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
 import Button from "components/base/Button";
 import Link from "next/link";
-import Flex from "layout/base/Flex";
+import Flex from "layout/base/Grid/Flex";
 
 const Login: NextPageWithLayout = () => {
 	const { t } = useTranslation(["common", "components"]);
