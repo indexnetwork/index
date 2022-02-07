@@ -6,7 +6,7 @@ import IconCopy from "../Icon/IconCopy";
 import Input, { InputProps } from "../Input";
 import Text from "../Text";
 
-export interface CopyInputProps extends InputProps {}
+export interface CopyInputProps extends InputProps { }
 
 const CopyInput: React.FC<CopyInputProps> = ({ value }) => {
 	const [copied, setCopied] = useState<boolean>();
@@ -33,8 +33,11 @@ const CopyInput: React.FC<CopyInputProps> = ({ value }) => {
 	}, [copied]);
 
 	const addOnAfter = (
-		<Flex className={cc(["idx-copy-input__button", copied ? "copied" : ""])}>
-			<IconCopy strokeWidth={"1.8"} className="idx-copy-input__icon" onClick={handleCopy}/>
+		<Flex
+			className={cc(["idx-copy-input__button", copied ? "copied" : ""])}
+			onClick={handleCopy}
+		>
+			<IconCopy strokeWidth={"1.8"} className="idx-copy-input__icon" />
 			<Text className="idx-copy-input__text" size="sm" fontWeight={600}>Copied</Text>
 		</Flex>
 	);
@@ -43,9 +46,10 @@ const CopyInput: React.FC<CopyInputProps> = ({ value }) => {
 		<Input
 			className="idx-copy-input"
 			type="text"
-			disabled
+			readOnly
 			value={value}
 			addOnAfter={addOnAfter}
+			onClick={handleCopy}
 		/>
 	);
 };

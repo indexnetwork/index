@@ -13,6 +13,23 @@ export type SizeType = "xs" | "sm" | "md" | "lg";
 
 export type PropType<TObj, TProp extends keyof TObj> = TObj[TProp];
 
+export type CSSFlexPropsNamesType = "flex" |
+"flexBasis" |
+"flexDirection" |
+"flexFlow" |
+"flexGrow" |
+"flexShrink" |
+"flexWrap" |
+"order" |
+"alignContent" |
+"alignSelf" |
+"alignItems" |
+"justifyContent" |
+"justifySelf" |
+"justifyItems";
+
+export type FlexPropsType = Pick<React.CSSProperties, CSSFlexPropsNamesType >;
+
 /**
  * Text Types
  */

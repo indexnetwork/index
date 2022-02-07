@@ -15,14 +15,22 @@ export interface InputProps extends React.DetailedHTMLProps<React.InputHTMLAttri
 }
 
 const Input: React.FC<InputProps> = ({
-	className, addOnBefore, addOnAfter, disabled, type, block = true, inputSize = "md", ...inputProps
+	className,
+	addOnBefore,
+	addOnAfter,
+	disabled,
+	readOnly,
+	type,
+	block = true,
+	inputSize = "md",
+	...inputProps
 }) => {
 	const [showPw, setShowPw] = useState(false);
 
 	const handleTogglePw = () => {
 		setShowPw((oldVal) => !oldVal);
 	};
-	const renderVisible = () => (showPw ? <IconInvisible onClick={handleTogglePw} /> : <IconVisible onClick={handleTogglePw}/>);
+	const renderVisible = () => (showPw ? <IconInvisible onClick={handleTogglePw} /> : <IconVisible onClick={handleTogglePw} />);
 
 	return (
 		<Flex className={cc(
@@ -31,6 +39,7 @@ const Input: React.FC<InputProps> = ({
 				`idx-input-${inputSize}`,
 				block ? "idx-input-block" : "",
 				disabled ? "idx-input-disabled" : "",
+				readOnly ? "idx-input-readonly" : "",
 				addOnBefore ? "idx-input-add-on-before" : "",
 				addOnAfter ? "idx-input-add-on-after" : "",
 				className,
@@ -40,6 +49,7 @@ const Input: React.FC<InputProps> = ({
 			<input
 				{...inputProps}
 				disabled={disabled}
+				readOnly={readOnly}
 				type={type === "password" && showPw ? "text" : type}
 				className={"idx-input__input"} />
 			{type === "password" ? renderVisible() : addOnAfter}
