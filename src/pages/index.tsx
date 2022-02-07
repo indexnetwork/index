@@ -7,6 +7,7 @@ import Col from "layout/base/Grid/Col";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
 import CopyInput from "components/base/CopyInput";
+import Tooltip from "components/base/Tooltip";
 // import Text from "components/base/Text";
 // import Button from "components/base/Button";
 // import Header from "components/base/Header";
@@ -28,6 +29,13 @@ const Home: NextPage = () => (
 				</Col>
 				<Col lg={"2"} md={"3"} sm={"6"} xs={"12"}>Deneme</Col>
 				<Col lg={"2"} md={"3"} sm={"6"} xs={"12"}>
+					<Tooltip
+						content={"Deneme"}
+					>
+						Try Tooltip
+					</Tooltip>
+				</Col>
+				<Col>
 					<CopyInput
 						value="https://asdaasdasdasdsasd.com" />
 				</Col>

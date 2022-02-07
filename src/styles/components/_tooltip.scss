@@ -1,0 +1,51 @@
+.idx-tooltip {
+	display: inline-block;
+	position: relative;
+
+	.idx-tooltip-tip {
+		@include no-select;
+		position: absolute;
+		padding: $tooltip-spacing;
+		border-radius: $border-radius-base;
+		background-color: $gray-4;
+		color: $white;
+		font-weight: 600;
+		font-size: map-deep-get($font-size, "xs", "xs");
+		line-height: map-deep-get($font-line-height, "xs", "xs");
+
+		&.idx-tooltip-bottom-center {
+			left: 50%;
+			transform: translateX(-50%);
+			margin-top: $tooltip-spacing;
+		}
+
+		&.idx-tooltip-bottom-left {
+			left: 0;
+			margin-top: $tooltip-spacing;
+		}
+
+		&.idx-tooltip-bottom-right {
+			right: 0;
+			margin-top: $tooltip-spacing;
+		}
+
+		&.idx-tooltip-top-center {
+			bottom: 100%;
+			left: 50%;
+			transform: translateX(-50%);
+			margin-bottom: $tooltip-spacing;
+		}
+
+		&.idx-tooltip-top-left {
+			bottom: 100%;
+			left: 0;
+			margin-bottom: $tooltip-spacing;
+		}
+
+		&.idx-tooltip-top-right {
+			bottom: 100%;
+			right: 0;
+			margin-bottom: $tooltip-spacing;
+		}
+	}
+}

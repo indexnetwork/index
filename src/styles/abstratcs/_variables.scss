@@ -208,3 +208,9 @@ $visited-lighten: 12%;
 
 $transition-duration-base: 0.2s;
 $transition-bg: background $transition-duration-base ease-in-out;
+
+/**************
+		TOOLTIP
+***************/
+$tooltip-spacing: map-deep-get($spacing, "xs", "2");
+

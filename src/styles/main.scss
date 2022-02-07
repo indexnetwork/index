@@ -1,6 +1,7 @@
-@import "./abstratcs/variables", 
-				"./abstratcs/cssvars",
+@import 
 				"./abstratcs/functions",
+				"./abstratcs/variables", 
+				"./abstratcs/cssvars",
 				"./abstratcs/mixins",
 				"./abstratcs/animations";
 
@@ -16,6 +17,7 @@
 @import "./components/text",
 				"./components/button",
 				"./components/input",
+				"./components/tooltip",
 				"./components/copy-input";
 
 @import "./themes/theme";
