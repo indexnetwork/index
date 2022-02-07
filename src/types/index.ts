@@ -9,6 +9,7 @@ export type NextPageWithLayout = NextPage & {
 };
 
 export type ComponentThemeType = "primary" | "secondary" | "success" | "error" | "warning";
+
 export type SizeType = "xs" | "sm" | "md" | "lg";
 
 export type PropType<TObj, TProp extends keyof TObj> = TObj[TProp];
@@ -34,6 +35,7 @@ export type FlexPropsType = Pick<React.CSSProperties, CSSFlexPropsNamesType >;
  * Text Types
  */
 export type TextThemeType = ComponentThemeType;
+
 export type TextElementType = "span" | "strong" | "div" | "p";
 
 /**
