@@ -5,28 +5,32 @@ $copy-input-icon-bg: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, $gray-6 5%, $gr
 	position: relative;
 
 	&.idx-input {
-	@extend .idx-pr-6;
+		@extend .idx-pr-6;
 	}
+
 	input {
 		cursor: pointer !important;
 		margin-right: 0 !important;
-		user-select:none;
-		-webkit-touch-callout:none;
+		user-select: none;
+		-webkit-touch-callout: none;
 		overflow: hidden;
 		word-break: normal;
 		text-overflow: ellipsis;
-		&::selection{ color: inherit }
+
+		&::selection {
+			color: inherit;
+		}
 	}
 
 	&__button {
 		@include no-select;
-		// @extend .idx-pr-6;
 		height: 100%;
 		align-items: center;
 		background: transparent;
 		position: absolute;
 		right: 0;
 		background: $gray-1;
+
 		&:hover {
 			cursor: pointer;
 			background: $copy-input-icon-bg;
@@ -42,8 +46,10 @@ $copy-input-icon-bg: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, $gray-6 5%, $gr
 			overflow: hidden;
 			display: none;
 		}
+
 		&.copied {
 			background: $copy-input-icon-bg;
+
 			.idx-copy-input__text {
 				@extend .idx-ml-2;
 				display: flex;
