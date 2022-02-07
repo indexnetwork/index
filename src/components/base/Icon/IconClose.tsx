@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconClose = ({ stroke = "var(--gray-4)", strokeWidth = "1.2", ...props }) => (
+const IconClose: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--gray-4)", strokeWidth = "1.2", ...props }) => (
 	<svg
 		width={16}
 		height={16}

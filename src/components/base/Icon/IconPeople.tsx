@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconPeople = ({ stroke = "var(--main)", strokeWidth = ".3", ...props }) => (
+const IconPeople: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--main)", strokeWidth = ".3", ...props }) => (
 	<svg
 		width={16}
 		height={16}

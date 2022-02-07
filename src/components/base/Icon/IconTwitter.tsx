@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconTwitter = ({ fill = "var(--main)", ...props }) => (
+const IconTwitter: React.FC<React.SVGProps<SVGSVGElement>> = ({ fill = "var(--main)", ...props }) => (
 	<svg
 		width={24}
 		height={24}

@@ -1,18 +1,13 @@
-@import "../abstratcs/variables";
+@import "../abstratcs/variables",
+				"../abstratcs/mixins";
 
 .idx-text {
 	color: $main-color;
-
+	@include responsive-sizes($font-size, "font-size");
+	@include responsive-sizes($font-line-height, "line-height");
 	@each $key, $value in $common-colors {
 		&-#{$key} {
 			color: $value;
-		}
-	}
-
-	@each $key, $value in $font-size {
-		&-#{$key} {
-			font-size: $value;
-			line-height: map-get($font-line-height, $key);
 		}
 	}
 }

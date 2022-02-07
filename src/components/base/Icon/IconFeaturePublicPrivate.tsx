@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconFeaturePublicPrivate = ({ fill = "var(--main)", ...props }) => (
+const IconFeaturePublicPrivate: React.FC<React.SVGProps<SVGSVGElement>> = ({ fill = "var(--main)", ...props }) => (
 	<svg
 		width={24}
 		height={24}

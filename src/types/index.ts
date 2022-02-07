@@ -11,6 +11,8 @@ export type NextPageWithLayout = NextPage & {
 export type ComponentThemeType = "primary" | "secondary" | "success" | "error" | "warning";
 export type SizeType = "xs" | "sm" | "md" | "lg";
 
+export type PropType<TObj, TProp extends keyof TObj> = TObj[TProp];
+
 /**
  * Text Types
  */
@@ -21,7 +23,11 @@ export type TextElementType = "span" | "strong" | "div" | "p";
  * Button Types
  */
 export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "secondary-outlined" | "success-outlined" | "error-outlined" | "warning-outlined" | "ghost" | "link";
-export type ButtonSizeType = Exclude<SizeType, "xs">;
+
+/**
+ * Input Types
+ */
+export type InputSizeType = Exclude<SizeType, "xs">;
 
 /**
  * Size Types

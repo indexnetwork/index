@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconFeatureAddLink = ({ fill = "var(--main)", ...props }) => (
+const IconFeatureAddLink: React.FC<React.SVGProps<SVGSVGElement>> = ({ fill = "var(--main)", ...props }) => (
 	<svg
 		width={24}
 		height={24}

@@ -1,11 +1,12 @@
-@import "../abstratcs/variables", "../abstratcs/mixins";
+@import "../abstratcs/variables", "../abstratcs/mixins", "../abstratcs/functions";
 
 .idx-button {
 	@include no-select;
-	height: map-get($input-height, "md");
+	@include responsive-sizes($input-height, "height");
+
 	border: none;
 	border-radius: $border-radius-base;
-	padding: map-get($spacing, "4") map-get($spacing, "6");
+	padding: map-deep-get($spacing, "xs", "4") map-deep-get($spacing, "xs", "6");
 	line-height: 0;
 	font-weight: 500;
 	background-color: $main-color;
@@ -25,12 +26,6 @@
 	&[disabled] {
 		cursor: not-allowed;
 		background-color: map-get($button-bg, "disabled") !important;
-	}
-
-	@each $key, $value in $input-height {
-		&-#{$key} {
-			height: $value;
-		}
 	}
 
 	@each $key, $value in $button-bg {
@@ -59,6 +54,6 @@
 	}
 
 	& + .idx-button {
-		margin-left: map-get($spacing, "3");
+		margin-left: map-deep-get($spacing, "xs", "3");
 	}
 }

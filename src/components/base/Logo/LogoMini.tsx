@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const LogoMini = ({ fill = "var(--ias-main)", ...props }) => (
+const LogoMini: React.FC<React.SVGProps<SVGSVGElement>> = ({ fill = "var(--ias-main)", ...props }) => (
 	<svg
 		width={20}
 		height={32}

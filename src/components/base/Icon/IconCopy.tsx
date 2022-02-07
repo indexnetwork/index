@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconCopy = ({ stroke = "var(--main)", strokeWidth = "1.2", ...props }) => (
+const IconCopy: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--main)", strokeWidth = "1.2", ...props }) => (
 	<svg
 		width={16}
 		height={16}

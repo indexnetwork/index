@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconContextMenu = ({
+const IconContextMenu: React.FC<React.SVGProps<SVGSVGElement>> = ({
 	stroke = "var(--gray-4)", fill = "var(--gray-4)", strokeWidth = ".1", ...props
 }) => (
 	<svg

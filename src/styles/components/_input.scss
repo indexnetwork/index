@@ -1,0 +1,47 @@
+@import "../abstratcs/variables", "../abstratcs/mixins", "../abstratcs/functions";
+
+.idx-input {
+	@include responsive-sizes($input-height, "height");
+	
+	border: $border-base;
+	border-radius: $border-radius-base;
+	padding-left: map-deep-get($spacing, "xs", "6");
+	padding-right: map-deep-get($spacing, "xs", "6");
+	line-height: 0;
+	align-items: center;
+
+	& input {
+		border: none;
+		width: 100%;
+	}
+
+	& input:focus-visible {
+		outline: none;
+	}
+
+	&.idx-input-block {
+		display: block;
+		width: 100%;
+	}
+
+	& input::placeholder {
+		color: $secondary-text-color;
+	}
+
+	&.idx-input-disabled {
+		background-color: $gray-1 !important;
+		color: $secondary-text-color;
+	}
+
+	&.idx-input-add-on-before {
+		input {
+			margin-left: map-deep-get($spacing, "xs", "6");
+		}
+	}
+
+	&.idx-input-add-on-after {
+		input {
+			margin-right: map-deep-get($spacing, "xs", "6");
+		}
+	}
+}

@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconLock = ({ stroke = "var(--main)", strokeWidth = "1.5", ...props }) => (
+const IconLock: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--main)", strokeWidth = "1.5", ...props }) => (
 	<svg
 		width={24}
 		height={24}

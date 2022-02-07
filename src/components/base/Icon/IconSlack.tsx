@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconSlack = ({ fill = "var(--main)", ...props }) => (
+const IconSlack: React.FC<React.SVGProps<SVGSVGElement>> = ({ fill = "var(--main)", ...props }) => (
 	<svg
 		width={24}
 		height={24}
