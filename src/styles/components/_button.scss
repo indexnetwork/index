@@ -1,5 +1,3 @@
-@import "../abstratcs/variables", "../abstratcs/mixins", "../abstratcs/functions";
-
 .idx-button {
 	@include no-select;
 	@include responsive-sizes($input-height, "height");

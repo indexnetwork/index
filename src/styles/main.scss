@@ -1,16 +1,21 @@
 @import "./abstratcs/variables", 
-				"./abstratcs/cssvars";
+				"./abstratcs/cssvars",
+				"./abstratcs/functions",
+				"./abstratcs/mixins",
+				"./abstratcs/animations";
 
 @import "./vendors/bootstrap";
 
 @import "./base/fonts",
-				"./base/typography";
+				"./base/typography",
+				"./base/spacing";
 
 @import "./layout/grid",
 				"./layout/header";
 
 @import "./components/text",
 				"./components/button",
-				"./components/input";
+				"./components/input",
+				"./components/copy-input";
 
 @import "./themes/theme";
