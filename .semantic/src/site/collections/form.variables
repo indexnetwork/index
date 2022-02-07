@@ -1,5 +1,0 @@
-/*******************************
-    User Variable Overrides
-*******************************/
-@gutterWidth: 1.6em;
-@rowDistance: 1.6em;

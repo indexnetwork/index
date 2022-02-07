@@ -1,8 +1,0 @@
-/*******************************
-    User Variable Overrides
-*******************************/
-
-@fontWeight: 400;
-@horizontalPadding: 2em;
-@horizontalMargin: 0.5em;
-
