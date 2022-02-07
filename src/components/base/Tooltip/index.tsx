@@ -14,7 +14,6 @@ const Tooltip: React.FC<TooltipProps> = ({
 }) => {
 	const [visible, setVisible] = useState(false);
 
-	const div = useRef(null);
 	const timeout = useRef<NodeJS.Timeout>();
 
 	const handleMouseEnter = () => {
@@ -33,7 +32,6 @@ const Tooltip: React.FC<TooltipProps> = ({
 
 	return (
 		<div
-			ref={div}
 			className={cc(["idx-tooltip", wrapperClass || ""])}
 			onMouseEnter={handleMouseEnter}
 			onMouseLeave={handleMouseLeave}
