@@ -3,6 +3,7 @@ import cc from "classcat";
 import IconGoogle from "components/base/Icon/IconGoogle";
 import IconTwitter from "components/base/Icon/IconTwitter";
 import { InputSizeType, ButtonThemeType } from "types";
+import Flex from "layout/base/Grid/Flex";
 
 export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> {
 	customType?: "google" | "twitter";
@@ -15,7 +16,7 @@ export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAtt
 }
 
 const Button: React.FC<ButtonProps> = ({
-	customType, className, block, outlined, addOnBefore, addOnAfter, theme = "primary", size = "md", ...props
+	customType, children, className, block, outlined, addOnBefore, addOnAfter, theme = "primary", size = "md", ...props
 }) => {
 	switch (customType) {
 		case "google":
@@ -29,7 +30,7 @@ const Button: React.FC<ButtonProps> = ({
 				],
 			)}>
 				<IconGoogle width={20} />
-				{props.children}
+				{children}
 			</button>;
 		case "twitter":
 			return <button {...props}className={cc(
@@ -41,7 +42,7 @@ const Button: React.FC<ButtonProps> = ({
 				],
 			)}>
 				<IconTwitter height={20} fill="var(--twitter-blue)" />
-				{props.children}
+				{children}
 			</button>;
 		default:
 			return <button
@@ -56,7 +57,9 @@ const Button: React.FC<ButtonProps> = ({
 						addOnAfter ? "idx-button-addon-a" : "",
 						className,
 					],
-				)} />;
+				)}>
+				{addOnAfter || addOnBefore ? <Flex className="idx-button-inner" inline alignItems="center">{children}</Flex> : children}
+			</button>;
 	}
 };
 

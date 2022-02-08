@@ -6,11 +6,12 @@ export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
 }
 
-const SiteHeader: React.FC<LandingHeaderProps> = ({ headerType, ...baseProps }) => {
+const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType, ...baseProps }) => {
 	const renderPublicHeader = () => (
 		<Navbar
 			logoSize="full"
 			sticky
+			bgColor="#f4fbf6"
 			bordered={false}
 			{...baseProps}
 		>
@@ -25,8 +26,6 @@ const SiteHeader: React.FC<LandingHeaderProps> = ({ headerType, ...baseProps }) 
 		<Navbar
 			logoSize="mini"
 			{...baseProps}
-			sticky={true}
-			bgColor="#f4fbf6"
 			innerFlexProps={{
 				justifyContent: "space-between",
 			}}
@@ -41,4 +40,4 @@ const SiteHeader: React.FC<LandingHeaderProps> = ({ headerType, ...baseProps }) 
 	return headerType === "user" ? renderUserHeader() : renderPublicHeader();
 };
 
-export default SiteHeader;
+export default SiteNavbar;

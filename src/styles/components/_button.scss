@@ -4,13 +4,12 @@
 
 	border: 1px solid;
 	border-radius: $border-radius-base;
-	padding: map-deep-get($spacing, "xs", "4") map-deep-get($spacing, "xs", "6");
+	padding: 0 map-deep-get($spacing, "xs", "6");
 	line-height: 0;
 	font-weight: 500;
 	background-color: $main-color;
 	color: $white;
 	width: fit-content;
-	vertical-align: bottom;
 
 	&:hover {
 		transition: $transition-bg;
@@ -76,20 +75,32 @@
 
 	.idx-icon {
 		height: 1.4rem;
-		width: 1.4rem;
+		width: auto;
+	}
+
+	.idx-button-inner {
+		height: 100%;
+		.idx-icon {
+			display: flex;
+		}
 	}
 
 	&.idx-button-addon-b {
-		display: inline-flex;
-		align-items: center;
+		display: inline-block;
+		vertical-align: middle;
 		.idx-icon {
+			display: inline-block;
+			vertical-align: middle;
 			margin-right: 1.1rem;
 		}
 	}
+
 	&.idx-button-addon-a {
-		display: inline-flex;
-		align-items: center;
+		display: inline-block;
+		vertical-align: middle;
 		.idx-icon {
+			display: inline-block;
+			vertical-align: middle;
 			margin-left: 1.1rem;
 		}
 	}

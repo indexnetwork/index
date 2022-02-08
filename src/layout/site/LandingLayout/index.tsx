@@ -1,10 +1,10 @@
-import SiteHeader from "layout/site/SiteHeader";
+import SiteNavbar from "layout/site/SiteNavbar";
 import React from "react";
 import SiteFooter from "../SiteFooter";
 
 const LandingLayout: React.FC = ({ children }) => (
 	<>
-		<SiteHeader headerType="user" />
+		<SiteNavbar headerType="user" />
 		{children}
 		<SiteFooter />
 	</>

@@ -1,11 +1,14 @@
 import React from "react";
 import { FlexPropsType } from "types";
 
-export interface FlexProps extends FlexPropsType, React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> { }
+export interface FlexProps extends FlexPropsType, React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
+	inline?: boolean;
+}
 
 const Flex: React.FC<FlexProps> = ({
 	className,
 	children,
+	inline,
 	flexBasis,
 	flexDirection,
 	flexFlow,
@@ -26,7 +29,7 @@ const Flex: React.FC<FlexProps> = ({
 		className={className}
 		style={{
 			...style,
-			display: "flex",
+			display: inline ? "inline-flex" : "flex",
 			flexBasis,
 			flexDirection,
 			flexFlow,

@@ -85,20 +85,22 @@ const Home: NextPageWithLayout = () => (
 						<Button theme="error-outlined">Button error-outlined</Button>
 						<Button theme="warning-outlined">Button warning-outlined</Button>
 						<Button theme="blue-outlined">Button blue-outlined</Button>
-						<Button addOnBefore><IconAdd stroke="white" strokeWidth={"1.5"} />Button Add-On Before</Button>
+						<Button addOnBefore>
+							<IconAdd stroke="white" strokeWidth={"1.5"} />Button Add-On Before
+						</Button>
 						<Button addOnAfter>Button Add-On Before<IconAdd stroke="white" strokeWidth={"1.5"} /></Button>
 						<Button addOnBefore addOnAfter>
 							<IconAdd stroke="white" strokeWidth={"1.5"} />
-							Button Add-On Before/After
+								Button Add-On Before/After
 							<IconAdd stroke="white" strokeWidth={"1.5"} />
 						</Button>
 						<Button addOnBefore theme="clear">
 							<IconGoogle stroke="white" />
-							Button Google
+								Button Google
 						</Button>
 						<Button addOnBefore theme="clear">
 							<IconTwitter fill="var(--twitter-blue)" stroke="var(--twitter-blue)" />
-							Button Twitter
+								Button Twitter
 						</Button>
 					</Col>
 				</Row>
