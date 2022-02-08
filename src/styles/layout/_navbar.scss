@@ -1,0 +1,23 @@
+.idx-navbar-container {
+	@include responsive-sizes-flat($navbar-height, "height");
+	width: 100vw;
+	overflow: hidden;
+
+	&.idx-navbar-bordered {
+		border-bottom: $border-base;
+	}
+
+	.idx-navbar {
+		height: 100%;
+		flex: 1;
+
+		.idx-flex-container {
+			height: 100%;
+			width: 100%;
+		}
+
+		& .idx-navbar-menu-right {
+			margin-left: auto;
+		}
+	}
+}

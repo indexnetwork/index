@@ -22,12 +22,8 @@ import Input from "components/base/Input";
 const Home: NextPage = () => (
 	<>
 		<SiteHeader headerType="public" />
-		<Container fluid>
+		<Container >
 			<Row noGutters>
-				<Col lg="4" style={{
-					height: 120,
-					background: "red",
-				}} />
 				<Col lg={"2"} md={"3"} sm={"6"} xs={"12"}><Header level={6}>asdasdasd</Header></Col>
 				<Col lg={"2"} md={"3"} sm={"6"} xs={"12"}>
 					<Text theme="secondary" fontWeight={700}>Bu bir texttir</Text>

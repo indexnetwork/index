@@ -4,7 +4,7 @@ import React from "react";
 
 const LandingLayout: React.FC = ({ children }) => (
 	<>
-		<SiteHeader headerType="public"/>
+		<SiteHeader headerType="user"/>
 		<Container>
 			{children}
 		</Container>

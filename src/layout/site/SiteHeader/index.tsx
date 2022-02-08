@@ -1,6 +1,6 @@
 import Button from "components/base/Button";
 import React from "react";
-import Navbar, { NavbarProps } from "../../base/Navbar";
+import Navbar, { NavbarProps, NavbarMenuRight } from "../../base/Navbar";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
@@ -9,27 +9,27 @@ export interface LandingHeaderProps extends NavbarProps {
 const SiteHeader: React.FC<LandingHeaderProps> = ({ headerType, ...baseProps }) => {
 	const renderPublicHeader = () => (
 		<Navbar
-			logoSize="Mini"
+			logoSize="full"
 			sticky
+			bordered={false}
 			{...baseProps}
 		>
-			<div>
+			<NavbarMenuRight placement="right">
 				<Button theme="ghost" >Sign In</Button>
 				<Button theme="primary">Sign Up</Button>
-			</div>
+			</NavbarMenuRight>
 		</Navbar>
 	);
 
 	const renderUserHeader = () => (
 		<Navbar
-			logoSize="Full"
-			sticky
+			logoSize="mini"
 			{...baseProps}
 		>
-			<div>
+			<NavbarMenuRight placement="right">
 				<Button theme="ghost">Sign in</Button>
 				<Button theme="primary">Sign Up</Button>
-			</div>
+			</NavbarMenuRight>
 		</Navbar>
 	);
 

@@ -33,6 +33,7 @@
 		}
 	} @else {
 		background-color: $bg;
+		border: 1px solid $bg;
 		color: $color;
 
 		&:hover {
@@ -80,6 +81,18 @@
 						#{$property}: $value;
 					}
 				}
+			}
+		}
+	}
+}
+
+@mixin responsive-sizes-flat($list, $property) {
+	@each $breakpoint, $value in $list {
+		@if ($breakpoint == "xs") {
+			#{$property}: $value;
+		} @else {
+			@media (min-width: map-get($breakpoints, $breakpoint)) {
+				#{$property}: $value;
 			}
 		}
 	}
