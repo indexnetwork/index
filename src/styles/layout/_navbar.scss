@@ -1,10 +1,17 @@
 .idx-navbar-container {
 	@include responsive-sizes-flat($navbar-height, "height");
-	width: 100vw;
+	width: 100%;
 	overflow: hidden;
+	transition: $transition-bg;
 
 	&.idx-navbar-bordered {
 		border-bottom: $border-base;
+	}
+
+	&.idx-navbar-sticky {
+		position: sticky;
+		top: 0;
+		z-index: map-get($z-index, "navbar");
 	}
 
 	.idx-navbar {

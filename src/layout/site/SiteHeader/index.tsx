@@ -25,8 +25,13 @@ const SiteHeader: React.FC<LandingHeaderProps> = ({ headerType, ...baseProps }) 
 		<Navbar
 			logoSize="mini"
 			{...baseProps}
+			sticky={true}
+			bgColor="#f4fbf6"
+			innerFlexProps={{
+				justifyContent: "space-between",
+			}}
 		>
-			<NavbarMenuRight placement="right">
+			<NavbarMenuRight>
 				<Button theme="ghost">Sign in</Button>
 				<Button theme="primary">Sign Up</Button>
 			</NavbarMenuRight>

@@ -50,7 +50,7 @@
 	}
 
 	&.idx-button-ghost {
-		@include button-color($main-color, $white, $hover-darken, $visited-lighten, $transition-bg, $outlined: true);
+		@include button-color($main-color, transparent, $hover-darken, $visited-lighten, $transition-bg, $outlined: true);
 		border: none;
 	}
 

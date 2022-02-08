@@ -220,7 +220,8 @@ $tooltip-spacing: map-deep-get($spacing, "xs", "2");
 		Z INDEX
 ***************/
 $z-index: (
-	"tooltip": 2,
+	"navbar": 2,
+	"tooltip": 3,
 );
 
 /**************
