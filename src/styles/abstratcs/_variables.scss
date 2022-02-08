@@ -175,12 +175,13 @@ $button-bg: (
 	"warning": $warning,
 	"blue": $blue,
 	"primary-outlined": $main-color,
-	"secondary-outlined": $gray-4,
+	"secondary-outlined": $white,
 	"error-outlined": $error,
 	"success-outlined": $success,
 	"warning-outlined": $warning,
 	"blue-outlined": $blue,
 	"disabled": $gray-3,
+	"clear": $white,
 );
 
 $button-color: (
@@ -197,6 +198,7 @@ $button-color: (
 	"warning-outlined": $warning,
 	"blue-outlined": $blue,
 	"disabled": $white,
+	"clear": $gray-4,
 );
 
 $hover-darken: 5%;

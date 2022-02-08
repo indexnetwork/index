@@ -41,7 +41,7 @@ export type TextElementType = "span" | "strong" | "div" | "p";
 /**
  * Button Types
  */
-export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "secondary-outlined" | "success-outlined" | "error-outlined" | "warning-outlined" | "ghost" | "link";
+export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "secondary-outlined" | "success-outlined" | "error-outlined" | "warning-outlined" | "ghost" | "link" | "clear";
 
 /**
  * Input Types

@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const IconUpArrow: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--gray-4)", strokeWidth = "1.5", ...props }) => (
-	<svg
+	<svg className="idx-icon"
 		width={10}
 		height={6}
 		fill="none"

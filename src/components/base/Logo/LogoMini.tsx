@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const LogoMini: React.FC<React.SVGProps<SVGSVGElement>> = ({ fill = "var(--ias-main)", ...props }) => (
-	<svg
+	<svg className="idx-icon"
 		width={20}
 		height={32}
 		viewBox="0 0 20 32"

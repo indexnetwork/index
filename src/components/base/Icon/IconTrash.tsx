@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const IconTrash: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--error)", strokeWidth = "1.2", ...props }) => (
-	<svg
+	<svg className="idx-icon"
 		width={16}
 		height={16}
 		viewBox="0 0 16 16"

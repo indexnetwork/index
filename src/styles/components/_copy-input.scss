@@ -6,6 +6,7 @@ $copy-input-icon-bg: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, $gray-6 5%, $gr
 
 	&.idx-input {
 		@extend .idx-pr-6;
+		overflow: hidden;
 	}
 
 	input {
@@ -29,7 +30,6 @@ $copy-input-icon-bg: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, $gray-6 5%, $gr
 		background: transparent;
 		position: absolute;
 		right: 0;
-		background: $gray-1;
 
 		&:hover {
 			cursor: pointer;

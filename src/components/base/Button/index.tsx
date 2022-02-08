@@ -10,10 +10,12 @@ export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAtt
 	size?: InputSizeType;
 	block?: boolean;
 	outlined?: boolean;
+	addOnBefore?: React.ReactNode;
+	addOnAfter?: React.ReactNode;
 }
 
 const Button: React.FC<ButtonProps> = ({
-	customType, className, block, outlined, theme = "primary", size = "md", ...props
+	customType, className, block, outlined, addOnBefore, addOnAfter, theme = "primary", size = "md", ...props
 }) => {
 	switch (customType) {
 		case "google":
@@ -50,6 +52,8 @@ const Button: React.FC<ButtonProps> = ({
 						`idx-button-${theme}`,
 						`idx-button-${size}`,
 						block ? "idx-button-block" : "",
+						addOnBefore ? "idx-button-addon-b" : "",
+						addOnAfter ? "idx-button-addon-a" : "",
 						className,
 					],
 				)} />;

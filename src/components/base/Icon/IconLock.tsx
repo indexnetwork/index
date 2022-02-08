@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const IconLock: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--main)", strokeWidth = "1.5", ...props }) => (
-	<svg
+	<svg className="idx-icon"
 		width={24}
 		height={24}
 		viewBox="0 0 24 24"

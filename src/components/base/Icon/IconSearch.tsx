@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const IconSearch: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--gray-4)", strokeWidth = "1.2", ...props }) => (
-	<svg
+	<svg className="idx-icon"
 		width={16}
 		height={16}
 		fill="none"

@@ -2,17 +2,23 @@
 	@include no-select;
 	@include responsive-sizes($input-height, "height");
 
-	border: none;
+	border: 1px solid;
 	border-radius: $border-radius-base;
 	padding: map-deep-get($spacing, "xs", "4") map-deep-get($spacing, "xs", "6");
 	line-height: 0;
 	font-weight: 500;
 	background-color: $main-color;
 	color: $white;
+	width: fit-content;
+	vertical-align: bottom;
 
 	&:hover {
 		transition: $transition-bg;
 		background-color: darken($main-color, $hover-darken);
+	}
+
+	&:focus-visible {
+		outline: none;
 	}
 
 	&:active,
@@ -29,7 +35,14 @@
 	@each $key, $value in $button-bg {
 		&.idx-button-#{$key} {
 			@if str-index($key, "outlined") != null {
-				@include button-color($white, $value, $hover-darken, $visited-lighten, $transition-bg, $outlined: true);
+				@include button-color(
+					map-get($button-color, $key),
+					$white,
+					$hover-darken,
+					$visited-lighten,
+					$transition-bg,
+					$outlined: true
+				);
 			} @else {
 				@include button-color($white, $value, $hover-darken, $visited-lighten, $transition-bg, $outlined: false);
 			}
@@ -46,6 +59,12 @@
 		border: none;
 	}
 
+	&.idx-button-clear {
+		background-color: $white;
+		color: $gray-4;
+		border-color: $border-color;
+	}
+
 	&.idx-button-block {
 		display: block;
 		width: 100%;
@@ -53,5 +72,25 @@
 
 	& + .idx-button {
 		margin-left: map-deep-get($spacing, "xs", "3");
+	}
+
+	.idx-icon {
+		height: 1.4rem;
+		width: 1.4rem;
+	}
+
+	&.idx-button-addon-b {
+		display: inline-flex;
+		align-items: center;
+		.idx-icon {
+			margin-right: 1.1rem;
+		}
+	}
+	&.idx-button-addon-a {
+		display: inline-flex;
+		align-items: center;
+		.idx-icon {
+			margin-left: 1.1rem;
+		}
 	}
 }
