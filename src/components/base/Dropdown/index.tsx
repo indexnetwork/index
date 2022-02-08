@@ -8,13 +8,20 @@ export interface DropdownProps {
 	trigger?: "click" | "hover" | "both";
 	position?: "bottom-left" | "bottom-right" | "bottom-center" | "top-left" | "top-right" | "top-center";
 	delay?: number;
+	closeOnHoverOut?: boolean;
 	menuClass?: string;
 	dropdownClass?: string;
 	menuItems: ReactElement<DropdownMenuItemProps> | ReactElement<DropdownMenuItemProps>[];
 }
 
 const Dropdown: React.FC<DropdownProps> = ({
-	menuItems: content, children, menuClass: wrapperClass, trigger = "click", position = "bottom-center", delay = 500,
+	menuItems,
+	children,
+	menuClass,
+	trigger = "click",
+	position = "bottom-center",
+	delay = 500,
+	closeOnHoverOut = false,
 }) => {
 	const menuRef = useRef<HTMLDivElement>(null);
 
@@ -29,11 +36,13 @@ const Dropdown: React.FC<DropdownProps> = ({
 	};
 
 	const handleMouseLeave = () => {
-		if (timeout.current) {
-			clearTimeout(timeout.current);
-			timeout.current = undefined;
+		if (closeOnHoverOut) {
+			if (timeout.current) {
+				clearTimeout(timeout.current);
+				timeout.current = undefined;
+			}
+			setVisible(false);
 		}
-		setVisible(false);
 	};
 
 	const handleClick = () => {
@@ -49,7 +58,7 @@ const Dropdown: React.FC<DropdownProps> = ({
 	return (
 		<div
 			ref={menuRef}
-			className={cc(["idx-dropdown", wrapperClass || ""])}
+			className={cc(["idx-dropdown", menuClass || ""])}
 			onMouseEnter={trigger === "both" || trigger === "hover" ? handleMouseEnter : undefined}
 			onMouseLeave={trigger === "both" || trigger === "hover" ? handleMouseLeave : undefined}
 			onClick={trigger === "both" || trigger === "click" ? handleClick : undefined}
@@ -57,8 +66,8 @@ const Dropdown: React.FC<DropdownProps> = ({
 			{children}
 			{
 				visible &&
-					<DropdownMenu className={cc([`idx-dropdown-menu-${position}`, wrapperClass || ""])}>
-						{content}
+					<DropdownMenu className={cc([`idx-dropdown-menu-${position}`, menuClass || ""])}>
+						{menuItems}
 					</DropdownMenu>
 			}
 		</div>

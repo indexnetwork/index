@@ -114,6 +114,7 @@ const Home: NextPageWithLayout = () => (
 				<Row>
 					<Col xs="3">
 						<Dropdown
+							trigger="both"
 							position="top-center"
 							menuItems={
 								<>
@@ -139,7 +140,7 @@ const Home: NextPageWithLayout = () => (
 								</>
 							}
 						>
-							<Button>Dropdown Top Center</Button>
+							<Button>Dropdown Top Center Hover</Button>
 						</Dropdown>
 					</Col>
 					<Col xs="3">
