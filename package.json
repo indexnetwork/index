@@ -18,11 +18,13 @@
     "react": "17.0.2",
     "react-dom": "17.0.2",
     "sass": "^1.49.7",
+    "uuid": "^8.3.2",
     "yup": "^0.32.11"
   },
   "devDependencies": {
     "@types/node": "17.0.14",
     "@types/react": "17.0.39",
+    "@types/uuid": "^8.3.4",
     "@typescript-eslint/eslint-plugin": "^5.10.2",
     "eslint": "8.8.0",
     "eslint-config-airbnb-base": "^15.0.0",

@@ -142,7 +142,7 @@ const Home: NextPageWithLayout = () => (
 								</>
 							}
 						>
-							<Button>Dropdown Top Center Hover</Button>
+							<Button>Dd Center W Hover</Button>
 						</Dropdown>
 					</Col>
 					<Col xs="3">

@@ -1,4 +1,4 @@
-import React, { ReactElement } from "react";
+import React, { forwardRef, ReactElement } from "react";
 import cc from "classcat";
 import { DropdownMenuItemProps } from "../DropdownMenuItem";
 
@@ -6,8 +6,9 @@ export interface DropdownMenuProps extends React.DetailedHTMLProps<React.HTMLAtt
 	children: ReactElement<DropdownMenuItemProps> | ReactElement<DropdownMenuItemProps>[];
 }
 
-const DropdownMenu: React.FC<DropdownMenuProps> = ({ children, className }) => (
+const DropdownMenu: React.ForwardRefRenderFunction<HTMLUListElement, DropdownMenuProps> = ({ children, className }, ref) => (
 	<ul
+		ref={ref}
 		className={cc(
 			[
 				"idx-dropdown-menu",
@@ -17,4 +18,4 @@ const DropdownMenu: React.FC<DropdownMenuProps> = ({ children, className }) => (
 	>{children}</ul>
 );
 
-export default DropdownMenu;
+export default forwardRef(DropdownMenu);

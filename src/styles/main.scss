@@ -9,10 +9,10 @@
 
 @import "./base/fonts",
 				"./base/typography",
-				"./base/spacing",
-				"./base/flex";
+				"./base/spacing";
 
-@import "./layout/grid",
+@import "./layout/flex",
+				"./layout/grid",
 				"./layout/navbar",
 				"./layout/footer";
 
