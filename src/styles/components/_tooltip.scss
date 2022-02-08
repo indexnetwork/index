@@ -13,6 +13,9 @@
 		font-size: map-deep-get($font-size, "xs", "xs");
 		line-height: map-deep-get($font-line-height, "xs", "xs");
 		z-index: map-get($z-index, "tooltip");
+		width: max-content;
+		word-break: break-all;
+		max-width: 20rem;
 
 		&.idx-tooltip-bottom-center {
 			left: 50%;

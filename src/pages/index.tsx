@@ -13,34 +13,124 @@ import Input from "components/base/Input";
 import { NextPageWithLayout } from "types";
 import LandingLayout from "layout/site/LandingLayout";
 import PageContainer from "layout/site/PageContainer";
-// import Text from "components/base/Text";
-// import Button from "components/base/Button";
-// import Header from "components/base/Header";
-// import Input from "components/base/Input";
-// import IconSearch from "components/base/Icon/IconSearch";
+import IconSearch from "components/base/Icon/IconSearch";
+import IconGoogle from "components/base/Icon/IconGoogle";
+import IconTwitter from "components/base/Icon/IconTwitter";
 
 const Home: NextPageWithLayout = () => (
-	<PageContainer>
-		<Row noGutters>
-			<Col lg={"2"} md={"3"} sm={"6"} xs={"12"}><Header level={6}>asdasdasd</Header></Col>
-			<Col lg={"2"} md={"3"} sm={"6"} xs={"12"}>
-				<Text theme="secondary" fontWeight={700}>Bu bir texttir</Text>
+	<PageContainer style={{
+		height: 1000,
+	}}>
+		<Row>
+			<Col xs={"12"}>
+				<Header level={1}>Headers</Header>
+				<Row>
+					<Col>
+						<Header level={6}>Headers Level 6</Header>
+					</Col>
+					<Col>
+						<Header level={5}>Headers Level 5</Header>
+					</Col>
+					<Col>
+						<Header level={4}>Headers Level 4</Header>
+					</Col>
+					<Col>
+						<Header level={3}>Headers Level 3</Header>
+					</Col>
+					<Col>
+						<Header level={2}>Headers Level 2</Header>
+					</Col>
+					<Col>
+						<Header level={1}>Headers Level 1</Header>
+					</Col>
+				</Row>
 			</Col>
-			<Col lg={"6"} md={"3"} sm={"6"} xs={"12"}><Button>Button 2</Button>
+			<Col xs={"12"}>
+				<Header level={1}>Text</Header>
+				<Row>
+					<Col>
+						<Text size="xs" element="p">Text xs</Text>
+						<Text size="sm" element="p">Text xs</Text>
+						<Text size="md" element="p">Text xs</Text>
+						<Text size="lg" element="p">Text xs</Text>
+						<Text size="md" element="p" theme="primary">Text primary</Text>
+						<Text size="md" element="p" theme="secondary">Text secondary</Text>
+						<Text size="md" element="p" theme="success">Text secondary</Text>
+						<Text size="md" element="p" theme="error">Text secondary</Text>
+						<Text size="md" element="p" theme="warning">Text secondary</Text>
+					</Col>
+				</Row>
+			</Col>
+			<Col xs={"12"}>
+				<Header level={1}>Text</Header>
+				<Row>
+					<Col>
+						<Button size="lg">Button large</Button>
+						<Button size="md">Button medium</Button>
+						<Button size="sm">Button small</Button>
+					</Col>
+					<Col>
+						<Button>Button primary</Button>
+						<Button theme="secondary">Button secondary</Button>
+						<Button theme="success">Button success</Button>
+						<Button theme="error">Button error</Button>
+						<Button theme="warning">Button warning</Button>
+						<Button theme="blue">Button blue</Button>
+						<Button theme="ghost">Button ghost</Button>
+						<Button theme="link">Button link</Button>
+						<Button theme="clear">Button clear</Button>
+						<Button theme="primary-outlined">Button primary-outlined</Button>
+						<Button theme="secondary-outlined">Button secondary-outlined</Button>
+						<Button theme="success-outlined">Button success-outlined</Button>
+						<Button theme="error-outlined">Button error-outlined</Button>
+						<Button theme="warning-outlined">Button warning-outlined</Button>
+						<Button theme="blue-outlined">Button blue-outlined</Button>
+						<Button addOnBefore><IconAdd stroke="white" strokeWidth={"1.5"} />Button Add-On Before</Button>
+						<Button addOnAfter>Button Add-On Before<IconAdd stroke="white" strokeWidth={"1.5"} /></Button>
+						<Button addOnBefore addOnAfter>
+							<IconAdd stroke="white" strokeWidth={"1.5"} />
+							Button Add-On Before/After
+							<IconAdd stroke="white" strokeWidth={"1.5"} />
+						</Button>
+						<Button addOnBefore theme="clear">
+							<IconGoogle stroke="white" />
+							Button Google
+						</Button>
+						<Button addOnBefore theme="clear">
+							<IconTwitter fill="var(--twitter-blue)" stroke="var(--twitter-blue)" />
+							Button Twitter
+						</Button>
+					</Col>
+				</Row>
+			</Col>
+			<Col xs={"12"}><Button>Button 2</Button>
 				<Button addOnBefore><Flex alignItems="center" style={{ height: "100%" }}><IconAdd stroke="var(--gray-4)" />asdasasdas</Flex></Button>
 			</Col>
-			<Col lg={"2"} md={"3"} sm={"6"} xs={"12"}>
-				<Tooltip
-					content={"Deneme"}
-				>
-					Try Tooltip
-				</Tooltip>
+			<Col xs={"12"}>
+				<Header level={1}>Tooltip</Header>
+				<Row>
+					<Col xs="6">
+						<Tooltip
+							content={"Tooltip on text asdasdasdasdasdasdasdasd asdasdasdasdasd asdasdasdasdasdasdasdasd asdasdasdasdasdasd"}
+						>
+							<Text size="md" element="p" style={{ margin: 0 }}>Try Tooltip</Text>
+						</Tooltip>
+					</Col>
+					<Col xs="6">
+						<Tooltip
+							content={"Tooltip on button"}
+						>
+							<Button>Try Tooltip on Button</Button>
+						</Tooltip>
+					</Col>
+				</Row>
+
 			</Col>
 			<Col>
 				<CopyInput
 					value="https://asdaasdasdasdsasd.com" />
 			</Col>
-			<Col lg={"12"} md={"3"} sm={"6"} xs={"12"}>
+			<Col>
 				<Flex>
 					<Input />
 					<ButtonGroup
@@ -55,18 +145,17 @@ const Home: NextPageWithLayout = () => (
 					</ButtonGroup>
 				</Flex>
 			</Col>
-
-			{/* <Col lg="3" sm="6" xs="12"><Header level={1}>Deneme 1</Header></Col>
-				<Col lg="3" sm="6" xs="12">
-					<Input
-						addOnBefore={<IconSearch />}
-						type="password"
-						placeholder="deneme" />
-				</Col>
-				<Col lg="3" sm="6" xs="12"><Input placeholder="deneme" disabled 						addOnBefore={<IconSearch />}
-				/></Col>
-				<Col lg="3" sm="6" xs="12"><Text theme="secondary">Deneme Text</Text></Col>
-				<Col lg="3" sm="6" xs="12"><Button theme="ghost">Deneme</Button></Col> */}
+			<Col><Header level={1}>Deneme 1</Header></Col>
+			<Col>
+				<Input
+					addOnBefore={<IconSearch />}
+					type="password"
+					placeholder="deneme" />
+			</Col>
+			<Col lg="3" sm="6" xs="12"><Input placeholder="deneme" disabled addOnBefore={<IconSearch />}
+			/></Col>
+			<Col lg="3" sm="6" xs="12"><Text theme="secondary">Deneme Text</Text></Col>
+			<Col lg="3" sm="6" xs="12"><Button theme="ghost">Deneme</Button></Col>
 		</Row>
 	</PageContainer>
 );

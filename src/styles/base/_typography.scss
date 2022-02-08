@@ -18,6 +18,8 @@ h5,
 h6 {
 	text-align: center;
 	font-family: Freizeit;
+	margin-bottom: .5rem;
+	margin-top: .5rem;
 }
 
 @each $breakpoint, $values in $header-font-size {
