@@ -19,3 +19,16 @@ export function copyToClipboard(str?: string) {
 		document.body.removeChild(temp);
 	}
 }
+
+export function generateRandomColor() {
+	const hue = Math.floor(Math.random() * 360);
+	return `hsl(${hue}, 50%, 50%)`;
+}
+
+export function isSSR() {
+	return !(
+		typeof window !== "undefined" &&
+			window.document &&
+			window.document.createElement
+	);
+}

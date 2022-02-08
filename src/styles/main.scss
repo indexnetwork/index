@@ -9,13 +9,15 @@
 
 @import "./base/fonts",
 				"./base/typography",
-				"./base/spacing";
+				"./base/spacing",
+				"./base/flex";
 
 @import "./layout/grid",
 				"./layout/navbar",
 				"./layout/footer";
 
 @import "./components/text",
+				"./components/avatar",
 				"./components/button",
 				"./components/button-group",
 				"./components/input",
