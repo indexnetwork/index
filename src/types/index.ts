@@ -14,7 +14,8 @@ export type SizeType = "xs" | "sm" | "md" | "lg";
 
 export type PropType<TObj, TProp extends keyof TObj> = TObj[TProp];
 
-export type CSSFlexPropsNamesType = "flex" |
+export type CSSFlexPropsNamesType =
+"flex" |
 "flexBasis" |
 "flexDirection" |
 "flexFlow" |

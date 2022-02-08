@@ -28,7 +28,7 @@ const Navbar: React.FC<NavbarProps> = ({
 	sticky = false,
 	stickyBgChangeAfter = 30,
 	stickyBgColor = "#fff",
-	bgColor = "#fff",
+	bgColor,
 	bordered = true,
 	style,
 	...menuProps
@@ -79,7 +79,7 @@ const Navbar: React.FC<NavbarProps> = ({
 	);
 };
 
-export const NavbarMenuRight: React.FC<NavbarMenuProps> = ({
+export const NavbarMenu: React.FC<NavbarMenuProps> = ({
 	className, children, placement = "left", ...props
 }) => <div {...props} className={cc([`idx-navbar-menu-${placement}`, className || ""])}>{children}</div>;
 

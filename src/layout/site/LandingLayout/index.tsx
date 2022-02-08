@@ -1,13 +1,12 @@
-import Container from "layout/base/Grid/Container";
 import SiteHeader from "layout/site/SiteHeader";
 import React from "react";
+import SiteFooter from "../SiteFooter";
 
 const LandingLayout: React.FC = ({ children }) => (
 	<>
-		<SiteHeader headerType="user"/>
-		<Container>
-			{children}
-		</Container>
+		<SiteHeader headerType="user" />
+		{children}
+		<SiteFooter />
 	</>
 );
 

@@ -221,13 +221,22 @@ $tooltip-spacing: map-deep-get($spacing, "xs", "2");
 ***************/
 $z-index: (
 	"navbar": 2,
+	"footer": 2,
 	"tooltip": 3,
 );
 
 /**************
-		Navbar Height
+		Navbar 
 ***************/
 $navbar-height: (
 	"xs": 6rem,
 	"sm": 6.4rem,
-)
+);
+
+/**************
+		Footer 
+***************/
+$footer-height: (
+	"xs": 6rem,
+	"sm": 6.4rem,
+);

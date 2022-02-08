@@ -1,0 +1,31 @@
+.idx-footer-container {
+	@include responsive-sizes-flat($footer-height, "height");
+	background-color: $gray-1;
+	width: 100%;
+	overflow: hidden;
+	transition: $transition-bg;
+
+	&.idx-footer-bordered {
+		border-top: $border-base;
+	}
+
+	&.idx-footer-sticky {
+		position: sticky;
+		bottom: 0;
+		z-index: map-get($z-index, "footer");
+	}
+
+	.idx-footer {
+		height: 100%;
+		flex: 1;
+
+		.idx-flex-container {
+			height: 100%;
+			width: 100%;
+		}
+
+		& .idx-footer-menu-right {
+			margin-left: auto;
+		}
+	}
+}

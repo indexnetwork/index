@@ -12,6 +12,7 @@ import Flex from "layout/base/Grid/Flex";
 import Input from "components/base/Input";
 import { NextPageWithLayout } from "types";
 import LandingLayout from "layout/site/LandingLayout";
+import PageContainer from "layout/site/PageContainer";
 // import Text from "components/base/Text";
 // import Button from "components/base/Button";
 // import Header from "components/base/Header";
@@ -19,7 +20,7 @@ import LandingLayout from "layout/site/LandingLayout";
 // import IconSearch from "components/base/Icon/IconSearch";
 
 const Home: NextPageWithLayout = () => (
-	<>
+	<PageContainer>
 		<Row noGutters>
 			<Col lg={"2"} md={"3"} sm={"6"} xs={"12"}><Header level={6}>asdasdasd</Header></Col>
 			<Col lg={"2"} md={"3"} sm={"6"} xs={"12"}>
@@ -32,7 +33,7 @@ const Home: NextPageWithLayout = () => (
 				<Tooltip
 					content={"Deneme"}
 				>
-						Try Tooltip
+					Try Tooltip
 				</Tooltip>
 			</Col>
 			<Col>
@@ -67,7 +68,7 @@ const Home: NextPageWithLayout = () => (
 				<Col lg="3" sm="6" xs="12"><Text theme="secondary">Deneme Text</Text></Col>
 				<Col lg="3" sm="6" xs="12"><Button theme="ghost">Deneme</Button></Col> */}
 		</Row>
-	</>
+	</PageContainer>
 );
 
 Home.getLayout = function getLayout(page: ReactElement) {

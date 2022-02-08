@@ -1,6 +1,6 @@
 import Button from "components/base/Button";
 import React from "react";
-import Navbar, { NavbarProps, NavbarMenuRight } from "../../base/Navbar";
+import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
@@ -14,10 +14,10 @@ const SiteHeader: React.FC<LandingHeaderProps> = ({ headerType, ...baseProps }) 
 			bordered={false}
 			{...baseProps}
 		>
-			<NavbarMenuRight placement="right">
+			<NavbarMenu placement="right">
 				<Button theme="ghost" >Sign In</Button>
 				<Button theme="primary">Sign Up</Button>
-			</NavbarMenuRight>
+			</NavbarMenu>
 		</Navbar>
 	);
 
@@ -31,10 +31,10 @@ const SiteHeader: React.FC<LandingHeaderProps> = ({ headerType, ...baseProps }) 
 				justifyContent: "space-between",
 			}}
 		>
-			<NavbarMenuRight>
+			<NavbarMenu>
 				<Button theme="ghost">Sign in</Button>
 				<Button theme="primary">Sign Up</Button>
-			</NavbarMenuRight>
+			</NavbarMenu>
 		</Navbar>
 	);
 
