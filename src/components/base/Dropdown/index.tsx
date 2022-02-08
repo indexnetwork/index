@@ -1,4 +1,6 @@
-import React, { ReactElement, useRef, useState } from "react";
+import React, {
+	ReactElement, useEffect, useRef, useState,
+} from "react";
 import cc from "classcat";
 import useBackdropClick from "hooks/useBackdropClick";
 import DropdownMenu from "./DropdownMenu";
@@ -31,10 +33,13 @@ const Dropdown: React.FC<DropdownProps> = ({
 	const [visible, setVisible] = useState(false);
 
 	const timeout = useRef<NodeJS.Timeout>();
+	const cancelHover = useRef<boolean>();
 
 	const handleMouseEnter = () => {
 		timeout.current = setTimeout(() => {
-			setVisible(true);
+			if (!cancelHover.current) {
+				setVisible(true);
+			}
 		}, delay);
 	};
 
@@ -49,6 +54,7 @@ const Dropdown: React.FC<DropdownProps> = ({
 	};
 
 	const handleClick = (e: any) => {
+		cancelHover.current = true;
 		if (!closeOnMenuClick && menuRef.current && menuRef.current!.contains(e.target!)) {
 			return;
 		}
@@ -60,6 +66,13 @@ const Dropdown: React.FC<DropdownProps> = ({
 	};
 
 	useBackdropClick(containerRef, handleClose, visible);
+
+	useEffect(() => {
+		if (cancelHover.current) {
+			timeout.current && clearTimeout(timeout.current);
+			cancelHover.current = false;
+		}
+	}, [visible, cancelHover]);
 
 	return (
 		<div
