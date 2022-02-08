@@ -216,3 +216,10 @@ $transition-bg: background $transition-duration-base ease-in-out;
 ***************/
 $tooltip-spacing: map-deep-get($spacing, "xs", "2");
 
+/**************
+		Z INDEX
+***************/
+$z-index: (
+	"tooltip": 2,
+);
+
