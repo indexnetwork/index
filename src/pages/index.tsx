@@ -16,6 +16,10 @@ import PageContainer from "layout/site/PageContainer";
 import IconSearch from "components/base/Icon/IconSearch";
 import IconGoogle from "components/base/Icon/IconGoogle";
 import IconTwitter from "components/base/Icon/IconTwitter";
+import Dropdown from "components/base/Dropdown";
+import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
+import IconShare from "components/base/Icon/IconShare";
+import IconTrash from "components/base/Icon/IconTrash";
 
 const Home: NextPageWithLayout = () => (
 	<PageContainer style={{
@@ -62,7 +66,7 @@ const Home: NextPageWithLayout = () => (
 				</Row>
 			</Col>
 			<Col xs={"12"}>
-				<Header level={1}>Text</Header>
+				<Header level={1}>Buttons</Header>
 				<Row>
 					<Col>
 						<Button size="lg">Button large</Button>
@@ -91,22 +95,205 @@ const Home: NextPageWithLayout = () => (
 						<Button addOnAfter>Button Add-On Before<IconAdd stroke="white" strokeWidth={"1.5"} /></Button>
 						<Button addOnBefore addOnAfter>
 							<IconAdd stroke="white" strokeWidth={"1.5"} />
-								Button Add-On Before/After
+							Button Add-On Before/After
 							<IconAdd stroke="white" strokeWidth={"1.5"} />
 						</Button>
 						<Button addOnBefore theme="clear">
 							<IconGoogle stroke="white" />
-								Button Google
+							Button Google
 						</Button>
 						<Button addOnBefore theme="clear">
 							<IconTwitter fill="var(--twitter-blue)" stroke="var(--twitter-blue)" />
-								Button Twitter
+							Button Twitter
 						</Button>
 					</Col>
 				</Row>
 			</Col>
-			<Col xs={"12"}><Button>Button 2</Button>
-				<Button addOnBefore><Flex alignItems="center" style={{ height: "100%" }}><IconAdd stroke="var(--gray-4)" />asdasasdas</Flex></Button>
+			<Col xs={"12"}>
+				<Header level={1}>Dropdown</Header>
+				<Row>
+					<Col xs="3">
+						<Dropdown
+							position="top-center"
+							menuItems={
+								<>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconAdd width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconShare width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Share</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem divider />
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconTrash width={12} height="auto" className="idx-icon-error" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="error" > Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+								</>
+							}
+						>
+							<Button>Dropdown Top Center</Button>
+						</Dropdown>
+					</Col>
+					<Col xs="3">
+						<Dropdown
+							position="top-left"
+							menuItems={
+								<>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconAdd width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconShare width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Share</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem divider />
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconTrash width={12} height="auto" className="idx-icon-error" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="error" > Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+								</>
+							}
+						>
+							<Button>Dropdown Top Left</Button>
+						</Dropdown>
+					</Col>
+					<Col xs="3">
+						<Dropdown
+							position="top-right"
+							menuItems={
+								<>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconAdd width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconShare width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Share</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem divider />
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconTrash width={12} height="auto" className="idx-icon-error" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="error" > Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+								</>
+							}
+						>
+							<Button>Dropdown top Right</Button>
+						</Dropdown>
+					</Col>
+				</Row>
+				<Row>
+					<Col xs="3">
+						<Dropdown
+							menuItems={
+								<>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconAdd width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconShare width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Share</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem divider />
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconTrash width={12} height="auto" className="idx-icon-error" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="error" > Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+								</>
+							}
+						>
+							<Button>Dropdown Center</Button>
+						</Dropdown>
+					</Col>
+					<Col xs="3">
+						<Dropdown
+							position="bottom-left"
+							menuItems={
+								<>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconAdd width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconShare width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Share</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem divider />
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconTrash width={12} height="auto" className="idx-icon-error" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="error" > Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+								</>
+							}
+						>
+							<Button>Dropdown Left</Button>
+						</Dropdown>
+					</Col>
+					<Col xs="3">
+						<Dropdown
+							position="bottom-right"
+							menuItems={
+								<>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconAdd width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconShare width={12} height="auto" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Share</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem divider />
+									<DropdownMenuItem>
+										<Flex alignItems="center">
+											<IconTrash width={12} height="auto" className="idx-icon-error" />
+											<Text className="idx-ml-3" element="span" size="sm" theme="error" > Add</Text>
+										</Flex>
+									</DropdownMenuItem>
+								</>
+							}
+						>
+							<Button>Dropdown Right</Button>
+						</Dropdown>
+					</Col>
+				</Row>
 			</Col>
 			<Col xs={"12"}>
 				<Header level={1}>Tooltip</Header>

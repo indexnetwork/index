@@ -223,6 +223,7 @@ $z-index: (
 	"navbar": 2,
 	"footer": 2,
 	"tooltip": 3,
+	"dropdown": 3,
 );
 
 /**************
@@ -240,3 +241,8 @@ $footer-height: (
 	"xs": 6rem,
 	"sm": 6.4rem,
 );
+
+/**************
+		DROPDOWN
+***************/
+$dropdown-spacing: map-deep-get($spacing, "xs", "2");
