@@ -1,0 +1,44 @@
+.idx-modal {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: $modal-backdrop-color;
+	z-index: 2147483647;
+	transition: $transition-bg;
+
+	.idx-modal-container-inner {
+		width: 100%;
+		height: 100%;
+		background-color: transparent;
+		position: relative;
+	}
+
+	.idx-modal-wrapper {
+		background-color: $white;
+		position: absolute;
+		bottom: 0;
+		width: 100%;
+		border-top-left-radius: $border-radius-base;
+		border-top-right-radius: $border-radius-base;
+		box-shadow: $box-shadow-base-thin;
+	}
+
+	&.idx-modal-mobile {
+		.idx-modal-wrapper {
+			transition: $transition-swipe-modal;
+		}
+	}
+
+	&.idx-modal-invisible {
+		pointer-events: none;
+		background-color: transparent;
+		.idx-modal-wrapper {
+			max-height: 0 !important;
+		}
+	}
+
+	&.idx-modal-size-fit {
+	}
+}

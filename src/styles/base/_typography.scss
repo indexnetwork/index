@@ -9,6 +9,9 @@ body {
 	color: $primary-text-color;
 	background-color: $white;
 }
+body.idx-modal-open {
+	overflow: hidden;
+}
 
 h1,
 h2,
