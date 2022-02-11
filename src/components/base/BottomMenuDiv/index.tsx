@@ -194,19 +194,10 @@ const BottomMenuDiv: React.FC<BottomMenuDivProps> = ({
 					<div
 						ref={buttonRef}
 						onMouseDown={handleMouseDown}
-						style={{
-							width: "100%",
-							height: 20,
-							display: "flex",
-							alignItems: "center",
-							justifyContent: "center",
-						}}>
-						<div style={{
-							width: 32,
-							height: 4,
-							borderRadius: 2,
-							backgroundColor: "#E3E5EA",
-						}}></div>
+						className="idx-modal-mobile-swiper"
+					>
+						<div
+							className="idx-modal-mobile-swiper-button"></div>
 					</div>
 					{children}
 				</DynamicDiv> :

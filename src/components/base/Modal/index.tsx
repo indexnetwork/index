@@ -138,7 +138,6 @@ const Modal: React.FC<ModalProps> = ({
 					maxVh={mobileMaxVh}
 					onClick={handleBackdropClick}
 				>
-					<div>{ }</div>
 					<div className="idx-modal-header">
 						{header}
 					</div>

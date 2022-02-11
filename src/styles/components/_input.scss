@@ -12,10 +12,12 @@
 		border: none;
 		width: 100%;
 		height: 100%;
+		outline: none;
 	}
 
-	& input:focus-visible {
+	& input:focus, & input:focus-visible {
 		outline: none;
+		outline-width: 0 !important;
 	}
 
 	&.idx-input-block {

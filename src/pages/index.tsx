@@ -23,6 +23,7 @@ import IconTrash from "components/base/Icon/IconTrash";
 import Avatar from "components/base/Avatar";
 import IconCopy from "components/base/Icon/IconCopy";
 import Modal from "components/base/Modal";
+import IconClose from "components/base/Icon/IconClose";
 
 const Home: NextPageWithLayout = () => {
 	const [modalOpen, setModalOpen] = useState(false);
@@ -431,8 +432,34 @@ const Home: NextPageWithLayout = () => {
 				onClose={() => { setModal2Open(false); }}
 				visible={modal2Open}
 				destroyOnClose={false}
-				body={<div>BODY 2</div>}
-				header={<div>HEADER 2</div>}
+				body={<div id="lipsum">
+					<p>
+						Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut ullamcorper congue mauris nec faucibus. Donec rutrum, nisi a gravida dignissim, nibh nibh fermentum elit, ut volutpat elit nibh sed nulla. Morbi eget efficitur ipsum. Donec libero leo, ornare vel enim a, egestas ornare neque. Aenean cursus orci ac ligula iaculis volutpat. Morbi rhoncus consectetur elit, et facilisis nunc rutrum sed. In aliquet id enim a lacinia.
+					</p>
+					<p>
+						Donec a sem consequat purus facilisis viverra. Vivamus pretium urna ipsum. Sed pharetra scelerisque interdum. Donec aliquet dolor ac mauris iaculis, sollicitudin consectetur leo ultricies. Aenean laoreet purus id nulla finibus, id blandit justo convallis. Pellentesque sed dolor vel nisi ultricies porttitor. Proin laoreet lectus quis felis pretium ultrices. Suspendisse potenti. Fusce lorem libero, porta gravida scelerisque sit amet, efficitur sed orci. Ut eu justo eu libero posuere rhoncus vitae in erat. Pellentesque non blandit lectus, et sodales turpis. Suspendisse nec molestie tortor.
+					</p>
+					<p>
+						Aliquam et nibh sollicitudin, dictum est nec, pellentesque urna. Aliquam lobortis augue ac purus consectetur, vel vestibulum nunc pellentesque. Aliquam quam nisl, lobortis non maximus sit amet, congue eu mi. Aliquam et ligula quis libero lacinia volutpat. Cras fringilla, libero sit amet iaculis venenatis, metus velit volutpat mi, id semper dolor elit sed neque. Curabitur a augue urna. Etiam vel nisi at massa luctus euismod a eu nisi. Vestibulum finibus odio a malesuada pretium. Fusce ut porta ligula. Donec in libero lobortis, cursus mi quis, dictum mauris.
+					</p>
+					<p>
+						Donec risus massa, facilisis sit amet urna vel, sagittis facilisis orci. Etiam et volutpat odio. Nulla euismod nisl scelerisque lectus venenatis, et tincidunt arcu gravida. Vivamus molestie eleifend consequat. Pellentesque porta condimentum enim eu venenatis. Proin a sollicitudin nisl, eu dignissim tortor. Cras metus turpis, tincidunt et tellus sed, blandit elementum lectus. Nunc elementum id dolor ac posuere. Nunc quam arcu, viverra at iaculis vitae, rhoncus a nisi. Donec enim felis, blandit et justo nec, porttitor accumsan libero. Pellentesque nec sodales lorem. Ut eget elementum ipsum, vel tristique ligula. Sed tempus, nisi in porttitor luctus, dolor sem lobortis nunc, a ultricies libero dui non metus. Phasellus rhoncus odio ut risus porta consequat.
+					</p>
+					<p>
+						Donec porta felis vel pharetra euismod. Nulla iaculis nunc sit amet sem mollis, at consequat diam aliquet. Nulla a bibendum augue. Nullam eros augue, hendrerit eu dictum aliquet, mattis porttitor risus. Morbi risus urna, dictum nec dignissim commodo, vehicula nec orci. Aenean libero felis, venenatis euismod semper vel, venenatis sed libero. Nam quam arcu, blandit nec augue quis, finibus tempus nibh.
+					</p></div>}
+				header={<Flex
+					justifyContent="space-between"
+				>
+					<Header level={5} className="idx-my-0">Share</Header>
+					<IconClose
+						width={12}
+						height={12}
+						strokeWidth="2"
+						cursor="pointer"
+						onClick={() => { setModal2Open(false); }}
+					/>
+				</Flex>}
 				footer={<div>FOOTER 2</div>}
 			>
 			</Modal>

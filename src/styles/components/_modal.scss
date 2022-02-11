@@ -20,14 +20,51 @@
 		position: absolute;
 		bottom: 0;
 		width: 100%;
+		height: 70vh;
 		border-top-left-radius: $border-radius-base;
 		border-top-right-radius: $border-radius-base;
 		box-shadow: $box-shadow-base-thin;
+		display: flex;
+		flex-direction: column;
+
+		.idx-modal-header {
+			padding: map-deep-get($spacing, "xs", "6") map-deep-get($spacing, "xs", "7");
+			flex-shrink: 0;
+			border-bottom: $border-base;
+		}
+
+		.idx-modal-body {
+			padding: map-deep-get($spacing, "xs", "7") map-deep-get($spacing, "xs", "6");
+			flex-grow: 1;
+			overflow: auto;
+		}
+
+		.idx-modal-footer {
+			padding: map-deep-get($spacing, "xs", "6") map-deep-get($spacing, "xs", "7");
+			flex-shrink: 0;
+			border-top: $border-base;
+		}
 	}
 
 	&.idx-modal-mobile {
 		.idx-modal-wrapper {
 			transition: $transition-swipe-modal;
+			height: auto;
+
+			.idx-modal-mobile-swiper {
+				width: 100%;
+				height: 2rem;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				flex-shrink: 0;
+				.idx-modal-mobile-swiper-button {
+					width: 3.2rem;
+					height: .4rem;
+					border-radius: calc($border-radius-base / 2);
+					background-color: $gray-2,
+				}
+			}
 		}
 	}
 
@@ -36,9 +73,32 @@
 		background-color: transparent;
 		.idx-modal-wrapper {
 			max-height: 0 !important;
+			overflow: hidden;
 		}
 	}
 
 	&.idx-modal-size-fit {
+	}
+
+	@media (min-width: map-get($breakpoints, "xs")) {
+		.idx-modal-container-inner {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			.idx-modal-wrapper {
+				position: static;
+				width: 46rem;
+				max-height: 70vh;
+				border-radius: $border-radius-base;
+			}
+		}
+	}
+
+	@media (min-width: map-get($breakpoints, "sm")) {
+		.idx-modal-container-inner {
+			.idx-modal-wrapper {
+				width: 60rem;
+			}
+		}
 	}
 }
