@@ -1,6 +1,6 @@
 .idx-input {
 	@include responsive-sizes($input-height, "height");
-
+	display: inline-block;
 	border: $border-base;
 	border-radius: $border-radius-base;
 	padding-left: map-deep-get($spacing, "xs", "6");
@@ -21,7 +21,6 @@
 	}
 
 	&.idx-input-block {
-		display: block;
 		width: 100%;
 	}
 
