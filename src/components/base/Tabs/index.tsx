@@ -4,6 +4,7 @@ import React, {
 import cc from "classcat";
 import { uuid } from "uuidv4";
 import { TabPaneProps } from "./TabPane";
+import Text from "../Text";
 
 export interface TabsProps {
 	children: ReactElement<TabPaneProps>[];
@@ -81,15 +82,21 @@ export const Tabs: React.FC<TabsProps> = ({
 						return (
 							<div
 								className={cc([
-									"idx-tabs-list-title",
-									tabKey === activeKey ? "idx-tabs-list-item-active" : "",
+									"idx-tabs-list-item",
+									tabKey === activeTab ? "idx-tabs-list-item-active" : "",
 									enabled ? "" : "idx-tabs-list-item-disabled",
 								])}
 								onClick={() => {
 									enabled && handleTabChange(tabKey);
 								}}
 							>
-								{title}
+								<Text
+									size="md"
+									theme={tabKey === activeTab ? "primary" : "disabled"}
+								>
+									{title}
+								</Text>
+								{tabKey === activeTab && <div className="idx-tabs-list-item-bottom"></div>}
 							</div>
 						);
 					})

@@ -8,7 +8,7 @@ export type NextPageWithLayout = NextPage & {
   getLayout?: (page: ReactElement) => ReactNode
 };
 
-export type ComponentThemeType = "primary" | "secondary" | "success" | "error" | "warning";
+export type ComponentThemeType = "primary" | "secondary" | "success" | "error" | "warning" | "disabled";
 
 export type SizeType = "xs" | "sm" | "md" | "lg";
 

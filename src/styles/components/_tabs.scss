@@ -1,11 +1,43 @@
 .idx-tabs {
+	@include no-select;
+	display: flex;
+	flex-direction: column;
 	.idx-tabs-list {
-		.idx-tabs-list-title {
+		display: flex;
+		gap: map-deep-get($spacing, "xs", "6");
+		flex-shrink: 0;
+		border-bottom: $border-base;
+		margin-bottom: map-deep-get($spacing, "xs", "3");
+		.idx-tabs-list-item {
+			position: relative;
+			cursor: pointer;
+			padding: map-deep-get($spacing, "xs", "3") map-deep-get($spacing, "xs", "6");
+			&.idx-tabs-list-item-active {
+				.idx-tabs-list-item-bottom {
+					visibility: visible;
+					position: absolute;
+					height: 3px;
+					background-color: $main-color;
+					border-radius: 3px;
+					bottom: -2px;
+					left: 0;
+					right: 0;
+				}
+			}
 
+			&.idx-tabs-list-item-disabled {
+				cursor: not-allowed;
+				background-color: $gray-1;
+			}
+
+			.idx-tabs-list-item-bottom {
+				visibility: hidden;
+			}
 		}
 	}
 
 	.idx-tabs-contents {
+		flex-grow: 1;
 		.idx-tabs-contents-item {
 
 		}

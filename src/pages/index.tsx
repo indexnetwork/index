@@ -420,22 +420,34 @@ const Home: NextPageWithLayout = () => {
 				</Col>
 			</Row>
 			<Row>
-				<Tabs>
-					<TabPane
-						tabKey="1"
-						title="Tab 1"
-						enabled
-					>
-						Content 1
-					</TabPane>
-					<TabPane
-						tabKey="2"
-						title="Tab 2"
-						enabled
-					>
-						Content 2
-					</TabPane>
-				</Tabs>
+				<Col>
+					<Header level={1} >Tabs</Header>
+				</Col>
+				<Col>
+					<Tabs>
+						<TabPane
+							tabKey="1"
+							title="Tab 1"
+							enabled
+						>
+							Content 1
+						</TabPane>
+						<TabPane
+							tabKey="2"
+							title="Tab 2"
+							enabled
+						>
+							Content 2
+						</TabPane>
+						<TabPane
+							tabKey="3"
+							title="Disabled"
+							enabled={false}
+						>
+							Content 3
+						</TabPane>
+					</Tabs>
+				</Col>
 			</Row>
 			<Modal
 				onClose={() => { setModalOpen(false); }}
