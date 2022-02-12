@@ -22,6 +22,7 @@ ${({
 		justifyContent,
 		justifySelf,
 		justifyItems,
+		gap,
 	}) => `
 display: ${inline ? "inline-flex" : "flex"};
 flex-basis: ${flexBasis || ""};
@@ -37,50 +38,7 @@ align-items: ${alignItems || ""};
 justify-content: ${justifyContent || ""};
 justify-self: ${justifySelf || ""};
 justify-items: ${justifyItems || ""};
-`}
-`;
-
-// const Flex: React.FC<FlexProps> = ({
-// 	className,
-// 	children,
-// 	inline,
-// 	flexBasis,
-// 	flexDirection,
-// 	flexFlow,
-// 	flexGrow,
-// 	flexShrink,
-// 	flexWrap,
-// 	order,
-// 	alignContent,
-// 	alignSelf,
-// 	alignItems,
-// 	justifyContent,
-// 	justifySelf,
-// 	justifyItems,
-// 	style,
-// 	...props
-// }) => (
-// 	<div
-// 		className={className}
-// 		style={{
-// 			...style,
-// 			display: inline ? "inline-flex" : "flex",
-// 			flexBasis,
-// 			flexDirection,
-// 			flexFlow,
-// 			flexGrow,
-// 			flexShrink,
-// 			flexWrap,
-// 			order,
-// 			alignContent,
-// 			alignSelf,
-// 			alignItems,
-// 			justifyContent,
-// 			justifySelf,
-// 			justifyItems,
-// 		}}
-// 		{...props}
-// 	>{children}</div>
-// );
+gap: ${gap || ""};
+`}`;
 
 export default Flex;

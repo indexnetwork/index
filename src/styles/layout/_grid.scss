@@ -1,0 +1,19 @@
+.idx-row {
+
+	@each $breakpoint, $values in $spacing {
+		@for $i from 0 through 12 {
+			&-spacing-v#{$i} {
+				.idx-col {
+					padding-top: map-get($values, #{$i});
+					padding-bottom: map-get($values, #{$i});
+				}
+			}
+			&-spacing-h#{$i} {
+				.idx-col {
+					padding-left: map-get($values, #{$i});
+					padding-right: map-get($values, #{$i});
+				}
+			}
+		}
+	}
+}

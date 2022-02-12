@@ -8,6 +8,10 @@ export type NextPageWithLayout = NextPage & {
   getLayout?: (page: ReactElement) => ReactNode
 };
 
+export type GridFractionType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+
+export type SpacingBaseType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+
 export type ComponentThemeType = "primary" | "secondary" | "success" | "error" | "warning" | "disabled";
 
 export type SizeType = "xs" | "sm" | "md" | "lg";
@@ -15,22 +19,23 @@ export type SizeType = "xs" | "sm" | "md" | "lg";
 export type PropType<TObj, TProp extends keyof TObj> = TObj[TProp];
 
 export type CSSFlexPropsNamesType =
-"flex" |
-"flexBasis" |
-"flexDirection" |
-"flexFlow" |
-"flexGrow" |
-"flexShrink" |
-"flexWrap" |
-"order" |
-"alignContent" |
-"alignSelf" |
-"alignItems" |
-"justifyContent" |
-"justifySelf" |
-"justifyItems";
+  "flex" |
+  "flexBasis" |
+  "flexDirection" |
+  "flexFlow" |
+  "flexGrow" |
+  "flexShrink" |
+  "flexWrap" |
+  "order" |
+  "alignContent" |
+  "alignSelf" |
+  "alignItems" |
+  "justifyContent" |
+  "justifySelf" |
+  "justifyItems" |
+  "gap";
 
-export type FlexPropsType = Pick<React.CSSProperties, CSSFlexPropsNamesType >;
+export type FlexPropsType = Pick<React.CSSProperties, CSSFlexPropsNamesType>;
 
 /**
  * Text Types

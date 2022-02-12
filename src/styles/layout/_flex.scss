@@ -1,5 +1,9 @@
 .idx-flex {
 	display: flex;
+
+	.idx-col {
+		width: fit-content;
+	}
 	&-col {
 		display: flex;
 		flex-direction: column;
@@ -64,6 +68,25 @@
 
 		&-order-#{$i} {
 			order: $i;
+		}
+	}
+
+	@each $breakpoint, $values in $spacing {
+		@for $i from 0 through 12 {
+			&-gap-#{$i} {
+				gap: map-get($values, #{$i});
+			}
+			&-row-gap-#{$i} {
+				row-gap: map-get($values, #{$i});
+			}
+			&-col-gap-#{$i} {
+				column-gap: map-get($values, #{$i});
+			}
+
+			&.idx-flex-row-gutter-#{$i} {
+				margin-left: - map-get($values, #{$i});
+				margin-right: - map-get($values, #{$i});
+			}
 		}
 	}
 }

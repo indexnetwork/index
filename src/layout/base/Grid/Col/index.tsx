@@ -1,25 +1,24 @@
 import React from "react";
 import cc from "classcat";
-
-export type GridItemSize = "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12";
+import { GridFractionType } from "types";
 
 export interface ColProps extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
-	xs?: GridItemSize;
-	sm?: GridItemSize;
-	md?: GridItemSize;
-	lg?: GridItemSize;
-	xsPull?: GridItemSize;
-	smPull?: GridItemSize;
-	mdPull?: GridItemSize;
-	lgPull?: GridItemSize;
-	xsPush?: GridItemSize;
-	smPush?: GridItemSize;
-	mdPush?: GridItemSize;
-	lgPush?: GridItemSize;
-	xsOffset?: GridItemSize;
-	smOffset?: GridItemSize;
-	mdOffset?: GridItemSize;
-	lgOffset?: GridItemSize;
+	xs?: GridFractionType;
+	sm?: GridFractionType;
+	md?: GridFractionType;
+	lg?: GridFractionType;
+	xsPull?: GridFractionType;
+	smPull?: GridFractionType;
+	mdPull?: GridFractionType;
+	lgPull?: GridFractionType;
+	xsPush?: GridFractionType;
+	smPush?: GridFractionType;
+	mdPush?: GridFractionType;
+	lgPush?: GridFractionType;
+	xsOffset?: GridFractionType;
+	smOffset?: GridFractionType;
+	mdOffset?: GridFractionType;
+	lgOffset?: GridFractionType;
 	pullRight?: boolean;
 	pullLeft?: boolean;
 	centerBlock?: boolean;
@@ -61,6 +60,7 @@ const Col: React.FC<ColProps> = ({
 }) => (
 	<div
 		className={cc([
+			"idx-col",
 			`col-xs-${xs}`,
 			sm ? `col-sm-${sm}` : "",
 			md ? `col-md-${md}` : "",
