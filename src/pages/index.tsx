@@ -24,14 +24,14 @@ import Avatar from "components/base/Avatar";
 import IconCopy from "components/base/Icon/IconCopy";
 import Modal from "components/base/Modal";
 import IconClose from "components/base/Icon/IconClose";
+import { Tabs } from "components/base/Tabs";
+import TabPane from "components/base/Tabs/TabPane";
 
 const Home: NextPageWithLayout = () => {
 	const [modalOpen, setModalOpen] = useState(false);
 	const [modal2Open, setModal2Open] = useState(false);
 	return (
-		<PageContainer style={{
-			height: 1000,
-		}}>
+		<PageContainer>
 			<Row>
 				<Col xs={"12"}>
 					<Header level={1}>Headers</Header>
@@ -418,6 +418,24 @@ const Home: NextPageWithLayout = () => {
 						}}
 					>Toggle Modal 2</Button>
 				</Col>
+			</Row>
+			<Row>
+				<Tabs>
+					<TabPane
+						tabKey="1"
+						title="Tab 1"
+						enabled
+					>
+						Content 1
+					</TabPane>
+					<TabPane
+						tabKey="2"
+						title="Tab 2"
+						enabled
+					>
+						Content 2
+					</TabPane>
+				</Tabs>
 			</Row>
 			<Modal
 				onClose={() => { setModalOpen(false); }}
