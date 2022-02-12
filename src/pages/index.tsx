@@ -27,6 +27,7 @@ import { Tabs } from "components/base/Tabs";
 import TabPane from "components/base/Tabs/TabPane";
 import FlexRow from "layout/base/Grid/FlexRow";
 import CopyInput from "components/base/CopyInput";
+import Spin from "components/base/Spin";
 
 const Home: NextPageWithLayout = () => {
 	const [modalOpen, setModalOpen] = useState(false);
@@ -474,6 +475,55 @@ const Home: NextPageWithLayout = () => {
 							Content 3
 						</TabPane>
 					</Tabs>
+				</Col>
+			</Row>
+			<Row>
+				<Col>
+					<Header level={1}>
+							Spin
+					</Header>
+				</Col>
+				<Col xs={4}>
+					<Spin
+						active={true}
+						size="sm"
+					>
+						<Flex
+							style={{
+								height: 100,
+							}}
+						>
+						Spin sm
+						</Flex>
+					</Spin>
+				</Col>
+				<Col xs={4}>
+					<Spin
+						active={true}
+						size="md"
+					>
+						<Flex
+							style={{
+								height: 100,
+							}}
+						>
+						Spin md
+						</Flex>
+					</Spin>
+				</Col>
+				<Col xs={4}>
+					<Spin
+						active={true}
+						size="lg"
+					>
+						<Flex
+							style={{
+								height: 100,
+							}}
+						>
+						Spin lg
+						</Flex>
+					</Spin>
 				</Col>
 			</Row>
 			<Modal

@@ -142,7 +142,7 @@ $breakpoints: (
 $box-shadow-base: 0 0.5rem 1.5rem $gray-8;
 $box-shadow-base-half: 0 0.25rem 0.75rem $gray-8;
 $box-shadow-base-thin: 0px 1px 0px $gray-2;
-$avatar-box-shadow: 0px 4px 8px 2px rgba(0,0,0,0.2);
+$avatar-box-shadow: 0px 4px 8px 2px rgba(0, 0, 0, 0.2);
 /**************
 		SCROLL BAR
 ***************/
@@ -213,7 +213,7 @@ $visited-lighten: 12%;
 
 $transition-duration-base: 0.2s;
 $transition-bg: background $transition-duration-base ease-in-out;
-$transition-swipe-modal: max-height .2s cubic-bezier(0.0, .60, .75, 1.0);
+$transition-swipe-modal: max-height 0.2s cubic-bezier(0, 0.6, 0.75, 1);
 
 /**************
 		TOOLTIP
@@ -254,4 +254,14 @@ $dropdown-spacing: map-deep-get($spacing, "xs", "2");
 /**************
 		Modal
 ***************/
-$modal-backdrop-color: rgba($black, .20);
+$modal-backdrop-color: rgba($black, 0.2);
+
+/**************
+		Spinner 
+***************/
+$spinner-size: (
+	"sm": 1.6rem,
+	"md": 2rem,
+	"lg": 2.4rem,
+);
+$spinner-bg: rgba(255, 255, 255, 0.2);

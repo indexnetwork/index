@@ -1,0 +1,71 @@
+.idx-spin {
+	position: relative;
+	.idx-spin-bg,
+	.idx-spin-spinner {
+		display: none;
+	}
+
+	&.idx-spin-active {
+		.idx-spin-bg {
+			display: block;
+			position: absolute;
+			left: 0;
+			top: 0;
+			right: 0;
+			bottom: 0;
+			background-color: rgba(255, 255, 255, 0.1);
+			backdrop-filter: blur(0.06rem);
+		}
+
+		.idx-spin-spinner {
+			display: inline-block;
+		}
+	}
+
+	.idx-spin-spinner {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
+		width: map-get($spinner-size, "sm");
+		height: map-get($spinner-size, "sm");
+
+		div {
+			box-sizing: border-box;
+			display: block;
+			position: absolute;
+			width: map-get($spinner-size, "sm");
+			height: map-get($spinner-size, "sm");
+			border: 0.2rem solid $main-color;
+			border-radius: 50%;
+			animation: idx-spinner 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+			border-color: $main-color transparent transparent transparent;
+		}
+
+		div:nth-child(1) {
+			animation-delay: -0.45s;
+		}
+
+		div:nth-child(2) {
+			animation-delay: -0.3s;
+		}
+
+		div:nth-child(3) {
+			animation-delay: -0.15s;
+		}
+	}
+
+	@each $key, $size in $spinner-size {
+		&-size-#{$key} {
+			.idx-spin-spinner {
+				height: $size;
+				width: $size;
+
+				div {
+					height: $size;
+					width: $size;
+				}
+			}
+		}
+	}
+}
