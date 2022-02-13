@@ -26,9 +26,6 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType, ...baseProps }) 
 		<Navbar
 			logoSize="mini"
 			{...baseProps}
-			innerFlexProps={{
-				justifyContent: "space-between",
-			}}
 		>
 			<NavbarMenu>
 				<Button theme="ghost">Sign in</Button>

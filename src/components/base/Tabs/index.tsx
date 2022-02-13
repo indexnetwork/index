@@ -2,7 +2,7 @@ import React, {
 	ReactElement, useCallback, useEffect, useState,
 } from "react";
 import cc from "classcat";
-import { uuid } from "uuidv4";
+import { v4 as uuidv4 } from "uuid";
 import { TabPaneProps } from "./TabPane";
 import Text from "../Text";
 
@@ -37,7 +37,7 @@ export const Tabs: React.FC<TabsProps> = ({
 		function renderItem(child: React.ReactNode, visible: boolean) {
 			return (
 				<div
-					key={uuid()}
+					key={uuidv4()}
 					className={cc([
 						"idx-tabs-contents-item",
 						!visible ? "idx-tabs-contents-item-invisible" : "",

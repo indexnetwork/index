@@ -6,6 +6,8 @@ export interface RowProps extends React.DetailedHTMLProps<React.HTMLAttributes<H
 	noGutters?: boolean;
 	rowSpacing?: SpacingBaseType;
 	colSpacing?: SpacingBaseType;
+	fullHeight?: boolean;
+	fullWidth?: boolean;
 }
 
 const Row: React.FC<RowProps> = ({
@@ -13,15 +15,20 @@ const Row: React.FC<RowProps> = ({
 	className,
 	rowSpacing,
 	colSpacing,
-	noGutters = true,
+	noGutters = false,
+	fullHeight = false,
+	fullWidth = false,
 	...divProps
 }) => (
 	<div
 		className={cc([
+			"row",
 			"idx-row",
+			fullHeight ? "idx-h-100" : "",
+			fullWidth ? "idx-w-100" : "",
 			rowSpacing ? `idx-row-spacing-v${rowSpacing}` : "",
 			colSpacing ? `idx-row-spacing-h${colSpacing}` : "",
-			noGutters ? "row-no-gutters" : "row",
+			noGutters ? "row-no-gutters" : "",
 			className || "",
 		])}
 		{...divProps}

@@ -49,3 +49,11 @@
 	@include responsive-sizes($spacing, "padding-top");
 	@include responsive-sizes($spacing, "padding-bottom");
 }
+
+.idx-h-100 {
+	height: 100%;
+}
+
+.idx-w-100 {
+	width: 100%;
+}

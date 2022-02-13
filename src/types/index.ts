@@ -1,5 +1,7 @@
 import { NextPage } from "next/types";
-import { ReactElement, ReactNode } from "react";
+import React, {
+	ReactElement, ReactNode,
+} from "react";
 
 /**
  * Common Types
@@ -58,3 +60,15 @@ export type InputSizeType = Exclude<SizeType, "xs">;
  * Size Types
  */
 export type TextSizeType = SizeType;
+
+/**
+ * Select Types
+ */
+export type SelectValueType = string | string[] | number | number[] | undefined;
+export type SingleOptionValue = string | number;
+
+/**
+ * Flex Types
+ */
+export type FlexAlignType = "start" | "end" | "center";
+export type FlexJustifyType = FlexAlignType | "between" | "around" | "evenly";

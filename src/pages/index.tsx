@@ -28,6 +28,8 @@ import TabPane from "components/base/Tabs/TabPane";
 import FlexRow from "layout/base/Grid/FlexRow";
 import CopyInput from "components/base/CopyInput";
 import Spin from "components/base/Spin";
+import Select from "components/base/Select";
+import Option from "components/base/Select/Option";
 
 const Home: NextPageWithLayout = () => {
 	const [modalOpen, setModalOpen] = useState(false);
@@ -480,7 +482,7 @@ const Home: NextPageWithLayout = () => {
 			<Row>
 				<Col>
 					<Header level={1}>
-							Spin
+						Spin
 					</Header>
 				</Col>
 				<Col xs={4}>
@@ -493,7 +495,7 @@ const Home: NextPageWithLayout = () => {
 								height: 100,
 							}}
 						>
-						Spin sm
+							Spin sm
 						</Flex>
 					</Spin>
 				</Col>
@@ -507,7 +509,7 @@ const Home: NextPageWithLayout = () => {
 								height: 100,
 							}}
 						>
-						Spin md
+							Spin md
 						</Flex>
 					</Spin>
 				</Col>
@@ -521,11 +523,21 @@ const Home: NextPageWithLayout = () => {
 								height: 100,
 							}}
 						>
-						Spin lg
+							Spin lg
 						</Flex>
 					</Spin>
 				</Col>
 			</Row>
+			<FlexRow>
+				<Col>
+					<Select
+						value="1"
+					>
+						<Option value="1">Option 1</Option>
+						<Option value="2">Option 2</Option>
+					</Select>
+				</Col>
+			</FlexRow>
 			<Modal
 				onClose={() => { setModalOpen(false); }}
 				visible={modalOpen}

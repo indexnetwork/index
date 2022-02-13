@@ -7,6 +7,7 @@ export interface ColProps extends React.DetailedHTMLProps<React.HTMLAttributes<H
 	sm?: GridFractionType;
 	md?: GridFractionType;
 	lg?: GridFractionType;
+	auto?: boolean;
 	xsPull?: GridFractionType;
 	smPull?: GridFractionType;
 	mdPull?: GridFractionType;
@@ -27,14 +28,18 @@ export interface ColProps extends React.DetailedHTMLProps<React.HTMLAttributes<H
 	hidden?: boolean;
 	invisible?: boolean;
 	textHide?: boolean;
+	fullHeight?: boolean;
+	fullWidth?: boolean;
 }
 
 const Col: React.FC<ColProps> = ({
 	children,
 	className,
+	xs,
 	sm,
 	md,
 	lg,
+	auto = true,
 	xsPull,
 	smPull,
 	mdPull,
@@ -55,13 +60,15 @@ const Col: React.FC<ColProps> = ({
 	hidden,
 	invisible,
 	textHide,
-	xs = "12",
+	fullHeight = false,
+	fullWidth = false,
 	...divProps
 }) => (
 	<div
 		className={cc([
 			"idx-col",
-			`col-xs-${xs}`,
+			(!xs && !sm && !md && !lg) && auto ? "idx-col-auto" : "",
+			xs ? `col-xs-${xs}` : "",
 			sm ? `col-sm-${sm}` : "",
 			md ? `col-md-${md}` : "",
 			lg ? `col-lg-${lg}` : "",
@@ -85,6 +92,8 @@ const Col: React.FC<ColProps> = ({
 			hidden ? "hidden" : "",
 			invisible ? "invisible" : "",
 			textHide ? "textHide" : "",
+			fullHeight ? "idx-h-100" : "",
+			fullWidth ? "idx-w-100" : "",
 			className || ""])}
 		{...divProps}
 	>

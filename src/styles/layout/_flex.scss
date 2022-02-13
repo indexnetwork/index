@@ -1,7 +1,13 @@
 .idx-flex {
 	display: flex;
 
-	.idx-col {
+	&.idx-row {
+		&::before, &::after {
+			content: none;
+		}
+	}
+
+	.idx-col-auto {
 		width: fit-content;
 	}
 	&-col {

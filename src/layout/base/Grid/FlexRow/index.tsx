@@ -1,15 +1,16 @@
 import React from "react";
 import cc from "classcat";
-import { SpacingBaseType } from "types";
+import { FlexAlignType, FlexJustifyType, SpacingBaseType } from "types";
+import Row, { RowProps } from "../Row";
 
-export interface FlexRowProps extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
+export interface FlexRowProps extends Omit<RowProps, "noGutters"> {
 	flex?: boolean;
 	colGap?: SpacingBaseType;
 	rowGap?: SpacingBaseType;
 	gap?: SpacingBaseType;
-	rowSpacing?: SpacingBaseType;
-	colSpacing?: SpacingBaseType;
 	wrap?: boolean;
+	align?: FlexAlignType;
+	justify?: FlexJustifyType;
 }
 
 const FlexRow: React.FC<FlexRowProps> = ({
@@ -21,9 +22,11 @@ const FlexRow: React.FC<FlexRowProps> = ({
 	wrap,
 	rowSpacing,
 	colSpacing,
+	align,
+	justify,
 	...divProps
 }) => (
-	<div
+	<Row
 		className={cc([
 			"idx-flex",
 			gap ? `idx-flex-gap-${gap}` : "",
@@ -31,12 +34,14 @@ const FlexRow: React.FC<FlexRowProps> = ({
 			colGap ? `idx-flex-row-gap-${colGap}` : "",
 			rowSpacing ? `idx-row-spacing-v${rowSpacing}` : "",
 			colSpacing ? `idx-row-spacing-h${colSpacing} idx-flex-row-gutter-${colSpacing}` : "",
-			wrap === false ? "" : "idx-flex-wrap",
+			wrap === false ? "idx-flex-nowrap" : "idx-flex-wrap",
+			align ? `idx-flex-a-${align}` : "",
+			justify ? `idx-flex-j-${justify}` : "",
 			className || "",
 		])}
 		{...divProps}
 	>
 		{children}
-	</div>);
+	</Row>);
 
 export default FlexRow;

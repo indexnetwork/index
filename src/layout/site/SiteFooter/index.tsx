@@ -3,11 +3,7 @@ import Footer, { FooterMenu } from "layout/base/Footer";
 import React from "react";
 
 const SiteFooter: React.FC = () => (
-	<Footer
-		innerFlexProps={{
-			justifyContent: "space-between",
-		}}
-	>
+	<Footer>
 		<FooterMenu>
 			<a href="https://www.twitter.com" target="_blank" rel="noreferrer">
 				<IconTwitter />

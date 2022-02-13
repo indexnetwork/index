@@ -2,8 +2,9 @@ import LogoFull from "components/base/Logo/LogoFull";
 import LogoMini from "components/base/Logo/LogoMini";
 import React from "react";
 import cc from "classcat";
-import { FlexPropsType } from "types";
-import Flex from "../Grid/Flex";
+import Container from "../Grid/Container";
+import Col from "../Grid/Col";
+import FlexRow from "../Grid/FlexRow";
 
 export interface FooterProps extends
 	React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
@@ -11,7 +12,6 @@ export interface FooterProps extends
 	sticky?: boolean;
 	bordered?: boolean;
 	bgColor?: string;
-	innerFlexProps?: FlexPropsType;
 }
 
 export interface FooterMenuProps extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
@@ -20,7 +20,6 @@ export interface FooterMenuProps extends React.DetailedHTMLProps<React.HTMLAttri
 
 const Footer: React.FC<FooterProps> = ({
 	children,
-	innerFlexProps,
 	logoSize = "full",
 	bgColor,
 	bordered = false,
@@ -40,20 +39,23 @@ const Footer: React.FC<FooterProps> = ({
 		} : style}
 		{...menuProps}
 	>
-		<div className="container idx-footer">
-			<Flex
-				className="idx-flex-container"
-				alignItems="center"
-				{...innerFlexProps}
+		<Container
+			className="idx-footer"
+		>
+			<FlexRow
+				fullHeight
+				align="center"
+				justify="between"
+				wrap={false}
 			>
-				<div className="idx-footer-logo">
-					{
-						logoSize === "mini" ? <LogoMini /> : <LogoFull />
-					}
-				</div>
-				{children}
-			</Flex>
-		</div>
+				<Col>
+					{logoSize === "mini" ? <LogoMini /> : <LogoFull />}
+				</Col>
+				<Col>
+					{children}
+				</Col>
+			</FlexRow>
+		</Container>
 	</div>
 );
 

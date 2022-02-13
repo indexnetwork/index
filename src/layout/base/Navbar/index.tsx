@@ -3,8 +3,9 @@ import LogoMini from "components/base/Logo/LogoMini";
 import React, { useEffect, useState } from "react";
 import cc from "classcat";
 import { useYOffSet } from "hooks/useYOffset";
-import { FlexPropsType } from "types";
-import Flex from "../Grid/Flex";
+import Container from "../Grid/Container";
+import Col from "../Grid/Col";
+import FlexRow from "../Grid/FlexRow";
 
 export interface NavbarProps extends
 	React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
@@ -14,7 +15,6 @@ export interface NavbarProps extends
 	stickyBgColor?: string;
 	bordered?: boolean;
 	bgColor?: string;
-	innerFlexProps?: FlexPropsType;
 }
 
 export interface NavbarMenuProps extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
@@ -23,7 +23,6 @@ export interface NavbarMenuProps extends React.DetailedHTMLProps<React.HTMLAttri
 
 const Navbar: React.FC<NavbarProps> = ({
 	children,
-	innerFlexProps,
 	logoSize = "mini",
 	sticky = false,
 	stickyBgChangeAfter = 30,
@@ -61,20 +60,23 @@ const Navbar: React.FC<NavbarProps> = ({
 			} : style}
 			{...menuProps}
 		>
-			<div className="container idx-navbar">
-				<Flex
-					className="idx-flex-container"
-					alignItems="center"
-					{...innerFlexProps}
+			<Container
+				className="idx-navbar"
+			>
+				<FlexRow
+					fullHeight
+					align="center"
+					justify="between"
+					wrap={false}
 				>
-					<div className="idx-navbar-logo">
-						{
-							logoSize === "mini" ? <LogoMini /> : <LogoFull />
-						}
-					</div>
-					{children}
-				</Flex>
-			</div>
+					<Col>
+						{logoSize === "mini" ? <LogoMini /> : <LogoFull />}
+					</Col>
+					<Col>
+						{children}
+					</Col>
+				</FlexRow>
+			</Container>
 		</div>
 	);
 };

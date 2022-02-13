@@ -21,7 +21,6 @@
     "sass": "^1.49.7",
     "styled-components": "^5.3.3",
     "uuid": "^8.3.2",
-    "uuidv4": "^6.2.12",
     "yup": "^0.32.11"
   },
   "devDependencies": {
