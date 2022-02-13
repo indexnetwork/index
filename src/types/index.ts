@@ -64,9 +64,13 @@ export type TextSizeType = SizeType;
 /**
  * Select Types
  */
-export type SelectValueType = string | string[] | number | number[] | undefined;
-export type SingleOptionValue = string | number;
-
+export type SelectValueType = string | string[] | undefined;
+export interface SelectSelectionType {
+	[key: string]: {
+		title: string;
+		selected: boolean;
+	}
+}
 /**
  * Flex Types
  */

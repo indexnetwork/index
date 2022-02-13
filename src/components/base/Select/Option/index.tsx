@@ -1,10 +1,10 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext } from "react";
 import cc from "classcat";
-import { SingleOptionValue } from "types";
 import SelectContext from "../select-context";
 
 export interface OptionProps {
-	value: SingleOptionValue;
+	value: string;
+	children: React.ReactNode;
 }
 
 const Option: React.FC<OptionProps> = ({
@@ -15,25 +15,15 @@ const Option: React.FC<OptionProps> = ({
 
 	const getSelected = () => (selectContext && selectContext.getSelected ? selectContext.getSelected(value) : false);
 
-	const [selected, setSelected] = useState<boolean>(() => getSelected());
-
 	const handleSelected = () => {
-		setSelected((prevSelected) => !prevSelected);
+		selectContext && selectContext.setValueFromOption && selectContext.setValueFromOption(value);
 	};
-
-	useEffect(() => {
-		if (selected || (selectContext && selectContext.getMode && selectContext.getMode() === "multiple")) {
-			selectContext && selectContext.setValueFromOption && selectContext.setValueFromOption(value, selected);
-		}
-	}, [
-		selected,
-	]);
 
 	return (
 		<div
 			className={cc([
 				"idx-option",
-				selected ? "idx-option-selected" : "",
+				getSelected() ? "idx-option-selected" : "",
 			])}
 			onClick={handleSelected}
 			style={getSelected() ? { color: "red" } : undefined}

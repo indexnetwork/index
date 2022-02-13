@@ -537,6 +537,16 @@ const Home: NextPageWithLayout = () => {
 						<Option value="2">Option 2</Option>
 					</Select>
 				</Col>
+				<Col>
+					<Select
+						value="1"
+						mode="multiple"
+						onChange={(val) => console.log(val)}
+					>
+						<Option value="1">Option 1</Option>
+						<Option value="2">Option 2</Option>
+					</Select>
+				</Col>
 			</FlexRow>
 			<Modal
 				onClose={() => { setModalOpen(false); }}

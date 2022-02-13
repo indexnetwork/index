@@ -1,10 +1,9 @@
 import React from "react";
-import { SelectValueType, SingleOptionValue } from "types";
 
 export interface SelectContextType {
-	readonly selection?: SelectValueType;
-	setValueFromOption?(value: SingleOptionValue, selected: boolean): void;
-	getSelected?(value: SingleOptionValue): boolean;
+	readonly selection?: string | string[];
+	setValueFromOption?(value: string): void;
+	getSelected?(value: string): boolean;
 	getMode?(): "single" | "multiple";
 }
 

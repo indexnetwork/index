@@ -1,6 +1,8 @@
-import React, { ReactElement, useEffect, useState } from "react";
+import React, {
+	ReactElement, useEffect, useState,
+} from "react";
 import cc from "classcat";
-import { SelectValueType, SingleOptionValue } from "types";
+import { SelectValueType } from "types";
 import SelectContext from "./select-context";
 import { OptionProps } from "./Option";
 
@@ -8,61 +10,66 @@ export type SelectChildrenType = ReactElement<OptionProps>[] | ReactElement<Opti
 
 export interface SelectProps {
 	children: SelectChildrenType;
-	value?: SelectValueType;
+	value?: string | string[];
 	defaultValue?: SelectValueType;
 	mode?: "single" | "multiple";
-	onChange?(value: SelectValueType): void;
+	onChange?(value?: string | string[]): void;
 }
 
 const Select: React.VFC<SelectProps> = ({
 	children,
 	value,
-	defaultValue,
 	mode = "single",
 	onChange,
 }) => {
-	const [selection, setSelection] = useState<SelectValueType>(() => {
-		if (value) {
-			return value;
-		}
-		return defaultValue;
-	});
-
-	const handleValueChange = (optionValue: SingleOptionValue, selected: boolean) => {
+	const loadState = () => {
 		if (mode === "multiple") {
-			setSelection((oldSelection) => {
-				if (oldSelection && !(typeof oldSelection === "string" || typeof oldSelection === "number")) {
-					if (selected) {
-						return [...oldSelection, optionValue];
-					}
-					return (oldSelection as any).filter((opt: SingleOptionValue) => opt !== optionValue);
-				}
-				return [optionValue];
-			});
-		} else {
+			return value || [];
+		}
+		return value;
+	};
+
+	const [selection, setSelection] = useState<string | string[] | undefined>(() => loadState());
+
+	const getSelected = (optionValue: string) => (mode === "single" ? selection === optionValue : (selection! as string[]).indexOf(optionValue) > -1);
+
+	useEffect(() => {
+		setSelection(loadState);
+	}, [value]);
+
+	const handleValueChange = (optionValue: string) => {
+		if (mode === "single") {
 			setSelection(optionValue);
+			return;
+		}
+
+		const selectedBefore = getSelected(optionValue);
+		if (selectedBefore) {
+			setSelection((oldSelection) => (oldSelection as string[]).filter((val) => val !== optionValue));
+		} else {
+			setSelection((oldSelection) => [...(oldSelection as string[]), optionValue]);
 		}
 	};
 
-	const getSelected = (optionValue: SingleOptionValue) => {
-		if (mode === "multiple") {
-			if (selection && !(typeof selection === "string" || typeof selection === "number")) {
-				return (selection as any).indexOf(optionValue) > -1;
-			}
-			return false;
-		}
-		return selection === optionValue;
-	};
+	useEffect(() => {
+		onChange && onChange(selection!);
+	}, [selection]);
 
 	const getMode = () => mode;
 
-	useEffect(() => {
-		setSelection(value);
-	}, [value]);
-
-	useEffect(() => {
-		onChange && onChange(selection);
-	}, [selection]);
+	const renderInputItem = (child: ReactElement<OptionProps>) => {
+		const hasItem = getSelected(child.props.value);
+		if (!hasItem) {
+			return null;
+		}
+		return (
+			<div
+				className="idx-select-input-item"
+			>
+				{child.props.children}
+			</div>
+		);
+	};
 
 	return (
 		<div
@@ -78,7 +85,25 @@ const Select: React.VFC<SelectProps> = ({
 					getMode,
 				}}
 			>
-				{children}
+				<div
+					className={cc([
+						"idx-select",
+						mode === "multiple" ? "idx-select-multiple" : "",
+					])}
+				>
+					<div className="idx-select-input">
+						{
+							React.Children.map(children, (child) => renderInputItem(child))
+						}
+						<div
+							className="idx-select-input-down"
+						>
+						</div>
+					</div>
+					<div className="idx-select-menu">
+						{children}
+					</div>
+				</div>
 			</SelectContext.Provider>
 		</div>
 	);
