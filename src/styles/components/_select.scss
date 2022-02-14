@@ -39,6 +39,14 @@
 			background-color: $input-disabled-bg;
 			cursor: not-allowed;
 		}
+
+		&.idx-select-multiple {
+			.idx-select-input {
+				.idx-select-input-item {
+					background-color: lighten($main-color, 30%);
+				}
+			}
+		}
 	}
 
 	&.idx-select-multiple {

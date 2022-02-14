@@ -107,7 +107,7 @@ const Select: React.VFC<SelectProps> = ({
 		return (
 			<div
 				className="idx-select-input-item"
-				onClick={mode === "multiple" ? (e) => handleRemoveSelection(e, child.props.value) : undefined}
+				onClick={mode === "multiple" && !disabled ? (e) => handleRemoveSelection(e, child.props.value) : undefined}
 			>
 				{child.props.children}
 				{mode === "multiple" && <IconClose className="idx-select-multiple-close-icon"/>}

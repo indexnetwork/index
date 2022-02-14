@@ -1,0 +1,11 @@
+.idx-draggable-list {
+	@include no-select;
+	display: grid;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+
+	.idx-draggable-list-item {
+		cursor: move;
+	}
+}

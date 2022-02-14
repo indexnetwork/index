@@ -8,7 +8,6 @@ export interface CheckboxProps {
 	title: string;
 	checked?: boolean;
 	disabled?: boolean;
-	children?: never;
 	size?: "sm" | "md" | "lg";
 	onChange?(checked: boolean): void;
 }

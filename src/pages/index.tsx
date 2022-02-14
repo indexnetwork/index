@@ -31,6 +31,7 @@ import Spin from "components/base/Spin";
 import Select from "components/base/Select";
 import Option from "components/base/Select/Option";
 import Checkbox from "components/base/Checkbox";
+import DraggableList from "components/base/DraggableList";
 
 const Home: NextPageWithLayout = () => {
 	const [modalOpen, setModalOpen] = useState(false);
@@ -553,6 +554,23 @@ const Home: NextPageWithLayout = () => {
 					</Select>
 				</Col>
 				<Col sm={6} xs={12}>
+					<Header>Disabled Multi Selection</Header>
+					<Select
+						value="1"
+						mode="multiple"
+						bordered
+						placeholder="Please Select"
+						disabled
+						onChange={(val) => console.log(val)}
+					>
+						<Option value="1">Option 1</Option>
+						<Option value="2">Option 2</Option>
+						<Option value="3">Option 3</Option>
+						<Option value="4">Option 4</Option>
+						<Option value="5" divider>Divider Option 5</Option>
+					</Select>
+				</Col>
+				<Col sm={6} xs={12}>
 					<Header>Multi Selection</Header>
 					<Select
 						value="1"
@@ -631,11 +649,22 @@ const Home: NextPageWithLayout = () => {
 				<Col sm={4} xs={6}>
 					<Checkbox checked disabled title="Checked Disabled" />
 				</Col>
-				<Col sm={6} xs={6}>
+				<Col sm={4} xs={6}>
 					<Checkbox size="sm" title="Checkbox With Sm Container" />
 				</Col>
-				<Col sm={6} xs={6}>
+				<Col sm={4} xs={6}>
 					<Checkbox size="lg" title="Checkbox With Lg Container" />
+				</Col>
+			</Row>
+			<Row>
+				<Col xs={12}>
+					<Header level={1}>Draggable List</Header>
+				</Col>
+				<Col xs={12}>
+					<DraggableList
+						data={[1, 2, 3] as number[]}
+						render={(item) => <div>{item}</div>}
+					/>
 				</Col>
 			</Row>
 			<Modal
