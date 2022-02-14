@@ -622,11 +622,14 @@ const Home: NextPageWithLayout = () => {
 				<Col xs={12}>
 					<Header level={1}>Checkbox</Header>
 				</Col>
-				<Col sm={6} xs={6}>
+				<Col sm={4} xs={6}>
 					<Checkbox title="Checkbox Label" />
 				</Col>
-				<Col sm={6} xs={6}>
+				<Col sm={4} xs={6}>
 					<Checkbox disabled title="Checkbox Disabled" />
+				</Col>
+				<Col sm={4} xs={6}>
+					<Checkbox checked disabled title="Checked Disabled" />
 				</Col>
 				<Col sm={6} xs={6}>
 					<Checkbox size="sm" title="Checkbox With Sm Container" />

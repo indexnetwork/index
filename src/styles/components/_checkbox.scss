@@ -41,13 +41,22 @@
 
 	&.idx-checkbox-checked {
 		.idx-checkbox-checkmark {
-			background-color: $main-color !important;
+			background-color: $main-color;
 		}
 	}
 
 	&.idx-checkbox-disabled {
 		.idx-checkbox-container {
 			cursor: not-allowed;
+
+			.idx-checkbox-checkmark {
+				background-color: $gray-1;
+			}
+		}
+		&.idx-checkbox-checked {
+			.idx-checkbox-checkmark {
+				background-color: lighten($main-color, 30%);
+			}
 		}
 	}
 }
