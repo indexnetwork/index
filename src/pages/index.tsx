@@ -30,6 +30,7 @@ import CopyInput from "components/base/CopyInput";
 import Spin from "components/base/Spin";
 import Select from "components/base/Select";
 import Option from "components/base/Select/Option";
+import Checkbox from "components/base/Checkbox";
 
 const Home: NextPageWithLayout = () => {
 	const [modalOpen, setModalOpen] = useState(false);
@@ -612,6 +613,23 @@ const Home: NextPageWithLayout = () => {
 							Spin lg
 						</Flex>
 					</Spin>
+				</Col>
+			</Row>
+			<Row>
+				<Col xs={12}>
+					<Header level={1}>Checkbox</Header>
+				</Col>
+				<Col sm={6} xs={6}>
+					<Checkbox title="Checkbox Label"/>
+				</Col>
+				<Col sm={6} xs={6}>
+					<Checkbox disabled title="Checkbox Disabled"/>
+				</Col>
+				<Col sm={6} xs={6}>
+					<Checkbox size="sm" title="Checkbox With Sm Container"/>
+				</Col>
+				<Col sm={6} xs={6}>
+					<Checkbox size="lg" title="Checkbox With Lg Container"/>
 				</Col>
 			</Row>
 			<Modal

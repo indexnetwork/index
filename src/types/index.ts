@@ -44,7 +44,7 @@ export type FlexPropsType = Pick<React.CSSProperties, CSSFlexPropsNamesType>;
  */
 export type TextThemeType = ComponentThemeType;
 
-export type TextElementType = "span" | "strong" | "div" | "p";
+export type TextElementType = "span" | "strong" | "div" | "p" | "label";
 
 /**
  * Button Types
