@@ -484,6 +484,9 @@ const Home: NextPageWithLayout = () => {
 				colSpacing={3}
 				rowSpacing={3}
 			>
+				<Col xs={12}>
+					<Header level={1}>Select</Header>
+				</Col>
 				<Col sm={6} xs={12}>
 					<Header>Single Selection With Border</Header>
 					<Select
@@ -620,16 +623,16 @@ const Home: NextPageWithLayout = () => {
 					<Header level={1}>Checkbox</Header>
 				</Col>
 				<Col sm={6} xs={6}>
-					<Checkbox title="Checkbox Label"/>
+					<Checkbox title="Checkbox Label" />
 				</Col>
 				<Col sm={6} xs={6}>
-					<Checkbox disabled title="Checkbox Disabled"/>
+					<Checkbox disabled title="Checkbox Disabled" />
 				</Col>
 				<Col sm={6} xs={6}>
-					<Checkbox size="sm" title="Checkbox With Sm Container"/>
+					<Checkbox size="sm" title="Checkbox With Sm Container" />
 				</Col>
 				<Col sm={6} xs={6}>
-					<Checkbox size="lg" title="Checkbox With Lg Container"/>
+					<Checkbox size="lg" title="Checkbox With Lg Container" />
 				</Col>
 			</Row>
 			<Modal
