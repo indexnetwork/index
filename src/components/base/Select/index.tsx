@@ -73,7 +73,7 @@ const Select: React.VFC<SelectProps> = ({
 			if (mode === "single") {
 				return !selection;
 			}
-			return !!selection && (selection as string[]).length > 0;
+			return !selection || (selection as string[]).length === 0;
 		}
 		return false;
 	};

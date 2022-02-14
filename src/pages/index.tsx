@@ -554,6 +554,7 @@ const Home: NextPageWithLayout = () => {
 						value="1"
 						mode="multiple"
 						bordered
+						placeholder="Please Select"
 						onChange={(val) => console.log(val)}
 					>
 						<Option value="1">Option 1</Option>
