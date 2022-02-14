@@ -5,11 +5,15 @@ import SelectContext from "../select-context";
 export interface OptionProps {
 	value: string;
 	children: React.ReactNode;
+	divider?: boolean;
+	size?: "sm" | "md" | "lg",
 }
 
 const Option: React.FC<OptionProps> = ({
 	value,
 	children,
+	divider = false,
+	size = "md",
 }) => {
 	const selectContext = useContext(SelectContext);
 
@@ -24,9 +28,10 @@ const Option: React.FC<OptionProps> = ({
 			className={cc([
 				"idx-option",
 				getSelected() ? "idx-option-selected" : "",
+				divider ? "idx-option-divider" : "",
+				`idx-option-${size}`,
 			])}
 			onClick={handleSelected}
-			style={getSelected() ? { color: "red" } : undefined}
 		>
 			{children}
 		</div>);

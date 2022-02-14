@@ -1,0 +1,145 @@
+.idx-select {
+	@include no-select;
+	@extend .idx-text, .idx-text-secondary, .idx-text-md;
+	position: relative;
+
+	.idx-select-input {
+		@include responsive-sizes($input-height, "height");
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		min-width: 9rem;
+		padding: map-deep-get($spacing, "xs", "2") map-deep-get($spacing, "xs", "3");
+		border-radius: $border-radius-base;
+		cursor: pointer;
+
+		.idx-select-input-arrow {
+			transform: rotate(180deg);
+			margin-left: map-deep-get($spacing, "xs", "3");
+		}
+
+		.idx-select-selections {
+			display: flex;
+			align-items: center;
+			gap: map-deep-get($spacing, "xs", "3");
+		}
+
+		.idx-select-placeholder {
+			color: lighten($gray-3, 10%);
+			font-weight: 300;
+		}
+	}
+
+	&.idx-select-disabled {
+		.idx-select-input {
+			background-color: $input-disabled-bg;
+			cursor: not-allowed;
+		}
+	}
+
+	&.idx-select-multiple {
+		.idx-select-input {
+			overflow: hidden;
+			word-break: normal;
+			text-overflow: ellipsis;
+			.idx-select-input-item {
+				display: flex;
+				align-items: center;
+				background-color: $main-color;
+				color: $white;
+				border-radius: $border-radius-base;
+				padding: map-deep-get($spacing, "xs", "1") map-deep-get($spacing, "xs", "3");
+				word-break: normal;
+				text-overflow: ellipsis;
+				font-weight: 300;
+				font-size: map-deep-get($font-size, "xs", "xs");
+				transition: $transition-bg;
+				&:hover {
+					background-color: lighten($main-color, 30%);
+				}
+				.idx-select-multiple-close-icon {
+					stroke: $white;
+					height: 1rem;
+					width: 1rem;
+					line-height: 1.3rem;
+					margin-left: map-deep-get($spacing, "xs", "2");
+				}
+			}
+		}
+	}
+
+	&.idx-select-bordered {
+		.idx-select-input {
+			border: $border-base;
+		}
+	}
+
+	.idx-select-menu {
+		overflow: hidden;
+		height: 0;
+		opacity: 0;
+		pointer-events: none;
+		position: absolute;
+		left: 0;
+		right: 0;
+		background-color: $white;
+		z-index: map-get($z-index, "dropdown");
+		border-bottom-left-radius: $border-radius-base;
+		border-bottom-right-radius: $border-radius-base;
+		transition: opacity box-shadow 0.2s ease;
+		max-height: 14.5rem;
+		overflow: auto;
+		// padding-top: map-deep-get($spacing, "xs", "2");
+
+		.idx-option {
+			@include responsive-sizes($input-height, "height");
+			padding: map-deep-get($spacing, "xs", "2") map-deep-get($spacing, "xs", "3");
+			display: flex;
+			align-items: center;
+			&:hover {
+				background-color: $hover-color;
+				cursor: pointer;
+			}
+			&.idx-option-selected {
+				color: $main-color;
+				font-weight: 500;
+			}
+
+			&.idx-option-divider {
+				border-bottom: $border-base;
+				border-top: $border-base;
+			}
+
+			&.idx-option-divider:first-child {
+				border-bottom: $border-base;
+				border-top: none;
+			}
+
+			&.idx-option-divider:last-child {
+				border-top: $border-base;
+				border-bottom: none;
+			}
+		}
+	}
+
+	&.idx-select-open {
+		.idx-select-menu {
+			height: auto;
+			opacity: 1;
+			pointer-events: auto;
+		}
+		box-shadow: $box-shadow-base;
+
+		&.idx-select-bordered {
+			.idx-select-input {
+				border-bottom-left-radius: 0;
+				border-bottom-right-radius: 0;
+			}
+
+			.idx-select-menu {
+				border: $border-base;
+				border-top: 0;
+			}
+		}
+	}
+}

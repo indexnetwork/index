@@ -30,11 +30,11 @@
 
 	&.idx-input-disabled,
 	&.idx-input-readonly {
-		background-color: $gray-1 !important;
+		background-color: $input-disabled-bg !important;
 		color: $secondary-text-color;
 
 		input {
-			background-color: $gray-1 !important;
+			background-color: $input-disabled-bg !important;
 			color: $secondary-text-color;
 		}
 	}

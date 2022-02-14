@@ -15,7 +15,7 @@ const Row: React.FC<RowProps> = ({
 	className,
 	rowSpacing,
 	colSpacing,
-	noGutters = false,
+	noGutters = true,
 	fullHeight = false,
 	fullWidth = false,
 	...divProps

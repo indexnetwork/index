@@ -479,6 +479,91 @@ const Home: NextPageWithLayout = () => {
 					</Tabs>
 				</Col>
 			</Row>
+			<FlexRow
+				colSpacing={3}
+				rowSpacing={3}
+			>
+				<Col sm={6} xs={12}>
+					<Header>Single Selection With Border</Header>
+					<Select
+						value="1"
+						bordered
+					>
+						<Option value="1">Option 1</Option>
+						<Option value="2">Option 2</Option>
+					</Select>
+				</Col>
+				<Col sm={6} xs={12}>
+					<Header>Single Selection borderless</Header>
+					<Select
+						value="1"
+					>
+						<Option value="1">Option 1</Option>
+						<Option value="2">Option 2</Option>
+					</Select>
+				</Col>
+				<Col sm={6} xs={12}>
+					<Header>With Placeholder</Header>
+					<Select
+						bordered
+						placeholder="Please Select"
+					>
+						<Option value="1">Option 1</Option>
+						<Option value="2">Option 2</Option>
+					</Select>
+				</Col>
+				<Col sm={6} xs={12}>
+					<Header>With Divider</Header>
+					<Select
+						bordered
+						placeholder="Please Select"
+					>
+						<Option value="1" divider>First Div</Option>
+						<Option value="2">No Div</Option>
+						<Option value="3">No Div</Option>
+						<Option value="4" divider>Middle Div</Option>
+						<Option value="5">No Div</Option>
+						<Option value="6">No Div</Option>
+						<Option value="7" divider>Last Div</Option>
+					</Select>
+				</Col>
+				<Col sm={6} xs={12}>
+					<Header>Disabled</Header>
+					<Select
+						bordered
+						placeholder="Please Select"
+						disabled
+					>
+						<Option value="1">Option 1</Option>
+						<Option value="2">Option 2</Option>
+					</Select>
+				</Col>
+				<Col sm={6} xs={12}>
+					<Header>Disabled Borderless</Header>
+					<Select
+						placeholder="Please Select"
+						disabled
+					>
+						<Option value="1">Option 1</Option>
+						<Option value="2">Option 2</Option>
+					</Select>
+				</Col>
+				<Col sm={6} xs={12}>
+					<Header>Multi Selection</Header>
+					<Select
+						value="1"
+						mode="multiple"
+						bordered
+						onChange={(val) => console.log(val)}
+					>
+						<Option value="1">Option 1</Option>
+						<Option value="2">Option 2</Option>
+						<Option value="3">Option 3</Option>
+						<Option value="4">Option 4</Option>
+						<Option value="5" divider>Divider Option 5</Option>
+					</Select>
+				</Col>
+			</FlexRow>
 			<Row>
 				<Col>
 					<Header level={1}>
@@ -528,26 +613,6 @@ const Home: NextPageWithLayout = () => {
 					</Spin>
 				</Col>
 			</Row>
-			<FlexRow>
-				<Col>
-					<Select
-						value="1"
-					>
-						<Option value="1">Option 1</Option>
-						<Option value="2">Option 2</Option>
-					</Select>
-				</Col>
-				<Col>
-					<Select
-						value="1"
-						mode="multiple"
-						onChange={(val) => console.log(val)}
-					>
-						<Option value="1">Option 1</Option>
-						<Option value="2">Option 2</Option>
-					</Select>
-				</Col>
-			</FlexRow>
 			<Modal
 				onClose={() => { setModalOpen(false); }}
 				visible={modalOpen}

@@ -166,6 +166,8 @@ $input-height: (
 	),
 );
 
+$input-disabled-bg: $gray-1;
+
 /**************
 		BUTTON
 ***************/
@@ -265,3 +267,8 @@ $spinner-size: (
 	"lg": 2.4rem,
 );
 $spinner-bg: rgba(255, 255, 255, 0.2);
+
+/**************
+		Copy Input 
+***************/
+$copy-input-icon-bg: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, $gray-6 5%, $gray-6 100%);

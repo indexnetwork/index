@@ -11,6 +11,7 @@ export interface FlexRowProps extends Omit<RowProps, "noGutters"> {
 	wrap?: boolean;
 	align?: FlexAlignType;
 	justify?: FlexJustifyType;
+	rowGutter?: SpacingBaseType;
 }
 
 const FlexRow: React.FC<FlexRowProps> = ({
@@ -24,6 +25,7 @@ const FlexRow: React.FC<FlexRowProps> = ({
 	colSpacing,
 	align,
 	justify,
+	rowGutter = 0,
 	...divProps
 }) => (
 	<Row
@@ -33,7 +35,7 @@ const FlexRow: React.FC<FlexRowProps> = ({
 			rowGap ? `idx-flex-row-gap-${rowGap}` : "",
 			colGap ? `idx-flex-row-gap-${colGap}` : "",
 			rowSpacing ? `idx-row-spacing-v${rowSpacing}` : "",
-			colSpacing ? `idx-row-spacing-h${colSpacing} idx-flex-row-gutter-${colSpacing}` : "",
+			colSpacing ? `idx-row-spacing-h${colSpacing} idx-flex-row-gutter-${rowGutter}` : "",
 			wrap === false ? "idx-flex-nowrap" : "idx-flex-wrap",
 			align ? `idx-flex-a-${align}` : "",
 			justify ? `idx-flex-j-${justify}` : "",
