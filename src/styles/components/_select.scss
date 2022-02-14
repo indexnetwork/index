@@ -2,6 +2,10 @@
 	@include no-select;
 	@extend .idx-text, .idx-text-secondary, .idx-text-md;
 	position: relative;
+	box-shadow: 0;
+	transition: box-shadow;
+	transition-duration: 0;
+	transition-timing-function: ease-in-out;
 
 	.idx-select-input {
 		@include responsive-sizes($input-height, "height");
@@ -78,6 +82,7 @@
 		overflow: hidden;
 		height: 0;
 		opacity: 0;
+		box-shadow: 0;
 		pointer-events: none;
 		position: absolute;
 		left: 0;
@@ -86,7 +91,7 @@
 		z-index: map-get($z-index, "dropdown");
 		border-bottom-left-radius: $border-radius-base;
 		border-bottom-right-radius: $border-radius-base;
-		transition: opacity box-shadow 0.2s ease;
+		transition: opacity 0.2s ease-in-out;
 		max-height: 14.5rem;
 		overflow: auto;
 		// padding-top: map-deep-get($spacing, "xs", "2");
@@ -129,6 +134,7 @@
 			pointer-events: auto;
 		}
 		box-shadow: $box-shadow-base;
+		transition-duration: .2s;
 
 		&.idx-select-bordered {
 			.idx-select-input {
@@ -140,6 +146,12 @@
 				border: $border-base;
 				border-top: 0;
 			}
+		}
+	}
+
+	@media (min-width: map-get($breakpoints, "sm")) {
+		.idx-select-menu {
+			max-height: 17rem;
 		}
 	}
 }
