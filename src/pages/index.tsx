@@ -32,10 +32,19 @@ import Select from "components/base/Select";
 import Option from "components/base/Select/Option";
 import Checkbox from "components/base/Checkbox";
 import DraggableList from "components/base/DraggableList";
+import LazyLoad from "components/base/LazyLoad";
+import { generateRandomColor } from "utils/helper";
 
 const Home: NextPageWithLayout = () => {
 	const [modalOpen, setModalOpen] = useState(false);
 	const [modal2Open, setModal2Open] = useState(false);
+	const [randomColors] = useState(() => {
+		const colors = [];
+		for (let i = 0; i < 10; i++) {
+			colors.push(generateRandomColor());
+		}
+		return colors;
+	});
 	const paragraph = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut ullamcorper congue mauris nec faucibus. Donec rutrum, nisi a gravida dignissim, nibh nibh fermentum elit, ut volutpat elit nibh sed nulla. Morbi eget efficitur ipsum. Donec libero leo, ornare vel enim a, egestas ornare neque. Aenean cursus orci ac ligula iaculis volutpat. Morbi rhoncus consectetur elit, et facilisis nunc rutrum sed. In aliquet id enim a lacinia.";
 	return (
 		<PageContainer>
@@ -662,8 +671,19 @@ const Home: NextPageWithLayout = () => {
 				</Col>
 				<Col xs={12}>
 					<DraggableList
-						data={[1, 2, 3] as number[]}
-						render={(item) => <div>{item}</div>}
+						data={[1, 2, 3, 4, 5, 6, 7, 8, 9] as number[]}
+						render={(item) => <LazyLoad height={100}>
+							<FlexRow
+								fullHeight
+							>
+								<Col xs={12}>
+									<Header>Title {item}</Header>
+								</Col>
+								<Col xs={12}>
+									<Text element="p">{paragraph.substring(0, 100)}</Text>
+								</Col>
+							</FlexRow>
+						</LazyLoad>}
 					/>
 				</Col>
 			</Row>

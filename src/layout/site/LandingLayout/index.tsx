@@ -6,7 +6,7 @@ import SiteFooter from "../SiteFooter";
 const LandingLayout: React.FC = ({ children }) => (
 	<>
 		<Head>
-			<script async src="scripts/drag-drop-touch.js"></script>
+			<script async src="scripts/drag-drop-touch.min.js"></script>
 		</Head>
 		<SiteNavbar headerType="user" />
 		{children}

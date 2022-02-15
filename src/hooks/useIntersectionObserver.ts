@@ -1,24 +1,28 @@
 import { useEffect } from "react";
 
-export function useIntersectionObserver(ref: React.MutableRefObject<any>, onIntersectView: (o: IntersectionObserver) => void) {
-	const intersectionCallback: IntersectionObserverCallback = (entries, observer) => {
-		const [entry] = entries;
-		if (entry.isIntersecting) {
-			onIntersectView(observer);
-		}
-	};
-
+export function useIntersectionObserver(
+	ref: React.MutableRefObject<any>,
+	onIntersectView: (o: IntersectionObserver) => void,
+	options: IntersectionObserverInit = {
+		root: null,
+		rootMargin: "100px 0px 100px 0px",
+		threshold: 0,
+	},
+) {
 	useEffect(() => {
-		const observer = new IntersectionObserver(intersectionCallback, {
-			root: null,
-			rootMargin: "0px",
-			threshold: 1.0,
-		});
+		const intersectionCallback: IntersectionObserverCallback = (entries, observer) => {
+			const [entry] = entries;
+			if (entry.isIntersecting) {
+				onIntersectView(observer);
+			}
+		};
+		const refCopy = ref.current;
+		const observer = new IntersectionObserver(intersectionCallback, options);
 
-		ref.current && observer.observe(ref.current);
+		refCopy && observer.observe(refCopy);
 
 		return () => {
-			ref.current && observer.unobserve(ref.current);
+			refCopy && observer.unobserve(refCopy);
 		};
-	}, []);
+	}, [ref, onIntersectView, options]);
 }
