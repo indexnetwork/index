@@ -7,5 +7,8 @@
 		"twitterBtn": "Twitter ile giriş yap",
 		"signIn": "Eposta ve şifre ile giriş yap",
 		"emailInput": "Eposta veya kullanıcı adı"
+	},
+	"select": {
+		"collapseMessage": "{{count}} seçildi"
 	}
 }

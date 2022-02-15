@@ -34,6 +34,7 @@ import Checkbox from "components/base/Checkbox";
 import DraggableList from "components/base/DraggableList";
 import LazyLoad from "components/base/LazyLoad";
 import { generateRandomColor } from "utils/helper";
+import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import cm from "./index.module.scss";
 
 const Home: NextPageWithLayout = () => {
@@ -593,7 +594,9 @@ const Home: NextPageWithLayout = () => {
 						<Option value="2">Option 2</Option>
 						<Option value="3">Option 3</Option>
 						<Option value="4">Option 4</Option>
-						<Option value="5" divider>Divider Option 5</Option>
+						<Option value="5">Divider Option 5</Option>
+						<Option value="6">Divider Option 6</Option>
+						<Option value="7" divider>Divider Option 7</Option>
 					</Select>
 				</Col>
 			</FlexRow>
@@ -750,4 +753,11 @@ Home.getLayout = function getLayout(page: ReactElement) {
 	);
 };
 
+export async function getStaticProps({ locale }: any) {
+	return {
+		props: {
+			...(await serverSideTranslations(locale, ["common", "components"])),
+		},
+	};
+}
 export default Home;

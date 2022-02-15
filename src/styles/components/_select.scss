@@ -15,11 +15,15 @@
 		min-width: 9rem;
 		padding: map-deep-get($spacing, "xs", "2") map-deep-get($spacing, "xs", "3");
 		border-radius: $border-radius-base;
+		padding-right: map-deep-get($spacing, "xs", "7");
 		cursor: pointer;
 
 		.idx-select-input-arrow {
 			transform: rotate(180deg);
 			margin-left: map-deep-get($spacing, "xs", "3");
+			position: absolute;
+			right: map-deep-get($spacing, "xs", "3");
+
 		}
 
 		.idx-select-selections {
@@ -66,6 +70,7 @@
 				font-weight: 300;
 				font-size: map-deep-get($font-size, "xs", "xs");
 				transition: $transition-bg;
+				white-space: pre;
 				&:hover {
 					background-color: lighten($main-color, 30%);
 				}
