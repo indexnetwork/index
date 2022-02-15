@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IasIconSort: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--gray-4)", strokeWidth = "1.2", ...props }) => (
+const IconSort: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--gray-4)", strokeWidth = "1.2", ...props }) => (
 	<svg className="idx-icon"
 		width={16}
 		height={16}
@@ -19,4 +19,4 @@ const IasIconSort: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--
 	</svg>
 );
 
-export default IasIconSort;
+export default IconSort;

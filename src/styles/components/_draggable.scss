@@ -7,5 +7,21 @@
 
 	.idx-draggable-list-item {
 		cursor: move;
+		transition: all 0.2s;
+		opacity: 1;
+
+
+		&.idx-draggable-drag-enter {
+			// box-shadow: $box-shadow-base;
+			// transform: translateY(0);
+		}
+
+		&.idx-draggable-drag-active {
+			opacity: 0;
+		}
+
+		&.idx-draggable-drag-active {
+			// box-shadow: $box-shadow-base;
+		}
 	}
 }

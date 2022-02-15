@@ -1,4 +1,6 @@
-import React, { forwardRef, ForwardRefRenderFunction, PropsWithChildren } from "react";
+import React, {
+	forwardRef, ForwardRefRenderFunction, PropsWithChildren, useState,
+} from "react";
 import cc from "classcat";
 
 export interface DraggableListItemProps {
@@ -6,6 +8,9 @@ export interface DraggableListItemProps {
 	containerId: string;
 	order: number;
 	onPositionChanged?(containerId: string, draggedItemOrder: number, newOrder: number): void;
+	onDragStart?(containerId: string, draggedItemOrder: number): void;
+	onDragLeave?(newOrder: number): void;
+	onDrop?(): void;
 }
 
 const DraggableListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildren<DraggableListItemProps>> = ({
@@ -14,25 +19,35 @@ const DraggableListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildr
 	containerId,
 	order,
 	onPositionChanged,
+	onDragStart,
+	onDragLeave: onDragOver,
+	onDrop,
 }, ref) => {
-	const handleDragStart = (e: any) => {
+	const [cls, setCls] = useState("");
+
+	function handleDragStart(e: any) {
+		e.dataTransfer.effectAllowed = "move";
+		e.dataTransfer.dropEffect = "move";
 		e.dataTransfer.setData("idxContainerId", containerId);
 		e.dataTransfer.setData("idxDraggedItemOrder", order);
-	};
+		onDragStart && onDragStart(containerId, order);
+	}
 
-	const handleDrop = (e: any) => {
-		const idxContainerId = e.dataTransfer.getData("idxContainerId");
-		const idxDraggedItemOrder = parseInt(e.dataTransfer.getData("idxDraggedItemOrder"));
-		if (
-			!idxContainerId ||
-			idxContainerId !== containerId ||
-			idxDraggedItemOrder == null ||
-			Number.isNaN(idxDraggedItemOrder) ||
-			idxDraggedItemOrder === order
-		) {
-			return;
-		}
-		onPositionChanged && onPositionChanged(containerId, idxDraggedItemOrder, order);
+	const handleDrop = () => {
+		// const idxContainerId = e.dataTransfer.getData("idxContainerId");
+		// const idxDraggedItemOrder = parseInt(e.dataTransfer.getData("idxDraggedItemOrder"));
+		// if (
+		// 	!idxContainerId ||
+		// 	idxContainerId !== containerId ||
+		// 	idxDraggedItemOrder == null ||
+		// 	Number.isNaN(idxDraggedItemOrder) ||
+		// 	idxDraggedItemOrder === order
+		// ) {
+		// 	return;
+		// }
+		// onPositionChanged && onPositionChanged(containerId, idxDraggedItemOrder, order);
+		setCls("");
+		onDrop && onDrop();
 	};
 
 	return (
@@ -43,12 +58,22 @@ const DraggableListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildr
 				[
 					"idx-draggable-list-item",
 					className || "",
+					cls,
 				],
 			)
 			}
-			onDragOver={(e) => e.preventDefault()}
+			onDragOver={(e) => {
+				e.preventDefault();
+				setCls("idx-draggable-drag-enter");
+			}}
+			onDragEnter={() => {
+				onDragOver && onDragOver(order);
+			}}
+			onDragLeave={() => {
+				setCls("");
+			}}
 			onDragStart={handleDragStart}
-			onDrop={handleDrop}
+			onDragEnd={handleDrop}
 		>
 			{children}
 		</li>
