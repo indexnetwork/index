@@ -141,11 +141,11 @@ var DragDropTouch;
             // listen to touch events
             if ('ontouchstart' in document) {
                 var d = document, ts = this._touchstart.bind(this), tm = this._touchmove.bind(this), te = this._touchend.bind(this);
-                d.addEventListener('touchstart', ts);
-                d.addEventListener('touchmove', tm, {
+                d.addEventListener('touchstart', ts, {
                     capture: true,
                     passive: false,
                 });
+                d.addEventListener('touchmove', tm);
                 d.addEventListener('touchend', te);
                 d.addEventListener('touchcancel', te);
             }

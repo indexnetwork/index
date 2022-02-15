@@ -1,0 +1,12 @@
+.icon {
+	opacity: 0;
+}
+
+.iconContainer {
+
+	&:hover {
+		.icon {
+			opacity: 1;
+		}
+	}
+}

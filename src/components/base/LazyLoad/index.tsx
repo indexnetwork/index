@@ -9,7 +9,7 @@ export interface LazyLoadProps {
 const LazyLoad: React.FC<LazyLoadProps> = ({
 	children,
 	options,
-	height,
+	height = 100,
 }) => {
 	const divRef = useRef<HTMLDivElement>(null);
 	const [load, setLoad] = useState(false);
@@ -24,7 +24,7 @@ const LazyLoad: React.FC<LazyLoadProps> = ({
 	return <div
 		ref={divRef}
 		style={{
-			height: 100,
+			height,
 		}}
 	>
 		{load ? children : null}

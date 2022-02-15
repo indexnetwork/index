@@ -6,10 +6,9 @@
 	padding: 0;
 
 	.idx-draggable-list-item {
-		cursor: move;
-		transition: all 0.2s;
+		cursor: default;
+		transition: opacity 0.25s;
 		opacity: 1;
-
 
 		&.idx-draggable-drag-enter {
 			// box-shadow: $box-shadow-base;
@@ -18,10 +17,44 @@
 
 		&.idx-draggable-drag-active {
 			opacity: 0;
+			.idx-draggable-drag-icon {
+				cursor: grabbing;
+			}
 		}
 
-		&.idx-draggable-drag-active {
-			// box-shadow: $box-shadow-base;
+		.idx-draggable-list-divider {
+			height: 1px;
+			width: 100%;
+			background-color: $border-color;
+		}
+
+
+		.idx-draggable-drag-icon-wrapper {
+			height: 100%;
+			width: fit-content;
+			float: left;
+			align-items: center;
+			margin-right: 1.5rem;
+		}
+
+		&:hover {
+			.idx-draggable-drag-icon {
+				opacity: 1;
+			}
+		}
+	}
+
+
+	.idx-draggable-drag-icon {
+		opacity: 0;
+		transition: opacity .2s ease-in-out;
+		cursor: grab;
+	}
+	
+	&.idx-draggable-list-dragging {
+		.idx-draggable-drag-icon {
+			cursor: grabbing;
+			opacity: 0 !important;
 		}
 	}
 }

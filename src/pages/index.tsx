@@ -34,6 +34,7 @@ import Checkbox from "components/base/Checkbox";
 import DraggableList from "components/base/DraggableList";
 import LazyLoad from "components/base/LazyLoad";
 import { generateRandomColor } from "utils/helper";
+import cm from "./index.module.scss";
 
 const Home: NextPageWithLayout = () => {
 	const [modalOpen, setModalOpen] = useState(false);
@@ -672,15 +673,19 @@ const Home: NextPageWithLayout = () => {
 				<Col xs={12}>
 					<DraggableList
 						data={[1, 2, 3, 4, 5, 6, 7, 8, 9] as number[]}
+						itemContainerClass={cm.iconContainer}
 						render={(item) => <LazyLoad height={100}>
 							<FlexRow
 								fullHeight
+								align="center"
 							>
 								<Col xs={12}>
-									<Header>Title {item}</Header>
-								</Col>
-								<Col xs={12}>
-									<Text element="p">{paragraph.substring(0, 100)}</Text>
+									<Col xs={12}>
+										<Header>Title {item}</Header>
+									</Col>
+									<Col xs={12}>
+										<Text element="p">{paragraph.substring(0, 100)}</Text>
+									</Col>
 								</Col>
 							</FlexRow>
 						</LazyLoad>}

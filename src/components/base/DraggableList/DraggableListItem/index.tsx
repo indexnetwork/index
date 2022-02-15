@@ -1,15 +1,19 @@
 import React, {
-	forwardRef, ForwardRefRenderFunction, PropsWithChildren, useState,
+	forwardRef, ForwardRefRenderFunction, PropsWithChildren, useEffect, useRef, useState,
 } from "react";
 import cc from "classcat";
+import Flex from "layout/base/Grid/Flex";
+import IconDrag from "components/base/Icon/IconDrag";
+import { isMobile } from "utils/helper";
 
 export interface DraggableListItemProps {
 	className?: string;
 	containerId: string;
 	order: number;
+	dragging: boolean;
 	onPositionChanged?(containerId: string, draggedItemOrder: number, newOrder: number): void;
 	onDragStart?(containerId: string, draggedItemOrder: number): void;
-	onDragLeave?(newOrder: number): void;
+	onDragStop?(newOrder: number): void;
 	onDrop?(): void;
 }
 
@@ -18,14 +22,22 @@ const DraggableListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildr
 	className,
 	containerId,
 	order,
+	dragging,
 	onPositionChanged,
 	onDragStart,
-	onDragLeave: onDragOver,
+	onDragStop,
 	onDrop,
 }, ref) => {
 	const [cls, setCls] = useState("");
+	const [draggable, setDraggable] = useState(false);
+	const dragActivatorRef = useRef<HTMLDivElement>(null);
+	const [isMobileDevice] = useState(() => isMobile());
 
 	function handleDragStart(e: any) {
+		if (!isMobileDevice && !draggable) {
+			e.preventDefault();
+			return;
+		}
 		e.dataTransfer.effectAllowed = "move";
 		e.dataTransfer.dropEffect = "move";
 		e.dataTransfer.setData("idxContainerId", containerId);
@@ -50,6 +62,18 @@ const DraggableListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildr
 		onDrop && onDrop();
 	};
 
+	const handleMouseDown = (e: any) => {
+		if (!isMobileDevice && e && e.target && dragActivatorRef.current!.contains(e.target)) {
+			setDraggable(true);
+		}
+	};
+
+	useEffect(() => {
+		if (!dragging) {
+			setDraggable(false);
+		}
+	}, [dragging]);
+
 	return (
 		<li
 			ref={ref}
@@ -57,6 +81,7 @@ const DraggableListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildr
 			className={cc(
 				[
 					"idx-draggable-list-item",
+					dragging ? "idx-draggable-drag-active" : "",
 					className || "",
 					cls,
 				],
@@ -64,17 +89,30 @@ const DraggableListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildr
 			}
 			onDragOver={(e) => {
 				e.preventDefault();
-				setCls("idx-draggable-drag-enter");
+				!dragging && setCls("idx-draggable-drag-enter");
 			}}
 			onDragEnter={() => {
-				onDragOver && onDragOver(order);
+				setCls("");
+				if (!dragging) {
+					onDragStop && onDragStop(order);
+				}
 			}}
 			onDragLeave={() => {
 				setCls("");
 			}}
 			onDragStart={handleDragStart}
 			onDragEnd={handleDrop}
+			onMouseDown={handleMouseDown}
 		>
+			{
+				!isMobileDevice && <Flex
+					ref={dragActivatorRef}
+					className="idx-draggable-drag-icon-wrapper"
+				>
+					<IconDrag className="idx-draggable-drag-icon"
+						stroke="#000" fill="#000" />
+				</Flex>
+			}
 			{children}
 		</li>
 	);

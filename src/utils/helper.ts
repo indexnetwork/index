@@ -32,3 +32,7 @@ export function isSSR() {
 			window.document.createElement
 	);
 }
+
+export function isMobile() {
+	return !isSSR() && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
