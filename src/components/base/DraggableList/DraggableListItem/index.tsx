@@ -22,15 +22,17 @@ const DraggableListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildr
 
 	const handleDrop = (e: any) => {
 		const idxContainerId = e.dataTransfer.getData("idxContainerId");
-		const idxDraggedItemOrder = e.dataTransfer.getData("idxDraggedItemOrder");
+		const idxDraggedItemOrder = parseInt(e.dataTransfer.getData("idxDraggedItemOrder"));
 		if (
 			!idxContainerId ||
 			idxContainerId !== containerId ||
-			!idxDraggedItemOrder
+			idxDraggedItemOrder == null ||
+			Number.isNaN(idxDraggedItemOrder) ||
+			idxDraggedItemOrder === order
 		) {
 			return;
 		}
-		onPositionChanged && onPositionChanged(containerId, parseInt(idxDraggedItemOrder), order);
+		onPositionChanged && onPositionChanged(containerId, idxDraggedItemOrder, order);
 	};
 
 	return (
