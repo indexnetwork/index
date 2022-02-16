@@ -35,11 +35,13 @@ import DraggableList from "components/base/DraggableList";
 import LazyLoad from "components/base/LazyLoad";
 import { generateRandomColor } from "utils/helper";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
+import Search from "components/base/Search";
 import cm from "./index.module.scss";
 
 const Home: NextPageWithLayout = () => {
 	const [modalOpen, setModalOpen] = useState(false);
 	const [modal2Open, setModal2Open] = useState(false);
+	const [searchOpen, setSearchOpen] = useState(false);
 	const [randomColors] = useState(() => {
 		const colors = [];
 		for (let i = 0; i < 10; i++) {
@@ -600,6 +602,87 @@ const Home: NextPageWithLayout = () => {
 					</Select>
 				</Col>
 			</FlexRow>
+			<Row
+				rowSpacing={3}
+				colSpacing={3}
+			>
+				<Col>
+					<Button
+						onClick={() => {
+							setSearchOpen((oldval) => !oldval);
+						}}
+					>Toggle Search Menu</Button>
+				</Col>
+				<Col>
+					<Header>Search Input</Header>
+					<Search
+						open={searchOpen}
+						loading={!searchOpen}
+						onMenuStateChanged={(val) => {
+							setSearchOpen(val);
+						}}>
+						<Row>
+							<Col xs={12}>List 1</Col>
+							<Col xs={12}>List 2</Col>
+							<Col xs={12}>List 3</Col>
+							<Col xs={12}>List 4</Col>
+							<Col xs={12}>List 5</Col>
+							<Col xs={12}>List 6</Col>
+							<Col xs={12}>List 7</Col>
+							<Col xs={12}>List 8</Col>
+							<Col xs={12}>List 9</Col>
+							<Col xs={12}>List 10</Col>
+							<Col xs={12}>List 11</Col>
+							<Col xs={12}>List 12</Col>
+							<Col xs={12}>List 13</Col>
+						</Row>
+					</Search>
+				</Col>
+				<Col>
+					<Header>Loading Search Input</Header>
+					<Search
+						loading
+						open={false}>
+						<Row>
+							<Col xs={12}>List 1</Col>
+							<Col xs={12}>List 2</Col>
+							<Col xs={12}>List 3</Col>
+							<Col xs={12}>List 4</Col>
+							<Col xs={12}>List 5</Col>
+							<Col xs={12}>List 6</Col>
+							<Col xs={12}>List 7</Col>
+							<Col xs={12}>List 8</Col>
+							<Col xs={12}>List 9</Col>
+							<Col xs={12}>List 10</Col>
+							<Col xs={12}>List 11</Col>
+							<Col xs={12}>List 12</Col>
+							<Col xs={12}>List 13</Col>
+						</Row>
+					</Search>
+				</Col>
+				<Col>
+					<Header>Disabled Search Input</Header>
+					<Search
+						disabled
+						open={false}>
+						<Row>
+							<Col xs={12}>List 1</Col>
+							<Col xs={12}>List 2</Col>
+							<Col xs={12}>List 3</Col>
+							<Col xs={12}>List 4</Col>
+							<Col xs={12}>List 5</Col>
+							<Col xs={12}>List 6</Col>
+							<Col xs={12}>List 7</Col>
+							<Col xs={12}>List 8</Col>
+							<Col xs={12}>List 9</Col>
+							<Col xs={12}>List 10</Col>
+							<Col xs={12}>List 11</Col>
+							<Col xs={12}>List 12</Col>
+							<Col xs={12}>List 13</Col>
+						</Row>
+					</Search>
+				</Col>
+			</Row>
 			<Row>
 				<Col>
 					<Header level={1}>

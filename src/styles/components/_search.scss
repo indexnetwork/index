@@ -1,0 +1,31 @@
+.idx-search {
+	@include responsive-sizes($input-height, "height");
+	position: relative;
+
+	.idx-search-menu {
+		position: absolute;
+		z-index: map-get($z-index, "dropdown");
+		background-color: $white;
+		box-shadow: $box-shadow-base;
+		left: 0;
+		right: 0;
+		border-radius: $border-radius-base;
+		padding: 0;
+		max-height: 0;
+		overflow: auto;
+		transition: max-height 0.2s ease-in-out;
+
+		&-list {
+			padding: map-deep-get($spacing, "xs", "5");
+		}
+	}
+
+	&.idx-search-open {
+		.idx-search-menu {
+			max-height: 24rem;
+		}
+	}
+
+	&.idx-search-disabled {
+	}
+}
