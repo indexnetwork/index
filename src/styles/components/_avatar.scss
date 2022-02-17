@@ -7,7 +7,12 @@
 	vertical-align: middle;
 	color: $white;
 	overflow: hidden;
-
+	position: relative;
+  top: 50%;
+  transform: translateY(-50%);
+  -webkit-transform: translateY(-50%);
+  -ms-transform: translateY(-50%);
+	
 	&.idx-avatar-circle {
 		border-radius: 100%;
 	}
@@ -19,7 +24,7 @@
 	&.idx-avatar-hoverable {
 		&:hover {
 			box-shadow: $avatar-box-shadow;
-			transform: scale(1.1);
+			transform: inherit scale(1.1);
 			transition: all .2s ease-in;
 			cursor: pointer;
 		}

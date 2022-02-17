@@ -47,6 +47,7 @@ const Avatar: React.FC<AvatarProps> = ({
 				...style,
 				width: size,
 				height: size,
+				lineHeight: `${size}px`,
 				fontSize: contentRatio > 1 ? size : contentRatio * size,
 				backgroundColor: randomColor ? color : "#2a2a2a",
 			}}
