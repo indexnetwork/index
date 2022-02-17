@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from "react";
 import cc from "classcat";
 import { generateRandomColor, isSSR } from "utils/helper";
+import { ShapeType } from "types";
 
 export interface AvatarProps extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
 	size?: number;
-	shape?: "circle" | "square";
+	shape?: ShapeType;
 	hoverable?: boolean;
 	contentRatio?: number;
 	randomColor?: boolean;

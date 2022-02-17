@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { isSSR } from "utils/helper";
 import cc from "classcat";
 import { createGlobalStyle } from "styled-components";
+import { InputSizeType } from "types";
 import BottomMenuDiv from "../BottomMenuDiv";
 
 export interface ModalProps {
@@ -14,7 +15,7 @@ export interface ModalProps {
 	visible?: boolean;
 	destroyOnClose?: boolean;
 	mobileMaxVh?: number;
-	size?: "fit" | "sm" | "md" | "lg";
+	size?: "fit" | InputSizeType;
 	mobileBackdropClose?: boolean;
 	onClose?(): void;
 }

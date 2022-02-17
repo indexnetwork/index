@@ -49,6 +49,19 @@
 	}
 }
 
+@mixin theme-color($color, $bg, $outlined: false) {
+	@if $outlined {
+		background-color: $bg;
+		color: $color;
+		border: 1px solid $color;
+		box-sizing: content-box;
+	} @else {
+		background-color: $bg;
+		color: $color;
+		border: 1px solid $bg;
+	}
+}
+
 /*
 	Creates all responsive size for component. Example map is below
 	$input-height: (

@@ -1,10 +1,10 @@
 import React from "react";
 import cc from "classcat";
-import { TextThemeType } from "types";
+import { InputSizeType, TextThemeType } from "types";
 
 export interface SpinProps {
 	active: boolean;
-	size?: "sm" | "md" | "lg";
+	size?: InputSizeType;
 	wrapsChildren?: boolean;
 	theme?: TextThemeType;
 	thickness?: "light" | "medium" | "strong";

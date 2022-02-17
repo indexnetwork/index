@@ -1,0 +1,94 @@
+.idx-tag {
+	@extend .idx-text-xs;
+	@include no-select;
+
+	position: relative;
+	width: fit-content;
+	padding: (map-deep-get($spacing, "xs", "2") - 0.1rem) map-deep-get($spacing, "xs", "3");
+	border-radius: $border-radius-base;
+	vertical-align: middle;
+	font-weight: 600;
+
+	&.idx-tag-circle {
+		border-radius: 1.8rem;
+	}
+
+	&.idx-tag-tag {
+		background-color: map-get($button-bg, "tag");
+		color: $main-color;
+		border: 1px solid map-get($button-bg, "tag");
+		.idx-tag-remove {
+			background: linear-gradient(
+				90deg,
+				rgba(0, 0, 0, 0) 0%,
+				map-get($button-bg, "tag") 50%,
+				map-get($button-bg, "tag") 100%
+			);
+		}
+	}
+
+	&.idx-tag-editable {
+		cursor: text;
+	}
+
+	.idx-input.idx-input-ghost {
+		height: 1.2rem;
+	}
+
+	.idx-tag-remove {
+		position: absolute;
+		pointer-events: none;
+		height: 100%;
+		line-height: 100%;
+		right: 0;
+		top: 0;
+		opacity: 0;
+		border-radius: 1.8rem;
+		width: 2.8rem;
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		transition: opacity 0.2s ease-in-out;
+
+		.idx-tag-remove-icon {
+			width: 1rem;
+			height: 1rem;
+			margin-right: 0.6rem;
+		}
+	}
+
+	&.idx-tag-removable {
+		.idx-tag-remove {
+			pointer-events: all;
+			&:hover {
+				opacity: 1;
+				pointer-events: all;
+				cursor: pointer;
+			}
+		}
+	}
+
+	@each $key, $value in $button-bg {
+		&.idx-tag-#{$key} {
+			@if str-index($key, "outlined") != null {
+				@include theme-color(map-get($button-color, $key), $white, $outlined: true);
+				.idx-tag-remove {
+					.idx-tag-remove-icon {
+						stroke: map-get($button-color, $key);
+					}
+				}
+			} @else {
+				@if $key != "tag" {
+					@include theme-color($white, $value, $outlined: false);
+
+					.idx-tag-remove {
+						background: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, $value 50%, $value 100%);
+						.idx-tag-remove-icon {
+							stroke: $white;
+						}
+					}
+				}
+			}
+		}
+	}
+}

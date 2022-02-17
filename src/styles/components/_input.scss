@@ -50,4 +50,14 @@
 			margin-right: map-deep-get($spacing, "xs", "6");
 		}
 	}
+
+	&.idx-input-ghost {
+		border: none;
+		height: auto;
+		padding-left: 0;
+		padding-right: 0;
+		input {
+			background-color: transparent;
+		}
+	}
 }

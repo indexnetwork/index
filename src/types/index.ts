@@ -49,7 +49,7 @@ export type TextElementType = "span" | "strong" | "div" | "p" | "label";
 /**
  * Button Types
  */
-export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "secondary-outlined" | "success-outlined" | "error-outlined" | "warning-outlined" | "ghost" | "link" | "clear" | "blue" | "blue-outlined";
+export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "secondary-outlined" | "success-outlined" | "error-outlined" | "warning-outlined" | "ghost" | "link" | "clear" | "blue" | "blue-outlined" | "tag";
 
 /**
  * Input Types
@@ -60,6 +60,11 @@ export type InputSizeType = Exclude<SizeType, "xs">;
  * Size Types
  */
 export type TextSizeType = SizeType;
+
+/**
+ * Shape Types
+ */
+export type ShapeType = "square" | "circle";
 
 /**
  * Select Types

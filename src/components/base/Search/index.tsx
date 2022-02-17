@@ -5,14 +5,15 @@ import cc from "classcat";
 import useBackdropClick from "hooks/useBackdropClick";
 import { useTranslation } from "next-i18next";
 import debounce from "lodash.debounce";
+import { InputSizeType } from "types";
 import IconClose from "../Icon/IconClose";
 import IconSearch from "../Icon/IconSearch";
 import Input from "../Input";
 import Spin from "../Spin";
 
-export interface SearchProps<T> {
+export interface SearchProps {
 	value?: string | string[];
-	size?: "sm" | "md" | "lg",
+	size?: InputSizeType,
 	fullWidth?: boolean;
 	disabled?: boolean;
 	placeholder?: string;
@@ -33,7 +34,7 @@ export interface SearchProps<T> {
 	onMenuStateChanged?(open: boolean): void;
 }
 
-const Search: React.FC<SearchProps<any>> = ({
+const Search: React.FC<SearchProps> = ({
 	children,
 	size = "md",
 	fullWidth = true,

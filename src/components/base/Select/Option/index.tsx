@@ -1,12 +1,13 @@
 import React, { useContext } from "react";
 import cc from "classcat";
+import { InputSizeType } from "types";
 import SelectContext from "../select-context";
 
 export interface OptionProps {
 	value: string;
 	children: React.ReactNode;
 	divider?: boolean;
-	size?: "sm" | "md" | "lg",
+	size?: InputSizeType,
 }
 
 const Option: React.FC<OptionProps> = ({

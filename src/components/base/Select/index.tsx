@@ -2,7 +2,7 @@ import React, {
 	ReactElement, useCallback, useEffect, useRef, useState,
 } from "react";
 import cc from "classcat";
-import { SelectValueType } from "types";
+import { InputSizeType, SelectValueType } from "types";
 import useBackdropClick from "hooks/useBackdropClick";
 import { useTranslation } from "next-i18next";
 import SelectContext from "./select-context";
@@ -18,7 +18,7 @@ export interface SelectProps {
 	defaultValue?: SelectValueType;
 	mode?: "single" | "multiple";
 	bordered?: boolean;
-	size?: "sm" | "md" | "lg",
+	size?: InputSizeType,
 	fullWidth?: boolean;
 	disabled?: boolean;
 	placeholder?: React.ReactNode;

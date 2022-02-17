@@ -9,6 +9,7 @@ export interface InputProps extends React.DetailedHTMLProps<React.InputHTMLAttri
 	error?: string;
 	inputSize?: InputSizeType;
 	block?: boolean;
+	ghost?: boolean;
 	addOnBefore?: React.ReactNode;
 	addOnAfter?: React.ReactNode;
 	type?: PropType<React.InputHTMLAttributes<HTMLInputElement>, "type">;
@@ -23,6 +24,7 @@ const Input: React.FC<InputProps> = ({
 	type,
 	block = true,
 	inputSize = "md",
+	ghost = false,
 	...inputProps
 }) => {
 	const [showPw, setShowPw] = useState(false);
@@ -37,6 +39,7 @@ const Input: React.FC<InputProps> = ({
 			[
 				"idx-input",
 				`idx-input-${inputSize}`,
+				ghost ? "idx-input-ghost" : "",
 				block ? "idx-input-block" : "",
 				disabled ? "idx-input-disabled" : "",
 				readOnly ? "idx-input-readonly" : "",

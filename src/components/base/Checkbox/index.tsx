@@ -1,6 +1,7 @@
 import Flex from "layout/base/Grid/Flex";
 import React, { useEffect, useState } from "react";
 import cc from "classcat";
+import { InputSizeType } from "types";
 import Text from "../Text";
 import IconTick from "../Icon/IconTick";
 
@@ -8,7 +9,7 @@ export interface CheckboxProps {
 	title: string;
 	checked?: boolean;
 	disabled?: boolean;
-	size?: "sm" | "md" | "lg";
+	size?: InputSizeType;
 	onChange?(checked: boolean): void;
 }
 

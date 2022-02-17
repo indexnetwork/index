@@ -36,6 +36,7 @@ import LazyLoad from "components/base/LazyLoad";
 import { generateRandomColor } from "utils/helper";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import Search from "components/base/Search";
+import Tag from "components/base/Tag";
 import cm from "./index.module.scss";
 
 const Home: NextPageWithLayout = () => {
@@ -752,6 +753,53 @@ const Home: NextPageWithLayout = () => {
 					<Checkbox size="lg" title="Checkbox With Lg Container" />
 				</Col>
 			</Row>
+			<FlexRow
+				rowSpacing={3}
+				colSpacing={2}
+			>
+				<Col xs={12}>
+					<Header level={1}>Tag</Header>
+				</Col>
+				<Col>
+					<Tag text={"Tag"} />
+				</Col>
+				<Col>
+					<Tag text={"Removable Tag"} removable />
+				</Col>
+				<Col>
+					<Tag text={"Primary Tag"} theme="primary" removable />
+				</Col>
+				<Col>
+					<Tag text={"secondary Tag"} theme="secondary" removable />
+				</Col>
+				<Col>
+					<Tag text={"success Tag"} theme="success" removable />
+				</Col>
+				<Col>
+					<Tag text={"warning Tag"} theme="warning" removable />
+				</Col>
+				<Col>
+					<Tag text={"warning Tag"} theme="error" removable />
+				</Col>
+				<Col>
+					<Tag text={"warning Tag"} theme="disabled" removable />
+				</Col>
+				<Col>
+					<Tag text={"warning Tag"} theme="link" removable />
+				</Col>
+				<Col>
+					<Tag text={"warning Tag"} theme="primary-outlined" removable />
+				</Col>
+				<Col>
+					<Tag text={"warning Tag"} theme="error-outlined" removable />
+				</Col>
+				<Col>
+					<Tag editable removable text={"Editable Tag"} />
+				</Col>
+				<Col>
+					<Tag editable theme="primary" removable text={"Editable Tag"} />
+				</Col>
+			</FlexRow>
 			<Row>
 				<Col xs={12}>
 					<Header level={1}>Draggable List</Header>
