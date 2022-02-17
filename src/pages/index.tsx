@@ -37,6 +37,7 @@ import { generateRandomColor } from "utils/helper";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import Search from "components/base/Search";
 import Tag from "components/base/Tag";
+import Switch from "components/base/Switch";
 import cm from "./index.module.scss";
 
 const Home: NextPageWithLayout = () => {
@@ -798,6 +799,35 @@ const Home: NextPageWithLayout = () => {
 				</Col>
 				<Col>
 					<Tag editable theme="primary" removable text={"Editable Tag"} />
+				</Col>
+			</FlexRow>
+			<FlexRow
+				rowSpacing={3}
+				colSpacing={2}
+			>
+				<Col xs={12}>
+					<Header level={1}>Switch</Header>
+				</Col>
+				<Col>
+					<Switch />
+				</Col>
+				<Col>
+					<Switch disabled checked={false}/>
+				</Col>
+				<Col>
+					<Switch theme="success" checked />
+				</Col>
+				<Col>
+					<Switch theme="error" checked />
+				</Col>
+				<Col>
+					<Switch theme="warning" checked />
+				</Col>
+				<Col>
+					<Switch theme="secondary" checked />
+				</Col>
+				<Col>
+					<Switch theme="blue" checked />
 				</Col>
 			</FlexRow>
 			<Row>
