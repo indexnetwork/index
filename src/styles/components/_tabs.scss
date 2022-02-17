@@ -11,7 +11,8 @@
 		.idx-tabs-list-item {
 			position: relative;
 			cursor: pointer;
-			padding: map-deep-get($spacing, "xs", "3") map-deep-get($spacing, "xs", "6");
+			padding: map-deep-get($spacing, "xs", "3") 0;
+			margin-right: map-deep-get($spacing, "xs", "7");
 			&.idx-tabs-list-item-active {
 				.idx-tabs-list-item-bottom {
 					visibility: visible;

@@ -60,7 +60,7 @@ const Home: NextPageWithLayout = () => {
 			>
 				<Col xs={12}>
 					<Header level={1}>Headers</Header>
-					<Row rowSpacing={6}>
+					<Row>
 						<Col>
 							<Header level={6}>Headers Level 6</Header>
 						</Col>
