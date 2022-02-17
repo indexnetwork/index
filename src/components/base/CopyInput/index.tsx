@@ -36,6 +36,7 @@ const CopyInput: React.FC<CopyInputProps> = ({ value }) => {
 		<Flex
 			className={cc(["idx-copy-input__button", copied ? "copied" : ""])}
 			onClick={handleCopy}
+			justifyContent="flex-end"
 		>
 			<IconCopy strokeWidth={"1.8"} className="idx-copy-input__icon" />
 			<Text className="idx-copy-input__text" size="sm" fontWeight={600}>Copied</Text>

@@ -37,22 +37,25 @@
 		.idx-copy-input__icon {
 			@extend .idx-ml-2;
 			@extend .idx-mr-2;
+			flex-shrink: 0;
 		}
 
 		.idx-copy-input__text {
 			@extend .idx-mr-4;
 			overflow: hidden;
-			display: none;
+			margin: 0;
+			flex-basis: 0;
+			max-width: 0;
 		}
 
 		&.copied {
 			background: $copy-input-icon-bg;
 
 			.idx-copy-input__text {
-				@extend .idx-ml-2;
-				display: flex;
-				-webkit-animation: slideIn 2s forwards;
-				animation: slideIn 2s forwards;
+				@extend .idx-mx-2;
+				overflow: hidden;
+				-webkit-animation: flexSlideIn 0.2s forwards;
+				animation: flexSlideIn 0.2s forwards;
 			}
 		}
 	}
