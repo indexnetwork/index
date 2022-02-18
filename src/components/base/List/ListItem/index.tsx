@@ -13,7 +13,6 @@ const ListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildren<ListIt
 }, ref) => (
 	<li
 		ref={ref}
-		draggable
 		className={cc(
 			[
 				"idx-list-item",

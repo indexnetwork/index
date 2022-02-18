@@ -10,5 +10,8 @@
 	},
 	"select": {
 		"collapseMessage": "{{count}} seçildi"
+	},
+	"header": {
+		"newIndexBtn": "Yeni Index"
 	}
 }

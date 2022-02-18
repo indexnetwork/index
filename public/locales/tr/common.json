@@ -2,5 +2,8 @@
 	"email": "Eposta",
 	"password": "Şifre",
 	"signIn": "Giriş",
-	"signUp": "Kaydol"
+	"signUp": "Kaydol",
+	"profile": "Profil",
+	"settings": "Ayarlar",
+	"logout": "Çıkış"
 }

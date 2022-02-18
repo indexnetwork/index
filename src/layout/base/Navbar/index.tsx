@@ -30,6 +30,7 @@ const Navbar: React.FC<NavbarProps> = ({
 	bgColor,
 	bordered = true,
 	style,
+	className,
 	...menuProps
 }) => {
 	const yOffSet = useYOffSet(sticky);
@@ -50,6 +51,7 @@ const Navbar: React.FC<NavbarProps> = ({
 	return (
 		<div
 			className={cc([
+				className,
 				"idx-navbar-container",
 				sticky ? "idx-navbar-sticky" : "",
 				bordered ? "idx-navbar-bordered" : "",
@@ -70,7 +72,7 @@ const Navbar: React.FC<NavbarProps> = ({
 					wrap={false}
 				>
 					<Col>
-						{logoSize === "mini" ? <LogoMini /> : <LogoFull />}
+						{logoSize === "mini" ? <LogoMini className="idx-navbar-logo" /> : <LogoFull className="idx-navbar-logo" />}
 					</Col>
 					<Col>
 						{children}

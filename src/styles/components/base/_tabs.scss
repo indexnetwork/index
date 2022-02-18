@@ -14,6 +14,7 @@
 			padding: map-deep-get($spacing, "xs", "3") 0;
 			margin-right: map-deep-get($spacing, "xs", "7");
 			&.idx-tabs-list-item-active {
+				font-weight: 700;
 				.idx-tabs-list-item-bottom {
 					visibility: visible;
 					position: absolute;

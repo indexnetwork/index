@@ -1,7 +1,6 @@
 .idx-navbar-container {
 	@include responsive-sizes-flat($navbar-height, "height");
 	width: 100%;
-	overflow: hidden;
 	transition: $transition-bg;
 
 	&.idx-navbar-bordered {
@@ -25,6 +24,16 @@
 
 		& .idx-navbar-menu-right {
 			margin-left: auto;
+		}
+
+		.idx-navbar-logo {
+			height: 2.6rem;
+		}
+
+		@media (min-width: map-get($breakpoints, "sm")) {
+			.idx-navbar-logo {
+				height: 3.2rem;
+			}
 		}
 	}
 }

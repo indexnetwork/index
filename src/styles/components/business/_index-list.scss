@@ -6,7 +6,7 @@
 		}
 	}
 
-	@media (min-width: map-get($breakpoints, "md")) {
+	@media (min-width: map-get($breakpoints, "lg")) {
 		.index-list-item-menu-btn {
 			opacity: 0;
 		}

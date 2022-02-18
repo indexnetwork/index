@@ -10,5 +10,8 @@
 	},
 	"select": {
 		"collapseMessage": "{{count}} selected"
+	},
+	"header": {
+		"newIndexBtn": "New Index"
 	}
 }
