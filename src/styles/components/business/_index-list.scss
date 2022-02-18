@@ -1,0 +1,20 @@
+.index-list-item {
+	.index-list-item-menu {
+		.index-list-item-menu-btn {
+			vertical-align: middle;
+			cursor: pointer;
+		}
+	}
+
+	@media (min-width: map-get($breakpoints, "md")) {
+		.index-list-item-menu-btn {
+			opacity: 0;
+		}
+
+		&:hover {
+			.index-list-item-menu-btn {
+				opacity: 1;
+			}
+		}
+	}
+}

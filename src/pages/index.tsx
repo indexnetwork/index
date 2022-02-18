@@ -38,7 +38,6 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import Search from "components/base/Search";
 import Tag from "components/base/Tag";
 import Switch from "components/base/Switch";
-import cm from "./index.module.scss";
 
 const Home: NextPageWithLayout = () => {
 	const [modalOpen, setModalOpen] = useState(false);
@@ -837,7 +836,6 @@ const Home: NextPageWithLayout = () => {
 				<Col xs={12}>
 					<DraggableList
 						data={[1, 2, 3, 4, 5, 6, 7, 8, 9] as number[]}
-						itemContainerClass={cm.iconContainer}
 						render={(item) => <LazyLoad height={100}>
 							<FlexRow
 								fullHeight

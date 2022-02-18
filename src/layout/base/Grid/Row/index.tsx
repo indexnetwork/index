@@ -26,8 +26,8 @@ const Row: React.FC<RowProps> = ({
 			"idx-row",
 			fullHeight ? "idx-h-100" : "",
 			fullWidth ? "idx-w-100" : "",
-			rowSpacing ? `idx-row-spacing-v${rowSpacing}` : "",
-			colSpacing ? `idx-row-spacing-h${colSpacing}` : "",
+			rowSpacing ? `idx-row-spacing-v${rowSpacing}` : "idx-row-spacing-v0",
+			colSpacing ? `idx-row-spacing-h${colSpacing}` : "idx-row-spacing-h0",
 			noGutters ? "row-no-gutters" : "",
 			className || "",
 		])}

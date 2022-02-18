@@ -1,17 +1,12 @@
 .idx-avatar {
 	@include no-select;
-	display: flex;
+	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	text-align: center;
 	vertical-align: middle;
 	color: $white;
 	overflow: hidden;
-	position: relative;
-  top: 50%;
-  transform: translateY(-50%);
-  -webkit-transform: translateY(-50%);
-  -ms-transform: translateY(-50%);
 	
 	&.idx-avatar-circle {
 		border-radius: 100%;

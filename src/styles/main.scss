@@ -16,22 +16,24 @@
 				"./layout/navbar",
 				"./layout/footer";
 
-@import "./components/text",
-				"./components/avatar",
-				"./components/button",
-				"./components/button-group",
-				"./components/input",
-				"./components/tooltip",
-				"./components/dropdown",
-				"./components/modal",
-				"./components/tabs",
-				"./components/spin",
-				"./components/select",
-				"./components/checkbox",
-				"./components/draggable",
-				"./components/search",
-				"./components/switch",
-				"./components/tag",
-				"./components/copy-input";
+@import "./components/base/text",
+				"./components/base/avatar",
+				"./components/base/button",
+				"./components/base/button-group",
+				"./components/base/input",
+				"./components/base/tooltip",
+				"./components/base/dropdown",
+				"./components/base/modal",
+				"./components/base/tabs",
+				"./components/base/spin",
+				"./components/base/select",
+				"./components/base/checkbox",
+				"./components/base/draggable",
+				"./components/base/search",
+				"./components/base/switch",
+				"./components/base/tag",
+				"./components/base/copy-input";
+
+@import "./components/business/index-list";
 
 @import "./themes/theme";

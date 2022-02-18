@@ -7,6 +7,7 @@ export interface TextProps extends
 	theme?: TextThemeType;
 	size?: TextSizeType;
 	fontWeight?: number;
+	verticalAlign?: string;
 	lineHeight?: number | string;
 	element?: TextElementType;
 	hidden?: boolean;
@@ -18,6 +19,7 @@ const Text: React.FC<TextProps> = ({
 	style,
 	fontWeight,
 	lineHeight,
+	verticalAlign,
 	element = "span",
 	theme = "primary",
 	size = "md",
@@ -36,6 +38,7 @@ const Text: React.FC<TextProps> = ({
 	style: fontWeight || lineHeight || style ? {
 		fontWeight,
 		lineHeight,
+		verticalAlign,
 		...style,
 	} : undefined,
 	...moreProps,
