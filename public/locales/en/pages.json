@@ -1,0 +1,7 @@
+{
+	"home": {
+		"tab1Ttl": "Your indexes ({{count}})",
+		"tab2Ttl": "Shared with you ({{count}})",
+		"searchPh": "Search in your indexes"
+	}
+}

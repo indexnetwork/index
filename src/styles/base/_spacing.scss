@@ -1,59 +1,121 @@
-.idx-mt {
-	@include responsive-sizes($spacing, "margin-top");
-}
-
-.idx-mb {
-	@include responsive-sizes($spacing, "margin-bottom");
-}
-
-.idx-ml {
-	@include responsive-sizes($spacing, "margin-left");
-}
-
-.idx-mr {
-	@include responsive-sizes($spacing, "margin-right");
-}
-
-.idx-mx {
-	@include responsive-sizes($spacing, "margin-left");
-	@include responsive-sizes($spacing, "margin-right");
-}
-
-.idx-my {
-	@include responsive-sizes($spacing, "margin-top");
-	@include responsive-sizes($spacing, "margin-bottom");
-}
-
-.idx-pt {
-	@include responsive-sizes($spacing, "padding-top");
-}
-
-.idx-pb {
-	@include responsive-sizes($spacing, "padding-bottom");
-}
-
-.idx-pl {
-	@include responsive-sizes($spacing, "padding-left");
-}
-
-.idx-pr {
-	@include responsive-sizes($spacing, "padding-right");
-}
-
-.idx-px {
-	@include responsive-sizes($spacing, "padding-left");
-	@include responsive-sizes($spacing, "padding-right");
-}
-
-.idx-py {
-	@include responsive-sizes($spacing, "padding-top");
-	@include responsive-sizes($spacing, "padding-bottom");
-}
-
 .idx-h-100 {
 	height: 100%;
 }
 
 .idx-w-100 {
 	width: 100%;
+}
+
+@each $breakpoint, $value in $breakpoints {
+	$bp: "";
+	@if $breakpoint != "xs" {
+		$bp: "-" + $breakpoint;
+	}
+	@if ($breakpoint == "xs") {
+		.idx-mt {
+			@include responsive-sizes($spacing, "margin-top");
+		}
+
+		.idx-mb {
+			@include responsive-sizes($spacing, "margin-bottom");
+		}
+
+		.idx-ml {
+			@include responsive-sizes($spacing, "margin-left");
+		}
+
+		.idx-mr {
+			@include responsive-sizes($spacing, "margin-right");
+		}
+
+		.idx-mx {
+			@include responsive-sizes($spacing, "margin-left");
+			@include responsive-sizes($spacing, "margin-right");
+		}
+
+		.idx-my {
+			@include responsive-sizes($spacing, "margin-top");
+			@include responsive-sizes($spacing, "margin-bottom");
+		}
+
+		.idx-pt {
+			@include responsive-sizes($spacing, "padding-top");
+		}
+
+		.idx-pb {
+			@include responsive-sizes($spacing, "padding-bottom");
+		}
+
+		.idx-pl {
+			@include responsive-sizes($spacing, "padding-left");
+		}
+
+		.idx-pr {
+			@include responsive-sizes($spacing, "padding-right");
+		}
+
+		.idx-px {
+			@include responsive-sizes($spacing, "padding-left");
+			@include responsive-sizes($spacing, "padding-right");
+		}
+
+		.idx-py {
+			@include responsive-sizes($spacing, "padding-top");
+			@include responsive-sizes($spacing, "padding-bottom");
+		}
+	} @else {
+		@media (min-width: map-get($breakpoints, $breakpoint)) {
+			.idx-mt#{$bp} {
+				@include responsive-sizes($spacing, "margin-top");
+			}
+
+			.idx-mb#{$bp} {
+				@include responsive-sizes($spacing, "margin-bottom");
+			}
+
+			.idx-ml#{$bp} {
+				@include responsive-sizes($spacing, "margin-left");
+			}
+
+			.idx-mr#{$bp} {
+				@include responsive-sizes($spacing, "margin-right");
+			}
+
+			.idx-mx#{$bp} {
+				@include responsive-sizes($spacing, "margin-left");
+				@include responsive-sizes($spacing, "margin-right");
+			}
+
+			.idx-my#{$bp} {
+				@include responsive-sizes($spacing, "margin-top");
+				@include responsive-sizes($spacing, "margin-bottom");
+			}
+
+			.idx-pt#{$bp} {
+				@include responsive-sizes($spacing, "padding-top");
+			}
+
+			.idx-pb#{$bp} {
+				@include responsive-sizes($spacing, "padding-bottom");
+			}
+
+			.idx-pl#{$bp} {
+				@include responsive-sizes($spacing, "padding-left");
+			}
+
+			.idx-pr#{$bp} {
+				@include responsive-sizes($spacing, "padding-right");
+			}
+
+			.idx-px#{$bp} {
+				@include responsive-sizes($spacing, "padding-left");
+				@include responsive-sizes($spacing, "padding-right");
+			}
+
+			.idx-py#{$bp} {
+				@include responsive-sizes($spacing, "padding-top");
+				@include responsive-sizes($spacing, "padding-bottom");
+			}
+		}
+	}
 }

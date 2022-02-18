@@ -1,0 +1,19 @@
+.idx-list {
+	@include no-select;
+	display: grid;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+
+	.idx-list-item {
+		cursor: default;
+		transition: opacity 0.25s;
+		opacity: 1;
+
+		.idx-list-divider {
+			height: 1px;
+			width: 100%;
+			background-color: $border-color;
+		}
+	}
+}

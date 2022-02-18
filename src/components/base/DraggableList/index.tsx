@@ -83,7 +83,7 @@ const DraggableList: React.VFC<DraggableListProps> = ({
 			{
 				listData.map((item, index) => (
 					<DraggableListItem
-						key={`draggableItem${index}`}
+						key={`draggableItem${index}-${containerId}`}
 						className={cc([
 							itemContainerClass || "",
 						])}

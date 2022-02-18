@@ -19,31 +19,31 @@ export const IndexListItemMenu = () => (
 			<>
 				<DropdownMenuItem>
 					<Flex alignItems="center">
-						<IconPeople width={12} height="auto" />
+						<IconPeople width={12} height="100%" />
 						<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Share</Text>
 					</Flex>
 				</DropdownMenuItem>
 				<DropdownMenuItem>
 					<Flex alignItems="center">
-						<IconIntegration width={12} height="auto" />
+						<IconIntegration width={12} height="100%" />
 						<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Integrations</Text>
 					</Flex>
 				</DropdownMenuItem>
 				<DropdownMenuItem>
 					<Flex alignItems="center">
-						<IconEmbed width={12} height="auto" />
+						<IconEmbed width={12} height="100%" />
 						<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Embed</Text>
 					</Flex>
 				</DropdownMenuItem>
 				<DropdownMenuItem>
 					<Flex alignItems="center">
-						<IconCopy width={12} height="auto" />
+						<IconCopy width={12} height="100%" />
 						<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Clone</Text>
 					</Flex>
 				</DropdownMenuItem>
 				<DropdownMenuItem>
 					<Flex alignItems="center">
-						<IconLink1 width={12} height="auto" />
+						<IconLink1 width={12} height="100%" />
 						<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Copy Link</Text>
 					</Flex>
 				</DropdownMenuItem>
@@ -51,7 +51,7 @@ export const IndexListItemMenu = () => (
 				<DropdownMenuItem
 				>
 					<Flex alignItems="center">
-						<IconTrash width={12} height="auto" className="idx-icon-error" />
+						<IconTrash width={12} height="100%" className="idx-icon-error" />
 						<Text className="idx-ml-3" element="span" size="sm" theme="error"> Delete</Text>
 					</Flex>
 				</DropdownMenuItem>

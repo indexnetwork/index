@@ -3,15 +3,18 @@ import Head from "next/head";
 import React from "react";
 import SiteFooter from "../SiteFooter";
 
-const LandingLayout: React.FC = ({ children }) => (
+export interface PageLayoutProps {
+	hasFooter?: boolean;
+}
+const PageLayout: React.FC<PageLayoutProps> = ({ children, hasFooter = false }) => (
 	<>
 		<Head>
 			<script async src="scripts/drag-drop-touch.js"></script>
 		</Head>
-		<SiteNavbar headerType="public" />
+		<SiteNavbar headerType="user" />
 		{children}
-		<SiteFooter />
+		{hasFooter && <SiteFooter />}
 	</>
 );
 
-export default LandingLayout;
+export default PageLayout;
