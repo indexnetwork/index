@@ -31,6 +31,11 @@
 		cursor: text;
 	}
 
+	&.idx-tag-clickable {
+		cursor: pointer;
+		pointer-events: auto;
+	}
+
 	.idx-input.idx-input-ghost {
 		height: 1.2rem;
 	}
@@ -90,5 +95,12 @@
 				}
 			}
 		}
+	}
+
+
+	&.idx-tag-clear {
+		background-color: $white;
+		color: $gray-4;
+		border-color: $border-color;
 	}
 }

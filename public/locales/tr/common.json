@@ -5,5 +5,11 @@
 	"signUp": "Kaydol",
 	"profile": "Profil",
 	"settings": "Ayarlar",
-	"logout": "Çıkış"
+	"logout": "Çıkış",
+	"today": "Bugün",
+	"thisWeek": "Bu Hafta",
+	"thisMonth": "Bu Ay",
+	"thisYear": "Bu Yıl",
+	"apply": "Uygula",
+	"clear": "Temizle"
 }

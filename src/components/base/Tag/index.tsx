@@ -9,10 +9,12 @@ export interface TagProps extends React.DetailedHTMLProps<React.HTMLAttributes<H
 	text: string;
 	removable?: boolean;
 	editable?: boolean;
+	clickable?: boolean;
 	placeholder?: string;
 	theme?: ButtonThemeType;
 	size?: InputSizeType;
 	shape?: ShapeType;
+	onClick?(): void;
 	onRemove?(): void;
 }
 
@@ -20,11 +22,13 @@ const Tag: React.FC<TagProps> = ({
 	text,
 	className,
 	placeholder,
+	clickable,
 	removable = false,
 	editable = false,
 	theme = "tag",
 	size = "md",
 	shape = "circle",
+	onClick,
 	onRemove,
 	...divProps
 }) => {
@@ -42,6 +46,7 @@ const Tag: React.FC<TagProps> = ({
 
 	const handleEditActiveToggle = () => {
 		editable && !editActive && setEditActive((oldVal) => !oldVal);
+		clickable && onClick && onClick();
 	};
 
 	useEffect(() => {
@@ -79,6 +84,7 @@ const Tag: React.FC<TagProps> = ({
 					`idx-tag-${theme}`,
 					`idx-tag-${size}`,
 					`idx-tag-${shape}`,
+					clickable ? "idx-tag-clickable" : "",
 					removable ? "idx-tag-removable" : "",
 					editable && !editActive ? "idx-tag-editable" : "",
 					className,

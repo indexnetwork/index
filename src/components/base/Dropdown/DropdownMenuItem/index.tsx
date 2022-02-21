@@ -5,8 +5,11 @@ export interface DropdownMenuItemProps extends React.DetailedHTMLProps<React.HTM
 	divider?: boolean;
 }
 
-const DropdownMenuItem: React.FC<DropdownMenuItemProps> = ({ children, className, divider = false }) => (
+const DropdownMenuItem: React.FC<DropdownMenuItemProps> = ({
+	children, className, divider = false, ...liProps
+}) => (
 	<li
+		{...liProps}
 		className={cc(
 			[
 				divider ? "idx-dropdown-menu-divider" : "idx-dropdown-menu-item",

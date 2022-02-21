@@ -42,7 +42,7 @@ export type FlexPropsType = Pick<React.CSSProperties, CSSFlexPropsNamesType>;
 /**
  * Text Types
  */
-export type TextThemeType = ComponentThemeType;
+export type TextThemeType = ComponentThemeType | "gray5";
 
 export type TextElementType = "span" | "strong" | "div" | "p" | "label";
 
@@ -54,7 +54,7 @@ export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "seconda
 /**
  * Input Types
  */
-export type InputSizeType = Exclude<SizeType, "xs">;
+export type InputSizeType = SizeType;
 
 /**
  * Size Types

@@ -1,0 +1,20 @@
+.idx-radio-group {
+	.idx-radio-group-button {
+		@extend .idx-px-2;
+		&.idx-button:hover {
+			background-color: unset !important;
+		}
+		&.idx-radio-group-button-selected {
+			&.idx-button {
+				background-color: $gray-8;
+				&:hover {
+					background-color: $gray-8 !important;
+				}
+			}
+		}
+	}
+
+	.idx-tag {
+		border: $border-base;
+	}
+}

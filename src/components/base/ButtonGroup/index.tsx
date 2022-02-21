@@ -23,14 +23,8 @@ const ButtonGroup: React.FC<ButtonGroupProps> = ({
 		])
 	}>{
 		children &&
-			React.Children.map(children, (child: React.ReactElement<ButtonProps>) => <div className="idx-button-group-item">{React.cloneElement(child, {
-				...child.props,
-				theme,
-				size,
-				outlined,
-				block: false,
-				className: "idx-button-group-item",
-			})
+			React.Children.map(children, (child: React.ReactElement<any>) => <div className="idx-button-group-item">{
+				child
 			}
 			</div>)
 	}</div>;

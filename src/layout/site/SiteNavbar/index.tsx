@@ -42,7 +42,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType, isLanding = fals
 			<NavbarMenu>
 				<Button theme="primary">{t("components:header.newIndexBtn")}</Button>
 				<Dropdown
-					menuClass="idx-ml-6 idx-ml-lg-7"
+					dropdownClass="idx-ml-6 idx-ml-lg-7"
 					position="bottom-right"
 					menuItems={
 						<>

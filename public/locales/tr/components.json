@@ -13,5 +13,15 @@
 	},
 	"header": {
 		"newIndexBtn": "Yeni Index"
+	},
+	"filterMenu": {
+		"menuTypeTtl": "TİP",
+		"menuPublishTtl": "YAYINLANMA TARİHİ",
+		"menuUploadTtl": "YÜKLEME TARİHİ",
+		"menuTagTtl": "TAG",
+		"optArticle": "Makale",
+		"optVideo": "Video",
+		"optImage": "Resim",
+		"optCustom": "Özel"
 	}
 }

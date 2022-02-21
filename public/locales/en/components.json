@@ -13,5 +13,15 @@
 	},
 	"header": {
 		"newIndexBtn": "New Index"
+	},
+	"filterMenu": {
+		"menuTypeTtl": "TYPE",
+		"menuPublishTtl": "PUBLISH DATE",
+		"menuUploadTtl": "UPLOAD DATE",
+		"menuTagTtl": "TAG",
+		"optArticle": "Article",
+		"optVideo": "Video",
+		"optImage": "Image",
+		"optCustom": "Custom"
 	}
 }

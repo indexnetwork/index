@@ -5,5 +5,11 @@
 	"signUp": "Sign Up",
 	"profile": "Profile",
 	"settings": "Settings",
-	"logout": "Logout"
+	"logout": "Logout",
+	"today": "Today",
+	"thisWeek": "This Week",
+	"thisMonth": "This Month",
+	"thisYear": "This Year",
+	"apply": "Apply",
+	"clear": "Clear"
 }

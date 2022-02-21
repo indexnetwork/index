@@ -104,4 +104,13 @@
 			margin-left: 1.1rem;
 		}
 	}
+
+	&.idx-button-icon {
+		padding-left: map-deep-get($spacing, "xs", "3");
+		padding-right: map-deep-get($spacing, "xs", "3");
+		svg {
+			width: 1.6rem;
+			height: 1.6rem;
+		}
+	}
 }

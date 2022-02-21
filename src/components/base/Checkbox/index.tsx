@@ -1,7 +1,7 @@
 import Flex from "layout/base/Grid/Flex";
 import React, { useEffect, useState } from "react";
 import cc from "classcat";
-import { InputSizeType } from "types";
+import { InputSizeType, TextThemeType } from "types";
 import Text from "../Text";
 import IconTick from "../Icon/IconTick";
 
@@ -10,6 +10,7 @@ export interface CheckboxProps {
 	checked?: boolean;
 	disabled?: boolean;
 	size?: InputSizeType;
+	theme?: TextThemeType;
 	onChange?(checked: boolean): void;
 }
 
@@ -19,6 +20,7 @@ const Checkbox: React.VFC<CheckboxProps> = ({
 	title,
 	onChange,
 	size = "md",
+	theme = "gray5",
 }) => {
 	const [isChecked, setIsChecked] = useState(checked);
 
@@ -45,8 +47,9 @@ const Checkbox: React.VFC<CheckboxProps> = ({
 		>
 			<Text
 				element="label"
+				size="sm"
 				className="idx-checkbox-container"
-				theme={disabled ? "disabled" : "primary"}
+				theme={disabled ? "disabled" : theme}
 			>
 				<input
 					type="checkbox"

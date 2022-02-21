@@ -13,9 +13,11 @@
 		flex-grow: 1;
 		height: 100%;
 		outline: none;
+		color: $main-color;
 	}
 
-	& input:focus, & input:focus-visible {
+	& input:focus,
+	& input:focus-visible {
 		outline: none;
 		outline-width: 0 !important;
 	}
@@ -58,6 +60,41 @@
 		padding-right: 0;
 		input {
 			background-color: transparent;
+		}
+	}
+
+	&.idx-input-xs {
+		padding-left: map-deep-get($spacing, "xs", "2");
+		padding-right: map-deep-get($spacing, "xs", "2");
+		&.idx-input-add-on-before {
+			input {
+				margin-left: map-deep-get($spacing, "xs", "2");
+			}
+		}
+		&.idx-input-add-on-after {
+			input {
+				margin-right: map-deep-get($spacing, "xs", "2");
+			}
+		}
+
+		svg {
+			width: 1rem;
+			height: 1rem;
+		}
+	}
+
+	&.idx-input-sm {
+		padding-left: map-deep-get($spacing, "xs", "4");
+		padding-right: map-deep-get($spacing, "xs", "4");
+		&.idx-input-add-on-before {
+			input {
+				margin-left: map-deep-get($spacing, "xs", "4");
+			}
+		}
+		&.idx-input-add-on-after {
+			input {
+				margin-right: map-deep-get($spacing, "xs", "4");
+			}
 		}
 	}
 }
