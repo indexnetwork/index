@@ -1,0 +1,16 @@
+.index-details-page {
+
+	.index-detail-menu-btn {
+		border: $border-base;
+		border-radius: $border-radius-base;
+		height: 2.8rem;
+		width: 2.8rem;
+		padding: .6rem;
+		cursor: pointer;
+		transition: $transition-bg;
+
+		&:hover {
+			background-color: $hover-color;
+		}
+	}
+}

@@ -106,11 +106,23 @@
 	}
 
 	&.idx-button-icon {
-		padding-left: map-deep-get($spacing, "xs", "3");
-		padding-right: map-deep-get($spacing, "xs", "3");
+		@include responsive-sizes($input-height, "width");
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: .8rem;
 		svg {
+			flex-shrink: 0;
 			width: 1.6rem;
 			height: 1.6rem;
+		}
+	}
+
+	&.idx-button-icon.idx-button-sm {
+		padding: .6rem;
+		svg {
+			width: 1.4rem;
+			height: 1.4rem;
 		}
 	}
 }

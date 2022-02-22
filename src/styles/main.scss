@@ -39,6 +39,9 @@
 				"./components/base/copy-input";
 
 @import "./components/business/index-list",
+				"./components/business/header-input",
 				"./components/business/site-navbar";
+
+@import "./pages/index-details-page.scss";
 
 @import "./themes/theme";

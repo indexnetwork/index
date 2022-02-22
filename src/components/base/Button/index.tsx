@@ -29,7 +29,7 @@ const Button: React.FC<ButtonProps> = ({
 					`idx-button-${size}`,
 					block && !group ? "idx-button-block" : "",
 					group ? "idx-button-group-item" : "",
-					iconButton ? "idx-button-icon" : "",
+					iconButton ? `idx-button-icon idx-button-icon-${size}` : "",
 					className,
 				],
 			)}>
@@ -42,7 +42,7 @@ const Button: React.FC<ButtonProps> = ({
 					"idx-button",
 					outlined ? `idx-button-${theme}-outlined` : `idx-button-${theme}`,
 					block ? "idx-button-block" : "",
-					iconButton ? "idx-button-icon" : "",
+					iconButton ? `idx-button-icon idx-button-icon-${size}` : "",
 					className,
 				],
 			)}>
@@ -60,7 +60,7 @@ const Button: React.FC<ButtonProps> = ({
 						block ? "idx-button-block" : "",
 						addOnBefore ? "idx-button-addon-b" : "",
 						addOnAfter ? "idx-button-addon-a" : "",
-						iconButton ? "idx-button-icon" : "",
+						iconButton ? `idx-button-icon idx-button-icon-${size}` : "",
 						className,
 					],
 				)}>

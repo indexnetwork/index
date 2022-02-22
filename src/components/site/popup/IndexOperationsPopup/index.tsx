@@ -10,19 +10,30 @@ import IconEmbed from "components/base/Icon/IconEmbed";
 import IconCopy from "components/base/Icon/IconCopy";
 import IconLink1 from "components/base/Icon/IconLink1";
 import IconTrash from "components/base/Icon/IconTrash";
+import Button from "components/base/Button";
 
-export const IndexListItemMenu = () => (
+export interface IndexOperationsPopupProps {
+	mode?: "indexes-page" | "index-detail-page";
+}
+
+const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
+	mode = "indexes-page",
+}) => (
 	<Dropdown
 		menuClass="index-list-item-menu idx-ml-6"
 		position="bottom-right"
 		menuItems={
 			<>
-				<DropdownMenuItem>
-					<Flex alignItems="center">
-						<IconPeople width={12} height="100%" />
-						<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Share</Text>
-					</Flex>
-				</DropdownMenuItem>
+				{
+					mode === "indexes-page" && (
+						<DropdownMenuItem>
+							<Flex alignItems="center">
+								<IconPeople width={12} height="100%" />
+								<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Share</Text>
+							</Flex>
+						</DropdownMenuItem>
+					)
+				}
 				<DropdownMenuItem>
 					<Flex alignItems="center">
 						<IconIntegration width={12} height="100%" />
@@ -58,6 +69,19 @@ export const IndexListItemMenu = () => (
 			</>
 		}
 	>
-		<IconContextMenu width={20} height={20} className="index-list-item-menu-btn" />
+		{
+			mode === "indexes-page" ? (
+				<IconContextMenu width={20} height={20} className="index-list-item-menu-btn" />
+			) : (
+				<Button iconButton theme="clear" size="sm">
+					<IconContextMenu
+						width={16}
+						height={16}
+					/>
+				</Button>
+			)
+		}
 	</Dropdown >
 );
+
+export default IndexOperationsPopup;

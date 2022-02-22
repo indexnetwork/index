@@ -14,6 +14,8 @@ export type GridFractionType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export type SpacingBaseType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
+export type HeaderSizeType = 1 | 2 | 3 | 4 | 5 | 6;
+
 export type ComponentThemeType = "primary" | "secondary" | "success" | "error" | "warning" | "disabled" | "blue";
 
 export type SizeType = "xs" | "sm" | "md" | "lg";

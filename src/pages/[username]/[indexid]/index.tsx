@@ -15,19 +15,40 @@ import IconFilter from "components/base/Icon/IconFilter";
 import IconSort from "components/base/Icon/IconSort";
 import SortPopup from "components/site/popup/SortPopup";
 import FilterPopup from "components/site/popup/FilterPopup";
+import HeaderInput from "components/site/HeaderInput";
+import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 
 	return (
 		<Container
-			className="idx-my-3 idx-my-lg-8"
+			className="index-details-page idx-my-3 idx-my-lg-8"
 		>
 			<FlexRow
 				rowSpacing={3}
 				justify="center"
 				className="idx-mb-lg-6"
 			>
+				<Col
+					xs={12}
+					lg={9}
+				>
+					<FlexRow>
+						<Col
+							className="idx-flex-grow-1 idx-mr-5"
+						>
+							<HeaderInput
+								placeholder="Enter your index title"
+							/>
+						</Col>
+						<Col>
+							<IndexOperationsPopup
+								mode="index-detail-page"
+							/>
+						</Col>
+					</FlexRow>
+				</Col>
 				<Col
 					xs={12}
 					lg={9}

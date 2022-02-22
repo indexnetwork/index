@@ -5,7 +5,7 @@ import Col from "layout/base/Grid/Col";
 import Flex from "layout/base/Grid/Flex";
 import Row from "layout/base/Grid/Row";
 import React from "react";
-import { IndexListItemMenu } from "../IndexListItemMenu";
+import IndexOperationsPopup from "../../popup/IndexOperationsPopup";
 
 export interface IndexListItemProps {
 	shared: boolean;
@@ -41,7 +41,7 @@ const IndexListItem: React.VFC<IndexListItemProps> = ({
 			alignItems="center"
 		>
 			<Header>American and Saudi role in Yemeni Civil war</Header>
-			<IndexListItemMenu />
+			<IndexOperationsPopup />
 		</Flex>
 	</Col>
 	<Col xs={12}>
