@@ -1,0 +1,14 @@
+.link-input {
+	height: 4rem;
+	background-color: $gray-1;
+	display: flex;
+	align-items: center;
+
+	.link-input__input {
+		border: none;
+
+		& > input {
+			background-color: $gray-1;
+		}
+	}
+}

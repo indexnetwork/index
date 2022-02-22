@@ -9,7 +9,7 @@ export interface PageLayoutProps {
 const PageLayout: React.FC<PageLayoutProps> = ({ children, hasFooter = false }) => (
 	<>
 		<Head>
-			<script async src="scripts/drag-drop-touch.js"></script>
+			{/* <script async src="/scripts/drag-drop-touch.js"></script> */}
 		</Head>
 		<SiteNavbar headerType="user" />
 		{children}

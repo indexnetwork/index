@@ -2,7 +2,8 @@
 	@include responsive-sizes($header-font-size, "font-size");
 	@include responsive-sizes($header-line-height, "line-height");
 
-	border:none;
+	border: none;
 	font-family: Freizeit;
 	font-weight: 700;
+	padding-left: 0 !important;
 }

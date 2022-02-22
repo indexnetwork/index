@@ -39,7 +39,9 @@
 				"./components/base/copy-input";
 
 @import "./components/business/index-list",
+				"./components/business/index-detail-list",
 				"./components/business/header-input",
+				"./components/business/link-input",
 				"./components/business/site-navbar";
 
 @import "./pages/index-details-page.scss";

@@ -1,10 +1,11 @@
 .idx-button {
 	@include no-select;
 	@include responsive-sizes($input-height, "height");
-
+	@include responsive-sizes($font-size, "font-size");
+	@include responsive-sizes($font-line-height, "line-height");
 	border: 1px solid;
 	border-radius: $border-radius-base;
-	padding: 0 map-deep-get($spacing, "xs", "6");
+	padding: 0 map-deep-get($spacing, "xs", "3");
 	line-height: 0;
 	font-weight: 500;
 	background-color: $main-color;
@@ -69,6 +70,10 @@
 		width: 100%;
 	}
 
+	&.idx-button-borderless {
+		border: none;
+	}
+
 	& + .idx-button {
 		margin-left: map-deep-get($spacing, "xs", "3");
 	}
@@ -123,6 +128,14 @@
 		svg {
 			width: 1.4rem;
 			height: 1.4rem;
+		}
+	}
+
+	&.idx-button-icon.idx-button-xs {
+		padding: .4rem;
+		svg {
+			width: 1.2rem;
+			height: 1.2rem;
 		}
 	}
 }

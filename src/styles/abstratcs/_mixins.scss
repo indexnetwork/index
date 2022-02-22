@@ -99,6 +99,30 @@
 	}
 }
 
+@mixin responsive-sizes-multi($list, $properties) {
+	@each $breakpoint, $values in $list {
+		@each $size, $value in $values {
+			@if ($breakpoint == "xs") {
+				&-#{$size} {
+					@each $property in $properties {
+						#{$property}: $value;
+					}
+				}
+			} @else {
+				@media (min-width: map-get($breakpoints, $breakpoint)) {
+					@each $size, $value in $values {
+						&-#{$size} {
+							@each $property in $properties {
+								#{$property}: $value;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 @mixin responsive-sizes-flat($list, $property) {
 	@each $breakpoint, $value in $list {
 		@if ($breakpoint == "xs") {

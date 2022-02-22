@@ -59,13 +59,13 @@
 		justify-content: space-evenly;
 	}
 
-	@for $i from 1 to 12 {
+	@for $i from 0 to 12 {
 		&-grow-#{$i} {
 			flex-grow: $i;
 		}
 
 		&-shrink-#{$i} {
-			flex-grow: $i;
+			flex-shrink: $i;
 		}
 
 		&-flex-#{$i} {

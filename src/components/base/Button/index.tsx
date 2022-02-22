@@ -15,10 +15,23 @@ export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAtt
 	addOnAfter?: React.ReactNode;
 	iconButton?: boolean;
 	group?: boolean;
+	borderless?: boolean;
 }
 
 const Button: React.FC<ButtonProps> = ({
-	customType, children, className, group, block, iconButton, outlined, addOnBefore, addOnAfter, theme = "primary", size = "md", ...props
+	customType,
+	children,
+	className,
+	borderless,
+	group,
+	block,
+	iconButton,
+	outlined,
+	addOnBefore,
+	addOnAfter,
+	theme = "primary",
+	size = "md",
+	...props
 }) => {
 	switch (customType) {
 		case "google":
@@ -30,6 +43,7 @@ const Button: React.FC<ButtonProps> = ({
 					block && !group ? "idx-button-block" : "",
 					group ? "idx-button-group-item" : "",
 					iconButton ? `idx-button-icon idx-button-icon-${size}` : "",
+					borderless ? "idx-button-borderless" : "",
 					className,
 				],
 			)}>
@@ -37,12 +51,13 @@ const Button: React.FC<ButtonProps> = ({
 				{children}
 			</button>;
 		case "twitter":
-			return <button {...props}className={cc(
+			return <button {...props} className={cc(
 				[
 					"idx-button",
 					outlined ? `idx-button-${theme}-outlined` : `idx-button-${theme}`,
 					block ? "idx-button-block" : "",
 					iconButton ? `idx-button-icon idx-button-icon-${size}` : "",
+					borderless ? "idx-button-borderless" : "",
 					className,
 				],
 			)}>
@@ -61,6 +76,7 @@ const Button: React.FC<ButtonProps> = ({
 						addOnBefore ? "idx-button-addon-b" : "",
 						addOnAfter ? "idx-button-addon-a" : "",
 						iconButton ? `idx-button-icon idx-button-icon-${size}` : "",
+						borderless ? "idx-button-borderless" : "",
 						className,
 					],
 				)}>

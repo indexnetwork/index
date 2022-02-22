@@ -8,28 +8,39 @@ import { useTranslation } from "next-i18next";
 import Input from "components/base/Input";
 import IconSearch from "components/base/Icon/IconSearch";
 import PageLayout from "layout/site/PageLayout";
-import IndexDetailsList from "components/site/IndexDetailsList";
 import ButtonGroup from "components/base/ButtonGroup";
 import Button from "components/base/Button";
+import Text from "components/base/Text";
 import IconFilter from "components/base/Icon/IconFilter";
 import IconSort from "components/base/Icon/IconSort";
 import SortPopup from "components/site/popup/SortPopup";
 import FilterPopup from "components/site/popup/FilterPopup";
-import HeaderInput from "components/site/HeaderInput";
+import HeaderInput from "components/site/input/HeaderInput";
 import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
+import Avatar from "components/base/Avatar";
+import IconShare from "components/base/Icon/IconShare";
+import LinkInput from "components/site/input/LinkInput";
+import IndexDetailsList from "components/site/IndexDetailsList";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 
 	return (
 		<Container
-			className="index-details-page idx-my-3 idx-my-lg-8"
+			className="index-details-page idx-my-6 idx-my-lg-8"
 		>
 			<FlexRow
 				rowSpacing={3}
 				justify="center"
-				className="idx-mb-lg-6"
 			>
+				<Col
+					xs={12}
+					lg={9}
+					noYGutters
+				>
+					<Avatar randomColor size={20}>S</Avatar>
+					<Text className="idx-ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">Cnsndnz</Text>
+				</Col>
 				<Col
 					xs={12}
 					lg={9}
@@ -43,11 +54,19 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							/>
 						</Col>
 						<Col>
+							<Button addOnBefore size="sm" theme="clear">
+								<IconShare stroke="white" strokeWidth={"1.5"} />Share
+							</Button>
+						</Col>
+						<Col className="idx-ml-3">
 							<IndexOperationsPopup
 								mode="index-detail-page"
 							/>
 						</Col>
 					</FlexRow>
+				</Col>
+				<Col xs={12} lg={9} noYGutters className="idx-mb-6">
+					<Text size="sm" theme="disabled">Public • Last updated 1 hour ago </Text>
 				</Col>
 				<Col
 					xs={12}
@@ -81,9 +100,13 @@ const IndexDetailPage: NextPageWithLayout = () => {
 						</Col>
 					</FlexRow>
 				</Col>
+				<Col xs={12} lg={9} noYGutters className="idx-pb-0 idx-mt-3">
+					<LinkInput
+						placeholder="Add a link to you index"
+					/>
+				</Col>
 			</FlexRow>
 			<FlexRow
-				rowSpacing={3}
 				justify="center"
 			>
 				<Col xs={12} lg={9}>

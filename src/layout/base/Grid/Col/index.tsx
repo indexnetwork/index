@@ -30,6 +30,9 @@ export interface ColProps extends React.DetailedHTMLProps<React.HTMLAttributes<H
 	textHide?: boolean;
 	fullHeight?: boolean;
 	fullWidth?: boolean;
+	noGutters?: boolean;
+	noXGutters?: boolean;
+	noYGutters?: boolean;
 }
 
 const Col: React.FC<ColProps> = ({
@@ -62,6 +65,9 @@ const Col: React.FC<ColProps> = ({
 	textHide,
 	fullHeight = false,
 	fullWidth = false,
+	noGutters = false,
+	noXGutters = false,
+	noYGutters = false,
 	...divProps
 }) => (
 	<div
@@ -94,6 +100,9 @@ const Col: React.FC<ColProps> = ({
 			textHide ? "textHide" : "",
 			fullHeight ? "idx-h-100" : "",
 			fullWidth ? "idx-w-100" : "",
+			noGutters ? "idx-col-no-gutters" : "",
+			noXGutters ? "idx-col-no-x-gutters" : "",
+			noYGutters ? "idx-col-no-y-gutters" : "",
 			className || ""])}
 		{...divProps}
 	>

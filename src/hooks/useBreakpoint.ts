@@ -3,6 +3,7 @@ import { isSSR } from "utils/helper";
 
 export function useBreakpoint<T extends { [key: string]: number }>(
 	breakpoints: T,
+	removeAfterInit: boolean = false,
 ) {
 	const [breakpoint, setBreakPoint] = useState<keyof T>();
 	useEffect(() => {
@@ -24,8 +25,12 @@ export function useBreakpoint<T extends { [key: string]: number }>(
 		}
 		window.addEventListener("resize", calculateBreakpoint);
 		calculateBreakpoint();
-
-		return () => window.removeEventListener("resize", calculateBreakpoint);
+		if (removeAfterInit) {
+			window.removeEventListener("resize", calculateBreakpoint);
+		}
+		return () => {
+			!removeAfterInit && window.removeEventListener("resize", calculateBreakpoint);
+		};
 	}, []);
 
 	return breakpoint;

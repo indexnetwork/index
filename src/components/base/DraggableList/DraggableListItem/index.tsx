@@ -89,10 +89,10 @@ const DraggableListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildr
 			}
 			onDragOver={(e) => {
 				e.preventDefault();
-				!dragging && setCls("idx-draggable-drag-enter");
 			}}
 			onDragEnter={() => {
-				setCls("");
+				setCls("idx-draggable-drag-enter");
+
 				if (!dragging) {
 					onDragStop && onDragStop(order);
 				}
