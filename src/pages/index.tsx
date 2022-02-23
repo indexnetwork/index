@@ -9,7 +9,7 @@ import TabPane from "components/base/Tabs/TabPane";
 import { useTranslation } from "next-i18next";
 import Input from "components/base/Input";
 import IconSearch from "components/base/Icon/IconSearch";
-import IndexList from "components/site/IndexList";
+import IndexList from "components/site/indexes/IndexList";
 import PageLayout from "layout/site/PageLayout";
 
 const Home: NextPageWithLayout = () => {

@@ -12,14 +12,14 @@ const IconClose: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--gr
 		{...props}
 	>
 		<g
-			clipPath="url(#a)"
+			clipPath="url(#idxCloseIcon)"
 			strokeLinecap="round"
 			strokeLinejoin="round"
 		>
 			<path d="m3 3 4.98 4.98L3 12.95M12.95 12.95 7.98 7.98 12.95 3" />
 		</g>
 		<defs>
-			<clipPath id="a">
+			<clipPath id="idxCloseIcon">
 				<path
 					transform="translate(2.5 2.5)"
 					d="M0 0h10.95v10.95H0z"

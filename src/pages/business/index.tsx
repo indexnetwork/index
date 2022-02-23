@@ -1,6 +1,6 @@
 import Header from "components/base/Header";
-import IndexList from "components/site/IndexList";
-import IndexListItem from "components/site/IndexList/IndexListItem";
+import IndexList from "components/site/indexes/IndexList";
+import IndexItem from "components/site/indexes/IndexItem";
 import Col from "layout/base/Grid/Col";
 import Row from "layout/base/Grid/Row";
 import LandingLayout from "layout/site/LandingLayout";
@@ -18,7 +18,7 @@ const Business: NextPageWithLayout = () => (
 				<Header level={2}>Index List Item</Header>
 			</Col>
 			<Col xs={12}>
-				<IndexListItem shared={false}/>
+				<IndexItem shared={false}/>
 			</Col>
 		</Row>
 		<Row
@@ -29,7 +29,7 @@ const Business: NextPageWithLayout = () => (
 				<Header level={2}>Index List Item Shared</Header>
 			</Col>
 			<Col xs={12}>
-				<IndexListItem shared={true}/>
+				<IndexItem shared={true}/>
 			</Col>
 			<Col xs={12}>
 

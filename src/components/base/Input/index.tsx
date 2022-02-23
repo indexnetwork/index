@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import cc from "classcat";
 import { InputSizeType, PropType } from "types";
 import Flex from "layout/base/Grid/Flex";
@@ -27,6 +27,7 @@ const Input: React.FC<InputProps> = ({
 	ghost = false,
 	...inputProps
 }) => {
+	const inputRef = useRef<HTMLInputElement>(null);
 	const [showPw, setShowPw] = useState(false);
 
 	const handleTogglePw = () => {
@@ -34,6 +35,10 @@ const Input: React.FC<InputProps> = ({
 	};
 	const renderVisible = () => (showPw ? <IconInvisible onClick={handleTogglePw} /> : <IconVisible onClick={handleTogglePw} />);
 
+	// useEffect(() => {
+	// 	debugger;
+	// 	inputRef!.current!.focus!();
+	// }, []);
 	return (
 		<Flex className={cc(
 			[
@@ -50,6 +55,7 @@ const Input: React.FC<InputProps> = ({
 		)}>
 			{addOnBefore}
 			<input
+				ref={inputRef}
 				{...inputProps}
 				disabled={disabled}
 				readOnly={readOnly}

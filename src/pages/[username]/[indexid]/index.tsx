@@ -20,7 +20,7 @@ import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import Avatar from "components/base/Avatar";
 import IconShare from "components/base/Icon/IconShare";
 import LinkInput from "components/site/input/LinkInput";
-import IndexDetailsList from "components/site/IndexDetailsList";
+import IndexDetailsList from "components/site/index-details/IndexDetailsList";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -50,6 +50,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							className="idx-flex-grow-1 idx-mr-5"
 						>
 							<HeaderInput
+								type="text"
 								placeholder="Enter your index title"
 							/>
 						</Col>

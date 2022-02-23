@@ -1,6 +1,6 @@
 import DndList from "components/base/DndList";
 import React, { useState } from "react";
-import IndexDetailsListItem from "./IndexDetailListItem";
+import IndexDetailsItem from "../IndexDetailItem";
 
 export interface LinkListProps { }
 
@@ -12,7 +12,11 @@ const IndexDetailsList: React.VFC<LinkListProps> = () => {
 			data={items}
 			listClass="index-detail-list"
 			draggable
-			render={(item, index, provided) => <IndexDetailsListItem title={item as string} provided={provided!}/>}
+			render={(item, index, provided, snapshot) => <IndexDetailsItem
+				title={item as string}
+				provided={provided!}
+				snapshot={snapshot!}
+			/>}
 			divided
 		/>
 	);

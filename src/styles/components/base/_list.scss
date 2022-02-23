@@ -8,7 +8,7 @@
 	.idx-list-item {
 		background-color: rgba($white, .8);
 		cursor: default;
-		transition: opacity 0.25s;
+		transition: opacity 0.25s, transform .3s ease-in-out;
 		opacity: 1;
 
 		.idx-list-divider {

@@ -1,6 +1,8 @@
 .index-detail-list {
 	.index-detail-list-item {
 		position: relative;
+		// transition: transform .4s ease-in-out !important;
+
 		.index-detail-list-item-drag-handle {
 			position: absolute;
 			top: 0;

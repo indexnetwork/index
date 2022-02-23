@@ -1,6 +1,6 @@
 import List from "components/base/List";
 import React from "react";
-import IndexListItem from "./IndexListItem";
+import IndexItem from "../IndexItem";
 
 export interface IndexListProps {
 	shared: boolean;
@@ -11,7 +11,7 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, data = [1, 2, 3, 4, 5, 6
 	<List
 		data={data}
 		listClass="index-list"
-		render={() => <IndexListItem shared={shared} />}
+		render={() => <IndexItem shared={shared} />}
 		divided
 	/>
 );

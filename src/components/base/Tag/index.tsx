@@ -9,12 +9,14 @@ export interface TagProps extends React.DetailedHTMLProps<React.HTMLAttributes<H
 	text: string;
 	removable?: boolean;
 	editable?: boolean;
+	inputActive?: boolean;
 	clickable?: boolean;
 	placeholder?: string;
 	theme?: ButtonThemeType;
 	size?: InputSizeType;
 	shape?: ShapeType;
 	onClick?(): void;
+	onEdit?(val?: string | null): void;
 	onRemove?(): void;
 }
 
@@ -28,14 +30,16 @@ const Tag: React.FC<TagProps> = ({
 	theme = "tag",
 	size = "md",
 	shape = "circle",
+	inputActive = false,
 	onClick,
 	onRemove,
+	onEdit,
 	...divProps
 }) => {
 	const divRef = useRef<HTMLDivElement>(null);
 
 	const [value, setValue] = useState<string | null | undefined>(text);
-	const [editActive, setEditActive] = useState(false);
+	const [editActive, setEditActive] = useState(inputActive);
 
 	const handleRemove = (e: any) => {
 		if (e) {
@@ -63,6 +67,7 @@ const Tag: React.FC<TagProps> = ({
 
 	const handleClose = () => {
 		setEditActive(false);
+		onEdit && onEdit(value);
 	};
 
 	const handleEnter = (e: any) => {
@@ -73,6 +78,10 @@ const Tag: React.FC<TagProps> = ({
 	};
 
 	useBackdropClick(divRef, handleClose, editActive);
+
+	useEffect(() => {
+		setEditActive(inputActive || false);
+	}, [inputActive]);
 
 	return (
 		<div
@@ -93,7 +102,9 @@ const Tag: React.FC<TagProps> = ({
 			onClick={handleEditActiveToggle}
 		>
 			{editable && editActive ? <Input
+				autoFocus
 				inputSize="sm"
+				type="text"
 				ghost
 				className="idex-tag-input"
 				placeholder={placeholder}

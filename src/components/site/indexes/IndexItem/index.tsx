@@ -7,11 +7,11 @@ import Row from "layout/base/Grid/Row";
 import React from "react";
 import IndexOperationsPopup from "../../popup/IndexOperationsPopup";
 
-export interface IndexListItemProps {
+export interface IndexItemProps {
 	shared: boolean;
 }
 
-const IndexListItem: React.VFC<IndexListItemProps> = ({
+const IndexItem: React.VFC<IndexItemProps> = ({
 	shared,
 }) => <Row
 	className="index-list-item idx-my-6"
@@ -49,4 +49,4 @@ const IndexListItem: React.VFC<IndexListItemProps> = ({
 	</Col>
 </Row>;
 
-export default IndexListItem;
+export default IndexItem;

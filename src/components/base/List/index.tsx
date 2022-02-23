@@ -3,14 +3,14 @@ import React, {
 } from "react";
 import { v4 as uuidv4 } from "uuid";
 import cc from "classcat";
-import { Draggable, DraggableProvided } from "react-beautiful-dnd";
+import { Draggable, DraggableProvided, DraggableStateSnapshot } from "react-beautiful-dnd";
 import ListItem from "./ListItem";
 
 export interface ListProps<T = {}> {
 	data: T[];
 	listClass?: string;
 	itemContainerClass?: string;
-	render(item: T, index: number, provided?: DraggableProvided): ReactElement<any>;
+	render(item: T, index: number, provided?: DraggableProvided, snapshot?: DraggableStateSnapshot): ReactElement<any>;
 	divided?: boolean;
 	draggable?: boolean;
 }
@@ -52,14 +52,14 @@ const List: React.VFC<ListProps> = ({
 					<Draggable
 						key={`draggable-${item}`}
 						index={index}
-						draggableId={`draggable-${item}`}>{(provided) => <ListItem
+						draggableId={`draggable-${item}`}>{(provided, snapshot) => <ListItem
 							provided={provided}
 							key={`listItem${index}-${containerId}`}
 							className={cc([
 								itemContainerClass || "",
 							])}
 						>
-							{render(item, index, provided)}
+							{render(item, index, provided, snapshot)}
 							{divided && index !== listData.length - 1 && <div className="idx-list-divider"></div>}
 						</ListItem>}</Draggable>
 				)))
