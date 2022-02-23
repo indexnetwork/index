@@ -79,19 +79,19 @@
 
 	responsive-sizes($input-height);
 */
-@mixin responsive-sizes($list, $property) {
+@mixin responsive-sizes($list, $property, $important: false) {
 	@each $breakpoint, $values in $list {
 		@if ($breakpoint == "xs") {
 			@each $size, $value in $values {
 				&-#{$size} {
-					#{$property}: $value;
+					#{$property}: $value if-important($important);
 				}
 			}
 		} @else {
 			@media (min-width: map-get($breakpoints, $breakpoint)) {
 				@each $size, $value in $values {
 					&-#{$size} {
-						#{$property}: $value;
+						#{$property}: $value if-important($important);
 					}
 				}
 			}

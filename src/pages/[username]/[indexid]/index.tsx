@@ -1,4 +1,4 @@
-import React, { ReactElement } from "react";
+import React, { ReactElement, useState } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import Container from "layout/base/Grid/Container";
@@ -21,100 +21,114 @@ import Avatar from "components/base/Avatar";
 import IconShare from "components/base/Icon/IconShare";
 import LinkInput from "components/site/input/LinkInput";
 import IndexDetailsList from "components/site/index-details/IndexDetailsList";
+import ShareModal from "components/site/modal/ShareModal";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
+	const [shareModalVisible, setShareModalVisible] = useState(false);
+
+	const handleToggleShareModal = () => {
+		setShareModalVisible((oldVal) => !oldVal);
+	};
 
 	return (
-		<Container
-			className="index-details-page idx-my-6 idx-my-lg-8"
-		>
-			<FlexRow
-				rowSpacing={3}
-				justify="center"
+		<>
+			<Container
+				className="index-details-page idx-my-6 idx-my-lg-8"
 			>
-				<Col
-					xs={12}
-					lg={9}
-					noYGutters
+				<FlexRow
+					rowSpacing={3}
+					justify="center"
 				>
-					<Avatar randomColor size={20}>S</Avatar>
-					<Text className="idx-ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">Cnsndnz</Text>
-				</Col>
-				<Col
-					xs={12}
-					lg={9}
-				>
-					<FlexRow>
-						<Col
-							className="idx-flex-grow-1 idx-mr-5"
-						>
-							<HeaderInput
-								type="text"
-								placeholder="Enter your index title"
-							/>
-						</Col>
-						<Col>
-							<Button addOnBefore size="sm" theme="clear">
-								<IconShare stroke="white" strokeWidth={"1.5"} />Share
-							</Button>
-						</Col>
-						<Col className="idx-ml-3">
-							<IndexOperationsPopup
-								mode="index-detail-page"
-							/>
-						</Col>
-					</FlexRow>
-				</Col>
-				<Col xs={12} lg={9} noYGutters className="idx-mb-6">
-					<Text size="sm" theme="disabled">Public • Last updated 1 hour ago </Text>
-				</Col>
-				<Col
-					xs={12}
-					lg={9}
-				>
-					<FlexRow>
-						<Col
-							className="idx-flex-grow-1 idx-mr-5"
-						>
-							<Input
-								addOnBefore={<IconSearch />}
-								placeholder={t("pages:home.searchPh")} />
-						</Col>
-						<Col>
-							<ButtonGroup
-								theme="clear"
+					<Col
+						xs={12}
+						lg={9}
+						noYGutters
+					>
+						<Avatar randomColor size={20}>S</Avatar>
+						<Text className="idx-ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">Cnsndnz</Text>
+					</Col>
+					<Col
+						xs={12}
+						lg={9}
+					>
+						<FlexRow>
+							<Col
+								className="idx-flex-grow-1 idx-mr-5"
 							>
-								<FilterPopup>
-									<Button
-										group
-										iconButton
-									><IconFilter stroke="var(--gray-4)" /></Button>
-								</FilterPopup>
-								<SortPopup>
-									<Button
-										group
-										iconButton
-									><IconSort stroke="var(--gray-4)" /></Button>
-								</SortPopup>
-							</ButtonGroup>
-						</Col>
-					</FlexRow>
-				</Col>
-				<Col xs={12} lg={9} noYGutters className="idx-pb-0 idx-mt-3">
-					<LinkInput
-						placeholder="Add a link to you index"
-					/>
-				</Col>
-			</FlexRow>
-			<FlexRow
-				justify="center"
-			>
-				<Col xs={12} lg={9}>
-					<IndexDetailsList />
-				</Col>
-			</FlexRow>
-		</Container>
+								<HeaderInput
+									type="text"
+									placeholder="Enter your index title"
+								/>
+							</Col>
+							<Col>
+								<Button
+									addOnBefore
+									size="sm"
+									theme="clear"
+									onClick={handleToggleShareModal}
+								>
+									<IconShare stroke="white" strokeWidth={"1.5"} />Share
+								</Button>
+							</Col>
+							<Col className="idx-ml-3">
+								<IndexOperationsPopup
+									mode="index-detail-page"
+								/>
+							</Col>
+						</FlexRow>
+					</Col>
+					<Col xs={12} lg={9} noYGutters className="idx-mb-6">
+						<Text size="sm" theme="disabled">Public • Last updated 1 hour ago </Text>
+					</Col>
+					<Col
+						xs={12}
+						lg={9}
+					>
+						<FlexRow>
+							<Col
+								className="idx-flex-grow-1 idx-mr-5"
+							>
+								<Input
+									addOnBefore={<IconSearch />}
+									placeholder={t("pages:home.searchPh")} />
+							</Col>
+							<Col>
+								<ButtonGroup
+									theme="clear"
+								>
+									<FilterPopup>
+										<Button
+											group
+											iconButton
+										><IconFilter stroke="var(--gray-4)" /></Button>
+									</FilterPopup>
+									<SortPopup>
+										<Button
+											group
+											iconButton
+										><IconSort stroke="var(--gray-4)" /></Button>
+									</SortPopup>
+								</ButtonGroup>
+							</Col>
+						</FlexRow>
+					</Col>
+					<Col xs={12} lg={9} noYGutters className="idx-pb-0 idx-mt-3">
+						<LinkInput
+							placeholder="Add a link to you index"
+						/>
+					</Col>
+				</FlexRow>
+				<FlexRow
+					justify="center"
+				>
+					<Col xs={12} lg={9}>
+						<IndexDetailsList />
+					</Col>
+				</FlexRow>
+			</Container>
+			<ShareModal data={{}} visible={shareModalVisible} onClose={handleToggleShareModal} />
+		</>
 	);
 };
 

@@ -1,4 +1,5 @@
 import React, {
+	ReactNode,
 	useCallback, useEffect, useRef, useState,
 } from "react";
 import cc from "classcat";
@@ -12,7 +13,7 @@ import Input from "../Input";
 import Spin from "../Spin";
 
 export interface SearchProps {
-	value?: string | string[];
+	value?: string;
 	size?: InputSizeType,
 	fullWidth?: boolean;
 	disabled?: boolean;
@@ -26,6 +27,8 @@ export interface SearchProps {
 	clearOnClose?: boolean;
 	open?: boolean;
 	defaultValue?: string;
+	addOnAfter?: ReactNode;
+	inputClass?: string;
 	/**
 	 * Custom Search Event Triggers with debounce
 	 * @param value input value
@@ -36,6 +39,8 @@ export interface SearchProps {
 
 const Search: React.FC<SearchProps> = ({
 	children,
+	addOnAfter,
+	inputClass,
 	size = "md",
 	fullWidth = true,
 	disabled = false,
@@ -53,19 +58,24 @@ const Search: React.FC<SearchProps> = ({
 }) => {
 	const { t } = useTranslation(["components"]);
 
+	const [loaded, setLoaded] = useState(false);
 	const [query, setQuery] = useState(defaultValue);
-	const [menuOpen, setMenuOpen] = useState(!disabled && open);
+	const [menuOpen, setMenuOpen] = useState(() => !disabled && open);
 
 	const containerRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		if (closeMenuOnTextChange || (!query && closeMenuWhenEmpty)) {
+		if (loaded && !disabled && (closeMenuOnTextChange || (!query && closeMenuWhenEmpty))) {
 			setMenuOpen(false);
 		}
-	}, [query]);
+
+		if (disabled) {
+			setMenuOpen(false);
+		}
+	}, [disabled, query, menuOpen, loaded, closeMenuOnTextChange, closeMenuWhenEmpty, clearOnClose]);
 
 	useEffect(() => {
-		if (!menuOpen && clearOnClose) {
+		if (loaded && !menuOpen && clearOnClose) {
 			setQuery("");
 		}
 
@@ -74,11 +84,11 @@ const Search: React.FC<SearchProps> = ({
 
 	useEffect(() => {
 		setMenuOpen(!disabled && open);
-	}, [open]);
+	}, [open, disabled]);
 
 	useEffect(() => {
-		setMenuOpen(false);
-	}, [disabled]);
+		setLoaded(true);
+	}, []);
 
 	const handleOnSearch = (val: string | null) => {
 		onSearch && onSearch(val);
@@ -116,8 +126,9 @@ const Search: React.FC<SearchProps> = ({
 			])}
 		>
 			<Input
+				className={inputClass}
 				addOnBefore={loading ? <Spin active wrapsChildren={false} thickness="light" theme="secondary" /> : <IconSearch />}
-				addOnAfter={!disabled && showClear && <IconClose onClick={handleClear} style={{ cursor: "pointer" }} />}
+				addOnAfter={addOnAfter || (!disabled && showClear && <IconClose onClick={handleClear} style={{ cursor: "pointer" }} />)}
 				placeholder={placeholder}
 				onChange={handleChange}
 				value={query}

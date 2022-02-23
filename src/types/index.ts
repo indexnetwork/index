@@ -83,3 +83,5 @@ export interface SelectSelectionType {
  */
 export type FlexAlignType = "start" | "end" | "center";
 export type FlexJustifyType = FlexAlignType | "between" | "around" | "evenly";
+
+export type UserRightType = "view" | "edit" | "off";

@@ -9,6 +9,7 @@ export interface AvatarProps extends React.DetailedHTMLProps<React.HTMLAttribute
 	hoverable?: boolean;
 	contentRatio?: number;
 	randomColor?: boolean;
+	bgColor?: string;
 	maxLetters?: number;
 }
 
@@ -17,6 +18,7 @@ const Avatar: React.FC<AvatarProps> = ({
 	children,
 	className,
 	style,
+	bgColor,
 	contentRatio = 0.5,
 	shape = "circle",
 	hoverable = false,
@@ -24,10 +26,10 @@ const Avatar: React.FC<AvatarProps> = ({
 	randomColor = false,
 	...divProps
 }) => {
-	const [color, setColor] = useState<string>();
+	const [color, setColor] = useState<string>(bgColor || "var(--main)");
 
 	useEffect(() => {
-		if (!isSSR()) {
+		if (!isSSR() && randomColor) {
 			setColor(generateRandomColor());
 		}
 	}, []);
@@ -49,7 +51,7 @@ const Avatar: React.FC<AvatarProps> = ({
 				height: size,
 				lineHeight: `${size}px`,
 				fontSize: contentRatio > 1 ? size : contentRatio * size,
-				backgroundColor: randomColor ? color : "#2a2a2a",
+				backgroundColor: color,
 			}}
 		>
 			{typeof children === "string" ? children.substring(0, maxLetters) : children}

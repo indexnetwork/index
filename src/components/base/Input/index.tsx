@@ -35,10 +35,6 @@ const Input: React.FC<InputProps> = ({
 	};
 	const renderVisible = () => (showPw ? <IconInvisible onClick={handleTogglePw} /> : <IconVisible onClick={handleTogglePw} />);
 
-	// useEffect(() => {
-	// 	debugger;
-	// 	inputRef!.current!.focus!();
-	// }, []);
 	return (
 		<Flex className={cc(
 			[

@@ -21,7 +21,9 @@ export interface SelectProps {
 	size?: InputSizeType,
 	fullWidth?: boolean;
 	disabled?: boolean;
+	noMinWidth?: boolean;
 	placeholder?: React.ReactNode;
+	ghost?: boolean;
 	onChange?(value?: string | string[]): void;
 }
 
@@ -34,6 +36,8 @@ const Select: React.VFC<SelectProps> = ({
 	fullWidth = true,
 	disabled = false,
 	placeholder,
+	noMinWidth = false,
+	ghost = false,
 	onChange,
 }) => {
 	const { t } = useTranslation(["components"]);
@@ -166,6 +170,8 @@ const Select: React.VFC<SelectProps> = ({
 					menuOpen ? "idx-select-open" : "",
 					disabled ? "idx-select-disabled" : "",
 					fullWidth ? "idx-w-100" : "",
+					noMinWidth ? "idx-select-w-auto" : "",
+					ghost ? "idx-select-ghost" : "",
 				])}
 			>
 				<div

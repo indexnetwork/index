@@ -12,7 +12,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		min-width: 9rem;
+		min-width: 7rem;
 		padding: map-deep-get($spacing, "xs", "2") map-deep-get($spacing, "xs", "3");
 		border-radius: $border-radius-base;
 		padding-right: map-deep-get($spacing, "xs", "7");
@@ -23,7 +23,6 @@
 			margin-left: map-deep-get($spacing, "xs", "3");
 			position: absolute;
 			right: map-deep-get($spacing, "xs", "3");
-
 		}
 
 		.idx-select-selections {
@@ -35,6 +34,12 @@
 		.idx-select-placeholder {
 			color: lighten($gray-3, 10%);
 			font-weight: 300;
+		}
+	}
+
+	&.idx-select-w-auto {
+		.idx-select-input {
+			min-width: auto;
 		}
 	}
 
@@ -101,7 +106,7 @@
 		left: 0;
 		right: 0;
 		background-color: $white;
-		z-index: map-get($z-index, "dropdown");
+		z-index: map-get($z-index, "select");
 		border-bottom-left-radius: $border-radius-base;
 		border-bottom-right-radius: $border-radius-base;
 		transition: opacity 0.2s ease-in-out;
@@ -147,7 +152,7 @@
 			pointer-events: auto;
 		}
 		box-shadow: $box-shadow-base;
-		transition-duration: .2s;
+		transition-duration: 0.2s;
 
 		&.idx-select-bordered {
 			.idx-select-input {
@@ -159,6 +164,20 @@
 				border: $border-base;
 				border-top: 0;
 			}
+		}
+	}
+
+	&.idx-select-ghost {
+		box-shadow: none;
+
+		.idx-select-input {
+			background-color: transparent;
+			box-shadow: none;
+		}
+
+		.idx-select-menu {
+			box-shadow: $box-shadow-base;
+			margin-top: -1px;
 		}
 	}
 

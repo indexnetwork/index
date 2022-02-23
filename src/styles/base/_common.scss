@@ -1,0 +1,6 @@
+.idx-hoverable {
+	&:hover {
+		background-color: $hover-color;
+		cursor: pointer;
+	}
+}

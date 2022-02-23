@@ -249,8 +249,9 @@ $tooltip-spacing: map-deep-get($spacing, "xs", "2");
 $z-index: (
 	"navbar": 2,
 	"footer": 2,
-	"tooltip": 3,
+	"tooltip": 5,
 	"dropdown": 3,
+	"select": 4
 );
 
 /**************
