@@ -20,6 +20,7 @@ const DynamicDiv = styled.div<DynamicDivProps>`
 export interface BottomMenuDivProps extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
 	heightResizable?: boolean;
 	transition?: string;
+	closeAnimationDelay?: number,
 	menuOpen?: boolean;
 	collapseThresholdForSingleTouch?: number;
 	collapseThresholdForMinSize?: number;
@@ -45,6 +46,7 @@ const BottomMenuDiv: React.FC<BottomMenuDivProps> = ({
 	collapseThresholdForSingleTouch = 0.1,
 	collapseThresholdForMinSize = 0.6,
 	maxVh = 70,
+	closeAnimationDelay = 200,
 	onCollapse,
 	onMenuStateChanged,
 	...divProps
@@ -101,18 +103,22 @@ const BottomMenuDiv: React.FC<BottomMenuDivProps> = ({
 			});
 		}
 		document.removeEventListener!("mouseup", handleMouseUp);
-		buttonRef.current!.removeEventListener!("touchmove", handleMouseUp);
 		document.removeEventListener!("mousemove", handleMouseMove);
-		buttonRef.current!.removeEventListener!("touchmove", handleMouseMove);
+		if (buttonRef.current) {
+			buttonRef.current!.removeEventListener!("touchmove", handleMouseUp);
+			buttonRef.current!.removeEventListener!("touchmove", handleMouseMove);
+		}
 	}, [handleMouseMove]);
 
 	const handleMouseDown = useCallback((e: any) => {
 		if (e.type === "touchstart") e.preventDefault();
 
 		document.addEventListener!("mouseup", handleMouseUp);
-		buttonRef.current!.addEventListener!("touchend", handleMouseUp);
 		document!.addEventListener!("mousemove", handleMouseMove);
-		buttonRef.current!.addEventListener!("touchmove", handleMouseMove);
+		if (buttonRef.current) {
+			buttonRef.current!.addEventListener!("touchend", handleMouseUp);
+			buttonRef.current!.addEventListener!("touchmove", handleMouseMove);
+		}
 	}, [handleMouseUp, handleMouseMove]);
 
 	const resetHeight = () => {
@@ -140,11 +146,13 @@ const BottomMenuDiv: React.FC<BottomMenuDivProps> = ({
 				});
 			}
 
-			buttonRef.current!.addEventListener("touchstart", handleMouseDown, {
-				capture: true,
-				passive: false,
-			});
-			buttonRef.current!.removeEventListener!("mousedown", handleMouseDown);
+			if (buttonRef.current) {
+				buttonRef.current!.addEventListener("touchstart", handleMouseDown, {
+					capture: true,
+					passive: false,
+				});
+				buttonRef.current!.removeEventListener!("mousedown", handleMouseDown);
+			}
 		}
 		return () => {
 			document.removeEventListener!("mouseup", handleMouseUp);
@@ -163,7 +171,9 @@ const BottomMenuDiv: React.FC<BottomMenuDivProps> = ({
 
 	useEffect(() => {
 		if (state.collapsed) {
-			onCollapse && onCollapse();
+			setTimeout(() => {
+				onCollapse && onCollapse();
+			}, closeAnimationDelay);
 			setState({
 				collapsed: false,
 			});
@@ -179,6 +189,15 @@ const BottomMenuDiv: React.FC<BottomMenuDivProps> = ({
 	useEffect(() => {
 		resetHeight();
 	}, [menuOpen]);
+
+	useEffect(() => () => {
+		document.removeEventListener!("mouseup", handleMouseUp);
+		document.removeEventListener!("mousemove", handleMouseMove);
+		if (buttonRef.current) {
+			buttonRef.current!.removeEventListener!("touchmove", handleMouseUp);
+			buttonRef.current!.removeEventListener!("touchmove", handleMouseMove);
+		}
+	}, []);
 
 	return (
 		<>
