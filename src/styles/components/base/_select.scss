@@ -23,6 +23,7 @@
 			margin-left: map-deep-get($spacing, "xs", "3");
 			position: absolute;
 			right: map-deep-get($spacing, "xs", "3");
+			margin-top: .2rem;
 		}
 
 		.idx-select-selections {
@@ -173,6 +174,12 @@
 		.idx-select-input {
 			background-color: transparent;
 			box-shadow: none;
+			justify-content: end;
+			padding-right: 1.6rem;
+			.idx-select-input-arrow {
+				margin-right: 0;
+				right: 0;
+			}
 		}
 
 		.idx-select-menu {

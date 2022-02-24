@@ -12,6 +12,7 @@ import CopyInput from "components/base/CopyInput";
 import Divider from "components/base/Divider";
 import UserSearchInput from "components/site/input/UserSearchInput";
 import UserCard from "components/site/card/UserCard";
+import InviteByLink from "components/site/custom/InviteByLink";
 
 export interface ShareModalProps extends Omit<ModalProps, "body" | "header" | "footer"> {
 	data: any;
@@ -47,7 +48,7 @@ const ShareModal: React.VFC<ShareModalProps> = ({
 								}} />
 						</Avatar>
 						<Flex flexDirection="column" flexWrap="wrap" flexGrow={1} className="idx-ml-6">
-							<Text theme="gray5">Public</Text>
+							<Text>Public</Text>
 							<Text theme="secondary" size="sm">Anyone on the internet can find and access</Text>
 						</Flex>
 						<SelectUserRight value="view" />
@@ -61,13 +62,12 @@ const ShareModal: React.VFC<ShareModalProps> = ({
 					<UserSearchInput />
 				</Col>
 				<Col xs={12}>
-					<UserCard showRightsSelect right="view" title="cnsndeniz@gmail.com" subtitle="Hasn't joined yet, tap to send invitation" />
-					<UserCard showRightsSelect right="view" title="cnsndeniz@gmail.com" subtitle="Hasn't joined yet, tap to send invitation" />
-					<UserCard showRightsSelect right="view" title="cnsndeniz@gmail.com" subtitle="Hasn't joined yet, tap to send invitation" />
-					<UserCard showRightsSelect right="view" title="cnsndeniz@gmail.com" subtitle="Hasn't joined yet, tap to send invitation" />
-					<UserCard showRightsSelect right="view" title="cnsndeniz@gmail.com" subtitle="Hasn't joined yet, tap to send invitation" />
-					<UserCard showRightsSelect right="view" title="cnsndeniz@gmail.com" subtitle="Hasn't joined yet, tap to send invitation" />
-					<UserCard showRightsSelect right="view" title="cnsndeniz@gmail.com" subtitle="Hasn't joined yet, tap to send invitation" />
+					<UserCard className="idx-py-5" owner showUserRight right="view" title="cnsndeniz@gmail.com" subtitle="Hasn't joined yet, tap to send invitation" />
+					<UserCard className="idx-py-5" showUserRight right="view" title="cnsndeniz@gmail.com" subtitle="Hasn't joined yet, tap to send invitation" />
+					<UserCard className="idx-py-5" showUserRight right="view" title="cnsndeniz@gmail.com" subtitle="Hasn't joined yet, tap to send invitation" />
+				</Col>
+				<Col xs={12}>
+					<InviteByLink />
 				</Col>
 			</Row>
 		)}

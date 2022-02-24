@@ -6,13 +6,13 @@ import { UserRightType } from "types";
 
 export interface SelectUserRightProps extends Omit<SelectProps, "children"> {
 	value?: UserRightType;
+	className?: string;
 }
 const SelectUserRight: React.VFC<SelectUserRightProps> = (props) => (
 	<Select
 		{...props}
 		ghost
 		fullWidth={false}
-		noMinWidth
 	>
 		<Option value="view"><Text theme="secondary" size="sm" fontWeight={500}>View</Text></Option>
 		<Option value="edit"><Text theme="secondary" size="sm" fontWeight={500}>Edit</Text></Option>

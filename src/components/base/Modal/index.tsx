@@ -145,9 +145,13 @@ const Modal: React.FC<ModalProps> = ({
 					<div className="idx-modal-body">
 						{body}
 					</div>
-					<div className="idx-modal-footer">
-						{footer}
-					</div>
+					{
+						footer && (
+							<div className="idx-modal-footer">
+								{footer}
+							</div>
+						)
+					}
 				</BottomMenuDiv>
 			</div>
 		</div>

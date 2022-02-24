@@ -15,6 +15,7 @@ export type SelectChildrenType = ReactElement<OptionProps>[] | ReactElement<Opti
 export interface SelectProps {
 	children: SelectChildrenType;
 	value?: string | string[];
+	className?: string;
 	defaultValue?: SelectValueType;
 	mode?: "single" | "multiple";
 	bordered?: boolean;
@@ -38,6 +39,7 @@ const Select: React.VFC<SelectProps> = ({
 	placeholder,
 	noMinWidth = false,
 	ghost = false,
+	className,
 	onChange,
 }) => {
 	const { t } = useTranslation(["components"]);
@@ -172,6 +174,7 @@ const Select: React.VFC<SelectProps> = ({
 					fullWidth ? "idx-w-100" : "",
 					noMinWidth ? "idx-select-w-auto" : "",
 					ghost ? "idx-select-ghost" : "",
+					className || "",
 				])}
 			>
 				<div

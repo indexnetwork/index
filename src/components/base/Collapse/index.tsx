@@ -39,7 +39,7 @@ const Collapse: React.FC<CollapseProps> = ({
 				onClick={handleToggle}
 			>
 				<IconUpArrow className="idx-collapse-arrow" />
-				<Text theme="gray5" className="idx-collapse-title" size="sm" fontWeight={700}>{title}</Text>
+				<Text className="idx-collapse-title" size="sm" fontWeight={700}>{title}</Text>
 			</div>
 			<div className="idx-collapse-body">
 				{children}

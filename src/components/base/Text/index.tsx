@@ -21,7 +21,7 @@ const Text: React.FC<TextProps> = ({
 	lineHeight,
 	verticalAlign,
 	element = "span",
-	theme = "primary",
+	theme = "gray5",
 	size = "md",
 	hidden = false,
 	...moreProps

@@ -8,9 +8,12 @@ import React from "react";
 import { UserRightType } from "types";
 
 export interface UserCardProps {
-	showRightsSelect?: boolean;
+	showUserRight?: boolean;
 	title?: string;
 	subtitle?: string;
+	className?: string;
+	hoverable?: boolean;
+	owner?: boolean;
 	right?: UserRightType;
 	onRightsChanged?(newRight: UserRightType): void;
 }
@@ -19,23 +22,32 @@ const UserCard: React.VFC<UserCardProps> = ({
 	title,
 	subtitle,
 	right,
-	showRightsSelect = false,
+	showUserRight = false,
+	owner = false,
+	className,
 	onRightsChanged,
 }) => (
-	<FlexRow align="center" className="idx-px-5 idx-py-5 idx-hoverable">
+	<FlexRow align="center" className={className}>
 		<Col>
 			<Avatar size={40} maxLetters={2} randomColor contentRatio={0.35}>SS</Avatar>
 		</Col>
 		<Col className="idx-flex-grow-1 idx-ml-6">
 			<Flex flexDirection="column">
-				<Text theme="gray5">{title}</Text>
+				<Text>{title}</Text>
 				<Text size="sm" theme="secondary">{subtitle}</Text>
 			</Flex>
 		</Col>
 		{
-			showRightsSelect && (
+			showUserRight && (
 				<Col>
-					<SelectUserRight value={right} onChange={onRightsChanged} />
+					{
+						owner ? (
+							<Text theme="secondary" fontWeight={500} size="sm">Owner</Text>
+						) :
+							(
+								<SelectUserRight value={right} onChange={onRightsChanged} />
+							)
+					}
 				</Col>
 			)
 		}
