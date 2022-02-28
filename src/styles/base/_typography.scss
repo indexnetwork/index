@@ -55,3 +55,23 @@ h6 {
 		stroke: $value;
 	}
 }
+@media (min-width: map-get($breakpoints, "lg")) {
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: $gray-3 $white;
+	}
+	
+	*::-webkit-scrollbar {
+		width: 6px;
+	}
+	
+	*::-webkit-scrollbar-track {
+		background: $white;
+	}
+	
+	*::-webkit-scrollbar-thumb {
+		background-color: $gray-3;
+		border-radius: 3px;
+		border: 1px solid $white;
+	}
+}

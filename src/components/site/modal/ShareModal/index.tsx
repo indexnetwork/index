@@ -57,7 +57,7 @@ const ShareModal: React.VFC<ShareModalProps> = ({
 						value="https://asdaasdasdasdsasd.com" />
 					<Divider className="idx-my-6" />
 				</Col>
-				<Col xs={12}>
+				<Col xs={12} className="idx-mt-3">
 					<Text className="idx-mt-0 idx-mb-6" element="p" fontWeight={600}>Invite collaborators by username or email</Text>
 					<UserSearchInput />
 				</Col>
