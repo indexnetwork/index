@@ -1,24 +1,22 @@
-import React, { ReactElement } from "react";
-import { NextPageWithLayout } from "types";
-import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import Container from "layout/base/Grid/Container";
-import FlexRow from "layout/base/Grid/FlexRow";
-import Col from "layout/base/Grid/Col";
+import IconSearch from "components/base/Icon/IconSearch";
+import Input from "components/base/Input";
 import { Tabs } from "components/base/Tabs";
 import TabPane from "components/base/Tabs/TabPane";
-import { useTranslation } from "next-i18next";
-import Input from "components/base/Input";
-import IconSearch from "components/base/Icon/IconSearch";
 import IndexList from "components/site/indexes/IndexList";
+import Col from "layout/base/Grid/Col";
+import FlexRow from "layout/base/Grid/FlexRow";
+import PageContainer from "layout/site/PageContainer";
 import PageLayout from "layout/site/PageLayout";
+import { useTranslation } from "next-i18next";
+import { serverSideTranslations } from "next-i18next/serverSideTranslations";
+import React, { ReactElement } from "react";
+import { NextPageWithLayout } from "types";
 
 const Home: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 
 	return (
-		<Container
-			className="idx-my-3 idx-my-lg-8"
-		>
+		<PageContainer>
 			<FlexRow
 				rowSpacing={3}
 				justify="center"
@@ -26,7 +24,7 @@ const Home: NextPageWithLayout = () => {
 			>
 				<Col
 					xs={12}
-					lg={9}
+					centerBlock
 				>
 					<Input
 						addOnBefore={<IconSearch />}
@@ -60,9 +58,9 @@ const Home: NextPageWithLayout = () => {
 					</Tabs>
 				</Col>
 			</FlexRow>
-		</Container>
-	);
+		</PageContainer>);
 };
+
 Home.getLayout = function getLayout(page: ReactElement) {
 	return (
 		<PageLayout

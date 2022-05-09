@@ -11,7 +11,14 @@
     "semantic:build": "cd .semantic && npx gulp build"
   },
   "dependencies": {
+    "@ethersproject/providers": "^5.6.4",
+    "@web3-react/coinbase-wallet": "^8.0.22-beta.0",
+    "@web3-react/core": "^6.1.9",
+    "@web3-react/injected-connector": "^6.0.7",
+    "@web3-react/metamask": "^8.0.0-beta.0",
+    "@web3-react/types": "^6.0.7",
     "classcat": "^5.0.3",
+    "ethers": "^5.6.4",
     "formik": "^2.2.9",
     "lodash.debounce": "^4.0.8",
     "next": "12.0.10",

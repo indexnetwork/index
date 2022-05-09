@@ -1,54 +1,103 @@
-import React, { ReactElement } from "react";
-import LandingLayout from "layout/site/LandingLayout";
-import { NextPageWithLayout } from "types";
-import SignInForm from "components/site/forms/SignInForm";
-import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import { useTranslation } from "next-i18next";
 import Button from "components/base/Button";
-import Link from "next/link";
-import Flex from "layout/base/Grid/Flex";
+import IconLogout from "components/base/Icon/IconLogout";
+import IconMetamask from "components/base/Icon/IconMetamask";
+import MainPageContainer from "components/site/container/MainPageContainer";
+import connectors from "connectors";
+import Col from "layout/base/Grid/Col";
+import FlexRow from "layout/base/Grid/FlexRow";
+import PageLayout from "layout/site/PageLayout";
+import { useTranslation } from "next-i18next";
+import { serverSideTranslations } from "next-i18next/serverSideTranslations";
+import React, {
+	ReactElement,
+	useEffect,
+} from "react";
+import { NextPageWithLayout } from "types";
+
+import { Web3Provider } from "@ethersproject/providers";
+import { useWeb3React } from "@web3-react/core";
 
 const Login: NextPageWithLayout = () => {
 	const { t } = useTranslation(["common", "components"]);
+
+	const {
+		account, activate, active, deactivate,
+	} = useWeb3React<Web3Provider>();
+
+	useEffect(() => {
+		const provider = localStorage.getItem("provider");
+		if (provider) {
+			connect(provider as any);
+		}
+	}, []);
+
+	// useEffect(() => {
+	// 	if (account && active) {
+	// 		Router.push("/");
+	// 	}
+	// }, [active, account]);
+
+	const connect = async (provider: keyof typeof connectors) => {
+		try {
+			await activate(connectors[provider]);
+			localStorage.setItem("provider", provider);
+		} catch (err) {
+			console.log(err);
+		}
+	};
+
+	const disconnect = () => {
+		resetProvider();
+		deactivate();
+	};
+
+	const resetProvider = () => {
+		localStorage.removeItem("provider");
+	};
+
 	return (
-		<div >
-			<div style={{
-				maxWidth: 340,
-			}}>
-				<div
-					style={{
-						marginTop: 65,
-					}}
-				>
-					<div>
-						<Flex flexDirection="column">
-							<div style={{ marginBottom: 0 }}>{t("common:signIn")}</div>
-							<span>{t("components:loginForm.subtitle")} <Link href="/register">{t("components:loginForm:create")}</Link></span>
-						</Flex>
-					</div>
-					<div >
-						<Button customType="google">{t("components:loginForm.googleBtn")}</Button>
-					</div>
-					<div >
-						<Button customType="twitter">{t("components:loginForm.twitterBtn")}</Button>
-					</div>
-					<div >
-						{t("components:loginForm.signIn")}
-					</div>
-					<div >
-						<SignInForm />
-					</div>
-				</div>
-			</div>
-		</div>
+		<MainPageContainer>
+			<FlexRow
+				rowSpacing={3}
+				justify="center"
+				className="idx-mb-lg-6"
+			>
+				{
+					account && active ? (
+						<Col>
+							<Button
+								theme="clear"
+								addOnAfter
+								onClick={disconnect}>
+								Logout
+								<IconLogout />
+							</Button>
+						</Col>
+					) : (
+						<Col>
+							<Button
+								theme="clear"
+								addOnAfter
+								onClick={() => connect("injected")}>
+								{t("components:loginForm.googleBtn")}
+								<IconMetamask />
+							</Button>
+						</Col>
+					)
+				}
+			</FlexRow>
+		</MainPageContainer>
+
 	);
 };
 
 Login.getLayout = function getLayout(page: ReactElement) {
 	return (
-		<LandingLayout>
+		<PageLayout
+			hasFooter={false}
+		>
 			{page}
-		</LandingLayout>
+		</PageLayout>
 	);
 };
 
