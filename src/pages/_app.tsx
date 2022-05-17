@@ -2,6 +2,7 @@ import type { AppProps } from "next/app";
 // import "../../.semantic/dist/semantic.min.css";
 import "../styles/main.scss";
 
+import CeramicProvider from "components/site/context/CeramicProvider";
 import { appWithTranslation } from "next-i18next";
 import Head from "next/head";
 import { NextPageWithLayout } from "types";
@@ -22,16 +23,18 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 
 	return (
 		<Web3ReactProvider getLibrary={getLibrary}>
-			<Head>
-				<title>Index.as</title>
-				<link rel="stylesheet preload prefetch" as="style" href="/fonts/fonts.css" type="text/css" />
-				<meta name="title" content="Index.as" />
-				<meta
-					name="description"
-					content="Share curated links about any topic as a searchable index."
-				></meta>
-			</Head>
-			{getLayout(<Component {...pageProps} />)}
+			<CeramicProvider>
+				<Head>
+					<title>Index.as</title>
+					<link rel="stylesheet preload prefetch" as="style" href="/fonts/fonts.css" type="text/css" />
+					<meta name="title" content="Index.as" />
+					<meta
+						name="description"
+						content="Share curated links about any topic as a searchable index."
+					></meta>
+				</Head>
+				{getLayout(<Component {...pageProps} />)}
+			</CeramicProvider>
 		</Web3ReactProvider>
 	);
 }
