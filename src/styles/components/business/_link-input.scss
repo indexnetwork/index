@@ -6,7 +6,8 @@
 
 	.link-input__input {
 		border: none;
-
+		padding-left: map-deep-get($spacing, "xs", "6") !important;
+		padding-right: map-deep-get($spacing, "xs", "6") !important;
 		& > input {
 			background-color: $gray-1;
 		}

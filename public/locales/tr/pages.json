@@ -2,6 +2,7 @@
 	"home": {
 		"tab1Ttl": "Size ait indexler ({{count}})",
 		"tab2Ttl": "Sizinle paylaşılanlar ({{count}})",
-		"searchPh": "Indexlerinizi arayın"
+		"searchPh": "Indexlerinizi arayın",
+		"searchLink": "Linklerinizi arayın"
 	}
 }

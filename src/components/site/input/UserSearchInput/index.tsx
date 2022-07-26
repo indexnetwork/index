@@ -1,4 +1,4 @@
-import Search from "components/base/Search";
+import SearchDropdown from "components/base/SearchDropdown";
 import UserCard from "components/site/card/UserCard";
 import SelectUserRight from "components/site/select/SelectUserRight";
 import React from "react";
@@ -6,7 +6,7 @@ import React from "react";
 export interface UserSearchInputProps { }
 
 const UserSearchInput: React.VFC<UserSearchInputProps> = () => (
-	<Search
+	<SearchDropdown
 		inputClass="idx-pr-1"
 		placeholder="Invite by username or email address"
 		addOnAfter={<SelectUserRight className="idx-mr-3" value="view" />}
@@ -23,7 +23,7 @@ const UserSearchInput: React.VFC<UserSearchInputProps> = () => (
 			))
 		}
 
-	</Search>
+	</SearchDropdown>
 );
 
 export default UserSearchInput;

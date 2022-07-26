@@ -1,6 +1,4 @@
-import React, {
-	forwardRef, ForwardRefRenderFunction, PropsWithChildren,
-} from "react";
+import React, { PropsWithChildren } from "react";
 import cc from "classcat";
 import { DraggableProvided, DraggableStateSnapshot } from "react-beautiful-dnd";
 
@@ -10,16 +8,14 @@ export interface ListItemProps {
 	snapshot?: DraggableStateSnapshot;
 }
 
-const ListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildren<ListItemProps>> = ({
+const ListItem: React.FC<PropsWithChildren<ListItemProps>> = ({
 	children,
 	className,
 	provided,
-	snapshot,
-}, ref) => (
+}) => (
 	<li
-		ref={provided ? provided.innerRef : ref}
-		{...(provided ? provided.draggableProps : undefined)}
-		style={{ ...provided?.draggableProps!.style }}
+		ref={provided?.innerRef}
+		{...(provided?.draggableProps)}
 		className={cc(
 			[
 				"idx-list-item",
@@ -31,4 +27,4 @@ const ListItem: ForwardRefRenderFunction<HTMLLIElement, PropsWithChildren<ListIt
 	</li>
 );
 
-export default forwardRef(ListItem);
+export default ListItem;

@@ -3,13 +3,13 @@ import React, { useRef, useState } from "react";
 
 export interface LazyLoadProps {
 	options?: IntersectionObserverInit;
-	height: number;
+	height?: React.CSSProperties["height"];
 }
 
 const LazyLoad: React.FC<LazyLoadProps> = ({
 	children,
 	options,
-	height = 100,
+	height = 93,
 }) => {
 	const divRef = useRef<HTMLDivElement>(null);
 	const [load, setLoad] = useState(false);
@@ -24,7 +24,8 @@ const LazyLoad: React.FC<LazyLoadProps> = ({
 	return <div
 		ref={divRef}
 		style={{
-			height,
+			height: "auto",
+			minHeight: height,
 		}}
 	>
 		{load ? children : null}

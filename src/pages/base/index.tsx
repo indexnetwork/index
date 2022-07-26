@@ -35,7 +35,7 @@ import DraggableList from "components/base/DraggableList";
 import LazyLoad from "components/base/LazyLoad";
 import { generateRandomColor } from "utils/helper";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import Search from "components/base/Search";
+import SearchDropdown from "components/base/SearchDropdown";
 import Tag from "components/base/Tag";
 import Switch from "components/base/Switch";
 
@@ -616,7 +616,7 @@ const Base: NextPageWithLayout = () => {
 				</Col>
 				<Col>
 					<Header>Search Input</Header>
-					<Search
+					<SearchDropdown
 						open={searchOpen}
 						loading={!searchOpen}
 						onMenuStateChanged={(val) => {
@@ -637,11 +637,11 @@ const Base: NextPageWithLayout = () => {
 							<Col xs={12}>List 12</Col>
 							<Col xs={12}>List 13</Col>
 						</Row>
-					</Search>
+					</SearchDropdown>
 				</Col>
 				<Col>
 					<Header>Loading Search Input</Header>
-					<Search
+					<SearchDropdown
 						loading
 						open={false}>
 						<Row>
@@ -659,11 +659,11 @@ const Base: NextPageWithLayout = () => {
 							<Col xs={12}>List 12</Col>
 							<Col xs={12}>List 13</Col>
 						</Row>
-					</Search>
+					</SearchDropdown>
 				</Col>
 				<Col>
 					<Header>Disabled Search Input</Header>
-					<Search
+					<SearchDropdown
 						disabled
 						open={false}>
 						<Row>
@@ -681,7 +681,7 @@ const Base: NextPageWithLayout = () => {
 							<Col xs={12}>List 12</Col>
 							<Col xs={12}>List 13</Col>
 						</Row>
-					</Search>
+					</SearchDropdown>
 				</Col>
 			</Row>
 			<Row>
