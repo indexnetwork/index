@@ -1,4 +1,4 @@
-import React, { ReactElement, useContext, useState } from "react";
+import React, { ReactElement, useState } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import Container from "layout/base/Grid/Container";
@@ -12,8 +12,9 @@ import { Indexes } from "types/entity";
 import { useMergedState } from "hooks/useMergedState";
 import { useCeramic } from "hooks/useCeramic";
 import { useRouter } from "next/router";
-import { UserContext } from "components/site/context/UserProvider";
 import api from "services/api-service";
+import { useAppSelector } from "hooks/store";
+import { selectConnection } from "store/slices/connectionReducer";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -22,7 +23,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 
 	const ceramic = useCeramic();
 
-	const { account } = useContext(UserContext);
+	const { address } = useAppSelector(selectConnection);
 
 	const [crawling, setCrawling] = useState(false);
 
@@ -34,7 +35,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 		if (stream.title || (stream.links && stream.links.length > 0)) {
 			const doc = await ceramic.createDoc(stream);
 			if (doc != null) {
-				router.push(`${account}/${doc.streamId.toString()}`);
+				router.push(`${address}/${doc.streamId.toString()}`);
 			}
 		}
 	};
@@ -59,7 +60,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 					streamId: doc!.streamId,
 					links: doc?.links || [],
 				});
-				router.push(`${account}/${doc.streamId.toString()}`);
+				router.push(`${address}/${doc.streamId.toString()}`);
 			}
 		} else {
 			alert("Couldn't get the meta data from url");

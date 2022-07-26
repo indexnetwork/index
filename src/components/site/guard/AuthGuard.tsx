@@ -1,20 +1,26 @@
+import { useAppSelector } from "hooks/store";
+import { useAuth } from "hooks/useAuth";
 import { useRouter } from "next/router";
-import React, { ReactElement, useContext } from "react";
-import { UserContext } from "../context/UserProvider";
+import React, { ReactElement } from "react";
+import { selectConnection } from "store/slices/connectionReducer";
+import { isSSR } from "utils/helper";
 
 const AuthGuard: React.FC<{
 	children: ReactElement,
 }> = (props) => {
-	const { loading, account, active } = useContext(UserContext);
 	const router = useRouter();
+	const { loading } = useAppSelector(selectConnection);
+	const authenticated = useAuth();
 
 	if (loading) {
 		return <div>Loading</div>;
 	}
-	if (!loading && account && active) {
+	if (!loading && authenticated) {
 		return props.children!;
 	}
-	router.push("/");
+	if (!isSSR()) {
+		router.push("/");
+	}
 	return null;
 };
 

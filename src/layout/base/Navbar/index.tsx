@@ -1,10 +1,12 @@
 import LogoFull from "components/base/Logo/LogoFull";
 import LogoMini from "components/base/Logo/LogoMini";
-import React, { useContext, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import cc from "classcat";
 import { useYOffSet } from "hooks/useYOffset";
-import { UserContext } from "components/site/context/UserProvider";
 import { useRouter } from "next/router";
+import { useAppSelector } from "hooks/store";
+import { selectConnection } from "store/slices/connectionReducer";
+import { useAuth } from "hooks/useAuth";
 import Container from "../Grid/Container";
 import Col from "../Grid/Col";
 import FlexRow from "../Grid/FlexRow";
@@ -38,7 +40,8 @@ const Navbar: React.FC<NavbarProps> = ({
 	const yOffSet = useYOffSet(sticky);
 	const [bgSticky, setBgSticky] = useState(false);
 
-	const { authenticated, account } = useContext(UserContext);
+	const { address } = useAppSelector(selectConnection);
+	const authenticated = useAuth();
 	const router = useRouter();
 
 	useEffect(() => {
@@ -55,7 +58,7 @@ const Navbar: React.FC<NavbarProps> = ({
 
 	const handleLogoClick = () => {
 		if (authenticated) {
-			router.push(`/${account}`);
+			router.push(`/${address}`);
 		}
 	};
 	return (

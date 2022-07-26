@@ -1,5 +1,5 @@
 import React, {
-	ReactElement, useContext, useEffect, useRef, useState,
+	ReactElement, useEffect, useRef, useState,
 } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -27,13 +27,14 @@ import { useCeramic } from "hooks/useCeramic";
 import { useMergedState } from "hooks/useMergedState";
 import moment from "moment";
 import { TileDocument } from "@ceramicnetwork/stream-tile";
-import { UserContext } from "components/site/context/UserProvider";
 import { copyToClipboard } from "utils/helper";
 import IconLink1 from "components/base/Icon/IconLink1";
 import IconCopy from "components/base/Icon/IconCopy";
 import SearchInput from "components/base/SearchInput";
 import NotFound from "components/site/indexes/NotFound";
 import { useOwner } from "hooks/useOwner";
+import { useAppSelector } from "hooks/store";
+import { selectConnection } from "store/slices/connectionReducer";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -46,7 +47,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [loading, setLoading] = useState(false);
 	const [search, setSearch] = useState("");
 
-	const { account } = useContext(UserContext);
+	const { address } = useAppSelector(selectConnection);
 	const { isOwner } = useOwner();
 	const ceramic = useCeramic();
 
@@ -76,7 +77,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleDelete = () => {
-		router.push(`/${account}`);
+		router.push(`/${address}`);
 	};
 
 	const handleAddLink = async (linkUrl: string) => {
@@ -112,7 +113,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const doc = await ceramic.createDoc(content);
 
 		if (doc != null) {
-			router.push(`/${account}/${doc.streamId.toString()}`);
+			router.push(`/${address}/${doc.streamId.toString()}`);
 		}
 	};
 
@@ -168,7 +169,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											</Col>
 											<Col>
 												{
-													account === router.query.address ? (
+													(address || "").toLowerCase() === router.query.address ? (
 														<Button
 															addOnBefore
 															size="sm"

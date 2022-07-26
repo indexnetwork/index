@@ -1,6 +1,7 @@
-import { CeramicContext } from "components/site/context/CeramicProvider";
 import { useRouter } from "next/router";
-import { useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { selectConnection } from "store/slices/connectionReducer";
+import { useAppSelector } from "./store";
 
 export interface OwnerState {
 	isOwner: boolean;
@@ -8,7 +9,7 @@ export interface OwnerState {
 }
 export const useOwner = () => {
 	const router = useRouter();
-	const { address } = useContext(CeramicContext);
+	const { address } = useAppSelector(selectConnection);
 
 	const getState = () => ({
 		isOwner: router.query && router.query.address === address,

@@ -1,6 +1,5 @@
-import { useMergedState } from "hooks/useMergedState";
 import React, {
-	useContext, useEffect, useMemo, useRef, useState,
+	useEffect, useMemo, useRef, useState,
 } from "react";
 import ceramicService from "services/ceramic-service-2";
 
@@ -9,7 +8,7 @@ import api from "services/api-service";
 import { Indexes, LinkContentResult, Links } from "types/entity";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import socketIoClient, { Socket } from "socket.io-client";
-import { UserContext } from "./UserProvider";
+import { useAuth } from "hooks/useAuth";
 
 const API_URL = "http://localhost:3001";
 
@@ -20,15 +19,12 @@ export interface CeramicContextState {
 }
 
 export interface CeramicContextValue {
-	authenticated: boolean;
-	address?: string | null;
 	socketConnected: boolean;
 	syncedData: any;
 	createDoc(doc: Partial<Indexes>): Promise<Indexes | null>;
 	updateDoc(streamId: string, content: Partial<Indexes>): Promise<TileDocument<any>>;
 	getDocById(streamId: string): Promise<TileDocument<Indexes>>;
 	getDocs(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }>;
-	authenticate(): Promise<void>;
 	getProfile(): Promise<BasicProfile | null>;
 	setProfile(profile: BasicProfile): Promise<boolean>;
 	addLink(streamId: string, data: Links): Promise<[TileDocument<Indexes>, Links[]]>;
@@ -37,7 +33,6 @@ export interface CeramicContextValue {
 	removeTag(streamId: string, linkId: string, tag: string): Promise<TileDocument<Indexes> | undefined>;
 	setLinkFavorite(streamId: string, linkId: string, favorite: boolean): Promise<TileDocument<Indexes> | undefined>;
 	putLinks(streamId: string, links: Links[]): Promise<TileDocument<Indexes>>;
-	close(): Promise<void>;
 }
 
 export const CeramicContext = React.createContext<CeramicContextValue>({} as any);
@@ -45,21 +40,15 @@ export const CeramicContext = React.createContext<CeramicContextValue>({} as any
 const CeramicProvider: React.FC<{}> = ({
 	children,
 }) => {
-	const {
-		account,
-		active,
-	} = useContext(UserContext);
 	const io = useRef<Socket<ListenEvents, {}>>();
 
-	const [state, setState] = useMergedState<CeramicContextState>({});
-	const [authenticated, setAuthenticated] = useState(false);
+	const authenticated = useAuth();
 	const [syncedData, setSyncedData] = useState<LinkContentResult>();
 
 	// Socket Variables
 	const [socketConnected, setSocketConnected] = useState(false);
 	const handlers: ListenEvents = useMemo(() => ({
 		contentSync: async (data) => {
-			console.log(data);
 			await ceramicService.syncContents(data);
 		},
 	}), []);
@@ -113,35 +102,9 @@ const CeramicProvider: React.FC<{}> = ({
 
 	const getDocs = (streams: { streamId: string }[]) => ceramicService.getIndexes(streams);
 
-	const authenticate = async () => {
-		if (!ceramicService.isAuthenticated() && account) {
-			const result = await ceramicService.authenticate(account);
-			setAuthenticated(result);
-			await ceramicService.syncContents();
-		} else if (!account) {
-			try {
-				await ceramicService.close();
-			} finally {
-				setAuthenticated(false);
-			}
-		}
-	};
-
-	const close = async () => {
-		try {
-			await ceramicService.close();
-		} finally {
-			setAuthenticated(false);
-		}
-	};
-
 	const getProfile = async () => ceramicService.getProfile();
 
 	const setProfile = async (profile: BasicProfile) => ceramicService.setProfile(profile);
-
-	useEffect(() => {
-		authenticate();
-	}, [account, active]);
 
 	useEffect(() => {
 		if (authenticated) {
@@ -189,24 +152,20 @@ const CeramicProvider: React.FC<{}> = ({
 
 	return (
 		<CeramicContext.Provider value={{
-			authenticated,
 			socketConnected,
 			syncedData,
-			address: account,
 			createDoc,
 			updateDoc,
 			getDocById,
 			getDocs,
 			addTag,
 			addLink,
-			authenticate,
 			getProfile,
 			setProfile,
 			putLinks,
 			setLinkFavorite,
 			removeLink,
 			removeTag,
-			close,
 		}}>
 			{children}
 		</CeramicContext.Provider>
