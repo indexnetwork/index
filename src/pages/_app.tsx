@@ -9,8 +9,10 @@ import { NextPageWithLayout } from "types";
 
 import { Web3Provider } from "@ethersproject/providers";
 import { Web3ReactProvider } from "@web3-react/core";
-import UserProvider from "components/site/context/UserProvider";
 import AuthGuard from "components/site/guard/AuthGuard";
+import { Provider } from "react-redux";
+import { store } from "store";
+import { AuthHandlerProvider } from "components/site/context/AuthHandlerProvider";
 
 type AppPropsWithLayout = AppProps & {
 	Component: NextPageWithLayout;
@@ -25,26 +27,28 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 
 	return (
 		<Web3ReactProvider getLibrary={getLibrary}>
-			<UserProvider>
-				<CeramicProvider>
-					<Head>
-						<title>Index.as</title>
-						<link rel="stylesheet preload prefetch" as="style" href="/fonts/fonts.css" type="text/css" />
-						<meta name="title" content="Index.as" />
-						<meta
-							name="description"
-							content="Share curated links about any topic as a searchable index."
-						></meta>
-					</Head>
-					{Component.requireAuth ? (
-						<AuthGuard>
-							{getLayout(<Component {...pageProps} />)}
-						</AuthGuard>
-					) : (
-						getLayout(<Component {...pageProps} />)
-					)}
-				</CeramicProvider>
-			</UserProvider>
+			<Provider store={store}>
+				<AuthHandlerProvider>
+					<CeramicProvider>
+						<Head>
+							<title>Index.as</title>
+							<link rel="stylesheet preload prefetch" as="style" href="/fonts/fonts.css" type="text/css" />
+							<meta name="title" content="Index.as" />
+							<meta
+								name="description"
+								content="Share curated links about any topic as a searchable index."
+							></meta>
+						</Head>
+						{Component.requireAuth ? (
+							<AuthGuard>
+								{getLayout(<Component {...pageProps} />)}
+							</AuthGuard>
+						) : (
+							getLayout(<Component {...pageProps} />)
+						)}
+					</CeramicProvider>
+				</AuthHandlerProvider>
+			</Provider>
 		</Web3ReactProvider>
 	);
 }

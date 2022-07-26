@@ -10,8 +10,10 @@ import React, { useCallback, useContext, useEffect } from "react";
 import IconSettings from "components/base/Icon/IconSettings";
 import IconLogout from "components/base/Icon/IconLogout";
 import Router, { useRouter } from "next/router";
+import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
+import { useAppSelector } from "hooks/store";
+import { selectConnection } from "store/slices/connectionReducer";
 import { useAuth } from "hooks/useAuth";
-import { CeramicContext } from "components/site/context/CeramicProvider";
 import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
 
 export interface LandingHeaderProps extends NavbarProps {
@@ -22,7 +24,13 @@ export interface LandingHeaderProps extends NavbarProps {
 const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLanding = false, ...baseProps }) => {
 	const { t } = useTranslation(["common", "components"]);
 
-	const { authenticated, address } = useContext(CeramicContext);
+	const {
+		address,
+	} = useAppSelector(selectConnection);
+
+	const authenticated = useAuth();
+
+	const { connect, disconnect } = useContext(AuthHandlerContext);
 
 	const router = useRouter();
 
@@ -30,17 +38,11 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 		router.push("/create");
 	};
 
-	const {
-		connect,
-		disconnect,
-		connected,
-	} = useAuth(false);
-
 	useEffect(() => {
-		if (isLanding && authenticated && address && connected) {
+		if (isLanding && authenticated) {
 			Router.push(`/${address}`);
 		}
-	}, [address, authenticated, connected]);
+	}, [address, authenticated, isLanding]);
 
 	const handleConnect = async () => {
 		try {
