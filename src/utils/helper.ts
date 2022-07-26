@@ -1,3 +1,7 @@
+import moment from "moment";
+import { Links } from "types/entity";
+import { v4 as uuid } from "uuid";
+
 export function copyToClipboard(str?: string) {
 	if (navigator && navigator.clipboard) navigator.clipboard.writeText(str || "");
 	else {
@@ -35,4 +39,25 @@ export function isSSR() {
 
 export function isMobile() {
 	return !isSSR() && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+export const setDates = <T extends { updatedAt?: string, createdAt?: string, [key: string]: any }>(obj: T, update: boolean = false) => {
+	const date = moment.utc().toISOString();
+	if (update === false) {
+		obj.createdAt = date;
+	}
+	obj.updatedAt = date;
+	return obj;
+};
+
+export function prepareLinks(links: Links[], update: boolean = false) {
+	return links?.map((link) => setDates({
+		...link,
+		id: uuid(),
+	}, update));
+}
+export function arrayMove(list: any[], startIndex: number, endIndex: number) {
+	const result = Array.from(list);
+	const [removed] = result.splice(startIndex, 1);
+	result.splice(endIndex, 0, removed);
+	return result;
 }

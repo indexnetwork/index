@@ -8,17 +8,12 @@ const TagIndexDetailItem: React.VFC<TagIndexDetailItemProps> = ({
 	onRemove,
 	text,
 	...tagProps
-}) => {
-	const handleRemove = () => {
-
-	};
-	return (
-		<Tag
-			{...tagProps}
-			text={text || ""}
-			onRemove={handleRemove}
-		></Tag>
-	);
-};
+}) => (
+	<Tag
+		{...tagProps}
+		text={text || ""}
+		onRemove={onRemove}
+	></Tag>
+);
 
 export default TagIndexDetailItem;

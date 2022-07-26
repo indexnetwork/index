@@ -5,14 +5,18 @@ import SiteFooter from "../SiteFooter";
 
 export interface PageLayoutProps {
 	hasFooter?: boolean;
+	headerType?: "user" | "public";
+	isLanding?: boolean;
 }
-const PageLayout: React.FC<PageLayoutProps> = ({ children, hasFooter = false }) => (
+const PageLayout: React.FC<PageLayoutProps> = ({
+	children, headerType = "user", hasFooter = false, isLanding = false,
+}) => (
 	<>
 		<Head>
 			<title>Index.as</title>
 			{/* <script async src="/scripts/drag-drop-touch.js"></script> */}
 		</Head>
-		<SiteNavbar headerType="user" />
+		<SiteNavbar headerType={headerType} isLanding={isLanding} />
 		{children}
 		{hasFooter && <SiteFooter />}
 	</>

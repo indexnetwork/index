@@ -33,6 +33,7 @@
     "prefer-destructuring": "warn",
     "import/no-useless-path-segments": "off",
     "unused-imports/no-unused-imports": "error",
+    "class-methods-use-this": "off",
     "unused-imports/no-unused-vars": [
       "warn",
       {

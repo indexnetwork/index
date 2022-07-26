@@ -79,12 +79,13 @@
 	}
 
 	.idx-icon {
-		height: 1.4rem;
+		height: 2rem;
 		width: auto;
 	}
 
 	.idx-button-inner {
 		height: 100%;
+		line-height: 100%;
 		.idx-icon {
 			display: flex;
 		}
@@ -93,6 +94,7 @@
 	&.idx-button-addon-b {
 		display: inline-block;
 		vertical-align: middle;
+		margin-right: .5rem;
 		.idx-icon {
 			display: inline-block;
 			vertical-align: middle;

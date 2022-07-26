@@ -1,9 +1,12 @@
-import React from "react";
 import cc from "classcat";
 import IconGoogle from "components/base/Icon/IconGoogle";
 import IconTwitter from "components/base/Icon/IconTwitter";
-import { InputSizeType, ButtonThemeType } from "types";
 import Flex from "layout/base/Grid/Flex";
+import React from "react";
+import {
+	ButtonThemeType,
+	InputSizeType,
+} from "types";
 
 export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> {
 	customType?: "google" | "twitter";

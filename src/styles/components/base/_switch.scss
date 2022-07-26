@@ -31,4 +31,8 @@
 			transform: translateX(100%);
 		}
 	}
+
+	&.idx-switch-disabled {
+		cursor: not-allowed;
+	}
 }

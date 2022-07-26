@@ -7,6 +7,7 @@ import React, {
  * Common Types
  */
 export type NextPageWithLayout = NextPage & {
+  requireAuth?: boolean;
   getLayout?: (page: ReactElement) => ReactNode
 };
 
@@ -85,3 +86,11 @@ export type FlexAlignType = "start" | "end" | "center";
 export type FlexJustifyType = FlexAlignType | "between" | "around" | "evenly";
 
 export type UserRightType = "view" | "edit" | "off";
+
+export interface IndexesRouteParams {
+  address?: string;
+}
+
+export interface IndexDetailsRouteParams extends IndexesRouteParams {
+  streamId?: string;
+}

@@ -29,7 +29,7 @@ const UserCard: React.VFC<UserCardProps> = ({
 }) => (
 	<FlexRow align="center" className={className}>
 		<Col>
-			<Avatar size={40} maxLetters={2} randomColor contentRatio={0.35}>SS</Avatar>
+			<Avatar size={40} maxLetters={2} randomColor contentRatio={0.35}>Y</Avatar>
 		</Col>
 		<Col className="idx-flex-grow-1 idx-ml-6">
 			<Flex flexDirection="column">

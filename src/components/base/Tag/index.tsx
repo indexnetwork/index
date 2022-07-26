@@ -17,7 +17,7 @@ export interface TagProps extends React.DetailedHTMLProps<React.HTMLAttributes<H
 	shape?: ShapeType;
 	onClick?(): void;
 	onEdit?(val?: string | null): void;
-	onRemove?(): void;
+	onRemove?(val: string): void;
 }
 
 const Tag: React.FC<TagProps> = ({
@@ -45,7 +45,7 @@ const Tag: React.FC<TagProps> = ({
 		if (e) {
 			e.stopPropagation();
 		}
-		onRemove && onRemove();
+		onRemove && onRemove(value!);
 	};
 
 	const handleEditActiveToggle = () => {
@@ -59,15 +59,15 @@ const Tag: React.FC<TagProps> = ({
 		}
 	}, [editable]);
 
-	const handleValueChange = (e: any) => {
-		if (e && e.target) {
-			setValue(e.target.value);
+	const handleValueChange = ({ target }: any) => {
+		if (target) {
+			setValue(target.value);
 		}
 	};
 
 	const handleClose = () => {
 		setEditActive(false);
-		onEdit && onEdit(value);
+		onEdit && onEdit(value?.toLowerCase());
 	};
 
 	const handleEnter = (e: any) => {

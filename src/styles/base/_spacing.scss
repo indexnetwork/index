@@ -12,6 +12,10 @@
 		$bp: "-" + $breakpoint;
 	}
 	@if ($breakpoint == "xs") {
+		.idx-m {
+			@include responsive-sizes($spacing, "margin", $important: true);
+		}
+		
 		.idx-mt {
 			@include responsive-sizes($spacing, "margin-top", $important: true);
 		}
@@ -36,6 +40,10 @@
 		.idx-my {
 			@include responsive-sizes($spacing, "margin-top", $important: true);
 			@include responsive-sizes($spacing, "margin-bottom", $important: true);
+		}
+
+		.idx-p {
+			@include responsive-sizes($spacing, "padding", $important: true);
 		}
 
 		.idx-pt {

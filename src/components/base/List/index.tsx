@@ -1,5 +1,5 @@
 import React, {
-	ReactElement, useEffect, useRef, useState,
+	ReactElement, useRef,
 } from "react";
 import { v4 as uuidv4 } from "uuid";
 import cc from "classcat";
@@ -13,6 +13,8 @@ export interface ListProps<T = {}> {
 	render(item: T, index: number, provided?: DraggableProvided, snapshot?: DraggableStateSnapshot): ReactElement<any>;
 	divided?: boolean;
 	draggable?: boolean;
+	placeholder?: any;
+	droppableProvided?: any,
 }
 
 const List: React.VFC<ListProps> = ({
@@ -22,23 +24,23 @@ const List: React.VFC<ListProps> = ({
 	render,
 	divided = true,
 	draggable = false,
+	placeholder,
+	droppableProvided,
 }) => {
-	const [listData, setListData] = useState(data);
 	const containerId = useRef<string>(uuidv4());
 
-	useEffect(() => {
-		setListData(data);
-	}, [data]);
-
 	return (
-		<ul className={
-			cc([
-				"idx-list",
-				listClass || "",
-			])
-		}>
+		<ul
+			ref={droppableProvided?.innerRef}
+			{...droppableProvided?.droppableProps}
+			className={
+				cc([
+					"idx-list",
+					listClass || "",
+				])
+			}>
 			{
-				listData.map((item, index) => (!draggable ? (
+				data.map((item, index) => (!draggable ? (
 					<ListItem
 						key={`listItem${index}-${containerId}`}
 						className={cc([
@@ -46,23 +48,26 @@ const List: React.VFC<ListProps> = ({
 						])}
 					>
 						{render(item, index)}
-						{divided && index !== listData.length - 1 && <div className="idx-list-divider"></div>}
+						{divided && index !== data.length - 1 && <div className="idx-list-divider"></div>}
 					</ListItem>
 				) : (
 					<Draggable
-						key={`draggable-${item}`}
+						key={(item as any).id}
 						index={index}
-						draggableId={`draggable-${item}`}>{(provided, snapshot) => <ListItem
+						draggableId={(item as any).id}>
+						{(provided, snapshot) => <ListItem
 							provided={provided}
-							key={`listItem${index}-${containerId}`}
 							className={cc([
 								itemContainerClass || "",
 							])}
 						>
 							{render(item, index, provided, snapshot)}
-							{divided && index !== listData.length - 1 && <div className="idx-list-divider"></div>}
+							{divided && index !== data.length - 1 && <div className="idx-list-divider"></div>}
 						</ListItem>}</Draggable>
 				)))
+			}
+			{
+				droppableProvided?.placeholder
 			}
 		</ul>
 	);

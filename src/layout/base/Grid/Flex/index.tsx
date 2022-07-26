@@ -8,6 +8,7 @@ export interface FlexProps extends FlexPropsType, React.DetailedHTMLProps<React.
 
 const Flex = styled.div<FlexProps>`
 ${({
+		flex,
 		inline,
 		flexBasis,
 		flexDirection,
@@ -24,6 +25,7 @@ ${({
 		justifyItems,
 		gap,
 	}) => `
+flex: ${flex || ""};
 display: ${inline ? "inline-flex" : "flex"};
 flex-basis: ${flexBasis || ""};
 flex-direction: ${flexDirection || ""};

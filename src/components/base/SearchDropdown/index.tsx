@@ -12,7 +12,7 @@ import IconSearch from "../Icon/IconSearch";
 import Input from "../Input";
 import Spin from "../Spin";
 
-export interface SearchProps {
+export interface SearchDropdownProps {
 	value?: string;
 	size?: InputSizeType,
 	fullWidth?: boolean;
@@ -37,7 +37,7 @@ export interface SearchProps {
 	onMenuStateChanged?(open: boolean): void;
 }
 
-const Search: React.FC<SearchProps> = ({
+const SearchDropdown: React.FC<SearchDropdownProps> = ({
 	children,
 	addOnAfter,
 	inputClass,
@@ -94,7 +94,7 @@ const Search: React.FC<SearchProps> = ({
 		onSearch && onSearch(val);
 	};
 
-	const debouncedSearch = useCallback(debounce(handleOnSearch, debounceTime), []);
+	const debouncedSearch = useCallback(debounce(handleOnSearch, debounceTime), [onSearch, debounceTime]);
 
 	const handleChange = (e: any) => {
 		if (e && e.target) {
@@ -144,4 +144,4 @@ const Search: React.FC<SearchProps> = ({
 	);
 };
 
-export default Search;
+export default SearchDropdown;
