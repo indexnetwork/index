@@ -2,7 +2,7 @@ import Dropdown from "components/base/Dropdown";
 import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
 import IconTrash from "components/base/Icon/IconTrash";
 import Text from "components/base/Text";
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
 import React from "react";
 

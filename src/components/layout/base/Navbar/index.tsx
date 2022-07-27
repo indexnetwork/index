@@ -5,7 +5,7 @@ import cc from "classcat";
 import { useYOffSet } from "hooks/useYOffset";
 import { useRouter } from "next/router";
 import { useAppSelector } from "hooks/store";
-import { selectConnection } from "store/slices/connectionReducer";
+import { selectConnection } from "store/slices/connectionSlice";
 import { useAuth } from "hooks/useAuth";
 import Container from "../Grid/Container";
 import Col from "../Grid/Col";

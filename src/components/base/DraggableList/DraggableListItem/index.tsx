@@ -2,7 +2,7 @@ import React, {
 	forwardRef, ForwardRefRenderFunction, PropsWithChildren, useEffect, useRef, useState,
 } from "react";
 import cc from "classcat";
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import IconDrag from "components/base/Icon/IconDrag";
 import { isMobile } from "utils/helper";
 

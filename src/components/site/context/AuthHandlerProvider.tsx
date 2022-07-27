@@ -7,7 +7,8 @@ import React, { useEffect, useState } from "react";
 import ceramicService from "services/ceramic-service-2";
 import {
 	disconnectApp, selectConnection, setApiTokenSigned, setAuthLoading, setCeramicConnected, setMetaMaskConnected,
-} from "store/slices/connectionReducer";
+} from "store/slices/connectionSlice";
+import { setProfile } from "store/slices/profileSlice";
 import * as Web3Token from "web3-token";
 
 export interface AuthHandlerContextType {
@@ -124,10 +125,25 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 		}
 	};
 
+	const getProfile = async () => {
+		try {
+			const profile = await ceramicService.getProfile();
+			if (profile) {
+				dispatch(setProfile({
+					...profile,
+					available: true,
+				}));
+			}
+		} catch (err) {
+			// profile error
+		}
+	};
+
 	const completeConnections = async () => {
 		try {
 			await checkToken(account!);
 			await authToCeramic();
+			await getProfile();
 		} finally {
 			dispatch(setAuthLoading(false));
 		}

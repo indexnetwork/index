@@ -1,4 +1,4 @@
-import Container, { ContainerProps } from "layout/base/Grid/Container";
+import Container, { ContainerProps } from "components/layout/base/Grid/Container";
 import React from "react";
 import cc from "classcat";
 import cm from "./style.module.scss";

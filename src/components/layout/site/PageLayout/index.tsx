@@ -1,4 +1,4 @@
-import SiteNavbar from "layout/site/SiteNavbar";
+import SiteNavbar from "components/layout/site/SiteNavbar";
 import Head from "next/head";
 import React from "react";
 import SiteFooter from "../SiteFooter";

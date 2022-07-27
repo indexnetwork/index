@@ -1,6 +1,6 @@
 import Header from "components/base/Header";
 import Text from "components/base/Text";
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
 import Lottie from "react-lottie-player";
 import cc from "classcat";

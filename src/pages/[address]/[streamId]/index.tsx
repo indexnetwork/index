@@ -3,11 +3,11 @@ import React, {
 } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import Container from "layout/base/Grid/Container";
-import FlexRow from "layout/base/Grid/FlexRow";
-import Col from "layout/base/Grid/Col";
+import Container from "components/layout/base/Grid/Container";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
 import { useTranslation } from "next-i18next";
-import PageLayout from "layout/site/PageLayout";
+import PageLayout from "components/layout/site/PageLayout";
 import ButtonGroup from "components/base/ButtonGroup";
 import Button from "components/base/Button";
 import Text from "components/base/Text";
@@ -34,7 +34,8 @@ import SearchInput from "components/base/SearchInput";
 import NotFound from "components/site/indexes/NotFound";
 import { useOwner } from "hooks/useOwner";
 import { useAppSelector } from "hooks/store";
-import { selectConnection } from "store/slices/connectionReducer";
+import { selectConnection } from "store/slices/connectionSlice";
+import { selectProfile } from "store/slices/profileSlice";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -48,6 +49,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [search, setSearch] = useState("");
 
 	const { address } = useAppSelector(selectConnection);
+	const { available, name } = useAppSelector(selectProfile);
+
 	const { isOwner } = useOwner();
 	const ceramic = useCeramic();
 
@@ -128,7 +131,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	return (
 		<>
-
 			<Container
 				className="index-details-page idx-my-6 idx-my-lg-8"
 			>
@@ -150,8 +152,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										lg={9}
 										noYGutters
 									>
-										<Avatar randomColor size={20}>{isOwner ? "Y" : "O"}</Avatar>
-										<Text className="idx-ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{stream?.address}</Text>
+										<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
+										<Text className="idx-ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : stream?.address}</Text>
 									</Col>
 									<Col
 										xs={12}

@@ -1,11 +1,11 @@
 import React, { ReactElement, useState } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import Container from "layout/base/Grid/Container";
-import FlexRow from "layout/base/Grid/FlexRow";
-import Col from "layout/base/Grid/Col";
+import Container from "components/layout/base/Grid/Container";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
 import { useTranslation } from "next-i18next";
-import PageLayout from "layout/site/PageLayout";
+import PageLayout from "components/layout/site/PageLayout";
 import HeaderInput from "components/site/input/HeaderInput";
 import LinkInput from "components/site/input/LinkInput";
 import { Indexes } from "types/entity";
@@ -14,7 +14,7 @@ import { useCeramic } from "hooks/useCeramic";
 import { useRouter } from "next/router";
 import api from "services/api-service";
 import { useAppSelector } from "hooks/store";
-import { selectConnection } from "store/slices/connectionReducer";
+import { selectConnection } from "store/slices/connectionSlice";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);

@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import cc from "classcat";
 import { InputSizeType, PropType } from "types";
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import IconVisible from "../Icon/IconVisible";
 import IconInvisible from "../Icon/IconInvisible";
 

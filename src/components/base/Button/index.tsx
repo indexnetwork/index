@@ -1,7 +1,7 @@
 import cc from "classcat";
 import IconGoogle from "components/base/Icon/IconGoogle";
 import IconTwitter from "components/base/Icon/IconTwitter";
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
 import {
 	ButtonThemeType,

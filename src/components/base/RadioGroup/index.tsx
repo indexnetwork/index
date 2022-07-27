@@ -1,5 +1,5 @@
-import Col from "layout/base/Grid/Col";
-import FlexRow, { FlexRowProps } from "layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
+import FlexRow, { FlexRowProps } from "components/layout/base/Grid/FlexRow";
 import {
 	useCallback, useEffect, useRef, useState,
 } from "react";

@@ -2,7 +2,7 @@ import { useAppSelector } from "hooks/store";
 import { useAuth } from "hooks/useAuth";
 import { useRouter } from "next/router";
 import React, { ReactElement } from "react";
-import { selectConnection } from "store/slices/connectionReducer";
+import { selectConnection } from "store/slices/connectionSlice";
 import { isSSR } from "utils/helper";
 
 const AuthGuard: React.FC<{

@@ -1,8 +1,8 @@
 import Text from "components/base/Text";
 
 import React from "react";
-import FlexRow from "layout/base/Grid/FlexRow";
-import Col from "layout/base/Grid/Col";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
 import IconClose from "components/base/Icon/IconClose";
 import CopyInput from "components/base/CopyInput";
 

@@ -1,6 +1,6 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import { selectConnection } from "store/slices/connectionReducer";
+import { selectConnection } from "store/slices/connectionSlice";
 import { useAppSelector } from "./store";
 
 export interface OwnerState {

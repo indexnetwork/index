@@ -1,5 +1,5 @@
 import IconTwitter from "components/base/Icon/IconTwitter";
-import Footer, { FooterMenu } from "layout/base/Footer";
+import Footer, { FooterMenu } from "components/layout/base/Footer";
 import React from "react";
 
 const SiteFooter: React.FC = () => (

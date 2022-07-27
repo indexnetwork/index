@@ -1,5 +1,5 @@
-import Col from "layout/base/Grid/Col";
-import FlexRow from "layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
+import FlexRow from "components/layout/base/Grid/FlexRow";
 import Text from "components/base/Text";
 import React, { useState } from "react";
 import Button from "components/base/Button";
@@ -9,7 +9,7 @@ import IconContextMenu from "components/base/Icon/IconContextMenu";
 import LogoMini from "components/base/Logo/LogoMini";
 import { DraggableProvided, DraggableStateSnapshot } from "react-beautiful-dnd";
 import IconDrag from "components/base/Icon/IconDrag";
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import { useBreakpoint } from "hooks/useBreakpoint";
 import { BREAKPOINTS } from "utils/constants";
 import TagIndexDetailItem from "components/site/tag/TagIndexDetailItem";

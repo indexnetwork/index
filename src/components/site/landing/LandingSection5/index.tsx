@@ -1,6 +1,6 @@
 import Button from "components/base/Button";
 import Header from "components/base/Header";
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
 import LandingSection from "../LandingSection";
 import cm from "./style.module.scss";

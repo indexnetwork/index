@@ -1,4 +1,4 @@
-import Container from "layout/base/Grid/Container";
+import Container from "components/layout/base/Grid/Container";
 import React from "react";
 
 const MainPageContainer: React.FC = ({
