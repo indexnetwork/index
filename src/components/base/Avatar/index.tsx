@@ -54,7 +54,7 @@ const Avatar: React.FC<AvatarProps> = ({
 				backgroundColor: color,
 			}}
 		>
-			{typeof children === "string" ? children.substring(0, maxLetters) : children}
+			{typeof children === "string" ? children.substring(0, maxLetters).toUpperCase() : children}
 		</div>
 	);
 };

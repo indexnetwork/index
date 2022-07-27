@@ -1,5 +1,5 @@
 import Header from "components/base/Header";
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
 import IconFeatureAddLink from "components/base/Icon/IconFeatureAddLink";
 import IconFeatureExtension from "components/base/Icon/IconFeatureExtension";

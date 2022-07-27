@@ -1,4 +1,4 @@
-import { selectConnection } from "store/slices/connectionReducer";
+import { selectConnection } from "store/slices/connectionSlice";
 import { useAppSelector } from "./store";
 
 export function useAuth(autoConnect: boolean = true) {

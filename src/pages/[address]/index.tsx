@@ -1,10 +1,10 @@
 import SearchInput from "components/base/SearchInput";
 import IndexList from "components/site/indexes/IndexList";
 import { useOwner } from "hooks/useOwner";
-import Col from "layout/base/Grid/Col";
-import FlexRow from "layout/base/Grid/FlexRow";
-import PageContainer from "layout/site/PageContainer";
-import PageLayout from "layout/site/PageLayout";
+import Col from "components/layout/base/Grid/Col";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import PageContainer from "components/layout/site/PageContainer";
+import PageLayout from "components/layout/site/PageLayout";
 import { useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import React, { ReactElement, useState } from "react";

@@ -4,7 +4,7 @@ import Text from "components/base/Text";
 import Dropdown from "components/base/Dropdown";
 import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
 import IconPeople from "components/base/Icon/IconPeople";
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
 import React, { useCallback, useContext, useEffect } from "react";
 import IconSettings from "components/base/Icon/IconSettings";
@@ -12,8 +12,9 @@ import IconLogout from "components/base/Icon/IconLogout";
 import Router, { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
 import { useAppSelector } from "hooks/store";
-import { selectConnection } from "store/slices/connectionReducer";
+import { selectConnection } from "store/slices/connectionSlice";
 import { useAuth } from "hooks/useAuth";
+import { selectProfile } from "store/slices/profileSlice";
 import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
 
 export interface LandingHeaderProps extends NavbarProps {
@@ -27,6 +28,12 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 	const {
 		address,
 	} = useAppSelector(selectConnection);
+
+	const {
+		available,
+		name,
+		image,
+	} = useAppSelector(selectProfile);
 
 	const authenticated = useAuth();
 
@@ -105,7 +112,10 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 							</>
 						}
 					>
-						<Avatar className="site-navbar__avatar" hoverable size={28} randomColor>Y</Avatar>
+						<Avatar className="site-navbar__avatar" hoverable size={28} randomColor>{
+							available && image && image.alternatives ? <img src={image.alternatives[0].src.replace("ipfs://", "https://ipfs.io/ipfs/")} alt="profile_img" /> : (
+								available && name ? name : "Y"
+							)}</Avatar>
 					</Dropdown>
 				</NavbarMenu>
 			}

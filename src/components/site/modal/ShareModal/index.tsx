@@ -1,12 +1,12 @@
 import Text from "components/base/Text";
 import Modal, { ModalProps } from "components/base/Modal";
-import Row from "layout/base/Grid/Row";
+import Row from "components/layout/base/Grid/Row";
 import React from "react";
-import Col from "layout/base/Grid/Col";
+import Col from "components/layout/base/Grid/Col";
 import Header from "components/base/Header";
 import Avatar from "components/base/Avatar";
 import IconWorld from "components/base/Icon/IconWorld";
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import SelectUserRight from "components/site/select/SelectUserRight";
 import CopyInput from "components/base/CopyInput";
 import Divider from "components/base/Divider";

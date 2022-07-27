@@ -5,9 +5,9 @@ import IconSearch from "components/base/Icon/IconSearch";
 import Input from "components/base/Input";
 import Popup, { PopupHandles } from "components/base/Popup";
 import RadioGroup from "components/base/RadioGroup";
-import Col from "layout/base/Grid/Col";
-import Flex from "layout/base/Grid/Flex";
-import FlexRow from "layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
+import Flex from "components/layout/base/Grid/Flex";
+import FlexRow from "components/layout/base/Grid/FlexRow";
 import { useTranslation } from "next-i18next";
 import React, { useRef } from "react";
 

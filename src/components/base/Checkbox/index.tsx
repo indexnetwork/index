@@ -1,4 +1,4 @@
-import Flex from "layout/base/Grid/Flex";
+import Flex from "components/layout/base/Grid/Flex";
 import React, { useEffect, useState } from "react";
 import cc from "classcat";
 import { InputSizeType, TextThemeType } from "types";
