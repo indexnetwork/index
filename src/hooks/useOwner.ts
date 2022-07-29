@@ -12,7 +12,7 @@ export const useOwner = () => {
 	const { address } = useAppSelector(selectConnection);
 
 	const getState = () => ({
-		isOwner: router.query && router.query.address === address,
+		isOwner: router.query && ((router.query || {}).address as string || "").toLowerCase() === (address || "").toLowerCase(),
 		address: (router.query || {}).address === address ? address : (router.query || {}).address as string,
 	});
 

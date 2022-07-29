@@ -128,6 +128,8 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	const getProfile = async () => {
 		try {
 			const profile = await ceramicService.getProfile();
+			// eslint-disable-next-line no-debugger
+			debugger;
 			if (profile) {
 				dispatch(setProfile({
 					...profile,

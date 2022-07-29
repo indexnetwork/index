@@ -34,6 +34,7 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 							<title>Index.as</title>
 							<link rel="stylesheet preload prefetch" as="style" href="/fonts/fonts.css" type="text/css" />
 							<meta name="title" content="Index.as" />
+							<link rel="shortcut icon" href="/favicon-white.png" />
 							<meta
 								name="description"
 								content="Share curated links about any topic as a searchable index."

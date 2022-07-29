@@ -1,0 +1,56 @@
+.idx-lnd-container {
+	.idx-lnd-card {
+		flex-direction: column;
+
+		.idx-lnd-img {
+			order: 1;
+		}
+
+		.idx-lnd-desc {
+			@extend .idx-mt-6;
+			order: 2;
+			text-align: center;
+			align-items: center;
+		}
+	}
+
+	.idx-lnd-features {
+		@extend .idx-mt-6;
+		flex-direction: column;
+		gap: 1.5rem;
+
+		.idx-lnd-icon-desc {
+			@extend .idx-mt-6;
+
+			&-icon {
+				flex-shrink: 0;
+			}
+			&-text {
+				flex-direction: column;
+			}
+		}
+	}
+
+	@media (min-width: map-get($breakpoints, "sm")) {
+		.idx-lnd-card {
+			flex-direction: row;
+
+			.idx-lnd-desc {
+				text-align: left;
+				align-items: flex-start;
+			}
+
+			.idx-lnd-img {
+				order: 2;
+			}
+		}
+
+		.idx-lnd-features {
+			flex-direction: row;
+			gap: 0;
+			.idx-lnd-icon-desc {
+				flex-direction: column;
+			}
+		}
+	}
+}

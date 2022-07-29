@@ -173,6 +173,8 @@ class CeramicService2 {
 
 	async getProfile(): Promise<BasicProfile | null> {
 		if (this.self) {
+			// eslint-disable-next-line no-debugger
+			debugger;
 			return this.self?.get("basicProfile");
 		}
 		return null;

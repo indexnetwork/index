@@ -87,7 +87,7 @@ const Navbar: React.FC<NavbarProps> = ({
 					<Col>
 						{logoSize === "mini" ? <LogoMini className="idx-navbar-logo" onClick={handleLogoClick} style={{
 							cursor: "pointer",
-						}} /> : <LogoFull className="idx-navbar-logo" />}
+						}} /> : <LogoFull className="idx-navbar-logo idx-navbar-logo-full" />}
 					</Col>
 					<Col>
 						{children}

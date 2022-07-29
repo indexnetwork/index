@@ -13,8 +13,9 @@ const LandingSection1: React.VFC = () => (
 	<LandingSection dark>
 		<Flex
 			alignItems="center"
+			className="idx-lnd-card"
 		>
-			<Flex flexDirection="column">
+			<Flex flexDirection="column" className="idx-lnd-desc">
 				<Header className={cm.blueTitle}>The human bridge between context and content.</Header>
 				<Text className={cc([cm.descLine, cm.mbMd])}>Index.as helps you to curate content and<br />create searchable indexes.</Text>
 				<Button>Create your first index</Button>
@@ -23,6 +24,7 @@ const LandingSection1: React.VFC = () => (
 				loop
 				animationData={anim}
 				play
+				className="idx-lnd-img idx-lnd-img-reverse"
 				style={{
 					height: "100%",
 					width: "100%",

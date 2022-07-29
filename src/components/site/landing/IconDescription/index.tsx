@@ -15,13 +15,15 @@ const IconDescription: React.VFC<IconDescriptionProps> = ({
 	description,
 }) => (
 	<Flex
-		flexDirection="column"
 		gap="1rem"
 		flex={1}
+		className="idx-lnd-icon-desc"
 	>
 		{icon}
-		<Header>{title}</Header>
-		<Text theme="secondary">{description}</Text>
+		<Flex className="idx-lnd-icon-desc-text">
+			<Header>{title}</Header>
+			<Text theme="secondary">{description}</Text>
+		</Flex>
 	</Flex>
 );
 
