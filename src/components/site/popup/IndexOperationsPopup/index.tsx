@@ -10,24 +10,50 @@ import IconLink1 from "components/base/Icon/IconLink1";
 import IconTrash from "components/base/Icon/IconTrash";
 import Button from "components/base/Button";
 import api from "services/api-service";
+import { useOwner } from "hooks/useOwner";
+import { useCeramic } from "hooks/useCeramic";
+import { useRouter } from "next/router";
+import { copyToClipboard } from "utils/helper";
 
 export interface IndexOperationsPopupProps {
 	streamId: string;
 	mode?: "indexes-page" | "index-detail-page";
 	isOwner?: boolean;
 	onDelete(streamId?: string): void;
+	onClone?(streamId?: string): void;
 }
 
 const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 	streamId,
 	mode = "indexes-page",
-	isOwner = false,
 	onDelete,
+	onClone,
 }) => {
+	const { isOwner, address } = useOwner();
+	const ceramic = useCeramic();
+	const router = useRouter();
+
 	const handleDelete = async () => {
 		const result = await api.deleteIndex(streamId);
 		if (result) {
 			onDelete && onDelete(streamId);
+		}
+	};
+
+	const handleClone = async () => {
+		const originalDoc = await ceramic.getDocById(streamId!);
+
+		const content = { ...originalDoc.content };
+		content.clonedFrom = streamId!;
+		content.address = address!;
+
+		delete (content as any).address;
+		delete (content as any).streamId;
+
+		const doc = await ceramic.createDoc(content);
+		onClone && onClone();
+		if (doc != null) {
+			router.push(`/${address}/${doc.streamId.toString()}`);
 		}
 	};
 
@@ -59,13 +85,17 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 							<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Embed</Text>
 						</Flex>
 					</DropdownMenuItem>
-					<DropdownMenuItem>
+					<DropdownMenuItem
+						onClick={handleClone}
+					>
 						<Flex alignItems="center">
 							<IconCopy width={12} height="100%" />
 							<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Clone</Text>
 						</Flex>
 					</DropdownMenuItem>
-					<DropdownMenuItem>
+					<DropdownMenuItem onClick={() => {
+						copyToClipboard(`${window.location.href}/${streamId}/`);
+					}}>
 						<Flex alignItems="center">
 							<IconLink1 width={12} height="100%" />
 							<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Copy Link</Text>

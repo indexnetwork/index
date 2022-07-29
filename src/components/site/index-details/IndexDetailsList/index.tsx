@@ -44,7 +44,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		},
 		skip: 0,
 		take: 10,
-		search,
+		search: search || undefined,
 		hasMore: true,
 	});
 

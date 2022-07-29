@@ -14,27 +14,30 @@ const LandingSection3: React.VFC = () => (
 			style={{
 				position: "relative",
 			}}
+			className="idx-lnd-card"
 		>
-			<Flex flex="1" flexDirection="column">
+			<Flex flex="1" flexDirection="column" className="idx-lnd-desc">
 				<Header className={cm.title}>If you index it, then search it.
 				 Welcome to your refined search engine. Filter your indexes, and search as you type.</Header>
 			</Flex>
 			<Flex
 				flex="1"
+				className="idx-lnd-img idx-lnd-img-reverse"
 			>
 				<img className={cm.img} alt="landing-3-img" src="/images/landing-3.png" />
 			</Flex>
 		</Flex>
 		<Flex
 			flexGrow={1}
+			className="idx-lnd-features"
 		>
 			<IconDescription
-				icon={<IconFeatureFilterTag />}
+				icon={<IconFeatureFilterTag className="idx-lnd-icon-desc-icon" />}
 				title="Filter & Tags"
 				description="Filter your index through date, kind, or any tag you would add."
 			/>
 			<IconDescription
-				icon={<IconFeatureSearch />}
+				icon={<IconFeatureSearch className="idx-lnd-icon-desc-icon" />}
 				title="Search"
 				description="Turn your indexes into refined search engine."
 			/>
