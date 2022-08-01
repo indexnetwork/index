@@ -1,7 +1,7 @@
 import React, {
 	useEffect, useMemo, useRef, useState,
 } from "react";
-import ceramicService from "services/ceramic-service-2";
+import ceramicService from "services/ceramic-service";
 
 import { TileDocument } from "@ceramicnetwork/stream-tile";
 import api from "services/api-service";
