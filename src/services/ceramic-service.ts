@@ -1,106 +1,244 @@
-// import { DID } from "dids";
-// import { TileDocument } from "@ceramicnetwork/stream-tile";
+import { EthereumAuthProvider } from "@3id/connect";
+import { TileDocument } from "@ceramicnetwork/stream-tile";
+import { SelfID, WebClient } from "@self.id/web";
+import { Indexes, LinkContentResult, Links } from "types/entity";
+import { prepareLinks, isSSR, setDates } from "utils/helper";
+import type { BasicProfile } from "@datamodels/identity-profile-basic";
+import { DID } from "dids";
+import api from "./api-service";
 
-// import {
-// 	EthereumAuthProvider,
-// 	ThreeIdConnect,
-// } from "@3id/connect";
-// import { CeramicClient } from "@ceramicnetwork/http-client";
-// import { getResolver as get3IDResolver } from "@ceramicnetwork/3id-did-resolver";
-// import { getResolver as getKeyResolver } from "key-did-resolver";
-// import { Indexes } from "types/entity";
-// import { isSSR } from "utils/helper";
-// import moment from "moment";
+class CeramicService2 {
+	private account?: string;
+	private client = (isSSR() ? undefined : new WebClient({
+		ceramic: "http://localhost:7007",
+		connectNetwork: "testnet-clay",
+	})) as WebClient;
 
-// // const endpoint = "https://ceramic-clay.3boxlabs.com";
-// const endpoint = "http://localhost:7007/";
+	private self?: SelfID;
 
-// class CeramicService {
-// 	private client?: CeramicClient;
-// 	private account?: string;
+	async authenticate(account: string) {
+		if (!isSSR()) {
+			try {
+				const authProvider = new EthereumAuthProvider((window as any).ethereum, account);
+				await this.client.authenticate(authProvider);
+				this.self = new SelfID({ client: this.client });
+				this.account = account;
+				return true;
+			} catch (err) {
+				return false;
+			}
+		} else {
+			return false;
+		}
+	}
 
-// 	get ceramic() {
-// 		return this.client;
-// 	}
+	isAuthenticated() {
+		return !!(this.client?.ceramic?.did?.authenticated);
+	}
 
-// 	async authenticate(account: string): Promise<boolean> {
-// 		if (!isSSR()) {
-// 			try {
-// 				this.account = account;
-// 				this.client = new CeramicClient(endpoint);
-// 				const threeIdConnect = new ThreeIdConnect();
-// 				const authProvider = new EthereumAuthProvider((window as any).ethereum, account);
-// 				await threeIdConnect.connect(authProvider);
-// 				const did = new DID({
-// 					provider: threeIdConnect.getDidProvider(),
-// 					resolver: {
-// 						...get3IDResolver(this.client),
-// 						...getKeyResolver(),
-// 					},
-// 				});
+	async getIndexById(streamId: string) {
+		return TileDocument.load<Indexes>(this.client!.ceramic, streamId);
+	}
 
-// 				// await did.authenticate();
+	async getIndexes(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }> {
+		return this.client.ceramic.multiQuery(streams) as any;
+	}
 
-// 				await this.client?.setDID(did);
-// 				await this.client?.did?.authenticate();
-// 				(window as any).ceramic = this.client;
-// 				return true;
-// 			} catch (err) {
-// 				return false;
-// 			}
-// 		}
-// 		return false;
-// 	}
+	async createIndex(data: Partial<Indexes>): Promise<Indexes | null> {
+		try {
+			setDates(data);
 
-// 	isAuthenticated() {
-// 		return !!(this.client?.did?.authenticated);
-// 	}
+			if (!data.title) {
+				data.title = "Untitled Index";
+			}
 
-// 	async createIndex(data: Partial<Indexes>): Promise<Indexes | null> {
-// 		try {
-// 			this.setDates(data);
-// 			// eslint-disable-next-line no-debugger
-// 			debugger;
-// 			const doc = await TileDocument.create<Partial<Indexes>>(this.client!, data, {
-// 				family: `index-as-${this.account || ""}`,
-// 			});
-// 			// eslint-disable-next-line no-debugger
-// 			debugger;
+			if (!data.links) {
+				data.links = [];
+			} else {
+				data.links = prepareLinks(data.links);
+			}
 
-// 			return {
-// 				...doc.content as any,
-// 				streamId: doc.id!.toString(),
-// 			};
-// 		} catch (err) {
-// 			console.log(err);
-// 			return null;
-// 		}
-// 	}
+			const doc = await TileDocument.create<Partial<Indexes>>(this.client!.ceramic, data, {
+				family: `index-as-${this.account || ""}`,
+			});
 
-// 	async updateIndex(streamId: string, content: Partial<Indexes>) {
-// 		this.setDates(content, true);
-// 		const oldDoc = await this.getIndexById(streamId);
-// 		await oldDoc.update(content, oldDoc.metadata, {
-// 			publish: true,
-// 		});
-// 		return oldDoc;
-// 	}
+			return {
+				...doc.content as any,
+				streamId: doc.id!.toString(),
+			};
+		} catch (err) {
+			console.log(err);
+			return null;
+		}
+	}
 
-// 	async getIndexById(streamId: string) {
-// 		return TileDocument.load<any>(this.client!, streamId);
-// 	}
+	async addLink(streamId: string, links: Links[]): Promise<[TileDocument<Indexes>, Links[]]> {
+		const oldDoc = await this.getIndexById(streamId);
+		const { content } = oldDoc;
+		const newLinks = prepareLinks(links);
+		const newContent: Indexes = {
+			...setDates(content, true),
+			links: [...newLinks, ...content.links],
+		};
+		await oldDoc.update(newContent, undefined, {
+			publish: true,
+		});
+		return [oldDoc, newLinks];
+	}
 
-// 	private setDates = (doc: Partial<Indexes>, update: boolean = false) => {
-// 		const date = moment.utc().toISOString();
-// 		if (update === false) {
-// 			doc.createdAt = date;
-// 		}
-// 		doc.updatedAt = date;
-// 	};
-// }
+	async putLinks(streamId: string, links: Links[]) {
+		const oldDoc = await this.getIndexById(streamId);
+		const { content } = oldDoc;
+		const newContent: Indexes = {
+			...content,
+			links: links ?? [],
+		};
+		await oldDoc.update(newContent, undefined, {
+			publish: true,
+		});
+		return oldDoc;
+	}
 
-// const ceramicService = new CeramicService();
+	async addTag(streamId: string, linkId: string, tag: string) {
+		const oldDoc = await this.getIndexById(streamId);
+		const newContent = { ...oldDoc.content };
+		const link = newContent.links?.find((l) => l.id === linkId);
+		if (link) {
+			const { tags } = link;
+			if (tags && tags.includes(tag)) {
+				return oldDoc;
+			}
+			link.tags = [...(tags ? [...tags, tag] : [tag])];
+			await oldDoc.update(newContent, undefined, {
+				publish: true,
+			});
+			return oldDoc;
+		}
+	}
 
-// export default ceramicService;
+	async removeTag(streamId: string, linkId: string, tag: string) {
+		const oldDoc = await this.getIndexById(streamId);
+		const newContent = { ...oldDoc.content };
+		const link = newContent.links?.find((l) => l.id === linkId);
+		if (link) {
+			const { tags } = link;
+			if (!tags) {
+				return oldDoc;
+			}
+			link.tags = tags.filter((t) => t !== tag);
+			await oldDoc.update(newContent, undefined, {
+				publish: true,
+			});
+			return oldDoc;
+		}
+	}
 
-export default {};
+	async setLinkFavorite(streamId: string, linkId: string, favorite: boolean) {
+		const oldDoc = await this.getIndexById(streamId);
+		const newContent = { ...oldDoc.content };
+		const link = newContent.links?.find((l) => l.id === linkId);
+		if (link) {
+			link.favorite = favorite;
+			await oldDoc.update(newContent, undefined, {
+				publish: true,
+			});
+			return oldDoc;
+		}
+	}
+
+	async removeLink(streamId: string, linkId: string) {
+		const oldDoc = await this.getIndexById(streamId);
+		const { content } = oldDoc;
+		const newLinks = content?.links?.filter((li) => li.id !== linkId);
+		await oldDoc.update({
+			...content,
+			links: newLinks,
+		}, undefined, {
+			publish: true,
+		});
+		return oldDoc;
+	}
+
+	async updateIndex(streamId: string, content: Partial<Indexes>) {
+		setDates(content, true);
+		const oldDoc = await this.getIndexById(streamId);
+		await oldDoc.update({
+			...oldDoc.content,
+			...content,
+		}, undefined, {
+			publish: true,
+		});
+		return oldDoc;
+	}
+
+	async getProfile(): Promise<BasicProfile | null> {
+		if (this.self) {
+			return this.self?.get("basicProfile");
+		}
+		return null;
+	}
+
+	async setProfile(profile: BasicProfile) {
+		if (this.self) {
+			try {
+				const streamId = await this.self.set("basicProfile", profile);
+				return !!(streamId);
+			} catch (err) {
+				return false;
+			}
+		}
+		return false;
+	}
+
+	async syncContents(providedContent?: LinkContentResult): Promise<number | null> {
+		try {
+			const contents = providedContent ? [providedContent] : (await api.findLinkContent());
+
+			if (contents && contents.length > 0) {
+				const docs = await this.getIndexes(contents.map((c) => ({ streamId: c.streamId })));
+				if (docs) {
+					Object.keys(docs).forEach((sId) => {
+						const newContent = contents.find((c) => c.streamId === sId);
+						const tileDoc = docs[sId];
+						if (newContent) {
+							const { content } = tileDoc;
+							if (content.links) {
+								let contentChange = false;
+								newContent.links?.forEach((l, i) => {
+									const oldLink = content.links.find((nl) => nl.id === l.id!);
+									if (oldLink) {
+										content.links[i].content = l.content;
+										contentChange = true;
+									}
+								});
+
+								if (contentChange) {
+									tileDoc.update(content, undefined, {
+										publish: true,
+									});
+								}
+							}
+						}
+					});
+					const ids = contents.filter((x) => !!x.id).map((x) => x.id!);
+					const syncResult = await api.completeSync(ids);
+					return syncResult && syncResult.deletedCount;
+				}
+			}
+			return null;
+		} catch (err) {
+			return null;
+		}
+	}
+
+	async close() {
+		if (this.isAuthenticated()) {
+			this.client!.ceramic.setDID(new DID());
+			return this.client.ceramic.close();
+		}
+	}
+}
+
+const ceramicService2 = new CeramicService2();
+
+export default ceramicService2;

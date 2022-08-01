@@ -4,7 +4,7 @@ import connectors from "connectors";
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
-import ceramicService from "services/ceramic-service-2";
+import ceramicService from "services/ceramic-service";
 import {
 	disconnectApp, selectConnection, setApiTokenSigned, setAuthLoading, setCeramicConnected, setMetaMaskConnected,
 } from "store/slices/connectionSlice";
@@ -128,8 +128,6 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	const getProfile = async () => {
 		try {
 			const profile = await ceramicService.getProfile();
-			// eslint-disable-next-line no-debugger
-			debugger;
 			if (profile) {
 				dispatch(setProfile({
 					...profile,
