@@ -1,0 +1,46 @@
+name: deploy via ssh
+on:
+  push:
+    branches: dev
+jobs:
+  main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+      - name: Store build time
+        id: build-time
+        shell: bash
+        run: >-
+          echo "::set-output name=time::$(date +%s)"
+      - name: Check out the repo
+        uses: actions/checkout@v2
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          DOCKER_TAG: indexas/web3-web-app:${{ steps.build-time.outputs.time }}
+          DOCKER_REGISTRY: 814699976359.dkr.ecr.eu-central-1.amazonaws.com
+        run: |
+          docker build -t $DOCKER_TAG .
+          docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
+          docker push $DOCKER_REGISTRY/$DOCKER_TAG
+          docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexas/web3-web-app:latest
+          docker push $DOCKER_REGISTRY/indexas/web3-web-app:latest 
+      - name: Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: "kubectl set image deployment/web3-web-app web3-web-app=814699976359.dkr.ecr.eu-central-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace dev"
