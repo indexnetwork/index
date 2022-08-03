@@ -56,7 +56,7 @@ export interface LinksCrawlContentRequest {
 	links: Links[];
 }
 
-const API_URL = "http://localhost:3001";
+const API_URL = "https://testnet.index.as/api";
 
 const apiAxios = axios.create({
 	baseURL: API_URL,

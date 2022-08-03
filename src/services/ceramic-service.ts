@@ -10,7 +10,7 @@ import api from "./api-service";
 class CeramicService2 {
 	private account?: string;
 	private client = (isSSR() ? undefined : new WebClient({
-		ceramic: "http://localhost:7007",
+		ceramic: "https://testnet.index.as/ceramic",
 		connectNetwork: "testnet-clay",
 	})) as WebClient;
 
