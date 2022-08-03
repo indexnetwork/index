@@ -4,7 +4,7 @@ import {
 import socketIoClient, { Socket } from "socket.io-client";
 import { LinkContentResult } from "types/entity";
 
-const API_URL = "http://localhost:3001";
+const API_URL = "https://testnet.index.as/api";
 
 export type ListenEvents = {
 	deneme: (data: any) => void;
