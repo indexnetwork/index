@@ -11,6 +11,7 @@ class CeramicService2 {
 	private account?: string;
 	private client = (isSSR() ? undefined : new WebClient({
 		ceramic: "https://testnet.index.as/ceramic",
+		// ceramic: "http://localhost:7007",
 		connectNetwork: "testnet-clay",
 	})) as WebClient;
 
@@ -37,7 +38,7 @@ class CeramicService2 {
 	}
 
 	async getIndexById(streamId: string) {
-		return TileDocument.load<Indexes>(this.client!.ceramic, streamId);
+		return TileDocument.load<Indexes>(this.client!.ceramic as any, streamId);
 	}
 
 	async getIndexes(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }> {
@@ -58,7 +59,7 @@ class CeramicService2 {
 				data.links = prepareLinks(data.links);
 			}
 
-			const doc = await TileDocument.create<Partial<Indexes>>(this.client!.ceramic, data, {
+			const doc = await TileDocument.create<Partial<Indexes>>(this.client!.ceramic as any, data, {
 				family: `index-as-${this.account || ""}`,
 			});
 
