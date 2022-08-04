@@ -30,6 +30,7 @@
     "dids": "^3.2.0",
     "ethers": "^5.6.4",
     "formik": "^2.2.9",
+    "ipfs-http-client": "^57.0.3",
     "key-did-provider-ed25519": "^2.0.0",
     "key-did-resolver": "^2.0.0",
     "lodash.debounce": "^4.0.8",

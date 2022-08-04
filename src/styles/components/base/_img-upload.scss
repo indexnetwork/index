@@ -1,0 +1,40 @@
+.idx-img-upload {
+	width: 16rem;
+	height: 16rem;
+	border-radius: 8rem;
+	overflow: hidden;
+	position: relative;
+	background-color: var(--main);
+
+	&__banner {
+		position: absolute;
+		text-align: center;
+		width: 8rem;
+		left: 4rem;
+		top: 50%;
+		transform: translateY(-50%);
+	}
+
+	.idx-img-upload-img {
+		position: absolute;
+		width: 16rem;
+		height: 16rem;
+		&__img {
+			height: 100%;
+			width: 100%;
+			object-fit: cover;
+		}
+	}
+
+	.idx-img-upload-btns {
+		position: absolute;
+		z-index: 2123;
+		left:0;
+		right: 0;
+		top: 70%;
+		display: flex;
+		justify-content: center;
+		translate: transformY(-30%);
+		gap: 1rem;
+	}
+}

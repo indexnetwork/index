@@ -9,7 +9,9 @@ import { Indexes, LinkContentResult, Links } from "types/entity";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import socketIoClient, { Socket } from "socket.io-client";
 import { useAuth } from "hooks/useAuth";
+import { CID } from "ipfs-http-client";
 
+// const API_URL = "http://localhost:3001";
 const API_URL = "https://testnet.index.as/api";
 
 export type ListenEvents = {
@@ -27,6 +29,7 @@ export interface CeramicContextValue {
 	getDocs(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }>;
 	getProfile(): Promise<BasicProfile | null>;
 	setProfile(profile: BasicProfile): Promise<boolean>;
+	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
 	addLink(streamId: string, data: Links): Promise<[TileDocument<Indexes>, Links[]]>;
 	removeLink(streamId: string, linkId: string): Promise<TileDocument<Indexes>>;
 	addTag(streamId: string, linkId: string, tag: string): Promise<TileDocument<Indexes> | undefined>;
@@ -106,6 +109,8 @@ const CeramicProvider: React.FC<{}> = ({
 
 	const setProfile = async (profile: BasicProfile) => ceramicService.setProfile(profile);
 
+	const uploadImage = async (file: File) => ceramicService.uploadImage(file);
+
 	useEffect(() => {
 		if (authenticated) {
 			if (io.current && io.current.connected) {
@@ -166,6 +171,7 @@ const CeramicProvider: React.FC<{}> = ({
 			setLinkFavorite,
 			removeLink,
 			removeTag,
+			uploadImage,
 		}}>
 			{children}
 		</CeramicContext.Provider>

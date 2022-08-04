@@ -23,6 +23,10 @@ import Button from "components/base/Button";
 import TextArea from "components/base/TextArea";
 import Spin from "components/base/Spin";
 import IconLock from "components/base/Icon/IconLock";
+import ImageUploading, { ImageType } from "react-images-uploading";
+import Avatar from "components/base/Avatar";
+import IconAdd from "components/base/Icon/IconAdd";
+import IconTrash from "components/base/Icon/IconTrash";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -40,6 +44,27 @@ const CreateIndexPage: NextPageWithLayout = () => {
 		onSubmit: async (values) => {
 			try {
 				setLoading(true);
+				const result = await handleUploadImage();
+				if (result) {
+					values.image = {
+						original: {
+							src: `ipfs://${result.path}`,
+							size: images[0].file?.size,
+							width: 284,
+							height: 177,
+							mimeType: "image/jpeg",
+						},
+						alternatives: [
+							{
+								src: `ipfs://${result.path}`,
+								size: images[0].file?.size,
+								width: 284,
+								height: 177,
+								mimeType: "image/jpeg",
+							},
+						],
+					};
+				}
 				const { available, ...rest } = values;
 				await ceramic.setProfile(rest);
 				dispatch(setProfile({
@@ -60,6 +85,21 @@ const CreateIndexPage: NextPageWithLayout = () => {
 
 	const { address } = useAppSelector(selectConnection);
 
+	const [images, setImages] = useState<ImageType[]>([]);
+
+	const onChange = (imageList: any, addUpdateIndex: any) => {
+		// data for submit
+		console.log(imageList, addUpdateIndex);
+		setImages(imageList);
+	};
+
+	const handleUploadImage = async () => {
+		if (images && images.length > 0) {
+			const imgFile = images[0].file;
+			return ceramic.uploadImage(imgFile!);
+		}
+	};
+
 	return (
 		<>
 			<Container
@@ -79,6 +119,73 @@ const CreateIndexPage: NextPageWithLayout = () => {
 					<form style={{
 						display: "contents",
 					}} onSubmit={formik.handleSubmit}>
+						<Col
+							xs={12}
+							lg={9}
+							style={{
+								display: "flex",
+								justifyContent: "center",
+							}}
+							className="idx-my-3"
+						>
+							<ImageUploading
+								value={images}
+								onChange={onChange}
+								dataURLKey="data_url"
+							>
+								{({
+									imageList,
+									onImageUpload,
+									onImageRemoveAll,
+									onImageUpdate,
+									onImageRemove,
+									isDragging,
+									dragProps,
+								}) => (
+									// write your building UI
+									<div className="idx-img-upload"
+										onClick={onImageUpload}
+										{...dragProps}>
+										{
+											imageList.length === 0 && !profile.image ?
+												<div className="idx-img-upload__banner"><Text fontWeight={600}
+													theme="white">Click or Drop Image</Text></div> : (
+													imageList.length !== 0 ? (
+														imageList.map((image, index) => (
+															<>
+																<div key={index} className="idx-img-upload-img">
+																	<img className="idx-img-upload-img__img" src={image.data_url} alt="" />
+																</div>
+																<div className="idx-img-upload-btns" onClick={(e) => e.stopPropagation()}>
+																	<Avatar size={32}
+																		hoverable onClick={() => onImageUpdate(index)}><IconAdd /></Avatar>
+																	<Avatar
+																		size={32}
+																		hoverable onClick={() => onImageRemove(index)}><IconTrash /></Avatar>
+																</div>
+															</>
+														))
+													) : (
+														<>
+															<div className="idx-img-upload-img">
+																<img className="idx-img-upload-img__img"
+																	src={profile!.image!.alternatives![0].src.replace("ipfs://", "https://ipfs.infura.io/ipfs/")} alt="" />
+															</div>
+															<div className="idx-img-upload-btns" onClick={(e) => e.stopPropagation()}>
+																<Avatar size={32}
+																	hoverable onClick={() => onImageUpdate(0)}><IconAdd /></Avatar>
+																<Avatar
+																	size={32}
+																	hoverable onClick={() => onImageRemove(0)}><IconTrash /></Avatar>
+															</div>
+														</>
+													)
+												)
+										}
+									</div>
+								)}
+							</ImageUploading>
+						</Col>
 						<Col
 							xs={12}
 							lg={9}

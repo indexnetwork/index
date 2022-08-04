@@ -5,10 +5,14 @@ import { Indexes, LinkContentResult, Links } from "types/entity";
 import { prepareLinks, isSSR, setDates } from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
+import { create, IPFSHTTPClient } from "ipfs-http-client";
 import api from "./api-service";
 
 class CeramicService2 {
 	private account?: string;
+	private ipfs: IPFSHTTPClient = create({
+		url: "https://ipfs.infura.io:5001/api/v0",
+	});
 	private client = (isSSR() ? undefined : new WebClient({
 		ceramic: "https://testnet.index.as/ceramic",
 		// ceramic: "http://localhost:7007",
@@ -189,6 +193,17 @@ class CeramicService2 {
 			}
 		}
 		return false;
+	}
+
+	async uploadImage(file: File) {
+		if (this.self) {
+			try {
+				const { cid, path } = await this.ipfs.add(file);
+				return { cid, path };
+			} catch (err) {
+				//
+			}
+		}
 	}
 
 	async syncContents(providedContent?: LinkContentResult): Promise<number | null> {
