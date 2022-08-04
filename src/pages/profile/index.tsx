@@ -111,7 +111,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 								<Col xs={12} sm={6}><Text fontWeight={700}>Location</Text></Col>
 								<Col xs={12} sm={6}>
 									<Flex flexDirection="column">
-										<Text fontWeight={500}>Country <Text theme="secondary" size="xs"> (Max Two Characters)</Text></Text>
+										<Text fontWeight={500}>Country Code<Text theme="secondary" size="xs"> (Max Two Characters)</Text></Text>
 										<Input
 											name="homeLocation"
 											className="idx-mt-3"
