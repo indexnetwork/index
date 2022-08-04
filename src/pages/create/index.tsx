@@ -31,13 +31,17 @@ const CreateIndexPage: NextPageWithLayout = () => {
 		title: "",
 	});
 
+	const [loading, setLoading] = useState(false);
+
 	const handleBlur = async () => {
+		setLoading(true);
 		if (stream.title || (stream.links && stream.links.length > 0)) {
 			const doc = await ceramic.createDoc(stream);
 			if (doc != null) {
 				router.push(`${address}/${doc.streamId.toString()}`);
 			}
 		}
+		setLoading(false);
 	};
 
 	const handleChange: React.ChangeEventHandler<HTMLInputElement> = ({ target }) => {
@@ -91,6 +95,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 									onBlur={handleBlur}
 									value={stream?.title || ""}
 									onChange={handleChange}
+									loading={loading}
 								/>
 							</Col>
 						</FlexRow>

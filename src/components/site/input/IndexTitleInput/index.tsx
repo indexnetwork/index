@@ -4,11 +4,13 @@ import HeaderInput from "../HeaderInput";
 export interface IndexTitleInputProps {
 	defaultValue: string;
 	disabled?: boolean;
+	loading?: boolean;
 	onChange(value: string): void;
 }
 const IndexTitleInput: React.VFC<IndexTitleInputProps> = ({
 	defaultValue,
 	disabled,
+	loading,
 	onChange,
 }) => {
 	const [title, setTitle] = useState(defaultValue);
@@ -35,6 +37,7 @@ const IndexTitleInput: React.VFC<IndexTitleInputProps> = ({
 			value={title}
 			onChange={handleChange}
 			disabled={disabled}
+			loading={loading}
 		/>
 	);
 };

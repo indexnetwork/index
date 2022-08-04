@@ -46,6 +46,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [notFound, setNotFound] = useState(false);
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
+	const [titleLoading, setTitleLoading] = useState(false);
 	const [search, setSearch] = useState("");
 
 	const { address } = useAppSelector(selectConnection);
@@ -73,6 +74,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleTitleChange = async (title: string) => {
+		setTitleLoading(true);
 		const result = await ceramic.updateDoc(stream?.streamId!, {
 			title,
 		});
@@ -80,6 +82,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			await api.putIndex({ ...result.content, streamId: result.id.toString() });
 		}
 		setStream(result.content);
+		setTitleLoading(false);
 	};
 
 	const handleDelete = () => {
@@ -176,6 +179,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 													defaultValue={stream?.title || ""}
 													onChange={handleTitleChange}
 													disabled={!isOwner}
+													loading={titleLoading}
 												/>
 											</Col>
 											<Col>
