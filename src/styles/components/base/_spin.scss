@@ -9,6 +9,10 @@
 			transform: none;
 		}
 	}
+
+	&.idx-spin-hidden {
+		visibility: hidden;
+	}
 	.idx-spin-bg,
 	.idx-spin-spinner {
 		display: none;
@@ -22,7 +26,7 @@
 			top: 0;
 			right: 0;
 			bottom: 0;
-			background-color: rgba(255, 255, 255, 0.1);
+			background-color: transparent;
 			backdrop-filter: blur(0.06rem);
 		}
 
@@ -65,20 +69,6 @@
 		}
 	}
 
-	@each $key, $size in $spinner-size {
-		&-size-#{$key} {
-			.idx-spin-spinner {
-				height: $size;
-				width: $size;
-
-				div {
-					height: $size;
-					width: $size;
-				}
-			}
-		}
-	}
-
 	@each $key, $value in $common-colors {
 		&.idx-spin-#{$key} {
 			.idx-spin-spinner {
@@ -105,4 +95,19 @@
 		}
 	}
 	
+	@each $key, $size in $spinner-size {
+		&-size-#{$key} {
+			height: $size;
+			width: $size;
+			.idx-spin-spinner {
+				height: $size;
+				width: $size;
+
+				div {
+					height: $size;
+					width: $size;
+				}
+			}
+		}
+	}
 }

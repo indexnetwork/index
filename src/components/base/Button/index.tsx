@@ -83,7 +83,7 @@ const Button: React.FC<ButtonProps> = ({
 						className,
 					],
 				)}>
-				{addOnAfter || addOnBefore ? <Flex className="idx-button-inner" inline alignItems="center">{children}</Flex> : children}
+				{addOnAfter || addOnBefore ? <Flex className="idx-button-inner" inline alignItems="center">{addOnBefore}{children}{addOnAfter}</Flex> : children}
 			</button>;
 	}
 };

@@ -1,0 +1,66 @@
+.idx-textarea {
+	@include responsive-sizes($input-height, "min-height");
+	@include responsive-sizes($font-size, "line-height");
+	display: inline-block;
+	border: $border-base;
+	border-radius: $border-radius-base;
+	padding: map-deep-get($spacing, "xs", "3") map-deep-get($spacing, "xs", "6");
+	line-height: 0;
+	align-items: center;
+
+	& textarea {
+		border: none;
+		flex-grow: 1;
+		height: 100%;
+		outline: none;
+		color: $main-color;
+		resize: none;
+	}
+
+	& textarea:focus,
+	& textarea:focus-visible {
+		outline: none;
+		outline-width: 0 !important;
+	}
+
+	&.idx-textarea-block {
+		width: 100%;
+	}
+
+	& textarea::placeholder {
+		color: $secondary-text-color;
+	}
+
+	&.idx-textarea-disabled,
+	&.idx-textarea-readonly {
+		background-color: $input-disabled-bg !important;
+		color: $secondary-text-color;
+
+		textarea {
+			background-color: $input-disabled-bg !important;
+			color: $secondary-text-color;
+		}
+	}
+
+	&.idx-textarea-add-on-before {
+		textarea {
+			margin-left: map-deep-get($spacing, "xs", "6");
+		}
+	}
+
+	&.idx-textarea-add-on-after {
+		textarea {
+			margin-right: map-deep-get($spacing, "xs", "6");
+		}
+	}
+
+	&.idx-textarea-ghost {
+		border: none;
+		height: auto;
+		padding-left: 0;
+		padding-right: 0;
+		textarea {
+			background-color: transparent;
+		}
+	}
+}

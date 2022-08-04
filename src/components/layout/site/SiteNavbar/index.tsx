@@ -7,7 +7,6 @@ import IconPeople from "components/base/Icon/IconPeople";
 import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
 import React, { useCallback, useContext, useEffect } from "react";
-import IconSettings from "components/base/Icon/IconSettings";
 import IconLogout from "components/base/Icon/IconLogout";
 import Router, { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
@@ -25,6 +24,8 @@ export interface LandingHeaderProps extends NavbarProps {
 const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLanding = false, ...baseProps }) => {
 	const { t } = useTranslation(["common", "components"]);
 
+	const router = useRouter();
+
 	const {
 		address,
 	} = useAppSelector(selectConnection);
@@ -38,8 +39,6 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 	const authenticated = useAuth();
 
 	const { connect, disconnect } = useContext(AuthHandlerContext);
-
-	const router = useRouter();
 
 	const handleCreate = () => {
 		router.push("/create");
@@ -90,18 +89,20 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 						position="bottom-right"
 						menuItems={
 							<>
-								<DropdownMenuItem>
+								<DropdownMenuItem onClick={() => {
+									router.push("/profile");
+								}}>
 									<Flex alignItems="center">
 										<IconPeople width={12} height="100%" />
 										<Text className="idx-ml-3" element="span" size="sm" theme="secondary">&nbsp;{t("common:profile")}</Text>
 									</Flex>
 								</DropdownMenuItem>
-								<DropdownMenuItem>
+								{/* <DropdownMenuItem>
 									<Flex alignItems="center">
 										<IconSettings width={12} height="100%" />
 										<Text className="idx-ml-3" element="span" size="sm" theme="secondary">&nbsp;{t("common:settings")}</Text>
 									</Flex>
-								</DropdownMenuItem>
+								</DropdownMenuItem> */}
 								<DropdownMenuItem divider />
 								<DropdownMenuItem onClick={disconnect}>
 									<Flex alignItems="center">

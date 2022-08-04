@@ -34,6 +34,7 @@ $common-colors: (
 	"blue": $blue,
 	"disabled": $gray-3,
 	"gray5": $gray-5,
+	"white": $white,
 );
 
 /**************
@@ -284,6 +285,7 @@ $modal-backdrop-color: rgba($black, 0.2);
 		Spinner 
 ***************/
 $spinner-size: (
+	"xs": 1.2rem,
 	"sm": 1.6rem,
 	"md": 2rem,
 	"lg": 2.4rem,
