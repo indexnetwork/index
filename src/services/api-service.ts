@@ -57,6 +57,7 @@ export interface LinksCrawlContentRequest {
 }
 
 const API_URL = "https://testnet.index.as/api";
+// const API_URL = "http://localhost:3001";
 
 const apiAxios = axios.create({
 	baseURL: API_URL,
@@ -87,6 +88,15 @@ class ApiService {
 	async postIndex(doc: Indexes): Promise<Indexes | null> {
 		try {
 			const { data } = await apiAxios.post<Indexes>(ENDPOINTS.INDEXES, doc);
+			return data;
+		} catch (err) {
+			return null;
+		}
+	}
+
+	async putIndex(doc: Indexes): Promise<Indexes | null> {
+		try {
+			const { data } = await apiAxios.put<Indexes>(ENDPOINTS.INDEXES, doc);
 			return data;
 		} catch (err) {
 			return null;

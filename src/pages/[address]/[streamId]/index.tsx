@@ -76,6 +76,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const result = await ceramic.updateDoc(stream?.streamId!, {
 			title,
 		});
+		if (result) {
+			await api.putIndex({ ...result.content, streamId: result.id.toString() });
+		}
 		setStream(result.content);
 	};
 
@@ -89,6 +92,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		if (link) {
 			const [result, newLinks] = await ceramic.addLink(stream?.streamId!, link);
 			setStream(result.content);
+			if (result) {
+				await api.putIndex({ ...result.content, streamId: result.id.toString() });
+			}
 			await api.crawlLinkContent({
 				streamId: stream?.streamId!,
 				links: newLinks,
@@ -101,6 +107,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const handleReorderLinks = async (links: Links[]) => {
 		const result = await ceramic.putLinks(stream?.streamId!, links);
+		if (result) {
+			await api.putIndex({ ...result.content, streamId: result.id.toString() });
+		}
 		setStream(result.content);
 	};
 

@@ -20,6 +20,7 @@ import moment from "moment";
 import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
 import sanitize from "sanitize-html";
+import api from "services/api-service";
 
 // TODO: data prop will be Index object
 export interface IndexDetailsItemProps extends Links {
@@ -63,6 +64,9 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	const handleNewTagEdit = async (val?: string | null) => {
 		if (val) {
 			const doc = await ceramic.addTag(streamId as string, id!, val);
+			if (doc) {
+				await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
+			}
 			onChange && onChange(doc?.content?.links || []);
 		}
 		setNewTag(false);
@@ -70,16 +74,25 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 
 	const handleSetFavorite = async () => {
 		const doc = await ceramic.setLinkFavorite(streamId as string, id!, !favorite);
+		if (doc) {
+			await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
+		}
 		onChange && onChange(doc?.content?.links || []);
 	};
 
 	const handleRemove = async () => {
 		const doc = await ceramic.removeLink(streamId as string, id!);
+		if (doc) {
+			await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
+		}
 		onChange && onChange(doc?.content?.links || []);
 	};
 
 	const handleRemoveTag = async (tag: string) => {
 		const doc = await ceramic.removeTag(streamId as string, id!, tag);
+		if (doc) {
+			await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
+		}
 		onChange && onChange(doc?.content?.links || []);
 	};
 
