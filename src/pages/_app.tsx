@@ -32,7 +32,7 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 					<CeramicProvider>
 						<Head>
 							<title>Index.as</title>
-							<link
+							{/* <link
 								rel="preload"
 								href="/fonts/Freizeit-Bold.woff"
 								as="font"
@@ -94,7 +94,7 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 								as="font"
 								type="font/otf"
 								crossOrigin="anonymous"
-							/>
+							/> */}
 							<link rel="stylesheet preload prefetch" as="style" href="/fonts/fonts.css" type="text/css" />
 							<meta name="title" content="Index.as" />
 							<link rel="shortcut icon" href="/favicon-white.png" />
