@@ -3,7 +3,6 @@ import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
 import IconFeatureFilterTag from "components/base/Icon/IconFeatureFilterTag";
 import IconFeatureSearch from "components/base/Icon/IconFeatureSearch";
-import LazyLoad from "react-lazyload";
 import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
 import IconDescription from "../IconDescription";
@@ -25,9 +24,7 @@ const LandingSection3: React.VFC = () => (
 				flex="1"
 				className="idx-lnd-img idx-lnd-img-reverse"
 			>
-				<LazyLoad once>
-					<img className={cm.img} alt="landing-3-img" src="/images/landing-3.png" />
-				</LazyLoad>
+				<img className={cm.img} alt="landing-3-img" src="/images/landing-3.png" />
 			</Flex>
 		</Flex>
 		<Flex
