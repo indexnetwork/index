@@ -34,7 +34,7 @@ const nextConfig = {
         ],
       },
       {
-        source: "/fonts/Inter-Bold.otf",
+        source: "/fonts/Inter-Bold.woff2",
         headers: [
           {
             key: "Cache-Control",
@@ -43,7 +43,7 @@ const nextConfig = {
         ],
       },
       {
-        source: "/fonts/Inter-ExtraBold.otf",
+        source: "/fonts/Inter-ExtraBold.woff2",
         headers: [
           {
             key: "Cache-Control",
@@ -52,7 +52,7 @@ const nextConfig = {
         ],
       },
       {
-        source: "/fonts/Inter-Light.otf",
+        source: "/fonts/Inter-Light.woff2",
         headers: [
           {
             key: "Cache-Control",
@@ -61,7 +61,7 @@ const nextConfig = {
         ],
       },
       {
-        source: "/fonts/Inter-Medium.otf",
+        source: "/fonts/Inter-Medium.woff2",
         headers: [
           {
             key: "Cache-Control",
@@ -70,7 +70,7 @@ const nextConfig = {
         ],
       },
       {
-        source: "/fonts/Inter-Regular.otf",
+        source: "/fonts/Inter-Regular.woff2",
         headers: [
           {
             key: "Cache-Control",
@@ -79,7 +79,7 @@ const nextConfig = {
         ],
       },
       {
-        source: "/fonts/Inter-SemiBold.otf",
+        source: "/fonts/Inter-SemiBold.woff2",
         headers: [
           {
             key: "Cache-Control",

@@ -2,42 +2,42 @@
   font-family: Inter;
   font-weight: 300;
   font-display: block;
-  src: url("/fonts/Inter-Light.otf") format("opentype");
+  src: url("/fonts/Inter-Light.woff2") format("woff2");
 }
 
 @font-face {
   font-family: Inter;
   font-weight: 500;
   font-display: block;
-  src: url("/fonts/Inter-Medium.otf") format("opentype");
+  src: url("/fonts/Inter-Medium.woff2") format("woff2");
 }
 
 @font-face {
   font-family: Inter;
   font-weight: 400;
   font-display: block;
-  src: url("/fonts/Inter-Regular.otf") format("opentype");
+  src: url("/fonts/Inter-Regular.woff2") format("woff2");
 }
 
 @font-face {
   font-family: Inter;
   font-weight: 600;
   font-display: block;
-  src: url("/fonts/Inter-SemiBold.otf") format("opentype");
+  src: url("/fonts/Inter-SemiBold.woff2") format("woff2");
 }
 
 @font-face {
   font-family: Inter;
   font-weight: 700;
   font-display: block;
-  src: url("/fonts/Inter-Bold.otf") format("opentype");
+  src: url("/fonts/Inter-Bold.woff2") format("woff2");
 }
 
 @font-face {
   font-family: Inter;
   font-weight: 800;
   font-display: block;
-  src: url("/fonts/Inter-ExtraBold.otf") format("opentype");
+  src: url("/fonts/Inter-ExtraBold.woff2") format("woff2");
 }
 
 @font-face {
