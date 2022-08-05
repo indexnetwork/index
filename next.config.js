@@ -7,7 +7,7 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: "/fonts/Freizeit-Bold.woff",
+        source: "/fonts/Freizeit-Bold.woff2",
         headers: [
           {
             key: "Cache-Control",
@@ -16,7 +16,7 @@ const nextConfig = {
         ],
       },
       {
-        source: "/fonts/Freizeit-Regular.woff",
+        source: "/fonts/Freizeit-Regular.woff2",
         headers: [
           {
             key: "Cache-Control",
@@ -25,7 +25,7 @@ const nextConfig = {
         ],
       },
       {
-        source: "/fonts/Roquefort-Standard.woff",
+        source: "/fonts/Roquefort-Standard.woff2",
         headers: [
           {
             key: "Cache-Control",
