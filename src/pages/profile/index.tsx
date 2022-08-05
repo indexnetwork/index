@@ -25,7 +25,6 @@ import Spin from "components/base/Spin";
 import IconLock from "components/base/Icon/IconLock";
 import ImageUploading, { ImageType } from "react-images-uploading";
 import Avatar from "components/base/Avatar";
-import IconAdd from "components/base/Icon/IconAdd";
 import IconTrash from "components/base/Icon/IconTrash";
 
 const CreateIndexPage: NextPageWithLayout = () => {
@@ -157,8 +156,8 @@ const CreateIndexPage: NextPageWithLayout = () => {
 																	<img className="idx-img-upload-img__img" src={image.data_url} alt="" />
 																</div>
 																<div className="idx-img-upload-btns" onClick={(e) => e.stopPropagation()}>
-																	<Avatar size={32}
-																		hoverable onClick={() => onImageUpdate(index)}><IconAdd /></Avatar>
+																	{/* <Avatar size={32}
+																		hoverable onClick={() => onImageUpdate(index)}><IconAdd /></Avatar> */}
 																	<Avatar
 																		size={32}
 																		hoverable onClick={() => onImageRemove(index)}><IconTrash /></Avatar>
@@ -172,8 +171,8 @@ const CreateIndexPage: NextPageWithLayout = () => {
 																	src={profile!.image!.alternatives![0].src.replace("ipfs://", "https://ipfs.infura.io/ipfs/")} alt="" />
 															</div>
 															<div className="idx-img-upload-btns" onClick={(e) => e.stopPropagation()}>
-																<Avatar size={32}
-																	hoverable onClick={() => onImageUpdate(0)}><IconAdd /></Avatar>
+																{/* <Avatar size={32}
+																	hoverable onClick={() => onImageUpdate(0)}><IconAdd /></Avatar> */}
 																<Avatar
 																	size={32}
 																	hoverable onClick={() => onImageRemove(0)}><IconTrash /></Avatar>
