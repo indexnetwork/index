@@ -1,12 +1,15 @@
 .idx-lnd-container {
 	.idx-lnd-card {
+		display: flex;
+		align-items: center;
 		flex-direction: column;
-
 		.idx-lnd-img {
 			order: 1;
 		}
 
 		.idx-lnd-desc {
+			display: flex;
+			flex-direction: column;
 			@extend .idx-mt-6;
 			order: 2;
 			text-align: center;
@@ -32,16 +35,35 @@
 	}
 
 	@media (min-width: map-get($breakpoints, "sm")) {
+		.idx-lnd-first {
+			height: 40rem;
+		}
 		.idx-lnd-card {
 			flex-direction: row;
+			min-height: 30rem;
 
 			.idx-lnd-desc {
 				text-align: left;
 				align-items: flex-start;
+				width: 45rem;
+				flex-shrink: 0;
+				display: flex;
+				flex-direction: column;
+			}
+
+			.idx-lnd-lottie {
+				min-height: 46rem;
+				opacity: 0;
+				transition: opacity .3s ease;
+
+				&.idx-lnd-lottie-fade {
+					opacity: 1;
+				}
 			}
 
 			.idx-lnd-img {
 				order: 2;
+				max-width: 45rem;
 			}
 		}
 

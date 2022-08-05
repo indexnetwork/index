@@ -3,7 +3,7 @@ html {
 }
 
 body {
-	font-family: Inter;
+	font-family: Inter, Arial, Helvetica, sans-serif;
 	font-size: map-get($font-size, "md");
 	line-height: map-get($font-line-height, "md");
 	color: $primary-text-color;
