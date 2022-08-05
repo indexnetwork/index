@@ -33,16 +33,16 @@ const Switch: React.FC<SwitchProps> = ({
 
 	return (<button
 		className={cc([
-			"idx-switch",
-			`idx-switch-${theme}`,
-			`idx-switch-${size}`,
-			disabled ? "idx-switch-disabled" : "",
-			active ? "idx-switch-checked" : "",
+			"switch",
+			`switch-${theme}`,
+			`switch-${size}`,
+			disabled ? "switch-disabled" : "",
+			active ? "switch-checked" : "",
 		])}
 		disabled={disabled}
 		onClick={handleChange}
 	>
-		<div className="idx-switch-knob">
+		<div className="switch-knob">
 		</div>
 	</button>);
 };

@@ -28,9 +28,9 @@ const Text: React.FC<TextProps> = ({
 }) => React.createElement(element, {
 	className: cc(
 		[
-			"idx-text",
-			`idx-text-${theme}`,
-			`idx-text-${size}`,
+			"text",
+			`text-${theme}`,
+			`text-${size}`,
 			hidden ? "hidden" : "",
 			className || "",
 		],

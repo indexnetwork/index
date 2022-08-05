@@ -1,8 +1,8 @@
-.idx-tooltip {
+.tooltip {
 	display: inline-block;
 	position: relative;
 
-	.idx-tooltip-tip {
+	.tooltip-tip {
 		@include no-select;
 		position: absolute;
 		padding: $tooltip-spacing;
@@ -17,36 +17,36 @@
 		word-break: break-all;
 		max-width: 20rem;
 
-		&.idx-tooltip-bottom-center {
+		&.tooltip-bottom-center {
 			left: 50%;
 			transform: translateX(-50%);
 			margin-top: $tooltip-spacing;
 		}
 
-		&.idx-tooltip-bottom-left {
+		&.tooltip-bottom-left {
 			left: 0;
 			margin-top: $tooltip-spacing;
 		}
 
-		&.idx-tooltip-bottom-right {
+		&.tooltip-bottom-right {
 			right: 0;
 			margin-top: $tooltip-spacing;
 		}
 
-		&.idx-tooltip-top-center {
+		&.tooltip-top-center {
 			bottom: 100%;
 			left: 50%;
 			transform: translateX(-50%);
 			margin-bottom: $tooltip-spacing;
 		}
 
-		&.idx-tooltip-top-left {
+		&.tooltip-top-left {
 			bottom: 100%;
 			left: 0;
 			margin-bottom: $tooltip-spacing;
 		}
 
-		&.idx-tooltip-top-right {
+		&.tooltip-top-right {
 			bottom: 100%;
 			right: 0;
 			margin-bottom: $tooltip-spacing;

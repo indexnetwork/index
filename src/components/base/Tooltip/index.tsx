@@ -32,14 +32,14 @@ const Tooltip: React.FC<TooltipProps> = ({
 
 	return (
 		<div
-			className={cc(["idx-tooltip", wrapperClass || ""])}
+			className={cc(["tooltip", wrapperClass || ""])}
 			onMouseEnter={handleMouseEnter}
 			onMouseLeave={handleMouseLeave}
 		>
 			{children}
 			{
 				visible &&
-				<div className={cc(["idx-tooltip-tip", `idx-tooltip-${position}`, wrapperClass || ""])}>
+				<div className={cc(["tooltip-tip", `tooltip-${position}`, wrapperClass || ""])}>
 					{content}
 				</div>
 			}

@@ -1,4 +1,4 @@
-.idx-modal {
+.modal {
 	position: fixed;
 	top: 0;
 	left: 0;
@@ -8,14 +8,14 @@
 	z-index: 2147483647;
 	transition: $transition-bg;
 
-	.idx-modal-container-inner {
+	.modal-container-inner {
 		width: 100%;
 		height: 100%;
 		background-color: transparent;
 		position: relative;
 	}
 
-	.idx-modal-wrapper {
+	.modal-wrapper {
 		background-color: $white;
 		position: absolute;
 		bottom: 0;
@@ -27,31 +27,31 @@
 		display: flex;
 		flex-direction: column;
 
-		.idx-modal-header {
+		.modal-header {
 			padding: map-deep-get($spacing, "xs", "6") map-deep-get($spacing, "xs", "7");
 			flex-shrink: 0;
 			border-bottom: $border-base;
 		}
 
-		.idx-modal-body {
+		.modal-body {
 			padding: map-deep-get($spacing, "xs", "7") map-deep-get($spacing, "xs", "6");
 			flex-grow: 1;
 			overflow: auto;
 		}
 
-		.idx-modal-footer {
+		.modal-footer {
 			padding: map-deep-get($spacing, "xs", "6") map-deep-get($spacing, "xs", "7");
 			flex-shrink: 0;
 			border-top: $border-base;
 		}
 	}
 
-	&.idx-modal-mobile {
-		.idx-modal-wrapper {
+	&.modal-mobile {
+		.modal-wrapper {
 			transition: $transition-swipe-modal;
 			height: auto;
 
-			.idx-modal-mobile-swiper {
+			.modal-mobile-swiper {
 				position:absolute;
 				width: 100%;
 				height: 5.3rem;
@@ -59,7 +59,7 @@
 				justify-content: center;
 				flex-shrink: 0;
 				padding-top: 1rem;
-				.idx-modal-mobile-swiper-button {
+				.modal-mobile-swiper-button {
 					width: 3.2rem;
 					height: .4rem;
 					border-radius: calc($border-radius-base / 2);
@@ -69,24 +69,24 @@
 		}
 	}
 
-	&.idx-modal-invisible {
+	&.modal-invisible {
 		pointer-events: none;
 		background-color: transparent;
-		.idx-modal-wrapper {
+		.modal-wrapper {
 			max-height: 0 !important;
 			overflow: hidden;
 		}
 	}
 
-	&.idx-modal-size-fit {
+	&.modal-size-fit {
 	}
 
 	@media (min-width: map-get($breakpoints, "xs")) {
-		.idx-modal-container-inner {
+		.modal-container-inner {
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			.idx-modal-wrapper {
+			.modal-wrapper {
 				position: static;
 				width: 46rem;
 				max-height: 70vh;
@@ -96,8 +96,8 @@
 	}
 
 	@media (min-width: map-get($breakpoints, "sm")) {
-		.idx-modal-container-inner {
-			.idx-modal-wrapper {
+		.modal-container-inner {
+			.modal-wrapper {
 				width: 60rem;
 			}
 		}

@@ -1,0 +1,11 @@
+html {
+	font-size: $font-size-base + px;
+}
+
+body {
+	font-family: Inter, Helvetica, Arial, sans-serif;
+	font-size: map-get($font-size, "md");
+	line-height: map-get($font-line-height, "md");
+	color: $primary-text-color;
+	background-color: $white;
+}

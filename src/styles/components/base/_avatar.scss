@@ -1,4 +1,4 @@
-.idx-avatar {
+.avatar {
 	@include no-select;
 	display: inline-flex;
 	align-items: center;
@@ -8,15 +8,15 @@
 	color: $white;
 	overflow: hidden;
 	
-	&.idx-avatar-circle {
+	&.avatar-circle {
 		border-radius: 100%;
 	}
 
-	&.idx-avatar-square {
+	&.avatar-square {
 		border-radius: $border-radius-base;
 	}
 
-	&.idx-avatar-hoverable {
+	&.avatar-hoverable {
 		&:hover {
 			box-shadow: $avatar-box-shadow;
 			transform: inherit scale(1.1);

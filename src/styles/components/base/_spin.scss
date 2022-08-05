@@ -1,8 +1,8 @@
-.idx-spin {
+.spin {
 	position: relative;
 
-	&.idx-spin-solo {
-		.idx-spin-spinner {
+	&.spin-solo {
+		.spin-spinner {
 			position: static;
 			left: auto;
 			top: auto;
@@ -10,16 +10,16 @@
 		}
 	}
 
-	&.idx-spin-hidden {
+	&.spin-hidden {
 		visibility: hidden;
 	}
-	.idx-spin-bg,
-	.idx-spin-spinner {
+	.spin-bg,
+	.spin-spinner {
 		display: none;
 	}
 
-	&.idx-spin-active {
-		.idx-spin-bg {
+	&.spin-active {
+		.spin-bg {
 			display: block;
 			position: absolute;
 			left: 0;
@@ -30,12 +30,12 @@
 			backdrop-filter: blur(0.06rem);
 		}
 
-		.idx-spin-spinner {
+		.spin-spinner {
 			display: inline-block;
 		}
 	}
 
-	.idx-spin-spinner {
+	.spin-spinner {
 		position: absolute;
 		left: 50%;
 		top: 50%;
@@ -52,7 +52,7 @@
 			border-width: 3px;
 			border-style: solid;
 			border-radius: 100%;
-			animation: idx-spinner 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+			animation: spinner 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
 			border-color: $main-color transparent transparent transparent;
 		}
 
@@ -70,8 +70,8 @@
 	}
 
 	@each $key, $value in $common-colors {
-		&.idx-spin-#{$key} {
-			.idx-spin-spinner {
+		&.spin-#{$key} {
+			.spin-spinner {
 				div {
 					border-color: $value transparent transparent transparent;
 				}
@@ -79,16 +79,16 @@
 		}
 	}
 
-	&.idx-spin-light {
-		.idx-spin-spinner {
+	&.spin-light {
+		.spin-spinner {
 			div {
 				border-width: 1px;
 			}
 		}
 	}
 
-	&.idx-spin-strong {
-		.idx-spin-spinner {
+	&.spin-strong {
+		.spin-spinner {
 			div {
 				border-width: 4px;
 			}
@@ -99,7 +99,7 @@
 		&-size-#{$key} {
 			height: $size;
 			width: $size;
-			.idx-spin-spinner {
+			.spin-spinner {
 				height: $size;
 				width: $size;
 

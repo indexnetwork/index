@@ -213,10 +213,10 @@ const BottomMenuDiv: React.FC<BottomMenuDivProps> = ({
 					<div
 						ref={buttonRef}
 						onMouseDown={handleMouseDown}
-						className="idx-modal-mobile-swiper"
+						className="modal-mobile-swiper"
 					>
 						<div
-							className="idx-modal-mobile-swiper-button"></div>
+							className="modal-mobile-swiper-button"></div>
 					</div>
 					{children}
 				</DynamicDiv> :

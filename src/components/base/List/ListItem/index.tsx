@@ -18,7 +18,7 @@ const ListItem: React.FC<PropsWithChildren<ListItemProps>> = ({
 		{...(provided?.draggableProps)}
 		className={cc(
 			[
-				"idx-list-item",
+				"list-item",
 				className || "",
 			],
 		)}

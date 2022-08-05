@@ -39,27 +39,27 @@ const Checkbox: React.VFC<CheckboxProps> = ({
 		<Flex
 			alignItems="center"
 			className={cc([
-				"idx-checkbox",
-				`idx-checkbox-${size}`,
-				isChecked ? "idx-checkbox-checked" : "",
-				disabled ? "idx-checkbox-disabled" : "",
+				"cbx",
+				`cbx-${size}`,
+				isChecked ? "cbx-checked" : "",
+				disabled ? "cbx-disabled" : "",
 			])}
 		>
 			<Text
 				element="label"
 				size="sm"
-				className="idx-checkbox-container"
+				className="cbx-container"
 				theme={disabled ? "disabled" : theme}
 			>
 				<input
 					type="checkbox"
 					checked={isChecked}
 					disabled={disabled}
-					className="idx-checkbox-input"
+					className="cbx-input"
 					onChange={handleChange}
 				/>
-				<span className="idx-checkbox-checkmark idx-checkbox-checkmark-md">
-					{isChecked && <IconTick className="idx-checkbox-tick" />}
+				<span className="cbx-checkmark cbx-checkmark-md">
+					{isChecked && <IconTick className="cbx-tick" />}
 				</span>
 				{title}
 			</Text>

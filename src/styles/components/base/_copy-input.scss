@@ -1,8 +1,8 @@
-.idx-copy-input {
+.copy-input {
 	cursor: pointer;
 	position: relative;
 
-	&.idx-input {
+	&.input {
 		@extend .idx-pr-6;
 		overflow: hidden;
 	}
@@ -34,13 +34,13 @@
 			background: $copy-input-icon-bg;
 		}
 
-		.idx-copy-input__icon {
+		.copy-input__icon {
 			@extend .idx-ml-2;
 			@extend .idx-mr-2;
 			flex-shrink: 0;
 		}
 
-		.idx-copy-input__text {
+		.copy-input__text {
 			@extend .idx-mr-4;
 			overflow: hidden;
 			margin: 0;
@@ -51,7 +51,7 @@
 		&.copied {
 			background: $copy-input-icon-bg;
 
-			.idx-copy-input__text {
+			.copy-input__text {
 				@extend .idx-mx-2;
 				overflow: hidden;
 				-webkit-animation: flexSlideIn 0.2s forwards;

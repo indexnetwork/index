@@ -85,7 +85,7 @@ const Popup: React.ForwardRefRenderFunction<PopupHandles, PropsWithChildren<Popu
 	return (
 		<div
 			ref={containerRef}
-			className={cc(["idx-popup", popupClass || ""])}
+			className={cc(["popup", popupClass || ""])}
 			onMouseEnter={trigger === "both" || trigger === "hover" ? handleMouseEnter : undefined}
 			onMouseLeave={trigger === "both" || trigger === "hover" ? handleMouseLeave : undefined}
 			onClick={trigger === "both" || trigger === "click" ? handleClick : undefined}
@@ -93,7 +93,7 @@ const Popup: React.ForwardRefRenderFunction<PopupHandles, PropsWithChildren<Popu
 			{children}
 			{
 				visible &&
-					<div ref={menuRef} className={cc(["idx-popup-menu", `idx-popup-menu-${position}`, menuClass || ""])}>
+					<div ref={menuRef} className={cc(["popup-menu", `popup-menu-${position}`, menuClass || ""])}>
 						{content}
 					</div>
 			}

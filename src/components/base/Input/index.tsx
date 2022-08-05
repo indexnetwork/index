@@ -38,14 +38,14 @@ const Input: React.FC<InputProps> = ({
 	return (
 		<Flex className={cc(
 			[
-				"idx-input",
-				`idx-input-${inputSize}`,
-				ghost ? "idx-input-ghost" : "",
-				block ? "idx-input-block" : "",
-				disabled ? "idx-input-disabled" : "",
-				readOnly ? "idx-input-readonly" : "",
-				addOnBefore ? "idx-input-add-on-before" : "",
-				addOnAfter ? "idx-input-add-on-after" : "",
+				"input",
+				`input-${inputSize}`,
+				ghost ? "input-ghost" : "",
+				block ? "input-block" : "",
+				disabled ? "input-disabled" : "",
+				readOnly ? "input-readonly" : "",
+				addOnBefore ? "input-add-on-before" : "",
+				addOnAfter ? "input-add-on-after" : "",
 				className,
 			],
 		)}>
@@ -56,7 +56,7 @@ const Input: React.FC<InputProps> = ({
 				disabled={disabled}
 				readOnly={readOnly}
 				type={type === "password" && showPw ? "text" : type}
-				className={"idx-input__input"} />
+				className={"input__input"} />
 			{type === "password" ? renderVisible() : addOnAfter}
 		</Flex>
 	);

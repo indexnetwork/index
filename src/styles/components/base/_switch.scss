@@ -1,4 +1,4 @@
-.idx-switch {
+.switch {
 	width: 3rem;
 	height: $switch-height-md;
 	background-color: $gray-2;
@@ -13,12 +13,12 @@
 
 
 	@each $key, $value in $common-colors {
-		&-#{$key}.idx-switch-checked {
+		&-#{$key}.switch-checked {
 			background-color: $value;
 		}
 	}
 
-	.idx-switch-knob {
+	.switch-knob {
 		background-color: white;
 		width: $switch-height-md - .2;
 		height: $switch-height-md - .2;
@@ -26,13 +26,13 @@
 		transition: transform .2s ease-in-out;
 	}
 
-	&.idx-switch-checked {
-		.idx-switch-knob {
+	&.switch-checked {
+		.switch-knob {
 			transform: translateX(100%);
 		}
 	}
 
-	&.idx-switch-disabled {
+	&.switch-disabled {
 		cursor: not-allowed;
 	}
 }

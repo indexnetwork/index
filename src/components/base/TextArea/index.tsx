@@ -39,12 +39,12 @@ const TextArea: React.FC<TextAreaProps> = ({
 	return (
 		<Flex className={cc(
 			[
-				"idx-textarea",
-				`idx-textarea-${inputSize}`,
-				ghost ? "idx-textarea-ghost" : "",
-				block ? "idx-textarea-block" : "",
-				disabled ? "idx-textarea-disabled" : "",
-				readOnly ? "idx-textarea-readonly" : "",
+				"textarea",
+				`textarea-${inputSize}`,
+				ghost ? "textarea-ghost" : "",
+				block ? "textarea-block" : "",
+				disabled ? "textarea-disabled" : "",
+				readOnly ? "textarea-readonly" : "",
 				className,
 			],
 		)}>
@@ -55,7 +55,7 @@ const TextArea: React.FC<TextAreaProps> = ({
 				disabled={disabled}
 				readOnly={readOnly}
 				rows={rows}
-				className={"idx-textarea__textarea"} />
+				className={"textarea__textarea"} />
 			{type === "password" ? renderVisible() : addOnAfter}
 		</Flex>
 	);

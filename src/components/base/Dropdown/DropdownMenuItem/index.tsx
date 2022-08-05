@@ -12,7 +12,7 @@ const DropdownMenuItem: React.FC<DropdownMenuItemProps> = ({
 		{...liProps}
 		className={cc(
 			[
-				divider ? "idx-dropdown-menu-divider" : "idx-dropdown-menu-item",
+				divider ? "dropdown-menu-divider" : "dropdown-menu-item",
 				className || "",
 			],
 		)}

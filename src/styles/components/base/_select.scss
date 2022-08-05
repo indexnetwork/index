@@ -1,13 +1,13 @@
-.idx-select {
+.select {
 	@include no-select;
-	@extend .idx-text, .idx-text-secondary, .idx-text-md;
+	@extend .text, .text-secondary, .text-md;
 	position: relative;
 	box-shadow: 0;
 	transition: box-shadow;
 	transition-duration: 0;
 	transition-timing-function: ease-in-out;
 
-	.idx-select-input {
+	.select-input {
 		@include responsive-sizes($input-height, "height");
 		display: flex;
 		align-items: center;
@@ -18,7 +18,7 @@
 		padding-right: map-deep-get($spacing, "xs", "7");
 		cursor: pointer;
 
-		.idx-select-input-arrow {
+		.select-input-arrow {
 			transform: rotate(180deg);
 			margin-left: map-deep-get($spacing, "xs", "3");
 			position: absolute;
@@ -26,45 +26,45 @@
 			margin-top: .2rem;
 		}
 
-		.idx-select-selections {
+		.select-selections {
 			display: flex;
 			align-items: center;
 			gap: map-deep-get($spacing, "xs", "3");
 		}
 
-		.idx-select-placeholder {
+		.select-placeholder {
 			color: lighten($gray-3, 10%);
 			font-weight: 300;
 		}
 	}
 
-	&.idx-select-w-auto {
-		.idx-select-input {
+	&.select-w-auto {
+		.select-input {
 			min-width: auto;
 		}
 	}
 
-	&.idx-select-disabled {
-		.idx-select-input {
+	&.select-disabled {
+		.select-input {
 			background-color: $input-disabled-bg;
 			cursor: not-allowed;
 		}
 
-		&.idx-select-multiple {
-			.idx-select-input {
-				.idx-select-input-item {
+		&.select-multiple {
+			.select-input {
+				.select-input-item {
 					background-color: lighten($main-color, 30%);
 				}
 			}
 		}
 	}
 
-	&.idx-select-multiple {
-		.idx-select-input {
+	&.select-multiple {
+		.select-input {
 			overflow: hidden;
 			word-break: normal;
 			text-overflow: ellipsis;
-			.idx-select-input-item {
+			.select-input-item {
 				display: flex;
 				align-items: center;
 				background-color: $main-color;
@@ -80,7 +80,7 @@
 				&:hover {
 					background-color: lighten($main-color, 30%);
 				}
-				.idx-select-multiple-close-icon {
+				.select-multiple-close-icon {
 					stroke: $white;
 					height: 1rem;
 					width: 1rem;
@@ -91,13 +91,13 @@
 		}
 	}
 
-	&.idx-select-bordered {
-		.idx-select-input {
+	&.select-bordered {
+		.select-input {
 			border: $border-base;
 		}
 	}
 
-	.idx-select-menu {
+	.select-menu {
 		overflow: hidden;
 		height: 0;
 		opacity: 0;
@@ -146,8 +146,8 @@
 		}
 	}
 
-	&.idx-select-open {
-		.idx-select-menu {
+	&.select-open {
+		.select-menu {
 			height: auto;
 			opacity: 1;
 			pointer-events: auto;
@@ -155,41 +155,41 @@
 		box-shadow: $box-shadow-base;
 		transition-duration: 0.2s;
 
-		&.idx-select-bordered {
-			.idx-select-input {
+		&.select-bordered {
+			.select-input {
 				border-bottom-left-radius: 0;
 				border-bottom-right-radius: 0;
 			}
 
-			.idx-select-menu {
+			.select-menu {
 				border: $border-base;
 				border-top: 0;
 			}
 		}
 	}
 
-	&.idx-select-ghost {
+	&.select-ghost {
 		box-shadow: none;
 
-		.idx-select-input {
+		.select-input {
 			background-color: transparent;
 			box-shadow: none;
 			justify-content: end;
 			padding-right: 1.6rem;
-			.idx-select-input-arrow {
+			.select-input-arrow {
 				margin-right: 0;
 				right: 0;
 			}
 		}
 
-		.idx-select-menu {
+		.select-menu {
 			box-shadow: $box-shadow-base;
 			margin-top: -1px;
 		}
 	}
 
 	@media (min-width: map-get($breakpoints, "sm")) {
-		.idx-select-menu {
+		.select-menu {
 			max-height: 17rem;
 		}
 	}

@@ -30,18 +30,18 @@ const Collapse: React.FC<CollapseProps> = ({
 	return (
 		<div className={
 			cc([
-				"idx-collapse",
-				isCollapsed ? "idx-collapse-collapsed" : "",
+				"collapse",
+				isCollapsed ? "collapse-collapsed" : "",
 				className || "",
 			])}>
 			<div
-				className="idx-collapse-header"
+				className="collapse-header"
 				onClick={handleToggle}
 			>
-				<IconUpArrow className="idx-collapse-arrow" />
-				<Text className="idx-collapse-title" size="sm" fontWeight={700}>{title}</Text>
+				<IconUpArrow className="collapse-arrow" />
+				<Text className="collapse-title" size="sm" fontWeight={700}>{title}</Text>
 			</div>
-			<div className="idx-collapse-body">
+			<div className="collapse-body">
 				{children}
 			</div>
 		</div>

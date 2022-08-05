@@ -1,11 +1,11 @@
-.idx-checkbox {
+.cbx {
 	@include no-select;
 	@include responsive-sizes($input-height, "height");
 
-	.idx-checkbox-container {
+	.cbx-container {
 		display: block;
 		cursor: pointer;
-		.idx-checkbox-input {
+		.cbx-input {
 			position: absolute;
 			opacity: 0;
 			cursor: pointer;
@@ -13,7 +13,7 @@
 			width: 0;
 		}
 
-		.idx-checkbox-checkmark {
+		.cbx-checkmark {
 			height: map-deep-get($spacing, "xs", "6");
 			width: map-deep-get($spacing, "xs", "6");
 			display: inline-block;
@@ -28,7 +28,7 @@
 				display: none;
 			}
 
-			.idx-checkbox-tick {
+			.cbx-tick {
 				stroke: $white;
 				fill: "transparent";
 				stroke-width: 1.5;
@@ -39,22 +39,22 @@
 		}
 	}
 
-	&.idx-checkbox-checked {
-		.idx-checkbox-checkmark {
+	&.cbx-checked {
+		.cbx-checkmark {
 			background-color: $main-color;
 		}
 	}
 
-	&.idx-checkbox-disabled {
-		.idx-checkbox-container {
+	&.cbx-disabled {
+		.cbx-container {
 			cursor: not-allowed;
 
-			.idx-checkbox-checkmark {
+			.cbx-checkmark {
 				background-color: $gray-1;
 			}
 		}
-		&.idx-checkbox-checked {
-			.idx-checkbox-checkmark {
+		&.cbx-checked {
+			.cbx-checkmark {
 				background-color: lighten($main-color, 30%);
 			}
 		}

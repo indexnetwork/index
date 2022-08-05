@@ -89,13 +89,13 @@ const Tag: React.FC<TagProps> = ({
 			ref={divRef}
 			className={cc(
 				[
-					"idx-tag",
-					`idx-tag-${theme}`,
-					`idx-tag-${size}`,
-					`idx-tag-${shape}`,
-					clickable ? "idx-tag-clickable" : "",
-					removable ? "idx-tag-removable" : "",
-					editable && !editActive ? "idx-tag-editable" : "",
+					"tag",
+					`tag-${theme}`,
+					`tag-${size}`,
+					`tag-${shape}`,
+					clickable ? "tag-clickable" : "",
+					removable ? "tag-removable" : "",
+					editable && !editActive ? "tag-editable" : "",
 					className,
 				],
 			)}
@@ -114,10 +114,10 @@ const Tag: React.FC<TagProps> = ({
 			/> : value}
 			{removable && !editActive &&
 				<div
-					className="idx-tag-remove"
+					className="tag-remove"
 					onClick={removable ? handleRemove : undefined}
 				>
-					<IconClose className="idx-tag-remove-icon" />
+					<IconClose className="tag-remove-icon" />
 				</div>
 			}
 		</div>

@@ -118,11 +118,11 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({
 		<div
 			ref={containerRef}
 			className={cc([
-				"idx-search",
-				menuOpen ? "idx-search-open" : "",
-				disabled ? "idx-search-disabled" : "",
+				"search",
+				menuOpen ? "search-open" : "",
+				disabled ? "search-disabled" : "",
 				fullWidth ? "idx-w-100" : "",
-				`idx-search-${size}`,
+				`search-${size}`,
 			])}
 		>
 			<Input
@@ -135,8 +135,8 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({
 				inputSize={size}
 				disabled={disabled}
 			/>
-			<div className="idx-search-menu">
-				<div className="idx-search-menu-list">
+			<div className="search-menu">
+				<div className="search-menu-list">
 					{children}
 				</div>
 			</div>

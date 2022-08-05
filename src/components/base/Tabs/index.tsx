@@ -39,8 +39,8 @@ export const Tabs: React.FC<TabsProps> = ({
 				<div
 					key={uuidv4()}
 					className={cc([
-						"idx-tabs-contents-item",
-						!visible ? "idx-tabs-contents-item-invisible" : "",
+						"tabs-contents-item",
+						!visible ? "tabs-contents-item-invisible" : "",
 					])}
 				>
 					{child}
@@ -70,9 +70,9 @@ export const Tabs: React.FC<TabsProps> = ({
 
 	return (
 		<div
-			className="idx-tabs"
+			className="tabs"
 		>
-			<div className="idx-tabs-list">
+			<div className="tabs-list">
 				{
 					React.Children.map(children || [], (
 						child: React.ReactElement<TabPaneProps>,
@@ -82,9 +82,9 @@ export const Tabs: React.FC<TabsProps> = ({
 						return (
 							<div
 								className={cc([
-									"idx-tabs-list-item",
-									tabKey === activeTab ? "idx-tabs-list-item-active" : "",
-									enabled ? "" : "idx-tabs-list-item-disabled",
+									"tabs-list-item",
+									tabKey === activeTab ? "tabs-list-item-active" : "",
+									enabled ? "" : "tabs-list-item-disabled",
 								])}
 								onClick={() => {
 									enabled && handleTabChange(tabKey);
@@ -96,13 +96,13 @@ export const Tabs: React.FC<TabsProps> = ({
 								>
 									{title}
 								</Text>
-								{tabKey === activeTab && <div className="idx-tabs-list-item-bottom"></div>}
+								{tabKey === activeTab && <div className="tabs-list-item-bottom"></div>}
 							</div>
 						);
 					})
 				}
 			</div>
-			<div className="idx-tabs-contents">
+			<div className="tabs-contents">
 				{renderTabContent()}
 			</div>
 		</div>

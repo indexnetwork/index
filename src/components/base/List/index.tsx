@@ -35,7 +35,7 @@ const List: React.VFC<ListProps> = ({
 			{...droppableProvided?.droppableProps}
 			className={
 				cc([
-					"idx-list",
+					"list",
 					listClass || "",
 				])
 			}>
@@ -48,7 +48,7 @@ const List: React.VFC<ListProps> = ({
 						])}
 					>
 						{render(item, index)}
-						{divided && index !== data.length - 1 && <div className="idx-list-divider"></div>}
+						{divided && index !== data.length - 1 && <div className="list-divider"></div>}
 					</ListItem>
 				) : (
 					<Draggable
@@ -62,7 +62,7 @@ const List: React.VFC<ListProps> = ({
 							])}
 						>
 							{render(item, index, provided, snapshot)}
-							{divided && index !== data.length - 1 && <div className="idx-list-divider"></div>}
+							{divided && index !== data.length - 1 && <div className="list-divider"></div>}
 						</ListItem>}</Draggable>
 				)))
 			}

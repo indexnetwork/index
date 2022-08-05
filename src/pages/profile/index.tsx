@@ -142,20 +142,20 @@ const CreateIndexPage: NextPageWithLayout = () => {
 									dragProps,
 								}) => (
 									// write your building UI
-									<div className="idx-img-upload"
+									<div className="img-upload"
 										onClick={onImageUpload}
 										{...dragProps}>
 										{
 											imageList.length === 0 && !profile.image ?
-												<div className="idx-img-upload__banner"><Text fontWeight={600}
+												<div className="img-upload__banner"><Text fontWeight={600}
 													theme="white">Click or Drop Image</Text></div> : (
 													imageList.length !== 0 ? (
 														imageList.map((image, index) => (
 															<>
-																<div key={index} className="idx-img-upload-img">
-																	<img className="idx-img-upload-img__img" src={image.data_url} alt="" />
+																<div key={index} className="img-upload-img">
+																	<img className="img-upload-img__img" src={image.data_url} alt="" />
 																</div>
-																<div className="idx-img-upload-btns" onClick={(e) => e.stopPropagation()}>
+																<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
 																	{/* <Avatar size={32}
 																		hoverable onClick={() => onImageUpdate(index)}><IconAdd /></Avatar> */}
 																	<Avatar
@@ -166,11 +166,11 @@ const CreateIndexPage: NextPageWithLayout = () => {
 														))
 													) : (
 														<>
-															<div className="idx-img-upload-img">
-																<img className="idx-img-upload-img__img"
+															<div className="img-upload-img">
+																<img className="img-upload-img__img"
 																	src={profile!.image!.alternatives![0].src.replace("ipfs://", "https://ipfs.infura.io/ipfs/")} alt="" />
 															</div>
-															<div className="idx-img-upload-btns" onClick={(e) => e.stopPropagation()}>
+															<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
 																{/* <Avatar size={32}
 																	hoverable onClick={() => onImageUpdate(0)}><IconAdd /></Avatar> */}
 																<Avatar

@@ -1,4 +1,4 @@
-.idx-img-upload {
+.img-upload {
 	width: 16rem;
 	height: 16rem;
 	border-radius: 8rem;
@@ -15,7 +15,7 @@
 		transform: translateY(-50%);
 	}
 
-	.idx-img-upload-img {
+	.img-upload-img {
 		position: absolute;
 		width: 16rem;
 		height: 16rem;
@@ -26,7 +26,7 @@
 		}
 	}
 
-	.idx-img-upload-btns {
+	.img-upload-btns {
 		position: absolute;
 		z-index: 2123;
 		left:0;

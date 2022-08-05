@@ -127,21 +127,21 @@ const Select: React.VFC<SelectProps> = ({
 		}
 		return (
 			<div
-				className="idx-select-input-item"
+				className="select-input-item"
 				style={{
 					visibility: collapseSelections ? "hidden" : "visible",
 				}}
 				onClick={mode === "multiple" && !disabled ? (e) => handleRemoveSelection(e, child.props.value) : undefined}
 			>
 				{child.props.children}
-				{mode === "multiple" && <IconClose className="idx-select-multiple-close-icon" />}
+				{mode === "multiple" && <IconClose className="select-multiple-close-icon" />}
 			</div>
 		);
 	};
 
 	const renderCollapsed = () => (
 		<div
-			className="idx-select-input-item"
+			className="select-input-item"
 			onClick={handleClearAll}
 			style={{
 				position: "absolute",
@@ -150,7 +150,7 @@ const Select: React.VFC<SelectProps> = ({
 			{t("components:select.collapseMessage", "", {
 				count: selection?.length,
 			})}
-			<IconClose className="idx-select-multiple-close-icon" />
+			<IconClose className="select-multiple-close-icon" />
 		</div>
 	);
 
@@ -166,28 +166,28 @@ const Select: React.VFC<SelectProps> = ({
 			<div
 				ref={selectRef}
 				className={cc([
-					"idx-select",
-					mode === "multiple" ? "idx-select-multiple" : "",
-					bordered ? "idx-select-bordered" : "",
-					menuOpen ? "idx-select-open" : "",
-					disabled ? "idx-select-disabled" : "",
+					"select",
+					mode === "multiple" ? "select-multiple" : "",
+					bordered ? "select-bordered" : "",
+					menuOpen ? "select-open" : "",
+					disabled ? "select-disabled" : "",
 					fullWidth ? "idx-w-100" : "",
-					noMinWidth ? "idx-select-w-auto" : "",
-					ghost ? "idx-select-ghost" : "",
+					noMinWidth ? "select-w-auto" : "",
+					ghost ? "select-ghost" : "",
 					className || "",
 				])}
 			>
 				<div
 					ref={selectInputRef}
 					className={cc([
-						"idx-select-input",
-						`idx-select-input-${size}`,
+						"select-input",
+						`select-input-${size}`,
 					])}
 					onClick={!disabled ? handleToggle : undefined}
 				>
 					<div
 						ref={selectionsRef}
-						className="idx-select-selections"
+						className="select-selections"
 					>
 						{
 							collapseSelections && renderCollapsed()
@@ -195,11 +195,11 @@ const Select: React.VFC<SelectProps> = ({
 						{
 							React.Children.map(children, (child) => renderInputItem(child))
 						}
-						{showPlaceholder() && <div className="idx-select-placeholder">{placeholder}</div>}
+						{showPlaceholder() && <div className="select-placeholder">{placeholder}</div>}
 					</div>
-					<IconUpArrow className="idx-select-input-arrow" />
+					<IconUpArrow className="select-input-arrow" />
 				</div>
-				<div className="idx-select-menu">
+				<div className="select-menu">
 					{children}
 				</div>
 			</div>

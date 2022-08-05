@@ -39,9 +39,9 @@ const Avatar: React.FC<AvatarProps> = ({
 			{...divProps}
 			className={cc(
 				[
-					"idx-avatar",
-					`idx-avatar-${shape}`,
-					hoverable ? "idx-avatar-hoverable" : "",
+					"avatar",
+					`avatar-${shape}`,
+					hoverable ? "avatar-hoverable" : "",
 					className || "",
 				],
 			)}

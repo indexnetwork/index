@@ -6,6 +6,6 @@ export interface DividerProps {
 	direction?: "horizontal" | "vertical";
 }
 
-const Divider: React.VFC<DividerProps> = ({ className, direction = "horizontal" }) => <div className={cc(["idx-divider", `idx-divider-${direction}`, className || ""])}></div>;
+const Divider: React.VFC<DividerProps> = ({ className, direction = "horizontal" }) => <div className={cc(["divider", `divider-${direction}`, className || ""])}></div>;
 
 export default Divider;

@@ -65,7 +65,7 @@ const Modal: React.FC<ModalProps> = ({
 			}
 			const el = document.createElement("div");
 			el.id = PORTAL_ID;
-			el.className = "idx-modal-portal";
+			el.className = "modal-portal";
 			document.body!.appendChild(el);
 			setPortal(el);
 		}
@@ -117,17 +117,17 @@ const Modal: React.FC<ModalProps> = ({
 	const renderModal = () => (
 		<div
 			className={cc([
-				"idx-modal",
-				!open ? "idx-modal-invisible" : "",
-				isMobile ? "idx-modal-mobile" : "",
-				"idx-modal-container-outer",
-				`idx-modal-size-${size}`,
+				"modal",
+				!open ? "modal-invisible" : "",
+				isMobile ? "modal-mobile" : "",
+				"modal-container-outer",
+				`modal-size-${size}`,
 			])}
 			onClick={handleDesktopClose}
 		>
 			<div
 				className={
-					"idx-modal-container-inner"
+					"modal-container-inner"
 				}
 			>
 				{open && <GlobalStyle />}
@@ -135,19 +135,19 @@ const Modal: React.FC<ModalProps> = ({
 					onCollapse={handleMobileClose}
 					onMenuStateChanged={handleMobileChange}
 					menuOpen={open}
-					className="idx-modal-wrapper"
+					className="modal-wrapper"
 					maxVh={mobileMaxVh}
 					onClick={handleBackdropClick}
 				>
-					<div className="idx-modal-header">
+					<div className="modal-header">
 						{header}
 					</div>
-					<div className="idx-modal-body">
+					<div className="modal-body">
 						{body}
 					</div>
 					{
 						footer && (
-							<div className="idx-modal-footer">
+							<div className="modal-footer">
 								{footer}
 							</div>
 						)

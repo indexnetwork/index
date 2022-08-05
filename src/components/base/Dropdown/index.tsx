@@ -19,7 +19,7 @@ const Dropdown: React.FC<DropdownProps> = ({
 }) => (
 	<Popup
 		{...popupProps}
-		popupClass={cc(["idx-dropdown", dropdownClass || ""])}
+		popupClass={cc(["dropdown", dropdownClass || ""])}
 		content={<DropdownMenu>{menuItems}</DropdownMenu>}
 	>
 		{children}

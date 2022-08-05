@@ -61,7 +61,7 @@ const RadioGroup: React.VFC<RadioGroupProps> = ({
 			colSpacing={2}
 			rowGutter={2}
 			{...rowProps}
-			className="idx-radio-group"
+			className="radio-group"
 		>
 			{
 				items.map((btn, index) => (
@@ -79,8 +79,8 @@ const RadioGroup: React.VFC<RadioGroupProps> = ({
 									block
 									theme="clear"
 									className={cc([
-										"idx-radio-group-button",
-										selected.indexOf(btn.value) > -1 ? "idx-radio-group-button-selected" : "",
+										"radio-group-button",
+										selected.indexOf(btn.value) > -1 ? "radio-group-button-selected" : "",
 									])}
 									onClick={handleChange(btn.value)}
 								>{btn.title}</Button>

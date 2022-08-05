@@ -1,8 +1,8 @@
-.idx-dropdown {
+.dropdown {
 	display: inline-block;
 	position: relative;
 
-	.idx-dropdown-menu {
+	.dropdown-menu {
 		@include no-select;
 		list-style: none;
 		padding: 0;
@@ -19,48 +19,48 @@
 		max-width: 20rem;
 		margin: 0;
 
-		&.idx-dropdown-menu-bottom-center {
+		&.dropdown-menu-bottom-center {
 			left: 50%;
 			transform: translateX(-50%);
 			margin-top: $dropdown-spacing;
 		}
 
-		&.idx-dropdown-menu-bottom-left {
+		&.dropdown-menu-bottom-left {
 			left: 0;
 			margin-top: $dropdown-spacing;
 		}
 
-		&.idx-dropdown-menu-bottom-right {
+		&.dropdown-menu-bottom-right {
 			right: 0;
 			margin-top: $dropdown-spacing;
 		}
 
-		&.idx-dropdown-menu-top-center {
+		&.dropdown-menu-top-center {
 			bottom: 100%;
 			left: 50%;
 			transform: translateX(-50%);
 			margin-bottom: $dropdown-spacing;
 		}
 
-		&.idx-dropdown-menu-top-left {
+		&.dropdown-menu-top-left {
 			bottom: 100%;
 			left: 0;
 			margin-bottom: $dropdown-spacing;
 		}
 
-		&.idx-dropdown-menu-top-right {
+		&.dropdown-menu-top-right {
 			bottom: 100%;
 			right: 0;
 			margin-bottom: $dropdown-spacing;
 		}
 
-		.idx-dropdown-menu-divider {
+		.dropdown-menu-divider {
 			width: 100%;
 			background-color: $gray-2;
 			height: 1px;
 		}
 
-		.idx-dropdown-menu-item {
+		.dropdown-menu-item {
 			padding: 3 * map-deep-get($spacing, "xs", "1") map-deep-get($spacing, "xs", "5");
 			cursor: pointer;
 			&:hover {

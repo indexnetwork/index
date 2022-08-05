@@ -1,6 +1,5 @@
-import type { AppProps } from "next/app";
-// import "../../.semantic/dist/semantic.min.css";
 import "../styles/main.scss";
+import type { AppProps } from "next/app";
 
 import CeramicProvider from "components/site/context/CeramicProvider";
 import { appWithTranslation } from "next-i18next";
@@ -32,70 +31,6 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 					<CeramicProvider>
 						<Head>
 							<title>Index.as</title>
-							{/* <link
-								rel="preload"
-								href="/fonts/Freizeit-Bold.woff"
-								as="font"
-								type="font/woff"
-								crossOrigin="anonymous"
-							/>
-							<link
-								rel="preload"
-								href="/fonts/Freizeit-Regular.woff"
-								as="font"
-								type="font/woff"
-								crossOrigin="anonymous"
-							/>
-							<link
-								rel="preload"
-								href="/fonts/Roquefort-Standard.woff"
-								as="font"
-								type="font/woff"
-								crossOrigin="anonymous"
-							/>
-							<link
-								rel="preload"
-								href="/fonts/Inter-Bold.otf"
-								as="font"
-								type="font/otf"
-								crossOrigin="anonymous"
-							/>
-							<link
-								rel="preload"
-								href="/fonts/Inter-ExtraBold.otf"
-								as="font"
-								type="font/otf"
-								crossOrigin="anonymous"
-							/>
-							<link
-								rel="preload"
-								href="/fonts/Inter-Light.otf"
-								as="font"
-								type="font/otf"
-								crossOrigin="anonymous"
-							/>
-							<link
-								rel="preload"
-								href="/fonts/Inter-Medium.otf"
-								as="font"
-								type="font/otf"
-								crossOrigin="anonymous"
-							/>
-							<link
-								rel="preload"
-								href="/fonts/Inter-Regular.otf"
-								as="font"
-								type="font/otf"
-								crossOrigin="anonymous"
-							/>
-							<link
-								rel="preload"
-								href="/fonts/Inter-SemiBold.otf"
-								as="font"
-								type="font/otf"
-								crossOrigin="anonymous"
-							/> */}
-							<link rel="stylesheet preload prefetch" as="style" href="/fonts/fonts.css" type="text/css" />
 							<meta name="title" content="Index.as" />
 							<link rel="shortcut icon" href="/favicon-white.png" />
 							<meta

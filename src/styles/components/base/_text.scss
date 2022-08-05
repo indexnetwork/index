@@ -1,4 +1,4 @@
-.idx-text {
+.text {
 	color: $main-color;
 	@include responsive-sizes($font-size, "font-size");
 	@include responsive-sizes($font-line-height, "line-height");

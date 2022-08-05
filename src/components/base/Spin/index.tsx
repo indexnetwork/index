@@ -24,18 +24,18 @@ const Spin: React.FC<SpinProps> = ({
 }) => (
 	<div
 		className={cc([
-			"idx-spin",
-			`idx-spin-${theme}`,
-			active ? "idx-spin-active" : "",
-			hidden ? "idx-spin-hidden" : "",
-			size ? `idx-spin-size-${size}` : "",
-			`idx-spin-${thickness}`,
-			wrapsChildren ? "" : "idx-spin-solo",
+			"spin",
+			`spin-${theme}`,
+			active ? "spin-active" : "",
+			hidden ? "spin-hidden" : "",
+			size ? `spin-size-${size}` : "",
+			`spin-${thickness}`,
+			wrapsChildren ? "" : "spin-solo",
 			className || "",
 		])}
 	>
-		{wrapsChildren && <div className="idx-spin-bg"></div>}
-		<div className="idx-spin-spinner">
+		{wrapsChildren && <div className="spin-bg"></div>}
+		<div className="spin-spinner">
 			<div>
 			</div>
 			<div>

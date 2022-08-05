@@ -1,21 +1,21 @@
-.idx-tabs {
+.tabs {
 	@include no-select;
 	display: flex;
 	flex-direction: column;
-	.idx-tabs-list {
+	.tabs-list {
 		display: flex;
 		gap: map-deep-get($spacing, "xs", "6");
 		flex-shrink: 0;
 		border-bottom: $border-base;
 		margin-bottom: map-deep-get($spacing, "xs", "3");
-		.idx-tabs-list-item {
+		.tabs-list-item {
 			position: relative;
 			cursor: pointer;
 			padding: map-deep-get($spacing, "xs", "3") 0;
 			margin-right: map-deep-get($spacing, "xs", "7");
-			&.idx-tabs-list-item-active {
+			&.tabs-list-item-active {
 				font-weight: 700;
-				.idx-tabs-list-item-bottom {
+				.tabs-list-item-bottom {
 					visibility: visible;
 					position: absolute;
 					height: 3px;
@@ -27,20 +27,20 @@
 				}
 			}
 
-			&.idx-tabs-list-item-disabled {
+			&.tabs-list-item-disabled {
 				cursor: not-allowed;
 				background-color: $gray-1;
 			}
 
-			.idx-tabs-list-item-bottom {
+			.tabs-list-item-bottom {
 				visibility: hidden;
 			}
 		}
 	}
 
-	.idx-tabs-contents {
+	.tabs-contents {
 		flex-grow: 1;
-		.idx-tabs-contents-item {
+		.tabs-contents-item {
 
 		}
 	}

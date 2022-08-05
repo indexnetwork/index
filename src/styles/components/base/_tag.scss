@@ -1,5 +1,5 @@
-.idx-tag {
-	@extend .idx-text-xs;
+.tag {
+	@extend .text-xs;
 	@include no-select;
 
 	position: relative;
@@ -13,15 +13,15 @@
 	word-break: normal;
 	text-overflow: ellipsis;
 
-	&.idx-tag-circle {
+	&.tag-circle {
 		border-radius: 1.8rem;
 	}
 
-	&.idx-tag-tag {
+	&.tag-tag {
 		background-color: map-get($button-bg, "tag");
 		color: $main-color;
 		border: 1px solid map-get($button-bg, "tag");
-		.idx-tag-remove {
+		.tag-remove {
 			background: linear-gradient(
 				90deg,
 				rgba(0, 0, 0, 0) 0%,
@@ -31,24 +31,24 @@
 		}
 	}
 
-	&.idx-tag-editable {
+	&.tag-editable {
 		cursor: text;
 		min-width: 3rem;
 	}
 
-	&.idx-tag-clickable {
+	&.tag-clickable {
 		cursor: pointer;
 		pointer-events: auto;
 	}
 
-	.idx-input.idx-input-ghost {
+	.input.input-ghost {
 		height: 1.2rem;
 		input {
 			width: 8rem;
 		}
 	}
 
-	.idx-tag-remove {
+	.tag-remove {
 		@extend .idx-ml-2;
 		pointer-events: none;
 		position: static;
@@ -63,20 +63,20 @@
 		transition: opacity 0.2s ease-in-out;
 		height: auto;
 
-		.idx-tag-remove-icon {
+		.tag-remove-icon {
 			width: 1rem;
 			height: 1rem;
 		}
 	}
 
-	&.idx-tag-removable {
-		.idx-tag-remove {
+	&.tag-removable {
+		.tag-remove {
 			pointer-events: all;
 		}
 	}
 
 	@media (min-width: map-get($breakpoints, "lg")) {
-		.idx-tag-remove {
+		.tag-remove {
 			height: 100%;
 			margin-left: 0;
 			position: absolute;
@@ -87,12 +87,12 @@
 			transition: opacity 0.2s ease-in-out;
 			opacity: 0;
 
-			.idx-tag-remove-icon {
+			.tag-remove-icon {
 				margin-right: 0.6rem;
 			}
 		}
-		&.idx-tag-removable {
-			.idx-tag-remove {
+		&.tag-removable {
+			.tag-remove {
 				pointer-events: all;
 				&:hover {
 					opacity: 1;
@@ -104,11 +104,11 @@
 	}
 
 	@each $key, $value in $button-bg {
-		&.idx-tag-#{$key} {
+		&.tag-#{$key} {
 			@if str-index($key, "outlined") != null {
 				@include theme-color(map-get($button-color, $key), $white, $outlined: true);
-				.idx-tag-remove {
-					.idx-tag-remove-icon {
+				.tag-remove {
+					.tag-remove-icon {
 						stroke: map-get($button-color, $key);
 					}
 				}
@@ -116,9 +116,9 @@
 				@if $key != "tag" {
 					@include theme-color($white, $value, $outlined: false);
 
-					.idx-tag-remove {
+					.tag-remove {
 						background: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, $value 50%, $value 100%);
-						.idx-tag-remove-icon {
+						.tag-remove-icon {
 							stroke: $white;
 						}
 					}
@@ -127,7 +127,7 @@
 		}
 	}
 
-	&.idx-tag-clear {
+	&.tag-clear {
 		background-color: $white;
 		color: $gray-4;
 		border-color: $border-color;

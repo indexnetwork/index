@@ -1,4 +1,4 @@
-.idx-input {
+.input {
 	@include responsive-sizes($input-height, "height");
 	display: inline-block;
 	border: $border-base;
@@ -22,7 +22,7 @@
 		outline-width: 0 !important;
 	}
 
-	&.idx-input-block {
+	&.input-block {
 		width: 100%;
 	}
 
@@ -30,8 +30,8 @@
 		color: $secondary-text-color;
 	}
 
-	&.idx-input-disabled,
-	&.idx-input-readonly {
+	&.input-disabled,
+	&.input-readonly {
 		background-color: $input-disabled-bg !important;
 		color: $secondary-text-color;
 
@@ -41,19 +41,19 @@
 		}
 	}
 
-	&.idx-input-add-on-before {
+	&.input-add-on-before {
 		input {
 			margin-left: map-deep-get($spacing, "xs", "6");
 		}
 	}
 
-	&.idx-input-add-on-after {
+	&.input-add-on-after {
 		input {
 			margin-right: map-deep-get($spacing, "xs", "6");
 		}
 	}
 
-	&.idx-input-ghost {
+	&.input-ghost {
 		border: none;
 		height: auto;
 		padding-left: 0;
@@ -63,15 +63,15 @@
 		}
 	}
 
-	&.idx-input-xs {
+	&.input-xs {
 		padding-left: map-deep-get($spacing, "xs", "2");
 		padding-right: map-deep-get($spacing, "xs", "2");
-		&.idx-input-add-on-before {
+		&.input-add-on-before {
 			input {
 				margin-left: map-deep-get($spacing, "xs", "2");
 			}
 		}
-		&.idx-input-add-on-after {
+		&.input-add-on-after {
 			input {
 				margin-right: map-deep-get($spacing, "xs", "2");
 			}
@@ -83,15 +83,15 @@
 		}
 	}
 
-	&.idx-input-sm {
+	&.input-sm {
 		padding-left: map-deep-get($spacing, "xs", "4");
 		padding-right: map-deep-get($spacing, "xs", "4");
-		&.idx-input-add-on-before {
+		&.input-add-on-before {
 			input {
 				margin-left: map-deep-get($spacing, "xs", "4");
 			}
 		}
-		&.idx-input-add-on-after {
+		&.input-add-on-after {
 			input {
 				margin-right: map-deep-get($spacing, "xs", "4");
 			}

@@ -11,7 +11,7 @@ const DropdownMenu: React.ForwardRefRenderFunction<HTMLUListElement, DropdownMen
 		ref={ref}
 		className={cc(
 			[
-				"idx-dropdown-menu",
+				"dropdown-menu",
 				className || "",
 			],
 		)}

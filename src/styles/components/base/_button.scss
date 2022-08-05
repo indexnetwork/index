@@ -1,4 +1,4 @@
-.idx-button {
+.btn {
 	@include no-select;
 	@include responsive-sizes($input-height, "height");
 	@include responsive-sizes($font-size, "font-size");
@@ -33,7 +33,7 @@
 	}
 
 	@each $key, $value in $button-bg {
-		&.idx-button-#{$key} {
+		&.btn-#{$key} {
 			@if str-index($key, "outlined") != null {
 				@include button-color(
 					map-get($button-color, $key),
@@ -49,32 +49,32 @@
 		}
 	}
 
-	&.idx-button-ghost {
+	&.btn-ghost {
 		@include button-color($main-color, transparent, $hover-darken, $visited-lighten, $transition-bg, $outlined: true);
 		border: none;
 	}
 
-	&.idx-button-link {
+	&.btn-link {
 		@include button-color($blue, $white, $hover-darken, $visited-lighten, $transition-bg, $outlined: true);
 		border: none;
 	}
 
-	&.idx-button-clear {
+	&.btn-clear {
 		background-color: $white;
 		color: $gray-4;
 		border-color: $border-color;
 	}
 
-	&.idx-button-block {
+	&.btn-block {
 		display: block;
 		width: 100%;
 	}
 
-	&.idx-button-borderless {
+	&.btn-borderless {
 		border: none;
 	}
 
-	& + .idx-button {
+	& + .btn {
 		margin-left: map-deep-get($spacing, "xs", "3");
 	}
 
@@ -83,7 +83,7 @@
 		width: auto;
 	}
 
-	.idx-button-inner {
+	.btn-inner {
 		height: 100%;
 		line-height: 100%;
 		.idx-icon {
@@ -91,7 +91,7 @@
 		}
 	}
 
-	&.idx-button-addon-b {
+	&.btn-addon-b {
 		display: inline-block;
 		vertical-align: middle;
 		margin-right: .5rem;
@@ -102,7 +102,7 @@
 		}
 	}
 
-	&.idx-button-addon-a {
+	&.btn-addon-a {
 		display: inline-block;
 		vertical-align: middle;
 		.idx-icon {
@@ -112,7 +112,7 @@
 		}
 	}
 
-	&.idx-button-icon {
+	&.btn-icon {
 		@include responsive-sizes($input-height, "width");
 		display: flex;
 		align-items: center;
@@ -125,7 +125,7 @@
 		}
 	}
 
-	&.idx-button-icon.idx-button-sm {
+	&.btn-icon.btn-sm {
 		padding: .6rem;
 		svg {
 			width: 1.4rem;
@@ -133,7 +133,7 @@
 		}
 	}
 
-	&.idx-button-icon.idx-button-xs {
+	&.btn-icon.btn-xs {
 		padding: .4rem;
 		svg {
 			width: 1.2rem;

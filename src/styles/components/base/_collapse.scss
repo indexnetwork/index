@@ -1,20 +1,20 @@
-.idx-collapse {
+.collapse {
 	// @extend .idx-px-6, .idx-py-6;
-	.idx-collapse-header {
+	.collapse-header {
 		cursor: pointer;
 
-		.idx-collapse-arrow {
+		.collapse-arrow {
 			@extend .idx-mr-3;
 			stroke: $gray-5;
 			vertical-align: middle;
 			transition: transform 0.2s;
 		}
-		.idx-collapse-title {
+		.collapse-title {
 			vertical-align: middle;
 		}
 	}
 
-	.idx-collapse-body {
+	.collapse-body {
 		@extend .idx-mt-5;
 		box-sizing: content-box;
 		overflow: hidden;
@@ -22,14 +22,14 @@
 		max-height: 30rem;
 	}
 
-	&.idx-collapse-collapsed {
-		.idx-collapse-header {
-			.idx-collapse-arrow {
+	&.collapse-collapsed {
+		.collapse-header {
+			.collapse-arrow {
 				transform: rotate(90deg);
 			}
 		}
 
-		.idx-collapse-body {
+		.collapse-body {
 			@extend .idx-mt-0;
 			height: 0 !important;
 			max-height: 0;

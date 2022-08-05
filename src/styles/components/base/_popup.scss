@@ -1,8 +1,8 @@
-.idx-popup {
+.popup {
 	display: inline-block;
 	position: relative;
 
-	.idx-popup-menu {
+	.popup-menu {
 		@include no-select;
 		list-style: none;
 		padding: 0;
@@ -19,36 +19,36 @@
 		word-break: break-all;
 		max-width: 20rem;
 
-		&.idx-popup-menu-bottom-center {
+		&.popup-menu-bottom-center {
 			left: 50%;
 			transform: translateX(-50%);
 			margin-top: $dropdown-spacing;
 		}
 
-		&.idx-popup-menu-bottom-left {
+		&.popup-menu-bottom-left {
 			left: 0;
 			margin-top: $dropdown-spacing;
 		}
 
-		&.idx-popup-menu-bottom-right {
+		&.popup-menu-bottom-right {
 			right: 0;
 			margin-top: $dropdown-spacing;
 		}
 
-		&.idx-popup-menu-top-center {
+		&.popup-menu-top-center {
 			bottom: 100%;
 			left: 50%;
 			transform: translateX(-50%);
 			margin-bottom: $dropdown-spacing;
 		}
 
-		&.idx-popup-menu-top-left {
+		&.popup-menu-top-left {
 			bottom: 100%;
 			left: 0;
 			margin-bottom: $dropdown-spacing;
 		}
 
-		&.idx-popup-menu-top-right {
+		&.popup-menu-top-right {
 			bottom: 100%;
 			right: 0;
 			margin-bottom: $dropdown-spacing;

@@ -16,14 +16,14 @@ const ButtonGroup: React.FC<ButtonGroupProps> = ({
 	{...divProps}
 	className={
 		cc([
-			"idx-button-group",
-			`idx-button-group-${theme}`,
-			`idx-button-group-${size}`,
+			"btn-group",
+			`btn-group-${theme}`,
+			`btn-group-${size}`,
 			className || "",
 		])
 	}>{
 		children &&
-			React.Children.map(children, (child: React.ReactElement<any>) => <div className="idx-button-group-item">{
+			React.Children.map(children, (child: React.ReactElement<any>) => <div className="btn-group-item">{
 				child
 			}
 			</div>)

@@ -40,13 +40,13 @@ const Button: React.FC<ButtonProps> = ({
 		case "google":
 			return <button {...props} className={cc(
 				[
-					"idx-button",
-					`idx-button-${theme}`,
-					`idx-button-${size}`,
-					block && !group ? "idx-button-block" : "",
-					group ? "idx-button-group-item" : "",
-					iconButton ? `idx-button-icon idx-button-icon-${size}` : "",
-					borderless ? "idx-button-borderless" : "",
+					"btn",
+					`btn-${theme}`,
+					`btn-${size}`,
+					block && !group ? "btn-block" : "",
+					group ? "btn-group-item" : "",
+					iconButton ? `btn-icon btn-icon-${size}` : "",
+					borderless ? "btn-borderless" : "",
 					className,
 				],
 			)}>
@@ -56,11 +56,11 @@ const Button: React.FC<ButtonProps> = ({
 		case "twitter":
 			return <button {...props} className={cc(
 				[
-					"idx-button",
-					outlined ? `idx-button-${theme}-outlined` : `idx-button-${theme}`,
-					block ? "idx-button-block" : "",
-					iconButton ? `idx-button-icon idx-button-icon-${size}` : "",
-					borderless ? "idx-button-borderless" : "",
+					"btn",
+					outlined ? `btn-${theme}-outlined` : `btn-${theme}`,
+					block ? "btn-block" : "",
+					iconButton ? `btn-icon btn-icon-${size}` : "",
+					borderless ? "btn-borderless" : "",
 					className,
 				],
 			)}>
@@ -72,18 +72,18 @@ const Button: React.FC<ButtonProps> = ({
 				{...props}
 				className={cc(
 					[
-						"idx-button",
-						`idx-button-${theme}`,
-						`idx-button-${size}`,
-						block ? "idx-button-block" : "",
-						addOnBefore ? "idx-button-addon-b" : "",
-						addOnAfter ? "idx-button-addon-a" : "",
-						iconButton ? `idx-button-icon idx-button-icon-${size}` : "",
-						borderless ? "idx-button-borderless" : "",
+						"btn",
+						`btn-${theme}`,
+						`btn-${size}`,
+						block ? "btn-block" : "",
+						addOnBefore ? "btn-addon-b" : "",
+						addOnAfter ? "btn-addon-a" : "",
+						iconButton ? `btn-icon btn-icon-${size}` : "",
+						borderless ? "btn-borderless" : "",
 						className,
 					],
 				)}>
-				{addOnAfter || addOnBefore ? <Flex className="idx-button-inner" inline alignItems="center">{addOnBefore}{children}{addOnAfter}</Flex> : children}
+				{addOnAfter || addOnBefore ? <Flex className="btn-inner" inline alignItems="center">{addOnBefore}{children}{addOnAfter}</Flex> : children}
 			</button>;
 	}
 };

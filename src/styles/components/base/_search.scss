@@ -1,8 +1,8 @@
-.idx-search {
+.search {
 	@include responsive-sizes($input-height, "height");
 	position: relative;
 
-	.idx-search-menu {
+	.search-menu {
 		position: absolute;
 		z-index: map-get($z-index, "dropdown");
 		background-color: $white;
@@ -20,12 +20,12 @@
 		}
 	}
 
-	&.idx-search-open {
-		.idx-search-menu {
+	&.search-open {
+		.search-menu {
 			max-height: 24rem;
 		}
 	}
 
-	&.idx-search-disabled {
+	&.search-disabled {
 	}
 }

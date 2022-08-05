@@ -22,7 +22,7 @@ const NotFound: React.VFC<NotFoundProps> = ({
 					}}>
 						<Image src="/images/notfound.png" alt="Not found" layout="fill" objectFit='contain' />
 					</Col>
-					<Col className="idx-text-center" centerBlock>
+					<Col className="text-center" centerBlock>
 						<Header level={4} style={{
 							maxWidth: 350,
 						}}>{`Page not found.`}</Header>

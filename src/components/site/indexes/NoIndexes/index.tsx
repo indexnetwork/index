@@ -25,7 +25,7 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 					}}>
 						<Image src="/images/no_indexes.png" alt="No Indexes" layout="fill" objectFit='contain' />
 					</Col>
-					<Col className="idx-text-center" centerBlock>
+					<Col className="text-center" centerBlock>
 						{
 							search && hasIndex && (
 								<Header level={4} style={{

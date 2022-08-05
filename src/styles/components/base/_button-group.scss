@@ -1,60 +1,60 @@
-.idx-button-group {
+.btn-group {
 	@include responsive-sizes($input-height, "height");
 
 	display: flex;
 	align-items: center;
 	padding: 0;
 
-	.idx-button-group-btn {
+	.btn-group-btn {
 		border-left: none !important;
 		margin: 0;
 		border-radius: 0;
 	}
 
-	.idx-button-group-first {
+	.btn-group-first {
 		border-left: $border-base !important;
 		border-top-left-radius: $border-radius-base;
 		border-bottom-left-radius: $border-radius-base;
 	}
 
-	.idx-button-group-last {
+	.btn-group-last {
 		border-top-right-radius: $border-radius-base;
 		border-bottom-right-radius: $border-radius-base;
 	}
 
-	> .idx-button-group-item {
+	> .btn-group-item {
 		width: max-content;
 
-		.idx-popup > .idx-button {
-			@extend .idx-button-group-btn;
+		.popup > .btn {
+			@extend .btn-group-btn;
 		}
-		> .idx-button {
-			@extend .idx-button-group-btn;
+		> .btn {
+			@extend .btn-group-btn;
 		}
 
 		&:first-child {
-			> .idx-button {
-				@extend .idx-button-group-first;
+			> .btn {
+				@extend .btn-group-first;
 			}
-			.idx-popup > .idx-button {
-				@extend .idx-button-group-first;
+			.popup > .btn {
+				@extend .btn-group-first;
 			}
 		}
 
 		&:last-child {
-			> .idx-button {
-				@extend .idx-button-group-last;
+			> .btn {
+				@extend .btn-group-last;
 			}
-			.idx-popup > .idx-button {
-				@extend .idx-button-group-last;
+			.popup > .btn {
+				@extend .btn-group-last;
 			}
 		}
 	}
 
 	@each $key, $value in $button-bg {
-		&.idx-button-group-#{$key} {
-			.idx-button-group-item {
-				> .idx-button {
+		&.btn-group-#{$key} {
+			.btn-group-item {
+				> .btn {
 					@if str-index($key, "outlined") != null {
 						@include button-color(
 							map-get($button-color, $key),
@@ -72,9 +72,9 @@
 		}
 	}
 
-	&.idx-button-group-ghost {
-		.idx-button-group-item {
-			.idx-button {
+	&.btn-group-ghost {
+		.btn-group-item {
+			.btn {
 				@include button-color(
 					$main-color,
 					transparent,
@@ -88,29 +88,29 @@
 		}
 	}
 
-	&.idx-button-group-link {
-		.idx-button-group-item {
-			.idx-button {
+	&.btn-group-link {
+		.btn-group-item {
+			.btn {
 				@include button-color($blue, $white, $hover-darken, $visited-lighten, $transition-bg, $outlined: true);
 				border: none;
 			}
 		}
 	}
 
-	&.idx-button-group-clear {
-		.idx-button-group-item > .idx-button {
+	&.btn-group-clear {
+		.btn-group-item > .btn {
 			background-color: $white;
 			color: $gray-4;
 			border-color: $border-color;
 		}
 	}
 
-	&.idx-button-group-clear {
-		.idx-button-group-item > div {
+	&.btn-group-clear {
+		.btn-group-item > div {
 			background-color: $white;
 			color: $gray-4;
 			border-color: $border-color;
-			& > .idx-button {
+			& > .btn {
 				background-color: $white;
 				color: $gray-4;
 				border-color: $border-color;

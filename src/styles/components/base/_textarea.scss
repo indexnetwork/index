@@ -1,4 +1,4 @@
-.idx-textarea {
+.textarea {
 	@include responsive-sizes($input-height, "min-height");
 	@include responsive-sizes($font-size, "line-height");
 	display: inline-block;
@@ -23,7 +23,7 @@
 		outline-width: 0 !important;
 	}
 
-	&.idx-textarea-block {
+	&.textarea-block {
 		width: 100%;
 	}
 
@@ -31,8 +31,8 @@
 		color: $secondary-text-color;
 	}
 
-	&.idx-textarea-disabled,
-	&.idx-textarea-readonly {
+	&.textarea-disabled,
+	&.textarea-readonly {
 		background-color: $input-disabled-bg !important;
 		color: $secondary-text-color;
 
@@ -42,19 +42,19 @@
 		}
 	}
 
-	&.idx-textarea-add-on-before {
+	&.textarea-add-on-before {
 		textarea {
 			margin-left: map-deep-get($spacing, "xs", "6");
 		}
 	}
 
-	&.idx-textarea-add-on-after {
+	&.textarea-add-on-after {
 		textarea {
 			margin-right: map-deep-get($spacing, "xs", "6");
 		}
 	}
 
-	&.idx-textarea-ghost {
+	&.textarea-ghost {
 		border: none;
 		height: auto;
 		padding-left: 0;
