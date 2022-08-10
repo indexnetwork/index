@@ -168,7 +168,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 														<>
 															<div className="img-upload-img">
 																<img className="img-upload-img__img"
-																	src={profile!.image!.alternatives![0].src.replace("ipfs://", "https://gateway.pinata.cloud/ipfs/")} alt="" />
+																	src={profile!.image!.alternatives![0].src.replace("ipfs://", "https://ipfs.io/ipfs/")} alt="" />
 															</div>
 															<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
 																{/* <Avatar size={32}
