@@ -36,11 +36,12 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 								name="description"
 								content="Share curated links about any topic as a searchable index."
 							></meta>
-							<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" crossOrigin="" type="font/woff2"/>
-							<link rel="preload" as="font" href="/fonts/Freizeit-Bold.woff2" crossOrigin="" type="font/woff2"/>
-							<link rel="preload" as="font" href="/fonts/Roquefort-Standart.woff2" crossOrigin="" type="font/woff2"/>
-							<link rel="preload" as="font" href="/fonts/Inter-Bold.woff2" crossOrigin="" type="font/woff2"/>
-							<link rel="preload" as="font" href="/fonts/Inter-Regular.woff2" crossOrigin="" type="font/woff2"/>
+							<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />
+							<link rel="preload" as="font" href="/fonts/Freizeit-Bold.woff2" type="font/woff2" crossOrigin="anonymous" />
+							<link rel="preload" as="font" href="/fonts/Roquefort-Standart.woff2" type="font/woff2" crossOrigin="anonymous" />
+							<link rel="preload" as="font" href="/fonts/Inter-Bold.woff2" type="font/woff2" crossOrigin="anonymous" />
+							<link rel="preload" as="font" href="/fonts/Inter-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />
+							<link href="/fonts/fonts.css" rel="stylesheet" />
 						</Head>
 						{Component.requireAuth ? (
 							<AuthGuard>
