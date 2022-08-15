@@ -21,8 +21,8 @@ const IndexDetailItemPopup: React.FC<IndexDetailItemPopupProps> = ({ children, o
 			menuItems={
 				<DropdownMenuItem onClick={handleDelete}>
 					<Flex alignItems="center">
-						<IconTrash width={12} height="auto" className="idx-icon-error" />
-						<Text className="idx-ml-3" element="span" size="sm" theme="error" > {t("delete")}</Text>
+						<IconTrash width={12} height="auto" className="icon-error" />
+						<Text className="ml-3" element="span" size="sm" theme="error" > {t("delete")}</Text>
 					</Flex>
 				</DropdownMenuItem>
 			}

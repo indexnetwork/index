@@ -35,7 +35,7 @@ const FilterPopup: React.FC<FilterPopupProps> = ({ children }) => {
 			position="bottom-right"
 			content={
 				<FlexRow
-					className="idx-px-4 idx-py-6"
+					className="px-4 py-6"
 					rowSpacing={3}
 					colSpacing={2}
 				>
@@ -107,7 +107,7 @@ const FilterPopup: React.FC<FilterPopupProps> = ({ children }) => {
 							/>
 						</Collapse>
 					</Col>
-					<Col xs={12} className="idx-mb-3">
+					<Col xs={12} className="mb-3">
 						<Collapse
 							title={t("components:filterMenu.menuTagTtl")}
 							key="tag"
@@ -119,7 +119,7 @@ const FilterPopup: React.FC<FilterPopupProps> = ({ children }) => {
 									inputSize="xs"
 									addOnBefore={<IconSearch />}
 									placeholder="Search in tags"
-									className="idx-mb-3"
+									className="mb-3"
 								/>
 								<RadioGroup
 									showTags

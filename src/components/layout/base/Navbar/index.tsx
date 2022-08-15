@@ -65,9 +65,9 @@ const Navbar: React.FC<NavbarProps> = ({
 		<div
 			className={cc([
 				className,
-				"idx-navbar-container",
-				sticky ? "idx-navbar-sticky" : "",
-				bordered ? "idx-navbar-bordered" : "",
+				"navbar-container",
+				sticky ? "navbar-sticky" : "",
+				bordered ? "navbar-bordered" : "",
 			])}
 			style={sticky || bgColor ? {
 				...style,
@@ -76,7 +76,7 @@ const Navbar: React.FC<NavbarProps> = ({
 			{...menuProps}
 		>
 			<Container
-				className="idx-navbar"
+				className="navbar"
 			>
 				<FlexRow
 					fullHeight
@@ -85,9 +85,9 @@ const Navbar: React.FC<NavbarProps> = ({
 					wrap={false}
 				>
 					<Col>
-						{logoSize === "mini" ? <LogoMini className="idx-navbar-logo" onClick={handleLogoClick} style={{
+						{logoSize === "mini" ? <LogoMini className="navbar-logo" onClick={handleLogoClick} style={{
 							cursor: "pointer",
-						}} /> : <LogoFull className="idx-navbar-logo idx-navbar-logo-full" />}
+						}} /> : <LogoFull className="navbar-logo navbar-logo-full" />}
 					</Col>
 					<Col>
 						{children}
@@ -100,6 +100,6 @@ const Navbar: React.FC<NavbarProps> = ({
 
 export const NavbarMenu: React.FC<NavbarMenuProps> = ({
 	className, children, placement = "left", ...props
-}) => <div {...props} className={cc([`idx-navbar-menu-${placement}`, className || ""])}>{children}</div>;
+}) => <div {...props} className={cc([`navbar-menu-${placement}`, className || ""])}>{children}</div>;
 
 export default Navbar;

@@ -30,15 +30,15 @@ const FlexRow: React.FC<FlexRowProps> = ({
 }) => (
 	<Row
 		className={cc([
-			"idx-flex",
-			gap ? `idx-flex-gap-${gap}` : "",
-			rowGap ? `idx-flex-row-gap-${rowGap}` : "",
-			colGap ? `idx-flex-row-gap-${colGap}` : "",
-			rowSpacing ? `idx-row-spacing-v${rowSpacing}` : "",
-			colSpacing ? `idx-row-spacing-h${colSpacing} idx-flex-row-gutter-${rowGutter}` : "",
-			wrap === false ? "idx-flex-nowrap" : "idx-flex-wrap",
-			align ? `idx-flex-a-${align}` : "",
-			justify ? `idx-flex-j-${justify}` : "",
+			"idxflex",
+			gap ? `idxflex-gap-${gap}` : "",
+			rowGap ? `idxflex-row-gap-${rowGap}` : "",
+			colGap ? `idxflex-row-gap-${colGap}` : "",
+			rowSpacing ? `idxrow-spacing-v${rowSpacing}` : "",
+			colSpacing ? `idxrow-spacing-h${colSpacing} idxflex-row-gutter-${rowGutter}` : "",
+			wrap === false ? "idxflex-nowrap" : "idxflex-wrap",
+			align ? `idxflex-a-${align}` : "",
+			justify ? `idxflex-j-${justify}` : "",
 			className || "",
 		])}
 		{...divProps}

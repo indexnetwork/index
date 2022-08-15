@@ -1,29 +1,29 @@
-.idx-lnd-container {
-	.idx-lnd-card {
+.lnd-container {
+	.lnd-card {
 		display: flex;
 		align-items: center;
 		flex-direction: column;
-		.idx-lnd-img {
+		.lnd-img {
 			order: 1;
 		}
 
-		.idx-lnd-desc {
+		.lnd-desc {
 			display: flex;
 			flex-direction: column;
-			@extend .idx-mt-6;
+			@extend .mt-6;
 			order: 2;
 			text-align: center;
 			align-items: center;
 		}
 	}
 
-	.idx-lnd-features {
-		@extend .idx-mt-6;
+	.lnd-features {
+		@extend .mt-6;
 		flex-direction: column;
 		gap: 1.5rem;
 
-		.idx-lnd-icon-desc {
-			@extend .idx-mt-6;
+		.lnd-icon-desc {
+			@extend .mt-6;
 
 			&-icon {
 				flex-shrink: 0;
@@ -35,18 +35,18 @@
 	}
 
 	@media (min-width: map-get($breakpoints, "sm")) {
-		.idx-lnd-first {
+		.lnd-first {
 			height: 40rem;
 		}
 
-		.idx-lnd-img {
+		.lnd-img {
 			max-width: 45rem;
 		}
-		.idx-lnd-card {
+		.lnd-card {
 			flex-direction: row;
 			min-height: 30rem;
 
-			.idx-lnd-desc {
+			.lnd-desc {
 				text-align: left;
 				align-items: flex-start;
 				width: 45rem;
@@ -55,28 +55,28 @@
 				flex-direction: column;
 			}
 
-			.idx-lnd-lottie {
+			.lnd-lottie {
 				min-height: 46rem;
 				opacity: 0;
 				transition: opacity .3s ease;
 				display: flex;
 				align-items: center;
 				justify-content: flex-end;
-				&.idx-lnd-lottie-fade {
+				&.lnd-lottie-fade {
 					opacity: 1;
 				}
 			}
 
-			.idx-lnd-img {
+			.lnd-img {
 				order: 2;
 				max-width: 45rem;
 			}
 		}
 
-		.idx-lnd-features {
+		.lnd-features {
 			flex-direction: row;
 			gap: 0;
-			.idx-lnd-icon-desc {
+			.lnd-icon-desc {
 				flex-direction: column;
 			}
 		}

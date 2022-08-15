@@ -9,15 +9,15 @@ import LandingSection from "../LandingSection";
 const LandingSection1: React.VFC = () => (
 	<LandingSection dark>
 		<div
-			className="idx-lnd-card idx-lnd-first"
+			className="lnd-card lnd-first"
 		>
-			<div className="idx-lnd-desc">
+			<div className="lnd-desc">
 				<Header className={cm.blueTitle}>The human bridge between context and content.</Header>
 				<Text className={cc([cm.descLine, cm.mbMd])}>Index.as helps you to curate content and<br />create searchable indexes.</Text>
 				<Button>Create your first index</Button>
 			</div>
 			<div
-				className={"idx-lnd-img idx-lnd-img-reverse idx-lnd-lottie idx-lnd-lottie-fade"}
+				className={"lnd-img lnd-img-reverse lnd-lottie lnd-lottie-fade"}
 			>
 				<video
 					autoPlay
@@ -29,7 +29,7 @@ const LandingSection1: React.VFC = () => (
 						width: "100%",
 					}}
 				>
-					<source src="video/anim1.webm" type='video/webm; codecs=vp9' />
+					<source src="video/Mainani_alpha.webm" type='video/webm; codecs=vp9' />
 				</video>
 			</div>
 		</div>

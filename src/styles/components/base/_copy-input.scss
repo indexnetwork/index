@@ -3,7 +3,7 @@
 	position: relative;
 
 	&.input {
-		@extend .idx-pr-6;
+		@extend .pr-6;
 		overflow: hidden;
 	}
 
@@ -35,13 +35,13 @@
 		}
 
 		.copy-input__icon {
-			@extend .idx-ml-2;
-			@extend .idx-mr-2;
+			@extend .ml-2;
+			@extend .mr-2;
 			flex-shrink: 0;
 		}
 
 		.copy-input__text {
-			@extend .idx-mr-4;
+			@extend .mr-4;
 			overflow: hidden;
 			margin: 0;
 			flex-basis: 0;
@@ -52,7 +52,7 @@
 			background: $copy-input-icon-bg;
 
 			.copy-input__text {
-				@extend .idx-mx-2;
+				@extend .mx-2;
 				overflow: hidden;
 				-webkit-animation: flexSlideIn 0.2s forwards;
 				animation: flexSlideIn 0.2s forwards;

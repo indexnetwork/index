@@ -1,13 +1,13 @@
-.idx-flex {
+.idxflex {
 	display: flex;
 
-	&.idx-row {
+	&.idxrow {
 		&::before, &::after {
 			content: none;
 		}
 	}
 
-	.idx-col-auto {
+	.idxcol-auto {
 		width: fit-content;
 	}
 	&-col {
@@ -89,7 +89,7 @@
 				column-gap: map-get($values, #{$i}) !important;
 			}
 
-			&.idx-flex-row-gutter-#{$i} {
+			&.idxflex-row-gutter-#{$i} {
 				margin-left: - map-get($values, #{$i}) !important;
 				margin-right: - map-get($values, #{$i}) !important;
 			}

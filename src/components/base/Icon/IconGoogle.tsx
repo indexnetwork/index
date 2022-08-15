@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const IconGoogle: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
-	<svg className="idx-icon"
+	<svg className="icon"
 		xmlns="http://www.w3.org/2000/svg"
 		xmlnsXlink="http://www.w3.org/1999/xlink"
 		viewBox="-380.2 274.7 65.7 65.8"

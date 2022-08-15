@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const IconFeatureCollab: React.FC<React.SVGProps<SVGSVGElement>> = ({ fill = "var(--main)", ...props }) => (
-	<svg className="idx-icon"
+	<svg className="icon"
 		width={24}
 		height={24}
 		viewBox="0 0 24 24"

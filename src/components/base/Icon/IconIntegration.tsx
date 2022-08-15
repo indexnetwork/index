@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const IconIntegration: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--main)", strokeWidth = "1.2", ...props }) => (
-	<svg className="idx-icon"
+	<svg className="icon"
 		width={16}
 		height={16}
 		viewBox="0 0 16 16"

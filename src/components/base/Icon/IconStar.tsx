@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const IconStar: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--gray-4)", strokeWidth = "1.2", ...props }) => (
-	<svg className="idx-icon"
+	<svg className="icon"
 		width={16}
 		height={14}
 		fill="none"

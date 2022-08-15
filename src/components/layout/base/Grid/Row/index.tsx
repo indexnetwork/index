@@ -23,11 +23,11 @@ const Row: React.FC<RowProps> = ({
 	<div
 		className={cc([
 			"row",
-			"idx-row",
-			fullHeight ? "idx-h-100" : "",
-			fullWidth ? "idx-w-100" : "",
-			rowSpacing ? `idx-row-spacing-v${rowSpacing}` : "idx-row-spacing-v0",
-			colSpacing ? `idx-row-spacing-h${colSpacing}` : "idx-row-spacing-h0",
+			"idxrow",
+			fullHeight ? "h-100" : "",
+			fullWidth ? "w-100" : "",
+			rowSpacing ? `idxrow-spacing-v${rowSpacing}` : "idxrow-spacing-v0",
+			colSpacing ? `idxrow-spacing-h${colSpacing}` : "idxrow-spacing-h0",
 			noGutters ? "row-no-gutters" : "",
 			className || "",
 		])}

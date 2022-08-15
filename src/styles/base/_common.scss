@@ -1,11 +1,11 @@
-.idx-hoverable {
+.hoverable {
 	&:hover {
 		background-color: $hover-color;
 		cursor: pointer;
 	}
 }
 
-.idx-pointer {
+.pointer {
 	&:hover {
 		cursor: pointer;
 	}

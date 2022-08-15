@@ -3,7 +3,7 @@ import * as React from "react";
 const IconContextMenu: React.FC<React.SVGProps<SVGSVGElement>> = ({
 	stroke = "var(--gray-4)", fill = "var(--gray-4)", strokeWidth = ".1", ...props
 }) => (
-	<svg className="idx-icon"
+	<svg className="icon"
 		width={16}
 		height={16}
 		viewBox="0 0 16 16"

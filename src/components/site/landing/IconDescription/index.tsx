@@ -17,10 +17,10 @@ const IconDescription: React.VFC<IconDescriptionProps> = ({
 	<Flex
 		gap="1rem"
 		flex={1}
-		className="idx-lnd-icon-desc"
+		className="lnd-icon-desc"
 	>
 		{icon}
-		<Flex className="idx-lnd-icon-desc-text">
+		<Flex className="lnd-icon-desc-text">
 			<Header>{title}</Header>
 			<Text theme="secondary">{description}</Text>
 		</Flex>

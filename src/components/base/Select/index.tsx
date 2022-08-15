@@ -171,7 +171,7 @@ const Select: React.VFC<SelectProps> = ({
 					bordered ? "select-bordered" : "",
 					menuOpen ? "select-open" : "",
 					disabled ? "select-disabled" : "",
-					fullWidth ? "idx-w-100" : "",
+					fullWidth ? "w-100" : "",
 					noMinWidth ? "select-w-auto" : "",
 					ghost ? "select-ghost" : "",
 					className || "",

@@ -75,7 +75,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 	return (
 		<>
 			<Container
-				className="index-details-page idx-my-6 idx-my-lg-8"
+				className="index-details-page my-6 my-lg-8"
 			>
 				<FlexRow
 					rowSpacing={3}
@@ -87,7 +87,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 					>
 						<FlexRow>
 							<Col
-								className="idx-flex-grow-1 idx-mr-5"
+								className="idxflex-grow-1 mr-5"
 							>
 								<HeaderInput
 									type="text"
@@ -100,7 +100,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 							</Col>
 						</FlexRow>
 					</Col>
-					<Col xs={12} lg={9} noYGutters className="idx-pb-0 idx-mt-3">
+					<Col xs={12} lg={9} noYGutters className="pb-0 mt-3">
 						<LinkInput
 							loading={crawling}
 							onLinkAdd={handleAddLink}

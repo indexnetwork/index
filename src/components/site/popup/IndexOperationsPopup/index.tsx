@@ -59,7 +59,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 
 	return (
 		<Dropdown
-			menuClass="index-list-item-menu idx-ml-6"
+			menuClass="index-list-item-menu ml-6"
 			position="bottom-right"
 			menuItems={
 				<>
@@ -68,7 +68,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 						<DropdownMenuItem>
 							<Flex alignItems="center">
 								<IconPeople width={12} height="100%" />
-								<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Share</Text>
+								<Text className="ml-3" element="span" size="sm" theme="secondary"> Share</Text>
 							</Flex>
 						</DropdownMenuItem>
 					)
@@ -76,13 +76,13 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 					{/* <DropdownMenuItem>
 					<Flex alignItems="center">
 						<IconIntegration width={12} height="100%" />
-						<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Integrations</Text>
+						<Text className="ml-3" element="span" size="sm" theme="secondary"> Integrations</Text>
 					</Flex>
 				</DropdownMenuItem> */}
 					<DropdownMenuItem>
 						<Flex alignItems="center">
 							<IconEmbed width={12} height="100%" />
-							<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Embed</Text>
+							<Text className="ml-3" element="span" size="sm" theme="secondary"> Embed</Text>
 						</Flex>
 					</DropdownMenuItem>
 					<DropdownMenuItem
@@ -90,7 +90,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 					>
 						<Flex alignItems="center">
 							<IconCopy width={12} height="100%" />
-							<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Clone</Text>
+							<Text className="ml-3" element="span" size="sm" theme="secondary"> Clone</Text>
 						</Flex>
 					</DropdownMenuItem>
 					<DropdownMenuItem onClick={() => {
@@ -98,7 +98,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 					}}>
 						<Flex alignItems="center">
 							<IconLink1 width={12} height="100%" />
-							<Text className="idx-ml-3" element="span" size="sm" theme="secondary"> Copy Link</Text>
+							<Text className="ml-3" element="span" size="sm" theme="secondary"> Copy Link</Text>
 						</Flex>
 					</DropdownMenuItem>
 					{
@@ -108,8 +108,8 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 								onClick={handleDelete}
 							>
 								<Flex alignItems="center">
-									<IconTrash width={12} height="100%" className="idx-icon-error" />
-									<Text className="idx-ml-3" element="span" size="sm" theme="error"> Delete</Text>
+									<IconTrash width={12} height="100%" className="icon-error" />
+									<Text className="ml-3" element="span" size="sm" theme="error"> Delete</Text>
 								</Flex>
 							</DropdownMenuItem>
 						</>

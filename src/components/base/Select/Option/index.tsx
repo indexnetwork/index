@@ -27,10 +27,10 @@ const Option: React.FC<OptionProps> = ({
 	return (
 		<div
 			className={cc([
-				"idx-option",
-				getSelected() ? "idx-option-selected" : "",
-				divider ? "idx-option-divider" : "",
-				`idx-option-${size}`,
+				"option",
+				getSelected() ? "option-selected" : "",
+				divider ? "option-divider" : "",
+				`option-${size}`,
 			])}
 			onClick={handleSelected}
 		>

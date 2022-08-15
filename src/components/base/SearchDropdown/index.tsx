@@ -121,7 +121,7 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({
 				"search",
 				menuOpen ? "search-open" : "",
 				disabled ? "search-disabled" : "",
-				fullWidth ? "idx-w-100" : "",
+				fullWidth ? "w-100" : "",
 				`search-${size}`,
 			])}
 		>

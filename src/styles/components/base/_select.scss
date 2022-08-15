@@ -115,7 +115,7 @@
 		overflow: auto;
 		// padding-top: map-deep-get($spacing, "xs", "2");
 
-		.idx-option {
+		.option {
 			@include responsive-sizes($input-height, "height");
 			padding: map-deep-get($spacing, "xs", "2") map-deep-get($spacing, "xs", "3");
 			display: flex;
@@ -124,22 +124,22 @@
 				background-color: $hover-color;
 				cursor: pointer;
 			}
-			&.idx-option-selected {
+			&.option-selected {
 				color: $main-color;
 				font-weight: 500;
 			}
 
-			&.idx-option-divider {
+			&.option-divider {
 				border-bottom: $border-base;
 				border-top: $border-base;
 			}
 
-			&.idx-option-divider:first-child {
+			&.option-divider:first-child {
 				border-bottom: $border-base;
 				border-top: none;
 			}
 
-			&.idx-option-divider:last-child {
+			&.option-divider:last-child {
 				border-top: $border-base;
 				border-bottom: none;
 			}

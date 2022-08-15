@@ -49,11 +49,11 @@ a {
 
 
 @each $key, $value in $common-colors {
-	.idx-color-#{$key} {
+	.color-#{$key} {
 		color: $value;
 	}
 
-	.idx-icon-#{$key} {
+	.icon-#{$key} {
 		stroke: $value;
 	}
 }

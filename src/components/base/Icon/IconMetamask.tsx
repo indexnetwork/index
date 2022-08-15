@@ -11,7 +11,7 @@ const IconMetamask: React.VFC<React.SVGProps<SVGSVGElement>> = ({ className, ...
 		style={{
 		}}
 		xmlSpace="preserve"
-		className={cc(["idx-icon", className])}
+		className={cc(["icon", className])}
 		{...props}
 	>
 		<style>

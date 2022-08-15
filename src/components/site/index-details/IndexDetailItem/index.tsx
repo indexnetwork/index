@@ -101,7 +101,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 			className="index-detail-list-item-wrapper"
 			{...(breakpoint === "xs" || breakpoint === "sm" ? (provided && provided.dragHandleProps) : undefined)}
 		>
-			<FlexRow className="idx-py-6 index-detail-list-item">
+			<FlexRow className="py-6 index-detail-list-item">
 				{
 					!search && isOwner && !(breakpoint === "xs" || breakpoint === "sm") && (
 						<div {...(provided ? provided.dragHandleProps : undefined)}>
@@ -118,7 +118,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 						wrap={false}
 					>
 						<Col
-							className="idx-flex-grow-1"
+							className="idxflex-grow-1"
 						>
 							<a target="_blank" rel="noreferrer" href={url}>
 								<Text fontWeight={600} dangerouslySetInnerHTML={{ __html: sanitize(title || "") }}></Text>
@@ -126,7 +126,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 						</Col>
 						{
 							!search && isOwner && (
-								<Col className="idx-flex-shrink-0 idx-ml-3 index-detail-list-item-buttons">
+								<Col className="idxflex-shrink-0 ml-3 index-detail-list-item-buttons">
 									<FlexRow>
 										<Col>
 											<Tooltip content="Add Tag">
@@ -169,11 +169,11 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 						}
 					</FlexRow>
 				</Col>
-				<Col xs={12} className="idx-mt-3">
+				<Col xs={12} className="mt-3">
 					<a target="_blank" rel="noreferrer" href={url}>
 						{favicon ?
 							<img
-								className="idx-mr-3"
+								className="mr-3"
 								src={favicon}
 								alt="favicon"
 								width={16}
@@ -182,7 +182,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 									verticalAlign: "middle",
 								}} /> :
 							<LogoMini
-								className="idx-mr-3"
+								className="mr-3"
 								width={16}
 								height={16}
 								style={{
@@ -192,7 +192,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 				</Col>
 				{
 					search && content && (
-						<Col className="idx-mt-5">
+						<Col className="mt-5">
 							<Text theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize(content || "") }}></Text>
 						</Col>
 					)
@@ -200,7 +200,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 				<Col>
 				</Col>
 				{
-					!search && <Col xs={12} className="idx-mt-3 idx-flex idx-flex-gap-3 idx-flex-wrap">
+					!search && <Col xs={12} className="mt-3 idxflex idxflex-gap-3 idxflex-wrap">
 						{
 							tags.map((t, ind) => (
 								<TagIndexDetailItem

@@ -1,37 +1,37 @@
-.idx-navbar-container {
+.navbar-container {
 	@include responsive-sizes-flat($navbar-height, "height");
 	width: 100%;
 	transition: $transition-bg;
 
-	&.idx-navbar-bordered {
+	&.navbar-bordered {
 		border-bottom: $border-base;
 	}
 
-	&.idx-navbar-sticky {
+	&.navbar-sticky {
 		position: sticky;
 		top: 0;
 		z-index: map-get($z-index, "navbar");
 	}
 
-	.idx-navbar {
+	.navbar {
 		height: 100%;
 		flex: 1;
 
-		.idx-flex-container {
+		.idxflex-container {
 			height: 100%;
 			width: 100%;
 		}
 
-		& .idx-navbar-menu-right {
+		& .navbar-menu-right {
 			margin-left: auto;
 		}
 
-		.idx-navbar-logo {
+		.navbar-logo {
 			height: 2.6rem;
 		}
 
 		@media (min-width: map-get($breakpoints, "sm")) {
-			.idx-navbar-logo {
+			.navbar-logo {
 				height: 3.2rem;
 			}
 		}

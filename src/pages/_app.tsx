@@ -1,6 +1,5 @@
 import "../styles/main.scss";
 import type { AppProps } from "next/app";
-
 import CeramicProvider from "components/site/context/CeramicProvider";
 import { appWithTranslation } from "next-i18next";
 import Head from "next/head";
@@ -37,6 +36,11 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 								name="description"
 								content="Share curated links about any topic as a searchable index."
 							></meta>
+							<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" crossOrigin="" type="font/woff2"/>
+							<link rel="preload" as="font" href="/fonts/Freizeit-Bold.woff2" crossOrigin="" type="font/woff2"/>
+							<link rel="preload" as="font" href="/fonts/Roquefort-Standart.woff2" crossOrigin="" type="font/woff2"/>
+							<link rel="preload" as="font" href="/fonts/Inter-Bold.woff2" crossOrigin="" type="font/woff2"/>
+							<link rel="preload" as="font" href="/fonts/Inter-Regular.woff2" crossOrigin="" type="font/woff2"/>
 						</Head>
 						{Component.requireAuth ? (
 							<AuthGuard>

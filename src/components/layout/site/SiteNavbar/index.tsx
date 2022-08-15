@@ -85,7 +85,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 				<NavbarMenu>
 					<Button onClick={handleCreate} theme="primary">{t("components:header.newIndexBtn")}</Button>
 					<Dropdown
-						dropdownClass="idx-ml-6 idx-ml-lg-7"
+						dropdownClass="ml-6 ml-lg-7"
 						position="bottom-right"
 						menuItems={
 							<>
@@ -94,20 +94,20 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 								}}>
 									<Flex alignItems="center">
 										<IconPeople width={12} height="100%" />
-										<Text className="idx-ml-3" element="span" size="sm" theme="secondary">&nbsp;{t("common:profile")}</Text>
+										<Text className="ml-3" element="span" size="sm" theme="secondary">&nbsp;{t("common:profile")}</Text>
 									</Flex>
 								</DropdownMenuItem>
 								{/* <DropdownMenuItem>
 									<Flex alignItems="center">
 										<IconSettings width={12} height="100%" />
-										<Text className="idx-ml-3" element="span" size="sm" theme="secondary">&nbsp;{t("common:settings")}</Text>
+										<Text className="ml-3" element="span" size="sm" theme="secondary">&nbsp;{t("common:settings")}</Text>
 									</Flex>
 								</DropdownMenuItem> */}
 								<DropdownMenuItem divider />
 								<DropdownMenuItem onClick={disconnect}>
 									<Flex alignItems="center">
-										<IconLogout className="idx-icon-error" width={12} height="100%" />
-										<Text className="idx-ml-3" element="span" size="sm" theme="error">&nbsp;{t("common:logout")}</Text>
+										<IconLogout className="icon-error" width={12} height="100%" />
+										<Text className="ml-3" element="span" size="sm" theme="error">&nbsp;{t("common:logout")}</Text>
 									</Flex>
 								</DropdownMenuItem>
 							</>

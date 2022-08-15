@@ -29,9 +29,9 @@ const Footer: React.FC<FooterProps> = ({
 }) => (
 	<div
 		className={cc([
-			"idx-footer-container",
-			sticky ? "idx-footer-sticky" : "",
-			bordered ? "idx-footer-bordered" : "",
+			"footer-container",
+			sticky ? "footer-sticky" : "",
+			bordered ? "footer-bordered" : "",
 		])}
 		style={bgColor ? {
 			...style,
@@ -40,7 +40,7 @@ const Footer: React.FC<FooterProps> = ({
 		{...menuProps}
 	>
 		<Container
-			className="idx-footer"
+			className="footer"
 		>
 			<FlexRow
 				fullHeight
@@ -61,6 +61,6 @@ const Footer: React.FC<FooterProps> = ({
 
 export const FooterMenu: React.FC<FooterMenuProps> = ({
 	className, children, placement = "left", ...props
-}) => <div {...props} className={cc([`idx-navbar-menu-${placement}`, className || ""])}>{children}</div>;
+}) => <div {...props} className={cc([`navbar-menu-${placement}`, className || ""])}>{children}</div>;
 
 export default Footer;

@@ -72,8 +72,8 @@ const Col: React.FC<ColProps> = ({
 }) => (
 	<div
 		className={cc([
-			"idx-col",
-			(!xs && !sm && !md && !lg) && auto ? "idx-col-auto" : "",
+			"idxcol",
+			(!xs && !sm && !md && !lg) && auto ? "idxcol-auto" : "",
 			xs ? `col-xs-${xs}` : "",
 			sm ? `col-sm-${sm}` : "",
 			md ? `col-md-${md}` : "",
@@ -98,11 +98,11 @@ const Col: React.FC<ColProps> = ({
 			hidden ? "hidden" : "",
 			invisible ? "invisible" : "",
 			textHide ? "textHide" : "",
-			fullHeight ? "idx-h-100" : "",
-			fullWidth ? "idx-w-100" : "",
-			noGutters ? "idx-col-no-gutters" : "",
-			noXGutters ? "idx-col-no-x-gutters" : "",
-			noYGutters ? "idx-col-no-y-gutters" : "",
+			fullHeight ? "h-100" : "",
+			fullWidth ? "w-100" : "",
+			noGutters ? "idxcol-no-gutters" : "",
+			noXGutters ? "idxcol-no-x-gutters" : "",
+			noYGutters ? "idxcol-no-y-gutters" : "",
 			className || ""])}
 		{...divProps}
 	>

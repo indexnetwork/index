@@ -17,21 +17,21 @@ const InviteByLinkItem: React.VFC<InviteByLinkItemProps> = ({
 	>
 		<Col
 			xs={12}
-			className="idx-mb-3"
+			className="mb-3"
 		>
 			<Text element="span">
 				{`${editor ? "Editor" : "Viewer"} invite link`}
-				<Text className="idx-ml-3" element="span" size="xs" theme="secondary">
+				<Text className="ml-3" element="span" size="xs" theme="secondary">
 					(Created 3 days ago)
 				</Text>
 			</Text>
 		</Col>
-		<Col className="idx-flex-grow-1">
+		<Col className="idxflex-grow-1">
 			<CopyInput
 				value="https://asdaasdasdasdsasd.com" />
 		</Col>
-		<Col className="idx-flex idx-flex-a-center idx-flex-j-end idx-ml-3">
-			<IconClose className="idx-pointer"/>
+		<Col className="idxflex idxflex-a-center idxflex-j-end ml-3">
+			<IconClose className="pointer"/>
 		</Col>
 	</FlexRow>
 );

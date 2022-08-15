@@ -9,7 +9,7 @@ export interface LandingSectionProps {
 const LandingSection: React.FC<LandingSectionProps> = ({ dark, children }) => (
 	<Container
 		fluid
-		className={cc(["idx-lnd-container", "idx-m-0", cm.container, dark ? cm.dark : cm.light])}
+		className={cc(["lnd-container", "m-0", cm.container, dark ? cm.dark : cm.light])}
 	>
 		<Container>
 			{children}

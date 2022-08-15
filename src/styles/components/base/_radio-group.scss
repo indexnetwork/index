@@ -1,6 +1,6 @@
 .radio-group {
 	.radio-group-button {
-		@extend .idx-px-2;
+		@extend .px-2;
 		&.btn:hover {
 			background-color: unset !important;
 		}

@@ -14,7 +14,7 @@ const InviteByLink: React.VFC<InviteByLinkProps> = () => (
 		rowSpacing={3}
 	>
 		<Col xs={12}>
-			<Text className="idx-mt-2 idx-mb-0" element="p" fontWeight={600}>Invite collaborators by link</Text>
+			<Text className="mt-2 mb-0" element="p" fontWeight={600}>Invite collaborators by link</Text>
 		</Col>
 		<Col xs={8} sm={9}>
 			<Select
@@ -28,7 +28,7 @@ const InviteByLink: React.VFC<InviteByLinkProps> = () => (
 		<Col
 			xs={4}
 			sm={3}
-			className="idx-pl-5"
+			className="pl-5"
 		>
 			<Button block theme="clear">
 				Create link

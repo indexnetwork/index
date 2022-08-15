@@ -3,7 +3,7 @@ import React from "react";
 
 const MainPageContainer: React.FC = ({
 	children,
-}) => <Container className="idx-my-3 idx-my-lg-8">
+}) => <Container className="my-3 my-lg-8">
 	{children}
 </Container>;
 

@@ -1,8 +1,8 @@
-.idx-h-100 {
+.h-100 {
 	height: 100%;
 }
 
-.idx-w-100 {
+.w-100 {
 	width: 100%;
 }
 
@@ -12,115 +12,115 @@
 		$bp: "-" + $breakpoint;
 	}
 	@if ($breakpoint == "xs") {
-		.idx-m {
+		.m {
 			@include responsive-sizes($spacing, "margin", $important: true);
 		}
 		
-		.idx-mt {
+		.mt {
 			@include responsive-sizes($spacing, "margin-top", $important: true);
 		}
 
-		.idx-mb {
+		.mb {
 			@include responsive-sizes($spacing, "margin-bottom", $important: true);
 		}
 
-		.idx-ml {
+		.ml {
 			@include responsive-sizes($spacing, "margin-left", $important: true);
 		}
 
-		.idx-mr {
+		.mr {
 			@include responsive-sizes($spacing, "margin-right", $important: true);
 		}
 
-		.idx-mx {
+		.mx {
 			@include responsive-sizes($spacing, "margin-left", $important: true);
 			@include responsive-sizes($spacing, "margin-right", $important: true);
 		}
 
-		.idx-my {
+		.my {
 			@include responsive-sizes($spacing, "margin-top", $important: true);
 			@include responsive-sizes($spacing, "margin-bottom", $important: true);
 		}
 
-		.idx-p {
+		.p {
 			@include responsive-sizes($spacing, "padding", $important: true);
 		}
 
-		.idx-pt {
+		.pt {
 			@include responsive-sizes($spacing, "padding-top", $important: true);
 		}
 
-		.idx-pb {
+		.pb {
 			@include responsive-sizes($spacing, "padding-bottom", $important: true);
 		}
 
-		.idx-pl {
+		.pl {
 			@include responsive-sizes($spacing, "padding-left", $important: true);
 		}
 
-		.idx-pr {
+		.pr {
 			@include responsive-sizes($spacing, "padding-right", $important: true);
 		}
 
-		.idx-px {
+		.px {
 			@include responsive-sizes($spacing, "padding-left", $important: true);
 			@include responsive-sizes($spacing, "padding-right", $important: true);
 		}
 
-		.idx-py {
+		.py {
 			@include responsive-sizes($spacing, "padding-top", $important: true);
 			@include responsive-sizes($spacing, "padding-bottom", $important: true);
 		}
 	} @else {
 		@media (min-width: map-get($breakpoints, $breakpoint)) {
-			.idx-mt#{$bp} {
+			.mt#{$bp} {
 				@include responsive-sizes($spacing, "margin-top", $important: true);
 			}
 
-			.idx-mb#{$bp} {
+			.mb#{$bp} {
 				@include responsive-sizes($spacing, "margin-bottom", $important: true);
 			}
 
-			.idx-ml#{$bp} {
+			.ml#{$bp} {
 				@include responsive-sizes($spacing, "margin-left", $important: true);
 			}
 
-			.idx-mr#{$bp} {
+			.mr#{$bp} {
 				@include responsive-sizes($spacing, "margin-right", $important: true);
 			}
 
-			.idx-mx#{$bp} {
+			.mx#{$bp} {
 				@include responsive-sizes($spacing, "margin-left", $important: true);
 				@include responsive-sizes($spacing, "margin-right", $important: true);
 			}
 
-			.idx-my#{$bp} {
+			.my#{$bp} {
 				@include responsive-sizes($spacing, "margin-top", $important: true);
 				@include responsive-sizes($spacing, "margin-bottom", $important: true);
 			}
 
-			.idx-pt#{$bp} {
+			.pt#{$bp} {
 				@include responsive-sizes($spacing, "padding-top", $important: true);
 			}
 
-			.idx-pb#{$bp} {
+			.pb#{$bp} {
 				@include responsive-sizes($spacing, "padding-bottom", $important: true);
 			}
 
-			.idx-pl#{$bp} {
+			.pl#{$bp} {
 				@include responsive-sizes($spacing, "padding-left", $important: true);
 			}
 
-			.idx-pr#{$bp} {
+			.pr#{$bp} {
 				@include responsive-sizes($spacing, "padding-right", $important: true);
 			}
 
-			.idx-px#{$bp} {
+			.px#{$bp} {
 				@include responsive-sizes($spacing, "padding-left", $important: true);
 				@include responsive-sizes($spacing, "padding-right", $important: true);
 			}
 
-			.idx-py#{$bp} {
+			.py#{$bp} {
 				@include responsive-sizes($spacing, "padding-top", $important: true);
 				@include responsive-sizes($spacing, "padding-bottom", $important: true);
 			}

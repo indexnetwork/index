@@ -1,7 +1,7 @@
 import * as React from "react";
 
 const LogoFull: React.FC<React.SVGProps<SVGSVGElement>> = ({ fill = "var(--ias-main)", ...props }) => (
-	<svg className="idx-icon"
+	<svg className="icon"
 		fill={fill}
 		width="156" height="32" viewBox="0 0 156 32"
 		xmlns="http://www.w3.org/2000/svg"

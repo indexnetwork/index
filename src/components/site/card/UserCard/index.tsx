@@ -31,7 +31,7 @@ const UserCard: React.VFC<UserCardProps> = ({
 		<Col>
 			<Avatar size={40} maxLetters={2} randomColor contentRatio={0.35}>Y</Avatar>
 		</Col>
-		<Col className="idx-flex-grow-1 idx-ml-6">
+		<Col className="idxflex-grow-1 ml-6">
 			<Flex flexDirection="column">
 				<Text>{title}</Text>
 				<Text size="sm" theme="secondary">{subtitle}</Text>

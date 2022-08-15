@@ -102,7 +102,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 	return (
 		<>
 			<Container
-				className="profile-page idx-my-6 idx-my-lg-8"
+				className="profile-page my-6 my-lg-8"
 			>
 				<FlexRow
 					rowSpacing={3}
@@ -125,7 +125,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 								display: "flex",
 								justifyContent: "center",
 							}}
-							className="idx-my-3"
+							className="my-3"
 						>
 							<ImageUploading
 								value={images}
@@ -197,7 +197,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 									<Text fontWeight={500}>Name</Text>
 									<Input
 										name="name"
-										className="idx-mt-3"
+										className="mt-3"
 										onChange={formik.handleChange}
 										value={formik.values.name}
 									/>
@@ -208,7 +208,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 										<Text fontWeight={500}>Bio</Text>
 										<TextArea
 											name="description"
-											className="idx-mt-3"
+											className="mt-3"
 											onChange={formik.handleChange}
 											value={formik.values.description}
 										/>
@@ -220,17 +220,17 @@ const CreateIndexPage: NextPageWithLayout = () => {
 										<Text fontWeight={500}>Country Code<Text theme="secondary" size="xs"> (Max Two Characters)</Text></Text>
 										<Input
 											name="homeLocation"
-											className="idx-mt-3"
+											className="mt-3"
 											onChange={formik.handleChange}
 											value={formik.values.homeLocation}
 										/>
 									</Flex>
-									<Flex flexDirection="column" className="idx-mt-3">
+									<Flex flexDirection="column" className="mt-3">
 										<Text fontWeight={500}>Residence Country Code<Text theme="secondary" size="xs"> (Max Two Characters)</Text></Text>
 										<Input
 											maxLength={2}
 											name="residenceCountry"
-											className="idx-mt-3"
+											className="mt-3"
 											onChange={formik.handleChange}
 											value={formik.values.residenceCountry}
 										/>
@@ -242,7 +242,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 										<Text fontWeight={500}>Website</Text>
 										<Input
 											name="url"
-											className="idx-mt-3"
+											className="mt-3"
 											type="url"
 											onChange={formik.handleChange}
 											value={formik.values.url}
@@ -255,9 +255,9 @@ const CreateIndexPage: NextPageWithLayout = () => {
 								>
 									<Button
 										disabled={loading}
-										className="idx-ml-auto"
+										className="ml-auto"
 										addOnAfter={loading ?
-											<Spin size="xs" className="idx-ml-4" active={true} thickness="light" theme="white" /> :
+											<Spin size="xs" className="ml-4" active={true} thickness="light" theme="white" /> :
 											<IconLock width={"1.6rem"} stroke="white" />} type="submit">Save</Button>
 								</Col>
 							</Row>

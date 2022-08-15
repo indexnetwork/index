@@ -144,7 +144,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	return (
 		<>
 			<Container
-				className="index-details-page idx-my-6 idx-my-lg-8"
+				className="index-details-page my-6 my-lg-8"
 			>
 				{
 					notFound ?
@@ -165,7 +165,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										noYGutters
 									>
 										<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-										<Text className="idx-ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : stream?.address}</Text>
+										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : stream?.address}</Text>
 									</Col>
 									<Col
 										xs={12}
@@ -173,7 +173,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									>
 										<FlexRow>
 											<Col
-												className="idx-flex-grow-1 idx-mr-5"
+												className="idxflex-grow-1 mr-5"
 											>
 												<IndexTitleInput
 													defaultValue={stream?.title || ""}
@@ -208,7 +208,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												}
 
 											</Col>
-											<Col className="idx-ml-3">
+											<Col className="ml-3">
 												<IndexOperationsPopup
 													isOwner={isOwner}
 													streamId={stream.streamId!}
@@ -218,7 +218,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											</Col>
 										</FlexRow>
 									</Col>
-									<Col xs={12} lg={9} noYGutters className="idx-mb-6">
+									<Col xs={12} lg={9} noYGutters className="mb-6">
 										<Text size="sm" theme="disabled">{stream?.updatedAt ? `Updated ${moment(stream.updatedAt).fromNow()}` : ""} </Text>
 									</Col>
 									<Col
@@ -227,7 +227,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									>
 										<FlexRow>
 											<Col
-												className="idx-flex-grow-1 idx-mr-5"
+												className="idxflex-grow-1 mr-5"
 											>
 												<SearchInput
 													loading={loading}
@@ -257,7 +257,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										</FlexRow>
 									</Col>
 									{
-										isOwner &&	<Col xs={12} lg={9} noYGutters className="idx-pb-0 idx-mt-3">
+										isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3">
 											<LinkInput
 												loading={crawling}
 												onLinkAdd={handleAddLink}
