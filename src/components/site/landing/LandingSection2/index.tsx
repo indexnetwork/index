@@ -17,7 +17,7 @@ const LandingSection2: React.VFC = () => (
 			className="lnd-card"
 		>
 			<Flex flex="1" className="lnd-img">
-				<img className={cm.img} alt="landing-2-img" src="/images/landing-2.png" />
+				<img className={cm.img} alt="landing-2-img" src="/images/landing-2.webp" />
 			</Flex>
 			<Flex flex="1" flexDirection="column" className="lnd-desc">
 				<Header className={cm.title}>Create your indexes by adding any content you like and find relevant.

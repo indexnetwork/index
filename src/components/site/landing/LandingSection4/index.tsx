@@ -20,7 +20,7 @@ const LandingSection4: React.VFC = () => (
 				flex="1"
 				className="lnd-img"
 			>
-				<img className={cm.img} alt="landing-4-img" src="/images/landing-4.png" />
+				<img className={cm.img} alt="landing-4-img" src="/images/landing-4.webp" />
 			</Flex>
 			<Flex flex="1" flexDirection="column" className="lnd-desc">
 				<Header className={cm.title}>Keep your indexes for yourself or share them with the world.</Header>

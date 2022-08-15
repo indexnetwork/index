@@ -24,7 +24,7 @@ const LandingSection3: React.VFC = () => (
 				flex="1"
 				className="lnd-img lnd-img-reverse"
 			>
-				<img className={cm.img} alt="landing-3-img" src="/images/landing-3.png" />
+				<img className={cm.img} alt="landing-3-img" src="/images/landing-3.webp" />
 			</Flex>
 		</Flex>
 		<Flex
