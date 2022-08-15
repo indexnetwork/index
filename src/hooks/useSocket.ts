@@ -1,10 +1,9 @@
+import { appConfig } from "config";
 import {
 	useEffect, useMemo, useRef, useState,
 } from "react";
 import socketIoClient, { Socket } from "socket.io-client";
 import { LinkContentResult } from "types/entity";
-
-const API_URL = "https://testnet.index.as/api";
 
 export type ListenEvents = {
 	deneme: (data: any) => void;
@@ -36,7 +35,8 @@ export function useSocket(): UseSocketType {
 		}
 		const token = localStorage.getItem("auth_token");
 
-		io.current = socketIoClient(API_URL, {
+		io.current = socketIoClient(appConfig.baseUrl, {
+			path: "/api/socket.io",
 			extraHeaders: {
 				Authorization: `Bearer ${token}`,
 			},

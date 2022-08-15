@@ -10,9 +10,7 @@ import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import socketIoClient, { Socket } from "socket.io-client";
 import { useAuth } from "hooks/useAuth";
 import { CID } from "ipfs-http-client";
-
-// const API_URL = "http://localhost:3001";
-const API_URL = "https://testnet.index.as/api";
+import { appConfig } from "config";
 
 export type ListenEvents = {
 	contentSync: (data: LinkContentResult) => void;
@@ -121,7 +119,8 @@ const CeramicProvider: React.FC<{}> = ({
 			const token = localStorage.getItem("auth_token");
 
 			if (token) {
-				io.current = socketIoClient(API_URL, {
+				io.current = socketIoClient(appConfig.baseUrl, {
+					path: "/api/socket.io",
 					extraHeaders: {
 						Authorization: `Bearer ${token}`,
 					},

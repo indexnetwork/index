@@ -6,17 +6,17 @@ import { prepareLinks, isSSR, setDates } from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
+import { appConfig } from "config";
 import api from "./api-service";
 
 class CeramicService2 {
 	private account?: string;
 	private ipfs: IPFSHTTPClient = create({
-		url: "https://ipfs.infura.io:5001/api/v0",
+		url: appConfig.ipfsInfura,
 	});
 	private client = (isSSR() ? undefined : new WebClient({
-		ceramic: "https://testnet.index.as/ceramic",
-		// ceramic: "http://localhost:7007",
-		connectNetwork: "testnet-clay",
+		ceramic: appConfig.ceramicNode,
+		connectNetwork: appConfig.ceramicNetworkName as any,
 	})) as WebClient;
 
 	private self?: SelfID;

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { appConfig } from "config";
 import {
 	Indexes, LinkContentResult, Links, SyncCompleteResult,
 } from "types/entity";
@@ -56,11 +57,8 @@ export interface LinksCrawlContentRequest {
 	links: Links[];
 }
 
-const API_URL = "https://testnet.index.as/api";
-// const API_URL = "http://localhost:3001";
-
 const apiAxios = axios.create({
-	baseURL: API_URL,
+	baseURL: appConfig.apiUrl,
 });
 
 apiAxios.interceptors.request.use((config) => {

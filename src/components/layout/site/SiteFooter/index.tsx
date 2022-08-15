@@ -5,7 +5,7 @@ import React from "react";
 const SiteFooter: React.FC = () => (
 	<Footer>
 		<FooterMenu>
-			<a href="https://www.twitter.com" target="_blank" rel="noreferrer">
+			<a href="https://twitter.com/indexas" target="_blank" rel="noreferrer">
 				<IconTwitter />
 			</a>
 		</FooterMenu>

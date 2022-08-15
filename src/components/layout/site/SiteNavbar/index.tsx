@@ -14,6 +14,7 @@ import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { useAuth } from "hooks/useAuth";
 import { selectProfile } from "store/slices/profileSlice";
+import { appConfig } from "config";
 import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
 
 export interface LandingHeaderProps extends NavbarProps {
@@ -114,7 +115,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 						}
 					>
 						<Avatar className="site-navbar__avatar" hoverable size={28} randomColor>{
-							available && image && image.alternatives ? <img src={image.alternatives[0].src.replace("ipfs://", "https://ipfs.io/ipfs/")} alt="profile_img" /> : (
+							available && image && image.alternatives ? <img src={image.alternatives[0].src.replace("ipfs://", appConfig.ipfsProxy)} alt="profile_img" /> : (
 								available && name ? name : "Y"
 							)}</Avatar>
 					</Dropdown>

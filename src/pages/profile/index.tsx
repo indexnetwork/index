@@ -26,6 +26,7 @@ import IconLock from "components/base/Icon/IconLock";
 import ImageUploading, { ImageType } from "react-images-uploading";
 import Avatar from "components/base/Avatar";
 import IconTrash from "components/base/Icon/IconTrash";
+import { appConfig } from "config";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -168,7 +169,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 														<>
 															<div className="img-upload-img">
 																<img className="img-upload-img__img"
-																	src={profile!.image!.alternatives![0].src.replace("ipfs://", "https://ipfs.io/ipfs/")} alt="" />
+																	src={profile!.image!.alternatives![0].src.replace("ipfs://", appConfig.ipfsProxy)} alt="" />
 															</div>
 															<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
 																{/* <Avatar size={32}
