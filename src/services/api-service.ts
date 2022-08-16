@@ -3,6 +3,8 @@ import { appConfig } from "config";
 import {
 	Indexes, LinkContentResult, Links, SyncCompleteResult,
 } from "types/entity";
+import { API_ENDPOINTS } from "utils/constants";
+import { checkPublicRoute } from "utils/helper";
 
 export type HighlightType<T = {}> = T & {
 	highlight?: { [key: string]: string[] }
@@ -63,29 +65,19 @@ const apiAxios = axios.create({
 
 apiAxios.interceptors.request.use((config) => {
 	const token = localStorage.getItem("auth_token");
-	if (!token) {
+	if (!token && !checkPublicRoute(config.url!)) {
 		return false;
 	}
-	if (config && config.headers) {
+
+	if (config && config.headers && token) {
 		config.headers.Authorization = `Bearer ${token}`;
 	}
 	return config;
 });
-
-const ENDPOINTS = {
-	INDEXES: "/indexes",
-	SEARCH_INDEX: "/indexes/search",
-	CRAWL: "/links/crawl",
-	CRAWL_CONTENT: "/links/crawl-content",
-	FIND_CONTENT: "/links/find-content",
-	SYNC_CONTENT: "/links/sync-content",
-	SEARCH_LINKS: "/links/search",
-};
-
 class ApiService {
 	async postIndex(doc: Indexes): Promise<Indexes | null> {
 		try {
-			const { data } = await apiAxios.post<Indexes>(ENDPOINTS.INDEXES, doc);
+			const { data } = await apiAxios.post<Indexes>(API_ENDPOINTS.INDEXES, doc);
 			return data;
 		} catch (err) {
 			return null;
@@ -94,7 +86,7 @@ class ApiService {
 
 	async putIndex(doc: Indexes): Promise<Indexes | null> {
 		try {
-			const { data } = await apiAxios.put<Indexes>(ENDPOINTS.INDEXES, doc);
+			const { data } = await apiAxios.put<Indexes>(API_ENDPOINTS.INDEXES, doc);
 			return data;
 		} catch (err) {
 			return null;
@@ -103,7 +95,7 @@ class ApiService {
 
 	async searchIndex(body: IndexesSearchRequestBody): Promise<IndexSearchResponse | null> {
 		try {
-			const { data } = await apiAxios.post<IndexSearchResponse>(ENDPOINTS.SEARCH_INDEX, body);
+			const { data } = await apiAxios.post<IndexSearchResponse>(API_ENDPOINTS.SEARCH_INDEX, body);
 			return data;
 		} catch (err) {
 			return null;
@@ -112,7 +104,7 @@ class ApiService {
 
 	async getIndex(streamId: string): Promise<Indexes | null> {
 		try {
-			const { data } = await apiAxios.get<Indexes>(`${ENDPOINTS.INDEXES}/${streamId}`);
+			const { data } = await apiAxios.get<Indexes>(`${API_ENDPOINTS.INDEXES}/${streamId}`);
 			return data;
 		} catch (err) {
 			return null;
@@ -121,7 +113,7 @@ class ApiService {
 
 	async deleteIndex(streamId: string): Promise<boolean> {
 		try {
-			await apiAxios.delete(`${ENDPOINTS.INDEXES}/${streamId}`);
+			await apiAxios.delete(`${API_ENDPOINTS.INDEXES}/${streamId}`);
 			return true;
 		} catch (err) {
 			return false;
@@ -130,7 +122,7 @@ class ApiService {
 
 	async crawlLink(url: string): Promise<Links | null> {
 		try {
-			const { data } = await apiAxios.get<Links>(ENDPOINTS.CRAWL, {
+			const { data } = await apiAxios.get<Links>(API_ENDPOINTS.CRAWL, {
 				params: {
 					url,
 				},
@@ -143,7 +135,7 @@ class ApiService {
 
 	async crawlLinkContent(dt: LinksCrawlContentRequest): Promise<boolean> {
 		try {
-			await apiAxios.post(ENDPOINTS.CRAWL_CONTENT, dt);
+			await apiAxios.post(API_ENDPOINTS.CRAWL_CONTENT, dt);
 			return true;
 		} catch (err) {
 			return false;
@@ -152,7 +144,7 @@ class ApiService {
 
 	async findLinkContent(): Promise<LinkContentResult[] | null> {
 		try {
-			const { data } = await apiAxios.get<LinkContentResult[]>(ENDPOINTS.FIND_CONTENT);
+			const { data } = await apiAxios.get<LinkContentResult[]>(API_ENDPOINTS.FIND_CONTENT);
 			return data;
 		} catch (err) {
 			return null;
@@ -161,7 +153,7 @@ class ApiService {
 
 	async completeSync(ids: string[]): Promise<SyncCompleteResult | null> {
 		try {
-			const { data } = await apiAxios.post<SyncCompleteResult>(ENDPOINTS.SYNC_CONTENT, {
+			const { data } = await apiAxios.post<SyncCompleteResult>(API_ENDPOINTS.SYNC_CONTENT, {
 				ids,
 			});
 			return data;
@@ -172,7 +164,7 @@ class ApiService {
 
 	async searchLink(body: LinksSearchRequestBody): Promise<LinkSearchResponse | null> {
 		try {
-			const { data } = await apiAxios.post<LinkSearchResponse>(ENDPOINTS.SEARCH_LINKS, body);
+			const { data } = await apiAxios.post<LinkSearchResponse>(API_ENDPOINTS.SEARCH_LINKS, body);
 			return data;
 		} catch (err) {
 			return null;
