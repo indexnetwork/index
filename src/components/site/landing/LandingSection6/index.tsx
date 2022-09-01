@@ -34,7 +34,7 @@ const LandingSection6: React.VFC = () => (
 
 				</Col>
 				<Col xs={12}>
-					<img className={cm.img} alt="steps-png" src="/images/steps.png" />
+					<img className={cm.img} alt="steps-png" src="/images/steps2.png" />
 				</Col>
 				<Col xs={12} className="mt-lg-8">
 					<Row>

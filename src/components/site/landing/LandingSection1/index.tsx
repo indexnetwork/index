@@ -7,7 +7,7 @@ import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
 
 const LandingSection1: React.VFC = () => (
-	<LandingSection dark>
+	<LandingSection dark hasBgImage={false}>
 		<div
 			className={cc(["lnd-card lnd-first", cm.container])}
 		>
@@ -15,7 +15,7 @@ const LandingSection1: React.VFC = () => (
 				<Header className={cm.blueTitle}>The human bridge between context and content.</Header>
 				<Text className={cc([cm.descLine, cm.mbMd])}>
 					index.as helps you to curate all-forms of content, create searchable indexes, and monetize them independently.</Text>
-				<Button><Text className="px-8" theme="white">Discover</Text></Button>
+				<Button><Text className="px-8" theme="white">Get Started</Text></Button>
 			</div>
 			<div
 				className={"lnd-img lnd-img-reverse lnd-lottie lnd-lottie-fade"}
@@ -30,7 +30,7 @@ const LandingSection1: React.VFC = () => (
 						width: "100%",
 					}}
 				>
-					<source src="video/Mainani_alpha.webm" type='video/webm; codecs=vp9' />
+					<source src="video/MainaniNew.mp4" type="video/mp4" />
 				</video>
 			</div>
 		</div>

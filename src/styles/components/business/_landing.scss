@@ -37,9 +37,10 @@
 
 	@media (min-width: map-get($breakpoints, "sm")) {
 		.lnd-first {
-			padding-top: 10rem;
+			padding-top: 8rem;
+			padding-bottom: 8rem;
 			.lnd-img {
-				max-width: 45rem;
+				max-width: 48rem;
 			}
 
 			&.lnd-card {
@@ -67,7 +68,6 @@
 			}
 
 			.lnd-lottie {
-				min-height: 46rem;
 				opacity: 0;
 				transition: opacity .3s ease;
 				display: flex;

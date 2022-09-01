@@ -3,6 +3,11 @@
 	display: flex;
 }
 
+.withBg {
+	background-image: url("/images/Texture.webp");
+	background-repeat: repeat;
+}
+
 .dark {
 	background-color: var(--landing);
 }
