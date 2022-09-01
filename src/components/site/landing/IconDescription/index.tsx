@@ -5,7 +5,7 @@ import React from "react";
 
 export interface IconDescriptionProps {
 	icon: React.ReactNode;
-	title: string;
+	title?: string;
 	description: string;
 }
 
@@ -15,16 +15,28 @@ const IconDescription: React.VFC<IconDescriptionProps> = ({
 	description,
 }) => (
 	<Flex
-		gap="1rem"
+		gap="1.6rem"
 		flex={1}
 		className="lnd-icon-desc"
 	>
-		{icon}
-		<Flex className="lnd-icon-desc-text">
-			<Header>{title}</Header>
-			<Text theme="secondary">{description}</Text>
-		</Flex>
-	</Flex>
+		{
+			title ? (
+				<>
+					{icon}
+					<Flex className="lnd-icon-desc-text">
+						<Header>{title}</Header>
+						<Text size="xl" theme="secondary">{description}</Text>
+					</Flex>
+				</>
+			) : (
+				<>
+					{ icon }
+					< Text size="xl" theme="secondary">{description}</Text>
+				</>
+			)
+		}
+
+	</Flex >
 );
 
 export default IconDescription;

@@ -19,7 +19,7 @@ export type HeaderSizeType = 1 | 2 | 3 | 4 | 5 | 6;
 
 export type ComponentThemeType = "primary" | "secondary" | "success" | "error" | "warning" | "disabled" | "blue";
 
-export type SizeType = "xs" | "sm" | "md" | "lg";
+export type SizeType = "xs" | "sm" | "md" | "lg" | "xl";
 
 export type PropType<TObj, TProp extends keyof TObj> = TObj[TProp];
 

@@ -1,10 +1,11 @@
-import LogoFull from "components/base/Logo/LogoFull";
-import LogoMini from "components/base/Logo/LogoMini";
 import React from "react";
 import cc from "classcat";
+import Header from "components/base/Header";
+import Text from "components/base/Text";
 import Container from "../Grid/Container";
 import Col from "../Grid/Col";
 import FlexRow from "../Grid/FlexRow";
+import Flex from "../Grid/Flex";
 
 export interface FooterProps extends
 	React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
@@ -29,6 +30,8 @@ const Footer: React.FC<FooterProps> = ({
 }) => (
 	<div
 		className={cc([
+			"py-lg-8",
+			"py-sm-6",
 			"footer-container",
 			sticky ? "footer-sticky" : "",
 			bordered ? "footer-bordered" : "",
@@ -45,14 +48,20 @@ const Footer: React.FC<FooterProps> = ({
 			<FlexRow
 				fullHeight
 				align="center"
-				justify="between"
 				wrap={false}
 			>
 				<Col>
-					{logoSize === "mini" ? <LogoMini /> : <LogoFull />}
-				</Col>
-				<Col>
-					{children}
+					<Flex
+						flexDirection="column"
+					>
+						<Header className="footer-title" theme="white">Keep up with us</Header>
+						<Text
+							className="mt-3"
+							style={{
+								color: "var(--gray-2)",
+							}}>Join our community to get support, provide feedback, or just to say hello on...</Text>
+						{children}
+					</Flex>
 				</Col>
 			</FlexRow>
 		</Container>
@@ -61,6 +70,6 @@ const Footer: React.FC<FooterProps> = ({
 
 export const FooterMenu: React.FC<FooterMenuProps> = ({
 	className, children, placement = "left", ...props
-}) => <div {...props} className={cc([`navbar-menu-${placement}`, className || ""])}>{children}</div>;
+}) => <div {...props} className={cc(["footer-menu", `navbar-menu-${placement}`, className || ""])}>{children}</div>;
 
 export default Footer;

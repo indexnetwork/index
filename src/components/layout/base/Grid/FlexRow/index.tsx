@@ -33,7 +33,7 @@ const FlexRow: React.FC<FlexRowProps> = ({
 			"idxflex",
 			gap ? `idxflex-gap-${gap}` : "",
 			rowGap ? `idxflex-row-gap-${rowGap}` : "",
-			colGap ? `idxflex-row-gap-${colGap}` : "",
+			colGap ? `idxflex-col-gap-${colGap}` : "",
 			rowSpacing ? `idxrow-spacing-v${rowSpacing}` : "",
 			colSpacing ? `idxrow-spacing-h${colSpacing} idxflex-row-gutter-${rowGutter}` : "",
 			wrap === false ? "idxflex-nowrap" : "idxflex-wrap",

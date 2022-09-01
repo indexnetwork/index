@@ -19,6 +19,7 @@ export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAtt
 	iconButton?: boolean;
 	group?: boolean;
 	borderless?: boolean;
+	fontWeight?: number;
 }
 
 const Button: React.FC<ButtonProps> = ({
@@ -34,6 +35,7 @@ const Button: React.FC<ButtonProps> = ({
 	addOnAfter,
 	theme = "primary",
 	size = "md",
+	fontWeight,
 	...props
 }) => {
 	switch (customType) {
@@ -70,6 +72,9 @@ const Button: React.FC<ButtonProps> = ({
 		default:
 			return <button
 				{...props}
+				style={{
+					fontWeight,
+				}}
 				className={cc(
 					[
 						"btn",

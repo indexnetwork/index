@@ -1,10 +1,14 @@
 .footer-container {
-	@include responsive-sizes-flat($footer-height, "height");
-	background-color: $gray-1;
+	background-color: $gray-5;
 	width: 100%;
 	overflow: hidden;
 	transition: $transition-bg;
-
+	
+	.footer-menu {
+		display: flex;
+		gap: 2.4rem;
+		align-items: center;
+	}
 	&.footer-bordered {
 		border-top: $border-base;
 	}
@@ -13,6 +17,11 @@
 		position: sticky;
 		bottom: 0;
 		z-index: map-get($z-index, "footer");
+	}
+
+	.footer-title {
+		font-size: 4rem;
+		line-height: 4.92rem;
 	}
 
 	.footer {

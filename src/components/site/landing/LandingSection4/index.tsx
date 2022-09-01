@@ -16,30 +16,24 @@ const LandingSection4: React.VFC = () => (
 			}}
 			className="lnd-card"
 		>
-			<Flex
-				flex="1"
-				className="lnd-img"
-			>
+			<Flex flexDirection="column" className="lnd-title mb-lg-8 mb-xs-6">
+				<Header className={cm.title}>Collaborate on two-person projects up to DAO-scale. Monetize independently.</Header>
+			</Flex>
+			<Flex className="lnd-img">
 				<img className={cm.img} alt="landing-4-img" src="/images/landing-4.webp" />
 			</Flex>
-			<Flex flex="1" flexDirection="column" className="lnd-desc">
-				<Header className={cm.title}>Keep your indexes for yourself or share them with the world.</Header>
+			<Flex
+				className="lnd-features"
+			>
+				<IconDescription
+					icon={<IconFeaturePublicPrivate fill="var(--gray-9)" className="lnd-icon-desc-icon" />}
+					description="Filter your index by date, type, or any tag you want."
+				/>
+				<IconDescription
+					icon={<IconFeatureCollab fill="var(--gray-9)" className="lnd-icon-desc-icon" />}
+					description="Index.as will support semantically described content types such as person, company, event, place, etc. (soon)"
+				/>
 			</Flex>
-		</Flex>
-		<Flex
-			flexGrow={1}
-			className="lnd-features"
-		>
-			<IconDescription
-				icon={<IconFeaturePublicPrivate className="lnd-icon-desc-icon"/>}
-				title="Public & Private Profile"
-				description="Keep it or share it. You can change your privacy settings of your indexes anytime."
-			/>
-			<IconDescription
-				icon={<IconFeatureCollab className="lnd-icon-desc-icon"/>}
-				title="Collaboration"
-				description="Invite others to collaborate your indexes with e-mail or a link."
-			/>
 		</Flex>
 	</LandingSection>
 );
