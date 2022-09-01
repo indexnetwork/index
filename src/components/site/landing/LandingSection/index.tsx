@@ -6,11 +6,14 @@ import cm from "./style.module.scss";
 export interface LandingSectionProps {
 	dark?: boolean;
 	noContainer?: boolean;
+	hasBgImage?: boolean;
 }
-const LandingSection: React.FC<LandingSectionProps> = ({ dark, noContainer, children }) => (
+const LandingSection: React.FC<LandingSectionProps> = ({
+	dark, hasBgImage = true, noContainer, children,
+}) => (
 	<Container
 		fluid
-		className={cc(["lnd-container", "m-0", cm.container, dark ? cm.dark : cm.light])}
+		className={cc(["lnd-container", "m-0", hasBgImage ? cm.withBg : undefined, cm.container, dark ? cm.dark : cm.light, noContainer ? "pr-0" : undefined])}
 	>
 		{
 			noContainer ? (

@@ -25,13 +25,13 @@ const IconDescription: React.VFC<IconDescriptionProps> = ({
 					{icon}
 					<Flex className="lnd-icon-desc-text">
 						<Header>{title}</Header>
-						<Text size="xl" theme="secondary">{description}</Text>
+						<Text size="xl" theme="gray5">{description}</Text>
 					</Flex>
 				</>
 			) : (
 				<>
 					{ icon }
-					< Text size="xl" theme="secondary">{description}</Text>
+					< Text size="xl" theme="gray5">{description}</Text>
 				</>
 			)
 		}
