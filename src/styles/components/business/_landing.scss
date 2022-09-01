@@ -1,24 +1,25 @@
 .lnd-container {
 	.lnd-card {
+		padding-top: 15rem;
+		padding-bottom: 15rem;
 		display: flex;
 		align-items: center;
 		flex-direction: column;
-		.lnd-img {
-			order: 1;
-		}
+		flex-wrap: wrap;
 
 		.lnd-desc {
 			display: flex;
 			flex-direction: column;
-			@extend .mt-6;
-			order: 2;
 			text-align: center;
 			align-items: center;
+		}
+
+		.lnd-title {
+			flex-basis: 100%;
 		}
 	}
 
 	.lnd-features {
-		@extend .mt-6;
 		flex-direction: column;
 		gap: 1.5rem;
 
@@ -36,16 +37,25 @@
 
 	@media (min-width: map-get($breakpoints, "sm")) {
 		.lnd-first {
-			height: 40rem;
+			padding-top: 10rem;
+			.lnd-img {
+				max-width: 45rem;
+			}
+
+			&.lnd-card {
+				min-height: 45rem;
+			}
 		}
 
 		.lnd-img {
-			max-width: 45rem;
+			flex-basis: 50%;
+		}
+		.lnd-steps {
+			margin-left: calc((100vw - 964px) / 2);
 		}
 		.lnd-card {
 			flex-direction: row;
 			min-height: 30rem;
-
 			.lnd-desc {
 				text-align: left;
 				align-items: flex-start;
@@ -53,6 +63,7 @@
 				flex-shrink: 0;
 				display: flex;
 				flex-direction: column;
+				flex-grow: 1;
 			}
 
 			.lnd-lottie {
@@ -66,18 +77,16 @@
 					opacity: 1;
 				}
 			}
-
-			.lnd-img {
-				order: 2;
-				max-width: 45rem;
-			}
 		}
 
 		.lnd-features {
-			flex-direction: row;
-			gap: 0;
+			margin-top: 0;
+			flex-direction: column;
+			gap: map-deep-get($spacing, "xs", "8");
+			max-width: 43rem;
+			flex-basis: 50%;
 			.lnd-icon-desc {
-				flex-direction: column;
+				flex-direction: row;
 			}
 		}
 	}

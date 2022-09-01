@@ -9,6 +9,9 @@ import { useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import React, { ReactElement } from "react";
 import { NextPageWithLayout } from "types";
+import LandingSection1v2 from "components/site/landing/LandingSection1v2";
+import LandingSection6 from "components/site/landing/LandingSection6";
+import LandingSection7 from "components/site/landing/LandingSection7";
 
 const Home: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -18,10 +21,13 @@ const Home: NextPageWithLayout = () => {
 			flexDirection="column"
 		>
 			<LandingSection1 />
+			<LandingSection1v2 />
 			<LandingSection2 />
 			<LandingSection3 />
 			<LandingSection4 />
 			<LandingSection5 />
+			<LandingSection6 />
+			<LandingSection7 />
 		</Flex>
 	);
 };

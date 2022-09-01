@@ -5,15 +5,22 @@ import cm from "./style.module.scss";
 
 export interface LandingSectionProps {
 	dark?: boolean;
+	noContainer?: boolean;
 }
-const LandingSection: React.FC<LandingSectionProps> = ({ dark, children }) => (
+const LandingSection: React.FC<LandingSectionProps> = ({ dark, noContainer, children }) => (
 	<Container
 		fluid
 		className={cc(["lnd-container", "m-0", cm.container, dark ? cm.dark : cm.light])}
 	>
-		<Container>
-			{children}
-		</Container>
+		{
+			noContainer ? (
+				children
+			) : (
+				<Container>
+					{children}
+				</Container>
+			)
+		}
 	</Container>
 );
 

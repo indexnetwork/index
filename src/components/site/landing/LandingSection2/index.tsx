@@ -16,28 +16,24 @@ const LandingSection2: React.VFC = () => (
 			}}
 			className="lnd-card"
 		>
-			<Flex flex="1" className="lnd-img">
+			<Flex flexDirection="column" className="lnd-title mb-lg-8 mb-xs-6">
+				<Header className={cm.title}>Create your indexes by adding any content you like and find relevant.</Header>
+			</Flex>
+			<Flex className="lnd-img">
 				<img className={cm.img} alt="landing-2-img" src="/images/landing-2.webp" />
 			</Flex>
-			<Flex flex="1" flexDirection="column" className="lnd-desc">
-				<Header className={cm.title}>Create your indexes by adding any content you like and find relevant.
-					Index how you see, read, and understand the world.</Header>
+			<Flex
+				className="lnd-features"
+			>
+				<IconDescription
+					icon={<IconFeatureAddLink fill="var(--gray-9)" className="lnd-icon-desc-icon" />}
+					description="Index articles, documents, NFTs, photos, videos, tweets and any other kind of content."
+				/>
+				<IconDescription
+					icon={<IconFeatureExtension fill="var(--gray-9)" className="lnd-icon-desc-icon" />}
+					description="Index the web with a browser extension (soon)."
+				/>
 			</Flex>
-		</Flex>
-		<Flex
-			flexGrow={1}
-			className="lnd-features"
-		>
-			<IconDescription
-				icon={<IconFeatureAddLink className="lnd-icon-desc-icon" />}
-				title="Add link"
-				description="Add the link of the content to your index. Copy, paste, done."
-			/>
-			<IconDescription
-				icon={<IconFeatureExtension className="lnd-icon-desc-icon" />}
-				title="Extension"
-				description="Add links to your index while you browse the web"
-			/>
 		</Flex>
 	</LandingSection>
 );

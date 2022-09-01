@@ -9,12 +9,13 @@ import LandingSection from "../LandingSection";
 const LandingSection1: React.VFC = () => (
 	<LandingSection dark>
 		<div
-			className="lnd-card lnd-first"
+			className={cc(["lnd-card lnd-first", cm.container])}
 		>
 			<div className="lnd-desc">
 				<Header className={cm.blueTitle}>The human bridge between context and content.</Header>
-				<Text className={cc([cm.descLine, cm.mbMd])}>Index.as helps you to curate content and<br />create searchable indexes.</Text>
-				<Button>Create your first index</Button>
+				<Text className={cc([cm.descLine, cm.mbMd])}>
+					index.as helps you to curate all-forms of content, create searchable indexes, and monetize them independently.</Text>
+				<Button><Text className="px-8" theme="white">Discover</Text></Button>
 			</div>
 			<div
 				className={"lnd-img lnd-img-reverse lnd-lottie lnd-lottie-fade"}

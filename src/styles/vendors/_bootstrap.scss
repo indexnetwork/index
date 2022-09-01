@@ -297,12 +297,12 @@ hr {
 }
 @media (min-width: map-get($breakpoints, "md")) {
   .container {
-    width: 900px;
+    width: 932px;
   }
 }
 @media (min-width: map-get($breakpoints, "lg")) {
   .container {
-    width: calc(900px + toPx($font-size-base, 2 * strip-units(map-deep-get($spacing, "xs", "6"))));
+    width: calc(932px + toPx($font-size-base, 2 * strip-units(map-deep-get($spacing, "xs", "6"))));
   }
 }
 .container-fluid {
