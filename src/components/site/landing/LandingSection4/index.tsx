@@ -14,10 +14,10 @@ const LandingSection4: React.VFC = () => (
 			style={{
 				position: "relative",
 			}}
-			className="lnd-card"
+			className="lnd-card lnd-reorder"
 		>
 			<Flex flexDirection="column" className="lnd-title mb-lg-8 mb-xs-6">
-				<Header className={cm.title}>Collaborate on two-person projects up to DAO-scale. Monetize independently.</Header>
+				<Header className="lnd-section-title">Collaborate on two-person projects up to DAO-scale. Monetize independently.</Header>
 			</Flex>
 			<Flex className="lnd-img">
 				<img className={cm.img} alt="landing-4-img" src="/images/landing-4.webp" />

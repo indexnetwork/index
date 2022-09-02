@@ -13,7 +13,7 @@ const LandingSection7: React.VFC = () => (
 			justifyContent="center"
 			className={cm.container}
 		>
-			<Header level={1} fontFamily="roquefort" className={cm.title}>Decentralization requires bundling</Header>
+			<Header level={1} fontFamily="roquefort" className="lnd-7-title">Decentralization requires bundling</Header>
 			<Button className="px-8">Create Your First Index</Button>
 		</Flex>
 	</LandingSection>

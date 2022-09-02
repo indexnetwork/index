@@ -12,8 +12,8 @@ const LandingSection1: React.VFC = () => (
 			className={cc(["lnd-card lnd-first", cm.container])}
 		>
 			<div className="lnd-desc">
-				<Header className={cm.blueTitle}>The human bridge between context and content.</Header>
-				<Text className={cc([cm.descLine, cm.mbMd])}>
+				<Header className="lnd-blue-ttl">The human bridge between context and content.</Header>
+				<Text size="xl" className={cc([cm.descLine, "mb-6", "mb-sm-7"])}>
 					index.as helps you to curate all-forms of content, create searchable indexes, and monetize them independently.</Text>
 				<Button><Text className="px-8" theme="white">Get Started</Text></Button>
 			</div>
