@@ -12,8 +12,11 @@ const LandingSection5: React.VFC = () => (
 			flexDirection="column"
 			gap={"32px"}
 			className="lnd-card"
+			style={{
+				alignItems: "flex-start",
+			}}
 		>
-			<Header className="lnd-5-title">Built with open protocols</Header>
+			<Header className="lnd-5-title text-left">Built with open protocols</Header>
 			<FlexRow
 				className="lnd-5-list"
 			>
@@ -22,6 +25,7 @@ const LandingSection5: React.VFC = () => (
 						flexDirection="column"
 						gap={"16px"}
 						className="py-3"
+						alignItems="flex-start"
 					>
 						<img className="lnd-5-img" alt="ceramic-img" src="/images/ceramic.png" />
 						<Text theme="secondary">Ceramic is a decentralized data network that brings unlimited data composability to Web3 applications.</Text>
@@ -32,6 +36,7 @@ const LandingSection5: React.VFC = () => (
 						flexDirection="column"
 						gap={"16px"}
 						className="py-3"
+						alignItems="flex-start"
 					>
 						<img className="lnd-5-img" alt="lit-img" src="/images/lit.png" />
 						<Text theme="secondary">Lit Protocol is decentralized access control infrastructure designed to bring more utility to the web.</Text>
@@ -42,6 +47,7 @@ const LandingSection5: React.VFC = () => (
 						flexDirection="column"
 						gap={"16px"}
 						className="py-3"
+						alignItems="flex-start"
 					>
 						<img className="lnd-5-img" alt="ipfs-img" src="/images/ipfs.png" />
 						<Text theme="secondary">A peer-to-peer hypermedia protocol designed to preserve and grow humanity&apos;s knowledge by making the web upgradeable, resilient, and more open.</Text>
@@ -52,7 +58,7 @@ const LandingSection5: React.VFC = () => (
 						flexDirection="column"
 						gap={"16px"}
 						className="py-3"
-
+						alignItems="flex-start"
 					>
 						<img className="lnd-5-img" alt="gnosis-img" src="/images/gnosis.png" />
 						<Text theme="secondary">The most trusted platform to manage digital assets on Ethereum.</Text>

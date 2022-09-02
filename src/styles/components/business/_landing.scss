@@ -74,7 +74,8 @@
 
 	.lnd-5-img {
 		max-height: 24px;
-		width: min-content;
+		width: auto;
+		object-fit: contain;
 	}
 
 
