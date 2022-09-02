@@ -25,10 +25,10 @@ const LandingSection1: React.VFC = () => (
 					loop
 					muted
 					playsInline
+					className={cm.video}
 					style={{
 						height: "100%",
 						width: "100%",
-						border: 0,
 					}}
 				>
 					<source src="video/MainaniNew.mp4" type="video/mp4" />
