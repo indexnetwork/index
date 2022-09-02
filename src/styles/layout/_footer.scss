@@ -3,11 +3,13 @@
 	width: 100%;
 	overflow: hidden;
 	transition: $transition-bg;
-	
+
 	.footer-menu {
 		display: flex;
 		gap: 2.4rem;
 		align-items: center;
+		margin-top: 2.4rem;
+		margin-bottom: 4rem;
 	}
 	&.footer-bordered {
 		border-top: $border-base;
@@ -20,8 +22,9 @@
 	}
 
 	.footer-title {
-		font-size: 4rem;
-		line-height: 4.92rem;
+		font-size: 2.4rem;
+		line-height: 2.9rem;
+		margin-top: 4rem;
 	}
 
 	.footer {
@@ -35,6 +38,49 @@
 
 		& .footer-menu-right {
 			margin-left: auto;
+		}
+	}
+
+	@media (min-width: map-get($breakpoints, "sm")) {
+		background-color: $gray-5;
+		width: 100%;
+		overflow: hidden;
+		transition: $transition-bg;
+
+		.footer-menu {
+			display: flex;
+			gap: 2.4rem;
+			align-items: center;
+			margin-bottom: 0;
+		}
+		&.footer-bordered {
+			border-top: $border-base;
+		}
+
+		&.footer-sticky {
+			position: sticky;
+			bottom: 0;
+			z-index: map-get($z-index, "footer");
+		}
+
+		.footer-title {
+			margin-top: 0;
+			font-size: 4rem;
+			line-height: 4.92rem;
+		}
+
+		.footer {
+			height: 100%;
+			flex: 1;
+
+			.idxflex-container {
+				height: 100%;
+				width: 100%;
+			}
+
+			& .footer-menu-right {
+				margin-left: auto;
+			}
 		}
 	}
 }

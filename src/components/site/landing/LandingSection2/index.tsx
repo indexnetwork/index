@@ -14,10 +14,10 @@ const LandingSection2: React.VFC = () => (
 			style={{
 				position: "relative",
 			}}
-			className="lnd-card"
+			className="lnd-card lnd-reorder"
 		>
 			<Flex flexDirection="column" className="lnd-title mb-lg-8 mb-xs-6">
-				<Header className={cm.title}>Create your indexes by adding any content you like and find relevant.</Header>
+				<Header className="lnd-section-title">Create your indexes by adding any content you like and find relevant.</Header>
 			</Flex>
 			<Flex className="lnd-img">
 				<img className={cm.img} alt="landing-2-img" src="/images/landing-2.webp" />
