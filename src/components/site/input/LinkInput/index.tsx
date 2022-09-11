@@ -32,6 +32,13 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 		}
 	};
 
+	const something=(event)=> {
+        if (event.keyCode === 13) {
+            console.log('enter')
+			handleBlur();
+        }
+    }
+
 	const handleChange: React.ChangeEventHandler<HTMLInputElement> = ({ target }) => {
 		setUrl(target?.value || "");
 	};
@@ -51,6 +58,7 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 				value={url}
 				onBlur={handleBlur}
 				onChange={handleChange}
+				onKeyDown={(e) => something(e) }
 				placeholder={loading ? "Working on it..." : "Add a link to your index"}
 			/>
 			{showMsg && <Text theme="error" size="sm"

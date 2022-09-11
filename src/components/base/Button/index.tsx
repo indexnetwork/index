@@ -1,4 +1,5 @@
 import cc from "classcat";
+import Link from "next/link";
 import IconGoogle from "components/base/Icon/IconGoogle";
 import IconTwitter from "components/base/Icon/IconTwitter";
 import Flex from "components/layout/base/Grid/Flex";
@@ -9,7 +10,7 @@ import {
 } from "types";
 
 export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> {
-	customType?: "google" | "twitter";
+	customType?: "google" | "twitter" | "link";
 	theme?: ButtonThemeType;
 	size?: InputSizeType;
 	block?: boolean;
@@ -20,10 +21,12 @@ export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAtt
 	group?: boolean;
 	borderless?: boolean;
 	fontWeight?: number;
+	link?: any;
 }
 
 const Button: React.FC<ButtonProps> = ({
 	customType,
+	link,
 	children,
 	className,
 	borderless,
@@ -55,6 +58,24 @@ const Button: React.FC<ButtonProps> = ({
 				<IconGoogle width={20} />
 				{children}
 			</button>;
+		case "link":
+			return <a href={link} target={"_blank"}>
+				<button {...props}
+						   className={cc(
+						[
+							"btn",
+							`btn-${theme}`,
+							`btn-${size}`,
+							block && !group ? "btn-block" : "",
+							group ? "btn-group-item" : "",
+							iconButton ? `btn-icon btn-icon-${size}` : "",
+							borderless ? "btn-borderless" : "",
+							className,
+						],
+					)}>
+					{children}
+				</button>
+			</a>;
 		case "twitter":
 			return <button {...props} className={cc(
 				[
