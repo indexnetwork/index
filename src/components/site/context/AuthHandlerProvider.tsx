@@ -50,7 +50,23 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 			const provider = initProvider || localStorage.getItem("provider");
 			if (provider) {
 				try {
-					await activate(connectors[provider as keyof typeof connectors]);
+					const connector = connectors[provider as keyof typeof connectors];
+					connector.getProvider().then((p) => {
+						const chainIdAsInt = Number.parseInt(p.chainId, 16);
+
+						if ([1, 3, 4, 5, 42].indexOf(chainIdAsInt) >= 0) {
+							console.log("Correct network!", p.chainId);
+						} else {
+							console.log("Wrong network!", p.chainId);
+							p.request({
+								method: "wallet_switchEthereumChain",
+								params: [{ chainId: "0x4" }],
+							}).catch((error: any) => {
+								console.log(error);
+							});
+						}
+					});
+					await activate(connector);
 					localStorage.setItem("provider", provider);
 				} catch (err) {
 					console.error(err);
