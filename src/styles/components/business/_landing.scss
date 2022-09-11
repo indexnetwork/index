@@ -25,6 +25,10 @@
 		}
 	}
 
+	.lnd-desc-link {
+		width: 100%;
+	}
+
 	.lnd-first {
 		padding-top: 3.2rem;
 		.lnd-img {
@@ -32,7 +36,13 @@
 		}
 
 		.lnd-desc {
-			order: 2;
+			order: 1;
+		}
+
+		@media (max-width: map-get($breakpoints, "sm")) {
+			.lnd-desc {
+				order: 2;
+			}
 		}
 
 		.lnd-blue-ttl {
@@ -46,6 +56,7 @@
 		}
 	}
 
+
 	.lnd-features {
 		flex-direction: column;
 		gap: map-deep-get($spacing, "xs", "6");
@@ -53,6 +64,13 @@
 
 		.lnd-icon-desc {
 			@extend .mt-6;
+
+			@media (max-width: map-get($breakpoints, "sm")) {
+				&-icon {
+					width: 20px;
+					height: 20px;
+				}
+			}
 
 			&-icon {
 				flex-shrink: 0;
@@ -94,6 +112,7 @@
 		line-height: 3.8rem;
 		margin-bottom: 3.2rem;
 		text-align: center;
+		font-weight: normal;
 	}
 
 	@media (max-width: map-get($breakpoints, "xs")) {
@@ -106,11 +125,11 @@
 					margin-top: 2.8rem;
 				}
 			}
-	
+
 			.lnd-img {
 				order: 1;
 			}
-	
+
 			.lnd-features {
 				order: 3;
 			}
@@ -147,8 +166,8 @@
 			margin-left: calc((100vw - 964px) / 2);
 		}
 		.lnd-card {
-			padding-top: 15rem;
-			padding-bottom: 15rem;
+			padding-top: 12rem;
+			padding-bottom: 12rem;
 			flex-direction: row;
 			min-height: 30rem;
 
@@ -165,7 +184,7 @@
 				display: flex;
 				flex-direction: column;
 				flex-grow: 1;
-				text-align: center;
+				text-align: left;
 			}
 
 			.lnd-lottie {

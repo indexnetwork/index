@@ -31,7 +31,8 @@ const LandingSection2: React.VFC = () => (
 				/>
 				<IconDescription
 					icon={<IconFeatureExtension fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
-					description="Index the web with a browser extension (soon)."
+					description="Index the web with a browser extension"
+					boldDescription="Soon"
 				/>
 			</Flex>
 		</Flex>

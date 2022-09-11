@@ -28,7 +28,10 @@ const LandingSection1v2: React.VFC = () => (
 				<Text className="lnd-desc-text text-left" theme="secondary" size="xl">
 				Together, let’s make Web3 discoverable by prioritizing human tastes, motivations and perspective.
 				</Text>
-				<Button fontWeight={700} theme="link" className="px-0 mt-3" size="md">Read our full story &#x2192;</Button>
+				<div className="text-left lnd-desc-link">
+					<Button fontWeight={700} theme="link" className="px-0 mt-3" size="md">Read our full
+						story &#x2192;</Button>
+				</div>
 			</Flex>
 		</Flex>
 	</LandingSection >

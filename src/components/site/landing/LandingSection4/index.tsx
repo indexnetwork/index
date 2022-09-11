@@ -28,10 +28,12 @@ const LandingSection4: React.VFC = () => (
 				<IconDescription
 					icon={<IconFeaturePublicPrivate fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
 					description='Specify on-chain criteria like "user must hold an NFT" and the network will provide permission to those who meet those criteria.'
+					boldDescription="Soon"
 				/>
 				<IconDescription
 					icon={<IconFeatureCollab fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
 					description="Monetize your index with your own terms by composing access control conditions."
+					boldDescription="Soon"
 				/>
 			</Flex>
 		</Flex>

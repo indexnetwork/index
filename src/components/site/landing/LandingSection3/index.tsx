@@ -32,7 +32,8 @@ Welcome to your refined search engine. Filter your indexes, and search as you ty
 				/>
 				<IconDescription
 					icon={<IconFeatureSearch fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
-					description="Index.as will support semantically described content types such as person, company, event, place, etc. (soon)"
+					description="Index.as will support semantically described content types such as person, company, event, place, etc."
+					boldDescription="Soon"
 				/>
 			</Flex>
 		</Flex>

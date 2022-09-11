@@ -2,17 +2,20 @@ import Header from "components/base/Header";
 import Text from "components/base/Text";
 import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
+import cm from "./style.module.scss";
 
 export interface IconDescriptionProps {
-	icon: React.ReactNode;
-	title?: string;
-	description: string;
+    icon: React.ReactNode;
+    title?: string;
+    description: string;
+    boldDescription?: string;
 }
 
 const IconDescription: React.VFC<IconDescriptionProps> = ({
 	icon,
 	title,
 	description,
+	boldDescription,
 }) => (
 	<Flex
 		gap="1.6rem"
@@ -30,13 +33,13 @@ const IconDescription: React.VFC<IconDescriptionProps> = ({
 				</>
 			) : (
 				<>
-					{ icon }
-					< Text size="xl" theme="gray5">{description}</Text>
+					{icon}
+					< Text size="xl" theme="gray5">{description} <div className={cm.italic}>{boldDescription}</div></Text>
 				</>
 			)
 		}
 
-	</Flex >
+	</Flex>
 );
 
 export default IconDescription;
