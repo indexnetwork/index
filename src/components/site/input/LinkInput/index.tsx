@@ -32,8 +32,9 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 		}
 	};
 
-	const handleKeydown = (event: React.KeyboardEvent<LinkInputProps>) => {
-		if (event.key === "Enter") {
+	const handleEnter = (e: any) => {
+		if (e && (e.code === "Enter" || e.code === "NumpadEnter")) {
+			e.preventDefault();
 			if (validator.isURL(url)) {
 				onLinkAdd && onLinkAdd(url);
 				setUrl("");
@@ -66,7 +67,7 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 				value={url}
 				onBlur={handleBlur}
 				onChange={handleChange}
-				onKeyDown={(e) => handleKeydown(e) }
+				onKeyDown={handleEnter}
 				placeholder={loading ? "Working on it..." : "Add a link to your index"}
 			/>
 			{showMsg && <Text theme="error" size="sm"
