@@ -1,5 +1,4 @@
 import cc from "classcat";
-import Link from "next/link";
 import IconGoogle from "components/base/Icon/IconGoogle";
 import IconTwitter from "components/base/Icon/IconTwitter";
 import Flex from "components/layout/base/Grid/Flex";
@@ -59,7 +58,7 @@ const Button: React.FC<ButtonProps> = ({
 				{children}
 			</button>;
 		case "link":
-			return <a href={link} target={"_blank"}>
+			return <a href={link} target={"_blank"} rel="noreferrer">
 				<button {...props}
 						   className={cc(
 						[

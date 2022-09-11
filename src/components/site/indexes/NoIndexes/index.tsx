@@ -3,10 +3,8 @@ import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import Image from "next/image";
-import React, { useCallback, useContext, useEffect } from "react";
-import { useAuth } from "hooks/useAuth";
-import Router, { useRouter } from "next/router";
-
+import React from "react";
+import { useRouter } from "next/router";
 
 export interface NoIndexesProps {
 	active?: boolean;
@@ -65,6 +63,6 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 			}
 		</>
 	);
-} 
+};
 
 export default NoIndexes;

@@ -1,13 +1,11 @@
 import Header from "components/base/Header";
 import Text from "components/base/Text";
-import React, { useCallback, useContext, useEffect } from "react";
+import React, { useContext } from "react";
 import cc from "classcat";
 import Button from "components/base/Button";
 import { useAuth } from "hooks/useAuth";
-import { selectConnection } from "store/slices/connectionSlice";
-import Router, { useRouter } from "next/router";
+import { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
-import { useAppSelector } from "hooks/store";
 
 import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
@@ -55,7 +53,7 @@ const LandingSection1: React.FC = () => {
 				</video>
 			</div>
 		</div>
-	</LandingSection>
+	</LandingSection>;
 };
 
 export default LandingSection1;

@@ -1,17 +1,14 @@
 import Button from "components/base/Button";
 import Header from "components/base/Header";
 import Flex from "components/layout/base/Grid/Flex";
-import React, { useCallback, useContext, useEffect } from "react";
-import LandingSection from "../LandingSection";
-import cm from "./style.module.scss";
+import React, { useContext } from "react";
 import { useAuth } from "hooks/useAuth";
-import { selectConnection } from "store/slices/connectionSlice";
-import Router, { useRouter } from "next/router";
+import { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
-import { useAppSelector } from "hooks/store";
+import cm from "./style.module.scss";
+import LandingSection from "../LandingSection";
 
 const LandingSection7: React.FC = () => {
-
 	const router = useRouter();
 
 	const authenticated = useAuth();
@@ -26,7 +23,6 @@ const LandingSection7: React.FC = () => {
 		}
 	};
 
-
 	return <LandingSection>
 		<Flex
 			flexDirection="column"
@@ -37,7 +33,7 @@ const LandingSection7: React.FC = () => {
 			<Header level={1} fontFamily="roquefort" className="lnd-7-title">Decentralization requires bundling</Header>
 			<Button onClick={handleConnect} className="px-8" >Create Your First Index</Button>
 		</Flex>
-	</LandingSection>
+	</LandingSection>;
 };
 
 export default LandingSection7;

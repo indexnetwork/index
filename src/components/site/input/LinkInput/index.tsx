@@ -33,7 +33,7 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 	};
 
 	const handleKeydown = (event: React.KeyboardEvent<LinkInputProps>) => {
-        if (event.key === 'Enter') {
+		if (event.key === "Enter") {
 			if (validator.isURL(url)) {
 				onLinkAdd && onLinkAdd(url);
 				setUrl("");
@@ -43,9 +43,9 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 					setShowMsg(false);
 					setUrl("");
 				}, 1500);
-			}			
-        }
-    }
+			}
+		}
+	};
 
 	const handleChange: React.ChangeEventHandler<HTMLInputElement> = ({ target }) => {
 		setUrl(target?.value || "");
