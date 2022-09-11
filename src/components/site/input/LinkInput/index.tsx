@@ -32,7 +32,7 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 		}
 	};
 
-	const something=(event)=> {
+	const something=(event: any)=> {
         if (event.keyCode === 13) {
             console.log('enter')
 			handleBlur();
