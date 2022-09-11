@@ -32,9 +32,8 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 		}
 	};
 
-	const handleKeydown = (event: any) => {
-        if (event.keyCode === 13) {
-            console.log('enter')
+	const handleKeydown = (event: React.KeyboardEvent<LinkInputProps>) => {
+        if (event.key === 'Enter') {
 			if (validator.isURL(url)) {
 				onLinkAdd && onLinkAdd(url);
 				setUrl("");
