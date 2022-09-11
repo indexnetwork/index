@@ -32,10 +32,19 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 		}
 	};
 
-	const something=(event: any)=> {
+	const handleKeydown = (event: any)=> {
         if (event.keyCode === 13) {
             console.log('enter')
-			handleBlur();
+			if (validator.isURL(url)) {
+				onLinkAdd && onLinkAdd(url);
+				setUrl("");
+			} else if (url) {
+				setShowMsg(true);
+				setTimeout(() => {
+					setShowMsg(false);
+					setUrl("");
+				}, 1500);
+			}			
         }
     }
 
@@ -58,7 +67,7 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 				value={url}
 				onBlur={handleBlur}
 				onChange={handleChange}
-				onKeyDown={(e) => something(e) }
+				onKeyDown={(e) => handleKeydown(e) }
 				placeholder={loading ? "Working on it..." : "Add a link to your index"}
 			/>
 			{showMsg && <Text theme="error" size="sm"
