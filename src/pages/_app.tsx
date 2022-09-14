@@ -29,13 +29,17 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 				<AuthHandlerProvider>
 					<CeramicProvider>
 						<Head>
-							<title>Index.as</title>
-							<meta name="title" content="Index.as" />
 							<link rel="shortcut icon" href="/favicon-white.png" />
-							<meta
-								name="description"
-								content="Share curated links about any topic as a searchable index."
-							></meta>
+							<title>index.as | The human bridge between context and content.</title>
+							<meta name="title" content="index.as | The human bridge between context and content.">
+							<meta name="description" content="Curate all-forms of content, create searchable indexes, and monetize them independently.">
+
+							<meta property="twitter:card" content="summary_large_image">
+							<meta property="twitter:url" content="https://index.as">
+							<meta property="twitter:title" content="index.as | The human bridge between context and content.">
+							<meta property="twitter:description" content="Curate all-forms of content, create searchable indexes, and monetize them independently.">
+							<meta property="twitter:image" content="https://testnet.index.as/images/bridge.png">
+
 							<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />
 							<link rel="preload" as="font" href="/fonts/Freizeit-Bold.woff2" type="font/woff2" crossOrigin="anonymous" />
 							<link rel="preload" as="font" href="/fonts/Roquefort-Standart.woff2" type="font/woff2" crossOrigin="anonymous" />
