@@ -38,7 +38,7 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 							<meta property="twitter:url" content="https://index.as" />
 							<meta property="twitter:title" content="index.as | The human bridge between context and content." />
 							<meta property="twitter:description" content="Curate all-forms of content, create searchable indexes, and monetize them independently." />
-							<meta property="twitter:image" content="https://testnet.index.as/images/bridge.png" />
+							<meta property="twitter:image" content="https://testnet.index.as/images/bridge.jpg" />
 
 							<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />
 							<link rel="preload" as="font" href="/fonts/Freizeit-Bold.woff2" type="font/woff2" crossOrigin="anonymous" />
