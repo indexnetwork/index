@@ -31,14 +31,14 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 						<Head>
 							<link rel="shortcut icon" href="/favicon-white.png" />
 							<title>index.as | The human bridge between context and content.</title>
-							<meta name="title" content="index.as | The human bridge between context and content.">
-							<meta name="description" content="Curate all-forms of content, create searchable indexes, and monetize them independently.">
+							<meta name="title" content="index.as | The human bridge between context and content." />
+							<meta name="description" content="Curate all-forms of content, create searchable indexes, and monetize them independently." />
 
-							<meta property="twitter:card" content="summary_large_image">
-							<meta property="twitter:url" content="https://index.as">
-							<meta property="twitter:title" content="index.as | The human bridge between context and content.">
-							<meta property="twitter:description" content="Curate all-forms of content, create searchable indexes, and monetize them independently.">
-							<meta property="twitter:image" content="https://testnet.index.as/images/bridge.png">
+							<meta property="twitter:card" content="summary_large_image" />
+							<meta property="twitter:url" content="https://index.as" />
+							<meta property="twitter:title" content="index.as | The human bridge between context and content." />
+							<meta property="twitter:description" content="Curate all-forms of content, create searchable indexes, and monetize them independently." />
+							<meta property="twitter:image" content="https://testnet.index.as/images/bridge.png" />
 
 							<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />
 							<link rel="preload" as="font" href="/fonts/Freizeit-Bold.woff2" type="font/woff2" crossOrigin="anonymous" />
