@@ -86,7 +86,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 				<NavbarMenu>
 					<Button onClick={handleCreate} theme="primary">{t("components:header.newIndexBtn")}</Button>
 					<Dropdown
-						dropdownClass="ml-6 ml-lg-7"
+						dropdownClass="ml-6"
 						position="bottom-right"
 						menuItems={
 							<>
@@ -95,7 +95,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 								}}>
 									<Flex alignItems="center">
 										<IconPeople width={12} height="100%" />
-										<Text className="ml-3" element="span" size="sm" theme="secondary">&nbsp;{t("common:profile")}</Text>
+										<Text className="ml-3" element="span" size="md" theme="secondary">&nbsp;{t("common:profile")}</Text>
 									</Flex>
 								</DropdownMenuItem>
 								{/* <DropdownMenuItem>
@@ -108,13 +108,13 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 								<DropdownMenuItem onClick={disconnect}>
 									<Flex alignItems="center">
 										<IconLogout className="icon-error" width={12} height="100%" />
-										<Text className="ml-3" element="span" size="sm" theme="error">&nbsp;{t("common:logout")}</Text>
+										<Text className="ml-3" element="span" size="md" theme="error">&nbsp;{t("common:logout")}</Text>
 									</Flex>
 								</DropdownMenuItem>
 							</>
 						}
 					>
-						<Avatar className="site-navbar__avatar" hoverable size={28} randomColor>{
+						<Avatar className="site-navbar__avatar" hoverable size={32} randomColor>{
 							available && image && image.alternatives ? <img src={image.alternatives[0].src.replace("ipfs://", appConfig.ipfsProxy)} alt="profile_img" /> : (
 								available && name ? name : "Y"
 							)}</Avatar>

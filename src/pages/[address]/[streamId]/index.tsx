@@ -170,6 +170,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									<Col
 										xs={12}
 										lg={9}
+										className="pb-2"
 									>
 										<FlexRow>
 											<Col
@@ -183,28 +184,32 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												/>
 											</Col>
 											<Col>
-												{
-													(address || "").toLowerCase() === router.query.address ? (
-														<Button
-															addOnBefore
-															size="sm"
-															theme="clear"
-															onClick={() => {
-																copyToClipboard(window.location.href);
-															}}
-														>
-															<IconLink1 stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Copy
-														</Button>
-													) : (
-														<Button
-															addOnBefore
-															size="sm"
-															theme="clear"
-															onClick={handleClone}
-														>
-															<IconCopy stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Clone
-														</Button>
-													)
+
+												{ 
+
+													false ? (
+														(address || "").toLowerCase() === router.query.address ? (
+															<Button
+																addOnBefore
+																size="sm"
+																theme="clear"
+																onClick={() => {
+																	copyToClipboard(window.location.href);
+																}}
+															>
+																<IconLink1 stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Copy
+															</Button>
+														) : (
+															<Button
+																addOnBefore
+																size="sm"
+																theme="clear"
+																onClick={handleClone}
+															>
+																<IconCopy stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Clone
+															</Button>
+														)
+													) : null
 												}
 
 											</Col>

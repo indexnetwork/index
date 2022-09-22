@@ -169,7 +169,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 						}
 					</FlexRow>
 				</Col>
-				<Col xs={12} className="mt-3">
+				<Col xs={12} className="mt-2">
 					<a target="_blank" rel="noreferrer" href={url}>
 						{favicon ?
 							<img

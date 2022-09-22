@@ -51,7 +51,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 	}
 	<Col
 		xs={12}
-		className="mb-3"
+		className="mb-2"
 	>
 		<Flex
 			justifyContent="space-between"
