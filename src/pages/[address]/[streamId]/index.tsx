@@ -185,7 +185,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											</Col>
 											<Col>
 
-												{ 
+												{
 
 													false ? (
 														(address || "").toLowerCase() === router.query.address ? (
