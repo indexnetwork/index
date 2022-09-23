@@ -202,9 +202,6 @@ const LandingSection6: React.VFC = () => {
 											<Header level={2}>V1</Header>
 											<ul className={cm.list}>
 												<li>
-													<Text theme="secondary">Social graph integration with Lens Protocol</Text>
-												</li>
-												<li>
 													<Text theme="secondary">Enabling browser extension and highlighted content</Text>
 												</li>
 												<li>
