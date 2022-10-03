@@ -54,13 +54,13 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 					connector.getProvider().then((p) => {
 						const chainIdAsInt = Number.parseInt(p.chainId, 16);
 
-						if ([1, 3, 4, 5, 42].indexOf(chainIdAsInt) >= 0) {
+						if ([1, 5].indexOf(chainIdAsInt) >= 0) {
 							console.log("Correct network!", p.chainId);
 						} else {
 							console.log("Wrong network!", p.chainId);
 							p.request({
 								method: "wallet_switchEthereumChain",
-								params: [{ chainId: "0x4" }],
+								params: [{ chainId: "0x5" }],
 							}).catch((error: any) => {
 								console.log(error);
 							});
