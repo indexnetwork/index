@@ -64,11 +64,10 @@ export function arrayMove(list: any[], startIndex: number, endIndex: number) {
 }
 
 export function checkPublicRoute(route: string) {
-	switch (route) {
-		case API_ENDPOINTS.SEARCH_INDEX:
-		case API_ENDPOINTS.SEARCH_LINKS:
-			return true;
-		default:
-			return false;
+
+	if ([API_ENDPOINTS.SEARCH_INDEX, API_ENDPOINTS.SEARCH_LINKS].indexOf(route) >= 0) {
+		return true;
 	}
+
+	return route.startsWith(API_ENDPOINTS.INDEXES);
 }
