@@ -64,7 +64,6 @@ export function arrayMove(list: any[], startIndex: number, endIndex: number) {
 }
 
 export function checkPublicRoute(route: string) {
-
 	if ([API_ENDPOINTS.SEARCH_INDEX, API_ENDPOINTS.SEARCH_LINKS].indexOf(route) >= 0) {
 		return true;
 	}
