@@ -13,4 +13,15 @@
 			background-color: $hover-color;
 		}
 	}
+
+	.header-input input:disabled{
+		color: $black !important;
+		background-color: $white !important
+	}
+	.header-input.input-disabled{
+		color: $black !important;
+		background-color: $white !important
+	}
+
+
 }
