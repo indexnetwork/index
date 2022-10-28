@@ -187,7 +187,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 								height={16}
 								style={{
 									verticalAlign: "middle",
-								}} />}<Text size="sm" theme="disabled">{url} • {updatedAt ? moment(updatedAt).format("MMM D") : ""}</Text>
+								}} />}<Text size="sm" theme="disabled">{url?.substring(0, 80)} • {updatedAt ? moment(updatedAt).format("MMM D") : ""}</Text>
 					</ a>
 				</Col>
 				{
