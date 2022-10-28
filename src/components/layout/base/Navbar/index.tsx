@@ -59,6 +59,8 @@ const Navbar: React.FC<NavbarProps> = ({
 	const handleLogoClick = () => {
 		if (authenticated) {
 			router.push(`/${address}`);
+		} else {
+			router.push(`/`);
 		}
 	};
 	return (
