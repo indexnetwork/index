@@ -6,15 +6,11 @@ index.as helps you to curate all-forms of content, create searchable indexes, an
 
 ### Create your indexes by adding any content you like and find relevant.
 
-![landing-2-img](https://testnet.index.as/images/landing-2.webp)
-
 - Index articles, documents, NFTs, photos, videos, tweets and any other
   kind of content.
 -  Index the web with a browser extension
 
 ### If you index it, then search it. Welcome to your refined search engine. Filter your indexes, and search as you type.
-
-![landing-3-img](https://testnet.index.as/images/landing-3.webp)
 
 - Filter your index by date, type, or any tag you want.
 - index.as will support semantically described content types such as person, company, event, place, etc.
