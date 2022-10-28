@@ -1,34 +1,42 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# index.as
 
-## Getting Started
+## The human bridge between context and content.
 
-First, run the development server:
+index.as helps you to curate all-forms of content, create searchable indexes, and monetize them independently.
 
-```bash
-npm run dev
-# or
-yarn dev
-```
+### Create your indexes by adding any content you like and find relevant.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+![landing-2-img](https://testnet.index.as/images/landing-2.webp)
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+- Index articles, documents, NFTs, photos, videos, tweets and any other
+  kind of content.
+-  Index the web with a browser extension
 
-[API routes](https://nextjs.org/docs/api-routes/introduction) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+### If you index it, then search it. Welcome to your refined search engine. Filter your indexes, and search as you type.
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
+![landing-3-img](https://testnet.index.as/images/landing-3.webp)
 
-## Learn More
+- Filter your index by date, type, or any tag you want.
+- index.as will support semantically described content types such as person, company, event, place, etc.
 
-To learn more about Next.js, take a look at the following resources:
+### Collaborate on two-person projects up to DAO-scale. Monetize independently.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+![landing-4-img](https://testnet.index.as/images/landing-4.webp)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+- Specify on-chain criteria like "user must hold an NFT" and the network will provide permission to those who meet those criteria.
+- Monetize your index with your own terms by composing access control conditions.
 
-## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Built with open protocols
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+- [Ceramic ](https://ceramic.network/) is a decentralized data network that brings unlimited data composability to Web3 applications.
+- [Lit Protocol](http://litprotocol.com/) is decentralized access control infrastructure designed to bring more utility to the web.
+- [IPFS](https://ipfs.io/) is a peer-to-peer hypermedia protocol designed to preserve and grow humanity's knowledge by making the web upgradeable, resilient, and more open.
+- [Gnosis Safe](https://gnosis-safe.io/) is the most trusted platform to manage digital assets on Ethereum.
+
+### Keep up with us
+Join our community to get support, provide feedback, or just to say hello on...
+- [Try testnet](https://index.as)
+- [Follow us on Twitter](https://twitter.com/indexas)
+- [Join our Community on Discord](https://discord.gg/55V8wg5k)
+- [Read our story on Mirror](https://mirror.xyz/indexas.eth/r8ASALRJ2NK9sTAnIIp4-bTVsd8CaKQoRdRG1TFR3Sc)
