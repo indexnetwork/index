@@ -26,11 +26,12 @@
 			margin-left: auto;
 		}
 		& .navbar-menu-left {
-		  display: inline-flex;
-  		align-items: center; 
+			display: inline-flex;
+			align-items: center;
 		}
 		.navbar-logo {
 			height: 2.6rem;
+			cursor: pointer;
 		}
 
 		@media (min-width: map-get($breakpoints, "sm")) {
