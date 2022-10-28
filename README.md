@@ -4,6 +4,8 @@
 
 index.as helps you to curate all-forms of content, create searchable indexes, and monetize them independently.
 
+![landing-2-img](https://testnet.index.as/images/landing-2.webp)
+
 ### Create your indexes by adding any content you like and find relevant.
 
 - Index articles, documents, NFTs, photos, videos, tweets and any other
@@ -12,12 +14,12 @@ index.as helps you to curate all-forms of content, create searchable indexes, an
 
 ### If you index it, then search it. Welcome to your refined search engine. Filter your indexes, and search as you type.
 
+
 - Filter your index by date, type, or any tag you want.
 - index.as will support semantically described content types such as person, company, event, place, etc.
 
 ### Collaborate on two-person projects up to DAO-scale. Monetize independently.
 
-![landing-4-img](https://testnet.index.as/images/landing-4.webp)
 
 - Specify on-chain criteria like "user must hold an NFT" and the network will provide permission to those who meet those criteria.
 - Monetize your index with your own terms by composing access control conditions.
