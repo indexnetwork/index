@@ -60,7 +60,6 @@ export interface LinksCrawlContentRequest {
 }
 const hostnameCheck = () =>{
 	if (typeof window !== 'undefined') {
-		console.log(window.location.hostname);
 		if(window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost"){
 			return appConfig.apiUrl;
 		}
