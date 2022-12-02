@@ -3,7 +3,7 @@ html {
 }
 
 body {
-  font-family: Inter, -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, Helvetica, sans-serif;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   -webkit-font-smoothing: antialiased;
 	font-size: map-get($font-size, "md");
 	line-height: map-get($font-line-height, "md");

@@ -94,7 +94,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 										router.push("/profile");
 									}}>
 										<Flex alignItems="center">
-											<IconPeople width={12} height="100%"/>
+											<IconPeople width={16} height="100%"/>
 											<Text className="ml-3" element="span" size="md" theme="secondary">&nbsp;{t("common:profile")}</Text>
 										</Flex>
 									</DropdownMenuItem>
@@ -107,8 +107,8 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 									<DropdownMenuItem divider/>
 									<DropdownMenuItem onClick={disconnect}>
 										<Flex alignItems="center">
-											<IconLogout className="icon-error" width={12} height="100%"/>
-											<Text className="ml-3" element="span" size="md" theme="error">&nbsp;{t("common:logout")}</Text>
+											<IconLogout className="icon-error" width={16} height="100%"/>
+											<Text className="ml-3 dropdown-text-logout" element="span" size="md" theme="error">&nbsp;{t("common:logout")}</Text>
 										</Flex>
 									</DropdownMenuItem>
 								</>

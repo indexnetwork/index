@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconAdd: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--main)", strokeWidth = "1.2", ...props }) => (
+const IconAdd: React.FC<React.SVGProps<SVGSVGElement>> = ({ stroke = "var(--gray-4)", strokeWidth = "1.2", ...props }) => (
 	<svg className="icon"
 		width={16}
 		height={16}

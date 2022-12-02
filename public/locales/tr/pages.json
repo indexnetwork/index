@@ -1,8 +1,8 @@
 {
 	"home": {
-		"tab1Ttl": "Size ait indexler ({{count}})",
-		"tab2Ttl": "Sizinle paylaşılanlar ({{count}})",
-		"searchPh": "Indexlerinizi arayın",
-		"searchLink": "Linklerinizi arayın"
+		"tab1Ttl": "Your indexes ({{count}})",
+		"tab2Ttl": "Shared with you ({{count}})",
+		"searchPh": "Search in your indexes",
+		"searchLink": "Search in your links"
 	}
 }

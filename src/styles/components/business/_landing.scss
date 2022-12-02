@@ -214,6 +214,31 @@
 			font-size: 6rem;
 			line-height: 7.38rem;
 		}
+		.lnd-5-text{
+			width: 450px;
+			height: 72px;
+
+			font-family: 'Inter';
+			font-style: normal;
+			font-weight: 400;
+			font-size: 16px;
+			line-height: 150.02%;
+			/* or 24px */
+
+			letter-spacing: 0.02em;
+
+			/* Grey7 */
+
+			color: #686868;
+
+
+			/* Inside auto layout */
+
+			flex: none;
+			order: 1;
+			align-self: stretch;
+			flex-grow: 0;
+		}
 
 		.lnd-5-img {
 			max-height: 32px;

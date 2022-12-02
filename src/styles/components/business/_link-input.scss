@@ -3,13 +3,25 @@
 	background-color: $gray-1;
 	display: flex;
 	align-items: center;
+	border-radius: 4px;
 
 	.link-input__input {
+		color: $gray-5;
+		border-radius: 4px;
 		border: none;
+		
 		padding-left: map-deep-get($spacing, "xs", "6") !important;
 		padding-right: map-deep-get($spacing, "xs", "6") !important;
+		
 		& > input {
 			background-color: $gray-1;
+			color: $gray-5;
+		}
+		:focus::placeholder{
+			opacity: 0.37;
 		}
 	}
+	
+
 }
+

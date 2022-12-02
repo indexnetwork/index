@@ -1,6 +1,7 @@
 .dropdown {
 	display: inline-block;
 	position: relative;
+	letter-spacing: 0;
 
 	.dropdown-menu {
 		@include no-select;

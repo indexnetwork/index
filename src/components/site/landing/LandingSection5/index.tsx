@@ -28,7 +28,7 @@ const LandingSection5: React.VFC = () => (
 						alignItems="flex-start"
 					>
 						<img className="lnd-5-img" alt="ceramic-img" src="/images/ceramic.png" />
-						<Text theme="secondary">Ceramic is a decentralized data network that brings unlimited data composability to Web3 applications.</Text>
+						<Text className="lnd-5-text" theme="secondary">Ceramic is a decentralized data network that brings unlimited data composability to Web3 applications.</Text>
 					</Flex>
 				</Col>
 				<Col lg={6} xs={12}>
@@ -39,7 +39,7 @@ const LandingSection5: React.VFC = () => (
 						alignItems="flex-start"
 					>
 						<img className="lnd-5-img" alt="lit-img" src="/images/lit.png" />
-						<Text theme="secondary">Lit Protocol is decentralized access control infrastructure designed to bring more utility to the web.</Text>
+						<Text className="lnd-5-text" theme="secondary">Lit Protocol is decentralized access control infrastructure designed to bring more utility to the web.</Text>
 					</Flex>
 				</Col>
 				<Col lg={6} xs={12}>
@@ -50,7 +50,7 @@ const LandingSection5: React.VFC = () => (
 						alignItems="flex-start"
 					>
 						<img className="lnd-5-img" alt="ipfs-img" src="/images/ipfs.png" />
-						<Text theme="secondary">A peer-to-peer hypermedia protocol designed to preserve and grow humanity&apos;s knowledge by making the web upgradeable, resilient, and more open.</Text>
+						<Text className="lnd-5-text" theme="secondary">A peer-to-peer hypermedia protocol designed to preserve and grow humanity&apos;s knowledge by making the web upgradeable, resilient, and more open.</Text>
 					</Flex>
 				</Col>
 				<Col lg={6} xs={12}>
@@ -60,8 +60,8 @@ const LandingSection5: React.VFC = () => (
 						className="py-3"
 						alignItems="flex-start"
 					>
-						<img className="lnd-5-img" alt="gnosis-img" src="/images/gnosis.png" />
-						<Text theme="secondary">The most trusted platform to manage digital assets on Ethereum.</Text>
+						<img className="lnd-5-img" alt="unlock-img" src="/images/unlock.png" />
+						<Text className="lnd-5-text" theme="secondary">Unlock is a protocol which enables creators to monetize their content with a few lines of code in a fully decentralized way.</Text>
 					</Flex>
 				</Col>
 			</FlexRow>

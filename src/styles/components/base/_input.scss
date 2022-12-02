@@ -3,7 +3,7 @@
 	display: inline-block;
 	border: $border-base;
 	border-radius: $border-radius-base;
-	padding-left: map-deep-get($spacing, "xs", "6");
+	padding-left: map-deep-get($spacing, "xs", "5");
 	padding-right: map-deep-get($spacing, "xs", "6");
 	line-height: 0;
 	align-items: center;
@@ -21,10 +21,14 @@
 		outline: none;
 		outline-width: 0 !important;
 	}
+	:focus::placeholder{
+		opacity: 0.37;
+	}
 
 	&.input-block {
 		width: 100%;
 	}
+
 
 	& input::placeholder {
 		color: $secondary-text-color;
@@ -43,7 +47,8 @@
 
 	&.input-add-on-before {
 		input {
-			margin-left: map-deep-get($spacing, "xs", "6");
+			margin-left: map-deep-get($spacing, "xs", "3");
+			
 		}
 	}
 
@@ -61,6 +66,7 @@
 		input {
 			background-color: transparent;
 		}
+		
 	}
 
 	&.input-xs {
@@ -97,4 +103,5 @@
 			}
 		}
 	}
+
 }
