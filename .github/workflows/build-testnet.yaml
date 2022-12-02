@@ -1,7 +1,7 @@
 name: deploy
 on:
   push:
-    branches: dev
+    branches: testnet
 jobs:
   main:
     runs-on: ubuntu-latest
@@ -58,4 +58,4 @@ jobs:
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/web3-web-app web3-web-app=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace web3-dev
+          kubectl set image deployment/web3-web-app web3-web-app=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace testnet
