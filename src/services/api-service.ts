@@ -58,9 +58,19 @@ export interface LinksCrawlContentRequest {
 	streamId: string;
 	links: Links[];
 }
-
+const hostnameCheck = () =>{
+	if (typeof window !== 'undefined') {
+		console.log(window.location.hostname);
+		if(window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost"){
+			return appConfig.apiUrl;
+		}
+		else if(window.location.hostname === "dev.index.as"){
+			return appConfig.devApiUrl;
+		}
+	  } 
+}
 const apiAxios = axios.create({
-	baseURL: appConfig.apiUrl,
+	baseURL: hostnameCheck(),
 });
 
 apiAxios.interceptors.request.use((config) => {
