@@ -24,21 +24,20 @@ export function useSocket(): UseSocketType {
 	const handlers: ListenEvents = useMemo(() => ({
 		deneme: (data: any) => {
 			setSynced(data);
-			console.log(data);
 		},
 	}), []);
 
-	const hostnameCheck = () : string =>{
-		if (typeof window !== 'undefined') {
-			if(window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost"){
+	const hostnameCheck = () : string => {
+		if (typeof window !== "undefined") {
+			if (window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost") {
 				return appConfig.baseUrl;
 			}
-			else if(window.location.hostname === "dev.index.as"){
+			if (window.location.hostname === "dev.index.as") {
 				return appConfig.devBaseUrl;
 			}
-		  } 
+		  }
 		  return appConfig.baseUrl;
-	}
+	};
 	useEffect(() => {
 		if (io.current && io.current.connected) {
 			io.current.removeAllListeners();
