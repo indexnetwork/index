@@ -21,24 +21,13 @@ class CeramicService2 {
 		  }
 		  return appConfig.ceramicNode;
 	};
-	hostnameCheckForNetwork = () : string => {
-		if (typeof window !== "undefined") {
-			if (window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost") {
-				return appConfig.ceramicNetworkName;
-			}
-			if (window.location.hostname === "dev.index.as") {
-				return appConfig.devCeramicNetworkName;
-			}
-		  }
-		  return appConfig.ceramicNetworkName;
-	};
 	private account?: string;
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
 	});
 	private client = (isSSR() ? undefined : new WebClient({
 		ceramic: this.hostnameCheck(),
-		connectNetwork: this.hostnameCheckForNetwork() as any,
+		connectNetwork: appConfig.ceramicNetworkName as any,
 	})) as WebClient;
 
 	private self?: SelfID;
