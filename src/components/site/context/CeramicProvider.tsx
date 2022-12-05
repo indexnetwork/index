@@ -108,7 +108,17 @@ const CeramicProvider: React.FC<{}> = ({
 	const setProfile = async (profile: BasicProfile) => ceramicService.setProfile(profile);
 
 	const uploadImage = async (file: File) => ceramicService.uploadImage(file);
-
+	const hostnameCheck = () : string => {
+		if (typeof window !== "undefined") {
+			if (window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost") {
+				return appConfig.baseUrl;
+			}
+			if (window.location.hostname === "dev.index.as") {
+				return appConfig.devBaseUrl;
+			}
+		  }
+		  return appConfig.baseUrl;
+	};
 	useEffect(() => {
 		if (authenticated) {
 			if (io.current && io.current.connected) {
@@ -117,9 +127,9 @@ const CeramicProvider: React.FC<{}> = ({
 			}
 
 			const token = localStorage.getItem("auth_token");
-
+			const output: string = hostnameCheck();
 			if (token) {
-				io.current = socketIoClient(appConfig.baseUrl, {
+				io.current = socketIoClient(output, {
 					path: "/api/socket.io",
 					extraHeaders: {
 						Authorization: `Bearer ${token}`,
