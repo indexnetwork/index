@@ -10,13 +10,35 @@ import { appConfig } from "config";
 import api from "./api-service";
 
 class CeramicService2 {
+	hostnameCheck = () : string => {
+		if (typeof window !== "undefined") {
+			if (window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost") {
+				return appConfig.ceramicNode;
+			}
+			if (window.location.hostname === "dev.index.as") {
+				return appConfig.devCeramicNode;
+			}
+		  }
+		  return appConfig.ceramicNode;
+	};
+	hostnameCheckForNetwork = () : string => {
+		if (typeof window !== "undefined") {
+			if (window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost") {
+				return appConfig.ceramicNetworkName;
+			}
+			if (window.location.hostname === "dev.index.as") {
+				return appConfig.devCeramicNetworkName;
+			}
+		  }
+		  return appConfig.ceramicNetworkName;
+	};
 	private account?: string;
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
 	});
 	private client = (isSSR() ? undefined : new WebClient({
-		ceramic: appConfig.ceramicNode,
-		connectNetwork: appConfig.ceramicNetworkName as any,
+		ceramic: this.hostnameCheck(),
+		connectNetwork: this.hostnameCheckForNetwork() as any,
 	})) as WebClient;
 
 	private self?: SelfID;
@@ -72,7 +94,6 @@ class CeramicService2 {
 				streamId: doc.id!.toString(),
 			};
 		} catch (err) {
-			console.log(err);
 			return null;
 		}
 	}

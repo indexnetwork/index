@@ -6,5 +6,7 @@ export const appConfig = {
 	ipfsProxy: "https://ipfs.io/ipfs/",
 	ipfsInfura: "https://ipfs.infura.io:5001/api/v0",
 	ceramicNode: "https://testnet.index.as/ceramic",
+	devCeramicNode: "https://dev.index.as/ceramic",
+	devCeramicNetworkName: "dev-clay",
 	ceramicNetworkName: "testnet-clay",
 };
