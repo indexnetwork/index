@@ -86,13 +86,13 @@ const LandingSection6: React.VFC = () => {
 										<Header level={2}>Beta</Header>
 										<ul className={cm.list2}>
 											<li>
-												<Text theme="secondary">Enabling monetization and collaboration with Lit Protocol</Text>
+												<Text theme="secondary">Collaborative indexing with Lit Protocol</Text>
 											</li>
 											<li>
-												<Text theme="secondary">Featuring multi-use ownership with Gnosis safe</Text>
+												<Text theme="secondary">Subscription enabled search engines with Unlock Protocol</Text>
 											</li>
 											<li>
-												<Text theme="secondary">Collaboration with DAOs, companies and individual curators</Text>
+												<Text theme="secondary">Experiments with DAOs, companies and individual curators.</Text>
 											</li>
 										</ul>
 									</Flex>
@@ -202,13 +202,16 @@ const LandingSection6: React.VFC = () => {
 											<Header level={2}>V1</Header>
 											<ul className={cm.list}>
 												<li>
-													<Text theme="secondary">Enabling browser extension and highlighted content</Text>
+													<Text theme="secondary">Browser extension and highlighted content</Text>
 												</li>
 												<li>
 													<Text theme="secondary">Featuring custom view options and filters</Text>
 												</li>
 												<li>
-													<Text theme="secondary">Launching subscription based monetization</Text>
+													<Text theme="secondary">Token curated indexes</Text>
+												</li>
+												<li>
+													<Text theme="secondary">Index bundling</Text>
 												</li>
 											</ul>
 										</Flex>
