@@ -2,6 +2,7 @@ import IconDiscord from "components/base/Icon/IconDiscord";
 import IconTwitter from "components/base/Icon/IconTwitter";
 import Footer, { FooterMenu } from "components/layout/base/Footer";
 import React from "react";
+import LogoFull from "components/base/Logo/LogoFull";
 
 const SiteFooter: React.FC = () => (
 	<Footer>
@@ -12,9 +13,10 @@ const SiteFooter: React.FC = () => (
 			<a href="https://twitter.com/indexas" target="_blank" rel="noreferrer">
 				<IconTwitter fill="white" />
 			</a>
-			{/* <a href="https://twitter.com/indexas" target="_blank" rel="noreferrer">
+			{/* <a href="https://telegram.com/indexas" target="_blank" rel="noreferrer">
 				<IconTelegram fill="white" />
 			</a> */}
+			<LogoFull className="footer-logo"></LogoFull>
 		</FooterMenu>
 	</Footer>
 );
