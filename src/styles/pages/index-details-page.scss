@@ -25,3 +25,16 @@
 
 
 }
+.listItem{
+	position:static;
+	width: 607px;
+	height: 30px;
+	left: calc(50% - 607px/2 - 31.5px);
+	top: calc(50% - 30px/2);
+	font-family: 'Inter';
+	font-style: normal;
+	font-weight: 400;
+	font-size: 12px;
+	line-height: 15px;
+	color: #3F3F3F;
+}

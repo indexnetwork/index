@@ -193,7 +193,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 				{
 					search && content && (
 						<Col className="mt-5">
-							<Text theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize(content || "") }}></Text>
+							<Text className="listItem" theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize(content || "") }}></Text>
 						</Col>
 					)
 				}

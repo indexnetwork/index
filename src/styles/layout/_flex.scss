@@ -6,7 +6,9 @@
 			content: none;
 		}
 	}
-
+	.idxcol-auto{
+		width: fit-content;
+	}
 	
 	&-col {
 		display: flex;

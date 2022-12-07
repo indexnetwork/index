@@ -6,7 +6,9 @@ import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
 import IconPeople from "components/base/Icon/IconPeople";
 import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
-import React, { useCallback, useContext, useEffect } from "react";
+import React, {
+	useCallback, useContext, useEffect, useState,
+} from "react";
 import IconLogout from "components/base/Icon/IconLogout";
 import Router, { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
@@ -16,6 +18,7 @@ import { useAuth } from "hooks/useAuth";
 import { selectProfile } from "store/slices/profileSlice";
 import { appConfig } from "config";
 import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
+import animationData from "./loading.json";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
@@ -24,8 +27,8 @@ export interface LandingHeaderProps extends NavbarProps {
 
 const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLanding = false, ...baseProps }) => {
 	const { t } = useTranslation(["common", "components"]);
-
 	const router = useRouter();
+	const [isLoading, setIsLoading] = useState(false);
 
 	const {
 		address,
@@ -38,7 +41,6 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 	} = useAppSelector(selectProfile);
 
 	const authenticated = useAuth();
-
 	const { connect, disconnect } = useContext(AuthHandlerContext);
 
 	const handleCreate = () => {
@@ -54,9 +56,16 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 	const handleConnect = async () => {
 		try {
 			await connect("injected");
+			setIsLoading(true);
 		} catch (err) {
 			console.log(err);
 		}
+	};
+	const defaultOptions = {
+		loop: true,
+		autoplay: true,
+		animationData,
+		renderer: "json",
 	};
 
 	const renderHeader = useCallback(() => (headerType === "public" ? (
@@ -69,10 +78,16 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			{...baseProps}
 		>
 			<NavbarMenu placement="right">
-				<Button
-					theme="primary"
-					onClick={handleConnect}
-				>{t("common:connect")}</Button>
+				{isLoading ? (
+					<Button
+						theme="primary"
+					>{("Loading...")}</Button>
+				) : (
+					<Button
+						theme="primary"
+						onClick={handleConnect}
+					>{t("common:connect")}</Button>
+				)}
 			</NavbarMenu>
 		</Navbar>
 	) : (
