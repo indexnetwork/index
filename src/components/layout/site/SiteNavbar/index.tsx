@@ -78,10 +78,12 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			{...baseProps}
 		>
 			<NavbarMenu placement="right">
-				{isLoading ? (
+				{isLoading || (authenticated && isLanding) ? (
 					<Button
 						theme="primary"
-					>{("Loading...")}</Button>
+					>
+						{("Loading...")}
+					</Button>
 				) : (
 					<Button
 						theme="primary"
