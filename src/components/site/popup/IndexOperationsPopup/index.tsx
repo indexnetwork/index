@@ -94,7 +94,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 						</Flex>
 					</DropdownMenuItem>
 					<DropdownMenuItem onClick={() => {
-						copyToClipboard(`${window.location.href}/${streamId}/`);
+						copyToClipboard(`${window.location.href}`);
 					}}>
 						<Flex alignItems="center">
 							<IconLink1 width={16} height="100%" />
