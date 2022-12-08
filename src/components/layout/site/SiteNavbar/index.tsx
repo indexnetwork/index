@@ -3,6 +3,7 @@ import Button from "components/base/Button";
 import Text from "components/base/Text";
 import Dropdown from "components/base/Dropdown";
 import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
+import Lottie from "lottie-react";
 import IconPeople from "components/base/Icon/IconPeople";
 import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
@@ -81,8 +82,13 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 				{isLoading || (authenticated && isLanding) ? (
 					<Button
 						theme="primary"
+						className="lottie-text"
 					>
-						{("Loading...")}
+						<Lottie
+						  className="lottie-logo"
+						  animationData={animationData}
+						  />
+						{"Loading..."}
 					</Button>
 				) : (
 					<Button

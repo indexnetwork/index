@@ -41,3 +41,29 @@
 		}
 	}
 }
+.lottie-logo{
+	width: 20px;
+	height: 20px;
+	flex: none;
+	order: 0;
+	align-self: center;
+	flex-grow: 0;
+	margin-left: 0;
+}
+.lottie-text{
+	width: 120px;
+	height: 12px;
+	font-family: 'Inter';
+	font-style: normal;
+	font-weight: 500;
+	font-size: 14px;
+	line-height: 12px;
+	display: flex;
+	align-items: center;
+	text-align: center;
+	color: #FFFFFF;
+	mix-blend-mode: normal;
+	flex: none;
+	order: 1;
+	flex-grow: 0;
+}
