@@ -37,7 +37,6 @@ const Tag: React.FC<TagProps> = ({
 	...divProps
 }) => {
 	const divRef = useRef<HTMLDivElement>(null);
-
 	const [value, setValue] = useState<string | null | undefined>(text);
 	const [editActive, setEditActive] = useState(inputActive);
 

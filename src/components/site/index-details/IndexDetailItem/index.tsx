@@ -48,7 +48,6 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	onChange,
 }) => {
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
-
 	const [newTag, setNewTag] = useState<boolean>(false);
 
 	const router = useRouter();
@@ -70,6 +69,9 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 			onChange && onChange(doc?.content?.links || []);
 		}
 		setNewTag(false);
+		setTimeout(() => {
+			handleToggleNewTag();
+		}, 0);
 	};
 
 	const handleSetFavorite = async () => {
@@ -220,6 +222,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 								onEdit={handleNewTagEdit}
 							/>
 						}
+
 					</Col>
 				}
 			</FlexRow>
