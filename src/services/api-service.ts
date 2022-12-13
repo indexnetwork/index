@@ -60,9 +60,9 @@ export interface LinksCrawlContentRequest {
 }
 const hostnameCheck = () => {
 	if (typeof window !== "undefined") {
-		if (window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost") {
+		if (window.location.hostname === "testnet.index.as") {
 			return appConfig.apiUrl;
-		} if (window.location.hostname === "dev.index.as") {
+		} if (window.location.hostname === "dev.index.as" || window.location.hostname === "localhost") {
 			return appConfig.devApiUrl;
 		}
 	  }

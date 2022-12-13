@@ -110,10 +110,10 @@ const CeramicProvider: React.FC<{}> = ({
 	const uploadImage = async (file: File) => ceramicService.uploadImage(file);
 	const hostnameCheck = () : string => {
 		if (typeof window !== "undefined") {
-			if (window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost") {
+			if (window.location.hostname === "testnet.index.as") {
 				return appConfig.baseUrl;
 			}
-			if (window.location.hostname === "dev.index.as") {
+			if (window.location.hostname === "dev.index.as" || window.location.hostname === "localhost") {
 				return appConfig.devBaseUrl;
 			}
 		  }

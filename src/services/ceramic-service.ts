@@ -12,10 +12,10 @@ import api from "./api-service";
 class CeramicService2 {
 	hostnameCheck = () : string => {
 		if (typeof window !== "undefined") {
-			if (window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost") {
+			if (window.location.hostname === "testnet.index.as") {
 				return appConfig.ceramicNode;
 			}
-			if (window.location.hostname === "dev.index.as") {
+			if (window.location.hostname === "dev.index.as" || window.location.hostname === "localhost") {
 				return appConfig.devCeramicNode;
 			}
 		  }
