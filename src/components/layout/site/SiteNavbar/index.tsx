@@ -88,7 +88,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 						  className="lottie-logo"
 						  animationData={animationData}
 						  />
-						{"Loading..."}
+						{"Connecting"}
 					</Button>
 				) : (
 					<Button

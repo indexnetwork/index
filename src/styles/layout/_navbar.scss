@@ -51,19 +51,17 @@
 	margin-left: 0;
 }
 .lottie-text{
-	width: 120px;
-	height: 12px;
-	font-family: 'Inter';
-	font-style: normal;
-	font-weight: 500;
-	font-size: 14px;
-	line-height: 12px;
 	display: flex;
+	flex-direction: row;
+	justify-content: center;
 	align-items: center;
-	text-align: center;
-	color: #FFFFFF;
-	mix-blend-mode: normal;
+	padding: 14px 16px;
+	gap: 10px;
+	width: 138px;
+	height: 32px;
+	background: #7F7F7F;
+	border-radius: 2px;
 	flex: none;
-	order: 1;
+	order: 0;
 	flex-grow: 0;
 }
