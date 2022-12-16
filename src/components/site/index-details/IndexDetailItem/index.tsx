@@ -73,6 +73,9 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 			handleToggleNewTag();
 		}, 0);
 	};
+	const handleCloseTag = () => {
+		setNewTag(false);
+	};
 
 	const handleSetFavorite = async () => {
 		const doc = await ceramic.setLinkFavorite(streamId as string, id!, !favorite);
@@ -220,6 +223,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 								editable={true}
 								inputActive
 								onEdit={handleNewTagEdit}
+								onBlur={handleToggleNewTag}
 							/>
 						}
 
