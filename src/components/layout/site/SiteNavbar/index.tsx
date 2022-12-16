@@ -81,7 +81,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			<NavbarMenu placement="right">
 				{isLoading || (authenticated && isLanding) ? (
 					<Button
-						style={	{background: "#7F7F7F !important", borderColor: "#7F7F7F !important;" } }
+						style={	{ background: "#7F7F7F !important", borderColor: "#7F7F7F !important;" } }
 						theme="primary"
 						className="lottie-text"
 					>
