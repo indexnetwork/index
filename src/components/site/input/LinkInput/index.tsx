@@ -20,7 +20,16 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 	const [showMsg, setShowMsg] = useState(false);
 
 	const handleBlur: React.FocusEventHandler<HTMLInputElement> = () => {
-		if (validator.isURL(url)) {
+		const words = url.split(" ");
+
+		const links = words.filter((word) => validator.isURL(word));
+
+		if (links.length > 0) {
+			links.forEach((link) => {
+				onLinkAdd && onLinkAdd(link);
+			});
+			setUrl("");
+		} else if (validator.isURL(url)) {
 			onLinkAdd && onLinkAdd(url);
 			setUrl("");
 		} else if (url) {
@@ -35,7 +44,17 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 	const handleEnter = (e: any) => {
 		if (e && (e.code === "Enter" || e.code === "NumpadEnter")) {
 			e.preventDefault();
-			if (validator.isURL(url)) {
+
+			const words = url.split(" ");
+
+			const links = words.filter((word) => validator.isURL(word));
+
+			if (links.length > 0) {
+				links.forEach((link) => {
+					onLinkAdd && onLinkAdd(link);
+				});
+				setUrl("");
+			} else if (validator.isURL(url)) {
 				onLinkAdd && onLinkAdd(url);
 				setUrl("");
 			} else if (url) {
