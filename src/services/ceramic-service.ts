@@ -32,13 +32,10 @@ class CeramicService2 {
 
 	private self?: SelfID;
 
-	async authenticate(account: string) {
+	async authenticate(did: any) {
 		if (!isSSR()) {
 			try {
-				const authProvider = new EthereumAuthProvider((window as any).ethereum, account);
-				await this.client.authenticate(authProvider);
-				this.self = new SelfID({ client: this.client });
-				this.account = account;
+				this.client!.ceramic.did = did;
 				return true;
 			} catch (err) {
 				return false;
