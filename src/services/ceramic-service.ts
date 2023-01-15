@@ -1,6 +1,8 @@
-import { EthereumAuthProvider } from "@3id/connect";
 import { TileDocument } from "@ceramicnetwork/stream-tile";
-import { SelfID, WebClient } from "@self.id/web";
+import { SelfID } from "@self.id/web";
+
+import { CeramicClient } from "@ceramicnetwork/http-client"
+
 import { Indexes, LinkContentResult, Links } from "types/entity";
 import { prepareLinks, isSSR, setDates } from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
@@ -21,21 +23,26 @@ class CeramicService2 {
 		  }
 		  return appConfig.ceramicNode;
 	};
-	private account?: string;
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
 	});
+	/*
 	private client = (isSSR() ? undefined : new WebClient({
 		ceramic: this.hostnameCheck(),
 		connectNetwork: appConfig.ceramicNetworkName as any,
 	})) as WebClient;
+	*/
+
+	private ceramic = new CeramicClient("http://localhost:7007");
+
 
 	private self?: SelfID;
 
 	async authenticate(did: any) {
+		debugger;
 		if (!isSSR()) {
 			try {
-				this.client!.ceramic.did = did;
+				this.ceramic.setDID(did)
 				return true;
 			} catch (err) {
 				return false;
@@ -46,15 +53,15 @@ class CeramicService2 {
 	}
 
 	isAuthenticated() {
-		return !!(this.client?.ceramic?.did?.authenticated);
+		return !!(this.ceramic?.did?.authenticated);
 	}
 
 	async getIndexById(streamId: string) {
-		return TileDocument.load<Indexes>(this.client!.ceramic as any, streamId);
+		return TileDocument.load<Indexes>(this.ceramic as any, streamId);
 	}
 
 	async getIndexes(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }> {
-		return this.client.ceramic.multiQuery(streams) as any;
+		return this.ceramic.multiQuery(streams) as any;
 	}
 
 	async createIndex(data: Partial<Indexes>): Promise<Indexes | null> {
@@ -71,9 +78,7 @@ class CeramicService2 {
 				data.links = prepareLinks(data.links);
 			}
 
-			const doc = await TileDocument.create<Partial<Indexes>>(this.client!.ceramic as any, data, {
-				family: `index-as-${this.account || ""}`,
-			});
+			const doc = await TileDocument.create<Partial<Indexes>>(this.ceramic as any, data);
 
 			return {
 				...doc.content as any,
@@ -256,8 +261,8 @@ class CeramicService2 {
 
 	async close() {
 		if (this.isAuthenticated()) {
-			this.client!.ceramic.setDID(new DID());
-			return this.client.ceramic.close();
+			this.ceramic.setDID(new DID());
+			return this.ceramic.close();
 		}
 	}
 }

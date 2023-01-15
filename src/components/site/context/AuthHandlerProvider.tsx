@@ -57,6 +57,8 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 
 			if(sessionStr) {
 				session = await DIDSession.fromSession(sessionStr)
+				console.log(session.isAuthorized())
+
 			}
 
 			if(!session || (session.hasSession && session.isExpired)) {
@@ -81,11 +83,11 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 				session = await DIDSession.authorize(authMethod, { resources: ["ceramic://*"] });
 
 				localStorage.setItem("did", session.serialize());
-				// @ts-ignore
 				localStorage.setItem("provider", initProvider);
-				dispatch(setAuthLoading(false));
 
 			}
+			
+			dispatch(setAuthLoading(false));
 
 		}
 	};
