@@ -1,8 +1,6 @@
 import { DIDSession } from "did-session";
 import { EthereumWebAuth, getAccountId } from "@didtools/pkh-ethereum";
 
-
-
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
@@ -32,7 +30,6 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	const [init, setInit] = useState(false);
 	const router = useRouter();
 
-
 	const disconnect = async () => {
 		dispatch(disconnectApp());
 		// deactivate();
@@ -42,26 +39,22 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	};
 
 	const resetProvider = () => {
-		localStorage.removeItem("provider");
-		localStorage.removeItem("auth_token");
+		localStorage.removeItem("provider"); // Handle this part
+		localStorage.removeItem("auth_token"); // Handle this part
 	};
 
 	const connectMetamask = async (initProvider?: any) => {
-
 		// Metamask Login
 		dispatch(setAuthLoading(true));
 		if (!connection.metaMaskConnected) {
-
 			const sessionStr = localStorage.getItem("did"); // for production, you will want a better place than localStorage for your sessions.
 
-
-			if(sessionStr) {
-				session = await DIDSession.fromSession(sessionStr)
-				console.log(session.isAuthorized())
-
+			if (sessionStr) {
+				session = await DIDSession.fromSession(sessionStr);
+				console.log(session.isAuthorized());
 			}
 
-			if(!session || (session.hasSession && session.isExpired)) {
+			if (!session || (session.hasSession && session.isExpired)) {
 				if (window.ethereum === null || window.ethereum === undefined) {
 					throw new Error("No injected Ethereum provider found.");
 				}
@@ -71,8 +64,8 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 				const addresses = await ethProvider.enable({
 					method: "eth_requestAccounts",
 				});
-				const accountId = await getAccountId(ethProvider, addresses[0])
-				const authMethod = await EthereumWebAuth.getAuthMethod(ethProvider, accountId)
+				const accountId = await getAccountId(ethProvider, addresses[0]);
+				const authMethod = await EthereumWebAuth.getAuthMethod(ethProvider, accountId);
 
 				/**
 				 * Create DIDSession & provide capabilities that we want to access.
@@ -84,11 +77,9 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 
 				localStorage.setItem("did", session.serialize());
 				localStorage.setItem("provider", initProvider);
-
 			}
-			
-			dispatch(setAuthLoading(false));
 
+			dispatch(setAuthLoading(false));
 		}
 	};
 
@@ -103,12 +94,11 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	};
 
 	const completeConnections = async () => {
-		await authToCeramic()
+		await authToCeramic();
 	};
 
 	// App Loads
 	useEffect(() => {
-
 		if (!session || (session.hasSession && session.isExpired)) {
 			dispatch(setMetaMaskConnected({
 				metaMaskConnected: false,
@@ -119,10 +109,9 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 				metaMaskConnected: true,
 			}));
 		}
-		if(!init){
-			setInit(true)
+		if (!init) {
+			setInit(true);
 		}
-
 	}, [session]);
 
 	useEffect(() => {
