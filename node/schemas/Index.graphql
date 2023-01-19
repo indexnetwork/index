@@ -1,5 +1,5 @@
 type Index @createModel(accountRelation: LIST, description: "A Simple Index"){
     title: String! @string(maxLength:1000)
     version: CommitID! @documentVersion
-    collabAction: String @string(maxLength:150)
+    collab_action: String @string(maxLength:150)
 }

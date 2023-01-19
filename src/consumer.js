@@ -1,3 +1,4 @@
+require('dotenv').config()
 const _ = require('lodash')
 const { Kafka } = require('kafkajs')
 const indexer = require('./controllers/indexer.js')
@@ -8,8 +9,8 @@ const kafka = new Kafka({
 })
 
 const topics = {
-    'postgres.public.kjzl6hvfrbw6c8h4pade9b7b37yg0dcm2vy5ilqhwcdlwwmkve2173np0dwi3g8': 'link',
-    'postgres.public.kjzl6hvfrbw6cakrkcfo753x5e2xno56ggo44120sfp4z99fzfgyk7v731mzv6d': 'index'
+    'postgres.public.kjzl6hvfrbw6c8696fsod7n8ziu7gjn66opuepm2g5h12kiak7dsl4vcq7avkhl': 'link',
+    'postgres.public.kjzl6hvfrbw6c62eb8h5htpr5yzizs1oc6w834botm5mdfnju6smn441uubss1x': 'index'
 }
 
 async function start() {
@@ -34,7 +35,8 @@ async function start() {
             }
 
             let doc = {
-                ..._.pick(value, ['stream_id', 'controller_did', 'created_at','updated_at']),
+                id: value.stream_id,
+                ..._.pick(value, ['controller_did', 'created_at','updated_at']),
                 ...value.stream_content
             }
 

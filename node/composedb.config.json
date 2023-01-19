@@ -23,7 +23,7 @@
   "node": {},
   "state-store":{
     "mode":"fs",
-    "local-directory":"/Users/serafettin/Documents/apps/indexas/api-new/daemon/statestore/"
+    "local-directory":"/Users/serafettin/Documents/apps/indexas/api-new/node/daemon/statestore/"
    },
    "indexing":{
     "db":"postgres://postgres:wGW9Ck4U7SKgkZjGMqtnab9Q@postgresql.composedb/composedb",

@@ -1,9 +1,9 @@
-type Index @loadModel(id: "kjzl6hvfrbw6cakrkcfo753x5e2xno56ggo44120sfp4z99fzfgyk7v731mzv6d") {
+type Index @loadModel(id: "kjzl6hvfrbw6c62eb8h5htpr5yzizs1oc6w834botm5mdfnju6smn441uubss1x") {
   id: ID!
 }
 
 type UserIndex @createModel(accountRelation: LIST, description: "User Indexes"){
-    indexID: StreamID! @documentReference(model: "Index")
-    index: Index! @relationDocument(property: "indexID")
+    index_id: StreamID! @documentReference(model: "Index")
+    index: Index! @relationDocument(property: "index_id")
     version: CommitID! @documentVersion
 }

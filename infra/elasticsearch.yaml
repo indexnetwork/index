@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    product: k8s-elastic
+  name: elastic-config
+data:
+  elasticsearch.yml: |
+    discovery.type: single-node
+    xpack.security.enabled: false
+    xpack.security.enrollment.enabled: false
+    xpack.security.http.ssl:
+      enabled: false
+    xpack.security.transport.ssl:
+      enabled: false
+    network.host: 0.0.0.0
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+spec:
+  selector:
+    matchLabels:
+      run: elasticsearch
+  template:
+    metadata:
+      labels:
+        name: elasticsearch
+        run: elasticsearch
+    spec:
+      initContainers:
+        - name: set-vm-sync-limit
+          image: busybox
+          imagePullPolicy: IfNotPresent
+          command: ["sysctl", "-w", "vm.max_map_count=262144"]
+          securityContext:
+            privileged: true
+      containers:
+        - image: docker.elastic.co/elasticsearch/elasticsearch:8.6.0
+          name: elasticsearch
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9200
+              protocol: TCP
+          volumeMounts:
+            - name: elastic-config
+              mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+              subPath: elasticsearch.yml
+      volumes:
+        - name: elastic-config
+          configMap:
+            name: elastic-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  labels:
+    run: elasticsearch
+spec:
+  ports:
+    - port: 9200
+      targetPort: 9200
+      protocol: TCP
+  selector:
+    run: elasticsearch
+  type: LoadBalancer

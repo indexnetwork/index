@@ -1,7 +1,7 @@
 helm upgrade --install kafka bitnami/kafka --values values-kafka.yaml
 helm upgrade --install kowl cloudhut/kowl --values values-kowl.yaml
-helm upgrade --install  postgresql stable/postgresql --values values-postgresql.yaml
-helm upgrade --install elasticsearch elastic/elasticsearch --values values-elasticsearch.yaml
+helm upgrade --install postgresql stable/postgresql --values values-postgresql.yaml
+helm upgrade --install elasticsearch -f values-elasticsearch.yaml bitnami/elasticsearch
 
 kubectl apply -f kafkaconnect.yaml
 

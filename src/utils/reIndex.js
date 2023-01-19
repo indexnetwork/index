@@ -1,20 +1,21 @@
+require('dotenv').config()
 const { Client } = require('@elastic/elasticsearch')
-const searchClient = require('../services/elastic')
 const client = new Client({ node: process.env.ELASTIC_HOST })
 
-const db = require('../models')
-module.exports = reIndex = async () => {
-  try {
-
-    let exists = await client.indices.exists({
-      index: 'links'
+async function reset() {
+  let exists = await client.indices.exists({
+    index: 'links'
+  })
+  console.log("exists", exists)
+  if(exists){
+    await client.indices.delete({
+      index: 'links',
     })
-    if(exists){
-      await client.indices.delete({
-        index: 'links',
-      })
-    }
+  }
+}
 
+async function start() {
+  try {
     await client.indices.create({
       index: 'links',
       body: {
@@ -47,97 +48,75 @@ module.exports = reIndex = async () => {
     await client.indices.putMapping({
       "index": 'links',
       "body": {
-          "properties": {
-            "content": {
-              "type": "search_as_you_type",
-              "analyzer": "searchable",
-              "max_shingle_size": 3
-            },
-            "title": {
-              "type": "search_as_you_type",
-              "analyzer": "searchable",
-              "max_shingle_size": 3
-            },
-            "description": {
-              "type": "search_as_you_type",
-              "analyzer": "searchable",
-              "max_shingle_size": 3
-            },            
-            "url": {
-              "type": "search_as_you_type",
-              "analyzer": "searchable",
-              "max_shingle_size": 3
-            },
-            "tags": {
-              "type": "search_as_you_type",
-              "analyzer": "searchable",
-            },            
-            "sort": {
-              "type": "long"
-            },
-            "language": {
-              "type": "keyword"
-            },
-            "id": {
-              "type": "keyword"
-            },
-            "topic_id": {
-              "type": "keyword"
-            },
-            "created_at": {
-              "type": "date"
-            },            
-            "updated_at": {
-              "type": "date"
-            },
-            "topic": {
-              "properties": {
-                "id": {
-                  "type": "keyword"
-                },
-                "cloned_from": {
-                  "type": "keyword"
-                },                
-                "public_rights": {
-                  "type": "keyword"
-                },
-                "roles": {
-                  "type": "keyword"
-                },          
-                "slug": {
-                  "type": "keyword"
-                },
-                "title": {
-                  "type": "search_as_you_type",
-                  "analyzer": "searchable",
-                  "max_shingle_size": 3
-                },
-                "updated_at": {
-                  "type": "date"
-                },
-                "created_at": {
-                  "type": "date"
-                },
-              }
+        "properties": {
+          "id": {
+            "type": "keyword"
+          },
+          "controller_did": {
+            "type": "keyword"
+          },
+          "indexer_did": {
+            "type": "keyword"
+          },
+          "index_id": {
+            "type": "keyword"
+          },
+          "content": {
+            "type": "search_as_you_type",
+            "analyzer": "searchable",
+            "max_shingle_size": 3
+          },
+          "title": {
+            "type": "search_as_you_type",
+            "analyzer": "searchable",
+            "max_shingle_size": 3
+          },
+          "url": {
+            "type": "search_as_you_type",
+            "analyzer": "searchable",
+            "max_shingle_size": 3
+          },
+          "tags": {
+            "type": "search_as_you_type",
+            "analyzer": "searchable",
+          },
+          "created_at": {
+            "type": "date"
+          },
+          "updated_at": {
+            "type": "date"
+          },
+          "index": {
+            "properties": {
+              "id": {
+                "type": "keyword"
+              },
+              "controller_did": {
+                "type": "keyword",
+              },
+              "collab_action": {
+                "type": "keyword",
+              },
+              "title": {
+                "type": "search_as_you_type",
+                "analyzer": "searchable",
+                "max_shingle_size": 3
+              },
+              "updated_at": {
+                "type": "date"
+              },
+              "created_at": {
+                "type": "date"
+              },
             }
           }
-        },      
+        }
+      },
     })
+
   } catch (err) {
     console.log(err.meta.body)
   }
-
-  let topics = await db.topics
-  .findAll({
-    include: [
-      { model: db.links },
-      { model: db.users },
-      { model: db.invitations },
-    ],
-  })
-
-  for (let topic of topics) {
-     await searchClient.indexTopic(topic)
-     await searchClient.indexLinks(topic, topic.links)
-  }
 }
+//reset()
+start()

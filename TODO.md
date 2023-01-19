@@ -11,3 +11,6 @@
 - [ ] Todoların üzerinden denizle geç
 - [x] Search'u yeni yapıya geçir.
 - [ ] Todoların üzerinden denizle geç
+
+
+

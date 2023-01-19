@@ -1,7 +1,7 @@
-type Link @loadModel(id: "kjzl6hvfrbw6c8h4pade9b7b37yg0dcm2vy5ilqhwcdlwwmkve2173np0dwi3g8") {
+type Link @loadModel(id: "kjzl6hvfrbw6c8696fsod7n8ziu7gjn66opuepm2g5h12kiak7dsl4vcq7avkhl") {
   id: ID!
 }
-type Index @loadModel(id: "kjzl6hvfrbw6cakrkcfo753x5e2xno56ggo44120sfp4z99fzfgyk7v731mzv6d") {
+type Index @loadModel(id: "kjzl6hvfrbw6c62eb8h5htpr5yzizs1oc6w834botm5mdfnju6smn441uubss1x") {
   links: [Link] @relationFrom(model: "Link", property: "indexID")
-  linksCount: Int! @relationCountFrom(model:"Link", property:"indexID")
+  links_count: Int! @relationCountFrom(model:"Link", property:"indexID")
 }
