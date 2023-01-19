@@ -1,0 +1,7 @@
+type Link @loadModel(id: "kjzl6hvfrbw6c8h4pade9b7b37yg0dcm2vy5ilqhwcdlwwmkve2173np0dwi3g8") {
+  id: ID!
+}
+type Index @loadModel(id: "kjzl6hvfrbw6cakrkcfo753x5e2xno56ggo44120sfp4z99fzfgyk7v731mzv6d") {
+  links: [Link] @relationFrom(model: "Link", property: "indexID")
+  linksCount: Int! @relationCountFrom(model:"Link", property:"indexID")
+}

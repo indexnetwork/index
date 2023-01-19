@@ -1,0 +1,7 @@
+kowl:
+  config:
+    kafka:
+      brokers:
+        - kafka:9092
+      schemaRegistry:
+        enabled: false

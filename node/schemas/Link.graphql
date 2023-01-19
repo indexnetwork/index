@@ -1,0 +1,15 @@
+type Index @loadModel(id: "kjzl6hvfrbw6cakrkcfo753x5e2xno56ggo44120sfp4z99fzfgyk7v731mzv6d") {
+  id: ID!
+}
+
+type Link @createModel(accountRelation: LIST, description: "A Simple Link"){
+    indexID: StreamID! @documentReference(model: "Index")
+    index: Index! @relationDocument(property: "indexID")
+    indexerDID: DID!
+    url: String! @string(maxLength:5000)
+    title: String @string(maxLength:5000)
+    favicon: String @string(maxLength:5000)
+    tags: [String] @list(maxLength: 20) @string(maxLength: 140)    
+    content: String @string(maxLength:50000)
+    version: CommitID! @documentVersion
+}

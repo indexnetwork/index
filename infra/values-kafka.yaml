@@ -1,0 +1,7 @@
+autoCreateTopicsEnable: true
+deleteTopicEnable: true
+zookeeper:
+  persistence:
+    enabled: false
+persistence:
+  enabled: false
