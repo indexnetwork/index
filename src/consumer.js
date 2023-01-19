@@ -8,8 +8,8 @@ const kafka = new Kafka({
 })
 
 const topics = {
-    'postgres.public.kjzl6hvfrbw6c79v4kc8c3ws492ggnn08kic9b9m1w8cofycsucropm9uvpjsy6': 'link',
-    'postgres.public.kjzl6hvfrbw6c55n03lzzpmknkipx90dejbrknmcuawvn9zm63ph9d51e2695c5': 'index'
+    'postgres.public.kjzl6hvfrbw6c8h4pade9b7b37yg0dcm2vy5ilqhwcdlwwmkve2173np0dwi3g8': 'link',
+    'postgres.public.kjzl6hvfrbw6cakrkcfo753x5e2xno56ggo44120sfp4z99fzfgyk7v731mzv6d': 'index'
 }
 
 async function start() {
@@ -34,7 +34,7 @@ async function start() {
             }
 
             let doc = {
-                ..._.pick(value, ['controller_did', 'created_at','updated_at']),
+                ..._.pick(value, ['stream_id', 'controller_did', 'created_at','updated_at']),
                 ...value.stream_content
             }
 

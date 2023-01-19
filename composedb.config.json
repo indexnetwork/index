@@ -1,0 +1,31 @@
+{
+  "anchor": {},
+  "http-api": {
+    "cors-allowed-origins": [
+      ".*"
+    ],
+    "admin-dids": []
+  },
+  "ipfs": {
+    "mode": "bundled"
+  },
+  "logger": {
+    "log-level": 2,
+    "log-to-files": false
+  },
+  "metrics": {
+    "metrics-exporter-enabled": false
+  },
+  "network": {
+    "name": "testnet-clay"
+  },
+  "node": {},
+  "state-store": {
+    "mode": "fs",
+    "local-directory": "/Users/serafettin/.ceramic/statestore/"
+  },
+  "indexing": {
+    "db": "sqlite:///Users/serafettin/.ceramic/indexing.sqlite",
+    "allow-queries-before-historical-sync": true
+  }
+}
