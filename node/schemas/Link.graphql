@@ -3,6 +3,7 @@ type Index @loadModel(id: "kjzl6hvfrbw6c62eb8h5htpr5yzizs1oc6w834botm5mdfnju6smn
 }
 
 type Link @createModel(accountRelation: LIST, description: "A Simple Link"){
+    owner: DID! @documentAccount
     index_id: StreamID! @documentReference(model: "Index")
     index: Index! @relationDocument(property: "index_id")
     indexer_did: DID!
