@@ -74,7 +74,6 @@ const indexesWithLinksQuery = (
                 excludes: ["content"],
             },
             highlight: {
-                type: "plain",
                 fields: {
                     title: {
                         number_of_fragments: 0,
@@ -164,7 +163,6 @@ const linksQuery = (
             });
 
             search.highlight = {
-                type: "plain",
                 max_analyzed_offset: 20,
                 fields: {
                     title: {
@@ -249,7 +247,7 @@ exports.index = async (req, res, next) => {
 
     let reqParam = {skip:0, take: 10, search: 'link'}
 
-    const query = indexesWithLinksQuery(['kjzl6kcym7w8y9qkco9t53p73xk4iuc3mtxsqlg3ea3rbk2jjxvromhwbgt151n'], reqParam, 3);
+    const query = indexesWithLinksQuery(['kjzl6kcym7w8y92t6e29zyxxlj0ut3654bz6ngp6k6r5llnju4wwfwufg8isn5t'], reqParam, 3);
     const result = await client.search(query);
 
 
@@ -269,7 +267,7 @@ exports.link = async (req, res, next) => {
 
     let reqParam = {skip:0, take: 10, search: 'link'}
 
-    const query = linksQuery('kjzl6kcym7w8y8xxbhwyfht7d65cm7qyasxwt0motwjsjezj92560valvcopq53', reqParam);
+    const query = linksQuery('kjzl6kcym7w8y92t6e29zyxxlj0ut3654bz6ngp6k6r5llnju4wwfwufg8isn5t', reqParam);
     const result = await client.search(query);
 
     const totalCount = result?.hits?.hits &&
