@@ -1,4 +1,4 @@
-type Index @loadModel(id: "kjzl6hvfrbw6c62eb8h5htpr5yzizs1oc6w834botm5mdfnju6smn441uubss1x") {
+type Index @loadModel(id: "kjzl6hvfrbw6c806itknk4zvj5vxcjposg5e1196tyzqvg7zf0w5j16sdp035o9") {
   id: ID!
 }
 

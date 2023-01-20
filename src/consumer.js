@@ -9,8 +9,8 @@ const kafka = new Kafka({
 })
 
 const topics = {
-    'postgres.public.kjzl6hvfrbw6c8696fsod7n8ziu7gjn66opuepm2g5h12kiak7dsl4vcq7avkhl': 'link',
-    'postgres.public.kjzl6hvfrbw6c62eb8h5htpr5yzizs1oc6w834botm5mdfnju6smn441uubss1x': 'index'
+    'postgres.public.kjzl6hvfrbw6cb0dwlhc750jr0ndiv8sn1l6at7cb179ulet7azkx7bcfe25e9j': 'link',
+    'postgres.public.kjzl6hvfrbw6c806itknk4zvj5vxcjposg5e1196tyzqvg7zf0w5j16sdp035o9': 'index'
 }
 
 async function start() {
