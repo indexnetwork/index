@@ -14,11 +14,18 @@ async function getIndexById(id) {
                     id
                     title
                     collab_action
+                    created_at
+                    updated_at
+                    owner {
+                        id
+                    }
                 }}
           }`
         })
     })
     let res = await results.json();
+    res.data.node.controller_did = res.data.node.owner.id
+    delete res.data.node.owner
     return res.data.node
 }
 
@@ -39,6 +46,8 @@ const transformIndex = (index) => {
     }
 }
 module.exports.createIndex = async (index) => {
+    console.log("createIndex", index)
+
     await client.index({
         index: config.indexName,
         id: `index-${index.id}`,
@@ -48,6 +57,7 @@ module.exports.createIndex = async (index) => {
 }
 
 module.exports.updateIndex = async (index) => {
+    console.log("updateIndex", index)
 
     await client.index({
         index: config.indexName,
@@ -87,6 +97,7 @@ module.exports.updateIndex = async (index) => {
 }
 
 module.exports.createLink = async (link) => {
+    console.log("createLink", link)
 
     const index = await getIndexById(link.index_id)
     await client.index({
@@ -101,7 +112,7 @@ module.exports.createLink = async (link) => {
 }
 
 module.exports.updateLink = async (link) => {
-
+    console.log("updateLink", link)
     const index = await getIndexById(link.index_id)
     await client.index({
         index: config.indexName,

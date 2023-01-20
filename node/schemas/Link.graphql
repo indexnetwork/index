@@ -1,4 +1,4 @@
-type Index @loadModel(id: "kjzl6hvfrbw6c806itknk4zvj5vxcjposg5e1196tyzqvg7zf0w5j16sdp035o9") {
+type Index @loadModel(id: "kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn") {
   id: ID!
 }
 
@@ -13,4 +13,6 @@ type Link @createModel(accountRelation: LIST, description: "A Simple Link"){
     tags: [String] @list(maxLength: 20) @string(maxLength: 140)
     content: String @string(maxLength:50000)
     version: CommitID! @documentVersion
+    created_at: DateTime!
+    updated_at: DateTime!
 }

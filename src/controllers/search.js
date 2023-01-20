@@ -116,6 +116,9 @@ const linksQuery = (
             from: req.skip,
             size: req.take,
             _source_excludes: ["content", "index"],
+            collapse: {
+                field: "id",
+            },
             query: {
                 bool: {
                     must: [
@@ -162,6 +165,7 @@ const linksQuery = (
 
             search.highlight = {
                 type: "plain",
+                max_analyzed_offset: 20,
                 fields: {
                     title: {
                         number_of_fragments: 0,
@@ -176,11 +180,13 @@ const linksQuery = (
                 },
             };
         } else {
+            /*
             search.sort = {
                 sort: {
                     order: "asc",
                 },
             };
+            */
         }
 
         return search;
@@ -256,18 +262,25 @@ exports.index = async (req, res, next) => {
         records: indexResult,
     };
     res.json(response)
-    /*
-    const totalCount = (result?.hits?.total as any)?.value || 0;
 
-    const response: IndexSearchResponse = {
-        totalCount,
-        records: this.transformIndexSearch(result, !!req.search),
-        search: req,
-    };
-     */
 };
 
-exports.link = function(req, res, next){
+exports.link = async (req, res, next) => {
 
+    let reqParam = {skip:0, take: 10, search: 'link'}
+
+    const query = linksQuery('kjzl6kcym7w8y8xxbhwyfht7d65cm7qyasxwt0motwjsjezj92560valvcopq53', reqParam);
+    const result = await client.search(query);
+
+    const totalCount = result?.hits?.hits &&
+    result?.hits?.hits.length > 0 ? (result?.hits?.hits[0].inner_hits?.links.hits.total)?.value : 0;
+
+    const response = {
+        totalCount,
+        records: transformLinkSearch(result, true),
+        ...reqParam
+    };
+
+    res.json(response)
 };
 

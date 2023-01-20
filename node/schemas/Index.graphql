@@ -3,4 +3,6 @@ type Index @createModel(accountRelation: LIST, description: "A Simple Index"){
     title: String! @string(maxLength:1000)
     version: CommitID! @documentVersion
     collab_action: String @string(maxLength:150)
+    created_at: DateTime!
+    updated_at: DateTime!
 }
