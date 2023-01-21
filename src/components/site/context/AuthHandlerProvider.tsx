@@ -31,27 +31,25 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	const router = useRouter();
 
 	const disconnect = async () => {
-		dispatch(disconnectApp());
-		// deactivate();
-		await ceramicService.close();
 		resetProvider();
+		await ceramicService.close();
+		dispatch(disconnectApp());
 		router.push("/");
 	};
 
 	const resetProvider = () => {
-		localStorage.removeItem("provider"); // Handle this part
-		localStorage.removeItem("auth_token"); // Handle this part
+		localStorage.removeItem("provider");
+		localStorage.removeItem("did");
 	};
 
 	const connectMetamask = async (initProvider?: any) => {
 		// Metamask Login
 		dispatch(setAuthLoading(true));
+
 		if (!connection.metaMaskConnected) {
 			const sessionStr = localStorage.getItem("did"); // for production, you will want a better place than localStorage for your sessions.
-
 			if (sessionStr) {
 				session = await DIDSession.fromSession(sessionStr);
-				console.log(session.isAuthorized());
 			}
 
 			if (!session || (session.hasSession && session.isExpired)) {
@@ -67,16 +65,9 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 				const accountId = await getAccountId(ethProvider, addresses[0]);
 				const authMethod = await EthereumWebAuth.getAuthMethod(ethProvider, accountId);
 
-				/**
-				 * Create DIDSession & provide capabilities that we want to access.
-				 * @NOTE: Any production applications will want to provide a more complete list of capabilities.
-				 *        This is not done here to allow you to add more datamodels to your application.
-				 */
-				// TODO: update resources to only provide access to our composities
 				session = await DIDSession.authorize(authMethod, { resources: ["ceramic://*"] });
 
 				localStorage.setItem("did", session.serialize());
-				localStorage.setItem("provider", initProvider);
 			}
 
 			dispatch(setAuthLoading(false));

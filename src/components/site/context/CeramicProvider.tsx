@@ -1,25 +1,19 @@
 import React, {
-	useEffect, useMemo, useRef, useState,
+	useMemo, useState,
 } from "react";
 import ceramicService from "services/ceramic-service";
-
 import { TileDocument } from "@ceramicnetwork/stream-tile";
 import api from "services/api-service";
 import { Indexes, LinkContentResult, Links } from "types/entity";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
-import socketIoClient, { Socket } from "socket.io-client";
-import { useAuth } from "hooks/useAuth";
 import { CID } from "ipfs-http-client";
 import { appConfig } from "config";
 
 export type ListenEvents = {
 	contentSync: (data: LinkContentResult) => void;
 };
-export interface CeramicContextState {
-}
 
 export interface CeramicContextValue {
-	socketConnected: boolean;
 	syncedData: any;
 	createDoc(doc: Partial<Indexes>): Promise<Indexes | null>;
 	updateDoc(streamId: string, content: Partial<Indexes>): Promise<TileDocument<any>>;
@@ -41,16 +35,11 @@ export const CeramicContext = React.createContext<CeramicContextValue>({} as any
 const CeramicProvider: React.FC<{}> = ({
 	children,
 }) => {
-	const io = useRef<Socket<ListenEvents, {}>>();
-
-	const authenticated = useAuth();
 	const [syncedData, setSyncedData] = useState<LinkContentResult>();
 
-	// Socket Variables
-	const [socketConnected, setSocketConnected] = useState(false);
 	const handlers: ListenEvents = useMemo(() => ({
 		contentSync: async (data) => {
-			await ceramicService.syncContents(data);
+			// await ceramicService.syncContents(data);
 		},
 	}), []);
 
@@ -119,54 +108,9 @@ const CeramicProvider: React.FC<{}> = ({
 		  }
 		  return appConfig.baseUrl;
 	};
-	useEffect(() => {
-		if (authenticated) {
-			if (io.current && io.current.connected) {
-				io.current.removeAllListeners();
-				io.current.disconnect();
-			}
-
-			const token = localStorage.getItem("auth_token");
-			const output: string = hostnameCheck();
-			if (token) {
-				io.current = socketIoClient(output, {
-					path: "/api/socket.io",
-					extraHeaders: {
-						Authorization: `Bearer ${token}`,
-					},
-				}) as Socket<ListenEvents, {}>;
-
-				io.current!.on("connect", () => {
-					setSocketConnected(true);
-				});
-
-				io.current!.on("disconnect", () => {
-					setSocketConnected(false);
-				});
-
-				io.current!.on("connect_error", (err) => {
-					console.log(err);
-				});
-
-				Object.keys(handlers).forEach((k) => {
-					io.current!.on(k as keyof ListenEvents, handlers[k as keyof ListenEvents]);
-				});
-			}
-		} else if (io.current && io.current!.connected) {
-			io.current!.removeAllListeners();
-			io.current!.disconnect();
-		}
-
-		return () => {
-			if (io.current && io.current.connected) {
-				io.current!.disconnect();
-			}
-		};
-	}, [authenticated]);
 
 	return (
 		<CeramicContext.Provider value={{
-			socketConnected,
 			syncedData,
 			createDoc,
 			updateDoc,

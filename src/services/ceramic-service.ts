@@ -1,7 +1,7 @@
 import { TileDocument } from "@ceramicnetwork/stream-tile";
 import { SelfID } from "@self.id/web";
 
-import { CeramicClient } from "@ceramicnetwork/http-client"
+import { CeramicClient } from "@ceramicnetwork/http-client";
 
 import { Indexes, LinkContentResult, Links } from "types/entity";
 import { prepareLinks, isSSR, setDates } from "utils/helper";
@@ -35,14 +35,12 @@ class CeramicService2 {
 
 	private ceramic = new CeramicClient("http://localhost:7007");
 
-
 	private self?: SelfID;
 
 	async authenticate(did: any) {
-		debugger;
 		if (!isSSR()) {
 			try {
-				this.ceramic.setDID(did)
+				await this.ceramic.setDID(did);
 				return true;
 			} catch (err) {
 				return false;
@@ -61,7 +59,7 @@ class CeramicService2 {
 	}
 
 	async getIndexes(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }> {
-		return this.ceramic.multiQuery(streams) as any;
+		return await this.ceramic.multiQuery(streams) as any;
 	}
 
 	async createIndex(data: Partial<Indexes>): Promise<Indexes | null> {
