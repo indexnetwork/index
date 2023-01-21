@@ -21,6 +21,7 @@ async function start() {
       body: {
         settings: {
           "index": {
+            "highlight.max_analyzed_offset" : 60000000,
             "number_of_shards": "1",
             "analysis": {
               "filter": {

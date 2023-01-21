@@ -1,23 +1,36 @@
 # TODO
 
+
+
 - [x] Index Indexer
 - [x] Link Indexer
-- [] Index Search
-- [] ComposeDB Migration
 
+# Search
+- [x] Index Search
+- [x] Link Search
+1 hour:
+- [] Validations & Error Handling
+- [] ComposeDB Deployment
+- [] Consumer Deployment
+- [] Search Service Deployment 
+- [] Ingress + Cors
+
+# User Indexes
 - [] UserIndex UI (Seren)
 - [] UserIndex Indexer 
-- [] Search with DID
+- [] DID Search
 - [] Remove index from user indexes
 
-- [] Remove link 
-
+# Secondary
+- [] Remove link
 - [] Filtered Search
 - [] Sort links
 
+# Crawlers
 - [] Index Link Metadata
 - [] Index Link Content
 
+# Collaboration
 - [] Collaboration UI (Seren)
 - [] Conditional Signing 
 - [] PKP Mint 

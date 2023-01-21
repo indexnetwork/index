@@ -7,16 +7,15 @@ const config = {
 
 const indexesWithLinksQuery = (
     index_ids,
-    req = {
-        skip: 0,
-        take: 10,
-    },
-    linksSize = 3
+    search=false,
+    skip= 0,
+    take= 10,
+    links_size= 3
     ) => {
-    const search = {
+    const params = {
         index: config.indexName,
-        from: req.skip,
-        size: req.take,
+        from: skip,
+        size: take,
         _source_excludes: ["content"],
         query: {
             bool: {
@@ -39,8 +38,8 @@ const indexesWithLinksQuery = (
         },
     };
 
-    if (req.search) {
-        (search.query?.bool?.must).push({
+    if (search) {
+        (params.query?.bool?.must).push({
             bool: {
                 minimum_should_match: 1,
                 should: [
@@ -48,7 +47,7 @@ const indexesWithLinksQuery = (
                         multi_match: {
                             fields: ["title^10", "url", "content", "index.title"],
                             analyzer: "searchable",
-                            query: req.search,
+                            query: search,
                             type: "phrase_prefix",
                             slop: 1,
                             zero_terms_query: "all",
@@ -58,7 +57,7 @@ const indexesWithLinksQuery = (
                         multi_match: {
                             fields: ["tags^3"],
                             analyzer: "searchable",
-                            query: req.search,
+                            query: search,
                             type: "bool_prefix",
                             zero_terms_query: "all",
                         },
@@ -67,9 +66,9 @@ const indexesWithLinksQuery = (
             },
         });
 
-        search.collapse.inner_hits = {
+        params.collapse.inner_hits = {
             name: "links",
-            size: linksSize,
+            size: links_size,
             _source: {
                 excludes: ["content"],
             },
@@ -92,28 +91,27 @@ const indexesWithLinksQuery = (
             },
         };
     } else {
-        search._source_includes = ["index"];
-        search.sort = {
+        params._source_includes = ["index"];
+        params.sort = {
             "index.created_at": {
                 order: "desc",
             },
         };
     }
-    return search;
+    return params;
 };
 
 
 const linksQuery = (
         index_id,
-        req= {
-            skip: 0,
-            take: 10,
-        },
+        search=false,
+        skip=0,
+        take=10,
     ) => {
-        const search = {
+        const params = {
             index: config.indexName,
-            from: req.skip,
-            size: req.take,
+            from: skip,
+            size: take,
             _source_excludes: ["content", "index"],
             collapse: {
                 field: "id",
@@ -134,8 +132,8 @@ const linksQuery = (
             },
         };
 
-        if (req.search) {
-            (search.query?.bool?.must).push({
+        if (search) {
+            (params.query?.bool?.must).push({
                 bool: {
                     minimum_should_match: 1,
                     should: [
@@ -143,7 +141,7 @@ const linksQuery = (
                             multi_match: {
                                 fields: ["title^10", "url", "content"],
                                 analyzer: "searchable",
-                                query: req.search,
+                                query: search,
                                 type: "phrase_prefix",
                                 slop: 1,
                                 zero_terms_query: "all",
@@ -153,7 +151,7 @@ const linksQuery = (
                             multi_match: {
                                 fields: ["tags^3"],
                                 analyzer: "searchable",
-                                query: req.search,
+                                query: search,
                                 type: "bool_prefix",
                                 zero_terms_query: "all",
                             },
@@ -162,7 +160,7 @@ const linksQuery = (
                 },
             });
 
-            search.highlight = {
+            params.highlight = {
                 max_analyzed_offset: 20,
                 fields: {
                     title: {
@@ -187,7 +185,7 @@ const linksQuery = (
             */
         }
 
-        return search;
+        return params;
     };
 
 
@@ -243,17 +241,17 @@ const transformLinkSearch = (
 }
 
 
-exports.index = async (req, res, next) => {
+exports.index = async (req, res) => {
 
-    let reqParam = {skip:0, take: 10, search: 'link'}
-
-    const query = indexesWithLinksQuery(['kjzl6kcym7w8y92t6e29zyxxlj0ut3654bz6ngp6k6r5llnju4wwfwufg8isn5t'], reqParam, 3);
+    let {index_ids, search, skip, take, links_size} = req.body;
+    console.log(req.body)
+    const query = indexesWithLinksQuery(index_ids, search, skip, take, links_size);
     const result = await client.search(query);
 
 
     const totalCount = result.aggregations?.totalCount?.value || 0;
 
-    const indexResult = transformIndexSearch(result, (reqParam.search != null && !!reqParam.search));
+    const indexResult = transformIndexSearch(result, !!search);
 
     const response = {
         totalCount,
@@ -265,9 +263,9 @@ exports.index = async (req, res, next) => {
 
 exports.link = async (req, res, next) => {
 
-    let reqParam = {skip:0, take: 10, search: 'link'}
+    let {index_id, search, skip, take} = req.body;
 
-    const query = linksQuery('kjzl6kcym7w8y92t6e29zyxxlj0ut3654bz6ngp6k6r5llnju4wwfwufg8isn5t', reqParam);
+    const query = linksQuery(index_id, search, skip, take);
     const result = await client.search(query);
 
     const totalCount = result?.hits?.hits &&
@@ -275,8 +273,7 @@ exports.link = async (req, res, next) => {
 
     const response = {
         totalCount,
-        records: transformLinkSearch(result, true),
-        ...reqParam
+        records: transformLinkSearch(result, !!search),
     };
 
     res.json(response)
