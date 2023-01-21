@@ -1,30 +1,37 @@
 # TODO
 
-
-
+# Indexer
 - [x] Index Indexer
 - [x] Link Indexer
 
 # Search
 - [x] Index Search
 - [x] Link Search
-1 hour:
-- [] Validations & Error Handling
-- [] ComposeDB Deployment
-- [] Consumer Deployment
-- [] Search Service Deployment 
-- [] Ingress + Cors
+- [x] Validations & Error Handling
 
-# User Indexes
-- [] UserIndex UI (Seren)
-- [] UserIndex Indexer 
-- [] DID Search
-- [] Remove index from user indexes
+# ComposeDB UI
+- [] Create Index
+- [] Get Index
+- [] Update Index
+- [] Add Link
+- [] Update Link
 
 # Secondary
 - [] Remove link
 - [] Filtered Search
 - [] Sort links
+
+# Devops
+- [] ComposeDB Deployment
+- [] Consumer Deployment
+- [] Search Service Deployment
+- [] Ingress + Cors
+
+# User Indexes
+- [] UserIndex UI (Seren)
+- [] UserIndex Indexer
+- [] DID Search
+- [] Remove index from user indexes
 
 # Crawlers
 - [] Index Link Metadata
