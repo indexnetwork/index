@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "ceramic src/index.js",
-    "consumer": "ceramic src/consumer.js",
-    "reIndex": "ceramic src/utils/reIndex.js"
+    "start": "node src/index.js",
+    "consumer": "node src/consumer.js",
+    "reIndex": "node src/utils/reIndex.js"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.6.0",
