@@ -1,4 +1,11 @@
-const lambda = require('../services/lambda')
+const AWS = require('aws-sdk')
+const lambda = new AWS.Lambda({
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  region: process.env.AWS_S3_REGION,
+  version: 'v4',
+})
+
 const searchClient = require('../services/elastic')
 
 module.exports = getLinkContent = async (createdLinks, db) => {
@@ -42,7 +49,7 @@ lambda.invoke(
         url: payload.body,
       })
       __link.set('archive', payload.body, { raw: true })
-      
+
     }
   }
 )

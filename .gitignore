@@ -1,8 +1,8 @@
 .idea
 node_modules
 .DS_Store
-node/daemon
-node/temp/
+ceramic/daemon
+ceramic/temp/
 daemon
-node/priv.key
-node/pub.key
+ceramic/priv.key
+ceramic/pub.key
