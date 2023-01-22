@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: composedb
+  name: composedb
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      service: composedb
+  minReadySeconds: 5
+  template:
+    metadata:
+      labels:
+        service: composedb
+    spec:
+      containers:
+      - env:
+        - name: COMPOSEDB_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              key: priv.key
+              name: composedb-secret
+        image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/composedb:latest
+        command: ["composedb"]
+        args: ["graphql:server", "--graphiql", "--port=35000", "./config/merged-runtime.json", "--did-private-key=$(COMPOSEDB_PRIVATE_KEY)", "--ceramic-url=http://ceramic"]
+        imagePullPolicy: IfNotPresent  
+        volumeMounts:
+        - name: composedb-config
+          mountPath: /composedb/config/
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "25m"
+        name: composedb
+        ports:
+        - name: "http"
+          containerPort: 35000
+      volumes:
+        - name: composedb-config
+          configMap:
+            name: composedb-config  
+        - name: composedb-secret
+          configMap:
+            name: composedb-secret
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: composedb
+  name: composedb
+spec:
+  ports:
+    - name: "http"
+      port: 80
+      targetPort: 35000
+  selector:
+    service: composedb

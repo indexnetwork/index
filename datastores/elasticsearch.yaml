@@ -39,6 +39,9 @@ spec:
             privileged: true
       containers:
         - image: docker.elastic.co/elasticsearch/elasticsearch:8.6.0
+          env:
+          - name: ES_JAVA_OPTS
+            value: "-Xms20g -Xmx20g"        
           name: elasticsearch
           imagePullPolicy: IfNotPresent
           ports:
