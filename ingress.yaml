@@ -6,6 +6,21 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: "nginx"   
     nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header 'Access-Control-Allow-Origin' "$http_origin" always;
+      add_header 'Access-Control-Max-Age' 0;
+      add_header 'Access-Control-Expose-Headers' 'Content-Length,Set-Cookie,Content-Range' always;
+      add_header 'Access-Control-Allow-Methods' 'GET, PUT, POST, OPTIONS, DELETE' always;
+      add_header 'Access-Control-Allow-Credentials' true always;
+      add_header 'Access-Control-Allow-Headers' 'RoleID,Authorization,DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Set-Cookie' always;
+      if ($request_method = 'OPTIONS') {
+        add_header 'Access-Control-Allow-Credentials' true always;
+        add_header 'Access-Control-Allow-Headers' 'RoleID,Authorization,DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Set-Cookie' always;
+        add_header 'Access-Control-Allow-Origin' "$http_origin" always;
+        add_header 'Content-Type' 'text/plain; charset=utf-8';
+        add_header 'Content-Length' 0;
+        return 204;
+      }
 spec:     
   rules:
   - host: composedb.index.as
@@ -34,6 +49,21 @@ metadata:
   name: ceramic-ingress
   annotations:
     kubernetes.io/ingress.class: "nginx"   
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header 'Access-Control-Allow-Origin' "$http_origin" always;
+      add_header 'Access-Control-Max-Age' 0;
+      add_header 'Access-Control-Expose-Headers' 'Content-Length,Set-Cookie,Content-Range' always;
+      add_header 'Access-Control-Allow-Methods' 'GET, PUT, POST, OPTIONS, DELETE' always;
+      add_header 'Access-Control-Allow-Credentials' true always;
+      add_header 'Access-Control-Allow-Headers' 'RoleID,Authorization,DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Set-Cookie' always;
+      if ($request_method = 'OPTIONS') {
+        add_header 'Access-Control-Allow-Credentials' true always;
+        add_header 'Access-Control-Allow-Headers' 'RoleID,Authorization,DNT,X-Mx-ReqToken,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Set-Cookie' always;
+        add_header 'Access-Control-Allow-Origin' "$http_origin" always;
+        add_header 'Content-Type' 'text/plain; charset=utf-8';
+        add_header 'Content-Length' 0;
+        return 204;
+      }    
 spec:     
   rules:
   - host: ceramic.index.as
@@ -46,3 +76,4 @@ spec:
             name: ceramic
             port:
               number: 80
+
