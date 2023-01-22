@@ -29,8 +29,8 @@ const linkSearchSchema = Joi.object({
   take: Joi.number().default(10),
 })
 
-app.get('/search/indexes', validator.body(indexSearchSchema), search.index)
-app.get('/search/links', validator.body(linkSearchSchema), search.link)
+app.get('/indexes', validator.body(indexSearchSchema), search.index)
+app.get('/links', validator.body(linkSearchSchema), search.link)
 
 app.use((err, req, res, next) => {
   if (err && err.error && err.error.isJoi) {

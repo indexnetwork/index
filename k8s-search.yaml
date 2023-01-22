@@ -26,7 +26,7 @@ spec:
         image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:latest
         command: ["yarn"]
         args: ["start"]
-        imagePullPolicy: IfNotPresent  
+        imagePullPolicy: Always  
         resources:
           requests:
             memory: "256Mi"

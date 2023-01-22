@@ -28,7 +28,7 @@ spec:
         args: ["daemon", "--config", "./config/composedb.config.json"]
         imagePullPolicy: IfNotPresent  
         volumeMounts:
-        - name: ceramic-config
+        - name: composedb-config
           mountPath: /js-ceramic/config/
         resources:
           requests:
@@ -39,9 +39,9 @@ spec:
         - name: "http"
           containerPort: 7007
       volumes:
-        - name: ceramic-config
+        - name: composedb-config
           configMap:
-            name: ceramic-config          
+            name: composedb-config          
       restartPolicy: Always
 
 ---
