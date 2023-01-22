@@ -47,7 +47,6 @@ metadata:
   labels:
     app: kafkaconnect-service
 spec:
-  type: NodePort
   ports:
     - name: kafkaconnect
       protocol: TCP
