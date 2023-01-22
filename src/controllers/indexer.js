@@ -1,7 +1,12 @@
 const _ = require('lodash')
 
+const { Client } = require('@elastic/elasticsearch')
+const client = new Client({ node: process.env.ELASTIC_HOST })
+
+
+
 async function getIndexById(id) {
-    let results = await fetch('http://localhost:35000/graphql', {
+    let results = await fetch('http://composedb/graphql', {
         method: 'POST',
         headers: {
             "Content-Type": "application/json"
@@ -28,11 +33,6 @@ async function getIndexById(id) {
     delete res.data.node.owner
     return res.data.node
 }
-
-const { Client } = require('@elastic/elasticsearch')
-const client = new Client({ node: process.env.ELASTIC_HOST })
-
-
 
 
 const config = {

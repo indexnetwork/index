@@ -1,11 +1,14 @@
-require('dotenv').config()
+if(process.env.NODE_ENV !== 'production'){
+    require('dotenv').config()    
+}
+
 const _ = require('lodash')
 const { Kafka } = require('kafkajs')
 const indexer = require('./controllers/indexer.js')
 
 const kafka = new Kafka({
     clientId: 'api',
-    brokers: ['kafka.composedb:9092'],
+    brokers: [process.env.KAFKA_HOST],
 })
 
 const topics = {

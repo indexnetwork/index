@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: search
+  name: search
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      service: search
+  minReadySeconds: 5
+  template:
+    metadata:
+      labels:
+        service: search
+    spec:
+      containers:
+      - env:
+        - name: ELASTIC_HOST
+          value: "http://elasticsearch.composedb:9200"      
+        image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:latest
+        command: ["yarn"]
+        args: ["start"]
+        imagePullPolicy: IfNotPresent  
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "25m"
+        name: search
+        ports:
+        - name: "http"
+          containerPort: 3000    
+      restartPolicy: Always
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: search
+  name: search
+spec:
+  ports:
+    - name: "http"
+      port: 80
+      targetPort: 3000
+  selector:
+    service: search

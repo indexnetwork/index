@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: consumer
+  name: consumer
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      service: consumer
+  minReadySeconds: 5
+  template:
+    metadata:
+      labels:
+        service: consumer
+    spec:
+      containers:
+      - env:
+        - name: ELASTIC_HOST
+          value: "http://elasticsearch.composedb:9200"
+        - name: KAFKA_HOST
+          value: "kafka.composedb:9092"          
+        image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:latest
+        command: ["yarn"]
+        args: ["consumer"]
+        imagePullPolicy: IfNotPresent  
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "25m"
+        name: consumer    
+      restartPolicy: Always

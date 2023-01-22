@@ -1,6 +1,6 @@
-FROM node:12.19.0-alpine3.10
-WORKDIR /api
+FROM node:18
+WORKDIR /backend
 COPY package.json ./
 RUN yarn install
-COPY . .
+COPY src/ src/
 ENTRYPOINT yarn start

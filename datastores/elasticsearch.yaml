@@ -69,4 +69,3 @@ spec:
       protocol: TCP
   selector:
     run: elasticsearch
-  type: LoadBalancer
