@@ -29,7 +29,7 @@
 - [x] Consumer Deployment
 - [x] Search Service Deployment
 - [] Auto Deployment
-- [] Ingress + Cors
+- [x] Ingress + Cors
 
 # User Indexes
 - [] UserIndex UI (Seren)
