@@ -60,7 +60,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 
 	const handleConnect = async () => {
 		try {
-			await connect("injected");
+			await connect();
 		} catch (err) {
 			console.log(err);
 		}

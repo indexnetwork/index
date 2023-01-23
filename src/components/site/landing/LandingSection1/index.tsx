@@ -14,12 +14,11 @@ const LandingSection1: React.FC = () => {
 	const router = useRouter();
 
 	const authenticated = useAuth();
-
 	const { connect, disconnect } = useContext(AuthHandlerContext);
 
 	const handleConnect = async () => {
 		try {
-			await connect("injected");
+			await connect();
 		} catch (err) {
 			console.log(err);
 		}

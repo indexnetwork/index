@@ -16,7 +16,7 @@ declare global {
 }
 
 export interface AuthHandlerContextType {
-	connect(provider: any): Promise<void>;
+	connect(): Promise<void>;
 	disconnect(): void;
 }
 
@@ -38,7 +38,7 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 
 		router.push("/");
 	};
-	const connectMetamask = async (initProvider?: any) => {
+	const connectMetamask = async () => {
 		// Metamask Login
 		dispatch(setAuthLoading(true));
 
