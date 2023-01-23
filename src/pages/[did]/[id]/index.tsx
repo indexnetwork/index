@@ -39,7 +39,7 @@ import { selectProfile } from "store/slices/profileSlice";
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
-
+	const [linkStream, setLinkStream] = useMergedState<Partial<Links | undefined>>({});
 	const [stream, setStream] = useMergedState<Partial<Indexes>>({});
 	const tileDoc = useRef<Indexes>();
 	const [notFound, setNotFound] = useState(false);
@@ -63,21 +63,12 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const loadStream = async (streamId: string) => {
 		const doc = await ceramic.getDocById(streamId);
 		//TODO Fix
-		doc.links = [
-			{"updated_at": "2007-12-03T10:15:30Z",
-				"favicon": "favicon.png",
-				"created_at": "2007-12-03T10:15:30Z",
-				"indexer_did": "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
-				"id": "kjzl6kcym7w8y7vv1l63091kls4roqhiqf9qdzw5ruomxh3ymrci1an6mrcwa69",
-				"controller_did": "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
-				"title": "First link",
-				"index_id": "kjzl6kcym7w8y92t6e29zyxxlj0ut3654bz6ngp6k6r5llnju4wwfwufg8isn5t",
-				"url": "https://index.as/",
-				"sort": 1,
-				"content": "First content"}]
+		console.log("ddd",doc);
 		if (doc != null) {
 			setStream(doc);
-			tileDoc.current = doc
+			setLinkStream(doc.links)
+			//tileDoc.current = doc
+			console.log("ASDASDASD",doc.links)
 		} else {
 			setNotFound(true);
 		}
@@ -293,7 +284,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											search={search}
 											isOwner={isOwner}
 											streamId={router.query.id as any}
-											links={stream?.links}
+											//TODO LINKS DATA.MAP PROBLEM 
+											//links={linkStream}
 											onChange={handleReorderLinks}
 										/>
 									</Col>

@@ -81,6 +81,8 @@ const CeramicProvider: React.FC<{}> = ({
 
 	const getDocById = (streamId: string) => ceramicService.getIndexById(streamId);
 
+
+
 	const getDocs = (streams: { streamId: string }[]) => ceramicService.getIndexes(streams);
 
 	const getProfile = async () => ceramicService.getProfile();

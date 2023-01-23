@@ -72,9 +72,54 @@ class CeramicService2 {
 				collab_action
 				created_at
 				updated_at
+				links(first:10){
+					edges{
+					  node{
+						id
+						title
+						url
+						created_at
+						updated_at
+						content
+					  }
+					}
+				  }
 			}}
 		  }`);
-		return <Indexes>(result.data?.node as any);
+
+		  result.data.node.links = result.data.node.links.edges.map(l=>l.node);
+		  
+		  //result.data.node.links = links.map(l=>l.node);
+		  
+			console.log("ana data",result.data?.node.links);
+		  //console.log(result.data?.node?.links.edges);
+		return (
+		<Indexes>(result.data?.node as any)
+		);
+	}
+	async getLinksById(streamId: string) {
+		const result = await this.composeClient.executeQuery(`{
+			node(id:"${streamId}"){
+			  id
+			  ... on Index{
+				title
+				userID
+				createdAt
+				links(first:10){
+				  edges{
+					node{
+					  id
+					  title
+					  url
+					  createdAt
+					  updatedAt
+					  content
+					}
+				  }
+				}
+			}}
+		  }`);
+		return <Links>(result.data?.node as any);
 	}
 
 	async getIndexes(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }> {

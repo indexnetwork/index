@@ -9,6 +9,7 @@ export type Indexes = {
   controller_did: string;
   created_at: string;
   updated_at: string;
+  links: Links[];
 };
 
 /**
