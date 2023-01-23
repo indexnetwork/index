@@ -20,7 +20,6 @@
 		position: absolute;
 		bottom: 0;
 		width: 100%;
-		height: 70vh;
 		border-top-left-radius: $border-radius-base;
 		border-top-right-radius: $border-radius-base;
 		box-shadow: $box-shadow-base-thin;
@@ -37,6 +36,7 @@
 			padding: map-deep-get($spacing, "xs", "7") map-deep-get($spacing, "xs", "6");
 			flex-grow: 1;
 			overflow: auto;
+			
 		}
 
 		.modal-footer {
@@ -98,7 +98,7 @@
 	@media (min-width: map-get($breakpoints, "sm")) {
 		.modal-container-inner {
 			.modal-wrapper {
-				width: 60rem;
+				width: 500px;
 			}
 		}
 	}

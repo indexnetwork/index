@@ -20,17 +20,22 @@ import { selectProfile } from "store/slices/profileSlice";
 import { appConfig } from "config";
 import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
 import animationData from "./loading.json";
+import CreateModal from "components/site/modal/CreateModal";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
 	isLanding?: boolean;
 }
+ 
 
+  
 const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLanding = false, ...baseProps }) => {
 	const { t } = useTranslation(["common", "components"]);
 	const router = useRouter();
 	const [isLoading, setIsLoading] = useState(false);
+	const [createModalVisible, setCreateModalVisible] = useState(false);
 
+	  	  
 	const {
 		did,
 	} = useAppSelector(selectConnection);
@@ -62,6 +67,9 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			console.log(err);
 		}
 	};
+	const handleToggleCreateModal = () => {
+		setCreateModalVisible((oldVal) => !oldVal);
+	 };
 	const defaultOptions = {
 		loop: true,
 		autoplay: true,
@@ -108,7 +116,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			{
 				authenticated ? (
 					<NavbarMenu>
-						<Button onClick={handleCreate} theme="primary">{t("components:header.newIndexBtn")}</Button>
+						<Button onClick={() => {setCreateModalVisible(true);}} theme="primary">{t("components:header.newIndexBtn")}</Button>
 						<Dropdown
 							dropdownClass="ml-6"
 							position="bottom-right"
@@ -144,6 +152,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 										available && name ? name : "Y"
 									)}</Avatar>
 						</Dropdown>
+						<CreateModal data={{handleCreate}} visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal>
 					</NavbarMenu>
 				) :
 					(
@@ -157,7 +166,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			}
 		</Navbar>
 	)), [headerType, baseProps, isLanding, t]);
-
+			
 	return renderHeader();
 };
 

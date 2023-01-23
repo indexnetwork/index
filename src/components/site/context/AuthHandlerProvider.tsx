@@ -20,7 +20,7 @@ export interface AuthHandlerContextType {
 	disconnect(): void;
 }
 
-let session: DIDSession;
+let session: DIDSession | null | undefined;
 
 export const AuthHandlerContext = React.createContext<AuthHandlerContextType>({} as any);
 
@@ -34,7 +34,11 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 		localStorage.removeItem("provider");
 		localStorage.removeItem("did");
 		await ceramicService.close();
+		session = null;
+		console.log(session);
+		//debugger;
 		dispatch(disconnectApp());
+		
 		router.push("/");
 	};
 	const connectMetamask = async (initProvider?: any) => {
