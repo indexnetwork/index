@@ -35,18 +35,24 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 		await ceramicService.close();
 		session = null;
 		dispatch(disconnectApp());
-
 		router.push("/");
+	};
+
+	const checkExistingSession = async () => {
+		const sessionStr = localStorage.getItem("did"); // for production, you will want a better place than localStorage for your sessions.
+		if (sessionStr) {
+			session = await DIDSession.fromSession(sessionStr);
+			dispatch(setAuthLoading(false));
+		}
 	};
 	const connectMetamask = async () => {
 		// Metamask Login
 		dispatch(setAuthLoading(true));
 
+		await checkExistingSession();
+
 		if (!connection.metaMaskConnected) {
-			const sessionStr = localStorage.getItem("did"); // for production, you will want a better place than localStorage for your sessions.
-			if (sessionStr) {
-				session = await DIDSession.fromSession(sessionStr);
-			}
+
 			if (!session || (session.hasSession && session.isExpired)) {
 				if (window.ethereum === null || window.ethereum === undefined) {
 					dispatch(setAuthLoading(false));
@@ -86,6 +92,7 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 		await authToCeramic();
 	};
 
+
 	// App Loads
 	useEffect(() => {
 		if (session && (session.hasSession && !session.isExpired)) {
@@ -103,6 +110,8 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	useEffect(() => {
 		if (connection.metaMaskConnected) {
 			completeConnections();
+		} else {
+			checkExistingSession();
 		}
 	}, [connection.metaMaskConnected]);
 
