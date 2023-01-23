@@ -13,7 +13,7 @@ interface ConnectionState {
 const initialState: ConnectionState = {
 	metaMaskConnected: false,
 	ceramicConnected: false,
-	loading: true,
+	loading: false,
 };
 
 export const connectionSlice = createSlice({

@@ -27,7 +27,6 @@ export const AuthHandlerContext = React.createContext<AuthHandlerContextType>({}
 export const AuthHandlerProvider: React.FC = ({ children }) => {
 	const connection = useAppSelector(selectConnection);
 	const dispatch = useAppDispatch();
-	const [init, setInit] = useState(false);
 	const router = useRouter();
 
 	const disconnect = async () => {
@@ -35,10 +34,8 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 		localStorage.removeItem("did");
 		await ceramicService.close();
 		session = null;
-		console.log(session);
-		//debugger;
 		dispatch(disconnectApp());
-		
+
 		router.push("/");
 	};
 	const connectMetamask = async (initProvider?: any) => {
@@ -89,25 +86,21 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 
 	// App Loads
 	useEffect(() => {
-		if (!session || (session.hasSession && session.isExpired)) {
+		if (session && (session.hasSession && !session.isExpired)) {
+			dispatch(setMetaMaskConnected({
+				metaMaskConnected: true,
+				did: session.did.id,
+			}));
+		} else {
+
 			dispatch(setMetaMaskConnected({
 				metaMaskConnected: false,
 			}));
-		} else {
-			dispatch(setMetaMaskConnected({
-				did: session.did.id,
-				metaMaskConnected: true,
-			}));
-		}
-		if (!init) {
-			setInit(true);
 		}
 	}, [session]);
 
 	useEffect(() => {
-		if (!connection.metaMaskConnected) {
-			connectMetamask();
-		} else {
+		if (connection.metaMaskConnected) {
 			completeConnections();
 		}
 	}, [connection.metaMaskConnected]);

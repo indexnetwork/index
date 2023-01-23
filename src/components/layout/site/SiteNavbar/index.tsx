@@ -26,18 +26,17 @@ export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
 	isLanding?: boolean;
 }
- 
 
-  
+
+
 const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLanding = false, ...baseProps }) => {
 	const { t } = useTranslation(["common", "components"]);
 	const router = useRouter();
-	const [isLoading, setIsLoading] = useState(false);
-	const [createModalVisible, setCreateModalVisible] = useState(false);
 
-	  	  
+	const [createModalVisible, setCreateModalVisible] = useState(false);
 	const {
 		did,
+		loading,
 	} = useAppSelector(selectConnection);
 
 	const {
@@ -62,7 +61,6 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 	const handleConnect = async () => {
 		try {
 			await connect("injected");
-			setIsLoading(true);
 		} catch (err) {
 			console.log(err);
 		}
@@ -87,7 +85,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			{...baseProps}
 		>
 			<NavbarMenu placement="right">
-				{isLoading || (authenticated && isLanding) ? (
+				{loading || (authenticated && isLanding) ? (
 					<Button
 						style={	{ background: "#7F7F7F !important", borderColor: "#7F7F7F !important;" } }
 						theme="primary"
@@ -166,7 +164,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			}
 		</Navbar>
 	)), [headerType, baseProps, isLanding, t]);
-			
+
 	return renderHeader();
 };
 
