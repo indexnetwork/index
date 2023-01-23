@@ -86,13 +86,8 @@ class CeramicService2 {
 				  }
 			}}
 		  }`);
-
-		  result.data.node.links = result.data.node.links.edges.map(l=>l.node);
-		  
-		  //result.data.node.links = links.map(l=>l.node);
-		  
-			console.log("ana data",result.data?.node.links);
-		  //console.log(result.data?.node?.links.edges);
+		// TODO error handling
+		result.data.node.links = result.data?.node.links.edges.map(l=>l.node);
 		return (
 		<Indexes>(result.data?.node as any)
 		);
