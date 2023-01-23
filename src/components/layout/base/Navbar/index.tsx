@@ -40,7 +40,7 @@ const Navbar: React.FC<NavbarProps> = ({
 	const yOffSet = useYOffSet(sticky);
 	const [bgSticky, setBgSticky] = useState(false);
 
-	const { address } = useAppSelector(selectConnection);
+	const { did } = useAppSelector(selectConnection);
 	const authenticated = useAuth();
 	const router = useRouter();
 
@@ -58,7 +58,7 @@ const Navbar: React.FC<NavbarProps> = ({
 
 	const handleLogoClick = () => {
 		if (authenticated) {
-			router.push(`/${address}`);
+			router.push(`/${did}`);
 		} else {
 			router.push(`/`);
 		}

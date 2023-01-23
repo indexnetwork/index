@@ -26,7 +26,6 @@ import IndexTitleInput from "components/site/input/IndexTitleInput";
 import { useCeramic } from "hooks/useCeramic";
 import { useMergedState } from "hooks/useMergedState";
 import moment from "moment";
-import { TileDocument } from "@ceramicnetwork/stream-tile";
 import { copyToClipboard } from "utils/helper";
 import IconLink1 from "components/base/Icon/IconLink1";
 import IconCopy from "components/base/Icon/IconCopy";
@@ -42,14 +41,14 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
 
 	const [stream, setStream] = useMergedState<Partial<Indexes>>({});
-	const tileDoc = useRef<TileDocument<Indexes>>();
+	const tileDoc = useRef<Indexes>();
 	const [notFound, setNotFound] = useState(false);
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
 	const [search, setSearch] = useState("");
 
-	const { address } = useAppSelector(selectConnection);
+	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
 
 	const { isOwner } = useOwner();
@@ -62,12 +61,23 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	// };
 
 	const loadStream = async (streamId: string) => {
-		const doc = await api.getIndex(streamId);
+		const doc = await ceramic.getDocById(streamId);
+		//TODO Fix
+		doc.links = [
+			{"updated_at": "2007-12-03T10:15:30Z",
+				"favicon": "favicon.png",
+				"created_at": "2007-12-03T10:15:30Z",
+				"indexer_did": "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
+				"id": "kjzl6kcym7w8y7vv1l63091kls4roqhiqf9qdzw5ruomxh3ymrci1an6mrcwa69",
+				"controller_did": "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
+				"title": "First link",
+				"index_id": "kjzl6kcym7w8y92t6e29zyxxlj0ut3654bz6ngp6k6r5llnju4wwfwufg8isn5t",
+				"url": "https://index.as/",
+				"sort": 1,
+				"content": "First content"}]
 		if (doc != null) {
 			setStream(doc);
-			ceramic.getDocById(streamId).then((result) => {
-				tileDoc.current = result;
-			});
+			tileDoc.current = doc
 		} else {
 			setNotFound(true);
 		}
@@ -86,7 +96,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleDelete = () => {
-		router.push(`/${address}`);
+		router.push(`/${did}`);
 	};
 
 	const handleAddLink = async (linkUrl: string) => {
@@ -98,10 +108,12 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			if (result) {
 				await api.putIndex({ ...result.content, streamId: result.id.toString() });
 			}
+			/*
 			await api.crawlLinkContent({
 				streamId: stream?.streamId!,
 				links: newLinks,
 			});
+			 */
 		} else {
 			alert("Couldn't get the meta data from url");
 		}
@@ -122,20 +134,22 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const content = { ...originalDoc.content };
 		content.clonedFrom = stream.streamId!;
 
-		delete (content as any).address;
+		delete (content as any).did;
 		delete (content as any).streamId;
 
 		const doc = await ceramic.createDoc(content);
 
 		if (doc != null) {
-			router.push(`/${address}/${doc.streamId.toString()}`);
+			router.push(`/${did}/${doc.streamId.toString()}`);
 		}
 	};
 
 	useEffect(() => {
-		const { streamId } = router.query;
+
+		const { id } = router.query;
 		if (router.query) {
-			loadStream(streamId as string);
+			console.log(router.query)
+			loadStream(id as string);
 		} else {
 			setNotFound(true);
 		}
@@ -165,7 +179,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										noYGutters
 									>
 										<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : stream?.address}</Text>
+										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : stream?.did}</Text>
 									</Col>
 									<Col
 										xs={12}
@@ -188,7 +202,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												{
 
 													false ? (
-														(address || "").toLowerCase() === router.query.address ? (
+														(did || "").toLowerCase() === router.query.did ? (
 															<Button
 																addOnBefore
 																size="sm"
@@ -216,7 +230,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											<Col className="ml-3">
 												<IndexOperationsPopup
 													isOwner={isOwner}
-													streamId={stream.streamId!}
+													streamId={stream.id!}
 													mode="index-detail-page"
 													onDelete={handleDelete}
 												/>
@@ -224,7 +238,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										</FlexRow>
 									</Col>
 									<Col xs={12} lg={9} noYGutters className="mb-6">
-										<Text size="sm" theme="disabled">{stream?.updatedAt ? `Updated ${moment(stream.updatedAt).fromNow()}` : ""} </Text>
+										<Text size="sm" theme="disabled">{stream?.updated_at ? `Updated ${moment(stream.updated_at).fromNow()}` : ""} </Text>
 									</Col>
 									<Col
 										xs={12}
@@ -274,10 +288,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									justify="center"
 								>
 									<Col xs={12} lg={9}>
+
 										<IndexDetailsList
 											search={search}
 											isOwner={isOwner}
-											streamId={router.query.streamId as any}
+											streamId={router.query.id as any}
 											links={stream?.links}
 											onChange={handleReorderLinks}
 										/>

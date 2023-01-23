@@ -3,16 +3,12 @@
  *
  */
 export type Indexes = {
-  streamId: string
+  id: string
   title: string | null
-  publicRights: EnumIndexVisibility | null
-  privateLinkRights: EnumIndexVisibility | null
-  privateLinkCode: string | null
-  clonedFrom: string | null
-  createdAt: string;
-  updatedAt: string;
-	address: string;
-	links: Links[];
+  collab_action: string;
+  controller_did: string;
+  created_at: string;
+  updated_at: string;
 };
 
 /**

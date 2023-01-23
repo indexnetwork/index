@@ -2,6 +2,7 @@ import { TileDocument } from "@ceramicnetwork/stream-tile";
 import { SelfID } from "@self.id/web";
 
 import { CeramicClient } from "@ceramicnetwork/http-client";
+import { ComposeClient } from "@composedb/client";
 
 import { Indexes, LinkContentResult, Links } from "types/entity";
 import { prepareLinks, isSSR, setDates } from "utils/helper";
@@ -9,6 +10,8 @@ import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { appConfig } from "config";
+import { RuntimeCompositeDefinition } from "@composedb/types";
+import { definition } from "../types/merged-runtime";
 import api from "./api-service";
 
 class CeramicService2 {
@@ -33,14 +36,19 @@ class CeramicService2 {
 	})) as WebClient;
 	*/
 
-	private ceramic = new CeramicClient("http://localhost:7007");
-
+	private ceramic = new CeramicClient("https://ceramic.index.as");
+	private composeClient = new ComposeClient({
+		ceramic: "https://ceramic.index.as",
+		// cast our definition as a RuntimeCompositeDefinition
+		definition: definition as RuntimeCompositeDefinition,
+	});
 	private self?: SelfID;
 
 	async authenticate(did: any) {
 		if (!isSSR()) {
 			try {
 				await this.ceramic.setDID(did);
+				await this.composeClient.setDID(did);
 				return true;
 			} catch (err) {
 				return false;
@@ -55,7 +63,18 @@ class CeramicService2 {
 	}
 
 	async getIndexById(streamId: string) {
-		return TileDocument.load<Indexes>(this.ceramic as any, streamId);
+		const result = await this.composeClient.executeQuery(`{
+			node(id:"${streamId}"){
+			  id
+			  ... on Index{
+				id
+				title
+				collab_action
+				created_at
+				updated_at
+			}}
+		  }`);
+		return <Indexes>(result.data?.node as any);
 	}
 
 	async getIndexes(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }> {
@@ -65,23 +84,31 @@ class CeramicService2 {
 	async createIndex(data: Partial<Indexes>): Promise<Indexes | null> {
 		try {
 			setDates(data);
-
 			if (!data.title) {
 				data.title = "Untitled Index";
 			}
-
-			if (!data.links) {
-				data.links = [];
-			} else {
-				data.links = prepareLinks(data.links);
-			}
-
-			const doc = await TileDocument.create<Partial<Indexes>>(this.ceramic as any, data);
-
-			return {
-				...doc.content as any,
-				streamId: doc.id!.toString(),
-			};
+			const response = await this.composeClient.executeQuery(`
+				mutation {
+				createIndex(input: {
+					content: {
+						title: "${data.title}",
+						collab_action: "example",
+						created_at: "${data?.created_at}",
+						updated_at: "${data?.updated_at}"
+					}
+				}) 
+				{
+					document {
+						id
+						title
+						collab_action
+						created_at
+						updated_at
+					}
+				}
+				}
+			`);
+			return response.data.createIndex.document as any
 		} catch (err) {
 			return null;
 		}

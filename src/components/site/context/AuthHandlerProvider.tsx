@@ -31,17 +31,12 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	const router = useRouter();
 
 	const disconnect = async () => {
-		resetProvider();
+		localStorage.removeItem("provider");
+		localStorage.removeItem("did");
 		await ceramicService.close();
 		dispatch(disconnectApp());
 		router.push("/");
 	};
-
-	const resetProvider = () => {
-		localStorage.removeItem("provider");
-		localStorage.removeItem("did");
-	};
-
 	const connectMetamask = async (initProvider?: any) => {
 		// Metamask Login
 		dispatch(setAuthLoading(true));
@@ -96,7 +91,7 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 			}));
 		} else {
 			dispatch(setMetaMaskConnected({
-				address: session.did.id,
+				did: session.did.id,
 				metaMaskConnected: true,
 			}));
 		}

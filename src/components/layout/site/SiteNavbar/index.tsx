@@ -32,7 +32,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 	const [isLoading, setIsLoading] = useState(false);
 
 	const {
-		address,
+		did,
 	} = useAppSelector(selectConnection);
 
 	const {
@@ -50,9 +50,9 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 
 	useEffect(() => {
 		if (isLanding && authenticated) {
-			Router.push(`/${address}`);
+			Router.push(`/${did}`);
 		}
-	}, [address, authenticated, isLanding]);
+	}, [did, authenticated, isLanding]);
 
 	const handleConnect = async () => {
 		try {

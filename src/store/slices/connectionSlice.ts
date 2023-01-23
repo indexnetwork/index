@@ -6,7 +6,7 @@ interface ConnectionState {
 	metaMaskConnected: boolean;
 	ceramicConnected: boolean;
 	loading: boolean;
-	address?: string;
+	did?: string;
 }
 
 // Define the initial state using that type
@@ -26,15 +26,15 @@ export const connectionSlice = createSlice({
 			loading: action.payload,
 		}),
 		setMetaMaskConnected: (state, action: PayloadAction<{
-			address?: string,
+			did?: string,
 			metaMaskConnected: boolean
 		}>) => {
-			const { address, metaMaskConnected } = action.payload;
+			const { did, metaMaskConnected } = action.payload;
 
 			return {
 				...state,
 				metaMaskConnected,
-				address,
+				did,
 			};
 		},
 		setCeramicConnected: (state, action: PayloadAction<boolean>) => ({
@@ -47,7 +47,7 @@ export const connectionSlice = createSlice({
 			...state,
 			metaMaskConnected: false,
 			ceramicConnected: false,
-			address: undefined,
+			did: undefined,
 		}),
 	},
 });

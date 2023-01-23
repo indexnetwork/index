@@ -3,7 +3,6 @@ import React, {
 } from "react";
 import ceramicService from "services/ceramic-service";
 import { TileDocument } from "@ceramicnetwork/stream-tile";
-import api from "services/api-service";
 import { Indexes, LinkContentResult, Links } from "types/entity";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { CID } from "ipfs-http-client";
@@ -44,16 +43,8 @@ const CeramicProvider: React.FC<{}> = ({
 	}), []);
 
 	const createDoc = async (data: Partial<Indexes>) => {
-		try {
-			const doc = await ceramicService.createIndex(data);
-			if (doc) {
-				const result = await api.postIndex(doc);
-				return result;
-			}
-			return null;
-		} catch (err) {
-			return null;
-		}
+		const doc = await ceramicService.createIndex(data);
+		return doc;
 	};
 
 	const updateDoc = async (streamId: string, content: Partial<Indexes>) => {

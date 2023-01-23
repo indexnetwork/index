@@ -88,7 +88,7 @@ export type FlexJustifyType = FlexAlignType | "between" | "around" | "evenly";
 export type UserRightType = "view" | "edit" | "off";
 
 export interface IndexesRouteParams {
-  address?: string;
+	did?: string;
 }
 
 export interface IndexDetailsRouteParams extends IndexesRouteParams {

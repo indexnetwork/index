@@ -23,7 +23,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 
 	const ceramic = useCeramic();
 
-	const { address } = useAppSelector(selectConnection);
+	const { did } = useAppSelector(selectConnection);
 
 	const [crawling, setCrawling] = useState(false);
 
@@ -35,10 +35,10 @@ const CreateIndexPage: NextPageWithLayout = () => {
 
 	const handleBlur = async () => {
 		setLoading(true);
-		if (stream.title || (stream.links && stream.links.length > 0)) {
+		if (stream.title) {
 			const doc = await ceramic.createDoc(stream);
 			if (doc != null) {
-				router.push(`${address}/${doc.streamId.toString()}`);
+				router.push(`/${did}/${doc.id}`);
 			}
 		}
 		setLoading(false);
@@ -64,7 +64,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 					streamId: doc!.streamId,
 					links: doc?.links || [],
 				});
-				router.push(`${address}/${doc.streamId.toString()}`);
+				router.push(`/${did}/${doc.streamId.toString()}`);
 			}
 		} else {
 			alert("Couldn't get the meta data from url");

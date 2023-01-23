@@ -43,7 +43,7 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 	const [hasIndex, setHasIndex] = useState(true);
 	const router = useRouter();
 
-	const { isOwner, address } = useOwner();
+	const { isOwner, did } = useOwner();
 
 	const getData = async (page?: number, reset?: boolean, searchT?: string) => {
 		setLoading(true);
@@ -52,7 +52,7 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 			skip: reset ? 0 : state.skip,
 			take: state.take,
 			search: reset ? searchT : state.search,
-			address: isOwner ? undefined : (address || "").toLowerCase(),
+			did: isOwner ? undefined : (did || "").toLowerCase(),
 		});
 
 		if (res) {
@@ -73,7 +73,7 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 	};
 
 	const handleClick = useCallback((itm: Indexes) => async () => {
-		router.push(`/${router.query.address}/${itm.streamId}`);
+		router.push(`/${router.query.did}/${itm.streamId}`);
 	}, []);
 
 	const handleDelete = () => {

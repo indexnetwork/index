@@ -5,22 +5,22 @@ import { useAppSelector } from "./store";
 
 export interface OwnerState {
 	isOwner: boolean;
-	address?: string;
+	did?: string;
 }
 export const useOwner = () => {
 	const router = useRouter();
-	const { address } = useAppSelector(selectConnection);
+	const { did } = useAppSelector(selectConnection);
 
 	const getState = () => ({
-		isOwner: router.query && ((router.query || {}).address as string || "").toLowerCase() === (address || "").toLowerCase(),
-		address: (router.query || {}).address === address ? address : (router.query || {}).address as string,
+		isOwner: router.query && ((router.query || {}).did as string || "").toLowerCase() === (did || "").toLowerCase(),
+		did: (router.query || {}).did === did ? did : (router.query || {}).did as string,
 	});
 
 	const [state, setState] = useState<OwnerState>(() => getState());
 
 	useEffect(() => {
 		setState(() => getState());
-	}, [router.query.address, address]);
+	}, [router.query.did, did]);
 
 	return state;
 };
