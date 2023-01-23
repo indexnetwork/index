@@ -85,7 +85,6 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			{...baseProps}
 		>
 			<NavbarMenu placement="right">
-				// TODO use props for loading
 				{loading || (authenticated && isLanding) ? (
 					<Button
 						style={	{ background: "#7F7F7F !important", borderColor: "#7F7F7F !important;" } }
