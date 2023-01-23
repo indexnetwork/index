@@ -3,7 +3,7 @@ import { EthereumWebAuth, getAccountId } from "@didtools/pkh-ethereum";
 
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { useRouter } from "next/router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import ceramicService from "services/ceramic-service";
 import {
 	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected,
@@ -47,9 +47,9 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 			if (sessionStr) {
 				session = await DIDSession.fromSession(sessionStr);
 			}
-
 			if (!session || (session.hasSession && session.isExpired)) {
 				if (window.ethereum === null || window.ethereum === undefined) {
+					dispatch(setAuthLoading(false));
 					throw new Error("No injected Ethereum provider found.");
 				}
 				// We enable the ethereum provider to get the user's addresses.
@@ -60,10 +60,12 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 				});
 				const accountId = await getAccountId(ethProvider, addresses[0]);
 				const authMethod = await EthereumWebAuth.getAuthMethod(ethProvider, accountId);
-
-				session = await DIDSession.authorize(authMethod, { resources: ["ceramic://*"] });
-
-				localStorage.setItem("did", session.serialize());
+				try {
+					session = await DIDSession.authorize(authMethod, { resources: ["ceramic://*"] });
+					localStorage.setItem("did", session.serialize());
+				} catch (err) {
+					console.log(err);
+				}
 			}
 
 			dispatch(setAuthLoading(false));
@@ -92,7 +94,6 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 				did: session.did.id,
 			}));
 		} else {
-
 			dispatch(setMetaMaskConnected({
 				metaMaskConnected: false,
 			}));
