@@ -34,8 +34,8 @@ const linkSearchSchema = Joi.object({
   take: Joi.number().default(10),
 })
 
-app.get('/search/indexes', validator.body(indexSearchSchema), search.index)
-app.get('/search/links', validator.body(linkSearchSchema), search.link)
+app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
+app.post('/search/links', validator.body(linkSearchSchema), search.link)
 
 app.get('/crawl/metadata', validator.query(crawlSchema), crawl.metadata)
 app.get('/crawl/content', validator.query(crawlSchema), crawl.content)

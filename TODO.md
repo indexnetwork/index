@@ -10,24 +10,28 @@
 - [x] Validations & Error Handling
 
 # ComposeDB UI
-- [X] Create Index
-- [X] Get Index
-- [] Get Links
+- [x] Create Index
+- [x] Get Index
+- [x] Get Links
+- [x] Get Links Paginate
 - [] Search links
+- [] Search links paginate
 - [] Update Index
-- [] Add Link
+- [x] Add Link
 - [] Update Link
+- [] Duplicate Link
 
 # Secondary
 - [] Remove link
 - [] Filtered Search
 - [] Sort links
+- [] Created at & Updated at
 
 # Devops
 - [x] Ceramic Node Deployment
 - [x] ComposeDB Deployment
 - [x] Consumer Deployment
-- [x] Search Service Deployment
+- [x] API Deployment
 - [] Auto Deployment
 - [x] Ingress + Cors
 
@@ -38,7 +42,7 @@
 - [] Remove index from user indexes
 
 # Crawlers
-- [] Index Link Metadata
+- [x] Index Link Metadata
 - [] Index Link Content
 
 # Collaboration
