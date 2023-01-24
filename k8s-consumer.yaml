@@ -24,7 +24,7 @@ spec:
         - name: ELASTIC_HOST
           value: "http://elasticsearch.composedb:9200"
         - name: KAFKA_HOST
-          value: "kafka.composedb:9092"          
+          value: "kafka.composedb:9092"
         image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:latest
         command: ["yarn"]
         args: ["consumer"]

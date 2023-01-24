@@ -4,6 +4,7 @@ if(process.env.NODE_ENV !== 'production'){
 
 console.log(process.env)
 const search = require('./controllers/search.js')
+const crawl = require('./controllers/crawl.js')
 const express = require('express')
 const app = express()
 const port = 3000
@@ -22,6 +23,10 @@ const indexSearchSchema = Joi.object({
   take: Joi.number().default(10),
   links_size: Joi.number().max(100)
 })
+const crawlSchema = Joi.object({
+  url: Joi.string().uri().required(),
+})
+
 const linkSearchSchema = Joi.object({
   index_id: Joi.string().required(),
   search: Joi.string().min(1).default(false),
@@ -29,8 +34,11 @@ const linkSearchSchema = Joi.object({
   take: Joi.number().default(10),
 })
 
-app.get('/indexes', validator.body(indexSearchSchema), search.index)
-app.get('/links', validator.body(linkSearchSchema), search.link)
+app.get('/search/indexes', validator.body(indexSearchSchema), search.index)
+app.get('/search/links', validator.body(linkSearchSchema), search.link)
+
+app.get('/crawl/metadata', validator.query(crawlSchema), crawl.metadata)
+app.get('/crawl/content', validator.query(crawlSchema), crawl.content)
 
 app.use((err, req, res, next) => {
   if (err && err.error && err.error.isJoi) {

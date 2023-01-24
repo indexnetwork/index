@@ -33,11 +33,11 @@ spec:
             name: composedb
             port:
               number: 80              
-      - path: /search(/|$)(.*)
+      - path: /api(/|$)(.*)
         pathType: Prefix
         backend:
           service:
-            name: search
+            name: api
             port:
               number: 80
 

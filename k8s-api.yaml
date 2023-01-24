@@ -2,8 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    service: search
-  name: search
+    service: api
+  name: api
 spec:
   replicas: 1
   strategy:
@@ -12,17 +12,22 @@ spec:
       maxUnavailable: 1
   selector:
     matchLabels:
-      service: search
+      service: api
   minReadySeconds: 5
   template:
     metadata:
       labels:
-        service: search
+        service: api
     spec:
       containers:
       - env:
         - name: ELASTIC_HOST
           value: "http://elasticsearch.composedb:9200"      
+        - name: iframely-api-key
+          valueFrom:
+            secretKeyRef:
+              key: iframely-api-key
+              name: api-secret
         image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:latest
         command: ["yarn"]
         args: ["start"]
@@ -31,7 +36,7 @@ spec:
           requests:
             memory: "256Mi"
             cpu: "25m"
-        name: search
+        name: api
         ports:
         - name: "http"
           containerPort: 3000    
@@ -43,12 +48,12 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    service: search
-  name: search
+    service: api
+  name: api
 spec:
   ports:
     - name: "http"
       port: 80
       targetPort: 3000
   selector:
-    service: search
+    service: api
