@@ -39,7 +39,6 @@ import { selectProfile } from "store/slices/profileSlice";
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
-	const [linkStream, setLinkStream] = useMergedState<Partial<Links | undefined>>({});
 	const [stream, setStream] = useMergedState<Partial<Indexes>>({});
 	const tileDoc = useRef<Indexes>();
 	const [notFound, setNotFound] = useState(false);
@@ -66,7 +65,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 		if (doc != null) {
 			setStream(doc);
-			setLinkStream(doc.links)
 		} else {
 			setNotFound(true);
 		}
@@ -95,7 +93,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			const link = await ceramic.addLink(stream?.id!, payload);
 
 			stream.links?.unshift(link)
-			setLinkStream(stream.links)
 			setStream(stream);
 			console.log(stream)
 			/*

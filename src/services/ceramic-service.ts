@@ -113,7 +113,7 @@ class CeramicService2 {
 
 	async createIndex(data: Partial<Indexes>): Promise<Indexes | null> {
 		try {
-			setDates(data, true); // TODO Conditional updated_at
+			setDates(data);
 			if (!data.title) {
 				data.title = "Untitled Index";
 			}
@@ -145,7 +145,7 @@ class CeramicService2 {
 	}
 
 	async addLink(index_id: string, link: Links): Promise<[Links]> {
-		setDates(link);
+		setDates(link);  // TODO Conditional updated_at
 
 		try {
 			const response = await this.composeClient.executeQuery(`

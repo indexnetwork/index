@@ -43,6 +43,7 @@ const CeramicProvider: React.FC<{}> = ({
 	}), []);
 
 	const createDoc = async (data: Partial<Indexes>) => {
+
 		const doc = await ceramicService.createIndex(data);
 		return doc;
 	};
