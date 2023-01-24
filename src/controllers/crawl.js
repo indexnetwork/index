@@ -8,7 +8,7 @@ const getIframelyData = async (url) => {
     })
 
     let response = await results.json();
-
+    console.log(response)
     if(!response || response.error){
         return {
             url: url,
@@ -16,8 +16,10 @@ const getIframelyData = async (url) => {
         }
     }
     
-    if(response.meta.site && !response.meta.title.includes(response.meta.site)){
+    if(response.meta.site && response.meta.title && !response.meta.title.includes(response.meta.site)){
         response.meta.title = `${response.meta.site} | ${response.meta.title}`
+    }else if(response.meta.site){
+        response.meta.title = response.meta.site
     }
     if(response.links && response.links.icon){
         return {

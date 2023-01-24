@@ -23,12 +23,12 @@ spec:
       - env:
         - name: ELASTIC_HOST
           value: "http://elasticsearch.composedb:9200"      
-        - name: iframely-api-key
+        - name: IFRAMELY_API_KEY
           valueFrom:
             secretKeyRef:
               key: iframely-api-key
               name: api-secret
-        image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:latest
+        image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:0.0.2
         command: ["yarn"]
         args: ["start"]
         imagePullPolicy: Always  
