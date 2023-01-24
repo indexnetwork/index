@@ -21,7 +21,7 @@ export interface CeramicContextValue {
 	getProfile(): Promise<BasicProfile | null>;
 	setProfile(profile: BasicProfile): Promise<boolean>;
 	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
-	addLink(streamId: string, data: Links): Promise<[TileDocument<Indexes>, Links[]]>;
+	addLink(index_id: string, data: Links): Promise<Links>;
 	removeLink(streamId: string, linkId: string): Promise<TileDocument<Indexes>>;
 	addTag(streamId: string, linkId: string, tag: string): Promise<TileDocument<Indexes> | undefined>;
 	removeTag(streamId: string, linkId: string, tag: string): Promise<TileDocument<Indexes> | undefined>;
@@ -52,7 +52,7 @@ const CeramicProvider: React.FC<{}> = ({
 		return updatedDoc;
 	};
 
-	const addLink = async (streamId: string, link: Links) => ceramicService.addLink(streamId, [link]);
+	const addLink = async (index_id: string, link: Links) => ceramicService.addLink(index_id, link);
 
 	const removeLink = async (streamId: string, linkId: string) => {
 		const updatedDoc = await ceramicService.removeLink(streamId, linkId);

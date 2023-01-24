@@ -54,8 +54,8 @@ export type Links = {
   description?: string
   language?: string
   favicon?: string
-  createdAt?: string;
-  updatedAt?: string;
+  created_at?: string;
+  updated_at?: string;
   images?: string[]
   favorite?: boolean;
   tags?: string[]

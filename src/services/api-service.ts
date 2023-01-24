@@ -58,30 +58,11 @@ export interface LinksCrawlContentRequest {
 	streamId: string;
 	links: Links[];
 }
-const hostnameCheck = () => {
-	if (typeof window !== "undefined") {
-		if (window.location.hostname === "testnet.index.as") {
-			return appConfig.apiUrl;
-		} if (window.location.hostname === "dev.index.as" || window.location.hostname === "localhost") {
-			return appConfig.devApiUrl;
-		}
-	  }
-};
+
 const apiAxios = axios.create({
-	baseURL: hostnameCheck(),
+	baseURL: appConfig.apiUrl,
 });
 
-apiAxios.interceptors.request.use((config) => {
-	const token = localStorage.getItem("auth_token");
-	if (!token && !checkPublicRoute(config.url!)) {
-		return false;
-	}
-
-	if (config && config.headers && token) {
-		config.headers.Authorization = `Bearer ${token}`;
-	}
-	return config;
-});
 class ApiService {
 	async postIndex(doc: Indexes): Promise<Indexes | null> {
 		try {

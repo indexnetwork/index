@@ -28,7 +28,8 @@ const List: React.VFC<ListProps> = ({
 	droppableProvided,
 }) => {
 	const containerId = useRef<string>(uuidv4());
-
+	console.log(data)
+	debugger
 	return (
 		<ul
 			ref={droppableProvided?.innerRef}

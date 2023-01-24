@@ -63,12 +63,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const loadStream = async (streamId: string) => {
 		const doc = await ceramic.getDocById(streamId);
 		//TODO Fix
-		console.log("ddd",doc);
+
 		if (doc != null) {
 			setStream(doc);
 			setLinkStream(doc.links)
-			//tileDoc.current = doc
-			console.log("ASDASDASD",doc.links)
 		} else {
 			setNotFound(true);
 		}
@@ -92,13 +90,14 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const handleAddLink = async (linkUrl: string) => {
 		setCrawling(true);
-		const link = await api.crawlLink(linkUrl);
-		if (link) {
-			const [result, newLinks] = await ceramic.addLink(stream?.streamId!, link);
-			setStream(result.content);
-			if (result) {
-				await api.putIndex({ ...result.content, streamId: result.id.toString() });
-			}
+		const payload = await api.crawlLink(linkUrl);
+		if (payload) {
+			const link = await ceramic.addLink(stream?.id!, payload);
+
+			stream.links?.push(link)
+			setLinkStream(stream.links)
+			setStream(stream);
+			console.log(stream)
 			/*
 			await api.crawlLinkContent({
 				streamId: stream?.streamId!,
@@ -284,8 +283,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											search={search}
 											isOwner={isOwner}
 											streamId={router.query.id as any}
-											//TODO LINKS DATA.MAP PROBLEM 
-											//links={linkStream}
+											links={linkStream}
 											onChange={handleReorderLinks}
 										/>
 									</Col>

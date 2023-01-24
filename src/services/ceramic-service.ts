@@ -15,17 +15,7 @@ import { definition } from "../types/merged-runtime";
 import api from "./api-service";
 
 class CeramicService2 {
-	hostnameCheck = () : string => {
-		if (typeof window !== "undefined") {
-			if (window.location.hostname === "testnet.index.as") {
-				return appConfig.ceramicNode;
-			}
-			if (window.location.hostname === "dev.index.as" || window.location.hostname === "localhost") {
-				return appConfig.devCeramicNode;
-			}
-		  }
-		  return appConfig.ceramicNode;
-	};
+
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
 	});
@@ -123,20 +113,20 @@ class CeramicService2 {
 
 	async createIndex(data: Partial<Indexes>): Promise<Indexes | null> {
 		try {
-			setDates(data);
+			setDates(data, true); // TODO Conditional updated_at
 			if (!data.title) {
 				data.title = "Untitled Index";
 			}
 			const response = await this.composeClient.executeQuery(`
 				mutation {
-				createIndex(input: {
-					content: {
-						title: "${data.title}",
-						collab_action: "example",
-						created_at: "${data?.created_at}",
-						updated_at: "${data?.updated_at}"
-					}
-				}) 
+					createIndex(input: {
+						content: {
+							title: "${data.title}",
+							collab_action: "example",
+							created_at: "${data?.created_at}",
+							updated_at: "${data?.updated_at}"
+						}
+					}) 
 				{
 					document {
 						id
@@ -148,13 +138,45 @@ class CeramicService2 {
 				}
 				}
 			`);
-			return response.data.createIndex.document as any
+			return response.data.createIndex.document as Links
 		} catch (err) {
 			return null;
 		}
 	}
 
-	async addLink(streamId: string, links: Links[]): Promise<[TileDocument<Indexes>, Links[]]> {
+	async addLink(index_id: string, link: Links): Promise<[Links]> {
+		setDates(link);
+
+		try {
+			const response = await this.composeClient.executeQuery(`
+				mutation {
+					createLink(input: {
+						content: {
+						  index_id: "${index_id}",
+						  url: "${link.url}",
+						  title: "${link.title}",
+						  indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx"
+						  created_at: "${link.created_at}"
+						  updated_at: "${link.created_at}"
+						}
+					}) {
+					document {
+						id
+						index_id
+						url
+						title
+						indexer_did {
+							id
+						}
+					}
+				  }
+				}
+			`);
+			return response.data.createLink.document as Links
+		} catch (err) {
+			return null;
+		}
+		/*
 		const oldDoc = await this.getIndexById(streamId);
 		const { content } = oldDoc;
 		const newLinks = prepareLinks(links);
@@ -166,6 +188,7 @@ class CeramicService2 {
 			publish: true,
 		});
 		return [oldDoc, newLinks];
+		 */
 	}
 
 	async putLinks(streamId: string, links: Links[]) {

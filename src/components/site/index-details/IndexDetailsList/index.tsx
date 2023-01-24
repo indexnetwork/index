@@ -48,6 +48,9 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		hasMore: true,
 	});
 
+	console.log(items)
+	debugger;
+
 	const getData = async (page?: number, reset?: boolean, searchT?: string) => {
 		setLoading(true);
 		const res = await api.searchLink({
@@ -73,11 +76,12 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		}
 	};
 
-	/*useEffect(() => {
+	useEffect(() => {
 		console.log(links)
+		debugger;
 		//setItems(links);
 	}, [links]);
-	*/
+
 
 	useEffect(() => {
 		getData(undefined, true, search);
@@ -86,7 +90,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 	useEffect(() => {
 		onFetch && onFetch(loading);
 	}, [onFetch ,loading]);
-	
+
 
 	const handleOrderChange = (value: {
 		source: number,
