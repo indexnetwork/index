@@ -28,7 +28,7 @@ spec:
             secretKeyRef:
               key: iframely-api-key
               name: api-secret
-        image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:0.0.2
+        image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:0.0.4
         command: ["yarn"]
         args: ["start"]
         imagePullPolicy: Always  

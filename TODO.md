@@ -12,20 +12,22 @@
 # ComposeDB UI
 - [x] Create Index
 - [x] Get Index
-- [x] Get Links
-- [x] Get Links Paginate
-- [] Search links
-- [] Search links paginate
-- [] Update Index
+- [x] Get Links (Search links page 1)
 - [x] Add Link
-- [] Update Link
-- [] Duplicate Link
+- [] Created at & Updated at
+- [] Search links paginate
+
 
 # Secondary
+- [] Update Index
+- [] Update Link
 - [] Remove link
-- [] Filtered Search
+- [] Duplicate Link
 - [] Sort links
-- [] Created at & Updated at
+- [] Character issue
+
+# Tertiary
+- [] Filtered Search
 
 # Devops
 - [x] Ceramic Node Deployment

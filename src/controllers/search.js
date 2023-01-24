@@ -95,6 +95,7 @@ const indexesWithLinksQuery = (
         params.sort = {
             "index.created_at": {
                 order: "desc",
+                missing: "_last"
             },
         };
     }
@@ -176,13 +177,12 @@ const linksQuery = (
                 },
             };
         } else {
-            /*
-            search.sort = {
-                sort: {
-                    order: "asc",
+            params.sort = {
+                created_at: {
+                    order: "desc",
+                    missing: "_last"
                 },
             };
-            */
         }
 
         return params;
@@ -264,7 +264,6 @@ exports.index = async (req, res) => {
 exports.link = async (req, res, next) => {
 
     let {index_id, search, skip, take} = req.body;
-
     const query = linksQuery(index_id, search, skip, take);
     const result = await client.search(query);
 
