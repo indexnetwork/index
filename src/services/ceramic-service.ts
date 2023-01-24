@@ -155,6 +155,7 @@ class CeramicService2 {
 						  index_id: "${index_id}",
 						  url: "${link.url}",
 						  title: "${link.title}",
+						  favicon: "${link.favicon}",
 						  indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx"
 						  created_at: "${link.created_at}"
 						  updated_at: "${link.created_at}"
@@ -165,6 +166,7 @@ class CeramicService2 {
 						index_id
 						url
 						title
+						favicon
 						indexer_did {
 							id
 						}

@@ -94,7 +94,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		if (payload) {
 			const link = await ceramic.addLink(stream?.id!, payload);
 
-			stream.links?.push(link)
+			stream.links?.unshift(link)
 			setLinkStream(stream.links)
 			setStream(stream);
 			console.log(stream)
