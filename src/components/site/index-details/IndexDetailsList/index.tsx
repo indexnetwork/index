@@ -48,9 +48,6 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		hasMore: true,
 	});
 
-	console.log(items)
-	debugger;
-
 	const getData = async (page?: number, reset?: boolean, searchT?: string) => {
 		setLoading(true);
 		const res = await api.searchLink({
@@ -75,13 +72,10 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 			setInit(true);
 		}
 	};
-
+	
 	useEffect(() => {
-		console.log(links)
-		debugger;
-		//setItems(links);
+		setItems(links);
 	}, [links]);
-
 
 	useEffect(() => {
 		getData(undefined, true, search);

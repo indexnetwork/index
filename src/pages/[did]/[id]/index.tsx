@@ -283,7 +283,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											search={search}
 											isOwner={isOwner}
 											streamId={router.query.id as any}
-											links={linkStream}
+											links={stream?.links}
 											onChange={handleReorderLinks}
 										/>
 									</Col>
