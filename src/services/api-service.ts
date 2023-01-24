@@ -4,7 +4,6 @@ import {
 	Indexes, LinkContentResult, Links, SyncCompleteResult,
 } from "types/entity";
 import { API_ENDPOINTS } from "utils/constants";
-import { checkPublicRoute } from "utils/helper";
 
 export type HighlightType<T = {}> = T & {
 	highlight?: { [key: string]: string[] }
@@ -48,14 +47,17 @@ export interface IndexesSearchRequestBody extends ApiSearchRequestBody<Indexes> 
 export interface IndexSearchResponse extends ListResponse<IndexResponse, IndexesSearchRequestBody> {}
 
 export interface LinksSearchRequestBody extends ApiSearchRequestBody<{}> {
-	streamId: string;
-	search: string;
+	index_id: string;
+	search?: string;
+}
+
+class LinksSearchRequestBodyImpl implements LinksSearchRequestBody {
 }
 
 export interface LinkSearchResponse extends ListResponse<Links, LinksSearchRequestBody>{}
 
 export interface LinksCrawlContentRequest {
-	streamId: string;
+	id: string;
 	links: Links[];
 }
 

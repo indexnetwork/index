@@ -83,7 +83,6 @@ export type Users = {
 export interface LinkContentResult {
   id?: string;
   address: string;
-  streamId: string;
   links: Links[];
 }
 
@@ -93,26 +92,3 @@ export interface SyncCompleteResult {
 /**
  * Enums
  */
-
-export type EnumIndexVisibility = {
-	off: "off",
-	edit: "edit",
-	view: "view",
-};
-
-export type EnumIndexUsersRole = {
-  owner: "owner",
-  edit: "edit",
-  view: "view"
-};
-
-export type EnumInviteRight = {
-  view: "view",
-  edit: "edit"
-};
-
-export type EnumInviteStatus = {
-	pending: "pending",
-	approved: "approved",
-	rejected: "rejected",
-};

@@ -62,22 +62,8 @@ class CeramicService2 {
 				collab_action
 				created_at
 				updated_at
-				links(first:10){
-					edges{
-					  node{
-						id
-						title
-						url
-						created_at
-						updated_at
-						content
-					  }
-					}
-				  }
 			}}
 		  }`);
-		// TODO error handling
-		result.data.node.links = result.data?.node.links.edges.map(l=>l.node);
 		return (
 		<Indexes>(result.data?.node as any)
 		);
@@ -88,20 +74,8 @@ class CeramicService2 {
 			  id
 			  ... on Index{
 				title
-				userID
-				createdAt
-				links(first:10){
-				  edges{
-					node{
-					  id
-					  title
-					  url
-					  createdAt
-					  updatedAt
-					  content
-					}
-				  }
-				}
+				user_id
+				created_at
 			}}
 		  }`);
 		return <Links>(result.data?.node as any);
@@ -267,8 +241,32 @@ class CeramicService2 {
 	}
 
 	async updateIndex(streamId: string, content: Partial<Indexes>) {
+
 		setDates(content, true);
-		const oldDoc = await this.getIndexById(streamId);
+
+
+		const response = await this.composeClient.executeQuery(`
+				mutation {
+					updateIndex(input: {
+						id: "${content.id}"
+						content: {
+							title: "${content.title}",
+							collab_action: "example",
+							updated_at: "${content?.updated_at}"
+						}
+					}) 
+				{
+					document {
+						id
+						title
+						collab_action
+						created_at
+						updated_at
+					}
+				}
+				}
+			`);
+		return response.data.createIndex.document as Links
 		await oldDoc.update({
 			...oldDoc.content,
 			...content,

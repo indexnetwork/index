@@ -40,7 +40,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
 	const [stream, setStream] = useMergedState<Partial<Indexes>>({});
-	const tileDoc = useRef<Indexes>();
 	const [notFound, setNotFound] = useState(false);
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
@@ -61,9 +60,13 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const loadStream = async (streamId: string) => {
 		const doc = await ceramic.getDocById(streamId);
-		//TODO Fix
 
 		if (doc != null) {
+			const links = await api.searchLink({
+				index_id: streamId,
+			});
+
+			doc.links = links.records
 			setStream(doc);
 		} else {
 			setNotFound(true);
