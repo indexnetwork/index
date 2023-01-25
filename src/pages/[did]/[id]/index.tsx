@@ -1,5 +1,5 @@
 import React, {
-	ReactElement, useEffect, useRef, useState,
+	ReactElement, useEffect, useState,
 } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -66,7 +66,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 				index_id: streamId,
 			});
 
-			doc.links = links.records
+			doc.links = links.records;
 			setStream(doc);
 		} else {
 			setNotFound(true);
@@ -95,9 +95,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		if (payload) {
 			const link = await ceramic.addLink(stream?.id!, payload);
 
-			stream.links?.unshift(link)
+			stream.links?.unshift(link);
 			setStream(stream);
-			console.log(stream)
+			console.log(stream);
 			/*
 			await api.crawlLinkContent({
 				streamId: stream?.streamId!,
@@ -135,10 +135,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	useEffect(() => {
-
 		const { id } = router.query;
 		if (router.query) {
-			console.log(router.query)
+			console.log(router.query);
 			loadStream(id as string);
 		} else {
 			setNotFound(true);
@@ -219,9 +218,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											</Col>
 											<Col className="ml-3">
 												<Button
-												className="mr-1"
-												size="sm"
-												theme="clear">Add to my indexes
+													className="mr-1"
+													size="sm"
+													theme="clear">Add to my indexes
 												</Button>
 											</Col>
 											<Col className="ml-3">

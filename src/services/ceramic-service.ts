@@ -5,7 +5,7 @@ import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
 
 import { Indexes, LinkContentResult, Links } from "types/entity";
-import { prepareLinks, isSSR, setDates } from "utils/helper";
+import { isSSR, setDates } from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
@@ -15,7 +15,6 @@ import { definition } from "../types/merged-runtime";
 import api from "./api-service";
 
 class CeramicService2 {
-
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
 	});
@@ -112,14 +111,14 @@ class CeramicService2 {
 				}
 				}
 			`);
-			return response.data.createIndex.document as Links
+			return response.data.createIndex.document as Links;
 		} catch (err) {
 			return null;
 		}
 	}
 
 	async addLink(index_id: string, link: Links): Promise<[Links]> {
-		setDates(link);  // TODO Conditional updated_at
+		setDates(link); // TODO Conditional updated_at
 
 		try {
 			const response = await this.composeClient.executeQuery(`
@@ -148,7 +147,7 @@ class CeramicService2 {
 				  }
 				}
 			`);
-			return response.data.createLink.document as Links
+			return response.data.createLink.document as Links;
 		} catch (err) {
 			return null;
 		}
@@ -241,9 +240,7 @@ class CeramicService2 {
 	}
 
 	async updateIndex(streamId: string, content: Partial<Indexes>) {
-
 		setDates(content, true);
-
 
 		const response = await this.composeClient.executeQuery(`
 				mutation {
@@ -266,7 +263,7 @@ class CeramicService2 {
 				}
 				}
 			`);
-		return response.data.createIndex.document as Links
+		return response.data.createIndex.document as Links;
 		await oldDoc.update({
 			...oldDoc.content,
 			...content,

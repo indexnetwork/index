@@ -43,7 +43,6 @@ const CeramicProvider: React.FC<{}> = ({
 	}), []);
 
 	const createDoc = async (data: Partial<Indexes>) => {
-
 		const doc = await ceramicService.createIndex(data);
 		return doc;
 	};
@@ -81,8 +80,6 @@ const CeramicProvider: React.FC<{}> = ({
 		const updatedDoc = await ceramicService.putLinks(streamId, links);
 		return updatedDoc;
 	};
-
-
 
 	const getDocs = (streams: { streamId: string }[]) => ceramicService.getIndexes(streams);
 

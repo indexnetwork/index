@@ -72,7 +72,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 			setInit(true);
 		}
 	};
-	
+
 	useEffect(() => {
 		setItems(links);
 	}, [links]);
@@ -83,8 +83,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 
 	useEffect(() => {
 		onFetch && onFetch(loading);
-	}, [onFetch ,loading]);
-
+	}, [onFetch, loading]);
 
 	const handleOrderChange = (value: {
 		source: number,

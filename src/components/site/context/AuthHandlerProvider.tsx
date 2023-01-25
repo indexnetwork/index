@@ -52,7 +52,6 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 		await checkExistingSession();
 
 		if (!connection.metaMaskConnected) {
-
 			if (!session || (session.hasSession && session.isExpired)) {
 				if (window.ethereum === null || window.ethereum === undefined) {
 					dispatch(setAuthLoading(false));
@@ -91,7 +90,6 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	const completeConnections = async () => {
 		await authToCeramic();
 	};
-
 
 	// App Loads
 	useEffect(() => {
