@@ -48,6 +48,8 @@ const CeramicProvider: React.FC<{}> = ({
 		return doc;
 	};
 
+	const getDocById = (streamId: string) => ceramicService.getIndexById(streamId);
+
 	const updateDoc = async (streamId: string, content: Partial<Indexes>) => {
 		const updatedDoc = await ceramicService.updateIndex(streamId, content);
 		return updatedDoc;
@@ -79,8 +81,6 @@ const CeramicProvider: React.FC<{}> = ({
 		const updatedDoc = await ceramicService.putLinks(streamId, links);
 		return updatedDoc;
 	};
-
-	const getDocById = (streamId: string) => ceramicService.getIndexById(streamId);
 
 
 
