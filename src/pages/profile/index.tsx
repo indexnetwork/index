@@ -147,6 +147,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 										onClick={onImageUpload}
 										{...dragProps}>
 										{
+											// eslint-disable-next-line no-nested-ternary
 											imageList.length === 0 && !profile.image ?
 												<div className="img-upload__banner"><Text fontWeight={600}
 													theme="white">Click or Drop Image</Text></div> : (

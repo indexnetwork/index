@@ -21,6 +21,7 @@ import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
 import sanitize from "sanitize-html";
 import api from "services/api-service";
+import LogoLink from "components/base/Logo/LogoLink";
 
 // TODO: data prop will be Index object
 export interface IndexDetailsItemProps extends Links {
@@ -186,10 +187,10 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 								style={{
 									verticalAlign: "middle",
 								}} /> :
-							<LogoMini
+							<LogoLink
 								className="mr-3"
-								width={16}
-								height={16}
+								width={24}
+								height={24}
 								style={{
 									verticalAlign: "middle",
 								}} />}<Text size="sm" theme="disabled">{url?.substring(0, 80)} • {updatedAt ? moment(updatedAt).format("MMM D") : ""}</Text>

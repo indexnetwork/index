@@ -65,6 +65,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const doc = await api.getIndex(streamId);
 		if (doc != null) {
 			setStream(doc);
+			//console.log("asdasd",stream.links)
 			ceramic.getDocById(streamId).then((result) => {
 				tileDoc.current = result;
 			});

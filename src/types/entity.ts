@@ -2,6 +2,12 @@
  * Model indexes
  *
  */
+export type IndexesNew = {
+  title: string | null
+  version: string
+  collabAction: string | null
+};
+
 export type Indexes = {
   streamId: string
   title: string | null
@@ -49,6 +55,15 @@ export type Invitations = {
  * Model links
  *
  */
+export type LinksNew = {
+  indexID?: string
+  indexer_did?: string
+  url?: string
+  title?: string
+  tags?: string[]
+  content?: string
+  version?: string
+};
 export type Links = {
   id?: string;
   content?: string
