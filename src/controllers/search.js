@@ -114,9 +114,6 @@ const linksQuery = (
             from: skip,
             size: take,
             _source_excludes: ["content", "index"],
-            collapse: {
-                field: "id",
-            },
             query: {
                 bool: {
                     must: [
@@ -267,8 +264,7 @@ exports.link = async (req, res, next) => {
     const query = linksQuery(index_id, search, skip, take);
     const result = await client.search(query);
 
-    const totalCount = result?.hits?.hits &&
-    result?.hits?.hits.length > 0 ? (result?.hits?.hits[0].inner_hits?.links.hits.total)?.value : 0;
+    const totalCount = result?.hits?.total.value
 
     const response = {
         totalCount,

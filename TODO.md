@@ -15,14 +15,14 @@
 - [x] Get Links (Search links page 1)
 - [x] Add Link
 - [] Created at & Updated at
-- [] Search links paginate
+- [] Search links & paginate
 
 
 # Secondary
 - [] Update Index
 - [] Update Link
 - [] Remove link
-- [] Duplicate Link
+- [] Duplicate URL Check (Insert or Query)
 - [] Sort links
 - [] Character issue
 

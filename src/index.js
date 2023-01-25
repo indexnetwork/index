@@ -23,9 +23,7 @@ const indexSearchSchema = Joi.object({
   take: Joi.number().default(10),
   links_size: Joi.number().max(100)
 })
-const crawlSchema = Joi.object({
-  url: Joi.string().uri().required(),
-})
+
 
 const linkSearchSchema = Joi.object({
   index_id: Joi.string().required(),
@@ -36,6 +34,11 @@ const linkSearchSchema = Joi.object({
 
 app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
 app.post('/search/links', validator.body(linkSearchSchema), search.link)
+
+
+const crawlSchema = Joi.object({
+  url: Joi.string().uri().required(),
+})
 
 app.get('/crawl/metadata', validator.query(crawlSchema), crawl.metadata)
 app.get('/crawl/content', validator.query(crawlSchema), crawl.content)
