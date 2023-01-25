@@ -218,6 +218,14 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 											</Col>
 											<Col className="ml-3">
+												<Button
+												className="mr-1"
+												size="sm"
+												theme="clear">Add to my indexes
+												</Button>
+											</Col>
+											<Col className="ml-3">
+
 												<IndexOperationsPopup
 													isOwner={isOwner}
 													streamId={stream.id!}
