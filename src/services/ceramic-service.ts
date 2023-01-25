@@ -56,11 +56,11 @@ class CeramicService2 {
 	async getIndexById(streamId: string) {
 		return TileDocument.load<Indexes>(this.client!.ceramic as any, streamId);
 	}
-	//todo find usage : birden fazla index arasında yani genel sayfada arama yaparsa tüm indexlerin contentlerini çekebilmek için kullanılıyor.
+	// todo find usage : birden fazla index arasında yani genel sayfada arama yaparsa tüm indexlerin contentlerini çekebilmek için kullanılıyor.
 	async getIndexes(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }> {
 		return this.client.ceramic.multiQuery(streams) as any;
 	}
-	//todo implement
+	// todo implement
 	async createIndex(data: Partial<Indexes>): Promise<Indexes | null> {
 		try {
 			setDates(data);
@@ -87,7 +87,7 @@ class CeramicService2 {
 			return null;
 		}
 	}
-	//implement
+	// implement
 	async addLink(streamId: string, links: Links[]): Promise<[TileDocument<Indexes>, Links[]]> {
 		const oldDoc = await this.getIndexById(streamId);
 		const { content } = oldDoc;
@@ -174,7 +174,7 @@ class CeramicService2 {
 		});
 		return oldDoc;
 	}
-	//todo implement
+	// todo implement
 	async updateIndex(streamId: string, content: Partial<Indexes>) {
 		setDates(content, true);
 		const oldDoc = await this.getIndexById(streamId);
@@ -216,7 +216,7 @@ class CeramicService2 {
 			}
 		}
 	}
-	//todo find usage
+	// todo find usage
 	async syncContents(providedContent?: LinkContentResult): Promise<number | null> {
 		try {
 			const contents = providedContent ? [providedContent] : (await api.findLinkContent());
