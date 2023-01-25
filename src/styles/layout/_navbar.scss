@@ -42,26 +42,9 @@
 	}
 }
 .lottie-logo{
-	width: 20px;
 	height: 20px;
-	flex: none;
-	order: 0;
-	align-self: center;
-	flex-grow: 0;
-	margin-left: 0;
 }
 .lottie-text{
-	display: flex;
-	flex-direction: row;
-	justify-content: center;
-	align-items: center;
-	padding: 14px 16px;
-	gap: 10px;
-	width: 138px;
-	height: 32px;
-	border-color: #7F7F7F !important;
-	background: #7F7F7F !important;
-	flex: none;
-	order: 0;
-	flex-grow: 0;
+	border-color: $gray-4 !important;
+	background: $gray-4 !important;
 }
