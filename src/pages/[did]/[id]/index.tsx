@@ -44,7 +44,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
-	const [search, setSearch] = useState("");
+	const [search, setSearch] = useState(false);
 
 	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
@@ -289,7 +289,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<IndexDetailsList
 											search={search}
 											isOwner={isOwner}
-											streamId={router.query.id as any}
+											index_id={router.query.id as any}
 											links={stream?.links}
 											onChange={handleReorderLinks}
 										/>

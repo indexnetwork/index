@@ -18,7 +18,7 @@ export interface LinkListState {
 export interface LinkListProps {
 	links?: Links[];
 	search?: string;
-	streamId: string;
+	index_id: string;
 	isOwner?: boolean;
 	onChange?(links: Links[]): void;
 	onFetch?(loading: boolean): void;
@@ -29,7 +29,7 @@ const MemoIndexDetailsItem = React.memo(IndexDetailsItem);
 const IndexDetailsList: React.VFC<LinkListProps> = ({
 	links = [],
 	search,
-	streamId,
+	index_id,
 	isOwner,
 	onChange,
 	onFetch,
@@ -48,17 +48,19 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		hasMore: true,
 	});
 
+
 	const getData = async (page?: number, reset?: boolean, searchT?: string) => {
 		setLoading(true);
+
 		const res = await api.searchLink({
 			skip: reset ? 0 : state.skip,
 			take: state.take,
-			streamId,
+			index_id,
 			search: reset ? searchT! : state.search!,
 		});
 		if (res) {
 			setState((oldState) => ({
-				hasMore: res.totalCount! > res.search!.skip! + oldState.take,
+				hasMore: res.totalCount! > oldState.skip + oldState.take,
 				dt: {
 					records: reset ? (res.records || []) : [...oldState.dt.records!, ...(res.records ?? [])],
 				},
@@ -78,7 +80,10 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 	}, [links]);
 
 	useEffect(() => {
-		getData(undefined, true, search);
+		if(search && search.length > 0){
+			getData(undefined, true, search);
+		}
+		console.log("Search triggered", search, typeof search)
 	}, [search]);
 
 	useEffect(() => {
