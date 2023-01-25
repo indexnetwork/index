@@ -6,7 +6,6 @@ import Button from "components/base/Button";
 import IconTag from "components/base/Icon/IconTag";
 import IconStar from "components/base/Icon/IconStar";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
-import LogoMini from "components/base/Logo/LogoMini";
 import { DraggableProvided, DraggableStateSnapshot } from "react-beautiful-dnd";
 import IconDrag from "components/base/Icon/IconDrag";
 import Flex from "components/layout/base/Grid/Flex";
