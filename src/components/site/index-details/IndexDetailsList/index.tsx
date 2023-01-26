@@ -41,7 +41,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		hasMore: true,
 	});
 
-	const getData = async (page?: number, reset?: boolean, searchT?: string) => {
+	const getData = async (page?: number, searchT?: string) => {
 		if (loading) {
 			return;
 		}
@@ -52,28 +52,33 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 			take: state.take,
 		} as LinkSearchRequestBody;
 
-		if (reset && searchT && searchT.length > 0) { // Search query changed and exists
-			queryParams.search = searchT;
-		} else if (!reset && page && state.search) { // Just paginating on search
-			queryParams.search = state.search;
+		if (searchT !== undefined) {
+			queryParams.skip = 0;
+			if (searchT.length > 0) {
+				queryParams.search = searchT;
+			}
+		} else if (page) {
+			if (state.search && state.search.length > 0){
+				queryParams.search = state.search;
+			}
+			queryParams.skip = state.skip + state.take;
 		}
 
 		const res = await api.searchLink(queryParams) as LinkSearchResponse;
 		if (res) {
-			const ns = {
-				hasMore: res.totalCount > (state.skip + state.take),
-				skip: state.skip + state.take,
-				take: state.take,
-				links: state.links.concat(res.records),
+			setState({
+				hasMore: res.totalCount > queryParams.skip + queryParams.take,
+				take: queryParams.take,
+				skip: queryParams.skip,
+				links: searchT ? state.links : state.links.concat(res.records),
 				search: queryParams.search,
-			} as LinkListState;
-			setState(ns);
+			} as LinkListState);
 		}
 		setLoading(false);
 	};
 
 	useEffect(() => {
-		getData(0, true, search);
+		getData(0, search);
 	}, [search]);
 
 	useEffect(() => {
@@ -122,6 +127,12 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 						/>
 					</InfiniteScroll>
 				) : (
+					<InfiniteScroll
+						initialLoad={false}
+						hasMore={state.hasMore}
+						loadMore={getData}
+						marginHeight={50}
+					>
 					<DndList<Links>
 						data={state.links}
 						listClass="index-detail-list"
@@ -136,6 +147,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 						divided
 						onOrderChange={handleOrderChange}
 					/>
+					</InfiniteScroll>
 				)
 			}
 		</>

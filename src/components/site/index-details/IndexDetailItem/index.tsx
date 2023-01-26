@@ -100,7 +100,6 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 		}
 		onChange && onChange(doc?.content?.links || []);
 	};
-	console.log(!search && isOwner, !search, isOwner);
 	return (
 		<div
 			className="index-detail-list-item-wrapper"
