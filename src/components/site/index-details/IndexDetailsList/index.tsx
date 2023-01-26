@@ -70,7 +70,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 				hasMore: res.totalCount > queryParams.skip + queryParams.take,
 				take: queryParams.take,
 				skip: queryParams.skip,
-				links: searchT ? res.records : state.links.concat(res.records),
+				links: (searchT !== undefined) ? res.records : state.links.concat(res.records),
 				search: queryParams.search,
 			} as LinkListState);
 		}
