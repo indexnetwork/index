@@ -42,6 +42,9 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 	});
 
 	const getData = async (page?: number, reset?: boolean, searchT?: string) => {
+		if (loading) {
+			return;
+		}
 		setLoading(true);
 		const queryParams = {
 			index_id,
