@@ -133,20 +133,20 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 						loadMore={getData}
 						marginHeight={50}
 					>
-					<DndList<Links>
-						data={state.links}
-						listClass="index-detail-list"
-						draggable={isOwner}
-						render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
-							provided={provided!}
-							isOwner={isOwner}
-							snapshot={snapshot!}
-							{...item}
-							onChange={handleLinksChange}
-						/>}
-						divided
-						onOrderChange={handleOrderChange}
-					/>
+						<DndList<Links>
+							data={state.links}
+							listClass="index-detail-list"
+							draggable={isOwner}
+							render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
+								provided={provided!}
+								isOwner={isOwner}
+								snapshot={snapshot!}
+								{...item}
+								onChange={handleLinksChange}
+							/>}
+							divided
+							onOrderChange={handleOrderChange}
+						/>
 					</InfiniteScroll>
 				)
 			}
