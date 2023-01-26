@@ -45,6 +45,8 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		setLoading(true);
 		const queryParams = {
 			index_id,
+			skip: state.skip,
+			take: state.take,
 		} as LinkSearchRequestBody;
 
 		if (reset && searchT && searchT.length > 0) { // Search query changed and exists
@@ -56,10 +58,10 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		const res = await api.searchLink(queryParams) as LinkSearchResponse;
 		if (res) {
 			const ns = {
-				hasMore: res.totalCount! > (state.skip + state.take),
+				hasMore: res.totalCount > (state.skip + state.take),
 				skip: state.skip + state.take,
 				take: state.take,
-				links: res.records,
+				links: state.links.concat(res.records),
 				search: queryParams.search,
 			} as LinkListState;
 			setState(ns);

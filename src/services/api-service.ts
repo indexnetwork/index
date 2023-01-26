@@ -18,6 +18,8 @@ export interface IndexSearchResponse {
 
 export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
 	index_id: string;
+	skip: number;
+	take: number;
 	search?: string;
 }
 export interface LinkSearchResponse {
