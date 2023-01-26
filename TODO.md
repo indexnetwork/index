@@ -14,17 +14,18 @@
 - [x] Get Index
 - [x] Get Links (Search links page 1)
 - [x] Add Link
-- [] Created at & Updated at
-- [] Search links & paginate
-
+- [x] Search links & paginate
+- [] Update Index Title
+- [] Update Link Title
+- [] Update Link Tags
+- [] Remove link
 
 # Secondary
-- [] Update Index
-- [] Update Link
-- [] Remove link
 - [] Duplicate URL Check (Insert or Query)
 - [] Sort links
+- [] Created at & Updated at
 - [] Character issue
+- [] Highlights
 
 # Tertiary
 - [] Filtered Search

@@ -5,6 +5,8 @@ helm upgrade --install elasticsearch -f values-elasticsearch.yaml bitnami/elasti
 
 kubectl apply -f kafkaconnect.yaml
 
+curl -X DELETE \
+  http://kafkaconnect-service.composedb:8083/connectors/containers-connector
 curl -X POST \
   http://kafkaconnect-service.composedb:8083/connectors \
   -H 'Content-Type: application/json' \
@@ -26,7 +28,7 @@ curl -X POST \
             "transforms.unwrap.delete.handling.mode" : "rewrite",
             "transforms.unwrap.add.fields": "table,lsn",
             "decimal.handling.mode": "string",
-            "schema.include.list": "public",
+            "column.include.list": "public.kjzl6hvfrbw6c8olbhuzwqimo7mudyf6iui6wb1nlymjf57y16uufzogjd0cc5m.stream_id,public.kjzl6hvfrbw6c8olbhuzwqimo7mudyf6iui6wb1nlymjf57y16uufzogjd0cc5m.controller_did,public.kjzl6hvfrbw6c8olbhuzwqimo7mudyf6iui6wb1nlymjf57y16uufzogjd0cc5m.stream_content,public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn.stream_id,public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn.controller_did,public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn.stream_content",
             "key.converter": "org.apache.kafka.connect.json.JsonConverter",
             "key.converter.schemas.enable": "false",
             "value.converter": "org.apache.kafka.connect.json.JsonConverter",
