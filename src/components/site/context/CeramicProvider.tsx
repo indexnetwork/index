@@ -15,7 +15,7 @@ export type ListenEvents = {
 export interface CeramicContextValue {
 	syncedData: any;
 	createDoc(doc: Partial<Indexes>): Promise<Indexes | null>;
-	updateDoc(streamId: string, content: Partial<Indexes>): Promise<TileDocument<any>>;
+	updateDoc(index_id: string, content: Partial<Indexes>): Promise<Indexes>;
 	getDocById(streamId: string): Promise<Indexes>;
 	getDocs(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }>;
 	getProfile(): Promise<BasicProfile | null>;
@@ -49,8 +49,8 @@ const CeramicProvider: React.FC<{}> = ({
 
 	const getDocById = (streamId: string) => ceramicService.getIndexById(streamId);
 
-	const updateDoc = async (streamId: string, content: Partial<Indexes>) => {
-		const updatedDoc = await ceramicService.updateIndex(streamId, content);
+	const updateDoc = async (index_id: string, content: Partial<Indexes>) => {
+		const updatedDoc = await ceramicService.updateIndex(index_id, content);
 		return updatedDoc;
 	};
 

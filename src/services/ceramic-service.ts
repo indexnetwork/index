@@ -239,17 +239,15 @@ class CeramicService2 {
 		return oldDoc;
 	}
 
-	async updateIndex(streamId: string, content: Partial<Indexes>) {
+	async updateIndex(index_id: string, content: Partial<Indexes>) {
 		setDates(content, true);
 
 		const response = await this.composeClient.executeQuery(`
 				mutation {
 					updateIndex(input: {
-						id: "${content.id}"
+						id: "${index_id}"
 						content: {
 							title: "${content.title}",
-							collab_action: "example",
-							updated_at: "${content?.updated_at}"
 						}
 					}) 
 				{
@@ -263,7 +261,8 @@ class CeramicService2 {
 				}
 				}
 			`);
-		return response.data.createIndex.document as Links;
+		return response.data.updateIndex.document as Indexes;
+		/*
 		await oldDoc.update({
 			...oldDoc.content,
 			...content,
@@ -271,6 +270,7 @@ class CeramicService2 {
 			publish: true,
 		});
 		return oldDoc;
+		 */
 	}
 
 	async getProfile(): Promise<BasicProfile | null> {

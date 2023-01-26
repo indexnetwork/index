@@ -70,13 +70,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
-		const result = await ceramic.updateDoc(stream?.streamId!, {
+		const result = await ceramic.updateDoc(index.id!, {
 			title,
 		});
-		if (result) {
-			await api.putIndex({ ...result.content, streamId: result.id.toString() });
-		}
-		setIndex(result.content);
+		setIndex(result);
 		setTitleLoading(false);
 	};
 
