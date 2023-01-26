@@ -39,7 +39,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	id,
 	title,
 	url,
-	updatedAt,
+	updated_at,
 	content,
 	favorite,
 	tags = [],
@@ -100,7 +100,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 		}
 		onChange && onChange(doc?.content?.links || []);
 	};
-
+	console.log(!search && isOwner, !search, isOwner);
 	return (
 		<div
 			className="index-detail-list-item-wrapper"
@@ -192,7 +192,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 								height={16}
 								style={{
 									verticalAlign: "middle",
-								}} />}<Text size="sm" theme="disabled">{url?.substring(0, 80)} • {updatedAt ? moment(updatedAt).format("MMM D") : ""}</Text>
+								}} />}<Text size="sm" theme="disabled">{url?.substring(0, 80)} • {updated_at ? moment(updated_at).format("MMM D") : ""}</Text>
 					</ a>
 				</Col>
 				{

@@ -3,21 +3,20 @@ import List from "components/base/List";
 import { useMergedState } from "hooks/useMergedState";
 import React, { useEffect, useState } from "react";
 import InfiniteScroll from "react-infinite-scroller";
-import api, { LinkSearchResponse } from "services/api-service";
+import api, { LinkSearchResponse, LinkSearchRequestBody } from "services/api-service";
 import { Links } from "types/entity";
-import { arrayMove } from "utils/helper";
+// import { arrayMove } from "utils/helper";
 import IndexDetailsItem from "../IndexDetailItem";
 
 export interface LinkListState {
-	dt: LinkSearchResponse;
+	links: Links[];
+	search: string;
 	skip: number;
 	take: number;
-	search?: string;
 	hasMore: boolean;
 }
 export interface LinkListProps {
-	links?: Links[];
-	search?: string;
+	search: string;
 	index_id: string;
 	isOwner?: boolean;
 	onChange?(links: Links[]): void;
@@ -27,63 +26,49 @@ export interface LinkListProps {
 const MemoIndexDetailsItem = React.memo(IndexDetailsItem);
 
 const IndexDetailsList: React.VFC<LinkListProps> = ({
-	links = [],
 	search,
 	index_id,
 	isOwner,
 	onChange,
 	onFetch,
 }) => {
-	const [items, setItems] = useState<Links[]>(links);
 	const [loading, setLoading] = useState(false);
-	const [hasLinks, setHasLinks] = useState(true);
-	const [init, setInit] = useState(true);
 	const [state, setState] = useMergedState<LinkListState>({
-		dt: {
-			records: [],
-		},
+		links: [],
 		skip: 0,
 		take: 10,
-		search: search || undefined,
+		search,
 		hasMore: true,
 	});
 
-
 	const getData = async (page?: number, reset?: boolean, searchT?: string) => {
 		setLoading(true);
-
-		const res = await api.searchLink({
-			skip: reset ? 0 : state.skip,
-			take: state.take,
+		const queryParams = {
 			index_id,
-			search: reset ? searchT! : state.search!,
-		});
+		} as LinkSearchRequestBody;
+
+		if (reset && searchT && searchT.length > 0) { // Search query changed and exists
+			queryParams.search = searchT;
+		} else if (!reset && page && state.search) { // Just paginating on search
+			queryParams.search = state.search;
+		}
+
+		const res = await api.searchLink(queryParams) as LinkSearchResponse;
 		if (res) {
-			setState((oldState) => ({
-				hasMore: res.totalCount! > oldState.skip + oldState.take,
-				dt: {
-					records: reset ? (res.records || []) : [...oldState.dt.records!, ...(res.records ?? [])],
-				},
-				skip: reset ? oldState.take : oldState.skip + oldState.take,
-				search: searchT || oldState.search,
-			}));
+			const ns = {
+				hasMore: res.totalCount! > (state.skip + state.take),
+				skip: state.skip + state.take,
+				take: state.take,
+				links: res.records,
+				search: queryParams.search,
+			} as LinkListState;
+			setState(ns);
 		}
 		setLoading(false);
-		if (!init) {
-			setHasLinks(!!(res?.records && res.records.length > 0));
-			setInit(true);
-		}
 	};
 
 	useEffect(() => {
-		setItems(links);
-	}, [links]);
-
-	useEffect(() => {
-		if(search && search.length > 0){
-			getData(undefined, true, search);
-		}
-		console.log("Search triggered", search, typeof search)
+		getData(0, true, search);
 	}, [search]);
 
 	useEffect(() => {
@@ -94,15 +79,17 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		source: number,
 		destination: number,
 	}) => {
+		/*
 		setItems((oldVal) => {
 			const newArray = arrayMove(oldVal, value.source, value.destination);
 			onChange && onChange(newArray);
 			return newArray;
 		});
+		 */
 	};
 
 	const handleLinksChange = (newLinks: Links[]) => {
-		setItems(newLinks);
+		// setItems(newLinks);
 	};
 
 	return (
@@ -116,7 +103,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 						marginHeight={50}
 					>
 						<List
-							data={state.dt?.records || []}
+							data={state.links || []}
 							listClass="index-list"
 							render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
 								provided={provided!}
@@ -131,7 +118,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 					</InfiniteScroll>
 				) : (
 					<DndList<Links>
-						data={items}
+						data={state.links}
 						listClass="index-detail-list"
 						draggable={isOwner}
 						render={(item, index, provided, snapshot) => <MemoIndexDetailsItem

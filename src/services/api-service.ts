@@ -11,10 +11,18 @@ export type HighlightType<T = {}> = T & {
 export interface IndexResponse extends Indexes {
   highlight?: HighlightType;
 }
-export interface ListResponse<T, S> {
-	totalCount?: number;
-  records?: T[];
-  search?: S;
+export interface IndexSearchResponse {
+	totalCount: number;
+	records: Indexes[];
+}
+
+export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
+	index_id: string;
+	search?: string;
+}
+export interface LinkSearchResponse {
+	totalCount: number;
+	records: Links[];
 }
 
 export type SortType = "asc" | "desc";
@@ -43,18 +51,6 @@ export type ApiSearchRequestBody<S = {}> = Partial<Omit<S, "id">> & BaseRequestF
 export interface IndexesSearchRequestBody extends ApiSearchRequestBody<Indexes> {
 	// permission: IndexSearchRequestType;
 }
-
-export interface IndexSearchResponse extends ListResponse<IndexResponse, IndexesSearchRequestBody> {}
-
-export interface LinksSearchRequestBody extends ApiSearchRequestBody<{}> {
-	index_id: string;
-	search?: string;
-}
-
-class LinksSearchRequestBodyImpl implements LinksSearchRequestBody {
-}
-
-export interface LinkSearchResponse extends ListResponse<Links, LinksSearchRequestBody>{}
 
 export interface LinksCrawlContentRequest {
 	id: string;

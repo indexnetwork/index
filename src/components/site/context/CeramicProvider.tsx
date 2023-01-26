@@ -16,7 +16,7 @@ export interface CeramicContextValue {
 	syncedData: any;
 	createDoc(doc: Partial<Indexes>): Promise<Indexes | null>;
 	updateDoc(streamId: string, content: Partial<Indexes>): Promise<TileDocument<any>>;
-	getDocById(streamId: string): Promise<TileDocument<Indexes>>;
+	getDocById(streamId: string): Promise<Indexes>;
 	getDocs(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }>;
 	getProfile(): Promise<BasicProfile | null>;
 	setProfile(profile: BasicProfile): Promise<boolean>;

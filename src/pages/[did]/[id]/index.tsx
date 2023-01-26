@@ -39,12 +39,12 @@ import { selectProfile } from "store/slices/profileSlice";
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
-	const [stream, setStream] = useMergedState<Partial<Indexes>>({});
+	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
 	const [notFound, setNotFound] = useState(false);
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
-	const [search, setSearch] = useState(false);
+	const [search, setSearch] = useState("");
 
 	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
@@ -58,16 +58,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	// 	setShareModalVisible((oldVal) => !oldVal);
 	// };
 
-	const loadStream = async (streamId: string) => {
-		const doc = await ceramic.getDocById(streamId);
+	const loadIndex = async (id: string) => {
+		const doc = await ceramic.getDocById(id);
 
 		if (doc != null) {
-			const links = await api.searchLink({
-				index_id: streamId,
-			});
-
-			doc.links = links.records;
-			setStream(doc);
+			setIndex(doc);
 		} else {
 			setNotFound(true);
 		}
@@ -81,7 +76,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		if (result) {
 			await api.putIndex({ ...result.content, streamId: result.id.toString() });
 		}
-		setStream(result.content);
+		setIndex(result.content);
 		setTitleLoading(false);
 	};
 
@@ -93,11 +88,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setCrawling(true);
 		const payload = await api.crawlLink(linkUrl);
 		if (payload) {
-			const link = await ceramic.addLink(stream?.id!, payload);
-
-			stream.links?.unshift(link);
-			setStream(stream);
-			console.log(stream);
+			const link = await ceramic.addLink(index?.id!, payload);
+			index.links?.unshift(link);
+			setIndex(index);
 			/*
 			await api.crawlLinkContent({
 				streamId: stream?.streamId!,
@@ -111,15 +104,15 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleReorderLinks = async (links: Links[]) => {
-		const result = await ceramic.putLinks(stream?.streamId!, links);
+		const result = await ceramic.putLinks(index?.streamId!, links);
 		if (result) {
 			await api.putIndex({ ...result.content, streamId: result.id.toString() });
 		}
-		setStream(result.content);
+		setIndex(result.content);
 	};
 
 	const handleClone = async () => {
-		const originalDoc = await ceramic.getDocById(stream.streamId!);
+		const originalDoc = await ceramic.getDocById(index.id!);
 
 		const content = { ...originalDoc.content };
 		content.clonedFrom = stream.streamId!;
@@ -138,7 +131,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const { id } = router.query;
 		if (router.query) {
 			console.log(router.query);
-			loadStream(id as string);
+			loadIndex(id as string);
 		} else {
 			setNotFound(true);
 		}
@@ -168,7 +161,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										noYGutters
 									>
 										<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : stream?.did}</Text>
+										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
 									</Col>
 									<Col
 										xs={12}
@@ -180,7 +173,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												className="idxflex-grow-1 mr-5"
 											>
 												<IndexTitleInput
-													defaultValue={stream?.title || ""}
+													defaultValue={index?.title || ""}
 													onChange={handleTitleChange}
 													disabled={!isOwner}
 													loading={titleLoading}
@@ -227,7 +220,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 												<IndexOperationsPopup
 													isOwner={isOwner}
-													streamId={stream.id!}
+													streamId={index.id!}
 													mode="index-detail-page"
 													onDelete={handleDelete}
 												/>
@@ -235,7 +228,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										</FlexRow>
 									</Col>
 									<Col xs={12} lg={9} noYGutters className="mb-6">
-										<Text size="sm" theme="disabled">{stream?.updated_at ? `Updated ${moment(stream.updated_at).fromNow()}` : ""} </Text>
+										<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
 									</Col>
 									<Col
 										xs={12}
@@ -290,7 +283,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											search={search}
 											isOwner={isOwner}
 											index_id={router.query.id as any}
-											links={stream?.links}
 											onChange={handleReorderLinks}
 										/>
 									</Col>
