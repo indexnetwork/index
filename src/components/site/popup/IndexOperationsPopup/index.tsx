@@ -41,7 +41,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 	};
 
 	const handleClone = async () => {
-		const originalDoc = await ceramic.getDocById(streamId!);
+		const originalDoc = await ceramic.getIndexById(streamId!);
 
 		const content = { ...originalDoc.content };
 		content.clonedFrom = streamId!;
@@ -50,7 +50,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 		delete (content as any).did;
 		delete (content as any).streamId;
 
-		const doc = await ceramic.createDoc(content);
+		const doc = await ceramic.createIndex(content);
 		onClone && onClone();
 		if (doc != null) {
 			router.push(`/${did}/${doc.streamId.toString()}`);

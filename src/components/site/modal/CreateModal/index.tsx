@@ -40,7 +40,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 
 	const handleCreate = async () => {
 		if (stream.title) {
-			const doc = await ceramic.createDoc(stream);
+			const doc = await ceramic.createIndex(stream);
 			if (doc != null) {
 				router.push(`/${did}/${doc.id}`);
 			}

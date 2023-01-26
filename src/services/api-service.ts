@@ -64,14 +64,6 @@ const apiAxios = axios.create({
 });
 
 class ApiService {
-	async postIndex(doc: Indexes): Promise<Indexes | null> {
-		try {
-			const { data } = await apiAxios.post<Indexes>(API_ENDPOINTS.INDEXES, doc);
-			return data;
-		} catch (err) {
-			return null;
-		}
-	}
 
 	async putIndex(doc: Indexes): Promise<Indexes | null> {
 		try {
@@ -91,14 +83,6 @@ class ApiService {
 		}
 	}
 
-	async getIndex(streamId: string): Promise<Indexes | null> {
-		try {
-			const { data } = await apiAxios.get<Indexes>(`${API_ENDPOINTS.INDEXES}/${streamId}`);
-			return data;
-		} catch (err) {
-			return null;
-		}
-	}
 
 	async deleteIndex(streamId: string): Promise<boolean> {
 		try {
@@ -151,7 +135,7 @@ class ApiService {
 		}
 	}
 
-	async searchLink(body: LinksSearchRequestBody): Promise<LinkSearchResponse | null> {
+	async searchLink(body: LinkSearchRequestBody): Promise<LinkSearchResponse | null> {
 		try {
 			const { data } = await apiAxios.post<LinkSearchResponse>(API_ENDPOINTS.SEARCH_LINKS, body);
 			return data;

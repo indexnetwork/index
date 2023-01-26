@@ -59,7 +59,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	// };
 
 	const loadIndex = async (id: string) => {
-		const doc = await ceramic.getDocById(id);
+		const doc = await ceramic.getIndexById(id);
 
 		if (doc != null) {
 			setIndex(doc);
@@ -70,7 +70,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
-		const result = await ceramic.updateDoc(index.id!, {
+		const result = await ceramic.updateIndex(index.id!, {
 			title,
 		});
 		setIndex(result);
@@ -109,7 +109,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleClone = async () => {
-		const originalDoc = await ceramic.getDocById(index.id!);
+		const originalDoc = await ceramic.getIndexById(index.id!);
 
 		const content = { ...originalDoc.content };
 		content.clonedFrom = stream.streamId!;
@@ -117,7 +117,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		delete (content as any).did;
 		delete (content as any).streamId;
 
-		const doc = await ceramic.createDoc(content);
+		const doc = await ceramic.createIndex(content);
 
 		if (doc != null) {
 			router.push(`/${did}/${doc.streamId.toString()}`);
