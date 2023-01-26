@@ -15,7 +15,7 @@
 - [x] Get Links (Search links page 1)
 - [x] Add Link
 - [x] Search links & paginate
-- [] Update Index Title
+- [x] Update Index Title
 - [] Update Link Title
 - [] Update Link Tags
 - [] Remove link
