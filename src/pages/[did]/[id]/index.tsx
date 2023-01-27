@@ -41,11 +41,11 @@ export interface LinksContextValue {
 }
 export const LinksContext = React.createContext<LinksContextValue>({} as any);
 const IndexDetailPage: NextPageWithLayout = () => {
+	const [links, setLinks] = useState<Links[]>([]);
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
 	const [notFound, setNotFound] = useState(false);
-	const [links, setLinks] = useState<Links[]>([]);
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
@@ -145,8 +145,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, []);
 
 	return (
-		<LinksContext.Provider value={links}>
-			
+		<LinksContext.Provider value={links}>	
 		<>
 			<Container
 				className="index-details-page my-6 my-lg-8"
