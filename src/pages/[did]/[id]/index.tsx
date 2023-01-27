@@ -36,12 +36,16 @@ import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { selectProfile } from "store/slices/profileSlice";
 
+export interface LinksContextValue {
+	links: Links
+}
+export const LinksContext = React.createContext<LinksContextValue>({} as any);
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
-	const [links, setLinks] = useState<Links[]>([]);
 	const [notFound, setNotFound] = useState(false);
+	const [links, setLinks] = useState<Links[]>([]);
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
@@ -141,6 +145,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, []);
 
 	return (
+		<LinksContext.Provider value={links}>
+			
 		<>
 			<Container
 				className="index-details-page my-6 my-lg-8"
@@ -297,6 +303,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			</Container>
 			{/* <ShareModal data={{}} visible={shareModalVisible} onClose={handleToggleShareModal} /> */}
 		</>
+		</LinksContext.Provider>
 	);
 };
 

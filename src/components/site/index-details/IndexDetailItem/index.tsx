@@ -19,6 +19,7 @@ import { Links } from "types/entity";
 import moment from "moment";
 import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
+import { useLinks } from "hooks/useLinks";
 import sanitize from "sanitize-html";
 import api from "services/api-service";
 
@@ -50,9 +51,9 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 }) => {
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
 	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
-
+	const links = useLinks();
 	const [currentTags, setCurrentTags] = useState<[]>(tags);
-
+	console.log("asdasd",links)
 	const router = useRouter();
 
 	const { streamId } = router.query;

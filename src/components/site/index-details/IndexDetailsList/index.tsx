@@ -7,6 +7,7 @@ import api, { LinkSearchResponse, LinkSearchRequestBody } from "services/api-ser
 import { Links } from "types/entity";
 // import { arrayMove } from "utils/helper";
 import IndexDetailsItem from "../IndexDetailItem";
+import { useLinks } from "hooks/useLinks";
 
 export interface LinkListState {
 	search: string;
@@ -36,6 +37,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 	onFetch,
 }) => {
 	const [loading, setLoading] = useState(false);
+
 	const [state, setState] = useMergedState<LinkListState>({
 		skip: 0,
 		take: 10,
