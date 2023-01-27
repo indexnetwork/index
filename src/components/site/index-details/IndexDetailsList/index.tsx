@@ -9,37 +9,40 @@ import { Links } from "types/entity";
 import IndexDetailsItem from "../IndexDetailItem";
 
 export interface LinkListState {
-	links: Links[];
 	search: string;
 	skip: number;
 	take: number;
 	hasMore: boolean;
 }
 export interface LinkListProps {
+	links: Links[];
 	search: string;
 	index_id: string;
 	isOwner?: boolean;
 	onChange?(links: Links[]): void;
+	onChangeLinks?(links: Links[]): void;
 	onFetch?(loading: boolean): void;
 }
 
 const MemoIndexDetailsItem = React.memo(IndexDetailsItem);
 
 const IndexDetailsList: React.VFC<LinkListProps> = ({
+	links = [],
 	search,
 	index_id,
 	isOwner,
 	onChange,
+	onChangeLinks,
 	onFetch,
 }) => {
 	const [loading, setLoading] = useState(false);
 	const [state, setState] = useMergedState<LinkListState>({
-		links: [],
 		skip: 0,
 		take: 10,
 		search,
 		hasMore: true,
 	});
+
 
 	const getData = async (page?: number, searchT?: string) => {
 		if (loading) {
@@ -48,7 +51,6 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		setLoading(true);
 		const queryParams = {
 			index_id,
-			skip: state.skip,
 			take: state.take,
 		} as LinkSearchRequestBody;
 
@@ -61,8 +63,9 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 			if (state.search && state.search.length > 0){
 				queryParams.search = state.search;
 			}
-			queryParams.skip = state.skip + state.take;
 		}
+
+		queryParams.skip = links.length;
 
 		const res = await api.searchLink(queryParams) as LinkSearchResponse;
 		if (res) {
@@ -70,9 +73,10 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 				hasMore: res.totalCount > queryParams.skip + queryParams.take,
 				take: queryParams.take,
 				skip: queryParams.skip,
-				links: (searchT !== undefined) ? res.records : state.links.concat(res.records),
 				search: queryParams.search,
 			} as LinkListState);
+			const newLinks = (searchT !== undefined) ? res.records : links.concat(res.records);
+			onChangeLinks && onChangeLinks(newLinks);
 		}
 		setLoading(false);
 	};
@@ -98,10 +102,9 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		 */
 	};
 
-	const handleLinksChange = (newLinks: Links[]) => {
+	const handleLinksChange = (newLink: Links) => {
 		// setItems(newLinks);
 	};
-
 	return (
 		<>
 			{
@@ -113,7 +116,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 						marginHeight={50}
 					>
 						<List
-							data={state.links || []}
+							data={links || []}
 							listClass="index-list"
 							render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
 								provided={provided!}
@@ -134,7 +137,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 						marginHeight={50}
 					>
 						<DndList<Links>
-							data={state.links}
+							data={links || []}
 							listClass="index-detail-list"
 							draggable={isOwner}
 							render={(item, index, provided, snapshot) => <MemoIndexDetailsItem

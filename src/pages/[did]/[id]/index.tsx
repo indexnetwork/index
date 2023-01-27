@@ -40,6 +40,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
+	const [links, setLinks] = useState<Links[]>([]);
 	const [notFound, setNotFound] = useState(false);
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
@@ -60,12 +61,14 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const loadIndex = async (id: string) => {
 		const doc = await ceramic.getIndexById(id);
-
 		if (doc != null) {
 			setIndex(doc);
 		} else {
 			setNotFound(true);
 		}
+	};
+	const handleChangeLinks = async (ld: Links[]) => {
+		setLinks(ld);
 	};
 
 	const handleTitleChange = async (title: string) => {
@@ -86,8 +89,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const payload = await api.crawlLink(linkUrl);
 		if (payload) {
 			const link = await ceramic.addLink(index?.id!, payload);
-			index.links?.unshift(link);
-			setIndex(index);
+			links.unshift(link);
 			/*
 			await api.crawlLinkContent({
 				streamId: stream?.streamId!,
@@ -101,14 +103,17 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleReorderLinks = async (links: Links[]) => {
+		/*
 		const result = await ceramic.putLinks(index?.streamId!, links);
 		if (result) {
 			await api.putIndex({ ...result.content, streamId: result.id.toString() });
 		}
 		setIndex(result.content);
+		 */
 	};
 
 	const handleClone = async () => {
+		/*
 		const originalDoc = await ceramic.getIndexById(index.id!);
 
 		const content = { ...originalDoc.content };
@@ -122,12 +127,13 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		if (doc != null) {
 			router.push(`/${did}/${doc.streamId.toString()}`);
 		}
+
+		 */
 	};
 
 	useEffect(() => {
 		const { id } = router.query;
 		if (router.query) {
-			console.log(router.query);
 			loadIndex(id as string);
 		} else {
 			setNotFound(true);
@@ -275,12 +281,13 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									justify="center"
 								>
 									<Col xs={12} lg={9}>
-
 										<IndexDetailsList
 											search={search}
 											isOwner={isOwner}
 											index_id={router.query.id as any}
 											onChange={handleReorderLinks}
+											onChangeLinks={handleChangeLinks}
+											links={links}
 										/>
 									</Col>
 								</FlexRow>

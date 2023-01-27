@@ -59,6 +59,12 @@ export type Links = {
   images?: string[]
   favorite?: boolean;
   tags?: string[]
+  highlight?: {
+    title?: string
+    content?: string
+    tags?: string
+    url?: string
+  }
 };
 
 /**

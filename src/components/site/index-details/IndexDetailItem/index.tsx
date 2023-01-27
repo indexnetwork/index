@@ -38,6 +38,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	isOwner,
 	id,
 	title,
+	highlight,
 	url,
 	updated_at,
 	content,
@@ -48,7 +49,9 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	onChange,
 }) => {
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
-	const [newTag, setNewTag] = useState<boolean>(false);
+	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
+
+	const [currentTags, setCurrentTags] = useState<[]>(tags);
 
 	const router = useRouter();
 
@@ -57,24 +60,22 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	const ceramic = useCeramic();
 
 	const handleToggleNewTag = () => {
-		setNewTag((oldVal) => !oldVal);
+		setToggleNewTag((oldVal) => !oldVal);
 	};
 
 	const handleNewTagEdit = async (val?: string | null) => {
+
 		if (val) {
-			const doc = await ceramic.addTag(streamId as string, id!, val);
-			if (doc) {
-				await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
-			}
-			onChange && onChange(doc?.content?.links || []);
+			let link = await ceramic.addTag(id!, val);
+			setCurrentTags(link.tags)
 		}
-		setNewTag(false);
+		setToggleNewTag(false);
 		setTimeout(() => {
 			handleToggleNewTag();
 		}, 0);
 	};
 	const handleCloseTag = () => {
-		setNewTag(false);
+		setToggleNewTag(false);
 	};
 
 	const handleSetFavorite = async () => {
@@ -86,7 +87,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	};
 
 	const handleRemove = async () => {
-		const doc = await ceramic.removeLink(streamId as string, id!);
+		const doc = await ceramic.updateLink(streamId as string, id!);
 		if (doc) {
 			await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
 		}
@@ -125,7 +126,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 							className="idxflex-grow-1"
 						>
 							<a target="_blank" rel="noreferrer" href={url}>
-								<Text fontWeight={600} dangerouslySetInnerHTML={{ __html: sanitize(title || "") }}></Text>
+								<Text fontWeight={600} dangerouslySetInnerHTML={{ __html: sanitize((highlight?.title ? highlight.title : title) || "") }}></Text>
 							</a>
 						</Col>
 						{
@@ -206,7 +207,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 				{
 					!search && <Col xs={12} className="mt-3 idxflex idxflex-gap-3 idxflex-wrap">
 						{
-							tags.map((t, ind) => (
+							currentTags.map((t, ind) => (
 								<TagIndexDetailItem
 									key={ind}
 									text={t}
@@ -215,7 +216,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 								/>))
 						}
 						{
-							newTag && <TagIndexDetailItem
+							toggleNewTag && <TagIndexDetailItem
 								theme="clear"
 								text=""
 								placeholder="New Tag"

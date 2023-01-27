@@ -5,9 +5,10 @@ import { v4 as uuidv4 } from "uuid";
 import cc from "classcat";
 import { Draggable, DraggableProvided, DraggableStateSnapshot } from "react-beautiful-dnd";
 import ListItem from "./ListItem";
+import { Links } from "../../../types/entity";
 
 export interface ListProps<T = {}> {
-	data: T[];
+	data: Links[];
 	listClass?: string;
 	itemContainerClass?: string;
 	render(item: T, index: number, provided?: DraggableProvided, snapshot?: DraggableStateSnapshot): ReactElement<any>;
@@ -18,7 +19,7 @@ export interface ListProps<T = {}> {
 }
 
 const List: React.VFC<ListProps> = ({
-	data,
+	data= [],
 	listClass,
 	itemContainerClass,
 	render,

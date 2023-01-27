@@ -51,9 +51,9 @@ class CeramicService2 {
 		return !!(this.ceramic?.did?.authenticated);
 	}
 
-	async getIndexById(streamId: string) {
+	async getIndexById(index_id: string) {
 		const result = await this.composeClient.executeQuery(`{
-			node(id:"${streamId}"){
+			node(id:"${index_id}"){
 			  id
 			  ... on Index{
 				id
@@ -67,14 +67,19 @@ class CeramicService2 {
 		<Indexes>(result.data?.node as any)
 		);
 	}
-	async getLinksById(streamId: string) {
+	async getLinkById(link_id: string) {
 		const result = await this.composeClient.executeQuery(`{
-			node(id:"${streamId}"){
+			node(id:"${link_id}"){
 			  id
-			  ... on Index{
+			  ... on Link{
+				id
+				content
 				title
-				user_id
+				url
+				favicon
 				created_at
+				updated_at
+				tags
 			}}
 		  }`);
 		return <Links>(result.data?.node as any);
@@ -131,7 +136,8 @@ class CeramicService2 {
 						  favicon: "${link.favicon}",
 						  indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx"
 						  created_at: "${link.created_at}"
-						  updated_at: "${link.created_at}"
+						  updated_at: "${link.created_at}",
+						  tags: []
 						}
 					}) {
 					document {
@@ -139,6 +145,7 @@ class CeramicService2 {
 						index_id
 						url
 						title
+						tags
 						favicon
 						indexer_did {
 							id
@@ -179,20 +186,39 @@ class CeramicService2 {
 		return oldDoc;
 	}
 
-	async addTag(streamId: string, linkId: string, tag: string) {
-		const oldDoc = await this.getIndexById(streamId);
-		const newContent = { ...oldDoc.content };
-		const link = newContent.links?.find((l) => l.id === linkId);
+	async updateLink(link_id: string, link: Partial<Links>) {
+		const response = await this.composeClient.executeQuery(`
+				mutation {
+					updateLink(input: {
+						id: "${link_id}"
+						content: {
+							tags: ${JSON.stringify(link.tags)}
+						}
+					}) 
+				{
+					document {
+						id
+						index_id
+						url
+						title
+						tags
+						favicon
+					}
+				}
+				}
+			`);
+		return response.data.updateLink.document as Links;
+	}
+
+	async addTag(link_id: string, tag: string) {
+		const link = await this.getLinkById(link_id);
 		if (link) {
 			const { tags } = link;
 			if (tags && tags.includes(tag)) {
-				return oldDoc;
+				return link;
 			}
 			link.tags = [...(tags ? [...tags, tag] : [tag])];
-			await oldDoc.update(newContent, undefined, {
-				publish: true,
-			});
-			return oldDoc;
+			return await this.updateLink(link_id, link);
 		}
 	}
 
@@ -226,17 +252,13 @@ class CeramicService2 {
 		}
 	}
 
-	async removeLink(streamId: string, linkId: string) {
-		const oldDoc = await this.getIndexById(streamId);
-		const { content } = oldDoc;
-		const newLinks = content?.links?.filter((li) => li.id !== linkId);
-		await oldDoc.update({
-			...content,
-			links: newLinks,
-		}, undefined, {
-			publish: true,
-		});
-		return oldDoc;
+	async removeLink(link_id: string) {
+		const link = await this.getLinkById(link_id);
+		if (link) {
+			return await this.updateLink(link_id, {
+				"deleted_at": "2020-01-01"
+			});
+		}
 	}
 
 	async updateIndex(index_id: string, content: Partial<Indexes>) {

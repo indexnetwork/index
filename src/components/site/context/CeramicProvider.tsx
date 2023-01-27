@@ -6,7 +6,6 @@ import { TileDocument } from "@ceramicnetwork/stream-tile";
 import { Indexes, LinkContentResult, Links } from "types/entity";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { CID } from "ipfs-http-client";
-import { appConfig } from "config";
 
 export type ListenEvents = {
 	contentSync: (data: LinkContentResult) => void;
@@ -22,8 +21,8 @@ export interface CeramicContextValue {
 	setProfile(profile: BasicProfile): Promise<boolean>;
 	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
 	addLink(index_id: string, data: Links): Promise<Links>;
-	removeLink(streamId: string, linkId: string): Promise<TileDocument<Indexes>>;
-	addTag(streamId: string, linkId: string, tag: string): Promise<TileDocument<Indexes> | undefined>;
+	removeLink(link_id: string): Promise<Links>;
+	addTag(link_id: string, tag: string): Promise<Links | undefined>;
 	removeTag(streamId: string, linkId: string, tag: string): Promise<TileDocument<Indexes> | undefined>;
 	setLinkFavorite(streamId: string, linkId: string, favorite: boolean): Promise<TileDocument<Indexes> | undefined>;
 	putLinks(streamId: string, links: Links[]): Promise<TileDocument<Indexes>>;
@@ -56,13 +55,13 @@ const CeramicProvider: React.FC<{}> = ({
 
 	const addLink = async (index_id: string, link: Links) => ceramicService.addLink(index_id, link);
 
-	const removeLink = async (streamId: string, linkId: string) => {
-		const updatedDoc = await ceramicService.removeLink(streamId, linkId);
+	const removeLink = async (link_id) => {
+		const updatedDoc = await ceramicService.removeLink(link_id);
 		return updatedDoc;
 	};
 
-	const addTag = async (streamId: string, linkId: string, tag: string) => {
-		const updatedDoc = await ceramicService.addTag(streamId, linkId, tag);
+	const addTag = async (link_id: string, tag: string) => {
+		const updatedDoc = await ceramicService.addTag(link_id, tag);
 		return updatedDoc;
 	};
 
@@ -88,17 +87,6 @@ const CeramicProvider: React.FC<{}> = ({
 	const setProfile = async (profile: BasicProfile) => ceramicService.setProfile(profile);
 
 	const uploadImage = async (file: File) => ceramicService.uploadImage(file);
-	const hostnameCheck = () : string => {
-		if (typeof window !== "undefined") {
-			if (window.location.hostname === "testnet.index.as") {
-				return appConfig.baseUrl;
-			}
-			if (window.location.hostname === "dev.index.as" || window.location.hostname === "localhost") {
-				return appConfig.devBaseUrl;
-			}
-		  }
-		  return appConfig.baseUrl;
-	};
 
 	return (
 		<CeramicContext.Provider value={{
