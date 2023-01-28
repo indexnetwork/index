@@ -25,7 +25,6 @@ export interface CeramicContextValue {
 	addTag(link_id: string, tag: string): Promise<Links | undefined>;
 	removeTag(streamId: string, linkId: string, tag: string): Promise<TileDocument<Indexes> | undefined>;
 	setLinkFavorite(streamId: string, linkId: string, favorite: boolean): Promise<TileDocument<Indexes> | undefined>;
-	putLinks(streamId: string, links: Links[]): Promise<TileDocument<Indexes>>;
 }
 
 export const CeramicContext = React.createContext<CeramicContextValue>({} as any);
@@ -75,11 +74,6 @@ const CeramicProvider: React.FC<{}> = ({
 		return updatedDoc;
 	};
 
-	const putLinks = async (streamId: string, links: Links[]) => {
-		const updatedDoc = await ceramicService.putLinks(streamId, links);
-		return updatedDoc;
-	};
-
 	const getDocs = (streams: { streamId: string }[]) => ceramicService.getIndexes(streams);
 
 	const getProfile = async () => ceramicService.getProfile();
@@ -99,7 +93,6 @@ const CeramicProvider: React.FC<{}> = ({
 			addLink,
 			getProfile,
 			setProfile,
-			putLinks,
 			setLinkFavorite,
 			removeLink,
 			removeTag,

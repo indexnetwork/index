@@ -5,7 +5,7 @@ import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
 
 import { Indexes, LinkContentResult, Links } from "types/entity";
-import { isSSR, setDates } from "utils/helper";
+import {getCurrentDateTime, isSSR, setDates} from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
@@ -90,23 +90,21 @@ class CeramicService2 {
 		return await this.ceramic.multiQuery(streams) as any;
 	}
 
-	async createIndex(data: Partial<Indexes>): Promise<Indexes | null> {
-		try {
-			setDates(data);
-			if (!data.title) {
-				data.title = "Untitled Index";
-			}
-			const response = await this.composeClient.executeQuery(`
-				mutation {
-					createIndex(input: {
-						content: {
-							title: "${data.title}",
-							collab_action: "example",
-							created_at: "${data?.created_at}",
-							updated_at: "${data?.updated_at}"
-						}
-					}) 
-				{
+	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
+
+		setDates(content, true);
+		if (!content.title) {
+			content.title = "Untitled Index";
+		}
+		const cdt = getCurrentDateTime();
+		content.created_at = cdt;
+		content.updated_at = cdt;
+		const payload = {
+			content,
+		};
+		const response = await this.composeClient.executeQuery(`
+			mutation CreateIndex($input: CreateIndexInput!) {
+				createIndex(input: $input) {
 					document {
 						id
 						title
@@ -115,32 +113,49 @@ class CeramicService2 {
 						updated_at
 					}
 				}
-				}
-			`);
-			return response.data.createIndex.document as Links;
-		} catch (err) {
-			return null;
-		}
+			}`, { input: payload });
+		return response.data.createIndex.document as Indexes;
 	}
 
-	async addLink(index_id: string, link: Links): Promise<[Links]> {
+	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes> {
+
+		const cdt = getCurrentDateTime();
+		content.updated_at = cdt;
+		const payload = {
+			id: index_id,
+			content,
+		};
+		const response = await this.composeClient.executeQuery(`
+			mutation UpdateIndex($input: UpdateIndexInput!) {
+				updateIndex(input: $input) {
+					document {
+						id
+						title
+						collab_action
+						created_at
+						updated_at
+					}
+				}
+			}`, { input: payload });
+		return response.data.updateIndex.document as Indexes;
+
+	}
+
+	async addLink(index_id: string, link: Links): Promise<Links> {
 		setDates(link); // TODO Conditional updated_at
 
-		try {
-			const response = await this.composeClient.executeQuery(`
-				mutation {
-					createLink(input: {
-						content: {
-						  index_id: "${index_id}",
-						  url: "${link.url}",
-						  title: "${link.title}",
-						  favicon: "${link.favicon}",
-						  indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx"
-						  created_at: "${link.created_at}"
-						  updated_at: "${link.created_at}",
-						  tags: []
-						}
-					}) {
+		link.index_id = index_id;
+		link.indexer_did = "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx";
+		link.updated_at = getCurrentDateTime();
+		if(!link.tags) {
+			link.tags = [];
+		}
+		const payload = {
+			content: link,
+		};
+		const response = await this.composeClient.executeQuery(`
+			mutation CreateLink($input: CreateLinkInput!) {
+				createLink(input: $input) {
 					document {
 						id
 						index_id
@@ -148,46 +163,16 @@ class CeramicService2 {
 						title
 						tags
 						favicon
-						indexer_did {
-							id
-						}
 					}
-				  }
 				}
-			`);
-			return response.data.createLink.document as Links;
-		} catch (err) {
-			return null;
-		}
-		/*
-		const oldDoc = await this.getIndexById(streamId);
-		const { content } = oldDoc;
-		const newLinks = prepareLinks(links);
-		const newContent: Indexes = {
-			...setDates(content, true),
-			links: [...newLinks, ...content.links],
-		};
-		await oldDoc.update(newContent, undefined, {
-			publish: true,
-		});
-		return [oldDoc, newLinks];
-		 */
+			}`, { input: payload });
+		return response.data.createLink.document as Links;
+
 	}
 
-	async putLinks(streamId: string, links: Links[]) {
-		const oldDoc = await this.getIndexById(streamId);
-		const { content } = oldDoc;
-		const newContent: Indexes = {
-			...content,
-			links: links ?? [],
-		};
-		await oldDoc.update(newContent, undefined, {
-			publish: true,
-		});
-		return oldDoc;
-	}
+	async updateLink(link_id: string, link: Partial<Links>): Promise <Links> {
 
-	async updateLink(link_id: string, link: Partial<Links>) {
+		link.updated_at = getCurrentDateTime();
 		const payload = {
 			id: link_id,
 			content: link
@@ -209,7 +194,18 @@ class CeramicService2 {
 
 	}
 
-	async addTag(link_id: string, tag: string) {
+	async removeLink(link_id: string): Promise <Links> {
+		const link = await this.getLinkById(link_id);
+		if (link) {
+			return await this.updateLink(link_id, {
+				deleted_at: getCurrentDateTime(),
+			} as Links);
+		}else{
+			// TODO handle
+		}
+	}
+
+	async addTag(link_id: string, tag: string): Promise <Links>  {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			let { tags } = link;
@@ -225,7 +221,7 @@ class CeramicService2 {
 		}
 	}
 
-	async removeTag(link_id: string, tag: string) {
+	async removeTag(link_id: string, tag: string): Promise <Links>  {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			let { tags } = link;
@@ -252,48 +248,8 @@ class CeramicService2 {
 		}
 	}
 
-	async removeLink(link_id: string) {
-		const link = await this.getLinkById(link_id);
-		if (link) {
-			return await this.updateLink(link_id, {
-				updated_at: "2023-01-28T12:00:31.685Z",
-			} as Links);
-		}
-	}
 
-	async updateIndex(index_id: string, content: Partial<Indexes>) {
-		setDates(content, true);
 
-		const response = await this.composeClient.executeQuery(`
-				mutation {
-					updateIndex(input: {
-						id: "${index_id}"
-						content: {
-							title: "${content.title}",
-						}
-					}) 
-				{
-					document {
-						id
-						title
-						collab_action
-						created_at
-						updated_at
-					}
-				}
-				}
-			`);
-		return response.data.updateIndex.document as Indexes;
-		/*
-		await oldDoc.update({
-			...oldDoc.content,
-			...content,
-		}, undefined, {
-			publish: true,
-		});
-		return oldDoc;
-		 */
-	}
 
 	async getProfile(): Promise<BasicProfile | null> {
 		if (this.self) {

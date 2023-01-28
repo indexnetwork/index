@@ -48,6 +48,8 @@ export type Invitations = {
  */
 export type Links = {
   id?: string;
+  index_id?: string;
+  indexer_did?: string;
   content?: string
   title?: string
   url?: string

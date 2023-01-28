@@ -111,13 +111,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleReorderLinks = async (links: Links[]) => {
-		/*
-		const result = await ceramic.putLinks(index?.streamId!, links);
-		if (result) {
-			await api.putIndex({ ...result.content, streamId: result.id.toString() });
-		}
-		setIndex(result.content);
-		 */
+
 	};
 
 	const handleClone = async () => {

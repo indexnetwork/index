@@ -50,6 +50,8 @@ export const setDates = <T extends { updated_at?: string, created_at?: string, [
 	return obj;
 };
 
+export const getCurrentDateTime = () => moment.utc().toISOString();
+
 export function prepareLinks(links: Links[], update: boolean = false) {
 	return links?.map((link) => setDates({
 		...link,
