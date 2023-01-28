@@ -13,6 +13,7 @@ import { appConfig } from "config";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import { definition } from "../types/merged-runtime";
 import api from "./api-service";
+import {debug} from "util";
 
 class CeramicService2 {
 	private ipfs: IPFSHTTPClient = create({
@@ -187,15 +188,13 @@ class CeramicService2 {
 	}
 
 	async updateLink(link_id: string, link: Partial<Links>) {
+		const payload = {
+			id: link_id,
+			content: link
+		};
 		const response = await this.composeClient.executeQuery(`
-				mutation {
-					updateLink(input: {
-						id: "${link_id}"
-						content: {
-							tags: ${JSON.stringify(link.tags)}
-						}
-					}) 
-				{
+			mutation UpdateLink($input: UpdateLinkInput!) {
+				updateLink(input: $input) {
 					document {
 						id
 						index_id
@@ -205,20 +204,22 @@ class CeramicService2 {
 						favicon
 					}
 				}
-				}
-			`);
+			}`, { input: payload });
 		return response.data.updateLink.document as Links;
+
 	}
 
 	async addTag(link_id: string, tag: string) {
 		const link = await this.getLinkById(link_id);
 		if (link) {
-			const { tags } = link;
+			let { tags } = link;
 			if (tags && tags.includes(tag)) {
 				return link;
 			}
-			link.tags = [...(tags ? [...tags, tag] : [tag])];
-			return await this.updateLink(link_id, link);
+			tags = [...(tags ? [...tags, tag] : [tag])];
+			return await this.updateLink(link_id, {
+				tags,
+			});
 		}
 	}
 
@@ -256,9 +257,8 @@ class CeramicService2 {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			return await this.updateLink(link_id, {
-				"deleted_at": "2020-01-01",
-				"tags": ["asd"]
-			});
+				updated_at: "2023-01-28T12:00:31.685Z",
+			} as Links);
 		}
 	}
 
