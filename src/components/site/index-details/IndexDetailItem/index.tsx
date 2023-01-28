@@ -71,7 +71,6 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 			const newState = links.map((l) => l.id === id ? link : l);
 			setLinks(newState);
 
-
 		}
 		setToggleNewTag(false);
 		setTimeout(() => {
@@ -91,8 +90,8 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	};
 
 	const handleRemove = async () => {
+		setLinks(links?.filter((l) => l.id !== id!));
 		const link = await ceramic.removeLink(id!);
-		setLinks(links?.filter((l) => l.id !== link.id));
 		// onChange && onChange(doc?.content?.links || []);
 	};
 
