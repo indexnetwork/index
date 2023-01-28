@@ -23,9 +23,12 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 	data,
 	...modalProps
 }) => {
+	
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
-
+	const handleClose = () => {
+		modalProps.onClose?.();
+	}
 	const ceramic = useCeramic();
 
 	const { did } = useAppSelector(selectConnection);
@@ -43,6 +46,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 			const doc = await ceramic.createIndex(stream);
 			if (doc != null) {
 				router.push(`/${did}/${doc.id}`);
+				modalProps.onClose?.();
 			}
 		}
 		setLoading(false);
@@ -56,7 +60,6 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 	return <Modal
 		{...modalProps}
 		size={"xs"}
-
 		destroyOnClose
 		body={(
 			<>
@@ -85,7 +88,9 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 							<Button
 								className="mt-7 pl-9 pr-9 "
 								theme="clear"
+								onClick={handleClose}
 							>
+								
 						Cancel
 							</Button>
 						</Col>
@@ -110,3 +115,5 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 };
 
 export default CreateModal;
+
+
