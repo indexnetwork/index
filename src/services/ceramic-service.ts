@@ -1,44 +1,43 @@
-import { EthereumAuthProvider } from "@3id/connect";
 import { TileDocument } from "@ceramicnetwork/stream-tile";
-import { SelfID, WebClient } from "@self.id/web";
+import { SelfID } from "@self.id/web";
+
+import { CeramicClient } from "@ceramicnetwork/http-client";
+import { ComposeClient } from "@composedb/client";
+
 import { Indexes, LinkContentResult, Links } from "types/entity";
-import { prepareLinks, isSSR, setDates } from "utils/helper";
+import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { appConfig } from "config";
+import { RuntimeCompositeDefinition } from "@composedb/types";
+import { definition } from "../types/merged-runtime";
 import api from "./api-service";
 
 class CeramicService2 {
-	hostnameCheck = () : string => {
-		if (typeof window !== "undefined") {
-			if (window.location.hostname === "testnet.index.as") {
-				return appConfig.ceramicNode;
-			}
-			if (window.location.hostname === "dev.index.as" || window.location.hostname === "localhost") {
-				return appConfig.devCeramicNode;
-			}
-		  }
-		  return appConfig.ceramicNode;
-	};
-	private account?: string;
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
 	});
+	/*
 	private client = (isSSR() ? undefined : new WebClient({
 		ceramic: this.hostnameCheck(),
 		connectNetwork: appConfig.ceramicNetworkName as any,
 	})) as WebClient;
+	*/
 
+	private ceramic = new CeramicClient("https://ceramic.index.as");
+	private composeClient = new ComposeClient({
+		ceramic: "https://ceramic.index.as",
+		// cast our definition as a RuntimeCompositeDefinition
+		definition: definition as RuntimeCompositeDefinition,
+	});
 	private self?: SelfID;
 
-	async authenticate(account: string) {
+	async authenticate(did: any) {
 		if (!isSSR()) {
 			try {
-				const authProvider = new EthereumAuthProvider((window as any).ethereum, account);
-				await this.client.authenticate(authProvider);
-				this.self = new SelfID({ client: this.client });
-				this.account = account;
+				await this.ceramic.setDID(did);
+				await this.composeClient.setDID(did);
 				return true;
 			} catch (err) {
 				return false;
@@ -49,104 +48,184 @@ class CeramicService2 {
 	}
 
 	isAuthenticated() {
-		return !!(this.client?.ceramic?.did?.authenticated);
+		return !!(this.ceramic?.did?.authenticated);
 	}
 
-	// todo implement
-	async getIndexById(streamId: string) {
-		return TileDocument.load<Indexes>(this.client!.ceramic as any, streamId);
+	async getIndexById(index_id: string) {
+		const result = await this.composeClient.executeQuery(`{
+			node(id:"${index_id}"){
+			  id
+			  ... on Index{
+				id
+				title
+				collab_action
+				created_at
+				updated_at
+			}}
+		  }`);
+		return (
+		<Indexes>(result.data?.node as any)
+		);
 	}
-	// todo find usage : birden fazla index arasında yani genel sayfada arama yaparsa tüm indexlerin contentlerini çekebilmek için kullanılıyor.
+	async getLinkById(link_id: string) {
+		const result = await this.composeClient.executeQuery(`{
+			node(id:"${link_id}"){
+			  id
+			  ... on Link{
+				id
+				content
+				title
+				url
+				favicon
+				created_at
+				updated_at
+				tags
+			}}
+		  }`);
+		return <Links>(result.data?.node as any);
+	}
+
 	async getIndexes(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }> {
-		return this.client.ceramic.multiQuery(streams) as any;
+		return await this.ceramic.multiQuery(streams) as any;
 	}
-	// todo implement
-	async createIndex(data: Partial<Indexes>): Promise<Indexes | null> {
-		try {
-			setDates(data);
 
-			if (!data.title) {
-				data.title = "Untitled Index";
-			}
-
-			if (!data.links) {
-				data.links = [];
-			} else {
-				data.links = prepareLinks(data.links);
-			}
-
-			const doc = await TileDocument.create<Partial<Indexes>>(this.client!.ceramic as any, data, {
-				family: `index-as-${this.account || ""}`,
-			});
-
-			return {
-				...doc.content as any,
-				streamId: doc.id!.toString(),
-			};
-		} catch (err) {
-			return null;
+	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
+		setDates(content, true);
+		if (!content.title) {
+			content.title = "Untitled Index";
 		}
-	}
-	// implement
-	async addLink(streamId: string, links: Links[]): Promise<[TileDocument<Indexes>, Links[]]> {
-		const oldDoc = await this.getIndexById(streamId);
-		const { content } = oldDoc;
-		const newLinks = prepareLinks(links);
-		const newContent: Indexes = {
-			...setDates(content, true),
-			links: [...newLinks, ...content.links],
+		const cdt = getCurrentDateTime();
+		content.created_at = cdt;
+		content.updated_at = cdt;
+		content.collab_action = "QmYNtw5mTnjvMZWZRe8nvubs9XVYUUaSJPEYKyKQG4BQQ8";
+		const payload = {
+			content,
 		};
-		await oldDoc.update(newContent, undefined, {
-			publish: true,
-		});
-		return [oldDoc, newLinks];
-	}
-	// todo find usage : reorder links yaparken kulalnılıyor.
-	async putLinks(streamId: string, links: Links[]) {
-		const oldDoc = await this.getIndexById(streamId);
-		const { content } = oldDoc;
-		const newContent: Indexes = {
-			...content,
-			links: links ?? [],
-		};
-		await oldDoc.update(newContent, undefined, {
-			publish: true,
-		});
-		return oldDoc;
+		const response = await this.composeClient.executeQuery(`
+			mutation CreateIndex($input: CreateIndexInput!) {
+				createIndex(input: $input) {
+					document {
+						id
+						title
+						collab_action
+						created_at
+						updated_at
+					}
+				}
+			}`, { input: payload });
+		return response.data.createIndex.document as Indexes;
 	}
 
-	async addTag(streamId: string, linkId: string, tag: string) {
-		const oldDoc = await this.getIndexById(streamId);
-		const newContent = { ...oldDoc.content };
-		const link = newContent.links?.find((l) => l.id === linkId);
+	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes> {
+		const cdt = getCurrentDateTime();
+		content.updated_at = cdt;
+		const payload = {
+			id: index_id,
+			content,
+		};
+		const response = await this.composeClient.executeQuery(`
+			mutation UpdateIndex($input: UpdateIndexInput!) {
+				updateIndex(input: $input) {
+					document {
+						id
+						title
+						collab_action
+						created_at
+						updated_at
+					}
+				}
+			}`, { input: payload });
+		return response.data.updateIndex.document as Indexes;
+	}
+
+	async addLink(index_id: string, link: Links): Promise<Links> {
+		setDates(link); // TODO Conditional updated_at
+
+		link.index_id = index_id;
+		link.indexer_did = "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx";
+		link.updated_at = getCurrentDateTime();
+		if (!link.tags) {
+			link.tags = [];
+		}
+		const payload = {
+			content: link,
+		};
+		const response = await this.composeClient.executeQuery(`
+			mutation CreateLink($input: CreateLinkInput!) {
+				createLink(input: $input) {
+					document {
+						id
+						index_id
+						url
+						title
+						tags
+						favicon
+					}
+				}
+			}`, { input: payload });
+		return response.data.createLink.document as Links;
+	}
+
+	async updateLink(link_id: string, link: Partial<Links>): Promise <Links> {
+		link.updated_at = getCurrentDateTime();
+		const payload = {
+			id: link_id,
+			content: link,
+		};
+		const response = await this.composeClient.executeQuery(`
+			mutation UpdateLink($input: UpdateLinkInput!) {
+				updateLink(input: $input) {
+					document {
+						id
+						index_id
+						url
+						title
+						tags
+						favicon
+					}
+				}
+			}`, { input: payload });
+		return response.data.updateLink.document as Links;
+	}
+
+	async removeLink(link_id: string): Promise <Links> {
+		const link = await this.getLinkById(link_id);
 		if (link) {
-			const { tags } = link;
+			return await this.updateLink(link_id, {
+				updated_at: getCurrentDateTime(), // TODO fix deleted_at
+			} as Links);
+		}
+		// TODO handle
+	}
+
+	async addTag(link_id: string, tag: string): Promise <Links> {
+		const link = await this.getLinkById(link_id);
+		if (link) {
+			let { tags } = link;
 			if (tags && tags.includes(tag)) {
-				return oldDoc;
+				return link;
 			}
-			link.tags = [...(tags ? [...tags, tag] : [tag])];
-			await oldDoc.update(newContent, undefined, {
-				publish: true,
+			tags = [...(tags ? [...tags, tag] : [tag])];
+			return await this.updateLink(link_id, {
+				tags,
 			});
-			return oldDoc;
 		}
+		// TODO handle.
 	}
 
-	async removeTag(streamId: string, linkId: string, tag: string) {
-		const oldDoc = await this.getIndexById(streamId);
-		const newContent = { ...oldDoc.content };
-		const link = newContent.links?.find((l) => l.id === linkId);
+	async removeTag(link_id: string, tag: string): Promise <Links> {
+		const link = await this.getLinkById(link_id);
 		if (link) {
-			const { tags } = link;
+			let { tags } = link;
 			if (!tags) {
-				return oldDoc;
+				return link;
 			}
-			link.tags = tags.filter((t) => t !== tag);
-			await oldDoc.update(newContent, undefined, {
-				publish: true,
+			tags = tags.filter((t) => t !== tag);
+			return await this.updateLink(link_id, {
+				tags,
 			});
-			return oldDoc;
 		}
+		// TODO handle.
 	}
 
 	async setLinkFavorite(streamId: string, linkId: string, favorite: boolean) {
@@ -160,31 +239,6 @@ class CeramicService2 {
 			});
 			return oldDoc;
 		}
-	}
-
-	async removeLink(streamId: string, linkId: string) {
-		const oldDoc = await this.getIndexById(streamId);
-		const { content } = oldDoc;
-		const newLinks = content?.links?.filter((li) => li.id !== linkId);
-		await oldDoc.update({
-			...content,
-			links: newLinks,
-		}, undefined, {
-			publish: true,
-		});
-		return oldDoc;
-	}
-	// todo implement
-	async updateIndex(streamId: string, content: Partial<Indexes>) {
-		setDates(content, true);
-		const oldDoc = await this.getIndexById(streamId);
-		await oldDoc.update({
-			...oldDoc.content,
-			...content,
-		}, undefined, {
-			publish: true,
-		});
-		return oldDoc;
 	}
 
 	async getProfile(): Promise<BasicProfile | null> {
@@ -216,7 +270,7 @@ class CeramicService2 {
 			}
 		}
 	}
-	// todo find usage
+
 	async syncContents(providedContent?: LinkContentResult): Promise<number | null> {
 		try {
 			const contents = providedContent ? [providedContent] : (await api.findLinkContent());
@@ -260,8 +314,8 @@ class CeramicService2 {
 
 	async close() {
 		if (this.isAuthenticated()) {
-			this.client!.ceramic.setDID(new DID());
-			return this.client.ceramic.close();
+			this.ceramic.setDID(new DID());
+			return this.ceramic.close();
 		}
 	}
 }

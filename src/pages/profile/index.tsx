@@ -83,7 +83,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 
 	const ceramic = useCeramic();
 
-	const { address } = useAppSelector(selectConnection);
+	const { did } = useAppSelector(selectConnection);
 
 	const [images, setImages] = useState<ImageType[]>([]);
 

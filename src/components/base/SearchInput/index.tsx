@@ -34,7 +34,6 @@ const SearchInput: React.FC<SearchInputProps> = ({
 	const { t } = useTranslation(["pages"]);
 
 	const [query, setQuery] = useState(defaultValue);
-
 	const handleOnSearch = (val: string) => {
 		onSearch && onSearch(val);
 	};

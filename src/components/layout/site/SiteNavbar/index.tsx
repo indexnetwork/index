@@ -18,6 +18,7 @@ import { selectConnection } from "store/slices/connectionSlice";
 import { useAuth } from "hooks/useAuth";
 import { selectProfile } from "store/slices/profileSlice";
 import { appConfig } from "config";
+import CreateModal from "components/site/modal/CreateModal";
 import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
 
 export interface LandingHeaderProps extends NavbarProps {
@@ -28,10 +29,11 @@ export interface LandingHeaderProps extends NavbarProps {
 const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLanding = false, ...baseProps }) => {
 	const { t } = useTranslation(["common", "components"]);
 	const router = useRouter();
-	const [isLoading, setIsLoading] = useState(false);
 
+	const [createModalVisible, setCreateModalVisible] = useState(false);
 	const {
-		address,
+		did,
+		loading,
 	} = useAppSelector(selectConnection);
 
 	const {
@@ -49,19 +51,21 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 
 	useEffect(() => {
 		if (isLanding && authenticated) {
-			Router.push(`/${address}`);
+			Router.push(`/${did}`);
 		}
-	}, [address, authenticated, isLanding]);
+	}, [did, authenticated, isLanding]);
 
 	const handleConnect = async () => {
 		try {
-			await connect("injected");
-			setIsLoading(true);
+			await connect();
 		} catch (err) {
 			console.log(err);
 		}
 	};
 
+	const handleToggleCreateModal = () => {
+		setCreateModalVisible((oldVal) => !oldVal);
+	 };
 	const renderHeader = useCallback(() => (headerType === "public" ? (
 		<Navbar
 			className="site-navbar"
@@ -72,7 +76,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			{...baseProps}
 		>
 			<NavbarMenu placement="right">
-				{isLoading || (authenticated && isLanding) ? (
+				{loading || (authenticated && isLanding) ? (
 					<Button
 						theme="primary"
 						className="lottie-text"
@@ -97,7 +101,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			{
 				authenticated ? (
 					<NavbarMenu>
-						<Button onClick={handleCreate} theme="primary">{t("components:header.newIndexBtn")}</Button>
+						<Button onClick={() => { setCreateModalVisible(true); }} theme="primary">{t("components:header.newIndexBtn")}</Button>
 						<Dropdown
 							dropdownClass="ml-6"
 							position="bottom-right"
@@ -133,6 +137,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 										available && name ? name : "Y"
 									)}</Avatar>
 						</Dropdown>
+						<CreateModal data={{ handleCreate }} visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal>
 					</NavbarMenu>
 				) :
 					(

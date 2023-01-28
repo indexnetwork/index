@@ -4,19 +4,16 @@ import type { RootState } from "..";
 // Define a type for the slice state
 interface ConnectionState {
 	metaMaskConnected: boolean;
-	tokenSigned: boolean;
 	ceramicConnected: boolean;
 	loading: boolean;
-	authToken?: string;
-	address?: string;
+	did?: string;
 }
 
 // Define the initial state using that type
 const initialState: ConnectionState = {
 	metaMaskConnected: false,
-	tokenSigned: false,
 	ceramicConnected: false,
-	loading: true,
+	loading: false,
 };
 
 export const connectionSlice = createSlice({
@@ -28,45 +25,29 @@ export const connectionSlice = createSlice({
 			...state,
 			loading: action.payload,
 		}),
-		setAuthenticated: (state, action: PayloadAction<boolean>) => ({
-			...state,
-			authenticated: action.payload,
-		}),
 		setMetaMaskConnected: (state, action: PayloadAction<{
-			address?: string,
+			did?: string,
 			metaMaskConnected: boolean
 		}>) => {
-			const { address, metaMaskConnected } = action.payload;
+			const { did, metaMaskConnected } = action.payload;
 
 			return {
 				...state,
 				metaMaskConnected,
-				address,
+				did,
 			};
 		},
 		setCeramicConnected: (state, action: PayloadAction<boolean>) => ({
 			...state,
 			ceramicConnected: action.payload,
 		}),
-		setApiTokenSigned: (state, action: PayloadAction<{
-			authToken?: string,
-			tokenSigned: boolean
-		}>) => {
-			const { tokenSigned, authToken } = action.payload;
-			return {
-				...state,
-				tokenSigned,
-				authToken,
-			};
-		},
+
 		disconnectApp: () => initialState,
 		resetAuth: (state) => ({
 			...state,
 			metaMaskConnected: false,
-			tokenSigned: false,
 			ceramicConnected: false,
-			authToken: undefined,
-			address: undefined,
+			did: undefined,
 		}),
 	},
 });
@@ -75,7 +56,6 @@ export const {
 	setAuthLoading,
 	setMetaMaskConnected,
 	setCeramicConnected,
-	setApiTokenSigned,
 	disconnectApp,
 	resetAuth,
 } = connectionSlice.actions;

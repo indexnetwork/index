@@ -4,7 +4,6 @@ import {
 	Indexes, LinkContentResult, Links, SyncCompleteResult,
 } from "types/entity";
 import { API_ENDPOINTS } from "utils/constants";
-import { checkPublicRoute } from "utils/helper";
 
 export type HighlightType<T = {}> = T & {
 	highlight?: { [key: string]: string[] }
@@ -12,10 +11,20 @@ export type HighlightType<T = {}> = T & {
 export interface IndexResponse extends Indexes {
   highlight?: HighlightType;
 }
-export interface ListResponse<T, S> {
-	totalCount?: number;
-  records?: T[];
-  search?: S;
+export interface IndexSearchResponse {
+	totalCount: number;
+	records: Indexes[];
+}
+
+export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
+	index_id: string;
+	skip: number;
+	take: number;
+	search?: string;
+}
+export interface LinkSearchResponse {
+	totalCount: number;
+	records: Links[];
 }
 
 export type SortType = "asc" | "desc";
@@ -45,53 +54,16 @@ export interface IndexesSearchRequestBody extends ApiSearchRequestBody<Indexes> 
 	// permission: IndexSearchRequestType;
 }
 
-export interface IndexSearchResponse extends ListResponse<IndexResponse, IndexesSearchRequestBody> {}
-
-export interface LinksSearchRequestBody extends ApiSearchRequestBody<{}> {
-	streamId: string;
-	search: string;
-}
-
-export interface LinkSearchResponse extends ListResponse<Links, LinksSearchRequestBody>{}
-
 export interface LinksCrawlContentRequest {
-	streamId: string;
+	id: string;
 	links: Links[];
 }
-const hostnameCheck = () => {
-	if (typeof window !== "undefined") {
-		if (window.location.hostname === "testnet.index.as") {
-			return appConfig.apiUrl;
-		} if (window.location.hostname === "dev.index.as" || window.location.hostname === "localhost") {
-			return appConfig.devApiUrl;
-		}
-	  }
-};
+
 const apiAxios = axios.create({
-	baseURL: hostnameCheck(),
+	baseURL: appConfig.apiUrl,
 });
 
-apiAxios.interceptors.request.use((config) => {
-	const token = localStorage.getItem("auth_token");
-	if (!token && !checkPublicRoute(config.url!)) {
-		return false;
-	}
-
-	if (config && config.headers && token) {
-		config.headers.Authorization = `Bearer ${token}`;
-	}
-	return config;
-});
 class ApiService {
-	async postIndex(doc: Indexes): Promise<Indexes | null> {
-		try {
-			const { data } = await apiAxios.post<Indexes>(API_ENDPOINTS.INDEXES, doc);
-			return data;
-		} catch (err) {
-			return null;
-		}
-	}
-
 	async putIndex(doc: Indexes): Promise<Indexes | null> {
 		try {
 			const { data } = await apiAxios.put<Indexes>(API_ENDPOINTS.INDEXES, doc);
@@ -104,15 +76,6 @@ class ApiService {
 	async searchIndex(body: IndexesSearchRequestBody): Promise<IndexSearchResponse | null> {
 		try {
 			const { data } = await apiAxios.post<IndexSearchResponse>(API_ENDPOINTS.SEARCH_INDEX, body);
-			return data;
-		} catch (err) {
-			return null;
-		}
-	}
-
-	async getIndex(streamId: string): Promise<Indexes | null> {
-		try {
-			const { data } = await apiAxios.get<Indexes>(`${API_ENDPOINTS.INDEXES}/${streamId}`);
 			return data;
 		} catch (err) {
 			return null;
@@ -170,7 +133,7 @@ class ApiService {
 		}
 	}
 
-	async searchLink(body: LinksSearchRequestBody): Promise<LinkSearchResponse | null> {
+	async searchLink(body: LinkSearchRequestBody): Promise<LinkSearchResponse | null> {
 		try {
 			const { data } = await apiAxios.post<LinkSearchResponse>(API_ENDPOINTS.SEARCH_LINKS, body);
 			return data;

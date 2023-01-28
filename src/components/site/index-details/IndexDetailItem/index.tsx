@@ -18,6 +18,7 @@ import { Links } from "types/entity";
 import moment from "moment";
 import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
+import { useLinks } from "hooks/useLinks";
 import sanitize from "sanitize-html";
 import api from "services/api-service";
 import LogoLink from "components/base/Logo/LogoLink";
@@ -38,8 +39,9 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	isOwner,
 	id,
 	title,
+	highlight,
 	url,
-	updatedAt,
+	updated_at,
 	content,
 	favorite,
 	tags = [],
@@ -48,7 +50,8 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	onChange,
 }) => {
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
-	const [newTag, setNewTag] = useState<boolean>(false);
+	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
+	const { links, setLinks } = useLinks();
 
 	const router = useRouter();
 
@@ -57,24 +60,22 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	const ceramic = useCeramic();
 
 	const handleToggleNewTag = () => {
-		setNewTag((oldVal) => !oldVal);
+		setToggleNewTag((oldVal) => !oldVal);
 	};
 
 	const handleNewTagEdit = async (val?: string | null) => {
 		if (val) {
-			const doc = await ceramic.addTag(streamId as string, id!, val);
-			if (doc) {
-				await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
-			}
-			onChange && onChange(doc?.content?.links || []);
+			const link = await ceramic.addTag(id!, val) as Links;
+			const newState = links.map((l) => (l.id === id ? link : l));
+			setLinks(newState);
 		}
-		setNewTag(false);
+		setToggleNewTag(false);
 		setTimeout(() => {
 			handleToggleNewTag();
 		}, 0);
 	};
 	const handleCloseTag = () => {
-		setNewTag(false);
+		setToggleNewTag(false);
 	};
 
 	const handleSetFavorite = async () => {
@@ -86,21 +87,16 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	};
 
 	const handleRemove = async () => {
-		const doc = await ceramic.removeLink(streamId as string, id!);
-		if (doc) {
-			await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
-		}
-		onChange && onChange(doc?.content?.links || []);
+		setLinks(links?.filter((l) => l.id !== id!));
+		const link = await ceramic.removeLink(id!);
+		// onChange && onChange(doc?.content?.links || []);
 	};
 
-	const handleRemoveTag = async (tag: string) => {
-		const doc = await ceramic.removeTag(streamId as string, id!, tag);
-		if (doc) {
-			await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
-		}
-		onChange && onChange(doc?.content?.links || []);
+	const handleRemoveTag = async (val: string) => {
+		const link = await ceramic.removeTag(id!, val) as Links;
+		const newState = links.map((l) => (l.id === id ? link : l));
+		setLinks(newState);
 	};
-
 	return (
 		<div
 			className="index-detail-list-item-wrapper"
@@ -126,7 +122,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 							className="idxflex-grow-1"
 						>
 							<a target="_blank" rel="noreferrer" href={url}>
-								<Text fontWeight={600} dangerouslySetInnerHTML={{ __html: sanitize(title || "") }}></Text>
+								<Text fontWeight={600} dangerouslySetInnerHTML={{ __html: sanitize((highlight?.title ? highlight.title : title) || "") }}></Text>
 							</a>
 						</Col>
 						{
@@ -192,7 +188,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 								height={24}
 								style={{
 									verticalAlign: "middle",
-								}} />}<Text size="sm" theme="disabled">{url?.substring(0, 80)} • {updatedAt ? moment(updatedAt).format("MMM D") : ""}</Text>
+								}} />}<Text size="sm" theme="disabled">{url?.substring(0, 80)} • {updated_at ? moment(updated_at).format("MMM D") : ""}</Text>
 					</ a>
 				</Col>
 				{
@@ -216,7 +212,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 								/>))
 						}
 						{
-							newTag && <TagIndexDetailItem
+							toggleNewTag && <TagIndexDetailItem
 								theme="clear"
 								text=""
 								placeholder="New Tag"

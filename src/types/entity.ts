@@ -9,16 +9,13 @@ export type IndexesNew = {
 };
 
 export type Indexes = {
-  streamId: string
+  id: string
   title: string | null
-  publicRights: EnumIndexVisibility | null
-  privateLinkRights: EnumIndexVisibility | null
-  privateLinkCode: string | null
-  clonedFrom: string | null
-  createdAt: string;
-  updatedAt: string;
-	address: string;
-	links: Links[];
+  collab_action: string;
+  controller_did: string;
+  created_at: string;
+  updated_at: string;
+  links: Links[];
 };
 
 /**
@@ -66,17 +63,25 @@ export type LinksNew = {
 };
 export type Links = {
   id?: string;
+  index_id?: string;
+  indexer_did?: string;
   content?: string
   title?: string
   url?: string
   description?: string
   language?: string
   favicon?: string
-  createdAt?: string;
-  updatedAt?: string;
+  created_at?: string;
+  updated_at?: string;
   images?: string[]
   favorite?: boolean;
   tags?: string[]
+  highlight?: {
+    title?: string
+    content?: string
+    tags?: string
+    url?: string
+  }
 };
 
 /**
@@ -101,7 +106,6 @@ export type Users = {
 export interface LinkContentResult {
   id?: string;
   address: string;
-  streamId: string;
   links: Links[];
 }
 
@@ -111,26 +115,3 @@ export interface SyncCompleteResult {
 /**
  * Enums
  */
-
-export type EnumIndexVisibility = {
-	off: "off",
-	edit: "edit",
-	view: "view",
-};
-
-export type EnumIndexUsersRole = {
-  owner: "owner",
-  edit: "edit",
-  view: "view"
-};
-
-export type EnumInviteRight = {
-  view: "view",
-  edit: "edit"
-};
-
-export type EnumInviteStatus = {
-	pending: "pending",
-	approved: "approved",
-	rejected: "rejected",
-};

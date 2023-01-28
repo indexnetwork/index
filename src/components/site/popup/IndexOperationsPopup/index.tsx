@@ -29,7 +29,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 	onDelete,
 	onClone,
 }) => {
-	const { isOwner, address } = useOwner();
+	const { isOwner, did } = useOwner();
 	const ceramic = useCeramic();
 	const router = useRouter();
 
@@ -41,20 +41,22 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 	};
 
 	const handleClone = async () => {
-		const originalDoc = await ceramic.getDocById(streamId!);
+		/*
+		const originalDoc = await ceramic.getIndexById(streamId!);
 
 		const content = { ...originalDoc.content };
 		content.clonedFrom = streamId!;
-		content.address = address!;
+		content.did = did!;
 
-		delete (content as any).address;
+		delete (content as any).did;
 		delete (content as any).streamId;
 
-		const doc = await ceramic.createDoc(content);
+		const doc = await ceramic.createIndex(content);
 		onClone && onClone();
 		if (doc != null) {
-			router.push(`/${address}/${doc.streamId.toString()}`);
+			router.push(`/${did}/${doc.streamId.toString()}`);
 		}
+		 */
 	};
 
 	return (

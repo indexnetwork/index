@@ -1,39 +1,30 @@
 import React, {
-	useEffect, useMemo, useRef, useState,
+	useMemo, useState,
 } from "react";
 import ceramicService from "services/ceramic-service";
-
 import { TileDocument } from "@ceramicnetwork/stream-tile";
-import api from "services/api-service";
 import { Indexes, LinkContentResult, Links } from "types/entity";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
-import socketIoClient, { Socket } from "socket.io-client";
-import { useAuth } from "hooks/useAuth";
 import { CID } from "ipfs-http-client";
-import { appConfig } from "config";
 
 export type ListenEvents = {
 	contentSync: (data: LinkContentResult) => void;
 };
-export interface CeramicContextState {
-}
 
 export interface CeramicContextValue {
-	socketConnected: boolean;
 	syncedData: any;
-	createDoc(doc: Partial<Indexes>): Promise<Indexes | null>;
-	updateDoc(streamId: string, content: Partial<Indexes>): Promise<TileDocument<any>>;
-	getDocById(streamId: string): Promise<TileDocument<Indexes>>;
+	createIndex(doc: Partial<Indexes>): Promise<Indexes | null>;
+	updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes>;
+	getIndexById(streamId: string): Promise<Indexes>;
 	getDocs(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }>;
 	getProfile(): Promise<BasicProfile | null>;
 	setProfile(profile: BasicProfile): Promise<boolean>;
 	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
-	addLink(streamId: string, data: Links): Promise<[TileDocument<Indexes>, Links[]]>;
-	removeLink(streamId: string, linkId: string): Promise<TileDocument<Indexes>>;
-	addTag(streamId: string, linkId: string, tag: string): Promise<TileDocument<Indexes> | undefined>;
+	addLink(index_id: string, data: Links): Promise<Links>;
+	removeLink(link_id: string): Promise<Links>;
+	addTag(link_id: string, tag: string): Promise<Links | undefined>;
 	removeTag(streamId: string, linkId: string, tag: string): Promise<TileDocument<Indexes> | undefined>;
 	setLinkFavorite(streamId: string, linkId: string, favorite: boolean): Promise<TileDocument<Indexes> | undefined>;
-	putLinks(streamId: string, links: Links[]): Promise<TileDocument<Indexes>>;
 }
 
 export const CeramicContext = React.createContext<CeramicContextValue>({} as any);
@@ -41,51 +32,40 @@ export const CeramicContext = React.createContext<CeramicContextValue>({} as any
 const CeramicProvider: React.FC<{}> = ({
 	children,
 }) => {
-	const io = useRef<Socket<ListenEvents, {}>>();
-
-	const authenticated = useAuth();
 	const [syncedData, setSyncedData] = useState<LinkContentResult>();
 
-	// Socket Variables
-	const [socketConnected, setSocketConnected] = useState(false);
 	const handlers: ListenEvents = useMemo(() => ({
 		contentSync: async (data) => {
-			await ceramicService.syncContents(data);
+			// await ceramicService.syncContents(data);
 		},
 	}), []);
 
-	const createDoc = async (data: Partial<Indexes>) => {
-		try {
-			const doc = await ceramicService.createIndex(data);
-			if (doc) {
-				const result = await api.postIndex(doc);
-				return result;
-			}
-			return null;
-		} catch (err) {
-			return null;
-		}
+	const createIndex = async (data: Partial<Indexes>) => {
+		const doc = await ceramicService.createIndex(data);
+		return doc;
 	};
 
-	const updateDoc = async (streamId: string, content: Partial<Indexes>) => {
-		const updatedDoc = await ceramicService.updateIndex(streamId, content);
+	const getIndexById = (streamId: string) => ceramicService.getIndexById(streamId);
+
+	const updateIndex = async (index_id: string, content: Partial<Indexes>) => {
+		const updatedDoc = await ceramicService.updateIndex(index_id, content);
 		return updatedDoc;
 	};
 
-	const addLink = async (streamId: string, link: Links) => ceramicService.addLink(streamId, [link]);
+	const addLink = async (index_id: string, link: Links) => ceramicService.addLink(index_id, link);
 
-	const removeLink = async (streamId: string, linkId: string) => {
-		const updatedDoc = await ceramicService.removeLink(streamId, linkId);
+	const removeLink = async (link_id: string) => {
+		const updatedDoc = await ceramicService.removeLink(link_id);
 		return updatedDoc;
 	};
 
-	const addTag = async (streamId: string, linkId: string, tag: string) => {
-		const updatedDoc = await ceramicService.addTag(streamId, linkId, tag);
+	const addTag = async (link_id: string, tag: string) => {
+		const updatedDoc = await ceramicService.addTag(link_id, tag);
 		return updatedDoc;
 	};
 
-	const removeTag = async (streamId: string, linkId: string, tag: string) => {
-		const updatedDoc = await ceramicService.removeTag(streamId, linkId, tag);
+	const removeTag = async (link_id: string, tag: string) => {
+		const updatedDoc = await ceramicService.removeTag(link_id, tag);
 		return updatedDoc;
 	};
 
@@ -94,13 +74,6 @@ const CeramicProvider: React.FC<{}> = ({
 		return updatedDoc;
 	};
 
-	const putLinks = async (streamId: string, links: Links[]) => {
-		const updatedDoc = await ceramicService.putLinks(streamId, links);
-		return updatedDoc;
-	};
-
-	const getDocById = (streamId: string) => ceramicService.getIndexById(streamId);
-
 	const getDocs = (streams: { streamId: string }[]) => ceramicService.getIndexes(streams);
 
 	const getProfile = async () => ceramicService.getProfile();
@@ -108,75 +81,18 @@ const CeramicProvider: React.FC<{}> = ({
 	const setProfile = async (profile: BasicProfile) => ceramicService.setProfile(profile);
 
 	const uploadImage = async (file: File) => ceramicService.uploadImage(file);
-	const hostnameCheck = () : string => {
-		if (typeof window !== "undefined") {
-			if (window.location.hostname === "testnet.index.as") {
-				return appConfig.baseUrl;
-			}
-			if (window.location.hostname === "dev.index.as" || window.location.hostname === "localhost") {
-				return appConfig.devBaseUrl;
-			}
-		  }
-		  return appConfig.baseUrl;
-	};
-	useEffect(() => {
-		if (authenticated) {
-			if (io.current && io.current.connected) {
-				io.current.removeAllListeners();
-				io.current.disconnect();
-			}
-
-			const token = localStorage.getItem("auth_token");
-			const output: string = hostnameCheck();
-			if (token) {
-				io.current = socketIoClient(output, {
-					path: "/api/socket.io",
-					extraHeaders: {
-						Authorization: `Bearer ${token}`,
-					},
-				}) as Socket<ListenEvents, {}>;
-
-				io.current!.on("connect", () => {
-					setSocketConnected(true);
-				});
-
-				io.current!.on("disconnect", () => {
-					setSocketConnected(false);
-				});
-
-				io.current!.on("connect_error", (err) => {
-					console.log(err);
-				});
-
-				Object.keys(handlers).forEach((k) => {
-					io.current!.on(k as keyof ListenEvents, handlers[k as keyof ListenEvents]);
-				});
-			}
-		} else if (io.current && io.current!.connected) {
-			io.current!.removeAllListeners();
-			io.current!.disconnect();
-		}
-
-		return () => {
-			if (io.current && io.current.connected) {
-				io.current!.disconnect();
-			}
-		};
-	}, [authenticated]);
 
 	return (
 		<CeramicContext.Provider value={{
-			socketConnected,
 			syncedData,
-			createDoc,
-			updateDoc,
-			getDocById,
+			createIndex,
+			updateIndex,
+			getIndexById,
 			getDocs,
 			addTag,
 			addLink,
 			getProfile,
 			setProfile,
-			putLinks,
 			setLinkFavorite,
 			removeLink,
 			removeTag,

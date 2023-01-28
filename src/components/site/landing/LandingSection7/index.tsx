@@ -17,7 +17,7 @@ const LandingSection7: React.FC = () => {
 
 	const handleConnect = async () => {
 		try {
-			await connect("injected");
+			await connect();
 		} catch (err) {
 			console.log(err);
 		}
