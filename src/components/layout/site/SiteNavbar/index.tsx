@@ -66,14 +66,6 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 	const handleToggleCreateModal = () => {
 		setCreateModalVisible((oldVal) => !oldVal);
 	 };
-	const defaultOptions = {
-		loop: true,
-		autoplay: true,
-		animationData,
-		renderer: "json",
-	};
-
-
 	const renderHeader = useCallback(() => (headerType === "public" ? (
 		<Navbar
 			className="site-navbar"
