@@ -97,6 +97,7 @@ class CeramicService2 {
 		const cdt = getCurrentDateTime();
 		content.created_at = cdt;
 		content.updated_at = cdt;
+		content.collab_action = "QmYNtw5mTnjvMZWZRe8nvubs9XVYUUaSJPEYKyKQG4BQQ8";
 		const payload = {
 			content,
 		};
@@ -191,7 +192,7 @@ class CeramicService2 {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			return await this.updateLink(link_id, {
-				deleted_at: getCurrentDateTime(),
+				updated_at: getCurrentDateTime(), // TODO fix deleted_at
 			} as Links);
 		}
 		// TODO handle

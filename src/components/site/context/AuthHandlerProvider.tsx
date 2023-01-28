@@ -80,7 +80,7 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 
 	const authToCeramic = async () => {
 		if (!ceramicService.isAuthenticated()) {
-			const result = await ceramicService.authenticate(session?.did.parent);
+			const result = await ceramicService.authenticate(session?.did);
 			dispatch(setCeramicConnected(result));
 			// await ceramicService.syncContents();
 		} else {
