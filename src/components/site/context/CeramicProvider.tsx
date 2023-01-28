@@ -55,7 +55,7 @@ const CeramicProvider: React.FC<{}> = ({
 
 	const addLink = async (index_id: string, link: Links) => ceramicService.addLink(index_id, link);
 
-	const removeLink = async (link_id) => {
+	const removeLink = async (link_id: string) => {
 		const updatedDoc = await ceramicService.removeLink(link_id);
 		return updatedDoc;
 	};

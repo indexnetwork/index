@@ -36,16 +36,15 @@ import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { selectProfile } from "store/slices/profileSlice";
 
-export interface LinksContextValue {
-	links: Links
-}
-export const LinksContext = React.createContext<LinksContextValue>({} as any);
+import { LinksContext } from "hooks/useLinks";
+
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
-	const [notFound, setNotFound] = useState(false);
 	const [links, setLinks] = useState<Links[]>([]);
+
+	const [notFound, setNotFound] = useState(false);
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
@@ -93,7 +92,12 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const payload = await api.crawlLink(linkUrl);
 		if (payload) {
 			const link = await ceramic.addLink(index?.id!, payload);
-			links.unshift(link);
+			setLinks([link, ...links]);
+
+
+
+			// lc.links = [link]; // TODO Concat or spread
+
 			/*
 			await api.crawlLinkContent({
 				streamId: stream?.streamId!,
@@ -145,164 +149,164 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, []);
 
 	return (
-		<LinksContext.Provider value={links}>
-			
-		<>
-			<Container
-				className="index-details-page my-6 my-lg-8"
-			>
-				{
-					notFound ?
-						<FlexRow
-							rowSpacing={3}
-							justify="center"
-						>
-							<NotFound active={true} />
-						</FlexRow> : (
-							<>
-								<FlexRow
-									rowSpacing={3}
-									justify="center"
-								>
-									<Col
-										xs={12}
-										lg={9}
-										noYGutters
+		<LinksContext.Provider
+			value={{ links, setLinks }}
+		>
+			<>
+				<Container
+					className="index-details-page my-6 my-lg-8"
+				>
+					{
+						notFound ?
+							<FlexRow
+								rowSpacing={3}
+								justify="center"
+							>
+								<NotFound active={true} />
+							</FlexRow> : (
+								<>
+									<FlexRow
+										rowSpacing={3}
+										justify="center"
 									>
-										<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
-									</Col>
-									<Col
-										xs={12}
-										lg={9}
-										className="pb-2"
-									>
-										<FlexRow>
-											<Col
-												className="idxflex-grow-1 mr-5"
-											>
-												<IndexTitleInput
-													defaultValue={index?.title || ""}
-													onChange={handleTitleChange}
-													disabled={!isOwner}
-													loading={titleLoading}
-												/>
-											</Col>
-											<Col>
-
-												{
-
-													false ? (
-														(did || "").toLowerCase() === router.query.did ? (
-															<Button
-																addOnBefore
-																size="sm"
-																theme="clear"
-																onClick={() => {
-																	copyToClipboard(window.location.href);
-																}}
-															>
-																<IconLink1 stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Copy
-															</Button>
-														) : (
-															<Button
-																addOnBefore
-																size="sm"
-																theme="clear"
-																onClick={handleClone}
-															>
-																<IconCopy stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Clone
-															</Button>
-														)
-													) : null
-												}
-
-											</Col>
-											<Col className="ml-3">
-												<Button
-													className="mr-1"
-													size="sm"
-													theme="clear">Add to my indexes
-												</Button>
-											</Col>
-											<Col className="ml-3">
-
-												<IndexOperationsPopup
-													isOwner={isOwner}
-													streamId={index.id!}
-													mode="index-detail-page"
-													onDelete={handleDelete}
-												/>
-											</Col>
-										</FlexRow>
-									</Col>
-									<Col xs={12} lg={9} noYGutters className="mb-6">
-										<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
-									</Col>
-									<Col
-										xs={12}
-										lg={9}
-									>
-										<FlexRow>
-											<Col
-												className="idxflex-grow-1 mr-5"
-											>
-												<SearchInput
-													loading={loading}
-													onSearch={setSearch}
-													debounceTime={400}
-													showClear
-													placeholder={t("pages:home.searchLink")} />
-											</Col>
-											<Col>
-												<ButtonGroup
-													theme="clear"
+										<Col
+											xs={12}
+											lg={9}
+											noYGutters
+										>
+											<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
+											<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
+										</Col>
+										<Col
+											xs={12}
+											lg={9}
+											className="pb-2"
+										>
+											<FlexRow>
+												<Col
+													className="idxflex-grow-1 mr-5"
 												>
-													<FilterPopup>
-														<Button
-															group
-															iconButton
-														><IconFilter stroke="var(--gray-4)" /></Button>
-													</FilterPopup>
-													<SortPopup>
-														<Button
-															group
-															iconButton
-														><IconSort stroke="var(--gray-4)" /></Button>
-													</SortPopup>
-												</ButtonGroup>
+													<IndexTitleInput
+														defaultValue={index?.title || ""}
+														onChange={handleTitleChange}
+														disabled={!isOwner}
+														loading={titleLoading}
+													/>
+												</Col>
+												<Col>
+
+													{
+
+														false ? (
+															(did || "").toLowerCase() === router.query.did ? (
+																<Button
+																	addOnBefore
+																	size="sm"
+																	theme="clear"
+																	onClick={() => {
+																		copyToClipboard(window.location.href);
+																	}}
+																>
+																	<IconLink1 stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Copy
+																</Button>
+															) : (
+																<Button
+																	addOnBefore
+																	size="sm"
+																	theme="clear"
+																	onClick={handleClone}
+																>
+																	<IconCopy stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Clone
+																</Button>
+															)
+														) : null
+													}
+
+												</Col>
+												<Col className="ml-3">
+													<Button
+														className="mr-1"
+														size="sm"
+														theme="clear">Add to my indexes
+													</Button>
+												</Col>
+												<Col className="ml-3">
+
+													<IndexOperationsPopup
+														isOwner={isOwner}
+														streamId={index.id!}
+														mode="index-detail-page"
+														onDelete={handleDelete}
+													/>
+												</Col>
+											</FlexRow>
+										</Col>
+										<Col xs={12} lg={9} noYGutters className="mb-6">
+											<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
+										</Col>
+										<Col
+											xs={12}
+											lg={9}
+										>
+											<FlexRow>
+												<Col
+													className="idxflex-grow-1 mr-5"
+												>
+													<SearchInput
+														loading={loading}
+														onSearch={setSearch}
+														debounceTime={400}
+														showClear
+														placeholder={t("pages:home.searchLink")} />
+												</Col>
+												<Col>
+													<ButtonGroup
+														theme="clear"
+													>
+														<FilterPopup>
+															<Button
+																group
+																iconButton
+															><IconFilter stroke="var(--gray-4)" /></Button>
+														</FilterPopup>
+														<SortPopup>
+															<Button
+																group
+																iconButton
+															><IconSort stroke="var(--gray-4)" /></Button>
+														</SortPopup>
+													</ButtonGroup>
+												</Col>
+											</FlexRow>
+										</Col>
+										{
+											isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3">
+												<LinkInput
+													loading={crawling}
+													onLinkAdd={handleAddLink}
+												/>
 											</Col>
-										</FlexRow>
-									</Col>
-									{
-										isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3">
-											<LinkInput
-												loading={crawling}
-												onLinkAdd={handleAddLink}
+										}
+									</FlexRow>
+									<FlexRow
+										justify="center"
+									>
+										<Col xs={12} lg={9}>
+											<IndexDetailsList
+												search={search}
+												isOwner={isOwner}
+												index_id={router.query.id as any}
+												onChange={handleReorderLinks}
+												onChangeLinks={handleChangeLinks}
 											/>
 										</Col>
-									}
-								</FlexRow>
-								<FlexRow
-									justify="center"
-								>
-									<Col xs={12} lg={9}>
-										<IndexDetailsList
-											search={search}
-											isOwner={isOwner}
-											index_id={router.query.id as any}
-											onChange={handleReorderLinks}
-											onChangeLinks={handleChangeLinks}
-											links={links}
-										/>
-									</Col>
-								</FlexRow>
-							</>
-						)
-				}
-			</Container>
-			{/* <ShareModal data={{}} visible={shareModalVisible} onClose={handleToggleShareModal} /> */}
-		</>
+									</FlexRow>
+								</>
+							)
+					}
+				</Container>
+				{/* <ShareModal data={{}} visible={shareModalVisible} onClose={handleToggleShareModal} /> */}
+			</>
 		</LinksContext.Provider>
 	);
 };

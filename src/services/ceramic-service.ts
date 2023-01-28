@@ -256,7 +256,8 @@ class CeramicService2 {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			return await this.updateLink(link_id, {
-				"deleted_at": "2020-01-01"
+				"deleted_at": "2020-01-01",
+				"tags": ["asd"]
 			});
 		}
 	}

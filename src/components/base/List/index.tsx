@@ -4,11 +4,10 @@ import React, {
 import { v4 as uuidv4 } from "uuid";
 import cc from "classcat";
 import { Draggable, DraggableProvided, DraggableStateSnapshot } from "react-beautiful-dnd";
+import { useLinks } from "hooks/useLinks";
 import ListItem from "./ListItem";
-import { Links } from "../../../types/entity";
 
 export interface ListProps<T = {}> {
-	data: Links[];
 	listClass?: string;
 	itemContainerClass?: string;
 	render(item: T, index: number, provided?: DraggableProvided, snapshot?: DraggableStateSnapshot): ReactElement<any>;
@@ -19,7 +18,6 @@ export interface ListProps<T = {}> {
 }
 
 const List: React.VFC<ListProps> = ({
-	data= [],
 	listClass,
 	itemContainerClass,
 	render,
@@ -29,6 +27,7 @@ const List: React.VFC<ListProps> = ({
 	droppableProvided,
 }) => {
 	const containerId = useRef<string>(uuidv4());
+	const { links } = useLinks();
 	return (
 		<ul
 			ref={droppableProvided?.innerRef}
@@ -40,7 +39,7 @@ const List: React.VFC<ListProps> = ({
 				])
 			}>
 			{
-				data.map((item, index) => (!draggable ? (
+				links.map((item, index) => (!draggable ? (
 					<ListItem
 						key={`listItem${index}-${containerId}`}
 						className={cc([
@@ -48,7 +47,7 @@ const List: React.VFC<ListProps> = ({
 						])}
 					>
 						{render(item, index)}
-						{divided && index !== data.length - 1 && <div className="list-divider"></div>}
+						{divided && index !== links.length - 1 && <div className="list-divider"></div>}
 					</ListItem>
 				) : (
 					<Draggable
@@ -62,7 +61,7 @@ const List: React.VFC<ListProps> = ({
 							])}
 						>
 							{render(item, index, provided, snapshot)}
-							{divided && index !== data.length - 1 && <div className="list-divider"></div>}
+							{divided && index !== links.length - 1 && <div className="list-divider"></div>}
 						</ListItem>}</Draggable>
 				)))
 			}

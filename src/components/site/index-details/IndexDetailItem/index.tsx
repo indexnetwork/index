@@ -49,11 +49,11 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	search = false,
 	onChange,
 }) => {
+
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
 	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
-	const links = useLinks();
-	const [currentTags, setCurrentTags] = useState<[]>(tags);
-	console.log("asdasd",links)
+	const { links, setLinks } = useLinks();
+
 	const router = useRouter();
 
 	const { streamId } = router.query;
@@ -67,8 +67,13 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	const handleNewTagEdit = async (val?: string | null) => {
 
 		if (val) {
-			let link = await ceramic.addTag(id!, val);
-			setCurrentTags(link.tags)
+			const link = await ceramic.addTag(id!, val) as Links;
+
+			const newState = links.map((l) => l.id === id ? link : l);
+
+			setLinks(newState);
+
+
 		}
 		setToggleNewTag(false);
 		setTimeout(() => {
@@ -88,11 +93,9 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	};
 
 	const handleRemove = async () => {
-		const doc = await ceramic.updateLink(streamId as string, id!);
-		if (doc) {
-			await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
-		}
-		onChange && onChange(doc?.content?.links || []);
+		const link = await ceramic.removeLink(id!);
+		setLinks(links?.filter((l) => l.id !== link.id));
+		// onChange && onChange(doc?.content?.links || []);
 	};
 
 	const handleRemoveTag = async (tag: string) => {
@@ -208,7 +211,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 				{
 					!search && <Col xs={12} className="mt-3 idxflex idxflex-gap-3 idxflex-wrap">
 						{
-							currentTags.map((t, ind) => (
+							tags.map((t, ind) => (
 								<TagIndexDetailItem
 									key={ind}
 									text={t}
