@@ -49,7 +49,6 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	search = false,
 	onChange,
 }) => {
-
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
 	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
 	const { links, setLinks } = useLinks();
@@ -65,12 +64,10 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	};
 
 	const handleNewTagEdit = async (val?: string | null) => {
-
 		if (val) {
 			const link = await ceramic.addTag(id!, val) as Links;
-			const newState = links.map((l) => l.id === id ? link : l);
+			const newState = links.map((l) => (l.id === id ? link : l));
 			setLinks(newState);
-
 		}
 		setToggleNewTag(false);
 		setTimeout(() => {
@@ -96,11 +93,9 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	};
 
 	const handleRemoveTag = async (val: string) => {
-
 		const link = await ceramic.removeTag(id!, val) as Links;
-		const newState = links.map((l) => l.id === id ? link : l);
+		const newState = links.map((l) => (l.id === id ? link : l));
 		setLinks(newState);
-
 	};
 	return (
 		<div

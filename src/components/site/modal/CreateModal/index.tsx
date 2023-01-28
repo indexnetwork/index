@@ -23,12 +23,11 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 	data,
 	...modalProps
 }) => {
-	
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const handleClose = () => {
 		modalProps.onClose?.();
-	}
+	};
 	const ceramic = useCeramic();
 
 	const { did } = useAppSelector(selectConnection);
@@ -90,7 +89,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 								theme="clear"
 								onClick={handleClose}
 							>
-								
+
 						Cancel
 							</Button>
 						</Col>
@@ -115,5 +114,3 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 };
 
 export default CreateModal;
-
-

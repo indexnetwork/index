@@ -5,7 +5,7 @@ import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
 
 import { Indexes, LinkContentResult, Links } from "types/entity";
-import {getCurrentDateTime, isSSR, setDates} from "utils/helper";
+import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
@@ -13,7 +13,6 @@ import { appConfig } from "config";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import { definition } from "../types/merged-runtime";
 import api from "./api-service";
-import {debug} from "util";
 
 class CeramicService2 {
 	private ipfs: IPFSHTTPClient = create({
@@ -91,7 +90,6 @@ class CeramicService2 {
 	}
 
 	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
-
 		setDates(content, true);
 		if (!content.title) {
 			content.title = "Untitled Index";
@@ -118,7 +116,6 @@ class CeramicService2 {
 	}
 
 	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes> {
-
 		const cdt = getCurrentDateTime();
 		content.updated_at = cdt;
 		const payload = {
@@ -138,7 +135,6 @@ class CeramicService2 {
 				}
 			}`, { input: payload });
 		return response.data.updateIndex.document as Indexes;
-
 	}
 
 	async addLink(index_id: string, link: Links): Promise<Links> {
@@ -147,7 +143,7 @@ class CeramicService2 {
 		link.index_id = index_id;
 		link.indexer_did = "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx";
 		link.updated_at = getCurrentDateTime();
-		if(!link.tags) {
+		if (!link.tags) {
 			link.tags = [];
 		}
 		const payload = {
@@ -167,15 +163,13 @@ class CeramicService2 {
 				}
 			}`, { input: payload });
 		return response.data.createLink.document as Links;
-
 	}
 
 	async updateLink(link_id: string, link: Partial<Links>): Promise <Links> {
-
 		link.updated_at = getCurrentDateTime();
 		const payload = {
 			id: link_id,
-			content: link
+			content: link,
 		};
 		const response = await this.composeClient.executeQuery(`
 			mutation UpdateLink($input: UpdateLinkInput!) {
@@ -191,7 +185,6 @@ class CeramicService2 {
 				}
 			}`, { input: payload });
 		return response.data.updateLink.document as Links;
-
 	}
 
 	async removeLink(link_id: string): Promise <Links> {
@@ -200,12 +193,11 @@ class CeramicService2 {
 			return await this.updateLink(link_id, {
 				deleted_at: getCurrentDateTime(),
 			} as Links);
-		}else{
-			// TODO handle
 		}
+		// TODO handle
 	}
 
-	async addTag(link_id: string, tag: string): Promise <Links>  {
+	async addTag(link_id: string, tag: string): Promise <Links> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			let { tags } = link;
@@ -216,12 +208,11 @@ class CeramicService2 {
 			return await this.updateLink(link_id, {
 				tags,
 			});
-		} else {
-			// TODO handle.
 		}
+		// TODO handle.
 	}
 
-	async removeTag(link_id: string, tag: string): Promise <Links>  {
+	async removeTag(link_id: string, tag: string): Promise <Links> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			let { tags } = link;
@@ -247,9 +238,6 @@ class CeramicService2 {
 			return oldDoc;
 		}
 	}
-
-
-
 
 	async getProfile(): Promise<BasicProfile | null> {
 		if (this.self) {

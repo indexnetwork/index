@@ -64,7 +64,6 @@ const apiAxios = axios.create({
 });
 
 class ApiService {
-
 	async putIndex(doc: Indexes): Promise<Indexes | null> {
 		try {
 			const { data } = await apiAxios.put<Indexes>(API_ENDPOINTS.INDEXES, doc);
@@ -82,7 +81,6 @@ class ApiService {
 			return null;
 		}
 	}
-
 
 	async deleteIndex(streamId: string): Promise<boolean> {
 		try {
