@@ -2,17 +2,20 @@ import cc from "classcat";
 import IconGoogle from "components/base/Icon/IconGoogle";
 import IconTwitter from "components/base/Icon/IconTwitter";
 import Flex from "components/layout/base/Grid/Flex";
+import Lottie from "lottie-react";
 import React from "react";
 import {
 	ButtonThemeType,
 	InputSizeType,
 } from "types";
+import animationData from "./loading.json";
 
 export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> {
 	customType?: "google" | "twitter" | "link";
 	theme?: ButtonThemeType;
 	size?: InputSizeType;
 	block?: boolean;
+	loading?: boolean;
 	outlined?: boolean;
 	addOnBefore?: React.ReactNode;
 	addOnAfter?: React.ReactNode;
@@ -30,6 +33,7 @@ const Button: React.FC<ButtonProps> = ({
 	className,
 	borderless,
 	group,
+	loading,
 	block,
 	iconButton,
 	outlined,
@@ -90,26 +94,50 @@ const Button: React.FC<ButtonProps> = ({
 				{children}
 			</button>;
 		default:
-			return <button
-				{...props}
-				style={{
-					fontWeight,
-				}}
-				className={cc(
-					[
-						"btn",
-						`btn-${theme}`,
-						`btn-${size}`,
-						block ? "btn-block" : "",
-						addOnBefore ? "btn-addon-b" : "",
-						addOnAfter ? "btn-addon-a" : "",
-						iconButton ? `btn-icon btn-icon-${size}` : "",
-						borderless ? "btn-borderless" : "",
-						className,
-					],
-				)}>
-				{addOnAfter || addOnBefore ? <Flex className="btn-inner" inline alignItems="center">{addOnBefore}{children}{addOnAfter}</Flex> : children}
-			</button>;
+			return (
+				<button
+					  {...props}
+					  style={{
+						fontWeight,
+					  }}
+					  className={cc(
+						[
+						  "btn",
+						  `btn-${theme}`,
+						  `btn-${size}`,
+						  block ? "btn-block" : "",
+						  addOnBefore ? "btn-addon-b" : "",
+						  addOnAfter ? "btn-addon-a" : "",
+						  iconButton ? `btn-icon btn-icon-${size}` : "",
+						  borderless ? "btn-borderless" : "",
+						  className,
+						],
+					  )}
+				>
+					  {loading ? (
+						<Flex className="btn-inner" inline alignItems="center">
+							<Lottie className="lottie-logo mr-3" animationData={animationData} />
+							{children}
+						</Flex>
+					  ) : (
+						<>
+						  {addOnBefore && (
+								<Flex className="btn-inner" inline alignItems="center">
+							  {addOnBefore}
+							  {children}
+								</Flex>
+						  )}
+						  {!addOnBefore && !addOnAfter && children}
+						  {addOnAfter && (
+								<Flex className="btn-inner" inline alignItems="center">
+							  {children}
+							  {addOnAfter}
+								</Flex>
+						  )}
+						</>
+					  )}
+				</button>
+				  );
 	}
 };
 

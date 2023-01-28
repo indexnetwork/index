@@ -3,7 +3,7 @@ import Button from "components/base/Button";
 import Text from "components/base/Text";
 import Dropdown from "components/base/Dropdown";
 import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
-import Lottie from "lottie-react";
+
 import IconPeople from "components/base/Icon/IconPeople";
 import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
@@ -20,7 +20,6 @@ import { selectProfile } from "store/slices/profileSlice";
 import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
 import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
-import animationData from "./loading.json";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
@@ -63,6 +62,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			console.log(err);
 		}
 	};
+
 	const handleToggleCreateModal = () => {
 		setCreateModalVisible((oldVal) => !oldVal);
 	 };
@@ -72,6 +72,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 		animationData,
 		renderer: "json",
 	};
+
 
 	const renderHeader = useCallback(() => (headerType === "public" ? (
 		<Navbar
@@ -85,14 +86,10 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			<NavbarMenu placement="right">
 				{loading || (authenticated && isLanding) ? (
 					<Button
-						style={	{ background: "#7F7F7F !important", borderColor: "#7F7F7F !important;" } }
 						theme="primary"
 						className="lottie-text"
+						loading={true}
 					>
-						<Lottie
-						  className="lottie-logo"
-						  animationData={animationData}
-						  />
 						{"Connecting"}
 					</Button>
 				) : (
