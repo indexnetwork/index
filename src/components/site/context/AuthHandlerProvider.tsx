@@ -67,6 +67,7 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 				const authMethod = await EthereumWebAuth.getAuthMethod(ethProvider, accountId);
 				try {
 					session = await DIDSession.authorize(authMethod, { resources: ["ceramic://*"] });
+
 					localStorage.setItem("did", session.serialize());
 				} catch (err) {
 					console.log(err);
@@ -79,7 +80,7 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 
 	const authToCeramic = async () => {
 		if (!ceramicService.isAuthenticated()) {
-			const result = await ceramicService.authenticate(session?.did);
+			const result = await ceramicService.authenticate(session?.did.parent);
 			dispatch(setCeramicConnected(result));
 			// await ceramicService.syncContents();
 		} else {
@@ -96,7 +97,7 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 		if (session && (session.hasSession && !session.isExpired)) {
 			dispatch(setMetaMaskConnected({
 				metaMaskConnected: true,
-				did: session.did.id,
+				did: session.did.parent,
 			}));
 		} else {
 			dispatch(setMetaMaskConnected({
