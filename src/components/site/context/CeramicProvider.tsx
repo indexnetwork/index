@@ -64,8 +64,8 @@ const CeramicProvider: React.FC<{}> = ({
 		return updatedDoc;
 	};
 
-	const removeTag = async (streamId: string, linkId: string, tag: string) => {
-		const updatedDoc = await ceramicService.removeTag(streamId, linkId, tag);
+	const removeTag = async (link_id: string, tag: string) => {
+		const updatedDoc = await ceramicService.removeTag(link_id, tag);
 		return updatedDoc;
 	};
 

@@ -224,6 +224,7 @@ class CeramicService2 {
 				tags,
 			});
 		}
+		// TODO handle.
 	}
 
 	async setLinkFavorite(streamId: string, linkId: string, favorite: boolean) {

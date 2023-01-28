@@ -70,9 +70,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setNotFound(true);
 		}
 	};
-	const handleChangeLinks = async (ld: Links[]) => {
-		setLinks(ld);
-	};
 
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
@@ -108,7 +105,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setCrawling(false);
 	};
 
-	const handleReorderLinks = async (links: Links[]) => {
+	const handleReorderLinks = async (ls: Links[]) => {
 
 	};
 
@@ -288,8 +285,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												search={search}
 												isOwner={isOwner}
 												index_id={router.query.id as any}
-												onChange={handleReorderLinks}
-												onChangeLinks={handleChangeLinks}
+												// onChange={handleReorderLinks}
 											/>
 										</Col>
 									</FlexRow>
