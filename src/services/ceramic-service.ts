@@ -220,23 +220,22 @@ class CeramicService2 {
 			return await this.updateLink(link_id, {
 				tags,
 			});
+		} else {
+			// TODO handle.
 		}
 	}
 
-	async removeTag(streamId: string, linkId: string, tag: string) {
-		const oldDoc = await this.getIndexById(streamId);
-		const newContent = { ...oldDoc.content };
-		const link = newContent.links?.find((l) => l.id === linkId);
+	async removeTag(link_id: string, tag: string) {
+		const link = await this.getLinkById(link_id);
 		if (link) {
-			const { tags } = link;
+			let { tags } = link;
 			if (!tags) {
-				return oldDoc;
+				return link;
 			}
-			link.tags = tags.filter((t) => t !== tag);
-			await oldDoc.update(newContent, undefined, {
-				publish: true,
+			tags = tags.filter((t) => t !== tag);
+			return await this.updateLink(link_id, {
+				tags,
 			});
-			return oldDoc;
 		}
 	}
 

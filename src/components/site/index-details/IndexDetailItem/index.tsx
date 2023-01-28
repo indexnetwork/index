@@ -68,9 +68,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 
 		if (val) {
 			const link = await ceramic.addTag(id!, val) as Links;
-
 			const newState = links.map((l) => l.id === id ? link : l);
-
 			setLinks(newState);
 
 
@@ -98,12 +96,12 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 		// onChange && onChange(doc?.content?.links || []);
 	};
 
-	const handleRemoveTag = async (tag: string) => {
-		const doc = await ceramic.removeTag(streamId as string, id!, tag);
-		if (doc) {
-			await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
-		}
-		onChange && onChange(doc?.content?.links || []);
+	const handleRemoveTag = async (val: string) => {
+
+		const link = await ceramic.removeTag(id!, val) as Links;
+		const newState = links.map((l) => l.id === id ? link : l);
+		setLinks(newState);
+
 	};
 	return (
 		<div
