@@ -1,5 +1,10 @@
 # TODO
 
+# Auth
+- [x] use did-session
+- [x] use did-pkh
+- [] Use Basic Profile
+
 # Indexer
 - [x] Index Indexer
 - [x] Link Indexer
@@ -14,35 +19,39 @@
 - [x] Get Index
 - [x] Get Links (Search links page 1)
 - [x] Add Link
+- [x] Make added link visible (Furkan)
+- [x] Remove link
 - [x] Search links & paginate
 - [x] Update Index Title
-- [] Update Link Title
-- [] Update Link Tags
-- [] Remove link
+- [x] Update Link Tags
 
 # Secondary
+- [x] Created at
+- [] Updated at (Topic update with last link update date.)
 - [] Duplicate URL Check (Insert or Query)
-- [] Sort links
-- [] Created at & Updated at
-- [] Character issue
-- [] Highlights
-
-# Tertiary
-- [] Filtered Search
-
-# Devops
-- [x] Ceramic Node Deployment
-- [x] ComposeDB Deployment
-- [x] Consumer Deployment
-- [x] API Deployment
-- [] Auto Deployment
-- [x] Ingress + Cors
+- [x] Character issue
+- [] Deleted at
 
 # User Indexes
 - [] UserIndex UI (Seren)
 - [] UserIndex Indexer
 - [] DID Search
 - [] Remove index from user indexes
+
+# Tertiary
+- [] Sort links (With furkan)
+- [] Filtered Search
+- [] Highlights
+- [] Optimize query matching
+- [] Update Link Title
+
+# Devops
+- [x] Ceramic Node Deployment
+- [x] ComposeDB Deployment
+- [x] Consumer Deployment
+- [x] API Deployment
+- [x] Ingress + Cors
+- [] Auto Deployment
 
 # Crawlers
 - [x] Index Link Metadata
@@ -57,3 +66,12 @@
 
 https://github.com/indexas/backend-api/blob/626dbdef6bf381e3d65ce55e178e3ec205a02cff/src/services/elastic-service/query.ts
 
+
+
+- Requests from composedb
+
+* Cryptographically verifiable updated_at, created_at, deleted_at
+* Sorting & Filtering
+* Encryption composite
+* Kafka Indexer?
+* Document did:pkh

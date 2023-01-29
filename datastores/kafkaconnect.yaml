@@ -36,6 +36,8 @@ spec:
               value: connect-configs
             - name: STATUS_STORAGE_TOPIC
               value: connect-status
+            - name: KAFKA_OPTS
+              value: "-Dfile.encoding=UTF-8"
           ports:
           - containerPort: 8083
 ---
@@ -51,6 +53,5 @@ spec:
     - name: kafkaconnect
       protocol: TCP
       port: 8083
-      nodePort: 30500
   selector:
       app: kafkaconnect
