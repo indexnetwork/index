@@ -8,7 +8,7 @@ export const BREAKPOINTS = {
 
 export const API_ENDPOINTS = {
 	INDEXES: "/indexes",
-	SEARCH_INDEX: "/search/indexes",
+	SEARCH_DID: "/search/did",
 	SEARCH_LINKS: "/search/links",
 	CRAWL: "/crawl/metadata",
 	CRAWL_CONTENT: "/links/crawl-content",

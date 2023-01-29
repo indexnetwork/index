@@ -14,17 +14,15 @@ import IndexOperationsPopup from "../../popup/IndexOperationsPopup";
 import cm from "./style.module.scss";
 
 export interface IndexItemProps extends Indexes {
-	shared: boolean;
 	hasSearch: boolean;
 	onClick?(): Promise<void>;
 	onDelete(streamId?: string): void;
 }
 
 const IndexItem: React.VFC<IndexItemProps> = ({
-	shared,
 	title,
 	did,
-	streamId,
+	id,
 	updated_at,
 	links,
 	hasSearch = false,
@@ -34,7 +32,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 	className="index-list-item my-6"
 >
 	{
-		shared && (
+		true && (
 			<Col
 				xs={12}
 				className="mb-3"
@@ -58,10 +56,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 			alignItems="center"
 		>
 			<Header onClick={onClick} className={cm.title} dangerouslySetInnerHTML={{ __html: sanitize(title || "") }}></Header>
-			<IndexOperationsPopup
-				streamId={streamId}
-				onDelete={onDelete}
-			/>
+
 		</Flex>
 	</Col>
 	<Col xs={12}>

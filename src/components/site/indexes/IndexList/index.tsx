@@ -51,18 +51,16 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 		const res = await api.searchIndex({
 			skip: reset ? 0 : state.skip,
 			take: state.take,
-			search: reset ? searchT : state.search,
-			did: isOwner ? undefined : (did || "").toLowerCase(),
+			did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
 		});
-
+		console.log(res)
 		if (res) {
 			setState((oldState) => ({
-				hasMore: res.totalCount! > res.search!.skip! + take,
+				hasMore: false, // res.totalCount! > res.search!.skip! + take,
 				dt: {
 					records: reset ? (res.records || []) : [...oldState.dt.records!, ...(res.records ?? [])],
 				},
 				skip: reset ? oldState.take : oldState.skip + oldState.take,
-				search: searchT || oldState.search,
 			}));
 		}
 		setLoading(false);
@@ -87,36 +85,26 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 	useEffect(() => {
 		onFetch && onFetch(loading);
 	}, [loading]);
-
 	return (
 		<>
-			{
-				state.dt.records?.length === 0 ? <>{
-					isOwner ?
-						<NoIndexes hasIndex={hasIndex} active={init} search={search} /> :
-						<NotFound active={init} />
-				}</> : (
-					<InfiniteScroll
-						initialLoad={false}
-						hasMore={state.hasMore}
-						loadMore={getData}
-						marginHeight={50}
-					>
-						<List
-							data={state.dt?.records || []}
-							listClass="index-list"
-							render={(itm: Indexes) => <IndexItem
-								hasSearch={!!search}
-								onClick={handleClick(itm)}
-								onDelete={handleDelete}
-								shared={shared}
-								{...itm}
-							/>}
-							divided
-						/>
-					</InfiniteScroll>
-				)
-			}
+			<InfiniteScroll
+				initialLoad={false}
+				hasMore={state.hasMore}
+				loadMore={getData}
+				marginHeight={50}
+			>
+				<List
+					data={state.dt?.records || []}
+					listClass="index-list"
+					render={(itm: Indexes) => <IndexItem
+						hasSearch={!!search}
+						onClick={handleClick(itm)}
+						onDelete={handleDelete}
+						{...itm}
+					/>}
+					divided
+				/>
+			</InfiniteScroll>
 		</>
 	);
 };
