@@ -8,15 +8,16 @@ if(process.env.NODE_ENV !== 'production'){
 class RedisClient {
 
   constructor() {
-      if (!RedisClient.client) {
-          RedisClient.client = createClient({
-              url: process.env.REDIS_CONNECTION_STRING
-          });
-          RedisClient.client.on('error', err => console.log('Redis Client Error', err));
-      }
+      throw new Error('Use Singleton.getInstance()');    
+      
   }
 
-  getInstance() {
+  static getInstance() {
+      if (!RedisClient.client) {
+        RedisClient.client = createClient({
+          url: process.env.REDIS_CONNECTION_STRING
+        });
+      }
       return RedisClient.client;
   }
 

@@ -1,12 +1,14 @@
 const _ = require('lodash')
-
 const { Client } = require('@elastic/elasticsearch')
+
+if(process.env.NODE_ENV !== 'production'){
+    require('dotenv').config()    
+}
+
 const client = new Client({ node: process.env.ELASTIC_HOST })
 
-
 const RedisClient = require('../clients/redis.js');
-const redis = new RedisClient().getInstance();
-
+const redis = RedisClient.getInstance();
 
 async function getIndexById(id) {
     let results = await fetch('http://composedb/graphql', {
@@ -130,14 +132,14 @@ module.exports.updateLink = async (link) => {
 
 module.exports.createUserIndex = async (user_index) => {
     console.log("createUserIndex", user_index)
-    await redis.sadd(`user_index:by_did:${user_index.controller_did} ${user_index.index_id}`)
+    await redis.sAdd(`user_index:by_did:${user_index.controller_did}`, user_index.index_id)
     
 }
 
 module.exports.updateUserIndex = async (user_index) => {
     console.log("updateUserIndex", user_index)
     if(user_index.deleted_at){
-        await redis.srem(`user_index:by_did:${user_index.controller_did} ${user_index.index_id}`)
+        await redis.sRem(`user_index:by_did:${user_index.controller_did}`, user_index.index_id)
     }
 }
 

@@ -2,7 +2,9 @@ if(process.env.NODE_ENV !== 'production'){
     require('dotenv').config()    
 }
 
-console.log(process.env)
+const RedisClient = require('./clients/redis.js');
+const redis = RedisClient.getInstance();
+
 const search = require('./controllers/search.js')
 const crawl = require('./controllers/crawl.js')
 const express = require('express')
@@ -11,13 +13,13 @@ const app = express()
 const port = 3000
 
 app.use(express.json())
+
 //app.use(cors())
 
 const Joi = require('joi')
 const validator = require('express-joi-validation').createValidator({
   passError: true
 })
-
 
 const didSearchSchema = Joi.object({
   did: Joi.string().required(),
@@ -68,6 +70,7 @@ app.use((err, req, res, next) => {
   }
 });
 
-app.listen(port, () => {
+app.listen(port, async () => {
+  await redis.connect()
   console.log(`Search service listening on port ${port}`)
 })

@@ -27,16 +27,17 @@
 
 # Secondary
 - [x] Created at
-- [] Updated at (Topic update with last link update date.)
+- [] Updated at (Topic update with last link update date.) /Only in elastic
 - [] Duplicate URL Check (Insert or Query)
 - [x] Character issue
-- [] Deleted at
+- [x] Deleted at
 
 # User Indexes
+- [x] Add/Remove index from user indexes
 - [] UserIndex UI (Seren)
 - [x] UserIndex Indexer
-- [] DID Search
-- [] Remove index from user indexes
+- [x] DID Search
+
 
 # Tertiary
 - [] Sort links (With furkan)

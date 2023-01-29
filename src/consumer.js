@@ -11,6 +11,9 @@ const kafka = new Kafka({
     brokers: [process.env.KAFKA_HOST],
 })
 
+const RedisClient = require('./clients/redis.js');
+const redis = RedisClient.getInstance();
+
 const topics = {
     'postgres.public.kjzl6hvfrbw6c732vo3usihwsmaudk78by48c6fy7qxxwkmn9yrryza13jyg6kt': 'link',
     'postgres.public.kjzl6hvfrbw6c8mi3r321zv8aujo0pz75u3hd75nmnw8cohfakz650td4c7qxxf': 'index',
@@ -18,7 +21,7 @@ const topics = {
 }
 
 async function start() {
-
+    await redis.connect()
     const consumer = kafka.consumer({ groupId: `index-consumer-${Math.random()}` })
     await consumer.connect()
     await consumer.subscribe({ fromBeginning: true, topics: Object.keys(topics) })

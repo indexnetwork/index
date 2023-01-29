@@ -1,10 +1,17 @@
+if(process.env.NODE_ENV !== 'production'){
+    require('dotenv').config()    
+}
+
+const _ = require('lodash')
+
 const { Client } = require('@elastic/elasticsearch')
 const client = new Client({ node: process.env.ELASTIC_HOST })
 
 const RedisClient = require('../clients/redis.js');
-const redis = new RedisClient().getInstance();
+const redis = RedisClient.getInstance();
 
-const _ = require('lodash')
+
+
 const config = {
     indexName: 'links'
 }
@@ -277,7 +284,7 @@ exports.did = async (req, res) => {
 
     const {did, search, skip, take, links_size} = req.body;
     
-    const index_ids = await redis.smembers(`user_index:by_did:${did}`)
+    const index_ids = await redis.sMembers(`user_index:by_did:${did}`)
 
     const query = indexesWithLinksQuery(index_ids, search, skip, take, links_size);
     const result = await client.search(query);
