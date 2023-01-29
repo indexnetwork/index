@@ -34,7 +34,7 @@
 
 # User Indexes
 - [] UserIndex UI (Seren)
-- [] UserIndex Indexer
+- [x] UserIndex Indexer
 - [] DID Search
 - [] Remove index from user indexes
 

@@ -28,7 +28,7 @@ curl -X POST \
             "transforms.unwrap.delete.handling.mode" : "rewrite",
             "transforms.unwrap.add.fields": "table,lsn",
             "decimal.handling.mode": "string",
-            "column.include.list": "public.kjzl6hvfrbw6c8olbhuzwqimo7mudyf6iui6wb1nlymjf57y16uufzogjd0cc5m.stream_id,public.kjzl6hvfrbw6c8olbhuzwqimo7mudyf6iui6wb1nlymjf57y16uufzogjd0cc5m.controller_did,public.kjzl6hvfrbw6c8olbhuzwqimo7mudyf6iui6wb1nlymjf57y16uufzogjd0cc5m.stream_content,public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn.stream_id,public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn.controller_did,public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn.stream_content",
+            "column.include.list": "public.kjzl6hvfrbw6c732vo3usihwsmaudk78by48c6fy7qxxwkmn9yrryza13jyg6kt.stream_id,public.kjzl6hvfrbw6c732vo3usihwsmaudk78by48c6fy7qxxwkmn9yrryza13jyg6kt.controller_did,public.kjzl6hvfrbw6c732vo3usihwsmaudk78by48c6fy7qxxwkmn9yrryza13jyg6kt.stream_content,public.kjzl6hvfrbw6c8mi3r321zv8aujo0pz75u3hd75nmnw8cohfakz650td4c7qxxf.stream_id,public.kjzl6hvfrbw6c8mi3r321zv8aujo0pz75u3hd75nmnw8cohfakz650td4c7qxxf.controller_did,public.kjzl6hvfrbw6c8mi3r321zv8aujo0pz75u3hd75nmnw8cohfakz650td4c7qxxf.stream_content,public.kjzl6hvfrbw6c66gro4mkjznzi0hfo4wvex415diivoa7j2jbqfric5bndre7k8.stream_id,public.kjzl6hvfrbw6c66gro4mkjznzi0hfo4wvex415diivoa7j2jbqfric5bndre7k8.controller_did,public.kjzl6hvfrbw6c66gro4mkjznzi0hfo4wvex415diivoa7j2jbqfric5bndre7k8.stream_content",
             "key.converter": "org.apache.kafka.connect.json.JsonConverter",
             "key.converter.schemas.enable": "false",
             "value.converter": "org.apache.kafka.connect.json.JsonConverter",

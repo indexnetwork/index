@@ -27,10 +27,10 @@ spec:
           value: "redis://redis-master.composedb:6379"
         - name: KAFKA_HOST
           value: "kafka.composedb:9092"
-        image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:latest
+        image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:0.0.4
         command: ["yarn"]
         args: ["consumer"]
-        imagePullPolicy: IfNotPresent  
+        imagePullPolicy: Always  
         resources:
           requests:
             memory: "256Mi"

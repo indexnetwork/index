@@ -89,6 +89,9 @@ async function start() {
           "updated_at": {
             "type": "date"
           },
+          "deleted_at": {
+            "type": "date"
+          },          
           "index": {
             "properties": {
               "id": {
@@ -111,6 +114,9 @@ async function start() {
               "created_at": {
                 "type": "date"
               },
+              "deleted_at": {
+                "type": "date"
+              },              
             }
           }
         }
