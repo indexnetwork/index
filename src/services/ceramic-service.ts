@@ -192,7 +192,7 @@ class CeramicService2 {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			return await this.updateLink(link_id, {
-				updated_at: getCurrentDateTime(), // TODO fix deleted_at
+				deleted_at: getCurrentDateTime(), // TODO fix deleted_at
 			} as Links);
 		}
 		// TODO handle
@@ -241,6 +241,51 @@ class CeramicService2 {
 		}
 	}
 
+	async addMyIndexes(index_id): Promise<UserIndex> {
+		setDates(link); // TODO Conditional updated_at
+
+		link.index_id = index_id;
+		link.indexer_did = "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx";
+		link.updated_at = getCurrentDateTime();
+		if (!link.tags) {
+			link.tags = [];
+		}
+		const payload = {
+			content: link,
+		};
+		const response = await this.composeClient.executeQuery(`
+			mutation CreateLink($input: CreateLinkInput!) {
+				createLink(input: $input) {
+					document {
+						id
+						index_id
+						url
+						title
+						tags
+						favicon
+					}
+				}
+			}`, { input: payload });
+		return response.data.createLink.document as Links;
+	}
+
+	async removeMyIndexes(index_id): Promise<UserIndex> {
+
+		const response = await this.composeClient.executeQuery(`
+			mutation UpdateLink($input: UpdateLinkInput!) {
+				updateLink(input: $input) {
+					document {
+						id
+						index_id
+						url
+						title
+						tags
+						favicon
+					}
+				}
+			}`, { input: payload });
+		return response.data.updateLink.document as Links;
+	}
 	async getProfile(): Promise<BasicProfile | null> {
 		if (this.self) {
 			return this.self?.get("basicProfile");

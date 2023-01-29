@@ -39,7 +39,7 @@ const List: React.VFC<ListProps> = ({
 				])
 			}>
 			{
-				links.map((item, index) => (!draggable ? (
+				links && links.map((item, index) => (!draggable ? (
 					<ListItem
 						key={`listItem${index}-${containerId}`}
 						className={cc([

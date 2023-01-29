@@ -22,9 +22,8 @@ export interface CeramicContextValue {
 	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
 	addLink(index_id: string, data: Links): Promise<Links>;
 	removeLink(link_id: string): Promise<Links>;
-	addTag(link_id: string, tag: string): Promise<Links | undefined>;
-	removeTag(streamId: string, linkId: string, tag: string): Promise<TileDocument<Indexes> | undefined>;
-	setLinkFavorite(streamId: string, linkId: string, favorite: boolean): Promise<TileDocument<Indexes> | undefined>;
+	addTag(link_id: string, tag: string): Promise<Links>;
+	removeTag(streamId: string, linkId: string, tag: string): Promise<Links>;
 }
 
 export const CeramicContext = React.createContext<CeramicContextValue>({} as any);
@@ -93,7 +92,6 @@ const CeramicProvider: React.FC<{}> = ({
 			addLink,
 			getProfile,
 			setProfile,
-			setLinkFavorite,
 			removeLink,
 			removeTag,
 			uploadImage,
