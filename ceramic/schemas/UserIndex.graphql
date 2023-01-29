@@ -5,5 +5,7 @@ type Index @loadModel(id: "kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8h
 type UserIndex @createModel(accountRelation: LIST, description: "User Indexes"){
     index_id: StreamID! @documentReference(model: "Index")
     index: Index! @relationDocument(property: "index_id")
+    created_at: DateTime!
+    deleted_at: DateTime
     version: CommitID! @documentVersion
 }

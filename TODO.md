@@ -72,6 +72,6 @@ https://github.com/indexas/backend-api/blob/626dbdef6bf381e3d65ce55e178e3ec205a0
 
 * Cryptographically verifiable updated_at, created_at, deleted_at
 * Sorting & Filtering
+* Unique Keys
 * Encryption composite
 * Kafka Indexer?
-* Document did:pkh

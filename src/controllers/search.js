@@ -1,9 +1,15 @@
 const { Client } = require('@elastic/elasticsearch')
 const client = new Client({ node: process.env.ELASTIC_HOST })
+
+const RedisClient = require('../clients/redis.js');
+const redis = new RedisClient().getInstance();
+
 const _ = require('lodash')
 const config = {
     indexName: 'links'
 }
+
+
 
 const indexesWithLinksQuery = (
     index_ids,
@@ -24,6 +30,13 @@ const indexesWithLinksQuery = (
                         terms: { "index_id": index_ids },
                     }
                 ],
+                must_not: [
+                    {
+                        exists: {
+                            field: "deleted_at",
+                        },
+                    },
+                ],                   
             },
         },
         collapse: {
@@ -124,10 +137,32 @@ const linksQuery = (
                             exists: {
                                 field: "id",
                             },
-                        }
+                        },
                     ],
+                    must_not: [
+                        {
+                            exists: {
+                                field: "deleted_at",
+                            },
+                        },
+                    ],                    
+
                 },
             },
+            /*
+            aggs: {
+                max_updated_at: {
+                    max: {
+                        field: "updated_at"
+                    }
+                },
+                max_created_at: {
+                    max: {
+                        field: "created_at"
+                    }
+                }
+            }     
+            */       
         };
 
         if (search) {
@@ -238,10 +273,33 @@ const transformLinkSearch = (
 }
 
 
+exports.did = async (req, res) => {
+
+    const {did, search, skip, take, links_size} = req.body;
+    
+    const index_ids = await redis.smembers(`user_index:by_did:${did}`)
+
+    const query = indexesWithLinksQuery(index_ids, search, skip, take, links_size);
+    const result = await client.search(query);
+
+
+    const totalCount = result.aggregations?.totalCount?.value || 0;
+
+    const indexResult = transformIndexSearch(result, !!search);
+
+    const response = {
+        totalCount,
+        records: indexResult,
+    };
+    res.json(response)
+
+};
+
+
 exports.index = async (req, res) => {
 
-    let {index_ids, search, skip, take, links_size} = req.body;
-    console.log(req.body)
+    const {index_ids, search, skip, take, links_size} = req.body;
+    
     const query = indexesWithLinksQuery(index_ids, search, skip, take, links_size);
     const result = await client.search(query);
 
@@ -260,7 +318,7 @@ exports.index = async (req, res) => {
 
 exports.link = async (req, res, next) => {
 
-    let {index_id, search, skip, take} = req.body;
+    const {index_id, search, skip, take} = req.body;
     const query = linksQuery(index_id, search, skip, take);
     const result = await client.search(query);
 

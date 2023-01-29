@@ -13,7 +13,8 @@ const kafka = new Kafka({
 
 const topics = {
     'postgres.public.kjzl6hvfrbw6c8olbhuzwqimo7mudyf6iui6wb1nlymjf57y16uufzogjd0cc5m': 'link',
-    'postgres.public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn': 'index'
+    'postgres.public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn': 'index',
+    'postgres.public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn': 'user_index'
 }
 
 async function start() {
@@ -64,6 +65,16 @@ async function start() {
                             break
                     }
                     break
+                case 'user_index':
+                    switch (op) {
+                        case "c":
+                            indexer.createUserIndex(doc)
+                            break
+                        case "u":
+                            indexer.updateUserIndex(doc)
+                            break
+                    }
+                    break                    
             }
 
         },

@@ -1,0 +1,11 @@
+architecture: standalone
+auth:
+  enabled: false
+  sentinel: false
+sentinel:
+  enabled: false
+metrics:
+  enabled: true
+master:
+  persistence:
+    enabled: false

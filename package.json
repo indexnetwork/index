@@ -18,7 +18,8 @@
     "joi": "^17.7.0",
     "kafkajs": "^2.2.3",
     "lodash": "^4.17.21",
-    "morgan": "~1.9.1"
+    "morgan": "~1.9.1",
+    "redis": "^4.6.3"
   },
   "devDependencies": {
     "dotenv": "^16.0.3"

@@ -15,4 +15,5 @@ type Link @createModel(accountRelation: LIST, description: "A Simple Link"){
     version: CommitID! @documentVersion
     created_at: DateTime!
     updated_at: DateTime!
+    deleted_at: DateTime
 }
