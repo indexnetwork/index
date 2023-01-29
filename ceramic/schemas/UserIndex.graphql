@@ -3,6 +3,7 @@ type Index @loadModel(id: "kjzl6hvfrbw6c8mi3r321zv8aujo0pz75u3hd75nmnw8cohfakz65
 }
 
 type UserIndex @createModel(accountRelation: LIST, description: "User Indexes"){
+    owner: DID! @documentAccount
     index_id: StreamID! @documentReference(model: "Index")
     index: Index! @relationDocument(property: "index_id")
     created_at: DateTime!
