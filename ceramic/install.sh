@@ -1,8 +1,8 @@
 rm -rf temp
 
-composedb composite:create schemas/Index.graphql --output temp/index.json --did-private-key $(cat priv.key)
-composedb composite:create schemas/Link.graphql --output temp/link.json --did-private-key $(cat priv.key)
-composedb composite:create schemas/UserIndex.graphql --output temp/user_index.json --did-private-key $(cat priv.key)
+composedb composite:create schemas/Index.graphql --output temp/index.json --did-private-key $(cat priv.key)  -c=https://ceramic.index.as
+composedb composite:create schemas/Link.graphql --output temp/link.json --did-private-key $(cat priv.key)  -c=https://ceramic.index.as
+composedb composite:create schemas/UserIndex.graphql --output temp/user_index.json --did-private-key $(cat priv.key)  -c=https://ceramic.index.as
 composedb composite:create schemas/relations.graphql --output temp/relations.json --did-private-key $(cat priv.key)  -c=https://ceramic.index.as
 
 composedb composite:merge temp/index.json temp/link.json temp/relations.json temp/user_index.json --output temp/merged.json   -c=https://ceramic.index.as
@@ -14,10 +14,11 @@ composedb composite:compile temp/merged.json temp/merged-runtime.js  -c=https://
 composedb graphql:server --graphiql --port=35000 temp/merged-runtime.json --did-private-key=$(cat priv.key)
 
 
-
 kubectl delete configmap composedb-config
 kubectl create configmap composedb-config --from-file temp/merged-runtime.json --from-file composedb.config.json
+kubectl delete -f k8s-composedb.yaml
+kubectl apply -f k8s-composedb.yaml
+
 kubectl delete secret composedb-secret
 kubectl create secret generic composedb-secret --from-file priv.key
 kubectl apply -f k8s-ceramic.yaml
-kubectl apply -f k8s-composedb.yaml

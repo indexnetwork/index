@@ -12,9 +12,9 @@ const kafka = new Kafka({
 })
 
 const topics = {
-    'postgres.public.kjzl6hvfrbw6c8olbhuzwqimo7mudyf6iui6wb1nlymjf57y16uufzogjd0cc5m': 'link',
-    'postgres.public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn': 'index',
-    'postgres.public.kjzl6hvfrbw6c9nr6lquycvocpcpg7sxz55v67iyyv2n2t29tre8hy2gli4m6wn': 'user_index'
+    'postgres.public.kjzl6hvfrbw6c732vo3usihwsmaudk78by48c6fy7qxxwkmn9yrryza13jyg6kt': 'link',
+    'postgres.public.kjzl6hvfrbw6c8mi3r321zv8aujo0pz75u3hd75nmnw8cohfakz650td4c7qxxf': 'index',
+    'postgres.public.kjzl6hvfrbw6c6wqljgq8pfv45vzo1r0y2o5tghh06tfnqzshxwzptx3ierfjux': 'user_index'
 }
 
 async function start() {

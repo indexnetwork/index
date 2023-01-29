@@ -64,6 +64,10 @@
 - [] Create new action
 - [] Associate a PKP with a LIT Action
 
+
+# Security
+- [] Protect composedb ingress.
+
 https://github.com/indexas/backend-api/blob/626dbdef6bf381e3d65ce55e178e3ec205a02cff/src/services/elastic-service/query.ts
 
 
