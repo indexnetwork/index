@@ -81,7 +81,7 @@ const IndexList: React.VFC<IndexListProps> = ({ search, onFetch }) => {
 	}, []);
 
 	const handleDelete = () => {
-		getData(undefined, true);
+		// getData(undefined, true);
 	};
 
 	useEffect(() => {

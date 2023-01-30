@@ -79,11 +79,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	};
 
 	const handleSetFavorite = async () => {
-		const doc = await ceramic.setLinkFavorite(streamId as string, id!, !favorite);
-		if (doc) {
-			await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
-		}
-		onChange && onChange(doc?.content?.links || []);
+
 	};
 
 	const handleRemove = async () => {
