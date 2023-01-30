@@ -45,9 +45,6 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 	const authenticated = useAuth();
 	const { connect, disconnect } = useContext(AuthHandlerContext);
 
-	const handleCreate = () => {
-		router.push("/create");
-	};
 
 	useEffect(() => {
 		if (isLanding && authenticated) {
@@ -137,7 +134,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 										available && name ? name : "Y"
 									)}</Avatar>
 						</Dropdown>
-						<CreateModal data={{ handleCreate }} visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal>
+						<CreateModal visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal>
 					</NavbarMenu>
 				) :
 					(

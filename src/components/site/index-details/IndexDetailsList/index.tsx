@@ -46,6 +46,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		setLoading(true);
 		const queryParams = {
 			index_id,
+			skip: links.length,
 			take: state.take,
 		} as LinkSearchRequestBody;
 
@@ -59,8 +60,6 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 				queryParams.search = state.search;
 			}
 		}
-
-		queryParams.skip = links.length;
 
 		const res = await api.searchLink(queryParams) as LinkSearchResponse;
 		if (res) {

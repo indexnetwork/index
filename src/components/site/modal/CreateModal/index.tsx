@@ -16,11 +16,9 @@ import { selectConnection } from "store/slices/connectionSlice";
 import { Indexes } from "types/entity";
 
 export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
-	data: any;
 }
 
 const CreateModal: React.VFC<CreateModalProps> = ({
-	data,
 	...modalProps
 }) => {
 	const { t } = useTranslation(["pages"]);
@@ -45,6 +43,9 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 			const doc = await ceramic.createIndex(stream);
 			if (doc != null) {
 				router.push(`/${did}/${doc.id}`);
+				setStream({
+					title: '',
+				});
 				modalProps.onClose?.();
 			}
 		}
@@ -88,19 +89,14 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 								className="mt-7 pl-9 pr-9 "
 								theme="clear"
 								onClick={handleClose}
-							>
-
-						Cancel
-							</Button>
+							>Cancel</Button>
 						</Col>
 						<Col pullRight>
 							<Button
 								onClick={handleCreate}
 								theme="primary"
 								className=" mt-7 pl-9 pr-9"
-							>
-						Create
-							</Button>
+							>Create</Button>
 						</Col>
 
 					</Col>

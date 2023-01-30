@@ -42,7 +42,7 @@ const IndexesPage: NextPageWithLayout = () => {
 					)
 				}
 				<Col xs={12} lg={9}>
-					<IndexList search={search} shared={false} onFetch={setLoading}/>
+					<IndexList search={search} onFetch={setLoading}/>
 				</Col>
 			</FlexRow>
 		</PageContainer>);

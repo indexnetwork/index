@@ -3,7 +3,7 @@ import { useRouter } from "next/router";
 import React, {
 	useCallback, useEffect, useState, useRef, ReactElement
 } from "react";
-import api, { IndexSearchResponse } from "services/api-service";
+import api, { DidSearchRequestBody, DidSearchResponse } from "services/api-service";
 import { Indexes } from "types/entity";
 import InfiniteScroll from "react-infinite-scroller";
 import { useMergedState } from "hooks/useMergedState";
@@ -14,46 +14,20 @@ import NotFound from "../NotFound";
 import ListItem from "../../../base/List/ListItem"
 
 export interface IndexListProps {
-	shared: boolean;
 	search?: string;
 	onFetch?(loading: boolean): void;
 }
 
-const take = 10;
 
 export interface IndexListState {
-	dt: IndexSearchResponse;
 	skip: number;
 	take: number;
 	search?: string;
 	hasMore: boolean;
 }
 
-
-
-import { v4 as uuidv4 } from "uuid";
-import cc from "classcat";
-import { Draggable, DraggableProvided, DraggableStateSnapshot } from "react-beautiful-dnd";
-
-
-export interface ListProps<T = {}> {
-	data: T[];
-	listClass?: string;
-	itemContainerClass?: string;
-	render(item: T, index: number, provided?: DraggableProvided, snapshot?: DraggableStateSnapshot): ReactElement<any>;
-	divided?: boolean;
-	draggable?: boolean;
-	placeholder?: any;
-	droppableProvided?: any,
-}
-
-
-
-const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
+const IndexList: React.VFC<IndexListProps> = ({ search, onFetch }) => {
 	const [state, setState] = useMergedState<IndexListState>({
-		dt: {
-			records: [],
-		},
 		skip: 0,
 		take: 10,
 		search,
@@ -62,33 +36,52 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 	const [loading, setLoading] = useState(false);
 	const [init, setInit] = useState(false);
 	const [hasIndex, setHasIndex] = useState(true);
+	const [indexes, setIndexes] = useState<Indexes[]>([]);
+
+
 	const router = useRouter();
 
 	const { isOwner, did } = useOwner();
 
-	const getData = async (page?: number, reset?: boolean, searchT?: string) => {
+
+	const getData = async (page?: number, searchT?: string) => {
+
+		if (loading) {
+			return;
+		}
 		setLoading(true);
 
-		const res = await api.searchIndex({
-			skip: reset ? 0 : state.skip,
-			take: state.take,
+		const queryParams = {
 			did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
-		});
-		console.log(res)
+			skip: indexes.length,
+			take: state.take,
+		} as DidSearchRequestBody;
+
+		if (searchT !== undefined) {
+			queryParams.skip = 0;
+			if (searchT.length > 0) {
+				queryParams.search = searchT;
+			}
+		} else if (page) {
+			if (state.search && state.search.length > 0) {
+				queryParams.search = state.search;
+			}
+		}
+
+		const res = await api.searchIndex(queryParams) as DidSearchResponse;
+
 		if (res) {
-			setState((oldState) => ({
-				hasMore: false, // res.totalCount! > res.search!.skip! + take,
-				dt: {
-					records: reset ? (res.records || []) : [...oldState.dt.records!, ...(res.records ?? [])],
-				},
-				skip: reset ? oldState.take : oldState.skip + oldState.take,
-			}));
+			setState({
+				hasMore: res.totalCount > queryParams.skip + queryParams.take,
+				take: queryParams.take,
+				skip: queryParams.skip,
+				search: queryParams.search,
+			} as IndexListState);
+
+			setIndexes((searchT !== undefined) ? res.records : indexes.concat(res.records));
 		}
 		setLoading(false);
-		if (!init) {
-			setHasIndex(!!(res?.records && res.records.length > 0));
-			setInit(true);
-		}
+
 	};
 
 	const handleClick = useCallback((itm: Indexes) => async () => {
@@ -100,7 +93,7 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 	};
 
 	useEffect(() => {
-		getData(undefined, true, search);
+		getData(undefined, search);
 	}, [search]);
 
 	useEffect(() => {
@@ -115,7 +108,7 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 				marginHeight={50}
 			>
 				<List
-					data={state.dt?.records || []}
+					data={indexes || []}
 					listClass="index-list"
 					render={(itm: Indexes) => <IndexItem
 						hasSearch={!!search}

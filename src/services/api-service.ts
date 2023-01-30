@@ -30,6 +30,10 @@ export interface DidSearchRequestBody extends ApiSearchRequestBody<{}> {
 	search?: string;
 	links_size?: number;
 }
+export interface DidSearchResponse {
+	totalCount: number;
+	records: Indexes[];
+}
 
 export interface LinkSearchResponse {
 	totalCount: number;

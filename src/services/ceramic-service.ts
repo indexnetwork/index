@@ -242,35 +242,37 @@ class CeramicService2 {
 	}
 
 	async addMyIndexes(index_id): Promise<UserIndex> {
-		setDates(link); // TODO Conditional updated_at
 
-		link.index_id = index_id;
-		link.indexer_did = "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx";
-		link.updated_at = getCurrentDateTime();
-		if (!link.tags) {
-			link.tags = [];
+		let user_index = {
+			index_id: index_id,
+			created_at: getCurrentDateTime()
 		}
 		const payload = {
-			content: link,
+			content: user_index,
 		};
 		const response = await this.composeClient.executeQuery(`
-			mutation CreateLink($input: CreateLinkInput!) {
-				createLink(input: $input) {
+			mutation CreateUserIndex($input: CreateUserIndexInput!) {
+				createUserIndex(input: $input) {
 					document {
 						id
 						index_id
-						url
-						title
-						tags
-						favicon
+						owner {
+							id
+						}
+						created_at
+						deleted_at
 					}
 				}
 			}`, { input: payload });
-		return response.data.createLink.document as Links;
+		return response.data.createUserIndex.document as UserIndex;
 	}
 
 	async removeMyIndexes(index_id): Promise<UserIndex> {
-
+		link.updated_at = getCurrentDateTime();
+		const payload = {
+			id: link_id,
+			content: link,
+		};
 		const response = await this.composeClient.executeQuery(`
 			mutation UpdateLink($input: UpdateLinkInput!) {
 				updateLink(input: $input) {
