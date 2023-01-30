@@ -109,7 +109,9 @@ class CeramicService2 {
 					}
 				}
 			}`, { input: payload });
-		return response.data.createIndex.document as Indexes;
+		const index = response.data.createIndex.document as Indexes;
+		await this.addMyIndexes(index.id)
+		return index;
 	}
 
 	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes> {
@@ -237,7 +239,7 @@ class CeramicService2 {
 		}
 	}
 
-	async addMyIndexes(index_id): Promise<UserIndex> {
+	async addMyIndexes(index_id: string): Promise<UserIndex> {
 
 		let user_index = {
 			index_id: index_id,
