@@ -22,13 +22,11 @@ export type Indexes = {
  * Model IndexUsers
  *
  */
-export type IndexUsers = {
+export type UserIndex = {
   id: number
-  streamId: string
-  address: string
-  permission: EnumIndexUsersRole | null
-  createdAt: string;
-  updatedAt: string;
+  index_id: string
+  created_at: string;
+  deleted_at: string;
 };
 
 /**

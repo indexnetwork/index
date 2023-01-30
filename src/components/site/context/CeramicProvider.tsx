@@ -2,7 +2,6 @@ import React, {
 	useMemo, useState,
 } from "react";
 import ceramicService from "services/ceramic-service";
-import { TileDocument } from "@ceramicnetwork/stream-tile";
 import { Indexes, LinkContentResult, Links } from "types/entity";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { CID } from "ipfs-http-client";
@@ -16,14 +15,14 @@ export interface CeramicContextValue {
 	createIndex(doc: Partial<Indexes>): Promise<Indexes | null>;
 	updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes>;
 	getIndexById(streamId: string): Promise<Indexes>;
-	getDocs(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }>;
-	getProfile(): Promise<BasicProfile | null>;
-	setProfile(profile: BasicProfile): Promise<boolean>;
-	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
 	addLink(index_id: string, data: Links): Promise<Links>;
 	removeLink(link_id: string): Promise<Links>;
 	addTag(link_id: string, tag: string): Promise<Links>;
 	removeTag(streamId: string, linkId: string, tag: string): Promise<Links>;
+	getProfile(): Promise<BasicProfile | null>;
+	setProfile(profile: BasicProfile): Promise<boolean>;
+	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
+
 }
 
 export const CeramicContext = React.createContext<CeramicContextValue>({} as any);
@@ -87,7 +86,6 @@ const CeramicProvider: React.FC<{}> = ({
 			createIndex,
 			updateIndex,
 			getIndexById,
-			getDocs,
 			addTag,
 			addLink,
 			getProfile,

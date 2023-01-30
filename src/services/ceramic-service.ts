@@ -1,10 +1,9 @@
-import { TileDocument } from "@ceramicnetwork/stream-tile";
 import { SelfID } from "@self.id/web";
 
 import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
 
-import { Indexes, LinkContentResult, Links } from "types/entity";
+import { Indexes, LinkContentResult, Links, UserIndex } from "types/entity";
 import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
@@ -85,9 +84,6 @@ class CeramicService2 {
 		return <Links>(result.data?.node as any);
 	}
 
-	async getIndexes(streams: { streamId: string }[]): Promise<{ [key: string]: TileDocument<Indexes> }> {
-		return await this.ceramic.multiQuery(streams) as any;
-	}
 
 	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
 		setDates(content, true);
