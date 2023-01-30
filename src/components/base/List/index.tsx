@@ -18,15 +18,15 @@ export interface ListProps<T = {}> {
 }
 
 const List: React.VFC<ListProps> = ({
-										data,
-										listClass,
-										itemContainerClass,
-										render,
-										divided = true,
-										draggable = false,
-										placeholder,
-										droppableProvided,
-									}) => {
+	listClass,
+	itemContainerClass,
+	render,
+	divided = true,
+	draggable = false,
+	placeholder,
+	droppableProvided,
+	data,
+}) => {
 	const containerId = useRef<string>(uuidv4());
 
 	return (
@@ -40,7 +40,7 @@ const List: React.VFC<ListProps> = ({
 				])
 			}>
 			{
-				data.map((item, index) => (!draggable ? (
+				data && data.map((item, index) => (!draggable ? (
 					<ListItem
 						key={`listItem${index}-${containerId}`}
 						className={cc([

@@ -47,61 +47,6 @@ export interface ListProps<T = {}> {
 	droppableProvided?: any,
 }
 
-const List2: React.VFC<ListProps> = ({
-										data,
-										listClass,
-										itemContainerClass,
-										render,
-										divided = true,
-										draggable = false,
-										placeholder,
-										droppableProvided,
-									}) => {
-	const containerId = useRef<string>(uuidv4());
-
-	return (
-		<ul
-			ref={droppableProvided?.innerRef}
-			{...droppableProvided?.droppableProps}
-			className={
-				cc([
-					"list",
-					listClass || "",
-				])
-			}>
-			{
-				data.map((item, index) => (!draggable ? (
-					<ListItem
-						key={`listItem${index}-${containerId}`}
-						className={cc([
-							itemContainerClass || "",
-						])}
-					>
-						{render(item, index)}
-						{divided && index !== data.length - 1 && <div className="list-divider"></div>}
-					</ListItem>
-				) : (
-					<Draggable
-						key={(item as any).id}
-						index={index}
-						draggableId={(item as any).id}>
-						{(provided, snapshot) => <ListItem
-							provided={provided}
-							className={cc([
-								itemContainerClass || "",
-							])}
-						>
-							{render(item, index, provided, snapshot)}
-							{divided && index !== data.length - 1 && <div className="list-divider"></div>}
-						</ListItem>}</Draggable>
-				)))
-			}
-			{
-				droppableProvided?.placeholder
-			}
-		</ul>
-	);
-};
 
 
 const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
@@ -147,7 +92,7 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 	};
 
 	const handleClick = useCallback((itm: Indexes) => async () => {
-		router.push(`/${router.query.did}/${itm.streamId}`);
+		router.push(`/${router.query.did}/${itm.id}`);
 	}, []);
 
 	const handleDelete = () => {
@@ -169,7 +114,7 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 				loadMore={getData}
 				marginHeight={50}
 			>
-				<List2
+				<List
 					data={state.dt?.records || []}
 					listClass="index-list"
 					render={(itm: Indexes) => <IndexItem
