@@ -52,7 +52,7 @@ const IndexList: React.VFC<IndexListProps> = ({ search, onFetch }) => {
 		setLoading(true);
 
 		const queryParams = {
-			did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
+			did: did,
 			skip: indexes.length,
 			take: state.take,
 		} as DidSearchRequestBody;
