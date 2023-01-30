@@ -1,7 +1,7 @@
 import List from "components/base/List";
 import { useRouter } from "next/router";
 import React, {
-	useCallback, useEffect, useState, useRef, ReactElement
+	useCallback, useEffect, useState,
 } from "react";
 import api, { DidSearchRequestBody, DidSearchResponse } from "services/api-service";
 import { Indexes } from "types/entity";
@@ -9,15 +9,11 @@ import InfiniteScroll from "react-infinite-scroller";
 import { useMergedState } from "hooks/useMergedState";
 import { useOwner } from "hooks/useOwner";
 import IndexItem from "../IndexItem";
-import NoIndexes from "../NoIndexes";
-import NotFound from "../NotFound";
-import ListItem from "../../../base/List/ListItem"
 
 export interface IndexListProps {
 	search?: string;
 	onFetch?(loading: boolean): void;
 }
-
 
 export interface IndexListState {
 	skip: number;
@@ -38,21 +34,18 @@ const IndexList: React.VFC<IndexListProps> = ({ search, onFetch }) => {
 	const [hasIndex, setHasIndex] = useState(true);
 	const [indexes, setIndexes] = useState<Indexes[]>([]);
 
-
 	const router = useRouter();
 
 	const { isOwner, did } = useOwner();
 
-
 	const getData = async (page?: number, searchT?: string) => {
-
 		if (loading) {
 			return;
 		}
 		setLoading(true);
 
 		const queryParams = {
-			did: did,
+			did,
 			skip: indexes.length,
 			take: state.take,
 		} as DidSearchRequestBody;
@@ -81,7 +74,6 @@ const IndexList: React.VFC<IndexListProps> = ({ search, onFetch }) => {
 			setIndexes((searchT !== undefined) ? res.records : indexes.concat(res.records));
 		}
 		setLoading(false);
-
 	};
 
 	const handleClick = useCallback((itm: Indexes) => async () => {

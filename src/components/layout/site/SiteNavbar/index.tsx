@@ -45,7 +45,6 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 	const authenticated = useAuth();
 	const { connect, disconnect } = useContext(AuthHandlerContext);
 
-
 	useEffect(() => {
 		if (isLanding && authenticated) {
 			Router.push(`/${did}`);

@@ -44,7 +44,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 			if (doc != null) {
 				router.push(`/${did}/${doc.id}`);
 				setStream({
-					title: '',
+					title: "",
 				});
 				modalProps.onClose?.();
 			}

@@ -3,7 +3,9 @@ import { SelfID } from "@self.id/web";
 import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
 
-import { Indexes, LinkContentResult, Links, UserIndex } from "types/entity";
+import {
+	Indexes, LinkContentResult, Links, UserIndex,
+} from "types/entity";
 import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
@@ -84,7 +86,6 @@ class CeramicService2 {
 		return <Links>(result.data?.node as any);
 	}
 
-
 	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
 		setDates(content, true);
 		if (!content.title) {
@@ -110,7 +111,7 @@ class CeramicService2 {
 				}
 			}`, { input: payload });
 		const index = response.data.createIndex.document as Indexes;
-		await this.addMyIndexes(index.id)
+		await this.addMyIndexes(index.id);
 		return index;
 	}
 
@@ -240,11 +241,10 @@ class CeramicService2 {
 	}
 
 	async addMyIndexes(index_id: string): Promise<UserIndex> {
-
-		let user_index = {
-			index_id: index_id,
-			created_at: getCurrentDateTime()
-		}
+		const user_index = {
+			index_id,
+			created_at: getCurrentDateTime(),
+		};
 		const payload = {
 			content: user_index,
 		};
@@ -317,6 +317,7 @@ class CeramicService2 {
 	}
 
 	async syncContents(providedContent?: LinkContentResult): Promise<number | null> {
+		/*
 		try {
 			const contents = providedContent ? [providedContent] : (await api.findLinkContent());
 
@@ -355,6 +356,8 @@ class CeramicService2 {
 		} catch (err) {
 			return null;
 		}
+
+		 */
 	}
 
 	async close() {
