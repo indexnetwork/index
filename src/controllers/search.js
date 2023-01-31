@@ -257,26 +257,28 @@ const transformIndexSearch = (
 
     const hits = dt?.hits?.hits;
     if (hits && hits.length > 0) {
-        if (hasSearchTerm) {
-            hits.forEach((h) => {
-                let index_updated = h.inner_hits.latest_index.hits.hits[0]._source.index.updated_at;
-                let link_updated = h.inner_hits.latest_link.hits.hits[0]._source.updated_at;
-                h._source.index.updated_at = moment(index_updated) > moment(link_updated) ? index_updated : link_updated
-                const indexResponse = {
-                    ...h._source?.index,
-                    highlight: h.highlight,
-                    links: h.inner_hits?.links?.hits?.hits?.map((ih) => (
-                        {
-                            ..._.omit(ih._source, "index"),
-                            highlight: ih.highlight,
-                        }
-            )),
-            };
-                result.push(indexResponse);
-            });
-        } else {
-            result = hits.map((h) => h._source?.index);
-        }
+        result = hits.map((h) => {
+
+            let index_updated = h.inner_hits.latest_index.hits.hits[0]._source.index.updated_at;
+            let link_updated = h.inner_hits.latest_link.hits.hits[0]._source.updated_at || 0;
+            h._source.index.updated_at = moment(index_updated) > moment(link_updated) ? index_updated : link_updated
+
+            let mapped = {
+                ...h._source?.index
+            }
+            if(hasSearchTerm){
+                mapped.highlight= h.highlight;
+                mapped.links= h.inner_hits?.links?.hits?.hits?.map((ih) => (
+                    {
+                        ..._.omit(ih._source, "index"),
+                        highlight: ih.highlight,
+                    }
+                ));
+            }
+            return mapped
+
+        });
+
     }
     return result;
 }
