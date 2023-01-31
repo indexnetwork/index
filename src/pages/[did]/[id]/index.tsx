@@ -90,7 +90,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		if (payload) {
 			const link = await ceramic.addLink(index?.id!, payload);
 			setLinks([link, ...links]);
-
+			index.updated_at = link.updated_at
+			setIndex(index)
 			// lc.links = [link]; // TODO Concat or spread
 
 			/*

@@ -1,3 +1,5 @@
+import moment from "moment";
+
 import { SelfID } from "@self.id/web";
 
 import { CeramicClient } from "@ceramicnetwork/http-client";
@@ -62,10 +64,24 @@ class CeramicService2 {
 				collab_action
 				created_at
 				updated_at
+				links(last:1) {
+					edges {
+					  node {
+						created_at
+						updated_at
+					  }
+					}
+				}
 			}}
 		  }`);
+
+		let node = result.data.node;
+		if(node.links.edges.length > 0 && (moment(node.links.edges[0].node.updated_at) > moment(node.updated_at))){
+			node.updated_at = node.links.edges[0].node.updated_at
+		}
+
 		return (
-		<Indexes>(result.data?.node as any)
+		<Indexes>(node as any)
 		);
 	}
 	async getLinkById(link_id: string) {
@@ -159,6 +175,8 @@ class CeramicService2 {
 						title
 						tags
 						favicon
+						created_at
+						updated_at
 					}
 				}
 			}`, { input: payload });
@@ -181,6 +199,8 @@ class CeramicService2 {
 						title
 						tags
 						favicon
+						created_at
+						updated_at						
 					}
 				}
 			}`, { input: payload });
