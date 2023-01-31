@@ -4,6 +4,7 @@ import { SelfID } from "@self.id/web";
 
 import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
+import { type DocumentNode, type ExecutionResult } from 'graphql';
 
 import {
 	Indexes, LinkContentResult, Links, UserIndex,
@@ -19,14 +20,9 @@ import api from "./api-service";
 
 class CeramicService2 {
 	private ipfs: IPFSHTTPClient = create({
-		url: appConfig.ipfsInfura,
+		//url: appConfig.ipfsInfura,
 	});
-	/*
-	private client = (isSSR() ? undefined : new WebClient({
-		ceramic: this.hostnameCheck(),
-		connectNetwork: appConfig.ceramicNetworkName as any,
-	})) as WebClient;
-	*/
+
 
 	private ceramic = new CeramicClient("https://ceramic.index.as");
 	private composeClient = new ComposeClient({
@@ -39,6 +35,7 @@ class CeramicService2 {
 	async authenticate(did: any) {
 		if (!isSSR()) {
 			try {
+				console.log(did)
 				await this.ceramic.setDID(did);
 				await this.composeClient.setDID(did);
 				return true;
@@ -75,7 +72,8 @@ class CeramicService2 {
 			}}
 		  }`);
 
-		let node = result.data.node;
+		let node: any = result?.data?.node;
+
 		if(node.links.edges.length > 0 && (moment(node.links.edges[0].node.updated_at) > moment(node.updated_at))){
 			node.updated_at = node.links.edges[0].node.updated_at
 		}
@@ -131,14 +129,14 @@ class CeramicService2 {
 		return index;
 	}
 
-	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes> {
+	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes | boolean> {
 		const cdt = getCurrentDateTime();
 		content.updated_at = cdt;
 		const payload = {
 			id: index_id,
 			content,
 		};
-		const response = await this.composeClient.executeQuery(`
+		const { data, errors } = await this.composeClient.executeQuery(`
 			mutation UpdateIndex($input: UpdateIndexInput!) {
 				updateIndex(input: $input) {
 					document {
@@ -149,8 +147,14 @@ class CeramicService2 {
 						updated_at
 					}
 				}
-			}`, { input: payload });
-		return response.data.updateIndex.document as Indexes;
+			}`, { input: payload }) as ExecutionResult;
+		if(data){
+			return data?.updateIndex.document as Indexes;
+		}else{
+
+		}
+		console.log(data)
+
 	}
 
 	async addLink(index_id: string, link: Links): Promise<Links> {
@@ -304,25 +308,53 @@ class CeramicService2 {
 					}
 				}
 			}`, { input: payload });
+
 		return response.data.updateLink.document as Links;
 	}
-	async getProfile(): Promise<BasicProfile | null> {
-		if (this.self) {
-			return this.self?.get("basicProfile");
-		}
-		return null;
-	}
 
+	async getProfile(): Promise<BasicProfile | null> {
+		debugger;
+			const profile = await this.composeClient.executeQuery(`
+        query {
+          viewer {
+            basicProfile {
+              id
+              name
+              description
+              gender
+              emoji
+            }
+          }
+        }
+      `);
+		debugger;
+			return profile?.data?.viewer?.basicProfile
+
+
+
+	}
 	async setProfile(profile: BasicProfile) {
-		if (this.self) {
-			try {
-				const streamId = await this.self.set("basicProfile", profile);
-				return !!(streamId);
-			} catch (err) {
-				return false;
-			}
-		}
-		return false;
+
+		const update = await this.composeClient.executeQuery(`
+        mutation {
+          createBasicProfile(input: {
+            content: {
+              name: "ab"
+              description: "ab"
+            }
+          }) 
+          {
+            document {
+              name
+              description
+              gender
+              emoji
+            }
+          }
+        }
+      `);
+
+		return true;
 	}
 
 	async uploadImage(file: File) {

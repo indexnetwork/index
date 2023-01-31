@@ -4,4 +4,5 @@ export const appConfig = {
 	devCeramicNetworkName: "dev-clay",
 	ceramicNetworkName: "testnet-clay",
 	ipfsProxy: "",
+	ipfsInfura: "",
 };
