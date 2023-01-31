@@ -15,11 +15,11 @@ export interface CeramicContextValue {
 	createIndex(doc: Partial<Indexes>): Promise<Indexes | null>;
 	updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes>;
 	getIndexById(streamId: string): Promise<Indexes>;
-	addLink(index_id: string, data: Links): Promise<Links>;
-	removeLink(link_id: string): Promise<Links>;
-	addTag(link_id: string, tag: string): Promise<Links>;
-	removeTag(link_id: string, tag: string): Promise<Links>;
-	getProfile(): Promise<BasicProfile | null>;
+	addLink(index_id: string, data: Links): Promise<Links | undefined>;
+	removeLink(link_id: string): Promise<Links | undefined>;
+	addTag(link_id: string, tag: string): Promise<Links | undefined>;
+	removeTag(link_id: string, tag: string): Promise<Links | undefined>;
+	getProfile(): Promise<BasicProfile | null | any>;
 	setProfile(profile: BasicProfile): Promise<boolean>;
 	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
 

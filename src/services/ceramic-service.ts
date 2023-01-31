@@ -4,7 +4,6 @@ import { SelfID } from "@self.id/web";
 
 import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
-import { type DocumentNode, type ExecutionResult } from 'graphql';
 
 import {
 	Indexes, LinkContentResult, Links, UserIndex,
@@ -13,16 +12,13 @@ import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
-import { appConfig } from "config";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import { definition } from "../types/merged-runtime";
-import api from "./api-service";
 
 class CeramicService2 {
 	private ipfs: IPFSHTTPClient = create({
-		//url: appConfig.ipfsInfura,
+		// url: appConfig.ipfsInfura,
 	});
-
 
 	private ceramic = new CeramicClient("https://ceramic.index.as");
 	private composeClient = new ComposeClient({
@@ -35,7 +31,7 @@ class CeramicService2 {
 	async authenticate(did: any) {
 		if (!isSSR()) {
 			try {
-				console.log(did)
+				console.log(did);
 				await this.ceramic.setDID(did);
 				await this.composeClient.setDID(did);
 				return true;
@@ -72,10 +68,10 @@ class CeramicService2 {
 			}}
 		  }`);
 
-		let node: any = result?.data?.node;
+		const node: any = result?.data?.node;
 
-		if(node.links.edges.length > 0 && (moment(node.links.edges[0].node.updated_at) > moment(node.updated_at))){
-			node.updated_at = node.links.edges[0].node.updated_at
+		if (node.links.edges.length > 0 && (moment(node.links.edges[0].node.updated_at) > moment(node.updated_at))) {
+			node.updated_at = node.links.edges[0].node.updated_at;
 		}
 
 		return (
@@ -112,7 +108,7 @@ class CeramicService2 {
 		const payload = {
 			content,
 		};
-		const response = await this.composeClient.executeQuery(`
+		const { data, errors } = await this.composeClient.executeQuery<{ createIndex: { document: Indexes } }>(`
 			mutation CreateIndex($input: CreateIndexInput!) {
 				createIndex(input: $input) {
 					document {
@@ -124,19 +120,23 @@ class CeramicService2 {
 					}
 				}
 			}`, { input: payload });
-		const index = response.data.createIndex.document as Indexes;
-		await this.addMyIndexes(index.id);
-		return index;
+
+		if (errors) {
+			// TODO Handle
+		}
+		const index = data?.createIndex.document;
+		await this.addMyIndexes(index!.id);
+		return index!;
 	}
 
-	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes | boolean> {
+	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes> {
 		const cdt = getCurrentDateTime();
 		content.updated_at = cdt;
 		const payload = {
 			id: index_id,
 			content,
 		};
-		const { data, errors } = await this.composeClient.executeQuery(`
+		const { data, errors } = await this.composeClient.executeQuery<{ updateIndex: { document: Indexes } }>(`
 			mutation UpdateIndex($input: UpdateIndexInput!) {
 				updateIndex(input: $input) {
 					document {
@@ -147,14 +147,12 @@ class CeramicService2 {
 						updated_at
 					}
 				}
-			}`, { input: payload }) as ExecutionResult;
-		if(data){
-			return data?.updateIndex.document as Indexes;
-		}else{
+			}`, { input: payload });
 
+		if (errors) {
+			// TODO Handle
 		}
-		console.log(data)
-
+		return data?.updateIndex.document!;
 	}
 
 	async addLink(index_id: string, link: Links): Promise<Links> {
@@ -169,7 +167,7 @@ class CeramicService2 {
 		const payload = {
 			content: link,
 		};
-		const response = await this.composeClient.executeQuery(`
+		const { data, errors } = await this.composeClient.executeQuery<{ createLink: { document: Links } }>(`
 			mutation CreateLink($input: CreateLinkInput!) {
 				createLink(input: $input) {
 					document {
@@ -184,7 +182,10 @@ class CeramicService2 {
 					}
 				}
 			}`, { input: payload });
-		return response.data.createLink.document as Links;
+		if (errors) {
+			// TODO Handle
+		}
+		return data?.createLink.document!;
 	}
 
 	async updateLink(link_id: string, link: Partial<Links>): Promise <Links> {
@@ -193,7 +194,7 @@ class CeramicService2 {
 			id: link_id,
 			content: link,
 		};
-		const response = await this.composeClient.executeQuery(`
+		const { data, errors } = await this.composeClient.executeQuery<{ updateLink: { document: Links } }>(`
 			mutation UpdateLink($input: UpdateLinkInput!) {
 				updateLink(input: $input) {
 					document {
@@ -208,10 +209,13 @@ class CeramicService2 {
 					}
 				}
 			}`, { input: payload });
-		return response.data.updateLink.document as Links;
+		if (errors) {
+			// TODO Handle
+		}
+		return data?.updateLink.document!;
 	}
 
-	async removeLink(link_id: string): Promise <Links> {
+	async removeLink(link_id: string): Promise <Links | undefined> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			return await this.updateLink(link_id, {
@@ -221,7 +225,7 @@ class CeramicService2 {
 		// TODO handle
 	}
 
-	async addTag(link_id: string, tag: string): Promise <Links> {
+	async addTag(link_id: string, tag: string): Promise <Links | undefined> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			let { tags } = link;
@@ -236,7 +240,7 @@ class CeramicService2 {
 		// TODO handle.
 	}
 
-	async removeTag(link_id: string, tag: string): Promise <Links> {
+	async removeTag(link_id: string, tag: string): Promise <Links | undefined> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			let { tags } = link;
@@ -252,6 +256,7 @@ class CeramicService2 {
 	}
 
 	async setLinkFavorite(streamId: string, linkId: string, favorite: boolean) {
+		/*
 		const oldDoc = await this.getIndexById(streamId);
 		const newContent = { ...oldDoc.content };
 		const link = newContent.links?.find((l) => l.id === linkId);
@@ -262,17 +267,19 @@ class CeramicService2 {
 			});
 			return oldDoc;
 		}
+
+		 */
 	}
 
 	async addMyIndexes(index_id: string): Promise<UserIndex> {
-		const user_index = {
+		const userIndex = {
 			index_id,
 			created_at: getCurrentDateTime(),
 		};
 		const payload = {
-			content: user_index,
+			content: userIndex,
 		};
-		const response = await this.composeClient.executeQuery(`
+		const { data, errors } = await this.composeClient.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
 			mutation CreateUserIndex($input: CreateUserIndexInput!) {
 				createUserIndex(input: $input) {
 					document {
@@ -286,18 +293,22 @@ class CeramicService2 {
 					}
 				}
 			}`, { input: payload });
-		return response.data.createUserIndex.document as UserIndex;
+		if (errors) {
+			// TODO Handle
+		}
+		return data?.createUserIndex.document!;
 	}
 
-	async removeMyIndexes(index_id): Promise<UserIndex> {
+	async removeMyIndexes(index_id: string) {
+		/*
 		link.updated_at = getCurrentDateTime();
 		const payload = {
 			id: link_id,
 			content: link,
 		};
-		const response = await this.composeClient.executeQuery(`
+		const response = await this.composeClient.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
 			mutation UpdateLink($input: UpdateLinkInput!) {
-				updateLink(input: $input) {
+				updateUserIndex(input: $input) {
 					document {
 						id
 						index_id
@@ -310,31 +321,14 @@ class CeramicService2 {
 			}`, { input: payload });
 
 		return response.data.updateLink.document as Links;
+
+		 */
 	}
 
-	async getProfile(): Promise<BasicProfile | null> {
-		debugger;
-			const profile = await this.composeClient.executeQuery(`
-        query {
-          viewer {
-            basicProfile {
-              id
-              name
-              description
-              gender
-              emoji
-            }
-          }
-        }
-      `);
-		debugger;
-			return profile?.data?.viewer?.basicProfile
-
-
-
+	async getProfile() {
+		return 0;
 	}
 	async setProfile(profile: BasicProfile) {
-
 		const update = await this.composeClient.executeQuery(`
         mutation {
           createBasicProfile(input: {
@@ -368,6 +362,7 @@ class CeramicService2 {
 		}
 	}
 
+	// @ts-ignore
 	async syncContents(providedContent?: LinkContentResult): Promise<number | null> {
 		/*
 		try {
