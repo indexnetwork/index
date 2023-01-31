@@ -46,6 +46,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		setLoading(true);
 		const queryParams = {
 			index_id,
+			skip: links.length,
 			take: state.take,
 		} as LinkSearchRequestBody;
 
@@ -59,8 +60,6 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 				queryParams.search = state.search;
 			}
 		}
-
-		queryParams.skip = links.length;
 
 		const res = await api.searchLink(queryParams) as LinkSearchResponse;
 		if (res) {
@@ -112,6 +111,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 					>
 						<List
 							listClass="index-list"
+
 							render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
 								provided={provided!}
 								snapshot={snapshot!}
@@ -121,6 +121,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 								// onChange={handleLinksChange}
 							/>}
 							divided
+							data={links}
 						/>
 					</InfiniteScroll>
 				) : (
@@ -130,9 +131,10 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 						loadMore={getData}
 						marginHeight={50}
 					>
-						<DndList<Links>
+						<DndList <Links>
 							listClass="index-detail-list"
 							draggable={isOwner}
+							data={links}
 							render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
 								provided={provided!}
 								isOwner={isOwner}

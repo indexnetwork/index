@@ -3,4 +3,6 @@ export const appConfig = {
 	apiUrl: "https://composedb.index.as/api",
 	devCeramicNetworkName: "dev-clay",
 	ceramicNetworkName: "testnet-clay",
+	ipfsProxy: "",
+	ipfsInfura: "",
 };

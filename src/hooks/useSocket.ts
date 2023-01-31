@@ -27,24 +27,13 @@ export function useSocket(): UseSocketType {
 		},
 	}), []);
 
-	const hostnameCheck = () : string => {
-		if (typeof window !== "undefined") {
-			if (window.location.hostname === "testnet.index.as" || window.location.hostname === "localhost") {
-				return appConfig.baseUrl;
-			}
-			if (window.location.hostname === "dev.index.as") {
-				return appConfig.devBaseUrl;
-			}
-		  }
-		  return appConfig.baseUrl;
-	};
 	useEffect(() => {
 		if (io.current && io.current.connected) {
 			io.current.removeAllListeners();
 			io.current.disconnect();
 		}
 		const token = localStorage.getItem("auth_token");
-		const output: string = hostnameCheck();
+		const output: string = appConfig.baseUrl;
 		io.current = socketIoClient(output, {
 			path: "/api/socket.io",
 			extraHeaders: {

@@ -22,6 +22,19 @@ export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
 	take: number;
 	search?: string;
 }
+
+export interface DidSearchRequestBody extends ApiSearchRequestBody<{}> {
+	did: string;
+	skip: number;
+	take: number;
+	search?: string;
+	links_size?: number;
+}
+export interface DidSearchResponse {
+	totalCount: number;
+	records: Indexes[];
+}
+
 export interface LinkSearchResponse {
 	totalCount: number;
 	records: Links[];
@@ -73,9 +86,9 @@ class ApiService {
 		}
 	}
 
-	async searchIndex(body: IndexesSearchRequestBody): Promise<IndexSearchResponse | null> {
+	async searchIndex(body: DidSearchRequestBody): Promise<IndexSearchResponse | null> {
 		try {
-			const { data } = await apiAxios.post<IndexSearchResponse>(API_ENDPOINTS.SEARCH_INDEX, body);
+			const { data } = await apiAxios.post<IndexSearchResponse>(API_ENDPOINTS.SEARCH_DID, body);
 			return data;
 		} catch (err) {
 			return null;

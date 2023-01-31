@@ -20,7 +20,6 @@ import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
 import { useLinks } from "hooks/useLinks";
 import sanitize from "sanitize-html";
-import api from "services/api-service";
 import LogoLink from "components/base/Logo/LogoLink";
 
 // TODO: data prop will be Index object
@@ -79,11 +78,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	};
 
 	const handleSetFavorite = async () => {
-		const doc = await ceramic.setLinkFavorite(streamId as string, id!, !favorite);
-		if (doc) {
-			await api.putIndex({ ...doc.content, streamId: doc.id.toString() });
-		}
-		onChange && onChange(doc?.content?.links || []);
+
 	};
 
 	const handleRemove = async () => {

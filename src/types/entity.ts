@@ -2,12 +2,6 @@
  * Model indexes
  *
  */
-export type IndexesNew = {
-  title: string | null
-  version: string
-  collabAction: string | null
-};
-
 export type Indexes = {
   id: string
   title: string | null
@@ -19,48 +13,20 @@ export type Indexes = {
 };
 
 /**
- * Model IndexUsers
+ * Model UserIndex
  *
  */
-export type IndexUsers = {
+export type UserIndex = {
   id: number
-  streamId: string
-  address: string
-  permission: EnumIndexUsersRole | null
-  createdAt: string;
-  updatedAt: string;
-};
-
-/**
- * Model invitations
- *
- */
-export type Invitations = {
-  id: number
-  streamId: string
-	family: string
-  invitingAddress: string
-  invitedAddress: string
-  permission: EnumInviteRight | null
-  url: string
-  status: EnumInviteStatus | null
-  createdAt: string;
-  updatedAt: string;
+  index_id: string
+  created_at: string;
+  deleted_at: string;
 };
 
 /**
  * Model links
  *
  */
-export type LinksNew = {
-  indexID?: string
-  indexer_did?: string
-  url?: string
-  title?: string
-  tags?: string[]
-  content?: string
-  version?: string
-};
 export type Links = {
   id?: string;
   index_id?: string;

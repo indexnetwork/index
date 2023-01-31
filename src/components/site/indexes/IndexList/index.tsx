@@ -3,36 +3,27 @@ import { useRouter } from "next/router";
 import React, {
 	useCallback, useEffect, useState,
 } from "react";
-import api, { IndexSearchResponse } from "services/api-service";
+import api, { DidSearchRequestBody, DidSearchResponse } from "services/api-service";
 import { Indexes } from "types/entity";
 import InfiniteScroll from "react-infinite-scroller";
 import { useMergedState } from "hooks/useMergedState";
 import { useOwner } from "hooks/useOwner";
 import IndexItem from "../IndexItem";
-import NoIndexes from "../NoIndexes";
-import NotFound from "../NotFound";
 
 export interface IndexListProps {
-	shared: boolean;
 	search?: string;
 	onFetch?(loading: boolean): void;
 }
 
-const take = 10;
-
 export interface IndexListState {
-	dt: IndexSearchResponse;
 	skip: number;
 	take: number;
 	search?: string;
 	hasMore: boolean;
 }
 
-const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
+const IndexList: React.VFC<IndexListProps> = ({ search, onFetch }) => {
 	const [state, setState] = useMergedState<IndexListState>({
-		dt: {
-			records: [],
-		},
 		skip: 0,
 		take: 10,
 		search,
@@ -41,82 +32,85 @@ const IndexList: React.VFC<IndexListProps> = ({ shared, search, onFetch }) => {
 	const [loading, setLoading] = useState(false);
 	const [init, setInit] = useState(false);
 	const [hasIndex, setHasIndex] = useState(true);
+	const [indexes, setIndexes] = useState<Indexes[]>([]);
+
 	const router = useRouter();
 
 	const { isOwner, did } = useOwner();
 
-	const getData = async (page?: number, reset?: boolean, searchT?: string) => {
+	const getData = async (page?: number, searchT?: string) => {
+		if (loading) {
+			return;
+		}
 		setLoading(true);
 
-		const res = await api.searchIndex({
-			skip: reset ? 0 : state.skip,
+		const queryParams = {
+			did,
+			skip: indexes.length,
 			take: state.take,
-			search: reset ? searchT : state.search,
-			did: isOwner ? undefined : (did || "").toLowerCase(),
-		});
+		} as DidSearchRequestBody;
+
+		if (searchT !== undefined) {
+			queryParams.skip = 0;
+			if (searchT.length > 0) {
+				queryParams.search = searchT;
+			}
+		} else if (page) {
+			if (state.search && state.search.length > 0) {
+				queryParams.search = state.search;
+			}
+		}
+
+		const res = await api.searchIndex(queryParams) as DidSearchResponse;
 
 		if (res) {
-			setState((oldState) => ({
-				hasMore: res.totalCount! > res.search!.skip! + take,
-				dt: {
-					records: reset ? (res.records || []) : [...oldState.dt.records!, ...(res.records ?? [])],
-				},
-				skip: reset ? oldState.take : oldState.skip + oldState.take,
-				search: searchT || oldState.search,
-			}));
+			setState({
+				hasMore: res.totalCount > queryParams.skip + queryParams.take,
+				take: queryParams.take,
+				skip: queryParams.skip,
+				search: queryParams.search,
+			} as IndexListState);
+
+			setIndexes((searchT !== undefined) ? res.records : indexes.concat(res.records));
 		}
 		setLoading(false);
-		if (!init) {
-			setHasIndex(!!(res?.records && res.records.length > 0));
-			setInit(true);
-		}
 	};
 
 	const handleClick = useCallback((itm: Indexes) => async () => {
-		router.push(`/${router.query.did}/${itm.streamId}`);
+		router.push(`/${router.query.did}/${itm.id}`);
 	}, []);
 
 	const handleDelete = () => {
-		getData(undefined, true);
+		// getData(undefined, true);
 	};
 
 	useEffect(() => {
-		getData(undefined, true, search);
+		getData(undefined, search);
 	}, [search]);
 
 	useEffect(() => {
 		onFetch && onFetch(loading);
 	}, [loading]);
-
 	return (
 		<>
-			{
-				state.dt.records?.length === 0 ? <>{
-					isOwner ?
-						<NoIndexes hasIndex={hasIndex} active={init} search={search} /> :
-						<NotFound active={init} />
-				}</> : (
-					<InfiniteScroll
-						initialLoad={false}
-						hasMore={state.hasMore}
-						loadMore={getData}
-						marginHeight={50}
-					>
-						<List
-							data={state.dt?.records || []}
-							listClass="index-list"
-							render={(itm: Indexes) => <IndexItem
-								hasSearch={!!search}
-								onClick={handleClick(itm)}
-								onDelete={handleDelete}
-								shared={shared}
-								{...itm}
-							/>}
-							divided
-						/>
-					</InfiniteScroll>
-				)
-			}
+			<InfiniteScroll
+				initialLoad={false}
+				hasMore={state.hasMore}
+				loadMore={getData}
+				marginHeight={50}
+			>
+				<List
+					data={indexes || []}
+					listClass="index-list"
+					render={(itm: Indexes) => <IndexItem
+						hasSearch={!!search}
+						onClick={handleClick(itm)}
+						onDelete={handleDelete}
+						{...itm}
+					/>}
+					divided
+				/>
+			</InfiniteScroll>
 		</>
 	);
 };

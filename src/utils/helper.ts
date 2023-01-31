@@ -1,7 +1,6 @@
 import moment from "moment";
 import { Links } from "types/entity";
 import { v4 as uuid } from "uuid";
-import { API_ENDPOINTS } from "./constants";
 
 export function copyToClipboard(str?: string) {
 	if (navigator && navigator.clipboard) navigator.clipboard.writeText(str || "");
@@ -63,12 +62,4 @@ export function arrayMove(list: any[], startIndex: number, endIndex: number) {
 	const [removed] = result.splice(startIndex, 1);
 	result.splice(endIndex, 0, removed);
 	return result;
-}
-
-export function checkPublicRoute(route: string) {
-	if ([API_ENDPOINTS.SEARCH_INDEX, API_ENDPOINTS.SEARCH_LINKS].indexOf(route) >= 0) {
-		return true;
-	}
-
-	return route.startsWith(API_ENDPOINTS.INDEXES);
 }
