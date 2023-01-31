@@ -1,7 +1,7 @@
 if(process.env.NODE_ENV !== 'production'){
     require('dotenv').config()    
 }
-
+const moment = require("moment");
 const _ = require('lodash')
 
 const { Client } = require('@elastic/elasticsearch')
@@ -48,6 +48,26 @@ const indexesWithLinksQuery = (
         },
         collapse: {
             field: "index_id",
+            max_concurrent_group_searches: 20,
+            inner_hits: [{
+                name: "latest_index",
+                size: 1,
+                _source: {
+                    includes: ["index.updated_at"],
+                },
+                sort: [{
+                    "index.updated_at": {"order": "desc"}
+                }]
+            },{
+                name: "latest_link",
+                size: 1,
+                _source: {
+                    includes: ["updated_at"],
+                },
+                sort: [{
+                    "updated_at": {"order": "desc"}
+                }]
+            }]
         },
         aggs: {
             totalCount: {
@@ -86,7 +106,7 @@ const indexesWithLinksQuery = (
             },
         });
 
-        params.collapse.inner_hits = {
+        params.collapse.inner_hits.push({
             name: "links",
             size: links_size,
             _source: {
@@ -109,7 +129,7 @@ const indexesWithLinksQuery = (
                     },
                 },
             },
-        };
+        });
     } else {
         params._source_includes = ["index"];
         params.sort = {
@@ -119,6 +139,7 @@ const indexesWithLinksQuery = (
             },
         };
     }
+
     return params;
 };
 
@@ -238,7 +259,9 @@ const transformIndexSearch = (
     if (hits && hits.length > 0) {
         if (hasSearchTerm) {
             hits.forEach((h) => {
-                console.log(h._source)
+                let index_updated = h.inner_hits.latest_index.hits.hits[0]._source.index.updated_at;
+                let link_updated = h.inner_hits.latest_link.hits.hits[0]._source.updated_at;
+                h._source.index.updated_at = moment(index_updated) > moment(link_updated) ? index_updated : link_updated
                 const indexResponse = {
                     ...h._source?.index,
                     highlight: h.highlight,

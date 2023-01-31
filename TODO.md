@@ -27,24 +27,31 @@
 
 # Secondary
 - [x] Created at
-- [] Updated at (Topic update with last link update date.) /Only in elastic
+- [x] Updated at (Topic update with last link update date.) /Only in elastic
 - [] Duplicate URL Check (Insert or Query)
 - [x] Character issue
 - [x] Deleted at
 
 # User Indexes
-- [x] Add/Remove index from user indexes
-- [] UserIndex UI (Seren)
+- [] Add/Remove index from user indexes UI
+- [x] UserIndex UI (Seren)
 - [x] UserIndex Indexer
+- [x] UserIndex Composedb
 - [x] DID Search
 
-
 # Tertiary
-- [] Sort links (With furkan)
-- [] Filtered Search
 - [] Highlights
 - [] Optimize query matching
+
+# Crawlers
+- [x] Index Link Metadata
+- [] Index Link Content
+
+# Later
+- [] Sort links (With furkan)
+- [] Filtered Search
 - [] Update Link Title
+- [] Discovered indexes
 
 # Devops
 - [x] Ceramic Node Deployment
@@ -54,9 +61,6 @@
 - [x] Ingress + Cors
 - [] Auto Deployment
 
-# Crawlers
-- [x] Index Link Metadata
-- [] Index Link Content
 
 # Collaboration
 - [] Collaboration UI (Seren)
