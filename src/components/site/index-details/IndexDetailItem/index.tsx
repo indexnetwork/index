@@ -187,9 +187,9 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 					</ a>
 				</Col>
 				{
-					search && content && (
+					search && highlight && highlight.content && (
 						<Col className="mt-5">
-							<Text className="listItem" theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize((content.replace(/<(p|h1|a|h2|h3|h4|h5|h6|div|ul|ol|li|table|tr|td|th)[^>]*>/g, "")) || "") }}></Text>
+							<Text className="listItem" theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize(highlight.content) }}></Text>
 						</Col>
 					)
 				}
