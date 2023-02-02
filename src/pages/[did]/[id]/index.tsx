@@ -161,7 +161,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			value={{ links, setLinks }}
 		>
 			<>
-			{tabKey === "index" ?
+			
+			{//TODO FIX THIS tabKey condition
+			tabKey === "index" ?
 			<Container
 			className="index-details-page my-6 my-lg-8"
 		>
@@ -234,7 +236,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										</Col>
 										<Col className="ml-3">
 										<Tooltip content="Add to Starred Index">
-											<IconStar className="mr-2" width={20} height={20} fill={"none"} stroke={undefined}/>
+											<IconStar className="mr-2" width={20} height={20} />
+											
 										</Tooltip>
 										</Col>
 										<Col className="ml-3">
@@ -370,18 +373,17 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 										</Col>
 										<Col className="ml-3">
-											<Button
-												className="mr-1"
-												size="sm"
-												theme="clear">Add to my indexes
-											</Button>
+										<Tooltip content="Add to Starred Index">
+											<IconStar className="mr-2" width={20} height={20}/>
+											
+										</Tooltip>
 										</Col>
 										<Col className="ml-3">
 
 											<IndexOperationsPopup
 												isOwner={isOwner}
 												streamId={index.id!}
-												mode="index-detail-page"
+												mode="indexes-page"
 												onDelete={handleDelete}
 											/>
 										</Col>
