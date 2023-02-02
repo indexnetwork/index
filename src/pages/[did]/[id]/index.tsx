@@ -42,6 +42,8 @@ import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import Header from "components/base/Header";
 import IconAdd from "components/base/Icon/IconAdd";
+import IconStar from "components/base/Icon/IconStar";
+import Tooltip from "components/base/Tooltip";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -231,18 +233,15 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 										</Col>
 										<Col className="ml-3">
-											<Button
-												className="mr-1"
-												size="sm"
-												theme="clear">Add to my indexes
-											</Button>
+										<Tooltip content="Add to Starred Index">
+											<IconStar className="mr-2" width={20} height={20} fill={"none"} stroke={undefined}/>
+										</Tooltip>
 										</Col>
 										<Col className="ml-3">
-
 											<IndexOperationsPopup
 												isOwner={isOwner}
 												streamId={index.id!}
-												mode="index-detail-page"
+												mode="indexes-page"
 												onDelete={handleDelete}
 											/>
 										</Col>
