@@ -55,7 +55,6 @@ const crawlSchema = Joi.object({
 })
 
 app.get('/crawl/metadata', validator.query(crawlSchema), crawl.metadata)
-app.get('/crawl/content', validator.query(crawlSchema), crawl.content)
 
 app.use((err, req, res, next) => {
   if (err && err.error && err.error.isJoi) {

@@ -109,9 +109,6 @@ const indexesWithLinksQuery = (
         params.collapse.inner_hits.push({
             name: "links",
             size: links_size,
-            _source: {
-                excludes: ["content"],
-            },
             highlight: {
                 fields: {
                     title: {
@@ -124,7 +121,7 @@ const indexesWithLinksQuery = (
                         number_of_fragments: 0,
                     },
                     content: {
-                        fragment_size: 200,
+                        fragment_size: 2000,
                         number_of_fragments: 2,
                     },
                 },
@@ -222,7 +219,7 @@ const linksQuery = (
             });
 
             params.highlight = {
-                max_analyzed_offset: 20,
+                max_analyzed_offset: 2000,
                 fields: {
                     title: {
                         number_of_fragments: 0,
@@ -231,7 +228,7 @@ const linksQuery = (
                         number_of_fragments: 0,
                     },
                     content: {
-                        fragment_size: 200,
+                        fragment_size: 256,
                         number_of_fragments: 2,
                     },
                 },
@@ -353,7 +350,7 @@ exports.link = async (req, res, next) => {
     const {index_id, search, skip, take} = req.body;
     const query = linksQuery(index_id, search, skip, take);
     const result = await client.search(query);
-
+    console.log(result.hits)
     const totalCount = result?.hits?.total.value
 
     const response = {

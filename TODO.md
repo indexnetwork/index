@@ -45,7 +45,7 @@
 
 # Crawlers
 - [x] Index Link Metadata
-- [] Index Link Content
+- [x] Index Link Content
 
 # Later
 - [] Sort links (With furkan)
@@ -59,7 +59,7 @@
 - [x] Consumer Deployment
 - [x] API Deployment
 - [x] Ingress + Cors
-- [] Auto Deployment
+- [x] Auto Deployment
 
 
 # Collaboration

@@ -104,31 +104,83 @@ module.exports.updateIndex = async (index) => {
 module.exports.createLink = async (link) => {
     console.log("createLink", link)
 
+    delete link.content
     const index = await getIndexById(link.index_id)
-    await client.index({
+    await client.update({
         index: config.indexName,
         id: link.id,
         refresh: true,
+        doc_as_upsert: true,
         body: {
-            ...link,
-            ...transformIndex(index)
+            doc: {
+                ...link,
+                ...transformIndex(index)
+            }
+        },
+    })    
+}
+
+module.exports.updateLink = async (link) => {
+
+    delete link.content
+    console.log("updateLink", link)
+    const index = await getIndexById(link.index_id)
+    await client.update({
+        index: config.indexName,
+        id: link.id,
+        refresh: true,
+        doc_as_upsert: true,
+        body: {
+            doc: {
+                ...link,
+                ...transformIndex(index)
+            }
         },
     })
 }
 
-module.exports.updateLink = async (link) => {
-    console.log("updateLink", link)
-    const index = await getIndexById(link.index_id)
-    await client.index({
+
+module.exports.updateLinkContent = async (url, content) => {
+    
+    console.log("updateLinkContent", url, content)
+
+    await client.updateByQuery({
         index: config.indexName,
-        id: link.id,
         refresh: true,
-        body: {
-            ...link,
-            ...transformIndex(index)
+        conflicts: "proceed",
+        script: {
+            lang: 'painless',
+            source: 'ctx._source.content = params.content',
+            params: {
+                content
+            }
         },
-    })
+        query: {
+
+            bool: {
+                must: [
+                    {
+                        "multi_match": {
+                            "query": url,
+                            "type": "bool_prefix",
+                            "fields": [
+                                "url"
+                            ],
+                            "minimum_should_match": "100%"
+                        }
+                    },
+                    {
+                        exists: {
+                            field: "id",
+                        },
+                    }
+                ],
+            },
+        },
+    })  
 }
+
+
 
 module.exports.createUserIndex = async (user_index) => {
     console.log("createUserIndex", user_index)

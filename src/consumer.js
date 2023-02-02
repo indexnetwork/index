@@ -24,8 +24,8 @@ async function start() {
     await redis.connect()
     const consumer = kafka.consumer({ groupId: `index-consumer-${Math.random()}` })
     await consumer.connect()
-    await consumer.subscribe({ fromBeginning: true, topics: Object.keys(topics) })
-
+    await consumer.subscribe({ topics: Object.keys(topics) })
+    //conflicts: "proceed",
     await consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
 
