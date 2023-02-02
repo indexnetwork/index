@@ -409,7 +409,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											<Col
 												className="idxflex-grow-1 mr-5"
 											>
-												<Header>Curators Rules</Header>
+												<Header>Creators Rules</Header>
 											</Col>
 											<Col>
 																	
