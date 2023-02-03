@@ -56,6 +56,7 @@ const SearchInput: React.FC<SearchInputProps> = ({
 	return (
 		<Input
 			{...inputProps}
+			inputSize={"lg"}
 			addOnBefore={<IconSearch />}
 			addOnAfter={loading ? (<Spin active={true} thickness="light" theme="secondary" />) :
 				(!disabled && showClear && query && <IconClose onClick={handleClear} style={{ cursor: "pointer" }} />)
