@@ -15,9 +15,12 @@
 			margin-right: map-deep-get($spacing, "xs", "7");
 			&.tabs-list-item-active {
 				font-weight: 700;
+				padding-left: 4px;
+				padding-right: 4px;
 				.tabs-list-item-bottom {
 					visibility: visible;
 					position: absolute;
+					
 					height: 3px;
 					background-color: $main-color;
 					border-radius: 3px;
