@@ -5,7 +5,6 @@ import React, { useState } from "react";
 import Col from "components/layout/base/Grid/Col";
 import Header from "components/base/Header";
 import Flex from "components/layout/base/Grid/Flex";
-import Input from "components/base/Input";
 import Button from "components/base/Button";
 import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
@@ -72,69 +71,68 @@ const TokenModal: React.VFC<TokenModalProps> = ({
 							alignItems="center"
 							className=""
 						>
-                            <Col pullLeft>
-							<Flex flexDirection="column" flexWrap="wrap" flexGrow={3} className="ml-2">
-							</Flex>
-                            </Col>
+							<Col pullLeft>
+								<Flex flexDirection="column" flexWrap="wrap" flexGrow={3} className="ml-2">
+								</Flex>
+							</Col>
 						</Flex>
 						<Flex>
 							<Col pullLeft>
                         	<Button
-                                size="xl"
-                                theme="clear" 
-                                className="mt-1 pr-5 mb-5 pt-5 pb-5 mr-5">
-                                   <Col className="mt-4 ml-3" pullLeft>
-                                   <IconGreenAdd width={24} height={24}></IconGreenAdd>
+									size="xl"
+									theme="clear"
+									className="mt-1 pr-5 mb-5 pt-5 pb-5 mr-5">
+									<Col className="mt-4 ml-3" pullLeft>
+										<IconGreenAdd width={24} height={24}></IconGreenAdd>
 								   </Col>
 								   <Col className="mt-10">
 								   <Text size="xl">Create New Token</Text>
 								   </Col>
 								   <br></br>
 								   <Col pullLeft>
-                                   <Text>Create new token/NFT easily, choose your terms and add rule for your curators</Text>
+										<Text>Create new token/NFT easily, choose your terms and add rule for your curators</Text>
 								   </Col>
 							 </Button>
 							</Col>
 							<Col pullRight>
-                        <Button
-                                size="xl"
-                                theme="clear" 
-                                className="mt-1 pr-5 mb-5 pt-5 pb-3 ml-5">
-                                    <IconClock width={24} height={24}></IconClock>
-                                   <Header>Existing Token</Header>
-                                   <Text>Add existing token as a curator rule</Text>
-                        </Button>
-						</Col>
+								<Button
+									size="xl"
+									theme="clear"
+									className="mt-1 pr-5 mb-5 pt-5 pb-3 ml-5">
+									<IconClock width={24} height={24}></IconClock>
+									<Header>Existing Token</Header>
+									<Text>Add existing token as a curator rule</Text>
+								</Button>
+							</Col>
 						</Flex>
 						<Flex>
-						<Col pullLeft>
-                        <Button
-                                size="xl"
-                                theme="clear" 
-                                className="mt-1 mr-6 pt-10 pb-10 pl-6 pr-10 ">
-                                   <Header>Individual </Header>
+							<Col pullLeft>
+								<Button
+									size="xl"
+									theme="clear"
+									className="mt-1 mr-6 pt-10 pb-10 pl-6 pr-10 ">
+									<Header>Individual </Header>
 								   <Header>Wallet ID</Header>
-                        </Button>
-						</Col>
-						<Col pullLeft>
-                        <Button
-                                size="xl"
-                                theme="clear" 
-                                className="mt-1 mr-6 pt-10 pb-10 pl-6 pr-10">
-                                   <Header>DAO Member</Header>
-                        </Button>
-						</Col>
-						<Col pullRight>
-                        <Button
-                                size="xl"
-                                theme="clear" 
-                                className="mt-1 mr-6 pt-10 pb-10 pl-6 pr-8 ">
-                                   <Header>POAP</Header>
+								</Button>
+							</Col>
+							<Col pullLeft>
+								<Button
+									size="xl"
+									theme="clear"
+									className="mt-1 mr-6 pt-10 pb-10 pl-6 pr-10">
+									<Header>DAO Member</Header>
+								</Button>
+							</Col>
+							<Col pullRight>
+								<Button
+									size="xl"
+									theme="clear"
+									className="mt-1 mr-6 pt-10 pb-10 pl-6 pr-8 ">
+									<Header>POAP</Header>
 								   <Header>Collector</Header>
-                        </Button>
-						</Col>
+								</Button>
+							</Col>
 						</Flex>
-						
 
 					</Col>
 				</Row>
