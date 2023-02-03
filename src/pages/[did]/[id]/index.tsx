@@ -281,18 +281,21 @@ const IndexDetailPage: NextPageWithLayout = () => {
 															</Col><Col>
 																<ButtonGroup
 																	theme="clear"
+																	className="mt-1"
 																>
 																	<FilterPopup>
 																		<Button
+																			size={"lg"}
 																			group
 																			iconButton
-																		><IconFilter stroke="var(--gray-4)" /></Button>
+																		><IconFilter width={20} height={20} stroke="var(--gray-4)" /></Button>
 																	</FilterPopup>
 																	<SortPopup>
 																		<Button
+																			size={"lg"}
 																			group
 																			iconButton
-																		><IconSort stroke="var(--gray-4)" /></Button>
+																		><IconSort width={20} height={20} stroke="var(--gray-4)" /></Button>
 																	</SortPopup>
 																</ButtonGroup>
 															</Col></>
