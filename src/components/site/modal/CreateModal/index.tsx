@@ -10,7 +10,6 @@ import Button from "components/base/Button";
 import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
 import { useAppSelector } from "hooks/store";
-import { useMergedState } from "hooks/useMergedState";
 import { useTranslation } from "next-i18next";
 import { selectConnection } from "store/slices/connectionSlice";
 import { Indexes } from "types/entity";
@@ -32,20 +31,17 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 
 	const [crawling, setCrawling] = useState(false);
 
-	const [stream, setStream] = useMergedState<Partial<Indexes>>({
-		title: "",
-	});
+	const [title, setTitle] = useState<string>("");
 
 	const [loading, setLoading] = useState(false);
 
 	const handleCreate = async () => {
-		if (stream.title) {
-			const doc = await ceramic.createIndex(stream);
+		setLoading(true);
+		if (title) {
+			const doc = await ceramic.createIndex({ title } as Indexes);
 			if (doc != null) {
-				router.push(`/${did}/${doc.id}`);
-				setStream({
-					title: "",
-				});
+				await setTitle("");
+				await router.push(`/${did}/${doc.id}`);
 				modalProps.onClose?.();
 			}
 		}
@@ -53,14 +49,11 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 	};
 	const handleChange: React.ChangeEventHandler<HTMLInputElement> = ({ target }) => {
 		const { value } = target;
-		setStream({
-			title: value,
-		});
+		setTitle(value);
 	 };
 	return <Modal
 		{...modalProps}
 		size={"xs"}
-		destroyOnClose
 		body={(
 			<>
 				<Row
@@ -77,7 +70,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 						</Flex>
 						<Col sm={12}>
 							<Input
-								defaultValue={stream?.title || ""}
+								value={title || ""}
 								onChange={handleChange}
 								// loading={loading}
 								className="mt-3"

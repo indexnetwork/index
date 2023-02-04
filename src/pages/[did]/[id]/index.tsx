@@ -139,7 +139,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 		 */
 	};
-
 	useEffect(() => {
 		const { id } = router.query;
 		if (router.query) {
@@ -147,10 +146,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		} else {
 			setNotFound(true);
 		}
-	}, []);
+	}, [router.query]);
 
 	useEffect(() => {
-		if(addedLink){
+		if (addedLink) {
 			setLinks([addedLink, ...links]);
 			index.updated_at = addedLink.updated_at;
 			setIndex(index);
