@@ -32,7 +32,7 @@ import IconCopy from "components/base/Icon/IconCopy";
 import SearchInput from "components/base/SearchInput";
 import NotFound from "components/site/indexes/NotFound";
 import { useOwner } from "hooks/useOwner";
-import { useAppSelector } from "hooks/store";
+import { useAppDispatch, useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { selectProfile } from "store/slices/profileSlice";
 
@@ -48,9 +48,10 @@ import Tooltip from "components/base/Tooltip";
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
-
+	const dispatch = useAppDispatch();
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
 	const [links, setLinks] = useState<Links[]>([]);
+	const [addedLink, setAddedLink] = useState<Links>();
 	const [tab, setTab] = useState<boolean>(false);
 	const [tabKey, setTabKey] = useState("index");
 
@@ -99,28 +100,20 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const handleDelete = () => {
 		router.push(`/${did}`);
 	};
+	const handleAddLink = async (urls: string[]) => {
 
-	const handleAddLink = async (linkUrl: string) => {
 		setCrawling(true);
-		const payload = await api.crawlLink(linkUrl);
-		if (payload) {
-			const link = await ceramic.addLink(index?.id!, payload);
-			if (link) {
-				setLinks([link, ...links]);
-				index.updated_at = link.updated_at;
-				setIndex(index);
-			}
-			// lc.links = [link]; // TODO Concat or spread
 
-			/*
-			await api.crawlLinkContent({
-				streamId: stream?.streamId!,
-				links: newLinks,
-			});
-			 */
-		} else {
-			alert("Couldn't get the meta data from url");
-		}
+		urls.forEach(async (url) => {
+			const payload = await api.crawlLink(url);
+			if (payload) {
+				const link = await ceramic.addLink(index?.id!, payload);
+				if (link) {
+					setAddedLink(link);
+				}
+			}
+		});
+
 		setCrawling(false);
 	};
 
@@ -155,6 +148,14 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setNotFound(true);
 		}
 	}, []);
+
+	useEffect(() => {
+		if(addedLink){
+			setLinks([addedLink, ...links]);
+			index.updated_at = addedLink.updated_at;
+			setIndex(index);
+		}
+	}, [addedLink]);
 
 	return (
 		<LinksContext.Provider
