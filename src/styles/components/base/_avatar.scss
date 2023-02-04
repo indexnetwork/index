@@ -18,7 +18,7 @@
 
 	&.avatar-hoverable {
 		&:hover {
-			box-shadow: $avatar-box-shadow;
+			filter: brightness(95%);
 			transform: inherit scale(1.1);
 			transition: all .2s ease-in;
 			cursor: pointer;
