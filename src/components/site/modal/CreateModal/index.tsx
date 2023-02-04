@@ -1,7 +1,7 @@
 import Text from "components/base/Text";
 import Modal, { ModalProps } from "components/base/Modal";
 import Row from "components/layout/base/Grid/Row";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Col from "components/layout/base/Grid/Col";
 import Header from "components/base/Header";
 import Flex from "components/layout/base/Grid/Flex";
@@ -20,6 +20,7 @@ export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" |
 const CreateModal: React.VFC<CreateModalProps> = ({
 	...modalProps
 }) => {
+
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const handleClose = () => {
@@ -51,6 +52,8 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 		const { value } = target;
 		setTitle(value);
 	 };
+	
+	
 	return <Modal
 		{...modalProps}
 		size={"xs"}
@@ -71,6 +74,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 						<Col sm={12}>
 							<Flex>
 							<Input
+								autoFocus={true}
 								value={title || ""}
 								onChange={handleChange}
 								// loading={loading}
@@ -81,17 +85,18 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 						</Col>
 						<Col pullLeft>
 							<Button
-								className="mt-7 pl-7 pr-7 ml-2"
+								className="mt-7 pl-8 pr-8 ml-2"
 								theme="clear"
 								onClick={handleClose}
-							>&nbsp;Cancel&nbsp;</Button>
+							>Cancel</Button>
 						</Col>
 						<Col pullRight>
 							<Button
+								disabled={title ? false : true}
 								onClick={handleCreate}
 								theme="primary"
-								className=" mt-7 pl-7 pr-7 mr-2"
-							>&nbsp;Create&nbsp;</Button>
+								className="mt-7 pl-8 pr-8 mr-2"
+							>Create</Button>
 						</Col>
 
 					</Col>
