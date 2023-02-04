@@ -180,8 +180,8 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 								}} /> :
 							<LogoLink
 								className="mr-3"
-								width={24}
-								height={24}
+								width={16}
+								height={16}
 								style={{
 									verticalAlign: "middle",
 								}} />}<Text size="sm" theme="disabled">{url?.substring(0, 80)} • {updated_at ? moment(updated_at).format("MMM D") : ""}</Text>
