@@ -1,12 +1,5 @@
 const indexer = require('./indexer.js')
 const striptags = require('striptags');
-const { Lambda } = require("aws-sdk");
-const lambda = new Lambda({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    region: process.env.AWS_S3_REGION,
-    version: "v4",
-});
 
 
 const getIframelyData = async (url) => {
@@ -47,30 +40,13 @@ const getIframelyData = async (url) => {
 }
 
 
-
-const getContents = async (url) =>  {
-
-    lambda.invoke({
-        FunctionName: "indexas-crawler-dev-crawl",
-        Payload: JSON.stringify({ url }),
-    }, async (err, data) => {
-        console.log(err, data)
-        const payload = data && JSON.parse(data.Payload);
-        if (err) console.error(err, err.stack);
-        else if (payload && payload.content) {
-            payload.content = striptags(payload.content)
-                .replace(/(?:\r\n|\r|\n)/g, '...')
-                .replaceAll('.......','...');
-            await indexer.updateLinkContent(url, payload.content)
-        }
-    });
-};
-
 exports.metadata = async (req, res) => {
 
     let { url } = req.query;
+    
+    
+    req.app.get('queue').addRequests([{url, uniqueKey: Math.random().toString()}])
 
-    getContents(url)
 
     let response = await getIframelyData(url)
 

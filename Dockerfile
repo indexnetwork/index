@@ -1,4 +1,4 @@
-FROM node:18
+FROM apify/actor-node-puppeteer-chrome:latest
 WORKDIR /backend
 COPY package.json ./
 RUN yarn install

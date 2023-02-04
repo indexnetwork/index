@@ -3,18 +3,22 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node src/index.js",
-    "consumer": "node src/consumer.js",
-    "reIndex": "node src/utils/reIndex.js"
+    "start": "node  --experimental-fetch src/index.js",
+    "consumer": "node  --experimental-fetch src/consumer.js",
+    "reIndex": "node  --experimental-fetch src/utils/reIndex.js"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.6.0",
+    "@mozilla/readability": "^0.4.2",
+    "apify": "^3.1.1",
     "aws-sdk": "^2.1307.0",
     "cookie-parser": "~1.4.4",
     "cors": "^2.8.5",
+    "crawlee": "^3.1.4",
     "debug": "~2.6.9",
     "express": "~4.16.1",
     "express-joi-validation": "^5.0.1",
+    "fetch": "^1.1.0",
     "http-errors": "~1.6.3",
     "jade": "~1.11.0",
     "joi": "^17.7.0",
@@ -22,6 +26,8 @@
     "lodash": "^4.17.21",
     "moment": "^2.29.4",
     "morgan": "~1.9.1",
+    "node-fetch": "^3.3.0",
+    "puppeteer": "^19.6.3",
     "redis": "^4.6.3",
     "striptags": "^3.2.0"
   },

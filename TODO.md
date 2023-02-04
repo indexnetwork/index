@@ -40,7 +40,7 @@
 - [x] DID Search
 
 # Tertiary
-- [] Highlights
+- [x] Highlights
 - [] Optimize query matching
 
 # Crawlers

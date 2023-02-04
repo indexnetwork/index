@@ -7,10 +7,12 @@ const redis = RedisClient.getInstance();
 
 const search = require('./controllers/search.js')
 const crawl = require('./controllers/crawl.js')
+const { getQueue } = require('./controllers/crawl-content.js')
 const express = require('express')
 const cors = require('cors')
 const app = express()
 const port = 3000
+
 
 app.use(express.json())
 
@@ -69,7 +71,15 @@ app.use((err, req, res, next) => {
   }
 });
 
-app.listen(port, async () => {
+const run = async () => {
   await redis.connect()
-  console.log(`Search service listening on port ${port}`)
-})
+  await app.set('queue', await getQueue())
+  await app.listen(port, async () => {
+    
+    console.log(`Search service listening on port ${port}`)
+  })
+
+}
+
+
+run()
