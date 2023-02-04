@@ -98,7 +98,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 				</Row>
 			</>
 		)}
-		header={<Header level={3}>Create New Index</Header>}
+		header={<Header className="mt-3" level={3}>Create New Index</Header>}
 	>
 
 	</Modal>;
