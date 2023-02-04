@@ -21,6 +21,7 @@ import { useCeramic } from "hooks/useCeramic";
 import { useLinks } from "hooks/useLinks";
 import sanitize from "sanitize-html";
 import LogoLink from "components/base/Logo/LogoLink";
+import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
 export interface IndexDetailsItemProps extends Links {
@@ -117,7 +118,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 							className="idxflex-grow-1"
 						>
 							<a target="_blank" rel="noreferrer" href={url}>
-								<Text fontWeight={600} dangerouslySetInnerHTML={{ __html: sanitize((highlight?.title ? highlight.title : title) || "") }}></Text>
+								<Text className={cm.title} fontWeight={700} dangerouslySetInnerHTML={{ __html: sanitize((highlight?.title ? highlight.title : title) || "") }}></Text>
 							</a>
 						</Col>
 						{

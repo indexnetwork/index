@@ -48,7 +48,7 @@ import Tooltip from "components/base/Tooltip";
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
-	
+
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
 	const [links, setLinks] = useState<Links[]>([]);
 	const [tab, setTab] = useState<boolean>(false);
@@ -77,7 +77,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const handleToggleTokenModal = () => {
 		setTokenModalVisible((oldVal) => !oldVal);
 	 };
-	 
+
 	const loadIndex = async (id: string) => {
 		const doc = await ceramic.getIndexById(id);
 		if (doc != null) {
@@ -161,298 +161,298 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			value={{ links, setLinks }}
 		>
 			<>
-			
-			{//TODO FIX THIS tabKey condition
-			tabKey === "index" ?
-			<Container
-			className="index-details-page my-6 my-lg-8"
-		>
-			{
-				notFound ?
-					<FlexRow
-						rowSpacing={3}
-						justify="center"
-					>
-						<NotFound active={true} />
-					</FlexRow> : (
-						<>
-							<FlexRow
-								rowSpacing={3}
-								justify="center"
-							>
-								<Col
-									xs={12}
-									lg={9}
-									noYGutters
-								>
-									<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-									<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
-								</Col>
-								<Col
-									xs={12}
-									lg={9}
-									className="pb-2"
-								>
-									<FlexRow>
-										<Col
-											className="idxflex-grow-1 mr-5"
-										>
-											<IndexTitleInput
-												defaultValue={index?.title || ""}
-												onChange={handleTitleChange}
-												disabled={!isOwner}
-												loading={titleLoading}
-											/>
-										</Col>
-										<Col>
 
-											{
-
-												false ? (
-													(did || "").toLowerCase() === router.query.did ? (
-														<Button
-															addOnBefore
-															size="sm"
-															theme="clear"
-															onClick={() => {
-																copyToClipboard(window.location.href);
-															}}
-														>
-															<IconLink1 stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Copy
-														</Button>
-													) : (
-														<Button
-															addOnBefore
-															size="sm"
-															theme="clear"
-															onClick={handleClone}
-														>
-															<IconCopy stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Clone
-														</Button>
-													)
-												) : null
-											}
-
-										</Col>
-										<Col className="ml-3">
-										<Tooltip content="Add to Starred Index">
-											<IconStar className="mr-2" width={20} height={20} />
-											
-										</Tooltip>
-										</Col>
-										<Col className="ml-3">
-											<IndexOperationsPopup
-												isOwner={isOwner}
-												streamId={index.id!}
-												mode="indexes-page"
-												onDelete={handleDelete}
-											/>
-										</Col>
-									</FlexRow>
-								</Col>
-								<Col xs={12} lg={9} noYGutters className="mb-1">
-									<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
-								</Col>
-								<Col
-									xs={12}
-									lg={9}
-								>
-								<FlexRow>
-									<Col className="mb-4">
-										<Tabs activeKey={tabKey} onTabChange={setTabKey}>
-											<TabPane enabled={true} tabKey={"index"} title={"Index"} />
-											<TabPane enabled={true} tabKey={"curators"} title={"Creators"} />
-											<TabPane tabKey={"audiences"} title={"Audiences"} />
-										</Tabs>
-									</Col>
-								</FlexRow>
-									<FlexRow>
-										
+				{// TODO FIX THIS tabKey condition
+					tabKey === "index" ?
+						<Container
+							className="index-details-page my-6 my-lg-8"
+						>
+							{
+								notFound ?
+									<FlexRow
+										rowSpacing={3}
+										justify="center"
+									>
+										<NotFound active={true} />
+									</FlexRow> : (
 										<>
-											<Col
-												className="idxflex-grow-1 mr-5"
+											<FlexRow
+												rowSpacing={3}
+												justify="center"
 											>
-												<SearchInput
-													loading={loading}
-													onSearch={setSearch}
-													debounceTime={400}
-													showClear
-													placeholder={t("pages:home.searchLink")} />
-											</Col><Col>
-													<ButtonGroup
-														theme="clear"
-													>
-														<FilterPopup>
-															<Button
-																group
-																iconButton
-															><IconFilter stroke="var(--gray-4)" /></Button>
-														</FilterPopup>
-														<SortPopup>
-															<Button
-																group
-																iconButton
-															><IconSort stroke="var(--gray-4)" /></Button>
-														</SortPopup>
-													</ButtonGroup>
-												</Col></>
-									</FlexRow>
-								</Col>
-								{
-									isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3">
-										<LinkInput
-											loading={crawling}
-											onLinkAdd={handleAddLink}
-										/>
-									</Col>
-								}
-							</FlexRow>
-							<FlexRow
-								justify="center"
-							>
-						 
-								<Col xs={12} lg={9}>
-									<IndexDetailsList
-										search={search}
-										isOwner={isOwner}
-										index_id={router.query.id as any}
-										// onChange={handleReorderLinks}
-									/>
-								</Col>
-							
-								<Col xs={12} lg={9}>
-							</Col>
-							</FlexRow>
-						</>
-					)
-			}
-			</Container>
-			: 
-
-			<Container
-			className="index-details-page my-6 my-lg-8"
-		>
-			{
-				notFound ?
-					<FlexRow
-						rowSpacing={3}
-						justify="center"
-					>
-						<NotFound active={true} />
-					</FlexRow> : (
-						<>
-							<FlexRow
-								rowSpacing={3}
-								justify="center"
-							>
-								<Col
-									xs={12}
-									lg={9}
-									noYGutters
-								>
-									<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-									<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
-								</Col>
-								<Col
-									xs={12}
-									lg={9}
-									className="pb-2"
-								>
-									<FlexRow>
-										<Col
-											className="idxflex-grow-1 mr-5"
-										>
-											<IndexTitleInput
-												defaultValue={index?.title || ""}
-												onChange={handleTitleChange}
-												disabled={!isOwner}
-												loading={titleLoading}
-											/>
-										</Col>
-										<Col>
-
-										</Col>
-										<Col className="ml-3">
-										<Tooltip content="Add to Starred Index">
-											<IconStar className="mr-2" width={20} height={20}/>
-											
-										</Tooltip>
-										</Col>
-										<Col className="ml-3">
-
-											<IndexOperationsPopup
-												isOwner={isOwner}
-												streamId={index.id!}
-												mode="indexes-page"
-												onDelete={handleDelete}
-											/>
-										</Col>
-									</FlexRow>
-								</Col>
-								<Col xs={12} lg={9} noYGutters className="mb-1">
-									<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
-								</Col>
-								<Col
-									xs={12}
-									lg={9}
-								>
-								<FlexRow>
-									<Col className="mb-4">
-										<Tabs activeKey={tabKey} onTabChange={setTabKey}>
-											<TabPane enabled={true} tabKey={"index"} title={"Index"} />
-											<TabPane enabled={true} tabKey={"curators"} title={"Creators"} />
-											<TabPane tabKey={"audiences"} title={"Audiences"} />
-										</Tabs>
-									</Col>
-								</FlexRow>
-								<FlexRow>
-										
-										<>
-											<Col
-												className="idxflex-grow-1 mr-5"
-											>
-												<Header>Creators Rules</Header>
-											</Col>
-											<Col>
-																	
-													<Button onClick={handleToggleTokenModal}
-													theme="ghost"
-													>
-														<FlexRow justify="center" >
-														<IconAdd width={12} height={12} stroke="var(--gray-4)" />
-														<Text className="ml-2" size={"lg"}> Add New</Text>
-														</FlexRow>	
-														
-													</Button>
-													
+												<Col
+													xs={12}
+													lg={9}
+													noYGutters
+												>
+													<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
+													<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
 												</Col>
+												<Col
+													xs={12}
+													lg={9}
+													className="pb-2"
+												>
+													<FlexRow>
+														<Col
+															className="idxflex-grow-1 mr-5"
+														>
+															<IndexTitleInput
+																defaultValue={index?.title || ""}
+																onChange={handleTitleChange}
+																disabled={!isOwner}
+																loading={titleLoading}
+															/>
+														</Col>
+														<Col>
+
+															{
+
+																false ? (
+																	(did || "").toLowerCase() === router.query.did ? (
+																		<Button
+																			addOnBefore
+																			size="sm"
+																			theme="clear"
+																			onClick={() => {
+																				copyToClipboard(window.location.href);
+																			}}
+																		>
+																			<IconLink1 stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Copy
+																		</Button>
+																	) : (
+																		<Button
+																			addOnBefore
+																			size="sm"
+																			theme="clear"
+																			onClick={handleClone}
+																		>
+																			<IconCopy stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Clone
+																		</Button>
+																	)
+																) : null
+															}
+
+														</Col>
+														<Col className="ml-3">
+															<Tooltip content="Add to Starred Index">
+																<IconStar className="mr-3" width={20} height={20} />
+
+															</Tooltip>
+														</Col>
+														<Col className="ml-3">
+															<IndexOperationsPopup
+																isOwner={isOwner}
+																streamId={index.id!}
+																mode="indexes-page"
+																onDelete={handleDelete}
+															/>
+														</Col>
+													</FlexRow>
+												</Col>
+												<Col xs={12} lg={9} noYGutters className="mb-1">
+													<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
+												</Col>
+												<Col
+													xs={12}
+													lg={9}
+												>
+													<FlexRow>
+														<Col className="mb-4">
+															<Tabs activeKey={tabKey} onTabChange={setTabKey}>
+																<TabPane enabled={true} tabKey={"index"} title={"Index"} />
+																<TabPane enabled={true} tabKey={"curators"} title={"Creators"} />
+																<TabPane tabKey={"audiences"} title={"Audiences"} />
+															</Tabs>
+														</Col>
+													</FlexRow>
+													<FlexRow>
+
+														<>
+															<Col
+																className="idxflex-grow-1 mr-5"
+															>
+																<SearchInput
+																	loading={loading}
+																	onSearch={setSearch}
+																	debounceTime={400}
+																	showClear
+																	placeholder={t("pages:home.searchLink")} />
+															</Col><Col>
+																<ButtonGroup
+																	theme="clear"
+																	className="mt-1"
+																>
+																	<FilterPopup>
+																		<Button
+																			size={"lg"}
+																			group
+																			iconButton
+																		><IconFilter width={20} height={20} stroke="var(--gray-4)" /></Button>
+																	</FilterPopup>
+																	<SortPopup>
+																		<Button
+																			size={"lg"}
+																			group
+																			iconButton
+																		><IconSort width={20} height={20} stroke="var(--gray-4)" /></Button>
+																	</SortPopup>
+																</ButtonGroup>
+															</Col></>
+													</FlexRow>
+												</Col>
+												{
+													isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3">
+														<LinkInput
+															loading={crawling}
+															onLinkAdd={handleAddLink}
+														/>
+													</Col>
+												}
+											</FlexRow>
+											<FlexRow
+												justify="center"
+											>
+
+												<Col xs={12} lg={9}>
+													<IndexDetailsList
+														search={search}
+														isOwner={isOwner}
+														index_id={router.query.id as any}
+														// onChange={handleReorderLinks}
+													/>
+												</Col>
+
+												<Col xs={12} lg={9}>
+												</Col>
+											</FlexRow>
 										</>
-									</FlexRow>
-									<hr></hr>
-								</Col>
-							</FlexRow>
-							<FlexRow
-								justify="center"
-							>
-						 
-								
-								<Col xs={12} lg={9}>
-							<Text theme="secondary">Curator conditions control edit access to your index automatically with tokens/NFTs. Curators will be able to add links, add tags to their links and delete them. </Text>
-							</Col>
-							</FlexRow>
-						</>
-					)
-			}
-			</Container>
-			}
-				
-				<TokenModal data={{  }} visible={tokenModalVisible} onClose={handleToggleTokenModal}></TokenModal>
+									)
+							}
+						</Container>			:
+
+						<Container
+							className="index-details-page my-6 my-lg-8"
+						>
+							{
+								notFound ?
+									<FlexRow
+										rowSpacing={3}
+										justify="center"
+									>
+										<NotFound active={true} />
+									</FlexRow> : (
+										<>
+											<FlexRow
+												rowSpacing={3}
+												justify="center"
+											>
+												<Col
+													xs={12}
+													lg={9}
+													noYGutters
+												>
+													<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
+													<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
+												</Col>
+												<Col
+													xs={12}
+													lg={9}
+													className="pb-2"
+												>
+													<FlexRow>
+														<Col
+															className="idxflex-grow-1 mr-5"
+														>
+															<IndexTitleInput
+																defaultValue={index?.title || ""}
+																onChange={handleTitleChange}
+																disabled={!isOwner}
+																loading={titleLoading}
+															/>
+														</Col>
+														<Col>
+
+														</Col>
+														<Col className="ml-3">
+															<Tooltip content="Add to Starred Index">
+																<IconStar className="mr-2" width={20} height={20}/>
+
+															</Tooltip>
+														</Col>
+														<Col className="ml-3">
+
+															<IndexOperationsPopup
+																isOwner={isOwner}
+																streamId={index.id!}
+																mode="indexes-page"
+																onDelete={handleDelete}
+															/>
+														</Col>
+													</FlexRow>
+												</Col>
+												<Col xs={12} lg={9} noYGutters className="mb-1">
+													<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
+												</Col>
+												<Col
+													xs={12}
+													lg={9}
+												>
+													<FlexRow>
+														<Col className="mb-4">
+															<Tabs activeKey={tabKey} onTabChange={setTabKey}>
+																<TabPane enabled={true} tabKey={"index"} title={"Index"} />
+																<TabPane enabled={true} tabKey={"curators"} title={"Creators"} />
+																<TabPane tabKey={"audiences"} title={"Audiences"} />
+															</Tabs>
+														</Col>
+													</FlexRow>
+													<FlexRow>
+
+														<>
+															<Col
+																className="idxflex-grow-1 mr-5"
+															>
+																<Header>Creators Rules</Header>
+															</Col>
+															<Col>
+
+																<Button onClick={handleToggleTokenModal}
+																	theme="ghost"
+																>
+																	<FlexRow justify="center" >
+																		<IconAdd width={12} height={12} stroke="var(--gray-4)" />
+																		<Text className="ml-2" size={"lg"}> Add New</Text>
+																	</FlexRow>
+
+																</Button>
+
+															</Col>
+														</>
+													</FlexRow>
+													<hr></hr>
+												</Col>
+											</FlexRow>
+											<FlexRow
+												justify="center"
+											>
+
+												<Col xs={12} lg={9}>
+													<Text theme="secondary">Curator conditions control edit access to your index automatically with tokens/NFTs. Curators will be able to add links, add tags to their links and delete them. </Text>
+												</Col>
+											</FlexRow>
+										</>
+									)
+							}
+						</Container>
+				}
+
+				<TokenModal data={{ }} visible={tokenModalVisible} onClose={handleToggleTokenModal}></TokenModal>
 				{/* <ShareModal data={{}} visible={shareModalVisible} onClose={handleToggleShareModal} /> */}
 			</>
 		</LinksContext.Provider>
 	);
 };
-
 
 IndexDetailPage.getLayout = function getLayout(page: ReactElement) {
 	return (
