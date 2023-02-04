@@ -3,11 +3,11 @@
 	background-color: $gray-1;
 	display: flex;
 	align-items: center;
-	border-radius: 4px;
+	border-radius: 2px;
 
 	.link-input__input {
 		color: $gray-5;
-		border-radius: 4px;
+		border-radius: 2px;
 		border: none;
 		
 		padding-left: map-deep-get($spacing, "xs", "6") !important;
