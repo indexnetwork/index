@@ -162,8 +162,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		>
 			<>
 
-				{// TODO FIX THIS tabKey condition
-					tabKey === "index" ?
 						<Container
 							className="index-details-page my-6 my-lg-8"
 						>
@@ -193,6 +191,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 													lg={9}
 													className="pb-0"
 												>
+													
 													<FlexRow>
 														<Col
 															className="idxflex-grow-1 mr-5"
@@ -261,13 +260,12 @@ const IndexDetailPage: NextPageWithLayout = () => {
 														<Col className="mb-4">
 															<Tabs activeKey={tabKey} onTabChange={setTabKey}>
 																<TabPane enabled={true} tabKey={"index"} title={"Index"} />
-																<TabPane enabled={true} tabKey={"curators"} title={"Creators"} />
+																<TabPane  tabKey={"curators"} title={"Creators"} />
 																<TabPane tabKey={"audiences"} title={"Audiences"} />
 															</Tabs>
 														</Col>
 													</FlexRow>
 													<FlexRow>
-
 														<>
 															<Col
 																className="idxflex-grow-1 mr-5 mt-2"
@@ -300,7 +298,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 																		><IconSort width={20} height={20} stroke="var(--gray-4)" /></Button>
 																	</SortPopup>
 																</ButtonGroup>
-															</Col></>
+															</Col>
+															</>
 													</FlexRow>
 												</Col>
 												{
@@ -328,128 +327,12 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<Col xs={12} lg={9}>
 												</Col>
 											</FlexRow>
-										</>
-									)
-							}
-						</Container>			:
-
-						<Container
-							className="index-details-page my-6 my-lg-8"
-						>
-							{
-								notFound ?
-									<FlexRow
-										rowSpacing={3}
-										justify="center"
-									>
-										<NotFound active={true} />
-									</FlexRow> : (
-										<>
-											<FlexRow
-												rowSpacing={3}
-												justify="center"
-											>
-												<Col
-													xs={12}
-													lg={9}
-													noYGutters
-												>
-													<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-													<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
-												</Col>
-												<Col
-													xs={12}
-													lg={9}
-													className="pb-2"
-												>
-													<FlexRow>
-														<Col
-															className="idxflex-grow-1 mr-5"
-														>
-															<IndexTitleInput
-																defaultValue={index?.title || ""}
-																onChange={handleTitleChange}
-																disabled={!isOwner}
-																loading={titleLoading}
-															/>
-														</Col>
-														<Col>
-
-														</Col>
-														<Col className="ml-3">
-															<Tooltip content="Add to Starred Index">
-																<IconStar className="mr-2" width={20} height={20}/>
-
-															</Tooltip>
-														</Col>
-														<Col className="ml-3">
-
-															<IndexOperationsPopup
-																isOwner={isOwner}
-																streamId={index.id!}
-																mode="indexes-page"
-																onDelete={handleDelete}
-															/>
-														</Col>
-													</FlexRow>
-												</Col>
-												<Col xs={12} lg={9} noYGutters className="mb-1">
-													<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
-												</Col>
-												<Col
-													xs={12}
-													lg={9}
-												>
-													<FlexRow>
-														<Col className="mb-4">
-															<Tabs activeKey={tabKey} onTabChange={setTabKey}>
-																<TabPane enabled={true} tabKey={"index"} title={"Index"} />
-																<TabPane enabled={true} tabKey={"curators"} title={"Creators"} />
-																<TabPane tabKey={"audiences"} title={"Audiences"} />
-															</Tabs>
-														</Col>
-													</FlexRow>
-													<FlexRow>
-
-														<>
-															<Col
-																className="idxflex-grow-1 mr-5"
-															>
-																<Header>Creators Rules</Header>
-															</Col>
-															<Col>
-
-																<Button onClick={handleToggleTokenModal}
-																	theme="ghost"
-																>
-																	<FlexRow justify="center" >
-																		<IconAdd width={12} height={12} stroke="var(--gray-4)" />
-																		<Text className="ml-2" size={"lg"}> Add New</Text>
-																	</FlexRow>
-
-																</Button>
-
-															</Col>
-														</>
-													</FlexRow>
-													<hr></hr>
-												</Col>
-											</FlexRow>
-											<FlexRow
-												justify="center"
-											>
-
-												<Col xs={12} lg={9}>
-													<Text theme="secondary">Curator conditions control edit access to your index automatically with tokens/NFTs. Curators will be able to add links, add tags to their links and delete them. </Text>
-												</Col>
-											</FlexRow>
-										</>
+										</> 
 									)
 							}
 						</Container>
-				}
 
-				<TokenModal data={{ }} visible={tokenModalVisible} onClose={handleToggleTokenModal}></TokenModal>
+				{/*<TokenModal data={{ }} visible={tokenModalVisible} onClose={handleToggleTokenModal}></TokenModal>*/}
 				{/* <ShareModal data={{}} visible={shareModalVisible} onClose={handleToggleShareModal} /> */}
 			</>
 		</LinksContext.Provider>
