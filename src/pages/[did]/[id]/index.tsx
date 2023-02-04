@@ -270,7 +270,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 														<>
 															<Col
-																className="idxflex-grow-1 mr-5"
+																className="idxflex-grow-1 mr-5 mt-2"
 															>
 																<SearchInput
 																	loading={loading}
@@ -294,7 +294,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 																	</FilterPopup>
 																	<SortPopup>
 																		<Button
-																			
 																			size={"xl"}
 																			group
 																			iconButton
