@@ -7,3 +7,4 @@ daemon
 ceramic/priv.key
 ceramic/pub.key
 secret.yaml
+storage/
