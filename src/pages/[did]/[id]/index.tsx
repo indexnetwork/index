@@ -278,21 +278,24 @@ const IndexDetailPage: NextPageWithLayout = () => {
 																	debounceTime={400}
 																	showClear
 																	placeholder={t("pages:home.searchLink")} />
-															</Col><Col>
+															</Col>
+															<Col>
 																<ButtonGroup
 																	theme="clear"
-																	className="mt-1"
+																	className="mt-2"
 																>
 																	<FilterPopup>
 																		<Button
-																			size={"lg"}
+																			size={"xl"}
 																			group
 																			iconButton
-																		><IconFilter width={20} height={20} stroke="var(--gray-4)" /></Button>
+																		>
+																			<IconFilter width={20} height={20} stroke="var(--gray-4)" /></Button>
 																	</FilterPopup>
 																	<SortPopup>
 																		<Button
-																			size={"lg"}
+																			
+																			size={"xl"}
 																			group
 																			iconButton
 																		><IconSort width={20} height={20} stroke="var(--gray-4)" /></Button>

@@ -47,7 +47,7 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 	return (
 		<div className="link-input">
 			<Input
-				inputSize="sm"
+				inputSize="xl"
 				className={cc([
 					"link-input__input",
 					`link-input-${size}`,
