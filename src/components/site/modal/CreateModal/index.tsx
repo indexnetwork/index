@@ -79,24 +79,24 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 						</Col>
 						<Col pullLeft>
 							<Button
-								className="mt-7 pl-9 pr-9 "
+								className="mt-7 pl-7 pr-7"
 								theme="clear"
 								onClick={handleClose}
-							>Cancel</Button>
+							>&nbsp;Cancel&nbsp;</Button>
 						</Col>
 						<Col pullRight>
 							<Button
 								onClick={handleCreate}
 								theme="primary"
-								className=" mt-7 pl-9 pr-9"
-							>Create</Button>
+								className=" mt-7 pl-7 pr-7"
+							>&nbsp;Create&nbsp;</Button>
 						</Col>
 
 					</Col>
 				</Row>
 			</>
 		)}
-		header={<Header>Create New Index</Header>}
+		header={<Header level={3}>Create New Index</Header>}
 	>
 
 	</Modal>;
