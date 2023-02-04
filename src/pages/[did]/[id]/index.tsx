@@ -191,7 +191,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<Col
 													xs={12}
 													lg={9}
-													className="pb-2"
+													className="pb-0"
 												>
 													<FlexRow>
 														<Col
