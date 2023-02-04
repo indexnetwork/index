@@ -17,12 +17,13 @@
 	}
 
 	.modal-wrapper {
+		padding-top: 1.2rem;
 		background-color: $white;
 		position: absolute;
 		bottom: 0;
 		width: 100%;
-		border-top-left-radius: $border-radius-base;
-		border-top-right-radius: $border-radius-base;
+		border-top-left-radius: 4px;
+		border-top-right-radius: 4px;
 		box-shadow: $box-shadow-base-thin;
 		display: flex;
 		flex-direction: column;
@@ -30,7 +31,7 @@
 		.modal-header {
 			padding: map-deep-get($spacing, "xs", "6") map-deep-get($spacing, "xs", "7");
 			flex-shrink: 0;
-			border-bottom: $border-base;
+			//border-bottom: $border-base;
 		}
 
 		.modal-body {
