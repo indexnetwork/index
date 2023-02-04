@@ -53,7 +53,7 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 					`link-input-${size}`,
 				])}
 				disabled={loading || disabled}
-				addOnBefore={<IconAdd width={12} height={12} />}
+				addOnBefore={<IconAdd width={20} height={20} />}
 				addOnAfter={loading ? <Spin active={true} thickness="light" theme="secondary" /> : undefined}
 				{...inputProps}
 				value={url}
