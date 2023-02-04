@@ -304,7 +304,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 													</FlexRow>
 												</Col>
 												{
-													isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3">
+													isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
 														<LinkInput
 															loading={crawling}
 															onLinkAdd={handleAddLink}
