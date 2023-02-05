@@ -13,6 +13,7 @@
 			cursor: pointer;
 			padding: map-deep-get($spacing, "xs", "3") 0;
 			margin-right: map-deep-get($spacing, "xs", "7");
+			
 			&.tabs-list-item-active {
 				font-weight: 700;
 				padding-left: 4px;
@@ -32,7 +33,7 @@
 
 			&.tabs-list-item-disabled {
 				cursor: not-allowed;
-				background-color: $gray-1;
+				
 			}
 
 			.tabs-list-item-bottom {
@@ -44,7 +45,7 @@
 	.tabs-contents {
 		flex-grow: 1;
 		.tabs-contents-item {
-
+			
 		}
 	}
 }

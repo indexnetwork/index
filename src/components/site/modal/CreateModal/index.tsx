@@ -10,7 +10,6 @@ import Button from "components/base/Button";
 import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
 import { useAppSelector } from "hooks/store";
-import { useMergedState } from "hooks/useMergedState";
 import { useTranslation } from "next-i18next";
 import { selectConnection } from "store/slices/connectionSlice";
 import { Indexes } from "types/entity";
@@ -32,20 +31,17 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 
 	const [crawling, setCrawling] = useState(false);
 
-	const [stream, setStream] = useMergedState<Partial<Indexes>>({
-		title: "",
-	});
+	const [title, setTitle] = useState<string>("");
 
 	const [loading, setLoading] = useState(false);
 
 	const handleCreate = async () => {
-		if (stream.title) {
-			const doc = await ceramic.createIndex(stream);
+		setLoading(true);
+		if (title) {
+			const doc = await ceramic.createIndex({ title } as Indexes);
 			if (doc != null) {
-				router.push(`/${did}/${doc.id}`);
-				setStream({
-					title: "",
-				});
+				await setTitle("");
+				await router.push(`/${did}/${doc.id}`);
 				modalProps.onClose?.();
 			}
 		}
@@ -53,14 +49,12 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 	};
 	const handleChange: React.ChangeEventHandler<HTMLInputElement> = ({ target }) => {
 		const { value } = target;
-		setStream({
-			title: value,
-		});
+		setTitle(value);
 	 };
+
 	return <Modal
 		{...modalProps}
 		size={"xs"}
-		destroyOnClose
 		body={(
 			<>
 				<Row
@@ -69,33 +63,40 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 					>
 						<Flex
 							alignItems="center"
-							className="mb-3"
+
 						>
 							<Flex flexDirection="column" flexWrap="wrap" flexGrow={1} className="ml-2">
-								<Text>Title</Text>
+								<Text size="lg">Title</Text>
 							</Flex>
 						</Flex>
 						<Col sm={12}>
-							<Input
-								defaultValue={stream?.title || ""}
-								onChange={handleChange}
-								// loading={loading}
-								className="mt-3"
-								placeholder="e.g. Curation Over Curation"
-							/>
+							<Flex>
+								<Input
+									autoFocus={true}
+									value={title || ""}
+									inputSize={"lg"}
+									onChange={handleChange}
+									// loading={loading}
+									className="mt-3 ml-2 mr-2"
+									placeholder="e.g. Curation Over Curation"
+								/>
+							</Flex>
 						</Col>
 						<Col pullLeft>
 							<Button
-								className="mt-7 pl-9 pr-9 "
+								className="mt-7 pl-8 pr-8 ml-2"
+								size="lg"
 								theme="clear"
 								onClick={handleClose}
 							>Cancel</Button>
 						</Col>
 						<Col pullRight>
 							<Button
+								disabled={!title}
 								onClick={handleCreate}
 								theme="primary"
-								className=" mt-7 pl-9 pr-9"
+								size="lg"
+								className="mt-7 pl-8 pr-8 mr-2"
 							>Create</Button>
 						</Col>
 
@@ -103,7 +104,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 				</Row>
 			</>
 		)}
-		header={<Header>Create New Index</Header>}
+		header={<Header className="mt-3" level={3}>Create New Index</Header>}
 	>
 
 	</Modal>;

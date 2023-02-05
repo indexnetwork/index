@@ -10,7 +10,7 @@ import Text from "components/base/Text";
 export interface LinkInputProps extends InputProps {
 	size?: HeaderSizeType;
 	loading?: boolean;
-	onLinkAdd?(url?: string): void;
+	onLinkAdd?(url?: string[]): void;
 }
 
 const LinkInput: React.VFC<LinkInputProps> = ({
@@ -24,21 +24,8 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 
 		const links = words.filter((word) => validator.isURL(word));
 
-		if (links.length > 0) {
-			links.forEach((link) => {
-				onLinkAdd && onLinkAdd(link);
-			});
-			setUrl("");
-		} else if (validator.isURL(url)) {
-			onLinkAdd && onLinkAdd(url);
-			setUrl("");
-		} else if (url) {
-			setShowMsg(true);
-			setTimeout(() => {
-				setShowMsg(false);
-				setUrl("");
-			}, 1500);
-		}
+		onLinkAdd && onLinkAdd(links);
+		setUrl("");
 	};
 
 	const handleEnter = (e: any) => {
@@ -48,22 +35,8 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 			const words = url.split(" ");
 
 			const links = words.filter((word) => validator.isURL(word));
-
-			if (links.length > 0) {
-				links.forEach((link) => {
-					onLinkAdd && onLinkAdd(link);
-				});
-				setUrl("");
-			} else if (validator.isURL(url)) {
-				onLinkAdd && onLinkAdd(url);
-				setUrl("");
-			} else if (url) {
-				setShowMsg(true);
-				setTimeout(() => {
-					setShowMsg(false);
-					setUrl("");
-				}, 1500);
-			}
+			onLinkAdd && onLinkAdd(links);
+			setUrl("");
 		}
 	};
 
@@ -74,13 +47,13 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 	return (
 		<div className="link-input">
 			<Input
-				inputSize="sm"
+				inputSize="xl"
 				className={cc([
 					"link-input__input",
 					`link-input-${size}`,
 				])}
 				disabled={loading || disabled}
-				addOnBefore={<IconAdd width={12} height={12} />}
+				addOnBefore={<IconAdd width={20} height={20} />}
 				addOnAfter={loading ? <Spin active={true} thickness="light" theme="secondary" /> : undefined}
 				{...inputProps}
 				value={url}

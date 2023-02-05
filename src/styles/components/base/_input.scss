@@ -1,5 +1,6 @@
 .input {
 	@include responsive-sizes($input-height, "height");
+	@include responsive-sizes($font-size, "font-size");
 	display: inline-block;
 	border: $border-base;
 	border-radius: $border-radius-base;
@@ -48,7 +49,7 @@
 	&.input-add-on-before {
 		input {
 			margin-left: map-deep-get($spacing, "xs", "3");
-			
+
 		}
 	}
 
@@ -66,7 +67,7 @@
 		input {
 			background-color: transparent;
 		}
-		
+
 	}
 
 	&.input-xs {

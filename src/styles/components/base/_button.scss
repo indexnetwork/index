@@ -28,8 +28,8 @@
 	}
 
 	&[disabled] {
-		cursor: not-allowed;
 		background-color: map-get($button-bg, "disabled") !important;
+		border: 1px solid map-get($button-bg, "disabled") !important;
 	}
 
 	@each $key, $value in $button-bg {
@@ -117,7 +117,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: .8rem;
+		padding: 1.2rem;
 		svg {
 			flex-shrink: 0;
 			width: 1.6rem;
