@@ -229,7 +229,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 													}
 
 												</Col>
-												<Col className="ml-3">
+												<Col className="mr-3">
 													<Tooltip content="Add to Starred Index">
 														<IconStar className="mr-3" width={20} height={20} />
 
