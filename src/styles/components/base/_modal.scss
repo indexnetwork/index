@@ -5,7 +5,7 @@
 	right: 0;
 	bottom: 0;
 	mix-blend-mode: normal;
-	backdrop-filter: blur(5.5px);
+	backdrop-filter: blur(1px);
 	background-color: $modal-backdrop-color;
 	z-index: 2147483647;
 	transition: $transition-bg;
@@ -18,7 +18,7 @@
 	}
 
 	.modal-wrapper {
-		
+
 		background-color: $white;
 		position: absolute;
 		bottom: 0;
@@ -39,7 +39,7 @@
 			padding: map-deep-get($spacing, "xs", "7") map-deep-get($spacing, "xs", "6");
 			flex-grow: 1;
 			overflow: auto;
-			
+
 		}
 
 		.modal-footer {

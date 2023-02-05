@@ -1,7 +1,7 @@
 import Text from "components/base/Text";
 import Modal, { ModalProps } from "components/base/Modal";
 import Row from "components/layout/base/Grid/Row";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import Col from "components/layout/base/Grid/Col";
 import Header from "components/base/Header";
 import Flex from "components/layout/base/Grid/Flex";
@@ -20,7 +20,6 @@ export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" |
 const CreateModal: React.VFC<CreateModalProps> = ({
 	...modalProps
 }) => {
-
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const handleClose = () => {
@@ -52,8 +51,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 		const { value } = target;
 		setTitle(value);
 	 };
-	
-	
+
 	return <Modal
 		{...modalProps}
 		size={"xs"}
@@ -65,7 +63,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 					>
 						<Flex
 							alignItems="center"
-							
+
 						>
 							<Flex flexDirection="column" flexWrap="wrap" flexGrow={1} className="ml-2">
 								<Text size="md">Title</Text>
@@ -73,14 +71,14 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 						</Flex>
 						<Col sm={12}>
 							<Flex>
-							<Input
-								autoFocus={true}
-								value={title || ""}
-								onChange={handleChange}
-								// loading={loading}
-								className="mt-3 ml-2 mr-2"
-								placeholder="e.g. Curation Over Curation"
-							/>
+								<Input
+									autoFocus={true}
+									value={title || ""}
+									onChange={handleChange}
+									// loading={loading}
+									className="mt-3 ml-2 mr-2"
+									placeholder="e.g. Curation Over Curation"
+								/>
 							</Flex>
 						</Col>
 						<Col pullLeft>
@@ -92,7 +90,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 						</Col>
 						<Col pullRight>
 							<Button
-								disabled={title ? false : true}
+								disabled={!title}
 								onClick={handleCreate}
 								theme="primary"
 								className="mt-7 pl-8 pr-8 mr-2"
