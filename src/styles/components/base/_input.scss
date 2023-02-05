@@ -1,5 +1,6 @@
 .input {
 	@include responsive-sizes($input-height, "height");
+	@include responsive-sizes($font-size, "font-size");
 	display: inline-block;
 	border: $border-base;
 	border-radius: $border-radius-base;
@@ -7,7 +8,6 @@
 	padding-right: map-deep-get($spacing, "xs", "6");
 	line-height: 0;
 	align-items: center;
-	font-size: 1.6rem;
 
 	& input {
 		border: none;
@@ -28,7 +28,6 @@
 
 	&.input-block {
 		width: 100%;
-		height: 4.2rem;
 	}
 
 
@@ -50,7 +49,7 @@
 	&.input-add-on-before {
 		input {
 			margin-left: map-deep-get($spacing, "xs", "3");
-			
+
 		}
 	}
 
@@ -68,7 +67,7 @@
 		input {
 			background-color: transparent;
 		}
-		
+
 	}
 
 	&.input-xs {

@@ -1,6 +1,4 @@
 .btn-group {
-	@include responsive-sizes($input-height, "height");
-
 	display: flex;
 	align-items: center;
 	padding: 0;

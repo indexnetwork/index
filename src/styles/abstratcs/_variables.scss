@@ -199,7 +199,7 @@ $input-height: (
 		"xs": 2.4rem,
 		"sm": 2.8rem,
 		"md": 3.2rem,
-		"lg": 3.6rem,
+		"lg": 4.2rem,
 	),
 );
 
@@ -273,7 +273,7 @@ $z-index: (
 );
 
 /**************
-		Navbar 
+		Navbar
 ***************/
 $navbar-height: (
 	"xs": 6rem,
@@ -281,7 +281,7 @@ $navbar-height: (
 );
 
 /**************
-		Footer 
+		Footer
 ***************/
 $footer-height: (
 	"xs": 6rem,
@@ -299,7 +299,7 @@ $dropdown-spacing: map-deep-get($spacing, "xs", "2");
 $modal-backdrop-color: rgba($black, 0.5);
 
 /**************
-		Spinner 
+		Spinner
 ***************/
 $spinner-size: (
 	"xs": 1.2rem,
@@ -310,12 +310,12 @@ $spinner-size: (
 $spinner-bg: rgba(255, 255, 255, 0.2);
 
 /**************
-		Copy Input 
+		Copy Input
 ***************/
 $copy-input-icon-bg: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, $gray-6 5%, $gray-6 100%);
 
 /**************
-		Switch 
+		Switch
 ***************/
 $switch-height-md: 1.6rem;
 $switch-width-md: 3rem;

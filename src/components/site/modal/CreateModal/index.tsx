@@ -66,7 +66,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 
 						>
 							<Flex flexDirection="column" flexWrap="wrap" flexGrow={1} className="ml-2">
-								<Text size="md">Title</Text>
+								<Text size="lg">Title</Text>
 							</Flex>
 						</Flex>
 						<Col sm={12}>
@@ -74,6 +74,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 								<Input
 									autoFocus={true}
 									value={title || ""}
+									inputSize={"lg"}
 									onChange={handleChange}
 									// loading={loading}
 									className="mt-3 ml-2 mr-2"
@@ -84,6 +85,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 						<Col pullLeft>
 							<Button
 								className="mt-7 pl-8 pr-8 ml-2"
+								size="lg"
 								theme="clear"
 								onClick={handleClose}
 							>Cancel</Button>
@@ -93,6 +95,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 								disabled={!title}
 								onClick={handleCreate}
 								theme="primary"
+								size="lg"
 								className="mt-7 pl-8 pr-8 mr-2"
 							>Create</Button>
 						</Col>
