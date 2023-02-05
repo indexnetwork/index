@@ -10,8 +10,8 @@
 		border-radius: $border-radius-base;
 		background-color: $white;
 		box-shadow: $box-shadow-base-half;
-		color: $gray-4;
-		font-weight: normal;
+		color: $gray-5;
+		font-weight: bold;
 		font-size: map-deep-get($font-size, "xs", "xs");
 		line-height: map-deep-get($font-line-height, "xs", "xs");
 		z-index: map-get($z-index, "dropdown");
