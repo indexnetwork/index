@@ -4,13 +4,14 @@
 
 	.tooltip-tip {
 		@include no-select;
+		font-family: Inter;
 		position: absolute;
 		padding: $tooltip-spacing;
-		border-radius: $border-radius-base;
-		background-color: $gray-4;
+		border-radius: 4px;
+		background-color: $gray-9;
 		color: $white;
 		font-weight: 600;
-		font-size: map-deep-get($font-size, "xs", "xs");
+		font-size: map-deep-get($font-size, "xs", "md");
 		line-height: map-deep-get($font-line-height, "xs", "xs");
 		z-index: map-get($z-index, "tooltip");
 		width: max-content;
