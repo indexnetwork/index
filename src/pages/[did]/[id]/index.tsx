@@ -238,12 +238,18 @@ const IndexDetailPage: NextPageWithLayout = () => {
 													</Tooltip>
 												</Col>
 												<Col className="ml-3">
+													<Button
+													
+													
+													theme="clear"
+													borderless>
 													<IndexOperationsPopup
 														isOwner={isOwner}
 														streamId={index.id!}
 														mode="indexes-page"
 														onDelete={handleDelete}
-													/>
+													></IndexOperationsPopup>
+													</Button>
 												</Col>
 											</FlexRow>
 										</Col>
