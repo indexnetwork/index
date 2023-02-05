@@ -55,16 +55,9 @@ export type Links = {
  *
  */
 export type Users = {
-  address: string
   name: string | null
-  username: string | null
-  picture: string | null
-  location: string | null
-  visibility: boolean
-  bio: string | null
-  urlWeb: string | null
-  apiKey: string | null
-  zapierToken: string | null
+  description: string | null
+  pfp: string | null
   createdAt: Date
   updatedAt: Date
 };

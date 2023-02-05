@@ -6,7 +6,7 @@ import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
 
 import {
-	Indexes, LinkContentResult, Links, UserIndex,
+	Indexes, LinkContentResult, Links, UserIndex, Users,
 } from "types/entity";
 import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import type { BasicProfile } from "@datamodels/identity-profile-basic";
@@ -325,8 +325,22 @@ class CeramicService2 {
 		 */
 	}
 
-	async getProfile() {
-		return 0;
+	async getProfile(): Promise<Users> {
+		const { data, errors } = await this.composeClient.executeQuery<{ viewer: { indexasProfile: Users } }>(`
+			query {
+				viewer {
+					indexasProfile {
+						id
+						name
+						pfp
+					}
+				}
+			}
+		`);
+		if (errors) {
+			// TODO Handle
+		}
+		return <Users>data?.viewer?.indexasProfile!;
 	}
 	async setProfile(profile: BasicProfile) {
 		const update = await this.composeClient.executeQuery(`
