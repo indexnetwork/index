@@ -252,7 +252,7 @@ $visited-lighten: 12%;
 		transition
 ***************/
 
-$transition-duration-base: 0.2s;
+$transition-duration-base: 0.05s;
 $transition-bg: background $transition-duration-base ease-in-out;
 $transition-swipe-modal: max-height 0.2s cubic-bezier(0, 0.6, 0.75, 1);
 
