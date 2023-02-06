@@ -79,7 +79,6 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 		}
 	};
 	const getProfile = async () => {
-
 		try {
 			const profile = await ceramicService.getProfile();
 			if (profile) {

@@ -11,7 +11,7 @@ import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import { definition } from "../types/merged-runtime";
-import {appConfig} from "../config";
+import { appConfig } from "../config";
 
 class CeramicService2 {
 	private ipfs: IPFSHTTPClient = create({
@@ -340,7 +340,6 @@ class CeramicService2 {
 		return <Users>data?.viewer?.indexasProfile!;
 	}
 	async setProfile(profile: Users) {
-
 		if (!profile.pfp) {
 			delete profile.pfp;
 		}

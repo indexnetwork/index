@@ -46,7 +46,6 @@ const CreateIndexPage: NextPageWithLayout = () => {
 				setLoading(true);
 				const result = await handleUploadImage();
 				if (result) {
-
 					values.pfp = `ipfs://${result.path}`;
 				}
 				const { available, ...rest } = values;
