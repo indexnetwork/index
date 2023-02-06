@@ -2,6 +2,8 @@
  * Model indexes
  *
  */
+import {bool} from "yup";
+
 export type Indexes = {
   id: string
   title: string | null
@@ -54,20 +56,14 @@ export type Links = {
  * Model users
  *
  */
-export type Users = {
-  address: string
-  name: string | null
-  username: string | null
-  picture: string | null
-  location: string | null
-  visibility: boolean
-  bio: string | null
-  urlWeb: string | null
-  apiKey: string | null
-  zapierToken: string | null
-  createdAt: Date
-  updatedAt: Date
-};
+export interface Users {
+  name?: string;
+  description?: string;
+  pfp?: string;
+  created_at?: Date;
+  updated_at?: Date;
+  available?: boolean; //TODO debug
+}
 
 export interface LinkContentResult {
   id?: string;

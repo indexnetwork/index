@@ -21,22 +21,22 @@ const SortPopup: React.FC<SortPopupProps> = ({ children, onChange }) => {
 					<DropdownMenuItem
 						onClick={() => handleClick("newest")}
 					>
-						<Text element="span" size="sm" theme="secondary">Newest First</Text>
+						<Text element="span" size="sm">Newest First</Text>
 					</DropdownMenuItem>
 					<DropdownMenuItem
 						onClick={() => handleClick("oldest")}
 					>
-						<Text element="span" size="sm" theme="secondary">Oldest First</Text>
+						<Text element="span" size="sm">Oldest First</Text>
 					</DropdownMenuItem>
 					<DropdownMenuItem
 						onClick={() => handleClick("tag")}
 					>
-						<Text element="span" size="sm" theme="secondary">Most Tagged</Text>
+						<Text element="span" size="sm">Most Tagged</Text>
 					</DropdownMenuItem>
 					<DropdownMenuItem
 						onClick={() => handleClick("default")}
 					>
-						<Text element="span" size="sm" theme="secondary">Default</Text>
+						<Text element="span" size="sm">Default</Text>
 					</DropdownMenuItem>
 				</>
 			}

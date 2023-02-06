@@ -1,23 +1,21 @@
 import moment from "moment";
 
-import { SelfID } from "@self.id/web";
-
 import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
 
 import {
-	Indexes, LinkContentResult, Links, UserIndex,
+	Indexes, LinkContentResult, Links, UserIndex, Users,
 } from "types/entity";
 import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
-import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import { definition } from "../types/merged-runtime";
+import {appConfig} from "../config";
 
 class CeramicService2 {
 	private ipfs: IPFSHTTPClient = create({
-		// url: appConfig.ipfsInfura,
+		url: appConfig.ipfsInfura,
 	});
 
 	private ceramic = new CeramicClient("https://ceramic.index.as");
@@ -26,7 +24,6 @@ class CeramicService2 {
 		// cast our definition as a RuntimeCompositeDefinition
 		definition: definition as RuntimeCompositeDefinition,
 	});
-	private self?: SelfID;
 
 	async authenticate(did: any) {
 		if (!isSSR()) {
@@ -325,40 +322,53 @@ class CeramicService2 {
 		 */
 	}
 
-	async getProfile() {
-		return 0;
+	async getProfile(): Promise<Users> {
+		const { data, errors } = await this.composeClient.executeQuery<{ viewer: { indexasProfile: Users } }>(`
+			query {
+				viewer {
+					indexasProfile {
+						name
+						description
+						pfp
+					}
+				}
+			}
+		`);
+		if (errors) {
+			// TODO Handle
+		}
+		return <Users>data?.viewer?.indexasProfile!;
 	}
-	async setProfile(profile: BasicProfile) {
-		const update = await this.composeClient.executeQuery(`
-        mutation {
-          createBasicProfile(input: {
-            content: {
-              name: "ab"
-              description: "ab"
-            }
-          }) 
-          {
-            document {
-              name
-              description
-              gender
-              emoji
-            }
-          }
-        }
-      `);
+	async setProfile(profile: Users) {
 
-		return true;
+		if (!profile.pfp) {
+			delete profile.pfp;
+		}
+		const payload = {
+			content: profile,
+		};
+		const { data, errors } = await this.composeClient.executeQuery<{ createIndexasProfile: { document: Users } }>(`	
+			mutation CreateIndexasProfile($input: CreateIndexasProfileInput!) {
+				createIndexasProfile(input: $input) {
+					document {
+					  name
+					  description
+					  pfp					
+					}
+				}
+			}`, { input: payload });
+		if (errors) {
+			// TODO Handle
+		}
+		return data?.createIndexasProfile.document!;
 	}
 
 	async uploadImage(file: File) {
-		if (this.self) {
-			try {
-				const { cid, path } = await this.ipfs.add(file);
-				return { cid, path };
-			} catch (err) {
-				//
-			}
+		try {
+			const { cid, path } = await this.ipfs.add(file);
+			return { cid, path };
+		} catch (err) {
+			//
 		}
 	}
 

@@ -138,7 +138,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 												</Button>
 											</Tooltip>
 										</Col>
-										<Col>
+										{/*<Col>
 											<Tooltip content="Favorite">
 												<Button
 													size="xs"
@@ -150,7 +150,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 													<IconStar fill={favorite ? "var(--blue)" : "none"} stroke={favorite ? "var(--blue)" : undefined}/>
 												</Button>
 											</Tooltip>
-										</Col>
+										</Col>*/}
 										<Col>
 											<IndexDetailItemPopup onDelete={handleRemove}>
 												<Button

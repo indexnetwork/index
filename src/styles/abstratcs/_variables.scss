@@ -259,7 +259,7 @@ $transition-swipe-modal: max-height 0.2s cubic-bezier(0, 0.6, 0.75, 1);
 /**************
 		TOOLTIP
 ***************/
-$tooltip-spacing: map-deep-get($spacing, "xs", "2");
+$tooltip-spacing: map-deep-get($spacing, "xs", "3");
 
 /**************
 		Z INDEX

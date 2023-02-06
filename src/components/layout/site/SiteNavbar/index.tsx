@@ -108,7 +108,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 									}}>
 										<Flex alignItems="center">
 											<IconPeople width={16} height="100%"/>
-											<Text className="ml-3" element="span" size="md" theme="secondary">&nbsp;{t("common:profile")}</Text>
+											<Text className="ml-3" element="span" size="md" >&nbsp;{t("common:profile")}</Text>
 										</Flex>
 									</DropdownMenuItem>
 									{/* <DropdownMenuItem>

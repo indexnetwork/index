@@ -26,7 +26,11 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 		modalProps.onClose?.();
 	};
 	const ceramic = useCeramic();
-
+	const handleEnter = (e: any) => {
+		if (e && (e.code === "Enter" || e.code === "NumpadEnter")) {
+			handleCreate();
+		}
+	};
 	const { did } = useAppSelector(selectConnection);
 
 	const [crawling, setCrawling] = useState(false);
@@ -75,6 +79,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 									autoFocus={true}
 									value={title || ""}
 									inputSize={"lg"}
+									onKeyDown={handleEnter}
 									onChange={handleChange}
 									// loading={loading}
 									className="mt-3 ml-2 mr-2"

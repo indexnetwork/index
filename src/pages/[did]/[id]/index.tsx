@@ -41,6 +41,8 @@ import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import IconStar from "components/base/Icon/IconStar";
 import Tooltip from "components/base/Tooltip";
+import Header from "components/base/Header";
+import Soon from "components/site/indexes/Soon";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -229,19 +231,26 @@ const IndexDetailPage: NextPageWithLayout = () => {
 													}
 
 												</Col>
-												<Col className="mr-3">
+												<Col className="mr-1">
 													<Tooltip content="Add to Starred Index">
+														<Button
+														theme="clear"
+														borderless>
 														<IconStar className="mr-3" width={20} height={20} />
-
+														</Button>
 													</Tooltip>
 												</Col>
-												<Col className="ml-3">
+												<Col className="ml-1">
+													<Button
+													theme="clear"
+													borderless>
 													<IndexOperationsPopup
 														isOwner={isOwner}
 														streamId={index.id!}
 														mode="indexes-page"
 														onDelete={handleDelete}
-													/>
+													></IndexOperationsPopup>
+													</Button>
 												</Col>
 											</FlexRow>
 										</Col>
@@ -256,13 +265,15 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<Col className="idxflex-grow-1 mb-4">
 													<Tabs activeKey={tabKey} onTabChange={setTabKey}>
 														<TabPane enabled={true} tabKey={"index"} title={"Index"} />
-														<TabPane tabKey={"curators"} title={"Creators"} />
-														<TabPane tabKey={"audiences"} title={"Audiences"} />
+														<TabPane enabled={true} tabKey={"curators"} title={"Creators"} />
+														<TabPane enabled={true} tabKey={"audiences"} title={"Audiences"} />
 													</Tabs>
 												</Col>
 											</FlexRow>
 											<FlexRow>
+											{tabKey==="index" ?
 												<>
+												
 													<Col
 														className="idxflex-grow-1 mr-5 mt-2"
 													>
@@ -295,11 +306,13 @@ const IndexDetailPage: NextPageWithLayout = () => {
 															</SortPopup>
 														</ButtonGroup>
 													</Col>
+													
 												</>
+												: <Col></Col>}
 											</FlexRow>
 										</Col>
 										{
-											isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
+											tabKey==="index" && isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
 												<LinkInput
 													loading={crawling}
 													onLinkAdd={handleAddLink}
@@ -307,6 +320,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											</Col>
 										}
 									</FlexRow>
+									{tabKey === "index" ? 
 									<FlexRow
 										justify="center"
 									>
@@ -323,6 +337,15 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<Col xs={12} lg={9}>
 										</Col>
 									</FlexRow>
+									: <Col></Col>}
+
+									{tabKey === "index" ? 
+									<Col></Col> :
+									<FlexRow justify="center">
+										<Soon></Soon>
+									</FlexRow>
+									
+									}
 								</>
 							)
 					}

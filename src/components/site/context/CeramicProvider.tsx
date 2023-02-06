@@ -2,8 +2,9 @@ import React, {
 	useMemo, useState,
 } from "react";
 import ceramicService from "services/ceramic-service";
-import { Indexes, LinkContentResult, Links } from "types/entity";
-import type { BasicProfile } from "@datamodels/identity-profile-basic";
+import {
+	Indexes, LinkContentResult, Links, Users,
+} from "types/entity";
 import { CID } from "ipfs-http-client";
 
 export type ListenEvents = {
@@ -19,8 +20,8 @@ export interface CeramicContextValue {
 	removeLink(link_id: string): Promise<Links | undefined>;
 	addTag(link_id: string, tag: string): Promise<Links | undefined>;
 	removeTag(link_id: string, tag: string): Promise<Links | undefined>;
-	getProfile(): Promise<BasicProfile | null | any>;
-	setProfile(profile: BasicProfile): Promise<boolean>;
+	getProfile(): Promise<Users | null | any>;
+	setProfile(profile: Users): Promise<Users | null | any>;
 	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
 
 }
@@ -74,7 +75,7 @@ const CeramicProvider: React.FC<{}> = ({
 
 	const getProfile = async () => ceramicService.getProfile();
 
-	const setProfile = async (profile: BasicProfile) => ceramicService.setProfile(profile);
+	const setProfile = async (profile: Users) => ceramicService.setProfile(profile);
 
 	const uploadImage = async (file: File) => ceramicService.uploadImage(file);
 
