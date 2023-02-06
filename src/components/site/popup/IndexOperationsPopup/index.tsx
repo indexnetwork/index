@@ -14,6 +14,7 @@ import { useOwner } from "hooks/useOwner";
 import { useCeramic } from "hooks/useCeramic";
 import { useRouter } from "next/router";
 import { copyToClipboard } from "utils/helper";
+import IconRemove from "components/base/Icon/IconRemove";
 
 export interface IndexOperationsPopupProps {
 	streamId: string;
@@ -81,12 +82,13 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 						<Text className="ml-3" element="span" size="sm" theme="secondary"> Integrations</Text>
 					</Flex>
 				</DropdownMenuItem> */}
-					<DropdownMenuItem>
+					{/*<DropdownMenuItem>
 						<Flex alignItems="center">
 							<IconEmbed width={16} height="100%" />
 							<Text className="ml-3" element="span" size="md" theme="primary"> Embed</Text>
 						</Flex>
 					</DropdownMenuItem>
+					
 					<DropdownMenuItem
 						onClick={handleClone}
 					>
@@ -95,12 +97,13 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 							<Text className="ml-3" element="span" size="md" theme="primary"> Clone</Text>
 						</Flex>
 					</DropdownMenuItem>
+					*/}
 					<DropdownMenuItem onClick={() => {
 						copyToClipboard(`${window.location.href}`);
 					}}>
 						<Flex alignItems="center">
-							<IconLink1 width={16} height="100%" />
-							<Text className="ml-3" element="span" size="md" theme="primary"> Copy Link</Text>
+							<IconCopy width={20} height="100%" />
+							<Text className="ml-3" element="span" size="md" > Copy Link</Text>
 						</Flex>
 					</DropdownMenuItem>
 					{
@@ -110,8 +113,8 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 								onClick={handleDelete}
 							>
 								<Flex alignItems="center">
-									<IconTrash width={16} height="100%" className="icon-error" />
-									<Text className="ml-3" element="span" size="md" theme="error"> Delete</Text>
+									<IconRemove width={20} height="100%" className="icon-error" />
+									<Text className="ml-3" element="span" size="md" >Remove</Text>
 								</Flex>
 							</DropdownMenuItem>
 						</>

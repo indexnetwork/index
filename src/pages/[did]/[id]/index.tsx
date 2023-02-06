@@ -231,19 +231,26 @@ const IndexDetailPage: NextPageWithLayout = () => {
 													}
 
 												</Col>
-												<Col className="mr-3">
+												<Col className="mr-1">
 													<Tooltip content="Add to Starred Index">
+														<Button
+														theme="clear"
+														borderless>
 														<IconStar className="mr-3" width={20} height={20} />
-
+														</Button>
 													</Tooltip>
 												</Col>
-												<Col className="ml-3">
+												<Col className="ml-1">
+													<Button
+													theme="clear"
+													borderless>
 													<IndexOperationsPopup
 														isOwner={isOwner}
 														streamId={index.id!}
 														mode="indexes-page"
 														onDelete={handleDelete}
-													/>
+													></IndexOperationsPopup>
+													</Button>
 												</Col>
 											</FlexRow>
 										</Col>
