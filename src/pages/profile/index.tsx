@@ -17,7 +17,6 @@ import Flex from "components/layout/base/Grid/Flex";
 import Text from "components/base/Text";
 import Input from "components/base/Input";
 import { selectProfile, setProfile } from "store/slices/profileSlice";
-import type { BasicProfile } from "@datamodels/identity-profile-basic";
 import { useFormik } from "formik";
 import Button from "components/base/Button";
 import TextArea from "components/base/TextArea";
@@ -27,6 +26,7 @@ import ImageUploading, { ImageType } from "react-images-uploading";
 import Avatar from "components/base/Avatar";
 import IconTrash from "components/base/Icon/IconTrash";
 import { appConfig } from "config";
+import { Users } from "../../types/entity";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -37,7 +37,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 
 	const dispatch = useAppDispatch();
 
-	const formik = useFormik<BasicProfile>({
+	const formik = useFormik<Users>({
 		initialValues: {
 			...profile,
 		},
@@ -46,24 +46,8 @@ const CreateIndexPage: NextPageWithLayout = () => {
 				setLoading(true);
 				const result = await handleUploadImage();
 				if (result) {
-					values.image = {
-						original: {
-							src: `ipfs://${result.path}`,
-							size: images[0].file?.size,
-							width: 284,
-							height: 177,
-							mimeType: "image/jpeg",
-						},
-						alternatives: [
-							{
-								src: `ipfs://${result.path}`,
-								size: images[0].file?.size,
-								width: 284,
-								height: 177,
-								mimeType: "image/jpeg",
-							},
-						],
-					};
+
+					values.pfp = `ipfs://${result.path}`;
 				}
 				const { available, ...rest } = values;
 				await ceramic.setProfile(rest);
@@ -119,74 +103,78 @@ const CreateIndexPage: NextPageWithLayout = () => {
 					<form style={{
 						display: "contents",
 					}} onSubmit={formik.handleSubmit}>
-						<Col
-							xs={12}
-							lg={9}
-							style={{
-								display: "flex",
-								justifyContent: "center",
-							}}
-							className="my-3"
-						>
-							<ImageUploading
-								value={images}
-								onChange={onChange}
-								dataURLKey="data_url"
-							>
-								{({
-									imageList,
-									onImageUpload,
-									onImageRemoveAll,
-									onImageUpdate,
-									onImageRemove,
-									isDragging,
-									dragProps,
-								}) => (
-									// write your building UI
-									<div className="img-upload"
-										onClick={onImageUpload}
-										{...dragProps}>
-										{
-											// eslint-disable-next-line no-nested-ternary
-											imageList.length === 0 && !profile.image ?
-												<div className="img-upload__banner"><Text fontWeight={600}
-													theme="white">Click or Drop Image</Text></div> : (
-													imageList.length !== 0 ? (
-														imageList.map((image, index) => (
-															<>
-																<div key={index} className="img-upload-img">
-																	<img className="img-upload-img__img" src={image.data_url} alt="" />
-																</div>
-																<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
-																	{/* <Avatar size={32}
-																		hoverable onClick={() => onImageUpdate(index)}><IconAdd /></Avatar> */}
-																	<Avatar
-																		size={32}
-																		hoverable onClick={() => onImageRemove(index)}><IconTrash /></Avatar>
-																</div>
-															</>
-														))
-													) : (
-														<>
-															<div className="img-upload-img">
-																<img className="img-upload-img__img"
-																	src={profile!.image!.alternatives![0].src.replace("ipfs://", appConfig.ipfsProxy)} alt="" />
-															</div>
-															<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
-																{/* <Avatar size={32}
-																	hoverable onClick={() => onImageUpdate(0)}><IconAdd /></Avatar> */}
-																<Avatar
-																	size={32}
-																	hoverable onClick={() => onImageRemove(0)}><IconTrash /></Avatar>
-															</div>
-														</>
-													)
-												)
-										}
-									</div>
-								)}
-							</ImageUploading>
-						</Col>
+						{
+							true && (
+								<Col
+									xs={12}
+									lg={9}
+									style={{
+										display: "flex",
+										justifyContent: "center",
+									}}
+									className="my-3"
+								>
+									<ImageUploading
+										value={images}
+										onChange={onChange}
+										dataURLKey="data_url"
+									>
+										{({
+											imageList,
+											onImageUpload,
+											onImageRemoveAll,
+											onImageUpdate,
+											onImageRemove,
+											isDragging,
+											dragProps,
+										}) => (
+											// write your building UI
+											<div className="img-upload"
+												onClick={onImageUpload}
+												{...dragProps}>
+												{
+													// eslint-disable-next-line no-nested-ternary
+													imageList.length === 0 && !profile.image ?
+														<div className="img-upload__banner"><Text fontWeight={600}
+															theme="white">Click or Drop Image</Text></div> : (
+															imageList.length !== 0 ? (
+																imageList.map((image, index) => (
+																	<>
+																		<div key={index} className="img-upload-img">
+																			<img className="img-upload-img__img" src={image.data_url} alt="" />
+																		</div>
+																		<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
+																			{/* <Avatar size={32}
+																				hoverable onClick={() => onImageUpdate(index)}><IconAdd /></Avatar> */}
+																			<Avatar
+																				size={32}
+																				hoverable onClick={() => onImageRemove(index)}><IconTrash /></Avatar>
+																		</div>
+																	</>
+																))
+															) : (
+																<>
+																	<div className="img-upload-img">
+																		<img className="img-upload-img__img"
+																			src={profile!.image!.alternatives![0].src.replace("ipfs://", appConfig.ipfsProxy)} alt="" />
+																	</div>
+																	<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
+																		{/* <Avatar size={32}
+																			hoverable onClick={() => onImageUpdate(0)}><IconAdd /></Avatar> */}
+																		<Avatar
+																			size={32}
+																			hoverable onClick={() => onImageRemove(0)}><IconTrash /></Avatar>
+																	</div>
+																</>
+															)
+														)
+												}
+											</div>
+										)}
+									</ImageUploading>
+								</Col>
+							)
+						}
 						<Col
 							xs={12}
 							lg={9}
@@ -213,41 +201,6 @@ const CreateIndexPage: NextPageWithLayout = () => {
 											className="mt-3"
 											onChange={formik.handleChange}
 											value={formik.values.description}
-										/>
-									</Flex>
-								</Col>
-								<Col xs={12} sm={6}><Text fontWeight={700}>Location</Text></Col>
-								<Col xs={12} sm={6}>
-									<Flex flexDirection="column">
-										<Text fontWeight={500}>Country Code<Text theme="secondary" size="xs"> (Max Two Characters)</Text></Text>
-										<Input
-											name="homeLocation"
-											className="mt-3"
-											onChange={formik.handleChange}
-											value={formik.values.homeLocation}
-										/>
-									</Flex>
-									<Flex flexDirection="column" className="mt-3">
-										<Text fontWeight={500}>Residence Country Code<Text theme="secondary" size="xs"> (Max Two Characters)</Text></Text>
-										<Input
-											maxLength={2}
-											name="residenceCountry"
-											className="mt-3"
-											onChange={formik.handleChange}
-											value={formik.values.residenceCountry}
-										/>
-									</Flex>
-								</Col>
-								<Col xs={12} sm={6}><Text fontWeight={700}>Website</Text></Col>
-								<Col xs={12} sm={6}>
-									<Flex flexDirection="column">
-										<Text fontWeight={500}>Website</Text>
-										<Input
-											name="url"
-											className="mt-3"
-											type="url"
-											onChange={formik.handleChange}
-											value={formik.values.url}
 										/>
 									</Flex>
 								</Col>

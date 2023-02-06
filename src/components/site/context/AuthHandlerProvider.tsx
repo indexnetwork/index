@@ -8,6 +8,7 @@ import ceramicService from "services/ceramic-service";
 import {
 	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected,
 } from "store/slices/connectionSlice";
+import { setProfile } from "store/slices/profileSlice";
 
 declare global {
 	interface Window {
@@ -77,6 +78,21 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 			dispatch(setAuthLoading(false));
 		}
 	};
+	const getProfile = async () => {
+
+		try {
+			const profile = await ceramicService.getProfile();
+			if (profile) {
+				console.log(profile);
+				dispatch(setProfile({
+					...profile,
+					available: true,
+				}));
+			}
+		} catch (err) {
+			// profile error
+		}
+	};
 
 	const authToCeramic = async () => {
 		if (!ceramicService.isAuthenticated()) {
@@ -90,6 +106,7 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 
 	const completeConnections = async () => {
 		await authToCeramic();
+		await getProfile();
 	};
 
 	// App Loads
