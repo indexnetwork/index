@@ -1,5 +1,5 @@
 {
-    "name": "containers-connector",
+    "name": "containers-connector-final-running-3",
     "config": {
         "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
         "plugin.name": "pgoutput",
@@ -10,10 +10,10 @@
         "database.dbname": "composedb",
         "database.server.name": "postgres",
         "topic.prefix": "postgres",
-        "transforms": "Filter,Unwrap",
+        "transforms": "Filter, Unwrap",
         "transforms.Filter.type": "io.debezium.transforms.Filter",
         "transforms.Filter.language": "jsr223.groovy",
-        "transforms.Filter.condition": "(value.op == 'c') || (value.op == 'u' && value.before && value.before.stream_content && value.after && value.after.stream_content && (value.before.stream_content != value.after.stream_content))",
+        "transforms.Filter.condition": "(value.op == 'c') || (value.op == 'u' && value.before != null  && value.after != null && (value.before.stream_content != value.after.stream_content) ) ",   
         "transforms.Unwrap.type": "io.debezium.transforms.ExtractNewRecordState",
         "transforms.Unwrap.operation.header": "true",
         "transforms.Unwrap.drop.tombstones": "true",
