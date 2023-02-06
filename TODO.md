@@ -84,3 +84,5 @@ https://github.com/indexas/backend-api/blob/626dbdef6bf381e3d65ce55e178e3ec205a0
 * Unique Keys
 * Encryption composite
 * Kafka Indexer?
+* Extend schema (Profile, IndexasProfile)
+* Why another statestore?

@@ -1,0 +1,5 @@
+type IndexasProfile @createModel(accountRelation: SINGLE, description: "A basic index.as Profile") {
+  name: String @string(minLength: 3, maxLength: 100)
+  description: String @string(minLength: 3, maxLength: 100)
+  pfp: String @string(maxLength: 100)
+}
