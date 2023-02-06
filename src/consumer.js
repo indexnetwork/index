@@ -17,7 +17,7 @@ const redis = RedisClient.getInstance();
 const topics = {
     'postgres.public.kjzl6hvfrbw6c732vo3usihwsmaudk78by48c6fy7qxxwkmn9yrryza13jyg6kt': 'link',
     'postgres.public.kjzl6hvfrbw6c8mi3r321zv8aujo0pz75u3hd75nmnw8cohfakz650td4c7qxxf': 'index',
-    'postgres.public.kjzl6hvfrbw6c66gro4mkjznzi0hfo4wvex415diivoa7j2jbqfric5bndre7k8': 'user_index'
+    'postgres.public.kjzl6hvfrbw6c9uhr6wtbziqokgadeavvh1y9u7qbs6u3jmwz7nmxexwb0mgj52': 'user_index'
 }
 
 async function start() {
@@ -28,15 +28,15 @@ async function start() {
     //conflicts: "proceed",
     await consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
-
-            let op = message.headers['__debezium-operation'].toString()
-            let model = topics[topic]
-
+            
+            const value = JSON.parse(message.value.toString());
+            
+            const op = value.__op;
+            const model = topics[topic]
             if(!['c', 'u'].includes(op)){
                 return;
             }
 
-            let value = JSON.parse(message.value.toString())
             if(value.stream_content){
                 value.stream_content = JSON.parse(value.stream_content)
             }

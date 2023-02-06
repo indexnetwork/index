@@ -17,21 +17,7 @@ curl -X POST \
 curl -X PUT \
   http://kafkaconnect-service.composedb:8083/connectors/containers-connector/config \
   -H 'Content-Type: application/json' \
-  -d '{
-      "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
-      "plugin.name": "pgoutput",
-      "database.hostname": "postgresql",
-      "database.port": "5432",
-      "database.user": "postgres",
-      "database.password": "wGW9Ck4U7SKgkZjGMqtnab9Q",
-      "database.dbname": "composedb",
-      "database.server.name": "postgres",
-      "decimal.handling.mode": "string",
-      "schema.include.list": "debezium.public.,
-      "key.converter": "org.apache.kafka.connect.json.JsonConverter",
-      "key.converter.schemas.enable": "false",
-      "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-      "value.converter.schemas.enable": "false"
-}'
+  -d 
 
+  
  kubectl run -it --rm debezium-ui --env KAFKA_CONNECT_URIS=http://kafkaconnect-service:8083 --image debezium/debezium-ui:latest

@@ -1,7 +1,10 @@
-postgresqlPassword: "wGW9Ck4U7SKgkZjGMqtnab9Q"
-postgresqlExtendedConf:
-  wal_level: logical
-  max_wal_senders: 1
-  max_replication_slots: 1
+primary:
+  extendedConfiguration: |
+    wal_level= logical
+    max_wal_senders= 10
+    max_replication_slots= 10
 persistence:
-  enabled: false
+  enabled: true
+  size: 8Gi
+auth:
+  postgresPassword: "wGW9Ck4U7SKgkZjGMqtnab9Q"  
