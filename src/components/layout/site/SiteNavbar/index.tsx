@@ -20,6 +20,7 @@ import { selectProfile } from "store/slices/profileSlice";
 import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
 import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
+import IconSettings from "components/base/Icon/IconSettings";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
@@ -109,6 +110,14 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 										<Flex alignItems="center">
 											<IconPeople width={16} height="100%"/>
 											<Text className="ml-3" element="span" size="md" >&nbsp;{t("common:profile")}</Text>
+										</Flex>
+									</DropdownMenuItem>
+									<DropdownMenuItem onClick={() => {
+										router.push("/profile");
+									}}>
+										<Flex alignItems="center">
+											<IconSettings width={20} height="100%"/>
+											<Text className="ml-3" element="span" size="md" >&nbsp;Profile Settings</Text>
 										</Flex>
 									</DropdownMenuItem>
 									{/* <DropdownMenuItem>
