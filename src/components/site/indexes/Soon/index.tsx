@@ -4,8 +4,7 @@ import Row from "components/layout/base/Grid/Row";
 import Image from "next/image";
 import React from "react";
 
-const Soon = ({
-}) => (
+const Soon = () => (
 	<>
 		{
 

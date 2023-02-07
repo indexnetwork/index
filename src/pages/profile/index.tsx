@@ -144,7 +144,9 @@ const CreateIndexPage: NextPageWithLayout = () => {
 																		</div>
 																		<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
 																			{/* <Avatar size={32}
-																				hoverable onClick={() => onImageUpdate(index)}><IconAdd /></Avatar> */}
+																				hoverable onClick={() => onImageUpdate(index)}>
+																				<IconAdd />
+																			</Avatar> */}
 																			<Avatar
 																				size={32}
 																				hoverable onClick={() => onImageRemove(index)}><IconTrash /></Avatar>
