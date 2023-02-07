@@ -4,7 +4,6 @@ import Text from "components/base/Text";
 import React, { useState } from "react";
 import Button from "components/base/Button";
 import IconTag from "components/base/Icon/IconTag";
-import IconStar from "components/base/Icon/IconStar";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
 import { DraggableProvided, DraggableStateSnapshot } from "react-beautiful-dnd";
 import IconDrag from "components/base/Icon/IconDrag";
@@ -138,7 +137,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 												</Button>
 											</Tooltip>
 										</Col>
-										{/*<Col>
+										{/* <Col>
 											<Tooltip content="Favorite">
 												<Button
 													size="xs"
@@ -150,7 +149,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 													<IconStar fill={favorite ? "var(--blue)" : "none"} stroke={favorite ? "var(--blue)" : undefined}/>
 												</Button>
 											</Tooltip>
-										</Col>*/}
+										</Col> */}
 										<Col>
 											<IndexDetailItemPopup onDelete={handleRemove}>
 												<Button

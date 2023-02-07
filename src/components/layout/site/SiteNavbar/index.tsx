@@ -39,7 +39,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 	const {
 		available,
 		name,
-		image,
+		pfp,
 	} = useAppSelector(selectProfile);
 
 	const authenticated = useAuth();
@@ -128,8 +128,8 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 							}
 						>
 							<Avatar className="site-navbar__avatar" hoverable size={32} randomColor>{
-								available && image && image.alternatives ?
-									<img src={image.alternatives[0].src.replace("ipfs://", appConfig.ipfsProxy)} alt="profile_img"/> : (
+								pfp ?
+									<img src={pfp.replace("ipfs://", appConfig.ipfsProxy)} alt="profile_img"/> : (
 										available && name ? name : "Y"
 									)}</Avatar>
 						</Dropdown>

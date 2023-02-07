@@ -41,7 +41,6 @@ import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import IconStar from "components/base/Icon/IconStar";
 import Tooltip from "components/base/Tooltip";
-import Header from "components/base/Header";
 import Soon from "components/site/indexes/Soon";
 
 const IndexDetailPage: NextPageWithLayout = () => {
@@ -234,22 +233,22 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<Col className="mr-1">
 													<Tooltip content="Add to Starred Index">
 														<Button
-														theme="clear"
-														borderless>
-														<IconStar className="mr-3" width={20} height={20} />
+															theme="clear"
+															borderless>
+															<IconStar className="mr-3" width={20} height={20} />
 														</Button>
 													</Tooltip>
 												</Col>
 												<Col className="ml-1">
 													<Button
-													theme="clear"
-													borderless>
-													<IndexOperationsPopup
-														isOwner={isOwner}
-														streamId={index.id!}
-														mode="indexes-page"
-														onDelete={handleDelete}
-													></IndexOperationsPopup>
+														theme="clear"
+														borderless>
+														<IndexOperationsPopup
+															isOwner={isOwner}
+															streamId={index.id!}
+															mode="indexes-page"
+															onDelete={handleDelete}
+														></IndexOperationsPopup>
 													</Button>
 												</Col>
 											</FlexRow>
@@ -271,48 +270,48 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												</Col>
 											</FlexRow>
 											<FlexRow>
-											{tabKey==="index" ?
-												<>
-												
-													<Col
-														className="idxflex-grow-1 mr-5 mt-2"
-													>
-														<SearchInput
-															loading={loading}
-															onSearch={setSearch}
-															debounceTime={400}
-															showClear
-															placeholder={t("pages:home.searchLink")} />
-													</Col>
-													<Col>
-														<ButtonGroup
-															theme="clear"
-															className="mt-2"
+												{tabKey === "index" ?
+													<>
+
+														<Col
+															className="idxflex-grow-1 mr-5 mt-2"
 														>
-															<FilterPopup>
-																<Button
-																	size={"xl"}
-																	group
-																	iconButton
-																>
-																	<IconFilter width={20} height={20} stroke="var(--gray-4)" /></Button>
-															</FilterPopup>
-															<SortPopup>
-																<Button
-																	size={"xl"}
-																	group
-																	iconButton
-																><IconSort width={20} height={20} stroke="var(--gray-4)" /></Button>
-															</SortPopup>
-														</ButtonGroup>
-													</Col>
-													
-												</>
-												: <Col></Col>}
+															<SearchInput
+																loading={loading}
+																onSearch={setSearch}
+																debounceTime={400}
+																showClear
+																placeholder={t("pages:home.searchLink")} />
+														</Col>
+														<Col>
+															<ButtonGroup
+																theme="clear"
+																className="mt-2"
+															>
+																<FilterPopup>
+																	<Button
+																		size={"xl"}
+																		group
+																		iconButton
+																	>
+																		<IconFilter width={20} height={20} stroke="var(--gray-4)" /></Button>
+																</FilterPopup>
+																<SortPopup>
+																	<Button
+																		size={"xl"}
+																		group
+																		iconButton
+																	><IconSort width={20} height={20} stroke="var(--gray-4)" /></Button>
+																</SortPopup>
+															</ButtonGroup>
+														</Col>
+
+													</> :
+													<Col></Col>}
 											</FlexRow>
 										</Col>
 										{
-											tabKey==="index" && isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
+											tabKey === "index" && isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
 												<LinkInput
 													loading={crawling}
 													onLinkAdd={handleAddLink}
@@ -320,31 +319,31 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											</Col>
 										}
 									</FlexRow>
-									{tabKey === "index" ? 
-									<FlexRow
-										justify="center"
-									>
+									{tabKey === "index" ?
+										<FlexRow
+											justify="center"
+										>
 
-										<Col xs={12} lg={9}>
-											<IndexDetailsList
-												search={search}
-												isOwner={isOwner}
-												index_id={router.query.id as any}
+											<Col xs={12} lg={9}>
+												<IndexDetailsList
+													search={search}
+													isOwner={isOwner}
+													index_id={router.query.id as any}
 												// onChange={handleReorderLinks}
-											/>
-										</Col>
+												/>
+											</Col>
 
-										<Col xs={12} lg={9}>
-										</Col>
-									</FlexRow>
-									: <Col></Col>}
+											<Col xs={12} lg={9}>
+											</Col>
+										</FlexRow> :
+										<Col></Col>}
 
-									{tabKey === "index" ? 
-									<Col></Col> :
-									<FlexRow justify="center">
-										<Soon></Soon>
-									</FlexRow>
-									
+									{tabKey === "index" ?
+										<Col></Col> :
+										<FlexRow justify="center">
+											<Soon></Soon>
+										</FlexRow>
+
 									}
 								</>
 							)

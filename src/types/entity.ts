@@ -2,7 +2,6 @@
  * Model indexes
  *
  */
-import {bool} from "yup";
 
 export type Indexes = {
   id: string
@@ -62,7 +61,7 @@ export interface Users {
   pfp?: string;
   created_at?: Date;
   updated_at?: Date;
-  available?: boolean; //TODO debug
+  available?: boolean; // TODO debug
 }
 
 export interface LinkContentResult {

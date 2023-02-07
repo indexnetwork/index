@@ -46,7 +46,6 @@ const CreateIndexPage: NextPageWithLayout = () => {
 				setLoading(true);
 				const result = await handleUploadImage();
 				if (result) {
-
 					values.pfp = `ipfs://${result.path}`;
 				}
 				const { available, ...rest } = values;
@@ -134,7 +133,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 												{...dragProps}>
 												{
 													// eslint-disable-next-line no-nested-ternary
-													imageList.length === 0 && !profile.image ?
+													imageList.length === 0 && !profile.pfp ?
 														<div className="img-upload__banner"><Text fontWeight={600}
 															theme="white">Click or Drop Image</Text></div> : (
 															imageList.length !== 0 ? (
@@ -145,7 +144,9 @@ const CreateIndexPage: NextPageWithLayout = () => {
 																		</div>
 																		<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
 																			{/* <Avatar size={32}
-																				hoverable onClick={() => onImageUpdate(index)}><IconAdd /></Avatar> */}
+																				hoverable onClick={() => onImageUpdate(index)}>
+																				<IconAdd />
+																			</Avatar> */}
 																			<Avatar
 																				size={32}
 																				hoverable onClick={() => onImageRemove(index)}><IconTrash /></Avatar>
@@ -156,7 +157,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 																<>
 																	<div className="img-upload-img">
 																		<img className="img-upload-img__img"
-																			src={profile!.image!.alternatives![0].src.replace("ipfs://", appConfig.ipfsProxy)} alt="" />
+																			src={profile.pfp?.replace("ipfs://", appConfig.ipfsProxy)} alt="" />
 																	</div>
 																	<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
 																		{/* <Avatar size={32}

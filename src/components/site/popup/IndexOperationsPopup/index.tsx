@@ -4,10 +4,7 @@ import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
 import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
-import IconEmbed from "components/base/Icon/IconEmbed";
 import IconCopy from "components/base/Icon/IconCopy";
-import IconLink1 from "components/base/Icon/IconLink1";
-import IconTrash from "components/base/Icon/IconTrash";
 import Button from "components/base/Button";
 import api from "services/api-service";
 import { useOwner } from "hooks/useOwner";
@@ -82,13 +79,13 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 						<Text className="ml-3" element="span" size="sm" theme="secondary"> Integrations</Text>
 					</Flex>
 				</DropdownMenuItem> */}
-					{/*<DropdownMenuItem>
+					{/* <DropdownMenuItem>
 						<Flex alignItems="center">
 							<IconEmbed width={16} height="100%" />
 							<Text className="ml-3" element="span" size="md" theme="primary"> Embed</Text>
 						</Flex>
 					</DropdownMenuItem>
-					
+
 					<DropdownMenuItem
 						onClick={handleClone}
 					>
