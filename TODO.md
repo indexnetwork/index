@@ -79,10 +79,11 @@ https://github.com/indexas/backend-api/blob/626dbdef6bf381e3d65ce55e178e3ec205a0
 
 - Requests from composedb
 
-* Cryptographically verifiable updated_at, created_at, deleted_at
+* Urgent: Cryptographically verifiable updated_at, created_at, deleted_at
 * Sorting & Filtering
-* Unique Keys
+* Unique Keys. Eh.
 * Encryption composite
 * Kafka Indexer?
 * Extend schema (Profile, IndexasProfile)
 * Why another statestore?
+* I should be able to filter models by searching column names. 

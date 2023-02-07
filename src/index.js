@@ -47,9 +47,15 @@ const linkSearchSchema = Joi.object({
   take: Joi.number().default(10),
 })
 
+const userIndexSchema = Joi.object({
+  did: Joi.string().required(),
+  index_id: Joi.string().min(40).default(false),
+})
+
 app.post('/search/did', validator.body(didSearchSchema), search.did)
 app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
 app.post('/search/links', validator.body(linkSearchSchema), search.link)
+app.post('/search/user_index', validator.body(userIndexSchema), search.user_index)
 
 
 const crawlSchema = Joi.object({

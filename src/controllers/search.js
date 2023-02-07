@@ -306,7 +306,9 @@ exports.did = async (req, res) => {
 
     const {did, search, skip, take, links_size} = req.body;
     
-    const index_ids = await redis.sMembers(`user_index:by_did:${did}`)
+    const indexes = await redis.hGetAll(`user_index:by_did:${did}`)
+
+    const index_ids = indexes.map(i => i.index_id)
 
     const query = indexesWithLinksQuery(index_ids, search, skip, take, links_size);
     const result = await client.search(query);
@@ -359,5 +361,17 @@ exports.link = async (req, res, next) => {
     };
 
     res.json(response)
+};
+
+
+exports.user_index = async (req, res, next) => {
+
+    const { did, index_id } = req.body;
+    
+    let response = await redis.hGetAll(`user_index:by_did:${did}`)
+    
+    res.json(Object.values(response).map(r => JSON.parse(r)))
+    
+
 };
 
