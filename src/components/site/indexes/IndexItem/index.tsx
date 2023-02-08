@@ -26,6 +26,8 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 	updated_at,
 	links,
 	hasSearch = false,
+	is_in_my_indexes = false,
+	is_starred = false,
 	onClick,
 	onDelete,
 }) => <Row
@@ -53,6 +55,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 			<Header onClick={onClick} className={cm.title} dangerouslySetInnerHTML={{ __html: sanitize(title || "") }}></Header>
 			<IndexOperationsPopup
 				streamId={id}
+				is_in_my_indexes={is_in_my_indexes}
 				onDelete={onDelete}
 			/>
 		</Flex>

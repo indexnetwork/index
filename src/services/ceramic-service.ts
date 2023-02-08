@@ -272,7 +272,7 @@ class CeramicService2 {
 		const userIndex = {
 			index_id,
 			created_at: getCurrentDateTime(),
-			type: "my_indexes",
+			type: "starred",
 		};
 		const payload = {
 			content: userIndex,

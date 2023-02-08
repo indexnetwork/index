@@ -12,8 +12,14 @@ export interface IndexResponse extends Indexes {
   highlight?: HighlightType;
 }
 export interface IndexSearchResponse {
-	totalCount: number;
-	records: Indexes[];
+	starred?: {
+		totalCount: number;
+		records: Indexes[];
+	},
+	my_indexes?: {
+		totalCount: number;
+		records: Indexes[];
+	}
 }
 
 export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
@@ -29,6 +35,7 @@ export interface DidSearchRequestBody extends ApiSearchRequestBody<{}> {
 	take: number;
 	search?: string;
 	links_size?: number;
+	type?: string;
 }
 export interface DidSearchResponse {
 	totalCount: number;
@@ -103,6 +110,16 @@ class ApiService {
 			return false;
 		}
 	}
+	/*
+	async getUserIndexes(body: GetUserIndexesRequestBody): Promise<UserIndexResponse | null> {
+		try {
+			const { data } = await apiAxios.post<UserIndexResponse>(API_ENDPOINTS.GET_USER_INDEXES, body);
+			return data;
+		} catch (err) {
+			return null;
+		}
+	}
+	*/
 
 	async crawlLink(url: string): Promise<Links | null> {
 		try {

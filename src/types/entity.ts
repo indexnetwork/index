@@ -11,6 +11,8 @@ export type Indexes = {
   created_at: string;
   updated_at: string;
   links: Links[];
+  is_in_my_indexes: boolean;
+  is_starred: boolean;
 };
 
 /**
