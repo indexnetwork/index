@@ -51,8 +51,8 @@ const IndexesPage: NextPageWithLayout = () => {
 		router.push(`/${router.query.did}/${itm.id}`);
 	}, []);
 
-	const handleDelete = () => {
-		// getData(undefined, true);
+	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
+		console.log(index_id, type, op);
 	};
 
 	useEffect(() => {
@@ -169,7 +169,7 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
-									onDelete={handleDelete}
+									userIndexToggle={handleUserIndexToggle}
 									{...itm}
 								/>}
 								divided
@@ -186,7 +186,7 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
-									onDelete={handleDelete}
+									userIndexToggle={handleUserIndexToggle}
 									{...itm}
 								/>}
 								divided

@@ -6,57 +6,25 @@ import React from "react";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
 import IconCopy from "components/base/Icon/IconCopy";
 import Button from "components/base/Button";
-import api from "services/api-service";
 import { useOwner } from "hooks/useOwner";
-import { useCeramic } from "hooks/useCeramic";
-import { useRouter } from "next/router";
 import { copyToClipboard } from "utils/helper";
 import IconRemove from "components/base/Icon/IconRemove";
 
 export interface IndexOperationsPopupProps {
+	is_in_my_indexes: boolean,
 	streamId: string;
 	mode?: "indexes-page" | "index-detail-page";
 	isOwner?: boolean;
-	onDelete(streamId?: string): void;
-	onClone?(streamId?: string): void;
+	userIndexToggle(index_id: string, type: string, op: string): void;
 }
 
 const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 	streamId,
+	is_in_my_indexes = false,
 	mode = "indexes-page",
-	onDelete,
-	onClone,
+	userIndexToggle,
 }) => {
-	const { isOwner, did } = useOwner();
-	const ceramic = useCeramic();
-	const router = useRouter();
-
-	const handleDelete = async () => {
-		const result = await api.deleteIndex(streamId);
-		if (result) {
-			onDelete && onDelete(streamId);
-		}
-	};
-
-	const handleClone = async () => {
-		/*
-		const originalDoc = await ceramic.getIndexById(streamId!);
-
-		const content = { ...originalDoc.content };
-		content.clonedFrom = streamId!;
-		content.did = did!;
-
-		delete (content as any).did;
-		delete (content as any).streamId;
-
-		const doc = await ceramic.createIndex(content);
-		onClone && onClone();
-		if (doc != null) {
-			router.push(`/${did}/${doc.streamId.toString()}`);
-		}
-		 */
-	};
-
+	const { isOwner } = useOwner();
 	return (
 		<Dropdown
 			menuClass="index-list-item-menu ml-6"
@@ -104,19 +72,34 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 						</Flex>
 					</DropdownMenuItem>
 					{
-						isOwner && <>
-							<DropdownMenuItem divider />
-							<DropdownMenuItem
-								onClick={handleDelete}
-							>
-								<Flex alignItems="center">
-									<IconRemove />
-									<Text className="ml-3" element="span" size="md" >Remove</Text>
-								</Flex>
-							</DropdownMenuItem>
-						</>
+						isOwner && (
+							is_in_my_indexes ? (
+								<>
+									<DropdownMenuItem divider />
+									<DropdownMenuItem
+										onClick={() => userIndexToggle(streamId, "my_indexes", "remove")}
+									>
+										<Flex alignItems="center">
+											<IconRemove />
+											<Text className="ml-3" element="span" size="md" >Remove from my indexes</Text>
+										</Flex>
+									</DropdownMenuItem>
+								</>
+							) : (
+								<>
+									<DropdownMenuItem divider />
+									<DropdownMenuItem
+										onClick={() => userIndexToggle(streamId, "my_indexes", "add")}
+									>
+										<Flex alignItems="center">
+											<IconRemove />
+											<Text className="ml-3" element="span" size="md" >Add to my indexes</Text>
+										</Flex>
+									</DropdownMenuItem>
+								</>
+							)
+						)
 					}
-
 				</>
 			}
 		>

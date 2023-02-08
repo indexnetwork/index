@@ -26,9 +26,6 @@ import IndexTitleInput from "components/site/input/IndexTitleInput";
 import { useCeramic } from "hooks/useCeramic";
 import { useMergedState } from "hooks/useMergedState";
 import moment from "moment";
-import { copyToClipboard } from "utils/helper";
-import IconLink1 from "components/base/Icon/IconLink1";
-import IconCopy from "components/base/Icon/IconCopy";
 import SearchInput from "components/base/SearchInput";
 import NotFound from "components/site/indexes/NotFound";
 import { useOwner } from "hooks/useOwner";
@@ -95,8 +92,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setTitleLoading(false);
 	};
 
-	const handleDelete = () => {
-		router.push(`/${did}`);
+	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
+		console.log(index_id, type, op);
 	};
 	const handleAddLink = async (urls: string[]) => {
 		setCrawling(true);
@@ -114,28 +111,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setCrawling(false);
 	};
 
-	const handleReorderLinks = async (ls: Links[]) => {
-
-	};
-
-	const handleClone = async () => {
-		/*
-		const originalDoc = await ceramic.getIndexById(index.id!);
-
-		const content = { ...originalDoc.content };
-		content.clonedFrom = stream.streamId!;
-
-		delete (content as any).did;
-		delete (content as any).streamId;
-
-		const doc = await ceramic.createIndex(content);
-
-		if (doc != null) {
-			router.push(`/${did}/${doc.streamId.toString()}`);
-		}
-
-		 */
-	};
 	useEffect(() => {
 		const { id } = router.query;
 		if (router.query) {
@@ -188,7 +163,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											lg={9}
 											className="pb-0"
 										>
-
 											<FlexRow>
 												<Col
 													className="idxflex-grow-1 mr-5"
@@ -200,40 +174,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 														loading={titleLoading}
 													/>
 												</Col>
-												<Col>
-
-													{
-
-														false ? (
-															(did || "").toLowerCase() === router.query.did ? (
-																<Button
-																	addOnBefore
-																	size="sm"
-																	theme="clear"
-																	onClick={() => {
-																		copyToClipboard(window.location.href);
-																	}}
-																>
-																	<IconLink1 stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Copy
-																</Button>
-															) : (
-																<Button
-																	addOnBefore
-																	size="sm"
-																	theme="clear"
-																	onClick={handleClone}
-																>
-																	<IconCopy stroke="var(--gray-4)" width={12} strokeWidth={"1.5"} />Clone
-																</Button>
-															)
-														) : null
-													}
-
-												</Col>
 												<Col className="mr-1">
 													<Tooltip content="Add to Starred Index">
 														<Button
 															theme="clear"
+															onClick={() => handleUserIndexToggle(index.id!, "star", index.is_starred ? "remove" : "add") }
 															borderless>
 															<IconStar className="mr-3" width={20} height={20} />
 														</Button>
@@ -246,8 +191,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 														<IndexOperationsPopup
 															isOwner={isOwner}
 															streamId={index.id!}
+															is_in_my_indexes={index.is_in_my_indexes} // TODO-user_index
 															mode="indexes-page"
-															onDelete={handleDelete}
+															userIndexToggle={handleUserIndexToggle}
 														></IndexOperationsPopup>
 													</Button>
 												</Col>
