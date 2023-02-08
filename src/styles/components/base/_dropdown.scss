@@ -62,7 +62,7 @@
 		}
 
 		.dropdown-menu-item {
-			padding: 3 * map-deep-get($spacing, "xs", "2") map-deep-get($spacing, "xs", "7");
+			padding: 3 * map-deep-get($spacing, "xs", "2") map-deep-get($spacing, "xs", "5");
 			cursor: pointer;
 			&:hover {
 				background-color: $hover-color;
