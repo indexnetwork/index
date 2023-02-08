@@ -111,7 +111,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 						<Header className="mb-3" >{name}</Header>
 						<Text>lorem ipsum</Text>
 						<Col className="mt-4"></Col>
-						<Text >lorem ipsum</Text>
+						<Text>lorem ipsum</Text>
 					</Col>
 					</Flex>
 					</Col>
