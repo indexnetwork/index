@@ -19,8 +19,8 @@ import { useAuth } from "hooks/useAuth";
 import { selectProfile } from "store/slices/profileSlice";
 import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
-import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
 import IconSettings from "components/base/Icon/IconSettings";
+import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";

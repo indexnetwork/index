@@ -3,7 +3,7 @@ import React, {
 } from "react";
 import ceramicService from "services/ceramic-service";
 import {
-	Indexes, LinkContentResult, Links, Users, UserIndex
+	Indexes, LinkContentResult, Links, Users, UserIndex,
 } from "types/entity";
 import { CID } from "ipfs-http-client";
 

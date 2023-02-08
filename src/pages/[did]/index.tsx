@@ -22,7 +22,7 @@ import { Tabs } from "../../components/base/Tabs";
 import TabPane from "../../components/base/Tabs/TabPane";
 
 import IndexItem from "../../components/site/indexes/IndexItem";
-import {useCeramic} from "../../hooks/useCeramic";
+import { useCeramic } from "../../hooks/useCeramic";
 
 export interface IndexListState {
 	my_indexes?: {

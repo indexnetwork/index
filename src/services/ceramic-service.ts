@@ -272,7 +272,7 @@ class CeramicService2 {
 			created_at: getCurrentDateTime(),
 			type,
 		};
-		console.log("add" ,userIndex);
+		console.log("add", userIndex);
 		const payload = {
 			content: userIndex,
 		};
