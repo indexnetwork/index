@@ -117,7 +117,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 								>
 									<FlexRow>
 									<Col>
-									<Text theme={"primary"} size="md">Profile Image</Text>
+									<Text >Profile Image</Text>
 									<ImageUploading
 										value={images}
 										onChange={onChange}

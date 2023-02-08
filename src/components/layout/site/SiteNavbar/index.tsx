@@ -105,7 +105,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 							menuItems={
 								<>
 									<DropdownMenuItem onClick={() => {
-										router.push("/profile");
+										router.push("/profile/view");
 									}}>
 										<Flex alignItems="center">
 											<IconPeople width={16} height="100%"/>
