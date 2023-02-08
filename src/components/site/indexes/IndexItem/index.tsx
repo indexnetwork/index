@@ -65,7 +65,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 					<Button
 						theme="clear"
 						borderless
-						onClick={() => userIndexToggle(id,"star", is_starred ? "remove" : "add") }>
+						onClick={() => userIndexToggle(id,"starred", is_starred ? "remove" : "add") }>
 						<IconStar fill={is_starred ? "var(--main)" : "var(--white)"} width={20} height={20} />
 					</Button>
 				</Tooltip>

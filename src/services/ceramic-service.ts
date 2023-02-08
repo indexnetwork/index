@@ -1,15 +1,14 @@
 import moment from "moment";
-
 import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
-
 import {
-	Indexes, LinkContentResult, Links, UserIndex, Users,
+	Indexes, Links, UserIndex, Users,
 } from "types/entity";
 import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
+import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 import { definition } from "../types/merged-runtime";
 import { appConfig } from "../config";
 
@@ -28,7 +27,6 @@ class CeramicService2 {
 	async authenticate(did: any) {
 		if (!isSSR()) {
 			try {
-				console.log(did);
 				await this.ceramic.setDID(did);
 				await this.composeClient.setDID(did);
 				return true;
@@ -122,7 +120,7 @@ class CeramicService2 {
 			// TODO Handle
 		}
 		const index = data?.createIndex.document;
-		await this.addMyIndexes(index!.id);
+		await this.addUserIndex(index!.id, "user_index");
 		return index!;
 	}
 
@@ -268,12 +266,13 @@ class CeramicService2 {
 		 */
 	}
 
-	async addMyIndexes(index_id: string): Promise<UserIndex> {
+	async addUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
 		const userIndex = {
 			index_id,
 			created_at: getCurrentDateTime(),
-			type: "starred",
+			type,
 		};
+		console.log("add" ,userIndex);
 		const payload = {
 			content: userIndex,
 		};
@@ -297,30 +296,43 @@ class CeramicService2 {
 		return data?.createUserIndex.document!;
 	}
 
-	async removeMyIndexes(index_id: string) {
-		/*
-		link.updated_at = getCurrentDateTime();
+	async removeUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
+		console.log("remove", index_id, this.ceramic.did?.parent!, type);
+		const userIndexes = await api.getUserIndexes({
+			index_id,
+			did: this.ceramic.did?.parent!,
+		} as GetUserIndexesRequestBody) as UserIndexResponse;
+		type UserIndexKey = keyof typeof userIndexes;
+
+		if (!userIndexes[type as UserIndexKey]) {
+			return;
+		}
+
 		const payload = {
-			id: link_id,
-			content: link,
+			id: userIndexes[type as UserIndexKey].id,
+			content: {
+				deleted_at: getCurrentDateTime(),
+			},
 		};
-		const response = await this.composeClient.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
-			mutation UpdateLink($input: UpdateLinkInput!) {
+		const { data, errors } = await this.composeClient.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
+			mutation UpdateUserIndex($input: UpdateUserIndexInput!) {
 				updateUserIndex(input: $input) {
 					document {
 						id
 						index_id
-						url
-						title
-						tags
-						favicon
+						owner {
+							id
+						}
+						created_at
+						deleted_at
 					}
 				}
 			}`, { input: payload });
 
-		return response.data.updateLink.document as Links;
-
-		 */
+		if (errors) {
+			// TODO Handle
+		}
+		return data?.updateUserIndex.document!;
 	}
 
 	async getProfile(): Promise<Users> {

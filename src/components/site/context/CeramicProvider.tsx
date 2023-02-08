@@ -3,7 +3,7 @@ import React, {
 } from "react";
 import ceramicService from "services/ceramic-service";
 import {
-	Indexes, LinkContentResult, Links, Users,
+	Indexes, LinkContentResult, Links, Users, UserIndex
 } from "types/entity";
 import { CID } from "ipfs-http-client";
 
@@ -23,6 +23,8 @@ export interface CeramicContextValue {
 	getProfile(): Promise<Users | null | any>;
 	setProfile(profile: Users): Promise<Users | null | any>;
 	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
+	addUserIndex(index_id: string, type: string): Promise<UserIndex | undefined>;
+	removeUserIndex(index_id: string, type: string): Promise<UserIndex | undefined>;
 
 }
 
@@ -79,6 +81,9 @@ const CeramicProvider: React.FC<{}> = ({
 
 	const uploadImage = async (file: File) => ceramicService.uploadImage(file);
 
+	const addUserIndex = async (index_id: string, type: string) => ceramicService.addUserIndex(index_id, type);
+	const removeUserIndex = async (index_id: string, type: string) => ceramicService.removeUserIndex(index_id, type);
+
 	return (
 		<CeramicContext.Provider value={{
 			syncedData,
@@ -92,6 +97,8 @@ const CeramicProvider: React.FC<{}> = ({
 			removeLink,
 			removeTag,
 			uploadImage,
+			addUserIndex,
+			removeUserIndex,
 		}}>
 			{children}
 		</CeramicContext.Provider>

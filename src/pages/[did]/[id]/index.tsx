@@ -76,6 +76,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const loadIndex = async (id: string) => {
 		const doc = await ceramic.getIndexById(id);
+
+		doc.is_in_my_indexes = false;
+		doc.is_starred = false;
+
 		if (doc != null) {
 			setIndex(doc);
 		} else {
@@ -93,7 +97,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
-		console.log(index_id, type, op);
+		if (op === "add") {
+			ceramic.addUserIndex(index_id, type);
+		} else {
+			ceramic.removeUserIndex(index_id, type);
+		}
 	};
 	const handleAddLink = async (urls: string[]) => {
 		setCrawling(true);
@@ -178,9 +186,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 													<Tooltip content="Add to Starred Index">
 														<Button
 															theme="clear"
-															onClick={() => handleUserIndexToggle(index.id!, "star", index.is_starred ? "remove" : "add") }
+															onClick={() => handleUserIndexToggle(index.id!, "starred", index.is_starred ? "remove" : "add") }
 															borderless>
-															<IconStar className="mr-3" width={20} height={20} />
+															<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} className="mr-3" width={20} height={20} />
 														</Button>
 													</Tooltip>
 												</Col>
@@ -191,7 +199,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 														<IndexOperationsPopup
 															isOwner={isOwner}
 															streamId={index.id!}
-															is_in_my_indexes={index.is_in_my_indexes} // TODO-user_index
+															is_in_my_indexes={index.is_in_my_indexes!} // TODO-user_index
 															mode="indexes-page"
 															userIndexToggle={handleUserIndexToggle}
 														></IndexOperationsPopup>

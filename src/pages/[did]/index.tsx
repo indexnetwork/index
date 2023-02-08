@@ -22,6 +22,7 @@ import { Tabs } from "../../components/base/Tabs";
 import TabPane from "../../components/base/Tabs/TabPane";
 
 import IndexItem from "../../components/site/indexes/IndexItem";
+import {useCeramic} from "../../hooks/useCeramic";
 
 export interface IndexListState {
 	my_indexes?: {
@@ -43,15 +44,22 @@ const IndexesPage: NextPageWithLayout = () => {
 	const [search, setSearch] = useState("");
 	const [loading, setLoading] = useState(false);
 	const { isOwner, did } = useOwner();
+
 	const [init, setInit] = useState(true);
 
 	const take = 10;
+	const ceramic = useCeramic();
 	const router = useRouter();
 	const handleClick = useCallback((itm: Indexes) => async () => {
 		router.push(`/${router.query.did}/${itm.id}`);
 	}, []);
 
-	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
+	const handleUserIndexToggle = async (index_id: string, type: string, op: string) => {
+		if (op === "add") {
+			await ceramic.addUserIndex(index_id, type);
+		} else {
+			await ceramic.removeUserIndex(index_id, type);
+		}
 		console.log(index_id, type, op);
 	};
 

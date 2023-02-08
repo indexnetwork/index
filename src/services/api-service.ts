@@ -1,7 +1,7 @@
 import axios from "axios";
 import { appConfig } from "config";
 import {
-	Indexes, LinkContentResult, Links, SyncCompleteResult,
+	Indexes, LinkContentResult, Links, SyncCompleteResult, UserIndex,
 } from "types/entity";
 import { API_ENDPOINTS } from "utils/constants";
 
@@ -29,6 +29,11 @@ export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
 	search?: string;
 }
 
+export interface GetUserIndexesRequestBody {
+	did: string;
+	index_id: string;
+}
+
 export interface DidSearchRequestBody extends ApiSearchRequestBody<{}> {
 	did: string;
 	skip: number;
@@ -45,6 +50,10 @@ export interface DidSearchResponse {
 export interface LinkSearchResponse {
 	totalCount: number;
 	records: Links[];
+}
+export interface UserIndexResponse {
+	my_indexes?: UserIndex;
+	starred?: UserIndex;
 }
 
 export type SortType = "asc" | "desc";
@@ -110,16 +119,15 @@ class ApiService {
 			return false;
 		}
 	}
-	/*
-	async getUserIndexes(body: GetUserIndexesRequestBody): Promise<UserIndexResponse | null> {
+
+	async getUserIndexes(body: GetUserIndexesRequestBody): Promise<UserIndexResponse | undefined> {
 		try {
 			const { data } = await apiAxios.post<UserIndexResponse>(API_ENDPOINTS.GET_USER_INDEXES, body);
 			return data;
 		} catch (err) {
-			return null;
+			// TODO handle;
 		}
 	}
-	*/
 
 	async crawlLink(url: string): Promise<Links | null> {
 		try {
