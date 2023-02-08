@@ -98,14 +98,14 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			{
 				authenticated ? (
 					<NavbarMenu>
-						<Button onClick={() => { setCreateModalVisible(true); }} theme="primary">{t("components:header.newIndexBtn")}</Button>
+						<Button className="pr-5 pl-5" onClick={() => { setCreateModalVisible(true); }} theme="primary">{t("components:header.newIndexBtn")}</Button>
 						<Dropdown
 							dropdownClass="ml-6"
 							position="bottom-right"
 							menuItems={
 								<>
 									<DropdownMenuItem onClick={() => {
-										router.push("/profile");
+										router.push("/profile/view");
 									}}>
 										<Flex alignItems="center">
 											<IconPeople width={16} height="100%"/>

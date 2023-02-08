@@ -99,7 +99,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 						copyToClipboard(`${window.location.href}`);
 					}}>
 						<Flex alignItems="center">
-							<IconCopy width={20} height="100%" />
+							<IconCopy />
 							<Text className="ml-3" element="span" size="md" > Copy Link</Text>
 						</Flex>
 					</DropdownMenuItem>
@@ -110,7 +110,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 								onClick={handleDelete}
 							>
 								<Flex alignItems="center">
-									<IconRemove width={20} height="100%" className="icon-error" />
+									<IconRemove />
 									<Text className="ml-3" element="span" size="md" >Remove</Text>
 								</Flex>
 							</DropdownMenuItem>
