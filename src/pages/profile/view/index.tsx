@@ -30,6 +30,7 @@ import { Users } from "../../types/entity";
 import IconEdit from "components/base/Icon/IconEdit";
 import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
+import IconEditBlack from "components/base/Icon/IconEditBlack";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -96,7 +97,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 					<Col pullRight>
 						<Button onClick={() => {
 							router.push("/profile");
-						}} theme="clear"><IconEdit /> Edit Profile</Button>
+						}} theme="clear"><IconEditBlack /><Text className="ml-2"> Edit Profile</Text></Button>
 					</Col>
 					<Col>
 					<Flex>
