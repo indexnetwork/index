@@ -272,6 +272,7 @@ class CeramicService2 {
 		const userIndex = {
 			index_id,
 			created_at: getCurrentDateTime(),
+			type: "my_indexes",
 		};
 		const payload = {
 			content: userIndex,
@@ -369,51 +370,6 @@ class CeramicService2 {
 		} catch (err) {
 			//
 		}
-	}
-
-	// @ts-ignore
-	async syncContents(providedContent?: LinkContentResult): Promise<number | null> {
-		/*
-		try {
-			const contents = providedContent ? [providedContent] : (await api.findLinkContent());
-
-			if (contents && contents.length > 0) {
-				const docs = await this.getIndexes(contents.map((c) => ({ streamId: c.streamId })));
-				if (docs) {
-					Object.keys(docs).forEach((sId) => {
-						const newContent = contents.find((c) => c.streamId === sId);
-						const tileDoc = docs[sId];
-						if (newContent) {
-							const { content } = tileDoc;
-							if (content.links) {
-								let contentChange = false;
-								newContent.links?.forEach((l, i) => {
-									const oldLink = content.links.find((nl) => nl.id === l.id!);
-									if (oldLink) {
-										content.links[i].content = l.content;
-										contentChange = true;
-									}
-								});
-
-								if (contentChange) {
-									tileDoc.update(content, undefined, {
-										publish: true,
-									});
-								}
-							}
-						}
-					});
-					const ids = contents.filter((x) => !!x.id).map((x) => x.id!);
-					const syncResult = await api.completeSync(ids);
-					return syncResult && syncResult.deletedCount;
-				}
-			}
-			return null;
-		} catch (err) {
-			return null;
-		}
-
-		 */
 	}
 
 	async close() {
