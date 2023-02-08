@@ -185,6 +185,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<Col className="mr-1">
 													<Tooltip content="Add to Starred Index">
 														<Button
+															size="md"
+															iconButton
 															theme="clear"
 															onClick={() => handleUserIndexToggle(index.id!, "starred", index.is_starred ? "remove" : "add") }
 															borderless>
@@ -194,6 +196,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												</Col>
 												<Col className="ml-1">
 													<Button
+														size="md"
+														iconButton
 														theme="clear"
 														borderless>
 														<IndexOperationsPopup

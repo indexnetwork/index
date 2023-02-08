@@ -69,7 +69,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 							alignItems="center"
 
 						>
-							<Flex flexDirection="column" flexWrap="wrap" flexGrow={1} className="ml-2">
+							<Flex flexDirection="column" flexWrap="wrap" flexGrow={1} className="ml-3">
 								<Text size="lg">Title</Text>
 							</Flex>
 						</Flex>
@@ -82,14 +82,14 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 									onKeyDown={handleEnter}
 									onChange={handleChange}
 									// loading={loading}
-									className="mt-3 ml-2 mr-2"
+									className="mt-3 ml-3 mr-2"
 									placeholder="e.g. Curation Over Curation"
 								/>
 							</Flex>
 						</Col>
 						<Col pullLeft>
 							<Button
-								className="mt-7 pl-8 pr-8 ml-2"
+								className="mt-7 pl-8 pr-8 ml-3"
 								size="lg"
 								theme="clear"
 								onClick={handleClose}

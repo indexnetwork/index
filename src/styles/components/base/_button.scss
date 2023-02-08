@@ -124,6 +124,12 @@
 			height: 1.6rem;
 		}
 	}
+	&.btn-icon.btn-md {
+		svg {
+			width: 2.0rem;
+			height: 2.0rem;
+		}
+	}
 
 	&.btn-icon.btn-sm {
 		padding: .6rem;
