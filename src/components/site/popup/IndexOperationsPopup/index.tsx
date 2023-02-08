@@ -111,7 +111,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 							>
 								<Flex alignItems="center">
 									<IconRemove />
-									<Text className="ml-3" element="span" size="md" >Remove</Text>
+									<Text className="ml-3" element="span" size="md" theme="error">Remove</Text>
 								</Flex>
 							</DropdownMenuItem>
 						</>
