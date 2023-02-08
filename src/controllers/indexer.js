@@ -180,16 +180,14 @@ module.exports.updateLinkContent = async (url, content) => {
     })  
 }
 
-
 module.exports.createUserIndex = async (user_index) => {
     console.log("createUserIndex", user_index)
-    await redis.hSet(`user_index:by_did:${user_index.controller_did}`, user_index.index_id,  JSON.stringify(user_index))
-    
+    await redis.hSet(`user_indexes:by_did:${user_index.controller_did}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))   
 }
 
 module.exports.updateUserIndex = async (user_index) => {
     console.log("updateUserIndex", user_index)
     if(user_index.deleted_at){
-        await redis.hRem(`user_index:by_did:${user_index.controller_did}`, user_index.index_id)
+        await redis.hDel(`user_indexes:by_did:${user_index.controller_did}`, `${user_index.index_id}:${user_index.type}`)
     }
 }

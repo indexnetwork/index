@@ -1,5 +1,5 @@
 {
-    "name": "containers-connector-final-running-4",
+    "name": "containers-connector-final-running-5",
     "config": {
         "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
         "plugin.name": "pgoutput",

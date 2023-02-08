@@ -25,6 +25,7 @@ const validator = require('express-joi-validation').createValidator({
 
 const didSearchSchema = Joi.object({
   did: Joi.string().required(),
+  type: Joi.string().min(1).default(false),
   search: Joi.string().min(1).default(false),
   skip: Joi.number().default(0),
   take: Joi.number().default(10),
@@ -49,13 +50,13 @@ const linkSearchSchema = Joi.object({
 
 const userIndexSchema = Joi.object({
   did: Joi.string().required(),
-  index_id: Joi.string().min(40).default(false),
+  index_id: Joi.string().min(40).required(),
 })
 
 app.post('/search/did', validator.body(didSearchSchema), search.did)
 app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
 app.post('/search/links', validator.body(linkSearchSchema), search.link)
-app.post('/search/user_index', validator.body(userIndexSchema), search.user_index)
+app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_index)
 
 
 const crawlSchema = Joi.object({

@@ -6,7 +6,7 @@ helm upgrade --install redis bitnami/redis --values values-redis.yaml
 kubectl apply -f kafkaconnect.yaml
 
 curl -X DELETE \
-  http://kafkaconnect-service.composedb:8083/connectors/containers-connector-final-running-3
+  http://kafkaconnect-service.composedb:8083/connectors/containers-connector-final-running-4
 
 
 curl -X POST \

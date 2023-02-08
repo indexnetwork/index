@@ -301,28 +301,69 @@ const transformLinkSearch = (
     return result;
 }
 
-
-exports.did = async (req, res) => {
-
-    const {did, search, skip, take, links_size} = req.body;
-    
-    const indexes = await redis.hGetAll(`user_index:by_did:${did}`)
-
-    const index_ids = indexes.map(i => i.index_id)
+const indexesSearch = async (index_ids , search, skip, take, links_size, user_indexes_by_type) => {
 
     const query = indexesWithLinksQuery(index_ids, search, skip, take, links_size);
     const result = await client.search(query);
 
-
     const totalCount = result.aggregations?.totalCount?.value || 0;
 
-    const indexResult = transformIndexSearch(result, !!search);
+    let indexResult = transformIndexSearch(result, !!search);
 
-    const response = {
+    if(totalCount > 0){
+
+        indexResult = indexResult.map(index => {
+            
+            index.is_in_my_indexes = false;
+            index.is_starred = false;
+
+            if(user_indexes_by_type.my_indexes && user_indexes_by_type.my_indexes.length > 0){
+                index.is_in_my_indexes = !!user_indexes_by_type.my_indexes.filter(ui => ui.index_id == index.id && ui.type == 'my_indexes').length;
+            }
+            if(user_indexes_by_type.starred && user_indexes_by_type.starred.length > 0){
+                index.is_starred = !!user_indexes_by_type.starred.filter(ui => ui.index_id == index.id && ui.type == 'starred').length;
+            }
+            return index
+        })
+
+    }
+
+    return {
         totalCount,
         records: indexResult,
     };
-    res.json(response)
+};
+
+const promiseAllOfObject = async (obj) => {
+  const values = await Promise.all(Object.values(obj));
+  return Object.keys(obj).reduce(
+    (res, key, index) => (res[key] = values[index], res),
+    {}
+  );
+};
+
+exports.did = async (req, res) => {
+
+    const {did, type, search, skip, take, links_size} = req.body;
+    
+    let user_indexes = await redis.hGetAll(`user_indexes:by_did:${did}`)
+    
+    user_indexes_by_type = _.chain(user_indexes)
+                            .map(i => JSON.parse(i))
+                            .filter(i => !i.deleted_at)
+                            .groupBy("type")
+                            .value()
+    if(type){
+        let search_result = {};
+        search_result[type] = await indexesSearch(user_indexes_by_type[type].map(i => i.index_id), search, skip, take, links_size, user_indexes_by_type)
+        res.json(search_result)
+    }else{
+        let search_result = _.mapValues(user_indexes_by_type, async (type_group, key) => {
+            return indexesSearch(type_group.map(i => i.index_id), search, skip, take, links_size, user_indexes_by_type)
+        })
+        search_result = await promiseAllOfObject(search_result);
+        res.json(search_result)
+    }
 
 };
 
@@ -352,7 +393,7 @@ exports.link = async (req, res, next) => {
     const {index_id, search, skip, take} = req.body;
     const query = linksQuery(index_id, search, skip, take);
     const result = await client.search(query);
-    console.log(result.hits)
+    
     const totalCount = result?.hits?.total.value
 
     const response = {
@@ -368,10 +409,14 @@ exports.user_index = async (req, res, next) => {
 
     const { did, index_id } = req.body;
     
-    let response = await redis.hGetAll(`user_index:by_did:${did}`)
-    
-    res.json(Object.values(response).map(r => JSON.parse(r)))
-    
+    if(index_id){
+        let my_indexes = await redis.hGet(`user_indexes:by_did:${did}`, `${index_id}:my_indexes`)
+        let starred = await redis.hGet(`user_indexes:by_did:${did}`, `${index_id}:starred`)
+        res.json({
+            my_indexes: JSON.parse(my_indexes),
+            starred: JSON.parse(starred),
+        })
+    }    
 
 };
 
