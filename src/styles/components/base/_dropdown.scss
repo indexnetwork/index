@@ -9,7 +9,7 @@
 		padding: 0;
 		border-radius: $border-radius-base;
 		background-color: $white;
-		box-shadow: $box-shadow-base-half;
+		box-shadow: $box-shadow-base;
 		color: $gray-5;
 		font-weight: bold;
 		font-size: map-deep-get($font-size, "xs", "xs");
