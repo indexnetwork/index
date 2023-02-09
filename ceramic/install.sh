@@ -24,3 +24,7 @@ kubectl create secret generic composedb-secret --from-file priv.key
 kubectl apply -f k8s-ceramic.yaml
 
 composedb graphql:server --graphiql --port=35000 temp/merged-runtime.json --did-private-key=$(cat priv.key)
+
+
+
+ALTER TABLE kjzl6hvfrbw6c9uhr6wtbziqokgadeavvh1y9u7qbs6u3jmwz7nmxexwb0mgj52 REPLICA IDENTITY FULL;
