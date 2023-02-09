@@ -24,7 +24,6 @@ import TabPane from "../../components/base/Tabs/TabPane";
 import IndexItem from "../../components/site/indexes/IndexItem";
 import { useCeramic } from "../../hooks/useCeramic";
 import NoIndexes from "../../components/site/indexes/NoIndexes";
-import NotFound from "../../components/site/indexes/NotFound";
 
 export interface IndexListState {
 	my_indexes?: {
@@ -70,7 +69,7 @@ const IndexesPage: NextPageWithLayout = () => {
 	}, [search]);
 
 	const [tabKey, setTabKey] = useState("my_indexes");
-	const [hasUserIndex, setHasUserIndex] = useState({my_indexes: false, starred: false});
+	const [hasUserIndex, setHasUserIndex] = useState({ my_indexes: false, starred: false });
 
 	const [state, setState] = useMergedState<IndexListState>({
 		my_indexes: {
@@ -126,11 +125,13 @@ const IndexesPage: NextPageWithLayout = () => {
 						totalCount: res.starred?.totalCount,
 					},
 				} as IndexListState);
+				if (init) {
+					setHasUserIndex({
+						my_indexes: res?.my_indexes?.totalCount! > 0 || false,
+						starred: res?.starred?.totalCount! > 0 || false,
+					});
+				}
 				setInit(false);
-				setHasUserIndex({
-					my_indexes: !!res.my_indexes?.totalCount,
-					starred: !!res.starred?.totalCount,
-				});
 			} else {
 				const newState = state;
 				const tabKeyStateKey = tabKey as StateKey;
@@ -144,7 +145,7 @@ const IndexesPage: NextPageWithLayout = () => {
 		}
 		setLoading(false);
 	};
-
+	console.log(hasUserIndex);
 	return (
 		<PageContainer>
 			<FlexRow
@@ -195,13 +196,10 @@ const IndexesPage: NextPageWithLayout = () => {
 								</InfiniteScroll>
 							</>
 						) : (
-							<>
-								<NoIndexes hasIndex={hasUserIndex.my_indexes} active={true} search={search} />
-								<NotFound active={false} />
-							</>
+							<NoIndexes hasIndex={hasUserIndex.my_indexes} search={search} tabKey={tabKey} />
 						)
 					) : (
-						state.my_indexes && state.my_indexes.indexes?.length! > 0 ? (
+						state.starred && state.starred.indexes?.length! > 0 ? (
 							<>
 								<InfiniteScroll
 									initialLoad={false}
@@ -223,10 +221,7 @@ const IndexesPage: NextPageWithLayout = () => {
 								</InfiniteScroll>
 							</>
 						) : (
-							<>
-								<NoIndexes hasIndex={hasUserIndex.starred} active={true} search={search} />
-								<NotFound active={false} />
-							</>
+							<NoIndexes hasIndex={hasUserIndex.starred} search={search} tabKey={tabKey} />
 						)
 					)}
 				</Col>

@@ -120,7 +120,7 @@ class CeramicService2 {
 			// TODO Handle
 		}
 		const index = data?.createIndex.document;
-		await this.addUserIndex(index!.id, "user_index");
+		await this.addUserIndex(index!.id, "my_indexes");
 		return index!;
 	}
 

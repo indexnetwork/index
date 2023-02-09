@@ -102,7 +102,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 						display: "contents",
 					}} onSubmit={formik.handleSubmit}>
 						{
-							true && (
+							(
 								<Col
 									xs={12}
 									lg={9}
@@ -114,41 +114,45 @@ const CreateIndexPage: NextPageWithLayout = () => {
 								>
 									<FlexRow>
 										<Col>
-											<Text >Profile Image</Text>
+											<Text>Profile Image</Text>
 											<ImageUploading
 												value={images}
 												onChange={onChange}
 												dataURLKey="data_url"
 											>
 												{({
-													imageList,
-													onImageUpload,
-													onImageRemoveAll,
-													onImageUpdate,
-													onImageRemove,
-													isDragging,
-													dragProps,
-												}) => (
+													  imageList,
+													  onImageUpload,
+													  onImageRemoveAll,
+													  onImageUpdate,
+													  onImageRemove,
+													  isDragging,
+													  dragProps,
+												  }) => (
 													// write your building UI
 
 													<div className="mt-5 img-upload"
-														onClick={onImageUpload}
-														{...dragProps}>
+														 onClick={onImageUpload}
+														 {...dragProps}>
 														{
 															// eslint-disable-next-line no-nested-ternary
 															imageList.length === 0 && !profile.pfp ?
 																<>
 																	<div className="img-upload__banner">
-																		<IconEdit />
+																		<IconEdit/>
 																	</div>
 																</> : (
 																	imageList.length !== 0 ? (
 																		imageList.map((image, index) => (
 																			<>
 																				<div key={index} className="img-upload-img">
-																					<img className="img-upload-img__img" src={image.data_url} alt="" />
+																					<img className="img-upload-img__img"
+																						 src={image.data_url} alt=""/>
 																				</div>
-																				<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
+																				<div
+																					className="img-upload-btns"
+																					onClick={(e) => e.stopPropagation()}
+																				>
 																					{/* <Avatar size={32}
 																				hoverable onClick={() => onImageUpdate(index)}>
 																				<IconAdd />
@@ -156,7 +160,10 @@ const CreateIndexPage: NextPageWithLayout = () => {
 																					<Avatar
 																						shape="square"
 																						size={32}
-																						hoverable onClick={() => onImageRemove(index)}><IconTrash /></Avatar>
+																						hoverable
+																						onClick={() => onImageRemove(index)}>
+																						<IconTrash/>
+																					</Avatar>
 																				</div>
 																			</>
 																		))
@@ -165,15 +172,18 @@ const CreateIndexPage: NextPageWithLayout = () => {
 																		<>
 																			<div className="img-upload-img">
 																				<img className="img-upload-img__img"
-																					src={profile.pfp?.replace("ipfs://", appConfig.ipfsProxy)} alt="" />
+																					 src={profile.pfp?.replace("ipfs://", appConfig.ipfsProxy)}
+																					 alt=""/>
 																			</div>
-																			<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
+																			<div className="img-upload-btns"
+																				 onClick={(e) => e.stopPropagation()}>
 																				{/* <Avatar size={32}
 																			hoverable onClick={() => onImageUpdate(0)}><IconAdd /></Avatar> */}
 																				<Avatar
 																					shape="square"
 																					size={32}
-																					hoverable onClick={() => onImageRemove(0)}><IconTrash /></Avatar>
+																					hoverable
+																					onClick={() => onImageRemove(0)}><IconTrash/></Avatar>
 																			</div>
 																		</>
 																	)

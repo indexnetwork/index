@@ -22,7 +22,7 @@ import { appConfig } from "config";
 import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import IconEditBlack from "components/base/Icon/IconEditBlack";
-import { Users } from "../../types/entity";
+import { Users } from "../../../types/entity";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -40,14 +40,16 @@ const CreateIndexPage: NextPageWithLayout = () => {
 		onSubmit: async (values) => {
 			try {
 				setLoading(true);
+				/*
 				const result = await handleUploadImage();
 				if (result) {
 					values.pfp = `ipfs://${result.path}`;
 				}
 				const { available, ...rest } = values;
 				await ceramic.setProfile(rest);
+				*/
 				dispatch(setProfile({
-					...rest,
+					// ...rest,
 					available: true,
 				}));
 			} catch (err) {
