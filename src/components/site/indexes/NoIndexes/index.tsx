@@ -37,7 +37,7 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 						search && (
 							<Header level={4} style={{
 								maxWidth: 350,
-							}}>{`Your search ${search} did not match any indexes.`}</Header>
+							}}>{`Your search "${search}" did not match any indexes.`}</Header>
 						)
 					}
 					{
@@ -49,13 +49,13 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 							) : (
 								<Header style={{
 									maxWidth: 350,
-								}} level={4}>{`There are no indexes yet..`}</Header>
+								}} level={4}>{`There are no indexes yet...`}</Header>
 							)
 						)
 					}
 				</Col>
 				{
-					(!search && isOwner && !hasIndex) && (
+					(!search && isOwner && !hasIndex && tabKey === "my_indexes") && (
 						<>
 							<Col centerBlock>
 								<Button onClick={handleCreate}>Create a new index</Button>
