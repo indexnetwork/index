@@ -23,6 +23,8 @@ import TabPane from "../../components/base/Tabs/TabPane";
 
 import IndexItem from "../../components/site/indexes/IndexItem";
 import { useCeramic } from "../../hooks/useCeramic";
+import NoIndexes from "../../components/site/indexes/NoIndexes";
+import NotFound from "../../components/site/indexes/NotFound";
 
 export interface IndexListState {
 	my_indexes?: {
@@ -68,6 +70,8 @@ const IndexesPage: NextPageWithLayout = () => {
 	}, [search]);
 
 	const [tabKey, setTabKey] = useState("my_indexes");
+	const [hasUserIndex, setHasUserIndex] = useState({my_indexes: false, starred: false});
+
 	const [state, setState] = useMergedState<IndexListState>({
 		my_indexes: {
 			skip: 0,
@@ -118,11 +122,15 @@ const IndexesPage: NextPageWithLayout = () => {
 					},
 					starred: {
 						hasMore: res.starred?.totalCount! > queryParams.skip + take,
-						indexes: newSearch ? res.starred?.records! : state.starred?.indexes?.concat(res.my_indexes?.records!),
+						indexes: newSearch ? res.starred?.records! : state.starred?.indexes?.concat(res.starred?.records!),
 						totalCount: res.starred?.totalCount,
 					},
 				} as IndexListState);
 				setInit(false);
+				setHasUserIndex({
+					my_indexes: !!res.my_indexes?.totalCount,
+					starred: !!res.starred?.totalCount,
+				});
 			} else {
 				const newState = state;
 				const tabKeyStateKey = tabKey as StateKey;
@@ -164,43 +172,63 @@ const IndexesPage: NextPageWithLayout = () => {
 							</Tabs>
 						</Col>
 					</FlexRow>
-					{tabKey === "my_indexes" ?
-						<InfiniteScroll
-							initialLoad={false}
-							hasMore={state.my_indexes?.hasMore}
-							loadMore={getData}
-							marginHeight={50}
-						>
-							<List
-								data={state.my_indexes?.indexes || []}
-								listClass="index-list"
-								render={(itm: Indexes) => <IndexItem
-									hasSearch={!!search}
-									onClick={handleClick(itm)}
-									userIndexToggle={handleUserIndexToggle}
-									{...itm}
-								/>}
-								divided
-							/>
-						</InfiniteScroll> : <InfiniteScroll
-							initialLoad={false}
-							hasMore={state.starred?.hasMore}
-							loadMore={getData}
-							marginHeight={50}
-						>
-							<List
-								data={state.starred?.indexes || []}
-								listClass="index-list"
-								render={(itm: Indexes) => <IndexItem
-									hasSearch={!!search}
-									onClick={handleClick(itm)}
-									userIndexToggle={handleUserIndexToggle}
-									{...itm}
-								/>}
-								divided
-							/>
-						</InfiniteScroll>
-					}
+					{tabKey === "my_indexes" ? (
+						state.my_indexes && state.my_indexes.indexes?.length! > 0 ? (
+							<>
+								<InfiniteScroll
+									initialLoad={false}
+									hasMore={state.my_indexes?.hasMore}
+									loadMore={getData}
+									marginHeight={50}
+								>
+									<List
+										data={state.my_indexes?.indexes || []}
+										listClass="index-list"
+										render={(itm: Indexes) => <IndexItem
+											hasSearch={!!search}
+											onClick={handleClick(itm)}
+											userIndexToggle={handleUserIndexToggle}
+											{...itm}
+										/>}
+										divided
+									/>
+								</InfiniteScroll>
+							</>
+						) : (
+							<>
+								<NoIndexes hasIndex={hasUserIndex.my_indexes} active={true} search={search} />
+								<NotFound active={false} />
+							</>
+						)
+					) : (
+						state.my_indexes && state.my_indexes.indexes?.length! > 0 ? (
+							<>
+								<InfiniteScroll
+									initialLoad={false}
+									hasMore={state.starred?.hasMore}
+									loadMore={getData}
+									marginHeight={50}
+								>
+									<List
+										data={state.starred?.indexes || []}
+										listClass="index-list"
+										render={(itm: Indexes) => <IndexItem
+											hasSearch={!!search}
+											onClick={handleClick(itm)}
+											userIndexToggle={handleUserIndexToggle}
+											{...itm}
+										/>}
+										divided
+									/>
+								</InfiniteScroll>
+							</>
+						) : (
+							<>
+								<NoIndexes hasIndex={hasUserIndex.starred} active={true} search={search} />
+								<NotFound active={false} />
+							</>
+						)
+					)}
 				</Col>
 			</FlexRow>
 		</PageContainer>);
