@@ -159,8 +159,8 @@ const IndexesPage: NextPageWithLayout = () => {
 					<FlexRow>
 						<Col className="idxflex-grow-1 mb-4">
 							<Tabs activeKey={tabKey} onTabChange={setTabKey}>
-								<TabPane enabled={true} tabKey={"my_indexes"} title={`My Indexes (${state.my_indexes?.totalCount})`} />
-								<TabPane enabled={true} tabKey={"starred"} title={`Starred (${state.starred?.totalCount})`} />
+								<TabPane enabled={true} tabKey={"my_indexes"} title={`My Indexes (${state.my_indexes?.totalCount || 0})`} />
+								<TabPane enabled={true} tabKey={"starred"} title={`Starred (${state.starred?.totalCount || 0})`} />
 							</Tabs>
 						</Col>
 					</FlexRow>
