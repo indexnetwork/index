@@ -3,8 +3,9 @@ import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import Image from "next/image";
-import React from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/router";
+import CreateModal from "components/site/modal/CreateModal";
 import { useOwner } from "../../../../hooks/useOwner";
 
 export interface NoIndexesProps {
@@ -20,6 +21,10 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 }) => {
 	const router = useRouter();
 	const { isOwner } = useOwner();
+	const [createModalVisible, setCreateModalVisible] = useState(false);
+	const handleToggleCreateModal = () => {
+		setCreateModalVisible((oldVal) => !oldVal);
+	 };
 	const handleCreate = () => {
 		router.push("/create");
 	};
@@ -58,7 +63,8 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 					(!search && isOwner && !hasIndex && tabKey === "my_indexes") && (
 						<>
 							<Col centerBlock>
-								<Button onClick={handleCreate}>Create a new index</Button>
+								<Button onClick={() => { setCreateModalVisible(true); }}>Create a new index</Button>
+								<CreateModal visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal>
 							</Col>
 						</>
 					)
