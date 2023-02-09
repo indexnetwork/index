@@ -11,6 +11,8 @@ export type Indexes = {
   created_at: string;
   updated_at: string;
   links: Links[];
+  is_in_my_indexes?: boolean;
+  is_starred?: boolean;
 };
 
 /**
@@ -21,7 +23,7 @@ export type UserIndex = {
   id: number
   index_id: string
   created_at: string;
-  deleted_at: string;
+  deleted_at?: string;
 };
 
 /**

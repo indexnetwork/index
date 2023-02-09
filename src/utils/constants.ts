@@ -10,6 +10,7 @@ export const API_ENDPOINTS = {
 	INDEXES: "/indexes",
 	SEARCH_DID: "/search/did",
 	SEARCH_LINKS: "/search/links",
+	GET_USER_INDEXES: "/search/user_indexes",
 	CRAWL: "/crawl/metadata",
 	CRAWL_CONTENT: "/links/crawl-content",
 	FIND_CONTENT: "/links/find-content",

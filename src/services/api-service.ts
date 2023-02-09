@@ -1,7 +1,7 @@
 import axios from "axios";
 import { appConfig } from "config";
 import {
-	Indexes, LinkContentResult, Links, SyncCompleteResult,
+	Indexes, LinkContentResult, Links, SyncCompleteResult, UserIndex,
 } from "types/entity";
 import { API_ENDPOINTS } from "utils/constants";
 
@@ -12,8 +12,14 @@ export interface IndexResponse extends Indexes {
   highlight?: HighlightType;
 }
 export interface IndexSearchResponse {
-	totalCount: number;
-	records: Indexes[];
+	starred?: {
+		totalCount: number;
+		records: Indexes[];
+	},
+	my_indexes?: {
+		totalCount: number;
+		records: Indexes[];
+	}
 }
 
 export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
@@ -23,12 +29,18 @@ export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
 	search?: string;
 }
 
+export interface GetUserIndexesRequestBody {
+	did: string;
+	index_id: string;
+}
+
 export interface DidSearchRequestBody extends ApiSearchRequestBody<{}> {
 	did: string;
 	skip: number;
 	take: number;
 	search?: string;
 	links_size?: number;
+	type?: string;
 }
 export interface DidSearchResponse {
 	totalCount: number;
@@ -38,6 +50,10 @@ export interface DidSearchResponse {
 export interface LinkSearchResponse {
 	totalCount: number;
 	records: Links[];
+}
+export interface UserIndexResponse {
+	my_indexes?: UserIndex;
+	starred?: UserIndex;
 }
 
 export type SortType = "asc" | "desc";
@@ -101,6 +117,15 @@ class ApiService {
 			return true;
 		} catch (err) {
 			return false;
+		}
+	}
+
+	async getUserIndexes(body: GetUserIndexesRequestBody): Promise<UserIndexResponse | undefined> {
+		try {
+			const { data } = await apiAxios.post<UserIndexResponse>(API_ENDPOINTS.GET_USER_INDEXES, body);
+			return data;
+		} catch (err) {
+			// TODO handle;
 		}
 	}
 

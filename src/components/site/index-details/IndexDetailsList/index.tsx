@@ -44,6 +44,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 			return;
 		}
 		setLoading(true);
+
 		const queryParams = {
 			index_id,
 			skip: links.length,

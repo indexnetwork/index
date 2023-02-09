@@ -12,11 +12,14 @@ import sanitize from "sanitize-html";
 import List from "components/base/List";
 import IndexOperationsPopup from "../../popup/IndexOperationsPopup";
 import cm from "./style.module.scss";
+import Tooltip from "../../../base/Tooltip";
+import Button from "../../../base/Button";
+import IconStar from "../../../base/Icon/IconStar";
 
 export interface IndexItemProps extends Indexes {
 	hasSearch: boolean;
 	onClick?(): Promise<void>;
-	onDelete(streamId?: string): void;
+	userIndexToggle(index_id: string, type: string, op: string): void;
 }
 
 const IndexItem: React.VFC<IndexItemProps> = ({
@@ -26,8 +29,10 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 	updated_at,
 	links,
 	hasSearch = false,
+	is_in_my_indexes = false,
+	is_starred = false,
+	userIndexToggle,
 	onClick,
-	onDelete,
 }) => <Row
 	className="index-list-item my-6"
 >
@@ -50,11 +55,32 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 			justifyContent="space-between"
 			alignItems="center"
 		>
-			<Header onClick={onClick} className={cm.title} dangerouslySetInnerHTML={{ __html: sanitize(title || "") }}></Header>
-			<IndexOperationsPopup
-				streamId={id}
-				onDelete={onDelete}
-			/>
+			<Col
+				className="idxflex-grow-1 mr-5"
+			>
+				<Header onClick={onClick} className={cm.title} dangerouslySetInnerHTML={{ __html: sanitize(title || "") }}></Header>
+			</Col>
+			<Col className="mr-1">
+				<Tooltip content="Add to Starred Index">
+					<Button
+						theme="clear"
+						borderless
+						onClick={() => userIndexToggle(id, "starred", is_starred ? "remove" : "add") }>
+						<IconStar fill={is_starred ? "var(--main)" : "var(--white)"} width={20} height={20} />
+					</Button>
+				</Tooltip>
+			</Col>
+			<Col className="ml-1">
+				<Button
+					theme="clear"
+					borderless>
+					<IndexOperationsPopup
+						streamId={id}
+						is_in_my_indexes={is_in_my_indexes}
+						userIndexToggle={userIndexToggle}
+					/>
+				</Button>
+			</Col>
 		</Flex>
 	</Col>
 	<Col xs={12}>

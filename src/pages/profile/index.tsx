@@ -11,7 +11,6 @@ import { useRouter } from "next/router";
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import Header from "components/base/Header";
-import Divider from "components/base/Divider";
 import Row from "components/layout/base/Grid/Row";
 import Flex from "components/layout/base/Grid/Flex";
 import Text from "components/base/Text";
@@ -20,12 +19,11 @@ import { selectProfile, setProfile } from "store/slices/profileSlice";
 import { useFormik } from "formik";
 import Button from "components/base/Button";
 import TextArea from "components/base/TextArea";
-import Spin from "components/base/Spin";
-import IconLock from "components/base/Icon/IconLock";
 import ImageUploading, { ImageType } from "react-images-uploading";
 import Avatar from "components/base/Avatar";
 import IconTrash from "components/base/Icon/IconTrash";
 import { appConfig } from "config";
+import IconEdit from "components/base/Icon/IconEdit";
 import { Users } from "../../types/entity";
 
 const CreateIndexPage: NextPageWithLayout = () => {
@@ -95,84 +93,107 @@ const CreateIndexPage: NextPageWithLayout = () => {
 					<Col
 						xs={12}
 						lg={9}
+						className="mb-7"
 					>
 						<Header>Edit your profile</Header>
-						<Divider />
+
 					</Col>
 					<form style={{
 						display: "contents",
 					}} onSubmit={formik.handleSubmit}>
 						{
-							true && (
+							(
 								<Col
 									xs={12}
 									lg={9}
 									style={{
 										display: "flex",
-										justifyContent: "center",
+										justifyContent: "left",
 									}}
 									className="my-3"
 								>
-									<ImageUploading
-										value={images}
-										onChange={onChange}
-										dataURLKey="data_url"
-									>
-										{({
-											imageList,
-											onImageUpload,
-											onImageRemoveAll,
-											onImageUpdate,
-											onImageRemove,
-											isDragging,
-											dragProps,
-										}) => (
-											// write your building UI
-											<div className="img-upload"
-												onClick={onImageUpload}
-												{...dragProps}>
-												{
-													// eslint-disable-next-line no-nested-ternary
-													imageList.length === 0 && !profile.pfp ?
-														<div className="img-upload__banner"><Text fontWeight={600}
-															theme="white">Click or Drop Image</Text></div> : (
-															imageList.length !== 0 ? (
-																imageList.map((image, index) => (
-																	<>
-																		<div key={index} className="img-upload-img">
-																			<img className="img-upload-img__img" src={image.data_url} alt="" />
-																		</div>
-																		<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
-																			{/* <Avatar size={32}
+									<FlexRow>
+										<Col>
+											<Text>Profile Image</Text>
+											<ImageUploading
+												value={images}
+												onChange={onChange}
+												dataURLKey="data_url"
+											>
+												{({
+													  imageList,
+													  onImageUpload,
+													  onImageRemoveAll,
+													  onImageUpdate,
+													  onImageRemove,
+													  isDragging,
+													  dragProps,
+												  }) => (
+													// write your building UI
+
+													<div className="mt-5 img-upload"
+														 onClick={onImageUpload}
+														 {...dragProps}>
+														{
+															// eslint-disable-next-line no-nested-ternary
+															imageList.length === 0 && !profile.pfp ?
+																<>
+																	<div className="img-upload__banner">
+																		<IconEdit/>
+																	</div>
+																</> : (
+																	imageList.length !== 0 ? (
+																		imageList.map((image, index) => (
+																			<>
+																				<div key={index} className="img-upload-img">
+																					<img className="img-upload-img__img"
+																						 src={image.data_url} alt=""/>
+																				</div>
+																				<div
+																					className="img-upload-btns"
+																					onClick={(e) => e.stopPropagation()}
+																				>
+																					{/* <Avatar size={32}
 																				hoverable onClick={() => onImageUpdate(index)}>
 																				<IconAdd />
 																			</Avatar> */}
-																			<Avatar
-																				size={32}
-																				hoverable onClick={() => onImageRemove(index)}><IconTrash /></Avatar>
-																		</div>
-																	</>
-																))
-															) : (
-																<>
-																	<div className="img-upload-img">
-																		<img className="img-upload-img__img"
-																			src={profile.pfp?.replace("ipfs://", appConfig.ipfsProxy)} alt="" />
-																	</div>
-																	<div className="img-upload-btns" onClick={(e) => e.stopPropagation()}>
-																		{/* <Avatar size={32}
+																					<Avatar
+																						shape="square"
+																						size={32}
+																						hoverable
+																						onClick={() => onImageRemove(index)}>
+																						<IconTrash/>
+																					</Avatar>
+																				</div>
+																			</>
+																		))
+
+																	) : (
+																		<>
+																			<div className="img-upload-img">
+																				<img className="img-upload-img__img"
+																					 src={profile.pfp?.replace("ipfs://", appConfig.ipfsProxy)}
+																					 alt=""/>
+																			</div>
+																			<div className="img-upload-btns"
+																				 onClick={(e) => e.stopPropagation()}>
+																				{/* <Avatar size={32}
 																			hoverable onClick={() => onImageUpdate(0)}><IconAdd /></Avatar> */}
-																		<Avatar
-																			size={32}
-																			hoverable onClick={() => onImageRemove(0)}><IconTrash /></Avatar>
-																	</div>
-																</>
-															)
-														)
-												}
-											</div>
-										)}
-									</ImageUploading>
+																				<Avatar
+																					shape="square"
+																					size={32}
+																					hoverable
+																					onClick={() => onImageRemove(0)}><IconTrash/></Avatar>
+																			</div>
+																		</>
+																	)
+																)
+														}
+													</div>
+												)}
+											</ImageUploading>
+										</Col>
+									</FlexRow>
 								</Col>
 							)
 						}
@@ -183,38 +204,51 @@ const CreateIndexPage: NextPageWithLayout = () => {
 							<Row
 								rowSpacing={3}
 							>
-								<Col xs={12} sm={6}><Text fontWeight={700}>Enter your personal details</Text></Col>
-								<Col xs={12} sm={6}><Flex flexDirection="column">
-									<Text fontWeight={500}>Name</Text>
-									<Input
-										name="name"
-										className="mt-3"
-										onChange={formik.handleChange}
-										value={formik.values.name}
-									/>
-								</Flex></Col>
-								<Col xs={12} sm={6}><Text fontWeight={700}>Add a Short Bio</Text></Col>
-								<Col xs={12} sm={6}>
-									<Flex flexDirection="column">
-										<Text fontWeight={500}>Bio</Text>
-										<TextArea
-											name="description"
-											className="mt-3"
-											onChange={formik.handleChange}
-											value={formik.values.description}
-										/>
-									</Flex>
-								</Col>
+								<FlexRow>
+									<Col className="mt-6" xs={12} sm={6}>
+										<Flex flexDirection="column">
+											<Text theme={"primary"} size="md">Username</Text>
+											<Input
+												placeholder="Enter Username"
+												name="name"
+												className="mt-3"
+												onChange={formik.handleChange}
+												value={formik.values.name}
+											/>
+										</Flex>
+									</Col>
+								</FlexRow>
+								<FlexRow>
+									<Col className="mt-6" xs={12} sm={6}>
+										<Flex flexDirection="column">
+											<Text theme={"primary"} size="md">Bio</Text>
+											<TextArea
+												rows={5}
+												name="description"
+												className="mt-3"
+												placeholder="Tell your story"
+												onChange={formik.handleChange}
+												value={formik.values.description}
+											/>
+										</Flex>
+									</Col>
+								</FlexRow>
+
 								<Col
 									auto
-									pullRight
+									pullLeft
 								>
 									<Button
+										theme="primary"
+										size="lg"
 										disabled={loading}
-										className="ml-auto"
-										addOnAfter={loading ?
-											<Spin size="xs" className="ml-4" active={true} thickness="light" theme="white" /> :
-											<IconLock width={"1.6rem"} stroke="white" />} type="submit">Save</Button>
+										className="ml-auto mt-6 pl-8 pr-8">
+										{/* addOnAfter={loading &&
+											<Spin size="xs" className="ml-4" active={true} thickness="light" theme="white" />
+											}
+											type="submit" */}
+												Save
+									</Button>
 								</Col>
 							</Row>
 						</Col>
