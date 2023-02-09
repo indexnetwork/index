@@ -307,9 +307,9 @@ class CeramicService2 {
 		if (!userIndexes[type as UserIndexKey]) {
 			return;
 		}
-
+		const userIndex: UserIndex | undefined = userIndexes[type as UserIndexKey];
 		const payload = {
-			id: userIndexes[type as UserIndexKey].id,
+			id: userIndex?.id!,
 			content: {
 				deleted_at: getCurrentDateTime(),
 			},
