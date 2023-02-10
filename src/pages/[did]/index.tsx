@@ -72,7 +72,6 @@ const IndexesPage: NextPageWithLayout = () => {
 	}, []);
 
 	const handleUserIndexToggle = async (index_id: string, type: string, op: string) => {
-
 		const newState = { ...state };
 
 		const typeStateKey = type as StateKey;
@@ -86,7 +85,6 @@ const IndexesPage: NextPageWithLayout = () => {
 		}
 
 		if (op === "add") {
-
 			ceramic.addUserIndex(index_id, type);
 
 			newState[typeStateKey]!.indexes = [index, ...newState[typeStateKey]!.indexes!];
@@ -100,16 +98,18 @@ const IndexesPage: NextPageWithLayout = () => {
 			newState[typeStateKey]!.totalCount = newState[typeStateKey]!.totalCount - 1;
 		}
 
-		newState[tabKeyStateKey]!.indexes = newState[tabKeyStateKey]!.indexes.map(i => {
+		newState[tabKeyStateKey]!.indexes = newState[tabKeyStateKey]!.indexes!.map((i:Indexes) => {
 			if (i.id === index_id) {
 				i = index;
 			}
 			return i;
 		});
 
-		setState(newState)
-
-
+		setHasUserIndex({
+			my_indexes: newState?.my_indexes?.totalCount! > 0,
+			starred: newState?.starred?.totalCount! > 0,
+		});
+		setState(newState);
 	};
 
 	useEffect(() => {
@@ -145,13 +145,13 @@ const IndexesPage: NextPageWithLayout = () => {
 				setState({
 					my_indexes: {
 						hasMore: res.my_indexes?.totalCount! > queryParams.skip + take,
-						indexes: newSearch ? res.my_indexes?.records! : state.my_indexes?.indexes?.concat(res.my_indexes?.records!),
-						totalCount: res.my_indexes?.totalCount,
+						indexes: res.my_indexes?.records || [],
+						totalCount: res.my_indexes?.totalCount || 0,
 					},
 					starred: {
 						hasMore: res.starred?.totalCount! > queryParams.skip + take,
-						indexes: newSearch ? res.starred?.records! : state.starred?.indexes?.concat(res.starred?.records!),
-						totalCount: res.starred?.totalCount,
+						indexes: res.starred?.records || [],
+						totalCount: res.starred?.totalCount || 0,
 					},
 				} as MultipleIndexListState);
 				if (init) {

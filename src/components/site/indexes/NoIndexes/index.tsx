@@ -55,7 +55,7 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 					}
 				</Col>
 				{
-					(!search && isOwner && !hasIndex && tabKey === "my_indexes") && (
+					(!search && isOwner && !hasIndex) && (
 						<>
 							<Col centerBlock>
 								<Button onClick={handleCreate}>Create a new index</Button>
