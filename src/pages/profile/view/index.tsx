@@ -113,7 +113,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 						<Tabs activeKey={tabKey} onTabChange={setTabKey}>
 							<TabPane enabled={true} tabKey={"myindexes"} title={"My indexes"} />
 							<TabPane enabled={true} tabKey={"starred"} title={"Starred"} />
-							<TabPane enabled={true} tabKey={"discovered"} title={"Discovered"} />
+							<TabPane tabKey={"discovered"} title={"Discovered"} />
 						</Tabs>
 					</Col>
 				</FlexRow>
