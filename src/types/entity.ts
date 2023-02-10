@@ -22,6 +22,7 @@ export type Indexes = {
 export type UserIndex = {
   id: number
   index_id: string
+  type: string
   created_at: string;
   deleted_at?: string;
 };
