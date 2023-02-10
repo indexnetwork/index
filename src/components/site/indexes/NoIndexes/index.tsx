@@ -43,9 +43,15 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 					{
 						!search && !hasIndex && (
 							isOwner ? (
-								<Header style={{
-									maxWidth: 350,
-								}} level={4}>{`You have no ${tabKey === "starred" ? "starred" : ""} indexes yet. Create an index to get started.`}</Header>
+								tabKey === "starred" ? (
+									<Header style={{
+										maxWidth: 350,
+									}} level={4}>{`You have no starred indexes yet.`}</Header>
+								) : (
+									<Header style={{
+										maxWidth: 350,
+									}} level={4}>{`You have no indexes yet. Create an index to get started.`}</Header>
+								)
 							) : (
 								<Header style={{
 									maxWidth: 350,
@@ -55,7 +61,7 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 					}
 				</Col>
 				{
-					(!search && isOwner && !hasIndex) && (
+					(!search && isOwner && !hasIndex && tabKey !== "starred") && (
 						<>
 							<Col centerBlock>
 								<Button onClick={handleCreate}>Create a new index</Button>
