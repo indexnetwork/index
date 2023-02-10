@@ -76,10 +76,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const loadIndex = async (id: string) => {
 		const doc = await ceramic.getIndexById(id);
-
-		doc.is_in_my_indexes = false;
-		doc.is_starred = false;
-
 		if (doc != null) {
 			setIndex(doc);
 		} else {
@@ -97,6 +93,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
+		type === "my_indexes" ? setIndex({ ...index, is_in_my_indexes: op === "add" }) : setIndex({ ...index, is_starred: op === "add" });
 		if (op === "add") {
 			ceramic.addUserIndex(index_id, type);
 		} else {
