@@ -69,12 +69,14 @@ class CeramicService2 {
 			node.updated_at = node.links.edges[0].node.updated_at;
 		}
 
-		const userIndexes = await api.getUserIndexes({
-			index_id,
-			did: this.ceramic.did?.parent!,
-		} as GetUserIndexesRequestBody) as UserIndexResponse;
-		node.is_in_my_indexes = !!userIndexes.my_indexes;
-		node.is_starred = !!userIndexes.starred;
+		if(this.isAuthenticated()){
+			const userIndexes = await api.getUserIndexes({
+				index_id,
+				did: this.ceramic.did?.parent!,
+			} as GetUserIndexesRequestBody) as UserIndexResponse;
+			node.is_in_my_indexes = !!userIndexes.my_indexes;
+			node.is_starred = !!userIndexes.starred;
+		}
 
 		return (
 		<Indexes>(node as any)
