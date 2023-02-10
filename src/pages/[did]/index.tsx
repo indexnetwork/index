@@ -77,12 +77,17 @@ const IndexesPage: NextPageWithLayout = () => {
 		const typeStateKey = type as StateKey;
 		const index: Indexes = (state[tabKeyStateKey] as any).indexes?.filter((i:Indexes) => i.id === index_id)[0];
 
-		if (type === "my_indexes") {
-			index.is_in_my_indexes = (op === "add");
-		}
-		if (type === "starred") {
-			index.is_starred = (op === "add");
-		}
+		newState[tabKeyStateKey]!.indexes = newState[tabKeyStateKey]!.indexes!.map((i:Indexes) => {
+			if (i.id === index_id) {
+				if (type === "my_indexes") {
+					i.is_in_my_indexes = (op === "add");
+				}
+				if (type === "starred") {
+					i.is_starred = (op === "add");
+				}
+			}
+			return i;
+		});
 
 		if (op === "add") {
 			ceramic.addUserIndex(index_id, type);
@@ -97,13 +102,6 @@ const IndexesPage: NextPageWithLayout = () => {
 			newState[typeStateKey]!.skip = newState[typeStateKey]!.skip - 1;
 			newState[typeStateKey]!.totalCount = newState[typeStateKey]!.totalCount - 1;
 		}
-
-		newState[tabKeyStateKey]!.indexes = newState[tabKeyStateKey]!.indexes!.map((i:Indexes) => {
-			if (i.id === index_id) {
-				i = index;
-			}
-			return i;
-		});
 
 		setHasUserIndex({
 			my_indexes: newState?.my_indexes?.totalCount! > 0,
