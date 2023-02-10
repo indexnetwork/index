@@ -22,6 +22,7 @@ export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAtt
 	iconButton?: boolean;
 	group?: boolean;
 	borderless?: boolean;
+	iconHover?: boolean;
 	fontWeight?: number;
 	link?: any;
 }
@@ -33,6 +34,7 @@ const Button: React.FC<ButtonProps> = ({
 	className,
 	borderless,
 	group,
+	iconHover,
 	loading,
 	block,
 	iconButton,
@@ -110,6 +112,7 @@ const Button: React.FC<ButtonProps> = ({
 						  addOnAfter ? "btn-addon-a" : "",
 						  iconButton ? `btn-icon btn-icon-${size}` : "",
 						  borderless ? "btn-borderless" : "",
+						  iconHover ? "btn-hovericon" : "",
 						  className,
 						],
 					  )}

@@ -179,22 +179,20 @@ const IndexDetailPage: NextPageWithLayout = () => {
 														loading={titleLoading}
 													/>
 												</Col>
-												<Col className="mr-1">
+												<Col className="mr-2 mb-3">
 													<Tooltip content="Add to Starred Index">
 														<Button
-															size="md"
-															iconButton
+															iconHover
 															theme="clear"
 															onClick={() => handleUserIndexToggle(index.id!, "starred", index.is_starred ? "remove" : "add") }
 															borderless>
-															<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} className="mr-3" width={20} height={20} />
+															<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"}  width={20} height={20} />
 														</Button>
 													</Tooltip>
 												</Col>
-												<Col className="ml-1">
+												<Col className="ml-2 mb-3">
 													<Button
-														size="md"
-														iconButton
+														iconHover
 														theme="clear"
 														borderless>
 														<IndexOperationsPopup

@@ -60,9 +60,10 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 			>
 				<Header onClick={onClick} className={cm.title} dangerouslySetInnerHTML={{ __html: sanitize(title || "") }}></Header>
 			</Col>
-			<Col className="mr-1">
+			<Col className="mr-2 mt-2">
 				<Tooltip content="Add to Starred Index">
 					<Button
+						iconHover
 						theme="clear"
 						borderless
 						onClick={() => userIndexToggle(id, "starred", is_starred ? "remove" : "add") }>
@@ -72,6 +73,8 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 			</Col>
 			<Col className="ml-1">
 				<Button
+					className="pt-2"
+					iconHover
 					theme="clear"
 					borderless>
 					<IndexOperationsPopup
