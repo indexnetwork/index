@@ -142,7 +142,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 										available && name ? name : "Y"
 									)}</Avatar>
 						</Dropdown>
-						<CreateModal visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal>
+						{createModalVisible ? <CreateModal visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal> : <></>}
 					</NavbarMenu>
 				) :
 					(
