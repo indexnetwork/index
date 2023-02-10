@@ -23,6 +23,7 @@ import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import IconEditBlack from "components/base/Icon/IconEditBlack";
 import { Users } from "../../../types/entity";
+import cm from "./style.module.scss";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -71,6 +72,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 	const {
 		available,
 		name,
+		description,
 		pfp,
 	} = useAppSelector(selectProfile);
 
@@ -101,10 +103,10 @@ const CreateIndexPage: NextPageWithLayout = () => {
 										)}
 								</Avatar>
 								<Col className="mb-6">
-									<Header className="mb-3" >{name}</Header>
-									<Text>lorem ipsum</Text>
-									<Col className="mt-4"></Col>
-									<Text>lorem ipsum</Text>
+									<Header className="mb-1" >{name}</Header>
+									<Text theme="gray9" className={cm.text}>{description}</Text>
+									<Col className="mt-5"></Col>
+									<Text className={cm.text}>{description}</Text>
 								</Col>
 							</Flex>
 						</Col>
