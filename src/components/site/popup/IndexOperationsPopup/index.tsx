@@ -118,7 +118,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 					</Button>
 				)
 			}
-		</Dropdown >
+		</Dropdown>
 	);
 };
 
