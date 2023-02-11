@@ -28,8 +28,6 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 	const handleToggleCreateModal = () => {
 		setCreateModalVisible((oldVal) => !oldVal);
 	 };
-	 
-
 	return (
 		<>
 			<Row rowSpacing={5} >
@@ -68,15 +66,12 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 				</Col>
 				{
 					(!search && isOwner && !hasIndex && tabKey !== "starred") && (
-						<>
-							<Col centerBlock>
-								<Button onClick={handleToggleCreateModal}>Create a new index</Button>
-								{createModalVisible ? <CreateModal visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal> : <></>}
-							</Col>
-						</>
+						<Col centerBlock>
+							<Button onClick={handleToggleCreateModal}>Create a new index</Button>
+							{createModalVisible ? <CreateModal visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal> : <></>}
+						</Col>
 					)
 				}
-
 			</Row>
 		</>
 	);
