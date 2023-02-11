@@ -9,6 +9,7 @@ import { Links } from "types/entity";
 
 import { useLinks } from "hooks/useLinks";
 import IndexDetailsItem from "../IndexDetailItem";
+import NoLinks from "../../indexes/NoLinks";
 
 export interface LinkListState {
 	search: string;
@@ -78,7 +79,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 
 	useEffect(() => {
 		getData(0, search);
-	}, [search]);
+	}, [search, index_id]);
 
 	useEffect(() => {
 		onFetch && onFetch(loading);
@@ -103,50 +104,54 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 	return (
 		<>
 			{
-				search ? (
-					<InfiniteScroll
-						initialLoad={false}
-						hasMore={state.hasMore}
-						loadMore={getData}
-						marginHeight={50}
-					>
-						<List
-							listClass="index-list"
-
-							render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
-								provided={provided!}
-								snapshot={snapshot!}
-								search={!!search}
-								isOwner={isOwner}
-								{...item}
-								// onChange={handleLinksChange}
-							/>}
-							divided
-							data={links}
-						/>
-					</InfiniteScroll>
+				links.length === 0 ? (
+					<NoLinks search={search}></NoLinks>
 				) : (
-					<InfiniteScroll
-						initialLoad={false}
-						hasMore={state.hasMore}
-						loadMore={getData}
-						marginHeight={50}
-					>
-						<DndList <Links>
-							listClass="index-detail-list"
-							draggable={isOwner}
-							data={links}
-							render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
-								provided={provided!}
-								isOwner={isOwner}
-								snapshot={snapshot!}
-								{...item}
-								// onChange={handleLinksChange}
-							/>}
-							divided
-							onOrderChange={handleOrderChange}
-						/>
-					</InfiniteScroll>
+					search ? (
+						<InfiniteScroll
+							initialLoad={false}
+							hasMore={state.hasMore}
+							loadMore={getData}
+							marginHeight={50}
+						>
+							<List
+								listClass="index-list"
+
+								render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
+									provided={provided!}
+									snapshot={snapshot!}
+									search={!!search}
+									isOwner={isOwner}
+									{...item}
+									// onChange={handleLinksChange}
+								/>}
+								divided
+								data={links}
+							/>
+						</InfiniteScroll>
+					) : (
+						<InfiniteScroll
+							initialLoad={false}
+							hasMore={state.hasMore}
+							loadMore={getData}
+							marginHeight={50}
+						>
+							<DndList <Links>
+								listClass="index-detail-list"
+								draggable={isOwner}
+								data={links}
+								render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
+									provided={provided!}
+									isOwner={isOwner}
+									snapshot={snapshot!}
+									{...item}
+									// onChange={handleLinksChange}
+								/>}
+								divided
+								onOrderChange={handleOrderChange}
+							/>
+						</InfiniteScroll>
+					)
 				)
 			}
 		</>

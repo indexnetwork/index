@@ -9,8 +9,6 @@ import Button from "components/base/Button";
 import { useOwner } from "hooks/useOwner";
 import { copyToClipboard } from "utils/helper";
 import IconRemove from "components/base/Icon/IconRemove";
-import IconAdd from "components/base/Icon/IconAdd";
-import IconAddTo from "components/base/Icon/IconAddTo";
 import IconAddCircle from "components/base/Icon/IconAddCircle";
 
 export interface IndexOperationsPopupProps {

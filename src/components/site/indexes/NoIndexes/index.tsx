@@ -5,10 +5,10 @@ import Row from "components/layout/base/Grid/Row";
 import Image from "next/image";
 import React, { useState } from "react";
 import { useRouter } from "next/router";
-import { useOwner } from "../../../../hooks/useOwner";
 import { selectConnection } from "store/slices/connectionSlice";
 import { useAppSelector } from "hooks/store";
 import CreateModal from "components/site/modal/CreateModal";
+import { useOwner } from "../../../../hooks/useOwner";
 
 export interface NoIndexesProps {
 	hasIndex?: boolean;

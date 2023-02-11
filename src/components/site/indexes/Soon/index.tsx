@@ -32,7 +32,7 @@ const Soon: React.VFC<SoonProps> = ({
 				</Col>
 			</Row>
 		</>
-	)
+	);
 };
 
 export default Soon;

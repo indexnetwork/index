@@ -69,7 +69,7 @@ class CeramicService2 {
 			node.updated_at = node.links.edges[0].node.updated_at;
 		}
 
-		if(this.isAuthenticated()){
+		if (this.isAuthenticated()) {
 			const userIndexes = await api.getUserIndexes({
 				index_id,
 				did: this.ceramic.did?.parent!,
