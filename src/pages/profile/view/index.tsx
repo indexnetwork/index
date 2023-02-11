@@ -23,7 +23,6 @@ import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import IconEditBlack from "components/base/Icon/IconEditBlack";
 import { Users } from "../../../types/entity";
-import cm from "./style.module.scss";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -104,9 +103,9 @@ const CreateIndexPage: NextPageWithLayout = () => {
 								</Avatar>
 								<Col className="mb-6">
 									<Header className="mb-1" >{name}</Header>
-									<Text theme="gray9" className={cm.text}>{description}</Text>
+									<Text theme="gray9">{description}</Text>
 									<Col className="mt-5"></Col>
-									<Text className={cm.text}>{description}</Text>
+									<Text>{description}</Text>
 								</Col>
 							</Flex>
 						</Col>
