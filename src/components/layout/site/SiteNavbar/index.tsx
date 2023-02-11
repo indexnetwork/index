@@ -109,7 +109,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 									}}>
 										<Flex alignItems="center">
 											<IconPeople width={16} height="100%"/>
-											<Text className="ml-3" element="span" size="md" >&nbsp;{t("common:profile")}</Text>
+											<Text className="ml-3" element="span" size="md" >{t("common:profile")}</Text>
 										</Flex>
 									</DropdownMenuItem>
 									<DropdownMenuItem onClick={() => {
@@ -117,20 +117,20 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 									}}>
 										<Flex alignItems="center">
 											<IconSettings width={16} height="100%"/>
-											<Text className="ml-3" element="span" size="md" >&nbsp;Profile Settings</Text>
+											<Text className="ml-3" element="span" size="md" >Profile Settings</Text>
 										</Flex>
 									</DropdownMenuItem>
 									{/* <DropdownMenuItem>
 									<Flex alignItems="center">
 										<IconSettings width={12} height="100%" />
-										<Text className="ml-3" element="span" size="sm" theme="secondary">&nbsp;{t("common:settings")}</Text>
+										<Text className="ml-3" element="span" size="sm" theme="secondary">{t("common:settings")}</Text>
 									</Flex>
 								</DropdownMenuItem> */}
 									<DropdownMenuItem divider/>
 									<DropdownMenuItem onClick={disconnect}>
 										<Flex alignItems="center">
 											<IconLogout className="icon-error" width={16} height="100%"/>
-											<Text className="ml-3 dropdown-text-logout" element="span" size="md" theme="error">&nbsp;{t("common:logout")}</Text>
+											<Text className="ml-3 dropdown-text-logout" element="span" size="md" theme="error">{t("common:logout")}</Text>
 										</Flex>
 									</DropdownMenuItem>
 								</>
