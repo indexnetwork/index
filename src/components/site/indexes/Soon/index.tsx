@@ -4,25 +4,35 @@ import Row from "components/layout/base/Grid/Row";
 import Image from "next/image";
 import React from "react";
 
-const Soon = () => (
-	<>
-		{
+export interface SoonProps {
+	section?: string;
+}
+let text: String;
 
-			<Row rowSpacing={5} >
+const Soon: React.VFC<SoonProps> = ({
+	section,
+}) => {
+	if (section === "creators") {
+		text = `This section will soon allow you to curate together, through NFTs.`;
+	} else if (section === "audiences") {
+		text = `This section will soon allow you to monetize your index through NFT-based memberships.`;
+	}
+	return (
+		<>
+			<Row rowSpacing={5}>
 				<Col className="mb-7" xs={12} centerBlock style={{
 					height: 150,
 				}}>
-					<Image src="/images/tabsoon.webp" alt="tabsoon" layout="fill" objectFit='contain' />
+					<Image src="/images/tabsoon.webp" alt="tabsoon" layout="fill" objectFit='contain'/>
 				</Col>
 				<Col className="text-center" centerBlock>
 					<Header level={4} style={{
 						maxWidth: 525,
-					}}>{`This section will soon offer options to monetize your content through membership and subscription options.`}</Header>
+					}}>{text}</Header>
 				</Col>
 			</Row>
-
-		}
-	</>
-);
+		</>
+	);
+};
 
 export default Soon;

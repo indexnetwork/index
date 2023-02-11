@@ -32,7 +32,6 @@ const IndexTitleInput: React.VFC<IndexTitleInputProps> = ({
 	return (
 		<HeaderInput
 			type="text"
-			placeholder="Enter your index title"
 			onBlur={handleBlur}
 			value={title}
 			onChange={handleChange}

@@ -3,8 +3,11 @@ import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import Image from "next/image";
-import React from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/router";
+import { selectConnection } from "store/slices/connectionSlice";
+import { useAppSelector } from "hooks/store";
+import CreateModal from "components/site/modal/CreateModal";
 import { useOwner } from "../../../../hooks/useOwner";
 
 export interface NoIndexesProps {
@@ -19,11 +22,12 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 	tabKey,
 }) => {
 	const router = useRouter();
+	const [createModalVisible, setCreateModalVisible] = useState(false);
+	const { did } = useAppSelector(selectConnection);
 	const { isOwner } = useOwner();
-	const handleCreate = () => {
-		router.push("/create");
-	};
-
+	const handleToggleCreateModal = () => {
+		setCreateModalVisible((oldVal) => !oldVal);
+	 };
 	return (
 		<>
 			<Row rowSpacing={5} >
@@ -43,9 +47,15 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 					{
 						!search && !hasIndex && (
 							isOwner ? (
-								<Header style={{
-									maxWidth: 350,
-								}} level={4}>{`You have no ${tabKey === "starred" ? "starred" : ""} indexes yet. Create an index to get started.`}</Header>
+								tabKey === "starred" ? (
+									<Header style={{
+										maxWidth: 350,
+									}} level={4}>{`You have no starred indexes yet.`}</Header>
+								) : (
+									<Header style={{
+										maxWidth: 350,
+									}} level={4}>{`You have no indexes yet. Create an index to get started.`}</Header>
+								)
 							) : (
 								<Header style={{
 									maxWidth: 350,
@@ -55,15 +65,13 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 					}
 				</Col>
 				{
-					(!search && isOwner && !hasIndex) && (
-						<>
-							<Col centerBlock>
-								<Button onClick={handleCreate}>Create a new index</Button>
-							</Col>
-						</>
+					(!search && isOwner && !hasIndex && tabKey !== "starred") && (
+						<Col centerBlock>
+							<Button onClick={handleToggleCreateModal}>Create a new index</Button>
+							{createModalVisible ? <CreateModal visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal> : <></>}
+						</Col>
 					)
 				}
-
 			</Row>
 		</>
 	);

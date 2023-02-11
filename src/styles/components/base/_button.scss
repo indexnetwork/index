@@ -90,7 +90,7 @@
 			display: flex;
 		}
 	}
-
+	
 	&.btn-addon-b {
 		display: inline-block;
 		vertical-align: middle;
@@ -111,6 +111,19 @@
 			margin-left: 1rem;
 		}
 	}
+	&.btn-hovericon {
+		//@include responsive-sizes($input-height, "width");
+		max-height: 2.4rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0.2rem;
+		svg {
+			flex-shrink: 0;
+			width: 2.0rem;
+			height: 2.0rem;
+		}
+	}
 
 	&.btn-icon {
 		@include responsive-sizes($input-height, "width");
@@ -125,6 +138,7 @@
 		}
 	}
 	&.btn-icon.btn-md {
+		padding: 0rem;
 		svg {
 			width: 2.0rem;
 			height: 2.0rem;

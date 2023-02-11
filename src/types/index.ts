@@ -45,7 +45,7 @@ export type FlexPropsType = Pick<React.CSSProperties, CSSFlexPropsNamesType>;
 /**
  * Text Types
  */
-export type TextThemeType = ComponentThemeType | "gray5" | "white";
+export type TextThemeType = ComponentThemeType | "gray5" | "white" | "gray9";
 
 export type TextElementType = "span" | "strong" | "div" | "p" | "label";
 

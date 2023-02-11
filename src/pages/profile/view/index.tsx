@@ -71,6 +71,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 	const {
 		available,
 		name,
+		description,
 		pfp,
 	} = useAppSelector(selectProfile);
 
@@ -101,17 +102,17 @@ const CreateIndexPage: NextPageWithLayout = () => {
 										)}
 								</Avatar>
 								<Col className="mb-6">
-									<Header className="mb-3" >{name}</Header>
-									<Text>lorem ipsum</Text>
-									<Col className="mt-4"></Col>
-									<Text>lorem ipsum</Text>
+									<Header className="mb-1" >{name}</Header>
+									<Text theme="gray9">{description}</Text>
+									<Col className="mt-5"></Col>
+									<Text>{description}</Text>
 								</Col>
 							</Flex>
 						</Col>
 						<Tabs activeKey={tabKey} onTabChange={setTabKey}>
 							<TabPane enabled={true} tabKey={"myindexes"} title={"My indexes"} />
 							<TabPane enabled={true} tabKey={"starred"} title={"Starred"} />
-							<TabPane enabled={true} tabKey={"discovered"} title={"Discovered"} />
+							<TabPane tabKey={"discovered"} title={"Discovered"} />
 						</Tabs>
 					</Col>
 				</FlexRow>

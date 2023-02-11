@@ -179,22 +179,20 @@ const IndexDetailPage: NextPageWithLayout = () => {
 														loading={titleLoading}
 													/>
 												</Col>
-												<Col className="mr-1">
+												<Col className="mr-2 mb-3">
 													<Tooltip content="Add to Starred Index">
 														<Button
-															size="md"
-															iconButton
+															iconHover
 															theme="clear"
 															onClick={() => handleUserIndexToggle(index.id!, "starred", index.is_starred ? "remove" : "add") }
 															borderless>
-															<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} className="mr-3" width={20} height={20} />
+															<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} width={20} height={20} />
 														</Button>
 													</Tooltip>
 												</Col>
-												<Col className="ml-1">
+												<Col className="ml-2 mb-3">
 													<Button
-														size="md"
-														iconButton
+														iconHover
 														theme="clear"
 														borderless>
 														<IndexOperationsPopup
@@ -219,7 +217,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<Col className="idxflex-grow-1 mb-4">
 													<Tabs activeKey={tabKey} onTabChange={setTabKey}>
 														<TabPane enabled={true} tabKey={"index"} title={"Index"} />
-														<TabPane enabled={true} tabKey={"curators"} title={"Creators"} />
+														<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
 														<TabPane enabled={true} tabKey={"audiences"} title={"Audiences"} />
 													</Tabs>
 												</Col>
@@ -291,15 +289,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											<Col xs={12} lg={9}>
 											</Col>
 										</FlexRow> :
-										<Col></Col>}
-
-									{tabKey === "index" ?
-										<Col></Col> :
-										<FlexRow justify="center">
-											<Soon></Soon>
-										</FlexRow>
-
-									}
+										<Col>
+											<FlexRow justify="center">
+												<Soon section={tabKey}></Soon>
+											</FlexRow>
+										</Col>}
 								</>
 							)
 					}

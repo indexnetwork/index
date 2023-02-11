@@ -44,7 +44,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 		if (title) {
 			const doc = await ceramic.createIndex({ title } as Indexes);
 			if (doc != null) {
-				await setTitle("");
+				// await setTitle("");
 				await router.push(`/${did}/${doc.id}`);
 				modalProps.onClose?.();
 			}
