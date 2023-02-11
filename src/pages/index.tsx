@@ -26,7 +26,6 @@ const Home: NextPageWithLayout = () => {
 			<LandingSection3 />
 			<LandingSection4 />
 			<LandingSection5 />
-			<LandingSection6 />
 			<LandingSection7 />
 		</Flex>
 	);
