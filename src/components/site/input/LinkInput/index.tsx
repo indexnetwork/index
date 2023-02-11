@@ -11,19 +11,21 @@ export interface LinkInputProps extends InputProps {
 	size?: HeaderSizeType;
 	loading?: boolean;
 	onLinkAdd?(url?: string[]): void;
+	progress?: {
+		current?: number;
+		total?: number;
+	};
 }
 
 const LinkInput: React.VFC<LinkInputProps> = ({
-	size = 3, loading, disabled, onLinkAdd, ...inputProps
+	size = 3, loading, disabled, onLinkAdd, progress, ...inputProps
 }) => {
 	const [url, setUrl] = useState("");
 	const [showMsg, setShowMsg] = useState(false);
-
 	const handleBlur: React.FocusEventHandler<HTMLInputElement> = () => {
 		const words = url.split(" ");
 
 		const links = words.filter((word) => validator.isURL(word));
-
 		onLinkAdd && onLinkAdd(links);
 		setUrl("");
 	};
@@ -54,7 +56,14 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 				])}
 				disabled={loading || disabled}
 				addOnBefore={<IconAdd width={20} height={20} />}
-				addOnAfter={loading ? <Spin active={true} thickness="light" theme="secondary" /> : undefined}
+				addOnAfter={
+					loading ? (
+						<>
+							{progress && (progress.total! > 1 && progress.current !== progress.total) && <Text className={"mr-7"} theme={"gray9"}>{`${progress.current}/${progress.total}`}</Text>}
+							<Spin active={true} thickness="light" theme="secondary" />
+						</>
+					) : undefined
+				}
 				{...inputProps}
 				value={url}
 				onBlur={handleBlur}
