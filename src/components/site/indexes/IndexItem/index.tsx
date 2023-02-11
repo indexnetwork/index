@@ -87,7 +87,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 		</Flex>
 	</Col>
 	<Col xs={12}>
-		<Text size="sm" theme="disabled">{updated_at ? moment(updated_at).fromNow() : ""}</Text>
+		<Text size="sm" theme="disabled">Updated {updated_at ? moment(updated_at).fromNow() : ""}</Text>
 	</Col>
 	{
 

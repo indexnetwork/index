@@ -186,7 +186,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 															theme="clear"
 															onClick={() => handleUserIndexToggle(index.id!, "starred", index.is_starred ? "remove" : "add") }
 															borderless>
-															<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"}  width={20} height={20} />
+															<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} width={20} height={20} />
 														</Button>
 													</Tooltip>
 												</Col>
@@ -217,7 +217,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<Col className="idxflex-grow-1 mb-4">
 													<Tabs activeKey={tabKey} onTabChange={setTabKey}>
 														<TabPane enabled={true} tabKey={"index"} title={"Index"} />
-														<TabPane enabled={true} tabKey={"curators"} title={"Creators"} />
+														<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
 														<TabPane enabled={true} tabKey={"audiences"} title={"Audiences"} />
 													</Tabs>
 												</Col>
@@ -289,15 +289,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											<Col xs={12} lg={9}>
 											</Col>
 										</FlexRow> :
-										<Col></Col>}
-
-									{tabKey === "index" ?
-										<Col></Col> :
-										<FlexRow justify="center">
-											<Soon></Soon>
-										</FlexRow>
-
-									}
+										<Col>
+											<FlexRow justify="center">
+												<Soon section={tabKey}></Soon>
+											</FlexRow>
+										</Col>}
 								</>
 							)
 					}
