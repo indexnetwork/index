@@ -53,7 +53,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [notFound, setNotFound] = useState(false);
 	const [progress, setProgress] = useState({
 		current: 0,
-		total: 0
+		total: 0,
 	});
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
@@ -140,7 +140,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 				...progress,
 				current: progress.current + 1,
 			});
-			setProgress({ ...progress, current: progress.current + 1});
+			setProgress({ ...progress, current: progress.current + 1 });
 			setLinks([addedLink, ...links]);
 			index.updated_at = addedLink.updated_at;
 			setIndex(index);
