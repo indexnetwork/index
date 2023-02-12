@@ -51,6 +51,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [tabKey, setTabKey] = useState("index");
 
 	const [notFound, setNotFound] = useState(false);
+	const [progress, setProgress] = useState({
+		current: 0,
+		total: 0
+	});
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
@@ -103,6 +107,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const handleAddLink = async (urls: string[]) => {
 		setCrawling(true);
 
+		setProgress({
+			current: 0,
+			total: urls.length,
+		});
+
 		urls.forEach(async (url) => {
 			const payload = await api.crawlLink(url);
 			if (payload) {
@@ -113,7 +122,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			}
 		});
 
-		setCrawling(false);
+		//
 	};
 
 	useEffect(() => {
@@ -127,11 +136,26 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	useEffect(() => {
 		if (addedLink) {
+			setProgress({
+				...progress,
+				current: progress.current + 1,
+			});
+			setProgress({ ...progress, current: progress.current + 1});
 			setLinks([addedLink, ...links]);
 			index.updated_at = addedLink.updated_at;
 			setIndex(index);
 		}
 	}, [addedLink]);
+
+	useEffect(() => {
+		if ((progress.current === progress.total) && progress.total > 0) {
+			setProgress({
+				current: 0,
+				total: 0,
+			});
+			setCrawling(false);
+		}
+	}, [progress]);
 
 	return (
 		<LinksContext.Provider
@@ -268,6 +292,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<LinkInput
 													loading={crawling}
 													onLinkAdd={handleAddLink}
+													progress={progress}
 												/>
 											</Col>
 										}
