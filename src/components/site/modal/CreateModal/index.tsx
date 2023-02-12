@@ -83,7 +83,7 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 									onChange={handleChange}
 									// loading={loading}
 									className="mt-3 ml-3 mr-2"
-									placeholder="e.g. Curation Over Curation"
+									placeholder="e.g. Web3 Social Ecosystem"
 								/>
 							</Flex>
 						</Col>
