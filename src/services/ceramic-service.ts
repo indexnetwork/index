@@ -1,34 +1,39 @@
 import moment from "moment";
-import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
 import {
 	Indexes, Links, UserIndex, Users,
 } from "types/entity";
 import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
-import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
+import { getResolver } from "key-did-resolver";
+import { DID } from "dids";
 import { definition } from "../types/merged-runtime";
 import { appConfig } from "../config";
 
-class CeramicService2 {
+import {
+	encodeDIDWithLit,
+	Secp256k1ProviderWithLit,
+} from "../key-did-provider-secp256k1-with-lit";
+
+class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
 	});
-
-	private ceramic = new CeramicClient("https://ceramic.index.as");
-	private composeClient = new ComposeClient({
+	private userComposeClient = new ComposeClient({
 		ceramic: "https://ceramic.index.as",
-		// cast our definition as a RuntimeCompositeDefinition
+		definition: definition as RuntimeCompositeDefinition,
+	});
+	private pkpComposeClient = new ComposeClient({
+		ceramic: "https://ceramic.index.as",
 		definition: definition as RuntimeCompositeDefinition,
 	});
 
-	async authenticate(did: any) {
+	async authenticateUser(did: any) {
 		if (!isSSR()) {
 			try {
-				await this.ceramic.setDID(did);
-				await this.composeClient.setDID(did);
+				await this.userComposeClient.setDID(did);
 				return true;
 			} catch (err) {
 				return false;
@@ -38,12 +43,35 @@ class CeramicService2 {
 		}
 	}
 
-	isAuthenticated() {
-		return !!(this.ceramic?.did?.authenticated);
+	async authenticatePKP(ipfsId: string, pkpPublicKey: any) {
+		if (!isSSR()) {
+			try {
+				const encodedDID = await encodeDIDWithLit(pkpPublicKey);
+				const provider = new Secp256k1ProviderWithLit({
+					did: encodedDID,
+					ipfsId,
+					pkpPublicKey,
+				});
+				console.log(encodedDID);
+
+				const did = new DID({ provider, resolver: getResolver() });
+				await did.authenticate();
+				await this.pkpComposeClient.setDID(did);
+				return true;
+			} catch (err) {
+				return false;
+			}
+		} else {
+			return false;
+		}
+	}
+
+	isUserAuthenticated() {
+		return !!(this.userComposeClient?.did?.authenticated);
 	}
 
 	async getIndexById(index_id: string) {
-		const result = await this.composeClient.executeQuery(`{
+		const result = await this.userComposeClient.executeQuery(`{
 			node(id:"${index_id}"){
 			  id
 			  ... on Index{
@@ -69,10 +97,10 @@ class CeramicService2 {
 			node.updated_at = node.links.edges[0].node.updated_at;
 		}
 
-		if (this.isAuthenticated()) {
+		if (this.isUserAuthenticated()) {
 			const userIndexes = await api.getUserIndexes({
 				index_id,
-				did: this.ceramic.did?.parent!,
+				did: this.userComposeClient.did?.parent!,
 			} as GetUserIndexesRequestBody) as UserIndexResponse;
 			node.is_in_my_indexes = !!userIndexes.my_indexes;
 			node.is_starred = !!userIndexes.starred;
@@ -83,7 +111,7 @@ class CeramicService2 {
 		);
 	}
 	async getLinkById(link_id: string) {
-		const result = await this.composeClient.executeQuery(`{
+		const result = await this.userComposeClient.executeQuery(`{
 			node(id:"${link_id}"){
 			  id
 			  ... on Link{
@@ -112,7 +140,7 @@ class CeramicService2 {
 		const payload = {
 			content,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ createIndex: { document: Indexes } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ createIndex: { document: Indexes } }>(`
 			mutation CreateIndex($input: CreateIndexInput!) {
 				createIndex(input: $input) {
 					document {
@@ -140,7 +168,7 @@ class CeramicService2 {
 			id: index_id,
 			content,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ updateIndex: { document: Indexes } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ updateIndex: { document: Indexes } }>(`
 			mutation UpdateIndex($input: UpdateIndexInput!) {
 				updateIndex(input: $input) {
 					document {
@@ -171,7 +199,7 @@ class CeramicService2 {
 		const payload = {
 			content: link,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ createLink: { document: Links } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ createLink: { document: Links } }>(`
 			mutation CreateLink($input: CreateLinkInput!) {
 				createLink(input: $input) {
 					document {
@@ -198,7 +226,7 @@ class CeramicService2 {
 			id: link_id,
 			content: link,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ updateLink: { document: Links } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ updateLink: { document: Links } }>(`
 			mutation UpdateLink($input: UpdateLinkInput!) {
 				updateLink(input: $input) {
 					document {
@@ -285,7 +313,7 @@ class CeramicService2 {
 		const payload = {
 			content: userIndex,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
 			mutation CreateUserIndex($input: CreateUserIndexInput!) {
 				createUserIndex(input: $input) {
 					document {
@@ -306,10 +334,10 @@ class CeramicService2 {
 	}
 
 	async removeUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
-		console.log("remove", index_id, this.ceramic.did?.parent!, type);
+		console.log("remove", index_id, this.userComposeClient.did?.parent!, type);
 		const userIndexes = await api.getUserIndexes({
 			index_id,
-			did: this.ceramic.did?.parent!,
+			did: this.userComposeClient.did?.parent!,
 		} as GetUserIndexesRequestBody) as UserIndexResponse;
 		type UserIndexKey = keyof typeof userIndexes;
 
@@ -323,7 +351,7 @@ class CeramicService2 {
 				deleted_at: getCurrentDateTime(),
 			},
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
 			mutation UpdateUserIndex($input: UpdateUserIndexInput!) {
 				updateUserIndex(input: $input) {
 					document {
@@ -345,7 +373,7 @@ class CeramicService2 {
 	}
 
 	async getProfile(): Promise<Users> {
-		const { data, errors } = await this.composeClient.executeQuery<{ viewer: { indexasProfile: Users } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ viewer: { indexasProfile: Users } }>(`
 			query {
 				viewer {
 					indexasProfile {
@@ -368,7 +396,7 @@ class CeramicService2 {
 		const payload = {
 			content: profile,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ createIndexasProfile: { document: Users } }>(`	
+		const { data, errors } = await this.userComposeClient.executeQuery<{ createIndexasProfile: { document: Users } }>(`	
 			mutation CreateIndexasProfile($input: CreateIndexasProfileInput!) {
 				createIndexasProfile(input: $input) {
 					document {
@@ -392,15 +420,8 @@ class CeramicService2 {
 			//
 		}
 	}
-
-	async close() {
-		if (this.isAuthenticated()) {
-			this.ceramic.setDID(new DID());
-			return this.ceramic.close();
-		}
-	}
 }
 
-const ceramicService2 = new CeramicService2();
+const ceramicService = new CeramicService();
 
-export default ceramicService2;
+export default ceramicService;
