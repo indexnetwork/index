@@ -7,15 +7,15 @@ import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
-import { getResolver } from "key-did-resolver";
+import * as KeyDidResolver from "key-did-resolver";
 import { DID } from "dids";
-import { definition } from "../types/merged-runtime";
-import { appConfig } from "../config";
-
 import {
 	encodeDIDWithLit,
 	Secp256k1ProviderWithLit,
-} from "../key-did-provider-secp256k1-with-lit";
+} from "@indexas/key-did-provider-secp256k1-with-lit";
+import { definition } from "../types/merged-runtime";
+import { appConfig } from "../config";
+import {ResolverRegistry} from "did-resolver/src/resolver";
 
 class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
@@ -50,11 +50,10 @@ class CeramicService {
 				const provider = new Secp256k1ProviderWithLit({
 					did: encodedDID,
 					ipfsId,
-					pkpPublicKey,
 				});
 				console.log(encodedDID);
-
-				const did = new DID({ provider, resolver: getResolver() });
+				// @ts-ignore
+				const did = new DID({ provider, resolver: KeyDidResolver.getResolver() });
 				await did.authenticate();
 				await this.pkpComposeClient.setDID(did);
 				return true;
