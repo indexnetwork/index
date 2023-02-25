@@ -7,15 +7,11 @@ import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
-import * as KeyDidResolver from "key-did-resolver";
-import { DID } from "dids";
-import {
-	encodeDIDWithLit,
-	Secp256k1ProviderWithLit,
-} from "@indexas/key-did-provider-secp256k1-with-lit";
+
 import { definition } from "../types/merged-runtime";
 import { appConfig } from "../config";
-import {ResolverRegistry} from "did-resolver/src/resolver";
+
+import LitService from "./lit-service";
 
 class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
@@ -34,28 +30,6 @@ class CeramicService {
 		if (!isSSR()) {
 			try {
 				await this.userComposeClient.setDID(did);
-				return true;
-			} catch (err) {
-				return false;
-			}
-		} else {
-			return false;
-		}
-	}
-
-	async authenticatePKP(ipfsId: string, pkpPublicKey: any) {
-		if (!isSSR()) {
-			try {
-				const encodedDID = await encodeDIDWithLit(pkpPublicKey);
-				const provider = new Secp256k1ProviderWithLit({
-					did: encodedDID,
-					ipfsId,
-				});
-				console.log(encodedDID);
-				// @ts-ignore
-				const did = new DID({ provider, resolver: KeyDidResolver.getResolver() });
-				await did.authenticate();
-				await this.pkpComposeClient.setDID(did);
 				return true;
 			} catch (err) {
 				return false;
@@ -128,6 +102,19 @@ class CeramicService {
 	}
 
 	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
+
+		// const { pkpPublicKey } = await LitService.mintPkp();
+		/*
+		0x04d23b0bce7a73dc69684cc0c7d00856bff050c408a0755c629f7067143fb5acaf5055361301c06ba329746d9e53fb3ed28de127137174bdf23d9b19f0062dca1a
+		and Token ID is 0x61147fdf0f5bd1a926a94b3bc4d97526c46d7127f593003cdf6db2b2ff65350d
+		43910565789344013050534618981627019256365100662200283369978725539582069519629
+		*/
+		const pkpPublicKey = "0x04d23b0bce7a73dc69684cc0c7d00856bff050c408a0755c629f7067143fb5acaf5055361301c06ba329746d9e53fb3ed28de127137174bdf23d9b19f0062dca1a";
+		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
+		if (!did) {
+			// TODO handle error
+		}
+		this.pkpComposeClient.setDID(did);
 		setDates(content, true);
 		if (!content.title) {
 			content.title = "Untitled Index";
@@ -139,7 +126,7 @@ class CeramicService {
 		const payload = {
 			content,
 		};
-		const { data, errors } = await this.userComposeClient.executeQuery<{ createIndex: { document: Indexes } }>(`
+		const { data, errors } = await this.pkpComposeClient.executeQuery<{ createIndex: { document: Indexes } }>(`
 			mutation CreateIndex($input: CreateIndexInput!) {
 				createIndex(input: $input) {
 					document {
@@ -156,7 +143,7 @@ class CeramicService {
 			// TODO Handle
 		}
 		const index = data?.createIndex.document;
-		await this.addUserIndex(index!.id, "my_indexes");
+		// await this.addUserIndex(index!.id, "my_indexes");
 		return index!;
 	}
 

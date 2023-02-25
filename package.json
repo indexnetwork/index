@@ -19,7 +19,7 @@
     "@composedb/types": "^0.3.1",
     "@didtools/pkh-ethereum": "^0.0.3",
     "@ethersproject/providers": "^5.6.8",
-    "@indexas/key-did-provider-secp256k1-with-lit": "^0.0.8",
+    "@indexas/key-did-provider-secp256k1-with-lit": "0.0.13",
     "@lit-protocol/contracts-sdk": "^2.1.38",
     "@reduxjs/toolkit": "^1.8.2",
     "@self.id/web": "^0.4.2",
