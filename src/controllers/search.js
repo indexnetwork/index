@@ -353,7 +353,6 @@ exports.did = async (req, res) => {
                             .filter(i => !i.deleted_at)
                             .groupBy("type")
                             .value()
-    res.json(user_indexes_by_type);
     if(type){
         let search_result = {};
         search_result[type] = await indexesSearch(user_indexes_by_type[type].map(i => i.index_id), search, skip, take, links_size, user_indexes_by_type)
