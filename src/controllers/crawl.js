@@ -20,11 +20,14 @@ const getIframelyData = async (url) => {
         }
     }
     
-    if(response.meta.site && response.meta.title && !response.meta.title.includes(response.meta.site)){
+    if(response.meta.site && response.meta.title && response.meta.title.length > 0 && !response.meta.title.includes(response.meta.site)){
         response.meta.title = `${response.meta.site} | ${response.meta.title}`
     }else if(response.meta.site){
         response.meta.title = response.meta.site
+    }else{
+        response.meta.title = (new URL(url)).hostname
     }
+
     if(response.links && response.links.icon){
         return {
           url: response.meta.canonical,

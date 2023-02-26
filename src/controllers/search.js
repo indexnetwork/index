@@ -121,7 +121,7 @@ const indexesWithLinksQuery = (
                         number_of_fragments: 0,
                     },
                     content: {
-                        fragment_size: 2000,
+                        fragment_size: 256,
                         number_of_fragments: 2,
                     },
                 },

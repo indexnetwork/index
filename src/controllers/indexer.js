@@ -1,3 +1,5 @@
+const {getPkpPublicKey, encodeDIDWithLit, walletToDID} = require('../utils/lit/index.js')
+
 const _ = require('lodash')
 const { Client } = require('@elastic/elasticsearch')
 
@@ -38,6 +40,39 @@ async function getIndexById(id) {
     delete res.data.node.owner
     return res.data.node
 }
+
+async function getIndexByPKP(id) {
+
+    let results = await fetch('https://composedb.index.as/composedb/graphql', {
+        method: 'POST',
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            query: `{
+              node(id: "${id}") {
+                ... on CeramicAccount {
+                  id
+                  indexList(first: 1) {
+                    edges {
+                      node {
+                        id
+                      }
+                    }
+                  }
+                }
+              }
+            }`
+        })
+    })
+    let res = await results.json();
+    let indexes = res.data.node.indexList.edges
+    if(indexes.length > 0){
+        return indexes[0].node.id
+    }
+    return false;
+}
+
 
 
 const config = {
@@ -180,6 +215,38 @@ module.exports.updateLinkContent = async (url, content) => {
     })  
 }
 
+module.exports.indexPKP = async (req, res, next) => {
+
+    //TODO validate moralis ofcourse.
+    
+    const { chainId, nftTransfers } = req.body;
+
+    const event = nftTransfers[0]
+    
+    let pkpPubKey = await getPkpPublicKey(event.tokenId)
+    let pkpDID = encodeDIDWithLit(pkpPubKey);
+    let indexId = await getIndexByPKP(pkpDID);
+
+    if(indexId){
+        await this.createUserIndex({
+            "controller_did": walletToDID(chainId, event.to),
+            "type":"my_indexes",
+            "index_id": indexId,
+            "created_at": new Date().toISOString()
+        })
+
+        if(event.from !== "0x0000000000000000000000000000000000000000"){
+            await this.updateUserIndex({
+                "controller_did": walletToDID(chainId, event.from),
+                "type":"my_indexes",
+                "index_id": indexId,
+                "created_at": new Date().toISOString(),
+                "deleted_at": new Date().toISOString()
+            })
+        }
+    }
+    return res.status(201).end();
+}
 module.exports.createUserIndex = async (user_index) => {
     console.log("createUserIndex", user_index)
     await redis.hSet(`user_indexes:by_did:${user_index.controller_did}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))   

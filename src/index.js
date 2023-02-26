@@ -7,6 +7,7 @@ const redis = RedisClient.getInstance();
 
 const search = require('./controllers/search.js')
 const crawl = require('./controllers/crawl.js')
+const indexer = require('./controllers/indexer.js')
 const { getQueue } = require('./controllers/crawl-content.js')
 const express = require('express')
 const cors = require('cors')
@@ -64,6 +65,8 @@ const crawlSchema = Joi.object({
 })
 
 app.get('/crawl/metadata', validator.query(crawlSchema), crawl.metadata)
+
+app.post('/moralis/pkp', indexer.indexPKP)
 
 app.use((err, req, res, next) => {
   if (err && err.error && err.error.isJoi) {

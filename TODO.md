@@ -63,11 +63,12 @@
 
 
 # Collaboration
-- [] Collaboration UI (Seren)
-- [] Conditional Signing 
 - [] PKP Mint 
+- [] Craete default with pkp, with default action.
 - [] Create new action
-- [] Associate a PKP with a LIT Action
+- [] Associate a PKP with a new LIT Action
+- [] Conditional Signing 
+- [] Collaboration UI (Seren)
 
 
 # Security
@@ -79,11 +80,10 @@ https://github.com/indexas/backend-api/blob/626dbdef6bf381e3d65ce55e178e3ec205a0
 
 - Requests from composedb
 
-* Urgent: Cryptographically verifiable updated_at, created_at, deleted_at
-* Sorting & Filtering
-* Unique Keys. Eh.
-* Encryption composite
-* Kafka Indexer?
-* Extend schema (Profile, IndexasProfile)
-* Why another statestore?
-* I should be able to filter models by searching column names. 
+* I desperately need cryptographically verifiable updated_at, created_at, deleted_at fields.
+* Will ComposeDB support defining unique keys? Eliminating duplicate records at querying might be a solution.
+Since we use Lit PKP owned streams, we store a bloom filter in another stream and evaluate validations using Lit Actions. 
+I wonder your plans on this.
+
+* Encryption composite: Everyone stores encrypted data differently. What's your thoughts on building a composite named "Encrypted" that conforms to certain standards. 
+* Are you going to keep models in ComposeDB too? I can't think of a better discovery method.
