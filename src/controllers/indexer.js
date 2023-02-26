@@ -267,12 +267,12 @@ module.exports.indexPKP = async (req, res, next) => {
 }
 module.exports.createUserIndex = async (user_index) => {
     console.log("createUserIndex", user_index)
-    await redis.hSet(`user_indexes:by_did:${user_index.controller_did}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))   
+    await redis.hSet(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))   
 }
 
 module.exports.updateUserIndex = async (user_index) => {
     console.log("updateUserIndex", user_index)
     if(user_index.deleted_at){
-        await redis.hDel(`user_indexes:by_did:${user_index.controller_did}`, `${user_index.index_id}:${user_index.type}`)
+        await redis.hDel(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`)
     }
 }
