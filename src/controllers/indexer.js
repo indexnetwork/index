@@ -1,4 +1,4 @@
-const {getPkpPublicKey, encodeDIDWithLit, walletToDID} = require('../utils/lit/index.js')
+const {getPkpPublicKey, decodeDIDWithLit, encodeDIDWithLit, walletToDID, getOwner} = require('../utils/lit/index.js')
 
 const _ = require('lodash')
 const { Client } = require('@elastic/elasticsearch')
@@ -94,6 +94,21 @@ module.exports.createIndex = async (index) => {
         refresh: true,
         body: transformIndex(index),
     })
+    
+    if(index.controller_did.startsWith('did:key:')){
+        const pkpPublicKey = decodeDIDWithLit(index.controller_did)
+        const pkpOwner = await getOwner(pkpPublicKey);
+        if(pkpOwner){
+            const ownerDID = walletToDID("80001", pkpOwner);
+            await this.createUserIndex({
+                "controller_did": walletToDID("80001", pkpOwner),
+                "type":"my_indexes",
+                "index_id": index.id,
+                "created_at": new Date().toISOString()
+            })
+        }
+    }
+
 }
 
 module.exports.updateIndex = async (index) => {
@@ -218,11 +233,14 @@ module.exports.updateLinkContent = async (url, content) => {
 module.exports.indexPKP = async (req, res, next) => {
 
     //TODO validate moralis ofcourse.
-    
     const { chainId, nftTransfers } = req.body;
 
+    if(nftTransfers.length === 0){
+        return res.status(200).end();
+    }
+
     const event = nftTransfers[0]
-    
+
     let pkpPubKey = await getPkpPublicKey(event.tokenId)
     let pkpDID = encodeDIDWithLit(pkpPubKey);
     let indexId = await getIndexByPKP(pkpDID);

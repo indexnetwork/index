@@ -346,13 +346,14 @@ exports.did = async (req, res) => {
 
     const {did, type, search, skip, take, links_size} = req.body;
     
-    let user_indexes = await redis.hGetAll(`user_indexes:by_did:${did}`)
+    let user_indexes = await redis.hGetAll(`user_indexes:by_did:${did.toLowerCase()}`)
     
     user_indexes_by_type = _.chain(user_indexes)
                             .map(i => JSON.parse(i))
                             .filter(i => !i.deleted_at)
                             .groupBy("type")
                             .value()
+    res.json(user_indexes_by_type);
     if(type){
         let search_result = {};
         search_result[type] = await indexesSearch(user_indexes_by_type[type].map(i => i.index_id), search, skip, take, links_size, user_indexes_by_type)
@@ -410,8 +411,8 @@ exports.user_index = async (req, res, next) => {
     const { did, index_id } = req.body;
     
     if(index_id){
-        let my_indexes = await redis.hGet(`user_indexes:by_did:${did}`, `${index_id}:my_indexes`)
-        let starred = await redis.hGet(`user_indexes:by_did:${did}`, `${index_id}:starred`)
+        let my_indexes = await redis.hGet(`user_indexes:by_did:${did.toLowerCase()}`, `${index_id}:my_indexes`)
+        let starred = await redis.hGet(`user_indexes:by_did:${did.toLowerCase()}`, `${index_id}:starred`)
         res.json({
             my_indexes: JSON.parse(my_indexes),
             starred: JSON.parse(starred),
