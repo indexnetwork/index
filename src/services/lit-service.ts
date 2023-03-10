@@ -1,12 +1,12 @@
 import { ethers } from "ethers";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
-import {isSSR} from "../utils/helper";
-import {encodeDIDWithLit, Secp256k1ProviderWithLit} from "@indexas/key-did-provider-secp256k1-with-lit";
-import {DID} from "dids";
+import { encodeDIDWithLit, Secp256k1ProviderWithLit } from "@indexas/key-did-provider-secp256k1-with-lit";
+import { DID } from "dids";
 import * as KeyDidResolver from "key-did-resolver";
+import { isSSR } from "../utils/helper";
 
 class LitService {
-	async authenticatePKP(ipfsId: string, pkpPublicKey: any) : Promise<DID> {
+	async authenticatePKP(ipfsId: string, pkpPublicKey: any) {
 		if (!isSSR()) {
 			try {
 				const encodedDID = await encodeDIDWithLit(pkpPublicKey);
@@ -24,9 +24,7 @@ class LitService {
 		} else {
 			// TODO handle error.
 		}
-		return did;
 	}
-
 	async mintPkp() {
 		const litContracts = new LitContracts();
 		await litContracts.connect();
@@ -47,11 +45,12 @@ class LitService {
 		};
 
 		/*
+
         PKP public key is 0x04c00cfcacdd09cd14f858ec1a9771f88d170ad8ac46d5deb8cced8f24cce303ff9006ee68ff0eac11ac1e4a57dc0bc48075c6813fab164fb0b36ea2c021c51005
+
         and Token ID is 0x276c64f32ffe0f56396f60d1030d23d44b6ce50833856893ef0f311331f16d3f
         and Token ID number is 17831717308699365721260653288176043165957324409522683475746237039328728542527
-        */
-		/*
+
         const tokenIdNumber = "17831717308699365721260653288176043165957324409522683475746237039328728542527"
         const signEverythingCID = "QmcZ2MuxkNrMbNKAVtK37tEmKJ8zwvFudin3rBEcHyhqJc";
         // const addPermissionTx = await litContracts.pkpPermissionsContractUtil.write.addPermittedAction(tokenIdNumber, signEverythingCID);
