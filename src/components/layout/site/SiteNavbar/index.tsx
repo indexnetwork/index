@@ -10,7 +10,7 @@ import { useTranslation } from "next-i18next";
 import React, {
 	useCallback, useContext, useEffect, useState,
 } from "react";
-import IconLogout from "components/base/Icon/IconLogout";
+import IconDisconnect from "components/base/Icon/IconDisconnect";
 import Router, { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
 import { useAppSelector } from "hooks/store";
@@ -129,7 +129,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 									<DropdownMenuItem divider/>
 									<DropdownMenuItem onClick={disconnect}>
 										<Flex alignItems="center">
-											<IconLogout className="icon-error" width={16} height="100%"/>
+											<IconDisconnect className="icon-error" width={16} height="100%"/>
 											<Text className="ml-3 dropdown-text-logout" element="span" size="md" theme="error">{t("common:logout")}</Text>
 										</Flex>
 									</DropdownMenuItem>

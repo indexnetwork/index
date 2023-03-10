@@ -1,6 +1,6 @@
 import * as React from "react";
 
-const IconLogout: React.FC<React.SVGProps<SVGSVGElement>> = ({
+const IconDisconnect: React.FC<React.SVGProps<SVGSVGElement>> = ({
 	stroke = "var(--main)",
 	strokeWidth = "1.2",
 	...props
@@ -36,4 +36,4 @@ const IconLogout: React.FC<React.SVGProps<SVGSVGElement>> = ({
 	</svg>
 );
 
-export default IconLogout;
+export default IconDisconnect;
