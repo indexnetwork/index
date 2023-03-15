@@ -1,11 +1,8 @@
 .idea
 node_modules
 .DS_Store
-ceramic/daemon
-ceramic/temp/
-daemon
-ceramic/priv.key
-ceramic/pub.key
+
 secret.yaml
 storage/
 .env
+ceramic/
