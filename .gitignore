@@ -2,8 +2,8 @@
 node_modules
 .DS_Store
 secret.yaml
-storage/
 .env
 ceramic/
 conf/
 helpers/
+storage/
