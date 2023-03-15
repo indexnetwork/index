@@ -1,0 +1,44 @@
+{
+  "anchor": {
+    "auth-method": "did",
+    "ethereum-rpc-url": "https://mainnet.infura.io/v3/271487ed560a4ea78c6c4b19f1e86efb"
+  },
+  "http-api": {
+    "cors-allowed-origins": [
+      ".*"
+    ],
+    "admin-dids": ["did:key:z6Mkf7jGFmq521cV9v3h4w6dYj6rDnEfgsGD1gyu694T8ypD"]
+  },
+  "ipfs": {
+      "mode": "remote",
+      "host": "http://ipfs.composedb:5001"
+  },
+  "logger": {
+    "log-level": 2,
+    "log-to-files": false
+  },
+  "metrics": {
+    "metrics-exporter-enabled": false,
+    "metrics-port": 9090
+  },
+  "network": {
+    "name": "mainnet"
+  },
+  "node": {
+    "privateSeedUrl": "inplace:ed25519#f46366658e15994a9505a6b23dffe5a0bc525385dc1fe042b869c7e24e82224c"
+  },
+  "state-store": {
+    "mode": "s3",
+    "s3-bucket": "indexas-ceramic-test"
+  },
+   "indexing":{
+    "db":"postgres://postgres:wGW9Ck4U7SKgkZjGMqtnab9Q@postgresql.composedb/fresh",
+    "allow-queries-before-historical-sync":true,
+    "run-historical-sync-worker": true,
+    "enable-historical-sync": true,
+    "models":[]
+  }
+}
+
+
+

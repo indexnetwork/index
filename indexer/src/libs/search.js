@@ -1,6 +1,4 @@
-if(process.env.NODE_ENV !== 'production'){
-    require('dotenv').config()    
-}
+
 const moment = require("moment");
 const _ = require('lodash')
 
@@ -9,8 +7,6 @@ const client = new Client({ node: process.env.ELASTIC_HOST })
 
 const RedisClient = require('../clients/redis.js');
 const redis = RedisClient.getInstance();
-
-
 
 const config = {
     indexName: 'links'

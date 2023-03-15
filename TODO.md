@@ -63,27 +63,22 @@
 
 
 # Collaboration
-- [] PKP Mint 
-- [] Craete default with pkp, with default action.
-- [] Create new action
+- [x] PKP Mint 
+- [x] Craete default with pkp, with default action.
+- [x] Create new action
 - [] Associate a PKP with a new LIT Action
 - [] Conditional Signing 
-- [] Collaboration UI (Seren)
+- [] Collaboration UI	
 
 
 # Security
-- [] Protect composedb ingress.
+- [x] Protect composedb ingress.
 
-https://github.com/indexas/backend-api/blob/626dbdef6bf381e3d65ce55e178e3ec205a02cff/src/services/elastic-service/query.ts
+Analyse Typesense 
+Migrate to Typesense 
 
-
-
-- Requests from composedb
-
-* I desperately need cryptographically verifiable updated_at, created_at, deleted_at fields.
-* Will ComposeDB support defining unique keys? Eliminating duplicate records at querying might be a solution.
-Since we use Lit PKP owned streams, we store a bloom filter in another stream and evaluate validations using Lit Actions. 
-I wonder your plans on this.
-
-* Encryption composite: Everyone stores encrypted data differently. What's your thoughts on building a composite named "Encrypted" that conforms to certain standards. 
-* Are you going to keep models in ComposeDB too? I can't think of a better discovery method.
+[x] ComposeDB Mainnet Application
+[x] ComposeDB Mainnet Server Setup
+ComposeDB New Models (Index, IndexRecords, [Link])
+Collaboration
+Data model for owner, controller_did indexing.

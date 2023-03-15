@@ -3,9 +3,6 @@ const {getPkpPublicKey, decodeDIDWithLit, encodeDIDWithLit, walletToDID, getOwne
 const _ = require('lodash')
 const { Client } = require('@elastic/elasticsearch')
 
-if(process.env.NODE_ENV !== 'production'){
-    require('dotenv').config()    
-}
 
 const client = new Client({ node: process.env.ELASTIC_HOST })
 
@@ -265,6 +262,7 @@ module.exports.indexPKP = async (req, res, next) => {
     }
     return res.status(201).end();
 }
+
 module.exports.createUserIndex = async (user_index) => {
     console.log("createUserIndex", user_index)
     await redis.hSet(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))   

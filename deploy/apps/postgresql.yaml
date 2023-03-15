@@ -5,6 +5,7 @@ primary:
     max_replication_slots= 10
 persistence:
   enabled: true
-  size: 8Gi
+  size: 40Gi
 auth:
-  postgresPassword: "wGW9Ck4U7SKgkZjGMqtnab9Q"  
+  existingSecret: postgresql-secret
+  passwordKey: postgresql-password

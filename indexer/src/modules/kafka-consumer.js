@@ -4,14 +4,14 @@ if(process.env.NODE_ENV !== 'production'){
 
 const _ = require('lodash')
 const { Kafka } = require('kafkajs')
-const indexer = require('./controllers/indexer.js')
+const indexer = require('../libs/indexer.js')
 
 const kafka = new Kafka({
     clientId: 'api',
     brokers: [process.env.KAFKA_HOST],
 })
 
-const RedisClient = require('./clients/redis.js');
+const RedisClient = require('../clients/redis.js');
 const redis = RedisClient.getInstance();
 
 const topics = {
@@ -22,10 +22,9 @@ const topics = {
 
 async function start() {
     await redis.connect()
-    const consumer = kafka.consumer({ groupId: `index-consumer-${Math.random()}` })
+    const consumer = kafka.consumer({ groupId: `index-consumer` })
     await consumer.connect()
     await consumer.subscribe({ topics: Object.keys(topics) })
-    //conflicts: "proceed",
     await consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
             
@@ -83,10 +82,6 @@ async function start() {
 
         },
     })
-
 }
 
 start()
-
-
-

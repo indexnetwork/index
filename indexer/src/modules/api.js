@@ -2,22 +2,22 @@ if(process.env.NODE_ENV !== 'production'){
     require('dotenv').config()    
 }
 
-const RedisClient = require('./clients/redis.js');
+const RedisClient = require('../clients/redis.js');
 const redis = RedisClient.getInstance();
 
-const search = require('./controllers/search.js')
-const crawl = require('./controllers/crawl.js')
-const indexer = require('./controllers/indexer.js')
-const { getQueue } = require('./controllers/crawl-content.js')
+const search = require('../libs/search.js')
+const indexer = require('../libs/indexer.js')
+
+const { getMetadata } = require('../libs/crawl-metadata.js')
+const { getQueue } = require('../libs/crawl-content.js')
+
 const express = require('express')
 const cors = require('cors')
 const app = express()
-const port = 3000
-
+const port = process.env.PORT || 3000;
 
 app.use(express.json())
 
-//app.use(cors())
 
 const Joi = require('joi')
 const validator = require('express-joi-validation').createValidator({
@@ -59,29 +59,38 @@ app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
 app.post('/search/links', validator.body(linkSearchSchema), search.link)
 app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_index)
 
+app.post('/index/pkp', indexer.indexPKP)
+
+
 
 const crawlSchema = Joi.object({
   url: Joi.string().uri().required(),
 })
 
-app.get('/crawl/metadata', validator.query(crawlSchema), crawl.metadata)
+app.get('/crawl/metadata', validator.query(crawlSchema), async (req, res) => {
 
-app.post('/moralis/pkp', indexer.indexPKP)
+    let { url } = req.query;
+
+    let response = await getMetadata(url)
+    req.app.get('queue').addRequests([{url, uniqueKey: Math.random().toString()}])
+    res.json(response)
+
+})
+
+
 
 app.use((err, req, res, next) => {
   if (err && err.error && err.error.isJoi) {
-    // we had a joi error, let's return a custom 400 json response
     res.status(400).json({
-      type: err.type, // will be "query" here, but could be "headers", "body", or "params"
+      type: err.type,
       message: err.error.toString()
     });
   } else {
-    // pass on to another error handler
     next(err);
   }
 });
 
-const run = async () => {
+const start = async () => {
   await redis.connect()
   await app.set('queue', await getQueue())
   await app.listen(port, async () => {
@@ -92,4 +101,4 @@ const run = async () => {
 }
 
 
-run()
+start()

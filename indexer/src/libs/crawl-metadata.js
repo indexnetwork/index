@@ -2,7 +2,7 @@ const indexer = require('./indexer.js')
 const striptags = require('striptags');
 
 
-const getIframelyData = async (url) => {
+exports.getMetadata = async (url) => {
     
     let results = await fetch(`https://iframe.ly/api/iframely?api_key=${process.env.IFRAMELY_API_KEY}&url=${url}&ssl=1&title=1`, {
         method: 'GET',
@@ -41,20 +41,4 @@ const getIframelyData = async (url) => {
       title: response.meta.title
     }  
 }
-
-
-exports.metadata = async (req, res) => {
-
-    let { url } = req.query;
-    
-    
-    req.app.get('queue').addRequests([{url, uniqueKey: Math.random().toString()}])
-
-
-    let response = await getIframelyData(url)
-
-
-    res.json(response)
-
-};
 

@@ -4,4 +4,5 @@ zookeeper:
   persistence:
     enabled: false
 persistence:
-  enabled: false
+  enabled: true
+  size: 20Gi

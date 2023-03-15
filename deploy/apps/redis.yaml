@@ -8,4 +8,5 @@ metrics:
   enabled: true
 master:
   persistence:
-    enabled: false
+    enabled: true
+    size: 20Gi

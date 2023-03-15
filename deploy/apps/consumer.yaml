@@ -20,14 +20,7 @@ spec:
         service: consumer
     spec:
       containers:
-      - env:
-        - name: ELASTIC_HOST
-          value: "http://elasticsearch.composedb:9200"
-        - name: REDIS_CONNECTION_STRING
-          value: "redis://redis-master.composedb:6379"
-        - name: KAFKA_HOST
-          value: "kafka.composedb:9092"
-        image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:0.0.4
+      - image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas-backend:0.0.4
         command: ["yarn"]
         args: ["consumer"]
         imagePullPolicy: Always  

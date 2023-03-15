@@ -6,3 +6,5 @@ secret.yaml
 storage/
 .env
 ceramic/
+conf/
+helpers/

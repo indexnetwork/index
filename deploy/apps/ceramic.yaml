@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    service: ceramic
+  name: ceramic
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 100%
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      service: ceramic
+  minReadySeconds: 5
+  template:
+    metadata:
+      labels:
+        service: ceramic
+    spec:
+      containers:
+      - image: ceramicnetwork/js-ceramic:develop
+        command: ["./packages/cli/bin/ceramic.js"]
+        args: ["daemon", "--config", "./config/composedb.config.json"]
+        imagePullPolicy: IfNotPresent
+        envFrom:
+        - configMapRef:
+            name: ceramic-env
+        volumeMounts:
+        - name: ceramic-config
+          mountPath: /js-ceramic/config/
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "25m"
+        name: ceramic
+        ports:
+        - name: "http"
+          containerPort: 7007
+      volumes:
+        - name: ceramic-config
+          configMap:
+            name: ceramic-config
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    service: ceramic
+  name: ceramic
+spec:
+  ports:
+    - name: "http"
+      port: 80
+      targetPort: 7007
+  selector:
+    service: ceramic

@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kafkaconnect-deploy
+  name: kafkaconnect
   labels:
     app: kafkaconnect
 spec:
@@ -17,14 +17,6 @@ spec:
       containers:
         - name: kafkaconnect-container
           image: 534970752686.dkr.ecr.us-east-1.amazonaws.com/debezium-connect:2.1
-#          readinessProbe:
-#            httpGet:
-#              path: /
-#              port: 8083
-#          livenessProbe:
-#            httpGet:
-#              path: /
-#              port: 8083
           env:
             - name: BOOTSTRAP_SERVERS
               value: kafka.composedb:9092
@@ -45,9 +37,9 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: kafkaconnect-service
+  name: kafkaconnect
   labels:
-    app: kafkaconnect-service
+    app: kafkaconnect
 spec:
   ports:
     - name: kafkaconnect

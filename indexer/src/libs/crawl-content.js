@@ -12,7 +12,7 @@ exports.getQueue = async () => {
 	console.log("getQUEUEUE")
 	await Actor.init();
 
-	
+
 	const requestList = await RequestList.open('my-list', [], {
 		keepDuplicateUrls: true
 	});
@@ -53,7 +53,7 @@ exports.getQueue = async () => {
 	                ${executor}
 	                return executor();
 	            }())
-	        `);     
+	        `);
 
 
 
@@ -61,7 +61,7 @@ exports.getQueue = async () => {
 	        .replace(/(?:\r\n|\r|\n)/g, '...')
 	        .replaceAll('.......','...');
 
-	        await indexer.updateLinkContent(request.url, content)    
+	        await indexer.updateLinkContent(request.url, content)
 
 	        queue.markRequestHandled(request)
 

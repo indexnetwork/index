@@ -1,5 +1,6 @@
 persistence:
-  enabled: false
+  enabled: true
+  size: 50Gi
 replicas: 1
 
 http:
