@@ -58,4 +58,4 @@ jobs:
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/frontend frontend=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace web3-dev
+          kubectl set image deployment/frontend frontend=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace web3-testnet
