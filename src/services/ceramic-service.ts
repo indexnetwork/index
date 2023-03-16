@@ -19,7 +19,7 @@ class CeramicService2 {
 
 	private ceramic = new CeramicClient("https://ceramic.index.as");
 	private composeClient = new ComposeClient({
-		ceramic: "https://ceramic.index.as",
+		ceramic: "https://ceramic-testnet.index.as",
 		// cast our definition as a RuntimeCompositeDefinition
 		definition: definition as RuntimeCompositeDefinition,
 	});
