@@ -1,5 +1,5 @@
 {
-  "name": "Indexas Backend",
+  "name": "indexas-backend",
   "version": "0.0.1",
   "scripts": {
     "api": "node  --experimental-fetch src/modules/api.js",
