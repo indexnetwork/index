@@ -11,7 +11,7 @@ jobs:
         uses: azure/setup-kubectl@v2.0
         with:
           version: 'v1.23.6' # default is latest stable
-        id: install       
+        id: install
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -28,7 +28,7 @@ jobs:
           aws eks --region us-east-1 update-kubeconfig --name indexas
 
       - name: Check k8s connection
-        run: kubectl get pods   
+        run: kubectl get pods
 
       - name: Store build time
         id: build-time
@@ -58,4 +58,4 @@ jobs:
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/web3-web-app web3-web-app=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace web3-dev
+          kubectl set image deployment/frontend frontend=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace web3-dev
