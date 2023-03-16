@@ -1,5 +1,5 @@
 if(process.env.NODE_ENV !== 'production'){
-    require('dotenv').config()    
+    require('dotenv').config()
 }
 
 const _ = require('lodash')
@@ -15,9 +15,9 @@ const RedisClient = require('./clients/redis.js');
 const redis = RedisClient.getInstance();
 
 const topics = {
-    'postgres.public.kjzl6hvfrbw6c732vo3usihwsmaudk78by48c6fy7qxxwkmn9yrryza13jyg6kt': 'link',
-    'postgres.public.kjzl6hvfrbw6c8mi3r321zv8aujo0pz75u3hd75nmnw8cohfakz650td4c7qxxf': 'index',
-    'postgres.public.kjzl6hvfrbw6c9uhr6wtbziqokgadeavvh1y9u7qbs6u3jmwz7nmxexwb0mgj52': 'user_index'
+    'postgres.public.kjzl6hvfrbw6casje7g29aekjral6tocm9tbzyc7n3dwtp4j1il3sd3l5k6q7x4': 'link',
+    'postgres.public.kjzl6hvfrbw6c90qlqsw8wknzoi3rhspund6qzgz8vifalod8jk8ujwdji5kdm1': 'index',
+    'postgres.public.kjzl6hvfrbw6cb2dygt8kwbw3jfcgny4omo1patq3iipe2o24jcwl5v99by7qye': 'user_index'
 }
 
 async function start() {
@@ -28,7 +28,7 @@ async function start() {
     //conflicts: "proceed",
     await consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
-            
+
             const value = JSON.parse(message.value.toString());
             console.log(value)
             const op = value.__op;
@@ -78,7 +78,7 @@ async function start() {
                             indexer.updateUserIndex(doc)
                             break
                     }
-                    break                    
+                    break
             }
 
         },
