@@ -1,0 +1,42 @@
+{
+  "name": "Indexas Backend",
+  "version": "0.0.1",
+  "scripts": {
+    "api": "node  --experimental-fetch src/modules/api.js",
+    "kafka-consumer": "node  --experimental-fetch src/modules/kafka-consumer.js",
+    "reIndex": "node  --experimental-fetch src/utils/reIndex.js"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^8.6.0",
+    "@ethersproject/keccak256": "^5.7.0",
+    "@lit-protocol/contracts-sdk": "^2.1.43",
+    "@lit-protocol/uint8arrays": "^2.1.43",
+    "@mozilla/readability": "^0.4.2",
+    "apify": "^3.1.2",
+    "aws-sdk": "^2.1327.0",
+    "cookie-parser": "~1.4.6",
+    "cors": "^2.8.5",
+    "crawlee": "^3.2.2",
+    "debug": "~2.6.9",
+    "elliptic": "^6.5.4",
+    "ethers": "^6.0.8",
+    "express": "^4.18.2",
+    "express-joi-validation": "^5.0.1",
+    "fetch": "^1.1.0",
+    "http-errors": "~1.6.3",
+    "jade": "^1.11.0",
+    "joi": "^17.8.3",
+    "kafkajs": "^2.2.4",
+    "lodash": "^4.17.21",
+    "moment": "^2.29.4",
+    "morgan": "~1.9.1",
+    "node-fetch": "^3.3.0",
+    "puppeteer": "^19.7.2",
+    "redis": "^4.6.5",
+    "striptags": "^3.2.0",
+    "uint8arrays": "^4.0.3"
+  },
+  "devDependencies": {
+    "dotenv": "^16.0.3"
+  }
+}

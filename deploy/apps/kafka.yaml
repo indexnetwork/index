@@ -1,8 +1,0 @@
-autoCreateTopicsEnable: true
-deleteTopicEnable: true
-zookeeper:
-  persistence:
-    enabled: false
-persistence:
-  enabled: true
-  size: 20Gi
