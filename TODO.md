@@ -79,6 +79,11 @@ Migrate to Typesense
 
 [x] ComposeDB Mainnet Application
 [x] ComposeDB Mainnet Server Setup
-ComposeDB New Models (Index, IndexRecords, [Link])
+[x] ComposeDB New Models (Index, IndexLink, [Link])
+[] fix testnet, ensure runs from a branch.
+[] new testnet deployment with statestore
+[] new models deployment with statestore
+[] refactor indexer
+[] refactor indexer
 Collaboration
 Data model for owner, controller_did indexing.

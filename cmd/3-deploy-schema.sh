@@ -10,8 +10,8 @@ composedb composite:create ./conf/schema/1-Index.graphql --output ./temp/index.j
 composedb composite:create ./conf/schema/2-UserIndex.graphql --output ./temp/user-index.json --did-private-key $DID_PRIVATE_KEY -c=$CERAMIC_URL
 
 composedb composite:create ./conf/schema/3.1-Link.graphql --output ./temp/link.json --did-private-key $DID_PRIVATE_KEY -c=$CERAMIC_URL
-composedb composite:create ./conf/schema/4.1-IndexRecord.graphql --output ./temp/index-record.json --did-private-key $DID_PRIVATE_KEY -c=$CERAMIC_URL
-composedb composite:create ./conf/schema/4.2-IndexRecord-reverse.graphql --output ./temp/index-record-reversed.json --did-private-key $DID_PRIVATE_KEY -c=$CERAMIC_URL
+composedb composite:create ./conf/schema/4.1-IndexLink.graphql --output ./temp/index-record.json --did-private-key $DID_PRIVATE_KEY -c=$CERAMIC_URL
+composedb composite:create ./conf/schema/4.2-IndexLink-reverse.graphql --output ./temp/index-record-reversed.json --did-private-key $DID_PRIVATE_KEY -c=$CERAMIC_URL
 
 composedb composite:merge ./temp/basic-profile.json \
   ./temp/index.json \
