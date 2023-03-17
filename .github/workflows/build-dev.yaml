@@ -11,7 +11,7 @@ jobs:
         uses: azure/setup-kubectl@v2.0
         with:
           version: 'v1.23.6' # default is latest stable
-        id: install       
+        id: install
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -28,7 +28,7 @@ jobs:
           aws eks --region us-east-1 update-kubeconfig --name indexas
 
       - name: Check k8s connection
-        run: kubectl get pods   
+        run: kubectl get pods
 
       - name: Store build time
         id: build-time
@@ -53,8 +53,8 @@ jobs:
           docker build -t $DOCKER_TAG .
           docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
           docker push $DOCKER_REGISTRY/$DOCKER_TAG
-          docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexas/web3-api:latest-dev
-          docker push $DOCKER_REGISTRY/indexas/web3-api:latest-dev
+          docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexas/web3-api:latest-${GITHUB_REF#refs/heads/}
+          docker push $DOCKER_REGISTRY/indexas/web3-api:latest-${GITHUB_REF#refs/heads/}
 
       - name: Deploy
         run: |-
