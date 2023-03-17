@@ -4,7 +4,7 @@ const _ = require('lodash')
 const { Client } = require('@elastic/elasticsearch')
 
 if(process.env.NODE_ENV !== 'production'){
-    require('dotenv').config()    
+    require('dotenv').config()
 }
 
 const client = new Client({ node: process.env.ELASTIC_HOST })
@@ -13,7 +13,7 @@ const RedisClient = require('../clients/redis.js');
 const redis = RedisClient.getInstance();
 
 async function getIndexById(id) {
-    let results = await fetch('http://composedb/graphql', {
+    let results = await fetch('http://composedb-client/graphql', {
         method: 'POST',
         headers: {
             "Content-Type": "application/json"
@@ -94,7 +94,7 @@ module.exports.createIndex = async (index) => {
         refresh: true,
         body: transformIndex(index),
     })
-    
+
     if(index.controller_did.startsWith('did:key:')){
         const pkpPublicKey = decodeDIDWithLit(index.controller_did)
         const pkpOwner = await getOwner(pkpPublicKey);
@@ -167,7 +167,7 @@ module.exports.createLink = async (link) => {
                 ...transformIndex(index)
             }
         },
-    })    
+    })
 }
 
 module.exports.updateLink = async (link) => {
@@ -191,7 +191,7 @@ module.exports.updateLink = async (link) => {
 
 
 module.exports.updateLinkContent = async (url, content) => {
-    
+
     console.log("updateLinkContent", url, content)
 
     await client.updateByQuery({
@@ -227,7 +227,7 @@ module.exports.updateLinkContent = async (url, content) => {
                 ],
             },
         },
-    })  
+    })
 }
 
 module.exports.indexPKP = async (req, res, next) => {
@@ -267,7 +267,7 @@ module.exports.indexPKP = async (req, res, next) => {
 }
 module.exports.createUserIndex = async (user_index) => {
     console.log("createUserIndex", user_index)
-    await redis.hSet(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))   
+    await redis.hSet(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))
 }
 
 module.exports.updateUserIndex = async (user_index) => {
