@@ -74,10 +74,11 @@ class CeramicService {
 
 		const pkpPublicKey = "0x0463b0f8584ceb4b3be313ccdb5356c1b8505420bbf9334446a1228d0b9e18e9f3f21cfcf5e107c2ac11041a02139abb0ff5165f1a71fde31287a95def85a4e19f";
 		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
-
+		/*
 		if (!did.authenticated) {
 			// TODO handle error
 		}
+		 */
 		this.pkpComposeClient.setDID(did);
 
 		setDates(content, true);

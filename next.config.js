@@ -7,12 +7,12 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: '/:id(did:.*)',
-        destination: '/did/:id',
+        source: '/:did(did:.*)',
+        destination: '/did/:did',
       },
       {
-        source: '/:id',
-        destination: '/index/:id',
+        source: '/:index_id',
+        destination: '/index/:index_id',
       }
     ]
   },

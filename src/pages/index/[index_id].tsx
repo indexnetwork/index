@@ -76,8 +76,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setTokenModalVisible((oldVal) => !oldVal);
 	 };
 
-	const loadIndex = async (id: string) => {
-		const doc = await ceramic.getIndexById(id);
+	const loadIndex = async (index_id: string) => {
+		const doc = await ceramic.getIndexById(index_id);
 		if (doc != null) {
 			setIndex(doc);
 			setIsOwner(doc.owner_did === did);
@@ -125,9 +125,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	useEffect(() => {
-		const { id } = router.query;
-		if (id && did) {
-			loadIndex(id as string);
+		const { index_id } = router.query;
+		if (index_id && did) {
+			loadIndex(index_id as string);
 		}
 	}, [router.query, did]);
 
@@ -303,7 +303,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<IndexDetailsList
 													search={search}
 													isOwner={isOwner}
-													index_id={router.query.id as any}
+													index_id={router.query.index_id as any}
 												// onChange={handleReorderLinks}
 												/>
 											</Col>

@@ -12,8 +12,8 @@ export const useOwner = () => {
 	const { did } = useAppSelector(selectConnection);
 
 	const getState = () => ({
-		isOwner: router.query && ((router.query || {}).id as string || "").toLowerCase() === (did || "").toLowerCase(),
-		did: (router.query || {}).id === did ? did : (router.query || {}).id as string,
+		isOwner: router.query && ((router.query || {}).did as string || "").toLowerCase() === (did || "").toLowerCase(),
+		did: (router.query || {}).did === did ? did : (router.query || {}).did as string,
 	});
 
 	const [state, setState] = useState<OwnerState>(() => getState());
