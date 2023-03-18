@@ -30,9 +30,9 @@ module.exports.getIndexById = async (id) => {
 
     let res = await results.json();
     let index = res.data.node;
-
-    index.controller_did = index.controller_did.id
+    
     if(index){
+        index.controller_did = index.controller_did.id
         index.owner_did = await redis.hGet(`pkp:owner`, index.controller_did)
         return res.data.node
     }else{
