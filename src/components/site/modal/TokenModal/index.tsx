@@ -45,7 +45,7 @@ const TokenModal: React.VFC<TokenModalProps> = ({
 		if (stream.title) {
 			const doc = await ceramic.createIndex(stream);
 			if (doc != null) {
-				router.push(`/${did}/${doc.id}`);
+				router.push(`/${doc.id}`);
 				modalProps.onClose?.();
 			}
 		}

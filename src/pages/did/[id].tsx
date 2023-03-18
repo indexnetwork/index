@@ -68,7 +68,7 @@ const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
 
 	const handleClick = useCallback((itm: Indexes) => async () => {
-		router.push(`/${router.query.did}/${itm.id}`);
+		router.push(`/${itm.id}`);
 	}, []);
 
 	const handleUserIndexToggle = async (index_id: string, type: string, op: string) => {
