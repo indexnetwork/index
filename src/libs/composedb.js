@@ -33,7 +33,7 @@ module.exports.getIndexById = async (id) => {
 
     index.controller_did = index.controller_did.id
     if(index){
-        index.owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id)
+        index.owner_did = await redis.hGet(`pkp:owner`, index.controller_did)
         return res.data.node
     }else{
         return false;
