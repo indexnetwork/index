@@ -3,6 +3,8 @@ const {getPkpPublicKey, decodeDIDWithLit, encodeDIDWithLit, walletToDID, getOwne
 const _ = require('lodash')
 const { Client } = require('@elastic/elasticsearch')
 
+const Moralis = require("moralis");
+
 
 const client = new Client({ node: process.env.ELASTIC_HOST })
 
@@ -10,7 +12,7 @@ const RedisClient = require('../clients/redis.js');
 const redis = RedisClient.getInstance();
 
 async function getIndexById(id) {
-    let results = await fetch('http://composedb/graphql', {
+    let results = await fetch('http://composedb-client/graphql', {
         method: 'POST',
         headers: {
             "Content-Type": "application/json"
@@ -25,7 +27,7 @@ async function getIndexById(id) {
                     collab_action
                     created_at
                     updated_at
-                    owner {
+                    controller_did {
                         id
                     }
                 }}
@@ -33,14 +35,14 @@ async function getIndexById(id) {
         })
     })
     let res = await results.json();
-    res.data.node.controller_did = res.data.node.owner.id
-    delete res.data.node.owner
+    res.data.node.controller_did = res.data.node.controller_did.id
+    delete res.data.node.controller_did
     return res.data.node
 }
 
 async function getIndexByPKP(id) {
 
-    let results = await fetch('https://composedb.index.as/composedb/graphql', {
+    let results = await fetch('https://composedb-client/graphql', {
         method: 'POST',
         headers: {
             "Content-Type": "application/json"
@@ -70,8 +72,6 @@ async function getIndexByPKP(id) {
     return false;
 }
 
-
-
 const config = {
     indexName: 'links'
 }
@@ -91,12 +91,12 @@ module.exports.createIndex = async (index) => {
         refresh: true,
         body: transformIndex(index),
     })
-    
+
     if(index.controller_did.startsWith('did:key:')){
+        // Index created with a PKP
         const pkpPublicKey = decodeDIDWithLit(index.controller_did)
         const pkpOwner = await getOwner(pkpPublicKey);
         if(pkpOwner){
-            const ownerDID = walletToDID("80001", pkpOwner);
             await this.createUserIndex({
                 "controller_did": walletToDID("80001", pkpOwner),
                 "type":"my_indexes",
@@ -104,6 +104,9 @@ module.exports.createIndex = async (index) => {
                 "created_at": new Date().toISOString()
             })
         }
+    }else{
+        // Personal index.
+        // Implement user_index scenario later.
     }
 
 }
@@ -164,7 +167,7 @@ module.exports.createLink = async (link) => {
                 ...transformIndex(index)
             }
         },
-    })    
+    })
 }
 
 module.exports.updateLink = async (link) => {
@@ -188,7 +191,7 @@ module.exports.updateLink = async (link) => {
 
 
 module.exports.updateLinkContent = async (url, content) => {
-    
+
     console.log("updateLinkContent", url, content)
 
     await client.updateByQuery({
@@ -224,13 +227,19 @@ module.exports.updateLinkContent = async (url, content) => {
                 ],
             },
         },
-    })  
+    })
 }
 
 module.exports.indexPKP = async (req, res, next) => {
 
-    //TODO validate moralis ofcourse.
-    const { chainId, nftTransfers } = req.body;
+    const { headers, body } = request;
+
+    Moralis.Streams.verifySignature({
+        body,
+        signature: headers["x-signature"],
+    }); // throws error if not valid
+
+    const { chainId, nftTransfers } = body;
 
     if(nftTransfers.length === 0){
         return res.status(200).end();
@@ -240,9 +249,15 @@ module.exports.indexPKP = async (req, res, next) => {
 
     let pkpPubKey = await getPkpPublicKey(event.tokenId)
     let pkpDID = encodeDIDWithLit(pkpPubKey);
+    let ownerDID = walletToDID(chainId, event.to);
+    await redis.hSet(`pkp:owner`, pkpDID, ownerDID)
+
+    return res.status(201).end();
+    /*
     let indexId = await getIndexByPKP(pkpDID);
 
     if(indexId){
+
         await this.createUserIndex({
             "controller_did": walletToDID(chainId, event.to),
             "type":"my_indexes",
@@ -260,12 +275,14 @@ module.exports.indexPKP = async (req, res, next) => {
             })
         }
     }
-    return res.status(201).end();
+
+     */
+
 }
 
 module.exports.createUserIndex = async (user_index) => {
     console.log("createUserIndex", user_index)
-    await redis.hSet(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))   
+    await redis.hSet(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))
 }
 
 module.exports.updateUserIndex = async (user_index) => {

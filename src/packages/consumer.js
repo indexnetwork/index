@@ -1,5 +1,5 @@
 if(process.env.NODE_ENV !== 'production'){
-    require('dotenv').config()    
+    require('dotenv').config()
 }
 
 const _ = require('lodash')
@@ -15,21 +15,22 @@ const RedisClient = require('../clients/redis.js');
 const redis = RedisClient.getInstance();
 
 const topics = {
-    'postgres.public.kjzl6hvfrbw6c732vo3usihwsmaudk78by48c6fy7qxxwkmn9yrryza13jyg6kt': 'link',
-    'postgres.public.kjzl6hvfrbw6c8mi3r321zv8aujo0pz75u3hd75nmnw8cohfakz650td4c7qxxf': 'index',
-    'postgres.public.kjzl6hvfrbw6c9uhr6wtbziqokgadeavvh1y9u7qbs6u3jmwz7nmxexwb0mgj52': 'user_index'
+    'postgres.public.kjzl6hvfrbw6c9bh2wggilqiije6udtgohahloxhuhbkm0igfjd3pm05z80164h': 'index',
+    'postgres.public.kjzl6hvfrbw6c569n1q6egc47s4u2213x1rs4jjygrgszjmdo3nedbrnt8dl46q': 'link',
+    'postgres.public.kjzl6hvfrbw6capisi7cx0ffmrshdiznmt127j2ldacp387g0xhedhrqbgnem31': 'index_link',
+    'postgres.public.kjzl6hvfrbw6c8x0tvgf98z805tg08s6fn9tre7wiusghayi8f83rcoyh3hdo9b': 'user_index'
 }
 
 async function start() {
     await redis.connect()
-    const consumer = kafka.consumer({ groupId: `index-consumer` })
+    const consumer = kafka.consumer({ groupId: `index-consumer-dev` })
     await consumer.connect()
     await consumer.subscribe({ topics: Object.keys(topics) })
     await consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
-            
+
             const value = JSON.parse(message.value.toString());
-            console.log(value)
+
             const op = value.__op;
             const model = topics[topic]
             if(!['c', 'u'].includes(op)){
@@ -45,7 +46,7 @@ async function start() {
                 ..._.pick(value, ['controller_did']),
                 ...value.stream_content
             }
-            console.log(doc);
+
 
             switch (model) {
                 case 'index':
@@ -77,7 +78,17 @@ async function start() {
                             indexer.updateUserIndex(doc)
                             break
                     }
-                    break                    
+                    break
+                case 'index_link':
+                    switch (op) {
+                        case "c":
+                            indexer.createIndexLink(doc)
+                            break
+                        case "u":
+                            indexer.updateIndexLink(doc)
+                            break
+                    }
+                    break
             }
 
         },

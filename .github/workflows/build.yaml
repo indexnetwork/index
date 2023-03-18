@@ -1,7 +1,9 @@
 name: deploy
 on:
   push:
-    branches: dev
+    branches:
+    - dev
+    - testnet
 jobs:
   main:
     runs-on: ubuntu-latest
@@ -58,5 +60,5 @@ jobs:
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/api api=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-api:${{ steps.build-time.outputs.time }} --namespace web3-dev
-          kubectl set image deployment/consumer consumer=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-api:${{ steps.build-time.outputs.time }} --namespace web3-dev
+          kubectl set image deployment/api api=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-api:${{ steps.build-time.outputs.time }} --namespace web3-${GITHUB_REF#refs/heads/}
+          kubectl set image deployment/consumer consumer=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-api:${{ steps.build-time.outputs.time }} --namespace web3-${GITHUB_REF#refs/heads/}

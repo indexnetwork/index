@@ -1,13 +1,14 @@
 if(process.env.NODE_ENV !== 'production'){
-    require('dotenv').config()    
+    require('dotenv').config()
 }
 
 const RedisClient = require('../clients/redis.js');
 const redis = RedisClient.getInstance();
 
-const search = require('../libs/search.js')
-const indexer = require('../libs/indexer.js')
+const search = require('../services/elasticsearch.js')
+const composedb = require('../services/composedb.js')
 
+const indexer = require('../libs/indexer.js')
 const { getMetadata } = require('../libs/crawl-metadata.js')
 const { getQueue } = require('../libs/crawl-content.js')
 
@@ -59,6 +60,8 @@ app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
 app.post('/search/links', validator.body(linkSearchSchema), search.link)
 app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_index)
 
+app.get('/indexes/:id', composedb.get_index)
+
 app.post('/index/pkp', indexer.indexPKP)
 
 
@@ -94,7 +97,7 @@ const start = async () => {
   await redis.connect()
   await app.set('queue', await getQueue())
   await app.listen(port, async () => {
-    
+
     console.log(`Search service listening on port ${port}`)
   })
 
