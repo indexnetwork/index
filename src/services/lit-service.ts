@@ -4,9 +4,10 @@ import { encodeDIDWithLit, Secp256k1ProviderWithLit } from "@indexas/key-did-pro
 import { DID } from "dids";
 import * as KeyDidResolver from "key-did-resolver";
 import { isSSR } from "../utils/helper";
+import { appConfig } from "../config";
 
 class LitService {
-	async authenticatePKP(ipfsId: string, pkpPublicKey: any) {
+	async authenticatePKP(ipfsId: string, pkpPublicKey: any) : Promise<DID> {
 		if (!isSSR()) {
 			try {
 				const encodedDID = await encodeDIDWithLit(pkpPublicKey);
@@ -38,6 +39,9 @@ class LitService {
 		console.log(
 			`PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
 		);
+		const addPermissionTx = await litContracts.pkpPermissionsContractUtil.write.addPermittedAction(tokenIdNumber, appConfig.signEverythingCID);
+		await addPermissionTx.wait();
+
 		return {
 			tokenIdFromEvent,
 			tokenIdNumber,
@@ -53,7 +57,7 @@ class LitService {
 
         const tokenIdNumber = "17831717308699365721260653288176043165957324409522683475746237039328728542527"
         const signEverythingCID = "QmcZ2MuxkNrMbNKAVtK37tEmKJ8zwvFudin3rBEcHyhqJc";
-        // const addPermissionTx = await litContracts.pkpPermissionsContractUtil.write.addPermittedAction(tokenIdNumber, signEverythingCID);
+        //
         const addPermissionTx = await litContracts.pkpPermissionsContractUtil.write.revokePermittedAction(tokenIdNumber, signEverythingCID);
         const aw = await addPermissionTx.wait();
         console.log(aw);

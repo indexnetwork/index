@@ -1,9 +1,12 @@
 # TODO
 - [x] Relogin after logout
 
-# ComposeDB UI
-- [x] Create Index
-- [x] Get Index
+# PKPs
+- [x] Create PKP
+- [x] Index PKP
+- [] Create User Index (Associate with pkp stuff)
+- [] Get Index
+
 - [] Get Links
 - [] Search links
 - [] Update Index

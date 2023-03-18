@@ -8,6 +8,7 @@ export type Indexes = {
   title: string | null
   collab_action: string;
   controller_did: string;
+  owner_did: string;
   created_at: string;
   updated_at: string;
   links: Links[];

@@ -6,6 +6,7 @@ import {
 	Indexes, LinkContentResult, Links, Users, UserIndex,
 } from "types/entity";
 import { CID } from "ipfs-http-client";
+import api from "../../../services/api-service";
 
 export type ListenEvents = {
 	contentSync: (data: LinkContentResult) => void;
@@ -46,7 +47,7 @@ const CeramicProvider: React.FC<{}> = ({
 		return doc;
 	};
 
-	const getIndexById = (streamId: string) => ceramicService.getIndexById(streamId);
+	const getIndexById = (streamId: string) => api.getIndexById(streamId);
 
 	const updateIndex = async (index_id: string, content: Partial<Indexes>) => {
 		const updatedDoc = await ceramicService.updateIndex(index_id, content);

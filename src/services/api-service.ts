@@ -128,6 +128,23 @@ class ApiService {
 			// TODO handle;
 		}
 	}
+	async getIndexById(index_id: string) : Promise<Indexes | undefined> {
+		try {
+			const { data } = await apiAxios.get(`${API_ENDPOINTS.INDEXES}/${index_id}`);
+			return data as Indexes;
+		} catch (err) {
+			// TODO handle;
+		}
+
+		// TODO fix updated_at
+		// TODO fix user_index
+		/*
+		if (this.isUserAuthenticated()) {
+			node.is_in_my_indexes = !!userIndexes.my_indexes;
+			node.is_starred = !!userIndexes.starred;
+		}
+		*/
+	}
 
 	async crawlLink(url: string): Promise<Links | null> {
 		try {

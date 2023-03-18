@@ -28,7 +28,6 @@ import { useMergedState } from "hooks/useMergedState";
 import moment from "moment";
 import SearchInput from "components/base/SearchInput";
 import NotFound from "components/site/indexes/NotFound";
-import { useOwner } from "hooks/useOwner";
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { selectProfile } from "store/slices/profileSlice";
@@ -49,7 +48,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [addedLink, setAddedLink] = useState<Links>();
 	const [tab, setTab] = useState<boolean>(false);
 	const [tabKey, setTabKey] = useState("index");
-
+	const [isOwner, setIsOwner] = useState<boolean>(false);
 	const [notFound, setNotFound] = useState(false);
 	const [progress, setProgress] = useState({
 		current: 0,
@@ -65,7 +64,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
 
-	const { isOwner } = useOwner();
 	const ceramic = useCeramic();
 
 	const router = useRouter();
@@ -82,6 +80,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const doc = await ceramic.getIndexById(id);
 		if (doc != null) {
 			setIndex(doc);
+			setIsOwner(doc.owner_did === did);
 		} else {
 			setNotFound(true);
 		}
@@ -127,12 +126,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	useEffect(() => {
 		const { id } = router.query;
-		if (router.query) {
+		if (id && did) {
 			loadIndex(id as string);
-		} else {
-			setNotFound(true);
 		}
-	}, [router.query]);
+	}, [router.query, did]);
 
 	useEffect(() => {
 		if (addedLink) {

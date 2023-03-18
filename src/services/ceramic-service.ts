@@ -1,4 +1,3 @@
-import moment from "moment";
 import { ComposeClient } from "@composedb/client";
 import {
 	Indexes, Links, UserIndex, Users,
@@ -17,12 +16,13 @@ class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
 	});
+
 	private userComposeClient = new ComposeClient({
-		ceramic: "https://ceramic.index.as",
+		ceramic: "https://ceramic-dev.index.as",
 		definition: definition as RuntimeCompositeDefinition,
 	});
 	private pkpComposeClient = new ComposeClient({
-		ceramic: "https://ceramic.index.as",
+		ceramic: "https://ceramic-dev.index.as",
 		definition: definition as RuntimeCompositeDefinition,
 	});
 
@@ -43,46 +43,6 @@ class CeramicService {
 		return !!(this.userComposeClient?.did?.authenticated);
 	}
 
-	async getIndexById(index_id: string) {
-		const result = await this.userComposeClient.executeQuery(`{
-			node(id:"${index_id}"){
-			  id
-			  ... on Index{
-				id
-				title
-				collab_action
-				created_at
-				updated_at
-				links(last:1) {
-					edges {
-					  node {
-						created_at
-						updated_at
-					  }
-					}
-				}
-			}}
-		  }`);
-
-		const node: any = result?.data?.node;
-
-		if (node.links.edges.length > 0 && (moment(node.links.edges[0].node.updated_at) > moment(node.updated_at))) {
-			node.updated_at = node.links.edges[0].node.updated_at;
-		}
-
-		if (this.isUserAuthenticated()) {
-			const userIndexes = await api.getUserIndexes({
-				index_id,
-				did: this.userComposeClient.did?.parent!,
-			} as GetUserIndexesRequestBody) as UserIndexResponse;
-			node.is_in_my_indexes = !!userIndexes.my_indexes;
-			node.is_starred = !!userIndexes.starred;
-		}
-
-		return (
-		<Indexes>(node as any)
-		);
-	}
 	async getLinkById(link_id: string) {
 		const result = await this.userComposeClient.executeQuery(`{
 			node(id:"${link_id}"){
@@ -102,23 +62,20 @@ class CeramicService {
 	}
 
 	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
-
-		// const { pkpPublicKey } = await LitService.mintPkp();
+		const { pkpPublicKey } = await LitService.mintPkp();
 
 		const defaultActionCID = "QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM";
 
 		/*
-		0x04d23b0bce7a73dc69684cc0c7d00856bff050c408a0755c629f7067143fb5acaf5055361301c06ba329746d9e53fb3ed28de127137174bdf23d9b19f0062dca1a
-		and Token ID is 0x61147fdf0f5bd1a926a94b3bc4d97526c46d7127f593003cdf6db2b2ff65350d
-		43910565789344013050534618981627019256365100662200283369978725539582069519629
+			PKP public key is 0x0463b0f8584ceb4b3be313ccdb5356c1b8505420bbf9334446a1228d0b9e18e9f3f21cfcf5e107c2ac11041a02139abb0ff5165f1a71fde31287a95def85a4e19f
+			Token ID is 0x5a0ed5d5fdf73b14b53ca25b3fa1996bbf5eb0e8004d436c3f55bd2013815645
+			Token ID number is 40734368072587093465276453834418008413686098135730551600338205759635841963589
 		*/
 
-		const pkpPublicKey = "0x04d23b0bce7a73dc69684cc0c7d00856bff050c408a0755c629f7067143fb5acaf5055361301c06ba329746d9e53fb3ed28de127137174bdf23d9b19f0062dca1a";
+		// const pkpPublicKey = "0x0463b0f8584ceb4b3be313ccdb5356c1b8505420bbf9334446a1228d0b9e18e9f3f21cfcf5e107c2ac11041a02139abb0ff5165f1a71fde31287a95def85a4e19f";
 		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
 
-		// const pkpPublicKey = "0x045b4c36530a92062fae5a95a28c1467a9a68af39b35da5a728511abd10a181c471f05a533088c93b02d18a1d968898da2f4e3ccc1bdc45bd2cf5c89c66503029c";
-
-		if (!did) {
+		if (!did.authenticated) {
 			// TODO handle error
 		}
 		this.pkpComposeClient.setDID(did);
@@ -134,6 +91,7 @@ class CeramicService {
 		const payload = {
 			content,
 		};
+
 		const { data, errors } = await this.pkpComposeClient.executeQuery<{ createIndex: { document: Indexes } }>(`
 			mutation CreateIndex($input: CreateIndexInput!) {
 				createIndex(input: $input) {
@@ -315,7 +273,7 @@ class CeramicService {
 					document {
 						id
 						index_id
-						owner {
+						controller_did {
 							id
 						}
 						created_at
