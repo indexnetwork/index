@@ -6,7 +6,7 @@
 export type Indexes = {
   id: string
   title: string | null
-  collab_action: string;
+  collab_action: string
   controller_did: { // This is PKP DID
     id: string
   };
@@ -18,6 +18,19 @@ export type Indexes = {
   links: Links[];
   is_in_my_indexes?: boolean;
   is_starred?: boolean;
+};
+
+export type IndexLink = {
+  id?: string
+  index_id: string;
+  link_id: string;
+  indexer_did: string // This is Personal DID
+  controller_did?: { // This is PKP DID
+    id: string
+  };
+  created_at: string;
+  updated_at: string;
+  deleted_at?: string;
 };
 
 /**

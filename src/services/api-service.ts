@@ -1,10 +1,9 @@
 import axios from "axios";
 import { appConfig } from "config";
 import {
-	Indexes, LinkContentResult, Links, SyncCompleteResult, UserIndex,
+	Indexes, Links, UserIndex,
 } from "types/entity";
 import { API_ENDPOINTS } from "utils/constants";
-import moment from "moment/moment";
 
 export type HighlightType<T = {}> = T & {
 	highlight?: { [key: string]: string[] }
@@ -94,14 +93,6 @@ const apiAxios = axios.create({
 });
 
 class ApiService {
-	async putIndex(doc: Indexes): Promise<Indexes | null> {
-		try {
-			const { data } = await apiAxios.put<Indexes>(API_ENDPOINTS.INDEXES, doc);
-			return data;
-		} catch (err) {
-			return null;
-		}
-	}
 
 	async searchIndex(body: DidSearchRequestBody): Promise<IndexSearchResponse | null> {
 		try {
@@ -112,14 +103,7 @@ class ApiService {
 		}
 	}
 
-	async deleteIndex(streamId: string): Promise<boolean> {
-		try {
-			await apiAxios.delete(`${API_ENDPOINTS.INDEXES}/${streamId}`);
-			return true;
-		} catch (err) {
-			return false;
-		}
-	}
+
 
 	async getUserIndexes(body: GetUserIndexesRequestBody): Promise<UserIndexResponse | undefined> {
 		try {
@@ -150,36 +134,6 @@ class ApiService {
 			return null;
 		}
 	}
-
-	async crawlLinkContent(dt: LinksCrawlContentRequest): Promise<boolean> {
-		try {
-			await apiAxios.post(API_ENDPOINTS.CRAWL_CONTENT, dt);
-			return true;
-		} catch (err) {
-			return false;
-		}
-	}
-
-	async findLinkContent(): Promise<LinkContentResult[] | null> {
-		try {
-			const { data } = await apiAxios.get<LinkContentResult[]>(API_ENDPOINTS.FIND_CONTENT);
-			return data;
-		} catch (err) {
-			return null;
-		}
-	}
-
-	async completeSync(ids: string[]): Promise<SyncCompleteResult | null> {
-		try {
-			const { data } = await apiAxios.post<SyncCompleteResult>(API_ENDPOINTS.SYNC_CONTENT, {
-				ids,
-			});
-			return data;
-		} catch (err) {
-			return null;
-		}
-	}
-
 	async searchLink(body: LinkSearchRequestBody): Promise<LinkSearchResponse | null> {
 		try {
 			const { data } = await apiAxios.post<LinkSearchResponse>(API_ENDPOINTS.SEARCH_LINKS, body);

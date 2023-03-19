@@ -21,7 +21,7 @@ import LinkInput from "components/site/input/LinkInput";
 import IndexDetailsList from "components/site/index-details/IndexDetailsList";
 import { useRouter } from "next/router";
 import { Indexes, Links } from "types/entity";
-import api, {GetUserIndexesRequestBody, UserIndexResponse} from "services/api-service";
+import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 import IndexTitleInput from "components/site/input/IndexTitleInput";
 import { useCeramic } from "hooks/useCeramic";
 import { useMergedState } from "hooks/useMergedState";
@@ -86,9 +86,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setNotFound(true);
 		}
 	};
-	const loadUserIndex = async (indexId) => {
+	const loadUserIndex = async (index_id: string) => {
 		const userIndexes = await api.getUserIndexes({
-			index_id: indexId,
+			index_id, // TODO Shame
 			did,
 		} as GetUserIndexesRequestBody) as UserIndexResponse;
 		setIndex({
@@ -125,7 +125,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		urls.forEach(async (url) => {
 			const payload = await api.crawlLink(url);
 			if (payload) {
-				const link = await ceramic.addLink(index?.id!, payload);
+				const link = await ceramic.createLink(payload);
+				// TODO Fix that.
+				const indexLink = await ceramic.addLinkToIndex(index?.id!, link?.id!);
 				if (link) {
 					setAddedLink(link);
 				}

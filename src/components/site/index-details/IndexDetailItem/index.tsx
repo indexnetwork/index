@@ -54,7 +54,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 
 	const router = useRouter();
 
-	const { streamId } = router.query;
+	const { indexId } = router.query;
 
 	const ceramic = useCeramic();
 
@@ -83,7 +83,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 
 	const handleRemove = async () => {
 		setLinks(links?.filter((l) => l.id !== id!));
-		const link = await ceramic.removeLink(id!);
+		const link = await ceramic.removeLinkFromIndex(indexId as string, id!);
 		// onChange && onChange(doc?.content?.links || []);
 	};
 

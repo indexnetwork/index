@@ -1,6 +1,6 @@
 import { ComposeClient } from "@composedb/client";
 import {
-	Indexes, Links, UserIndex, Users,
+	Indexes, IndexLink, Links, UserIndex, Users,
 } from "types/entity";
 import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
@@ -41,24 +41,6 @@ class CeramicService {
 
 	isUserAuthenticated() {
 		return !!(this.userComposeClient?.did?.authenticated);
-	}
-
-	async getLinkById(link_id: string) {
-		const result = await this.userComposeClient.executeQuery(`{
-			node(id:"${link_id}"){
-			  id
-			  ... on Link{
-				id
-				content
-				title
-				url
-				favicon
-				created_at
-				updated_at
-				tags
-			}}
-		  }`);
-		return <Links>(result.data?.node as any);
 	}
 
 	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
@@ -115,7 +97,6 @@ class CeramicService {
 
 		return index!;
 	}
-
 	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes> {
 		const cdt = getCurrentDateTime();
 		content.updated_at = cdt;
@@ -141,12 +122,26 @@ class CeramicService {
 		}
 		return data?.updateIndex.document!;
 	}
+	async getLinkById(link_id: string) {
+		const result = await this.userComposeClient.executeQuery(`{
+			node(id:"${link_id}"){
+			  id
+			  ... on Link{
+				id
+				content
+				title
+				url
+				favicon
+				created_at
+				updated_at
+				tags
+			}}
+		  }`);
+		return <Links>(result.data?.node as any);
+	}
 
-	async addLink(index_id: string, link: Links): Promise<Links> {
+	async createLink(link: Partial<Links>): Promise<Links> {
 		setDates(link); // TODO Conditional updated_at
-
-		link.index_id = index_id;
-		link.indexer_did = "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx";
 		link.updated_at = getCurrentDateTime();
 		if (!link.tags) {
 			link.tags = [];
@@ -159,7 +154,9 @@ class CeramicService {
 				createLink(input: $input) {
 					document {
 						id
-						index_id
+						controller_did{
+							id
+						}
 						url
 						title
 						tags
@@ -169,16 +166,16 @@ class CeramicService {
 					}
 				}
 			}`, { input: payload });
+
 		if (errors) {
 			// TODO Handle
 		}
 		return data?.createLink.document!;
 	}
-
-	async updateLink(link_id: string, link: Partial<Links>): Promise <Links> {
+	async updateLink(link_id: string, link: Links): Promise <Links> {
 		link.updated_at = getCurrentDateTime();
 		const payload = {
-			id: link_id,
+			id: link.id,
 			content: link,
 		};
 		const { data, errors } = await this.userComposeClient.executeQuery<{ updateLink: { document: Links } }>(`
@@ -186,7 +183,6 @@ class CeramicService {
 				updateLink(input: $input) {
 					document {
 						id
-						index_id
 						url
 						title
 						tags
@@ -202,16 +198,71 @@ class CeramicService {
 		return data?.updateLink.document!;
 	}
 
-	async removeLink(link_id: string): Promise <Links | undefined> {
-		const link = await this.getLinkById(link_id);
-		if (link) {
-			return await this.updateLink(link_id, {
-				deleted_at: getCurrentDateTime(), // TODO fix deleted_at
-			} as Links);
-		}
-		// TODO handle
-	}
+	async addLinkToIndex(index_id: string, link_id: string) : Promise <IndexLink | undefined> {
+		const indexLink: IndexLink = {
+			index_id,
+			link_id,
+			updated_at: getCurrentDateTime(),
+			created_at: getCurrentDateTime(),
+			indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
+		};
 
+		const payload = {
+			content: indexLink,
+		};
+		const { data, errors } = await this.pkpComposeClient.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
+			mutation CreateIndexLink($input: CreateIndexLinkInput!) {
+				createIndexLink(input: $input) {
+					document {
+						id
+						index_id
+						link_id
+
+						indexer_did {
+							id
+						}
+						created_at
+						updated_at
+					}
+				}
+			}`, { input: payload });
+		debugger;
+		if (errors) {
+			// TODO Handle
+		}
+		return data?.createIndexLink.document!;
+	}
+	async removeLinkFromIndex(index_id: string, link_id: string): Promise <IndexLink | undefined> {
+		const indexLink: IndexLink = {
+			index_id,
+			link_id,
+			updated_at: getCurrentDateTime(),
+			created_at: getCurrentDateTime(),
+			indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
+		};
+
+		const payload = {
+			content: indexLink,
+		};
+		const { data, errors } = await this.pkpComposeClient.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
+			mutation CreateIndexLink($input: CreateIndexLinkInput!) {
+				createIndexLink(input: $input) {
+					document {
+						id
+						index_id
+						link_id
+						controller_did
+						indexer_did
+						created_at
+						updated_at
+					}
+				}
+			}`, { input: payload });
+		if (errors) {
+			// TODO Handle
+		}
+		return data?.createIndexLink.document!;
+	}
 	async addTag(link_id: string, tag: string): Promise <Links | undefined> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
@@ -226,7 +277,6 @@ class CeramicService {
 		}
 		// TODO handle.
 	}
-
 	async removeTag(link_id: string, tag: string): Promise <Links | undefined> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
@@ -241,7 +291,6 @@ class CeramicService {
 		}
 		// TODO handle.
 	}
-
 	async setLinkFavorite(streamId: string, linkId: string, favorite: boolean) {
 		/*
 		const oldDoc = await this.getIndexById(streamId);
@@ -257,7 +306,6 @@ class CeramicService {
 
 		 */
 	}
-
 	async addUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
 		const userIndex = {
 			index_id,
@@ -287,7 +335,6 @@ class CeramicService {
 		}
 		return data?.createUserIndex.document!;
 	}
-
 	async removeUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
 		console.log("remove", index_id, this.userComposeClient.did?.parent!, type);
 		const userIndexes = await api.getUserIndexes({
@@ -300,9 +347,6 @@ class CeramicService {
 			return;
 		}
 		const userIndex: UserIndex | undefined = userIndexes[type as UserIndexKey];
-		if(!userIndex.id){
-			this.addUserIndex(index_id)
-		}
 		const payload = {
 			id: userIndex?.id!,
 			content: {
@@ -330,7 +374,6 @@ class CeramicService {
 		}
 		return data?.updateUserIndex.document!;
 	}
-
 	async getProfile(): Promise<Users> {
 		const { data, errors } = await this.userComposeClient.executeQuery<{ viewer: { indexasProfile: Users } }>(`
 			query {
@@ -370,7 +413,6 @@ class CeramicService {
 		}
 		return data?.createIndexasProfile.document!;
 	}
-
 	async uploadImage(file: File) {
 		try {
 			const { cid, path } = await this.ipfs.add(file);

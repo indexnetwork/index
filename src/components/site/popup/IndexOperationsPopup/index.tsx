@@ -6,7 +6,6 @@ import React from "react";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
 import IconCopy from "components/base/Icon/IconCopy";
 import Button from "components/base/Button";
-import { useOwner } from "hooks/useOwner";
 import { copyToClipboard } from "utils/helper";
 import IconRemove from "components/base/Icon/IconRemove";
 import IconAddCircle from "components/base/Icon/IconAddCircle";
@@ -24,7 +23,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 	is_in_my_indexes = false,
 	mode = "indexes-page",
 	userIndexToggle,
-	isOwner,
+	isOwner = false,
 }) => {
 	return (
 		<Dropdown

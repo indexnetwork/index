@@ -39,10 +39,9 @@ const IndexesPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	const [search, setSearch] = useState("");
 	const [loading, setLoading] = useState(false);
-	const { isOwner, did } = useOwner();
+	const { did } = useOwner();
 
 	const [init, setInit] = useState(true);
-	const [test, setTest] = useState();
 	const [tabKey, setTabKey] = useState("my_indexes");
 	const [hasUserIndex, setHasUserIndex] = useState({ my_indexes: false, starred: false });
 
@@ -211,7 +210,7 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
-									isOwner={isOwner}
+									isOwner={did === itm.owner_did?.id}
 									userIndexToggle={handleUserIndexToggle}
 									{...itm}
 								/>}
@@ -233,6 +232,7 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
+									isOwner={did === itm.owner_did?.id}
 									userIndexToggle={handleUserIndexToggle}
 									{...itm}
 								/>}

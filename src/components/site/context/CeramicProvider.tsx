@@ -3,7 +3,7 @@ import React, {
 } from "react";
 import ceramicService from "services/ceramic-service";
 import {
-	Indexes, LinkContentResult, Links, Users, UserIndex,
+	Indexes, LinkContentResult, Links, Users, UserIndex, IndexLink,
 } from "types/entity";
 import { CID } from "ipfs-http-client";
 import api from "../../../services/api-service";
@@ -16,14 +16,21 @@ export interface CeramicContextValue {
 	syncedData: any;
 	createIndex(doc: Partial<Indexes>): Promise<Indexes | null>;
 	updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes>;
-	getIndexById(streamId: string): Promise<Indexes>;
-	addLink(index_id: string, data: Links): Promise<Links | undefined>;
-	removeLink(link_id: string): Promise<Links | undefined>;
+	getIndexById(index_id: string): Promise<Indexes | undefined>;
+
+	createLink(data: Partial<Links>): Promise<Links | undefined>;
+	updateLink(link_id: string, data: Links): Promise<Links | undefined>;
 	addTag(link_id: string, tag: string): Promise<Links | undefined>;
 	removeTag(link_id: string, tag: string): Promise<Links | undefined>;
+
+	addLinkToIndex(index_id: string, link_id: string): Promise<IndexLink | undefined>;
+	removeLinkFromIndex(index_id: string, link_id: string): Promise<IndexLink | undefined>;
+
 	getProfile(): Promise<Users | null | any>;
 	setProfile(profile: Users): Promise<Users | null | any>;
+
 	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
+
 	addUserIndex(index_id: string, type: string): Promise<UserIndex | undefined>;
 	removeUserIndex(index_id: string, type: string): Promise<UserIndex | undefined>;
 
@@ -47,19 +54,18 @@ const CeramicProvider: React.FC<{}> = ({
 		return doc;
 	};
 
-	const getIndexById = (streamId: string) => api.getIndexById(streamId);
+	const getIndexById = (index_id: string) => api.getIndexById(index_id);
 
 	const updateIndex = async (index_id: string, content: Partial<Indexes>) => {
 		const updatedDoc = await ceramicService.updateIndex(index_id, content);
 		return updatedDoc;
 	};
 
-	const addLink = async (index_id: string, link: Links) => ceramicService.addLink(index_id, link);
+	const createLink = async (link: Partial<Links>) => ceramicService.createLink(link);
+	const updateLink = async (link_id: string, link: Links) => ceramicService.updateLink(link_id, link);
 
-	const removeLink = async (link_id: string) => {
-		const updatedDoc = await ceramicService.removeLink(link_id);
-		return updatedDoc;
-	};
+	const addLinkToIndex = async (index_id: string, link_id: string) => ceramicService.addLinkToIndex(index_id, link_id);
+	const removeLinkFromIndex = async (index_id: string, link_id: string) => ceramicService.removeLinkFromIndex(index_id, link_id);
 
 	const addTag = async (link_id: string, tag: string) => {
 		const updatedDoc = await ceramicService.addTag(link_id, tag);
@@ -68,11 +74,6 @@ const CeramicProvider: React.FC<{}> = ({
 
 	const removeTag = async (link_id: string, tag: string) => {
 		const updatedDoc = await ceramicService.removeTag(link_id, tag);
-		return updatedDoc;
-	};
-
-	const setLinkFavorite = async (streamId: string, linkId: string, favorite: boolean) => {
-		const updatedDoc = await ceramicService.setLinkFavorite(streamId, linkId, favorite);
 		return updatedDoc;
 	};
 
@@ -91,13 +92,19 @@ const CeramicProvider: React.FC<{}> = ({
 			createIndex,
 			updateIndex,
 			getIndexById,
+
+			createLink,
+			updateLink,
 			addTag,
-			addLink,
+			removeTag,
+
+			addLinkToIndex,
+			removeLinkFromIndex,
+
 			getProfile,
 			setProfile,
-			removeLink,
-			removeTag,
 			uploadImage,
+
 			addUserIndex,
 			removeUserIndex,
 		}}>
