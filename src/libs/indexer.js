@@ -94,6 +94,7 @@ module.exports.createIndex = async (index) => {
 
     if(index.controller_did.startsWith('did:key:')){
         // Index created with a PKP
+        /*
         const pkpPublicKey = decodeDIDWithLit(index.controller_did)
         const pkpOwner = await getOwner(pkpPublicKey);
         if(pkpOwner){
@@ -104,6 +105,7 @@ module.exports.createIndex = async (index) => {
                 "created_at": new Date().toISOString()
             })
         }
+        */
     }else{
         // Personal index.
         // Implement user_index scenario later.
