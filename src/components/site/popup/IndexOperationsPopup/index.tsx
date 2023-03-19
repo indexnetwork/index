@@ -24,8 +24,8 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 	is_in_my_indexes = false,
 	mode = "indexes-page",
 	userIndexToggle,
+	isOwner,
 }) => {
-	const { isOwner } = useOwner();
 	return (
 		<Dropdown
 			menuClass="index-list-item-menu ml-6"

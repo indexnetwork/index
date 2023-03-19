@@ -211,6 +211,7 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
+									isOwner={isOwner}
 									userIndexToggle={handleUserIndexToggle}
 									{...itm}
 								/>}

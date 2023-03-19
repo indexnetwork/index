@@ -18,6 +18,7 @@ import IconStar from "../../../base/Icon/IconStar";
 
 export interface IndexItemProps extends Indexes {
 	hasSearch: boolean;
+	isOwner: boolean;
 	onClick?(): Promise<void>;
 	userIndexToggle(index_id: string, type: string, op: string): void;
 }
@@ -31,6 +32,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 	hasSearch = false,
 	is_in_my_indexes = false,
 	is_starred = false,
+	isOwner = false,
 	userIndexToggle,
 	onClick,
 }) => <Row
@@ -80,6 +82,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 					<IndexOperationsPopup
 						streamId={id}
 						is_in_my_indexes={is_in_my_indexes}
+						isOwner={isOwner}
 						userIndexToggle={userIndexToggle}
 					/>
 				</Button>

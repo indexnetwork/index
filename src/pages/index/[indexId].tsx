@@ -21,7 +21,7 @@ import LinkInput from "components/site/input/LinkInput";
 import IndexDetailsList from "components/site/index-details/IndexDetailsList";
 import { useRouter } from "next/router";
 import { Indexes, Links } from "types/entity";
-import api from "services/api-service";
+import api, {GetUserIndexesRequestBody, UserIndexResponse} from "services/api-service";
 import IndexTitleInput from "components/site/input/IndexTitleInput";
 import { useCeramic } from "hooks/useCeramic";
 import { useMergedState } from "hooks/useMergedState";
@@ -76,16 +76,27 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setTokenModalVisible((oldVal) => !oldVal);
 	 };
 
-	const loadIndex = async (index_id: string) => {
-		const doc = await ceramic.getIndexById(index_id);
+	const loadIndex = async (indexId: string) => {
+		const doc = await ceramic.getIndexById(indexId);
 		if (doc != null) {
 			setIndex(doc);
 			setIsOwner(doc.owner_did?.id === did);
+			loadUserIndex(indexId);
 		} else {
 			setNotFound(true);
 		}
 	};
-
+	const loadUserIndex = async (indexId) => {
+		const userIndexes = await api.getUserIndexes({
+			index_id: indexId,
+			did,
+		} as GetUserIndexesRequestBody) as UserIndexResponse;
+		setIndex({
+ 			...index,
+			is_in_my_indexes: !!userIndexes.my_indexes,
+			is_starred: !!userIndexes.starred,
+		});
+	};
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
 		const result = await ceramic.updateIndex(index.id!, {
@@ -123,7 +134,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 		//
 	};
-
 	useEffect(() => {
 		const { indexId } = router.query;
 		if (indexId && did) {
