@@ -39,7 +39,7 @@ const indexesWithLinksQuery = (
                             field: "deleted_at",
                         },
                     },
-                ],                   
+                ],
             },
         },
         collapse: {
@@ -166,7 +166,7 @@ const linksQuery = (
                                 field: "deleted_at",
                             },
                         },
-                    ],                    
+                    ],
 
                 },
             },
@@ -182,8 +182,8 @@ const linksQuery = (
                         field: "created_at"
                     }
                 }
-            }     
-            */       
+            }
+            */
         };
 
         if (search) {
@@ -309,7 +309,7 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
     if(totalCount > 0){
 
         indexResult = indexResult.map(index => {
-            
+
             index.is_in_my_indexes = false;
             index.is_starred = false;
 
@@ -323,6 +323,16 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
         })
 
     }
+
+    let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.controller_did))
+    indexResult = indexResult.map((value, key) => {
+        return {
+            ...value,
+            owner_did: {
+                id: pkpOwners[key]
+            }
+        }
+    })
 
     return {
         totalCount,
@@ -341,9 +351,10 @@ const promiseAllOfObject = async (obj) => {
 exports.did = async (req, res) => {
 
     const {did, type, search, skip, take, links_size} = req.body;
-    
+
     let user_indexes = await redis.hGetAll(`user_indexes:by_did:${did.toLowerCase()}`)
-    
+
+
     user_indexes_by_type = _.chain(user_indexes)
                             .map(i => JSON.parse(i))
                             .filter(i => !i.deleted_at)
@@ -361,13 +372,14 @@ exports.did = async (req, res) => {
         res.json(search_result)
     }
 
+
 };
 
 
 exports.index = async (req, res) => {
 
     const {index_ids, search, skip, take, links_size} = req.body;
-    
+
     const query = indexesWithLinksQuery(index_ids, search, skip, take, links_size);
     const result = await client.search(query);
 
@@ -389,7 +401,7 @@ exports.link = async (req, res, next) => {
     const {index_id, search, skip, take} = req.body;
     const query = linksQuery(index_id, search, skip, take);
     const result = await client.search(query);
-    
+
     const totalCount = result?.hits?.total.value
 
     const response = {
@@ -404,7 +416,7 @@ exports.link = async (req, res, next) => {
 exports.user_index = async (req, res, next) => {
 
     const { did, index_id } = req.body;
-    
+
     if(index_id){
         let my_indexes = await redis.hGet(`user_indexes:by_did:${did.toLowerCase()}`, `${index_id}:my_indexes`)
         let starred = await redis.hGet(`user_indexes:by_did:${did.toLowerCase()}`, `${index_id}:starred`)
@@ -412,7 +424,7 @@ exports.user_index = async (req, res, next) => {
             my_indexes: JSON.parse(my_indexes),
             starred: JSON.parse(starred),
         })
-    }    
+    }
 
 };
 

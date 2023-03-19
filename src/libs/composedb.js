@@ -28,6 +28,22 @@ module.exports.getIndexById = async (id) => {
         })
     })
 
+    //TODO fix updated at.
+    /*
+
+				links(last:1) {
+					edges {
+					  node {
+						created_at
+						updated_at
+					  }
+					}
+				}
+    if (node.links.edges.length > 0 && (moment(node.links.edges[0].node.updated_at) > moment(node.updated_at))) {
+        node.updated_at = node.links.edges[0].node.updated_at;
+    }
+    */
+
     let res = await results.json();
     let index = res.data.node;
 
