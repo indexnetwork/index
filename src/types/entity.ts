@@ -7,8 +7,12 @@ export type Indexes = {
   id: string
   title: string | null
   collab_action: string;
-  controller_did: string;
-  owner_did: string;
+  controller_did: { // This is PKP DID
+    id: string
+  };
+  owner_did: { // This is PKP Owner DID
+    id: string
+  };
   created_at: string;
   updated_at: string;
   links: Links[];

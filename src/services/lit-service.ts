@@ -19,11 +19,11 @@ class LitService {
 				const did = new DID({ provider, resolver: KeyDidResolver.getResolver() });
 				await did.authenticate();
 				return did;
-			} catch (err) {
-				// TODO handle error.
+			} catch (err: any) {
+				throw new Error(`Error authenticating DID: ${err.message}`);
 			}
 		} else {
-			// TODO handle error.
+			throw new Error("authenticatePKP cannot be run on the server-side");
 		}
 	}
 	async mintPkp() {

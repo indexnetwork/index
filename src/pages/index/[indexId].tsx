@@ -80,7 +80,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const doc = await ceramic.getIndexById(index_id);
 		if (doc != null) {
 			setIndex(doc);
-			setIsOwner(doc.owner_did === did);
+			setIsOwner(doc.owner_did?.id === did);
 		} else {
 			setNotFound(true);
 		}
@@ -125,9 +125,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	useEffect(() => {
-		const { index_id } = router.query;
-		if (index_id && did) {
-			loadIndex(index_id as string);
+		const { indexId } = router.query;
+		if (indexId && did) {
+			loadIndex(indexId as string);
 		}
 	}, [router.query, did]);
 
@@ -182,7 +182,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											noYGutters
 										>
 											<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-											<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
+											<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.owner_did?.id}</Text>
 										</Col>
 										<Col
 											xs={12}
@@ -303,7 +303,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<IndexDetailsList
 													search={search}
 													isOwner={isOwner}
-													index_id={router.query.index_id as any}
+													index_id={router.query.indexId as any}
 												// onChange={handleReorderLinks}
 												/>
 											</Col>

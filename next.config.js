@@ -11,8 +11,8 @@ const nextConfig = {
         destination: '/did/:did',
       },
       {
-        source: '/:index_id',
-        destination: '/index/:index_id',
+        source: '/:indexId',
+        destination: '/index/:indexId',
       }
     ]
   },

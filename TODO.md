@@ -4,8 +4,9 @@
 # PKPs
 - [x] Create PKP
 - [x] Index PKP
-- [] Create User Index (Associate with pkp stuff)
-- [] Get Index
+- [x] Create User Index (Associate with pkp stuff)
+- [x] Get Index
+- [x] Rewrite, useOwner
 
 - [] Get Links
 - [] Search links

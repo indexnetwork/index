@@ -111,7 +111,7 @@ class CeramicService {
 		}
 		const index = data?.createIndex.document;
 
-		// await this.addUserIndex(index!.id, "my_indexes");
+		this.addUserIndex(index!.id, "my_indexes");
 
 		return index!;
 	}
@@ -300,19 +300,23 @@ class CeramicService {
 			return;
 		}
 		const userIndex: UserIndex | undefined = userIndexes[type as UserIndexKey];
+		if(!userIndex.id){
+			this.addUserIndex(index_id)
+		}
 		const payload = {
 			id: userIndex?.id!,
 			content: {
 				deleted_at: getCurrentDateTime(),
 			},
 		};
+		console.log(payload);
 		const { data, errors } = await this.userComposeClient.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
 			mutation UpdateUserIndex($input: UpdateUserIndexInput!) {
 				updateUserIndex(input: $input) {
 					document {
 						id
 						index_id
-						owner {
+						controller_did {
 							id
 						}
 						created_at
