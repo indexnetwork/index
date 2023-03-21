@@ -49,7 +49,7 @@ module.exports.getIndexById = async (id) => {
 
     if(index){
         // index.controller_did = index.controller_did.id
-        const owner_did = await redis.hGet(`pkp:owner`, index.controller_did)
+        const owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id)
         if(owner_did){
             index.owner_did = { id: owner_did, basicProfile: null}
         }
