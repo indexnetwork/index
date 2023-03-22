@@ -4,7 +4,7 @@ if(process.env.NODE_ENV !== 'production'){
 
 const _ = require('lodash')
 const { Kafka } = require('kafkajs')
-const indexer = require('../libs/indexer.js')
+const indexer = require('../libs/kafka-indexer.js')
 
 const kafka = new Kafka({
     clientId: 'api',
@@ -16,21 +16,21 @@ const redis = RedisClient.getInstance();
 
 const topics = {
     'postgres.public.kjzl6hvfrbw6c9bh2wggilqiije6udtgohahloxhuhbkm0igfjd3pm05z80164h': 'index',
-    'postgres.public.kjzl6hvfrbw6c569n1q6egc47s4u2213x1rs4jjygrgszjmdo3nedbrnt8dl46q': 'link',
+    //'postgres.public.kjzl6hvfrbw6c569n1q6egc47s4u2213x1rs4jjygrgszjmdo3nedbrnt8dl46q': 'link',
     'postgres.public.kjzl6hvfrbw6capisi7cx0ffmrshdiznmt127j2ldacp387g0xhedhrqbgnem31': 'index_link',
     'postgres.public.kjzl6hvfrbw6c8x0tvgf98z805tg08s6fn9tre7wiusghayi8f83rcoyh3hdo9b': 'user_index'
 }
 
 async function start() {
     await redis.connect()
-    const consumer = kafka.consumer({ groupId: `index-consumer-dev` })
+    const consumer = kafka.consumer({ groupId: `index-consumer-dev-7` })
     await consumer.connect()
-    await consumer.subscribe({ topics: Object.keys(topics) })
+    await consumer.subscribe({ topics: Object.keys(topics), fromBeginning: true})
     await consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
 
             const value = JSON.parse(message.value.toString());
-
+            console.log(value)
             const op = value.__op;
             const model = topics[topic]
             if(!['c', 'u'].includes(op)){
@@ -47,6 +47,8 @@ async function start() {
                 ...value.stream_content
             }
 
+            console.log(doc)
+
 
             switch (model) {
                 case 'index':
@@ -56,16 +58,6 @@ async function start() {
                             break
                         case "u":
                             indexer.updateIndex(doc)
-                            break
-                    }
-                    break
-                case 'link':
-                    switch (op) {
-                        case "c":
-                            indexer.createLink(doc)
-                            break
-                        case "u":
-                            indexer.updateLink(doc)
                             break
                     }
                     break

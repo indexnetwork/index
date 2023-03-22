@@ -56,7 +56,11 @@ async function start() {
             "type": "keyword"
           },
           "controller_did": {
-            "type": "keyword"
+            "properties": {
+              "id": {
+                "type" : "keyword"
+              }
+            }
           },
           "indexer_did": {
             "type": "keyword"
@@ -91,14 +95,48 @@ async function start() {
           },
           "deleted_at": {
             "type": "date"
-          },          
+          },
+          "index_link": {
+            "properties": {
+              "id": {
+                "type": "keyword"
+              },
+              "indexer_did": {
+                "properties": {
+                  "id": {
+                    "type" : "keyword"
+                  }
+                }
+              },
+              "controller_did": {
+                "properties": {
+                  "id": {
+                    "type" : "keyword"
+                  }
+                }
+              },
+              "updated_at": {
+                "type": "date"
+              },
+              "created_at": {
+                "type": "date"
+              },
+              "deleted_at": {
+                "type": "date"
+              },
+            }
+          },
           "index": {
             "properties": {
               "id": {
                 "type": "keyword"
               },
               "controller_did": {
-                "type": "keyword",
+                "properties": {
+                  "id": {
+                    "type" : "keyword"
+                  }
+                }
               },
               "collab_action": {
                 "type": "keyword",
@@ -116,7 +154,7 @@ async function start() {
               },
               "deleted_at": {
                 "type": "date"
-              },              
+              },
             }
           }
         }

@@ -1,4 +1,3 @@
-
 const moment = require("moment");
 const _ = require('lodash')
 
@@ -11,8 +10,6 @@ const redis = RedisClient.getInstance();
 const config = {
     indexName: 'links'
 }
-
-
 
 const indexesWithLinksQuery = (
     index_ids,
@@ -375,7 +372,6 @@ exports.did = async (req, res) => {
 
 };
 
-
 exports.index = async (req, res) => {
 
     const {index_ids, search, skip, take, links_size} = req.body;
@@ -412,7 +408,6 @@ exports.link = async (req, res, next) => {
     res.json(response)
 };
 
-
 exports.user_index = async (req, res, next) => {
 
     const { did, index_id } = req.body;
@@ -427,4 +422,3 @@ exports.user_index = async (req, res, next) => {
     }
 
 };
-

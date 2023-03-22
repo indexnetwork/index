@@ -3,6 +3,56 @@ const _ = require('lodash')
 const RedisClient = require('../clients/redis.js');
 const redis = RedisClient.getInstance();
 
+module.exports.getIndexLinkById = async(id) => {
+    let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
+        method: 'POST',
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            query: `{
+              node(id: "${id}") {
+                ... on IndexLink {
+                  id
+                  created_at
+                  updated_at
+                  deleted_at
+                  indexer_did {
+                    id
+                  }
+                  index {
+                    id
+                    controller_did {
+                      id
+                    }        
+                    title
+                    collab_action
+                    created_at
+                    updated_at
+            
+                  }
+                  link {
+                    id
+                    controller_did {
+                      id
+                    }
+                    title
+                    url
+                    favicon
+                    tags
+                    content
+                    created_at
+                    updated_at
+                    deleted_at
+                  }
+                }
+              }
+            }`
+        })
+    })
+    let res = await results.json();
+    return res.data.node;
+}
 
 module.exports.getIndexById = async (id) => {
         let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
