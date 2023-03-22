@@ -121,20 +121,19 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			current: 0,
 			total: urls.length,
 		});
-
-		urls.forEach(async (url) => {
+		// TODO Allow for syntax
+		// eslint-disable-next-line no-restricted-syntax
+		for await (const url of urls) {
 			const payload = await api.crawlLink(url);
 			if (payload) {
 				const link = await ceramic.createLink(payload);
 				// TODO Fix that.
-				const indexLink = await ceramic.addLinkToIndex(index?.id!, link?.id!);
+				await ceramic.addLinkToIndex(index, link?.id!);
 				if (link) {
 					setAddedLink(link);
 				}
 			}
-		});
-
-		//
+		}
 	};
 	useEffect(() => {
 		const { indexId } = router.query;

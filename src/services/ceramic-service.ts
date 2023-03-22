@@ -11,6 +11,7 @@ import { definition } from "../types/merged-runtime";
 import { appConfig } from "../config";
 
 import LitService from "./lit-service";
+import {decodeDIDWithLit} from "../utils/lit";
 
 class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
@@ -198,9 +199,9 @@ class CeramicService {
 		return data?.updateLink.document!;
 	}
 
-	async addLinkToIndex(index_id: string, link_id: string) : Promise <IndexLink | undefined> {
+	async addLinkToIndex(index: Indexes, link_id: string) : Promise <IndexLink | undefined> {
 		const indexLink: IndexLink = {
-			index_id,
+			index_id: index.id,
 			link_id,
 			updated_at: getCurrentDateTime(),
 			created_at: getCurrentDateTime(),
@@ -210,6 +211,15 @@ class CeramicService {
 		const payload = {
 			content: indexLink,
 		};
+
+		const pkpPublicKey = decodeDIDWithLit(index.controller_did.id);
+		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
+		/*
+		if (!did.authenticated) {
+			// TODO handle error
+		}
+		 */
+		this.pkpComposeClient.setDID(did);
 		const { data, errors } = await this.pkpComposeClient.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
 			mutation CreateIndexLink($input: CreateIndexLinkInput!) {
 				createIndexLink(input: $input) {
@@ -226,7 +236,7 @@ class CeramicService {
 					}
 				}
 			}`, { input: payload });
-		debugger;
+
 		if (errors) {
 			// TODO Handle
 		}
@@ -251,8 +261,6 @@ class CeramicService {
 						id
 						index_id
 						link_id
-						controller_did
-						indexer_did
 						created_at
 						updated_at
 					}

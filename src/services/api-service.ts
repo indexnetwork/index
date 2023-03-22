@@ -93,7 +93,6 @@ const apiAxios = axios.create({
 });
 
 class ApiService {
-
 	async searchIndex(body: DidSearchRequestBody): Promise<IndexSearchResponse | null> {
 		try {
 			const { data } = await apiAxios.post<IndexSearchResponse>(API_ENDPOINTS.SEARCH_DID, body);
@@ -102,8 +101,6 @@ class ApiService {
 			return null;
 		}
 	}
-
-
 
 	async getUserIndexes(body: GetUserIndexesRequestBody): Promise<UserIndexResponse | undefined> {
 		try {

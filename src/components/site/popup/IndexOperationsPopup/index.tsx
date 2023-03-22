@@ -24,14 +24,13 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 	mode = "indexes-page",
 	userIndexToggle,
 	isOwner = false,
-}) => {
-	return (
-		<Dropdown
-			menuClass="index-list-item-menu ml-6"
-			position="bottom-right"
-			menuItems={
-				<>
-					{/* {
+}) => (
+	<Dropdown
+		menuClass="index-list-item-menu ml-6"
+		position="bottom-right"
+		menuItems={
+			<>
+				{/* {
 					mode === "indexes-page" && (
 						<DropdownMenuItem>
 							<Flex alignItems="center">
@@ -41,13 +40,13 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 						</DropdownMenuItem>
 					)
 				} */}
-					{/* <DropdownMenuItem>
+				{/* <DropdownMenuItem>
 					<Flex alignItems="center">
 						<IconIntegration width={12} height="100%" />
 						<Text className="ml-3" element="span" size="sm" theme="secondary"> Integrations</Text>
 					</Flex>
 				</DropdownMenuItem> */}
-					{/* <DropdownMenuItem>
+				{/* <DropdownMenuItem>
 						<Flex alignItems="center">
 							<IconEmbed width={16} height="100%" />
 							<Text className="ml-3" element="span" size="md" theme="primary"> Embed</Text>
@@ -63,60 +62,59 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 						</Flex>
 					</DropdownMenuItem>
 					*/}
-					<DropdownMenuItem onClick={() => {
-						copyToClipboard(`${window.location.href}`);
-					}}>
-						<Flex alignItems="center">
-							<IconCopy />
-							<Text className="ml-3" element="span" size="md" > Copy Link</Text>
-						</Flex>
-					</DropdownMenuItem>
-					{
-						isOwner && (
-							is_in_my_indexes ? (
-								<>
-									<DropdownMenuItem divider />
-									<DropdownMenuItem
-										onClick={() => userIndexToggle(streamId, "my_indexes", "remove")}
-									>
-										<Flex alignItems="center">
-											<IconRemove />
-											<Text className="ml-3" theme="error" element="span" size="md" >Remove</Text>
-										</Flex>
-									</DropdownMenuItem>
-								</>
-							) : (
-								<>
-									<DropdownMenuItem divider />
-									<DropdownMenuItem
-										onClick={() => userIndexToggle(streamId, "my_indexes", "add")}
-									>
-										<Flex alignItems="center">
-											<IconAddCircle />
-											<Text className="ml-3" element="span" size="md" >Add to my indexes</Text>
-										</Flex>
-									</DropdownMenuItem>
-								</>
-							)
+				<DropdownMenuItem onClick={() => {
+					copyToClipboard(`${window.location.href}`);
+				}}>
+					<Flex alignItems="center">
+						<IconCopy />
+						<Text className="ml-3" element="span" size="md" > Copy Link</Text>
+					</Flex>
+				</DropdownMenuItem>
+				{
+					isOwner && (
+						is_in_my_indexes ? (
+							<>
+								<DropdownMenuItem divider />
+								<DropdownMenuItem
+									onClick={() => userIndexToggle(streamId, "my_indexes", "remove")}
+								>
+									<Flex alignItems="center">
+										<IconRemove />
+										<Text className="ml-3" theme="error" element="span" size="md" >Remove</Text>
+									</Flex>
+								</DropdownMenuItem>
+							</>
+						) : (
+							<>
+								<DropdownMenuItem divider />
+								<DropdownMenuItem
+									onClick={() => userIndexToggle(streamId, "my_indexes", "add")}
+								>
+									<Flex alignItems="center">
+										<IconAddCircle />
+										<Text className="ml-3" element="span" size="md" >Add to my indexes</Text>
+									</Flex>
+								</DropdownMenuItem>
+							</>
 						)
-					}
-				</>
-			}
-		>
-			{
-				mode === "indexes-page" ? (
-					<IconContextMenu width={20} height={20} className="index-list-item-menu-btn" />
-				) : (
-					<Button iconButton theme="clear" size="sm">
-						<IconContextMenu
-							width={16}
-							height={16}
-						/>
-					</Button>
-				)
-			}
-		</Dropdown>
-	);
-};
+					)
+				}
+			</>
+		}
+	>
+		{
+			mode === "indexes-page" ? (
+				<IconContextMenu width={20} height={20} className="index-list-item-menu-btn" />
+			) : (
+				<Button iconButton theme="clear" size="sm">
+					<IconContextMenu
+						width={16}
+						height={16}
+					/>
+				</Button>
+			)
+		}
+	</Dropdown>
+);
 
 export default IndexOperationsPopup;
