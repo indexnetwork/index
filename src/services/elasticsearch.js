@@ -321,7 +321,7 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
 
     }
 
-    let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.controller_did))
+    let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.controller_did.id))
     indexResult = indexResult.map((value, key) => {
         return {
             ...value,
