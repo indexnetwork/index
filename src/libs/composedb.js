@@ -111,7 +111,7 @@ module.exports.getIndexById = async (id) => {
 
 module.exports.getIndexByPKP = async (id) => {
 
-    let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql, {
+    let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
         method: 'POST',
         headers: {
             "Content-Type": "application/json"
