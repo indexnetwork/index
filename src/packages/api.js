@@ -19,7 +19,6 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json())
 
-
 const Joi = require('joi')
 const validator = require('express-joi-validation').createValidator({
   passError: true
