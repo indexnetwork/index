@@ -282,12 +282,15 @@ const transformLinkSearch = (
     const hits = dt?.hits?.hits;
     if (hits && hits.length > 0) {
         if (hasSearchTerm) {
-            return hits.map((h) => (
-                {
+            return hits.map((h) => {
+                const mappedValues = Object.entries(h.highlight).map(([key, value]) => [key, value.join("...")]);
+                const mappedObj = Object.fromEntries(mappedValues);
+
+                return {
                     ...h._source,
-                    highlight: h.highlight,
+                    highlight: mappedObj,
                 }
-            ));
+            });
         }
         return hits.map((h) => h._source);
     }
