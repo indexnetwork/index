@@ -8,11 +8,9 @@ const redis = RedisClient.getInstance();
 const search = require('../services/elasticsearch.js')
 const composedb = require('../services/composedb.js')
 
-const indexer = require('../libs/kafka-indexer.js')
-
 const moralis = require('../libs/moralis.js')
-const { getMetadata } = require('../libs/crawl-metadata.js')
-const { getQueue } = require('../libs/crawl.js')
+
+const { getQueue, getMetadata } = require('../libs/crawl.js')
 
 const express = require('express')
 const cors = require('cors')
