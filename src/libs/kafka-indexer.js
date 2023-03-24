@@ -82,10 +82,7 @@ module.exports.createIndexLink = async (indexLinkMsg) => {
         refresh: true,
         doc_as_upsert: true,
         body: {
-            doc: {
-                ...indexLink.link,
-                ...transformIndex(indexLink.index)
-            }
+            doc: indexLink
         },
     })
 }
@@ -102,10 +99,7 @@ module.exports.updateIndexLink = async (indexLinkMsg) => {
         refresh: true,
         doc_as_upsert: true,
         body: {
-            doc: {
-                ...indexLink.link,
-                ...transformIndex(indexLink.index)
-            }
+            doc: indexLink
         },
     })
 }

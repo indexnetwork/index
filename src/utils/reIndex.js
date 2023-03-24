@@ -55,6 +55,9 @@ async function start() {
           "id": {
             "type": "keyword"
           },
+          "favicon": {
+            "type": "keyword"
+          },
           "controller_did": {
             "properties": {
               "id": {
@@ -62,23 +65,17 @@ async function start() {
               }
             }
           },
-          "indexer_did": {
-            "type": "keyword"
-          },
-          "index_id": {
-            "type": "keyword"
-          },
-          "content": {
-            "type": "search_as_you_type",
-            "analyzer": "searchable",
-            "max_shingle_size": 3
-          },
           "title": {
             "type": "search_as_you_type",
             "analyzer": "searchable",
             "max_shingle_size": 3
           },
           "url": {
+            "type": "search_as_you_type",
+            "analyzer": "searchable",
+            "max_shingle_size": 3
+          },
+          "content": {
             "type": "search_as_you_type",
             "analyzer": "searchable",
             "max_shingle_size": 3

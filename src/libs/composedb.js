@@ -20,6 +20,9 @@ module.exports.getIndexLinkById = async(id) => {
                   indexer_did {
                     id
                   }
+                  controller_did {
+                    id
+                  }                  
                   index {
                     id
                     controller_did {
@@ -51,7 +54,13 @@ module.exports.getIndexLinkById = async(id) => {
         })
     })
     let res = await results.json();
-    return res.data.node;
+    indexLink = res.data.node;
+    return {
+        index_link: _.pick(indexLink, ["id","created_at","updated_at","deleted_at", "indexer_did", "controller_did"]),
+        index: indexLink.index,
+        ..._.omit(indexLink, ["id","created_at","updated_at","deleted_at", "indexer_did", "index"]).link
+    }
+
 }
 
 module.exports.getIndexById = async (id) => {

@@ -67,22 +67,51 @@
 - [x] Craete default with pkp, with default action.
 - [x] Create new action
 - [] Associate a PKP with a new LIT Action
-- [] Conditional Signing 
 - [] Collaboration UI	
 
 
 # Security
 - [x] Protect composedb ingress.
 
-Analyse Typesense 
-Migrate to Typesense 
+# Search
+- [] Analyse Typesense 
+- [] Migrate to Typesense 
 
-[x] ComposeDB Mainnet Application
-[x] ComposeDB Mainnet Server Setup
-[x] ComposeDB New Models (Index, IndexLink, [Link])
-[x] fix testnet, ensure runs from a branch.
-[x] new testnet deployment with statestore
-[x] new models deployment with statestore
-[] refactor indexer
-[x] Data model for owner, controller_did indexing.
-[] Handle PKP Transfer
+# ComposeDB Model Change
+- [x] ComposeDB Mainnet Application
+- [x] ComposeDB Mainnet Server Setup
+- [x] ComposeDB New Models (Index, IndexLink, [Link])
+- [x] fix testnet, ensure runs from a branch.
+- [x] new testnet deployment with statestore
+- [x] new models deployment with statestore
+- [x] refactor indexer
+- [x] Data model for owner, controller_did indexing.
+
+# TODO
+- [x] Relogin after logout
+
+# PKPs
+- [x] Create PKP
+- [x] Index PKP
+- [x] Create User Index (Associate with pkp stuff)
+- [x] Get Index
+- [x] Rewrite, useOwner
+
+- [x] Get Links
+- [x] Search links
+- [x] Update Index with PKP (Sign directly with PKP)
+- [x] Add Link
+
+- [] Update Link
+- [] Remove Link
+- [] Set node count to 1
+- [] Handle PKP Transfer
+
+- [] Lit actions: isOwner()
+- [] Lit actions: getCondition()
+- [] Call isCreator function & Improve isOwner
+- [] Write Dynamic Lit Action
+- [] Lit actions: isIndexer(link)
+- [] Lit actions: isCreator()
+
+- [] Delete link should be renamed to "tRemove link"
