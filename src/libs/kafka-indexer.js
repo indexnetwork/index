@@ -26,7 +26,9 @@ module.exports.createIndex = async (indexMsg) => {
         index: config.indexName,
         id: `index-${index.id}`,
         refresh: true,
-        body: transformIndex(index),
+        body: {
+            index
+        },
     })
 }
 module.exports.updateIndex = async (indexMsg) => {
@@ -38,7 +40,9 @@ module.exports.updateIndex = async (indexMsg) => {
         index: config.indexName,
         id: `index-${index.id}`,
         refresh: true,
-        body: transformIndex(index),
+        body: {
+            index
+        },
     })
 
     await client.updateByQuery({
@@ -57,7 +61,7 @@ module.exports.updateIndex = async (indexMsg) => {
                 must: [
                     {
                         term: {
-                            index_id: index.id
+                            "index.id": index.id
                         },
                     },
                     {

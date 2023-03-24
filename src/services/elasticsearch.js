@@ -27,7 +27,7 @@ const indexesWithLinksQuery = (
             bool: {
                 must: [
                     {
-                        terms: { "index_id": index_ids },
+                        terms: { "index.id": index_ids },
                     }
                 ],
                 must_not: [
@@ -40,7 +40,7 @@ const indexesWithLinksQuery = (
             },
         },
         collapse: {
-            field: "index_id",
+            field: "index.id",
             max_concurrent_group_searches: 20,
             inner_hits: [{
                 name: "latest_index",
@@ -65,7 +65,7 @@ const indexesWithLinksQuery = (
         aggs: {
             totalCount: {
                 cardinality: {
-                    field: "index_id",
+                    field: "index.id",
                 },
             },
         },
