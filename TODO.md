@@ -33,7 +33,7 @@
 - [x] Deleted at
 
 # User Indexes
-- [] Add/Remove index from user indexes UI
+- [x] Add/Remove index from user indexes UI
 - [x] UserIndex UI (Seren)
 - [x] UserIndex Indexer
 - [x] UserIndex Composedb
@@ -102,8 +102,9 @@
 - [x] Update Index with PKP (Sign directly with PKP)
 - [x] Add Link
 
-- [] Update Link
-- [] Remove Link
+- [x] Update Link
+- [] Update Link Consumer
+- [x] Remove Link
 - [] Set node count to 1
 - [] Handle PKP Transfer
 
