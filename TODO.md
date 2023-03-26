@@ -103,7 +103,7 @@
 - [x] Add Link
 
 - [x] Update Link
-- [] Update Link Consumer
+- [x] Update Link Consumer
 - [x] Remove Link
 - [] Set node count to 1
 - [] Handle PKP Transfer

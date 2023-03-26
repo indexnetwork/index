@@ -24,7 +24,7 @@ module.exports.indexPKP = async (req, res, next) => {
     let pkpPubKey = await getPkpPublicKey(event.tokenId)
     let pkpDID = encodeDIDWithLit(pkpPubKey);
     let ownerDID = walletToDID(chainId, event.to);
-    await redis.hSet(`pkp:owner`, pkpDID, ownerDID)
+    await redis.hSet(`pkp:owner`, pkpDID.toLowerCase(), ownerDID.toLowerCase())
 
     return res.status(201).end();
     /*

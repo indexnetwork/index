@@ -133,7 +133,7 @@ module.exports.getIndexById = async (id) => {
 
     delete index.links;
 
-    const owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id)
+    const owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id.toLowerCase())
     if(owner_did){
         index.owner_did = { id: owner_did, basicProfile: null}
     }
@@ -191,7 +191,7 @@ module.exports.getIndexByPKP = async (id) => {
     }
     delete index.links
 
-    const owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id)
+    const owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id.toLowerCase())
     if(owner_did){
         index.owner_did = { id: owner_did, basicProfile: null}
     }
