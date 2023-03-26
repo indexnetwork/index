@@ -57,6 +57,38 @@ module.exports.getIndexLinkById = async(id) => {
     return res.data.node;
 }
 
+
+module.exports.getLinkById = async(id) => {
+    let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
+        method: 'POST',
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            query: `{
+              node(id: "${id}") {
+                ... on Link {
+                    id
+                    controller_did {
+                      id
+                    }
+                    title
+                    url
+                    favicon
+                    tags
+                    content
+                    created_at
+                    updated_at
+                    deleted_at
+                }
+              }
+            }`
+        })
+    })
+    let res = await results.json();
+    return res.data.node;
+}
+
 module.exports.getIndexById = async (id) => {
         let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
         method: 'POST',

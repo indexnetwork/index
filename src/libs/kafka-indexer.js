@@ -107,6 +107,45 @@ module.exports.updateIndexLink = async (indexLinkMsg) => {
         },
     })
 }
+
+
+module.exports.createLink = async (link) => {
+    console.log("createLink - Ignore", link)
+}
+
+module.exports.updateLink = async (linkMsg) => {
+
+    console.log("updateLink", linkMsg)
+    const link = await getLinkById(linkMsg.id)
+    delete link.content
+    //Index links
+    await client.updateByQuery({
+        index: config.indexName,
+        refresh: true,
+        conflicts: "proceed",
+        script: {
+            lang: 'painless',
+            source: 'ctx._source.index = params.index',
+            params: {
+                link
+            }
+        },
+        query: {
+            bool: {
+                must: [
+                    {
+                        term: {
+                            "link.id": index.id
+                        },
+                    }
+                ],
+            },
+        },
+    })
+}
+
+
+
 module.exports.updateLinkContent = async (url, content) => {
 
     console.log("updateLinkContent", url, content)
