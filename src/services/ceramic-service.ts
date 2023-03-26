@@ -214,9 +214,7 @@ class CeramicService {
 			link_id,
 			updated_at: getCurrentDateTime(),
 			created_at: getCurrentDateTime(),
-			indexer_did: {
-				id: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
-			},
+			indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
 		};
 
 		const payload = {
@@ -236,13 +234,29 @@ class CeramicService {
 				createIndexLink(input: $input) {
 					document {
 						id
-						index_id
-						link_id
 						indexer_did {
+							id
+						}
+						controller_did {
 							id
 						}
 						created_at
 						updated_at
+						deleted_at
+						link {
+							id
+							controller_did {
+								id
+							}
+							title
+							url
+							favicon
+							tags
+							content
+							created_at
+							updated_at
+							deleted_at
+						}
 					}
 				}
 			}`, { input: payload });
@@ -258,9 +272,7 @@ class CeramicService {
 			link_id,
 			updated_at: getCurrentDateTime(),
 			created_at: getCurrentDateTime(),
-			indexer_did: {
-				id: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
-			},
+			indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
 		};
 
 		const payload = {
