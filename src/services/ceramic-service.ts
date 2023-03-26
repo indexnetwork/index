@@ -1,6 +1,6 @@
 import { ComposeClient } from "@composedb/client";
 import {
-	Indexes, IndexLink, Links, UserIndex, Users,
+	Indexes, IndexLink, Link, UserIndex, Users,
 } from "types/entity";
 import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
@@ -11,7 +11,7 @@ import { definition } from "../types/merged-runtime";
 import { appConfig } from "../config";
 
 import LitService from "./lit-service";
-import {decodeDIDWithLit} from "../utils/lit";
+import { decodeDIDWithLit } from "../utils/lit";
 
 class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
@@ -98,14 +98,21 @@ class CeramicService {
 
 		return index!;
 	}
-	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes> {
-		const cdt = getCurrentDateTime();
-		content.updated_at = cdt;
+	async updateIndex(index: Partial<Indexes>, content: Partial<Indexes>): Promise<Indexes> {
+		const pkpPublicKey = decodeDIDWithLit(index.controller_did?.id);
+		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
+		/*
+		if (!did.authenticated) {
+			// TODO handle error
+		}
+		 */
+		this.pkpComposeClient.setDID(did);
+		content.updated_at = getCurrentDateTime();
 		const payload = {
-			id: index_id,
+			id: index.id,
 			content,
 		};
-		const { data, errors } = await this.userComposeClient.executeQuery<{ updateIndex: { document: Indexes } }>(`
+		const { data, errors } = await this.pkpComposeClient.executeQuery<{ updateIndex: { document: Indexes } }>(`
 			mutation UpdateIndex($input: UpdateIndexInput!) {
 				updateIndex(input: $input) {
 					document {
@@ -138,10 +145,10 @@ class CeramicService {
 				tags
 			}}
 		  }`);
-		return <Links>(result.data?.node as any);
+		return <Link>(result.data?.node as any);
 	}
 
-	async createLink(link: Partial<Links>): Promise<Links> {
+	async createLink(link: Partial<Link>): Promise<Link> {
 		setDates(link); // TODO Conditional updated_at
 		link.updated_at = getCurrentDateTime();
 		if (!link.tags) {
@@ -150,7 +157,7 @@ class CeramicService {
 		const payload = {
 			content: link,
 		};
-		const { data, errors } = await this.userComposeClient.executeQuery<{ createLink: { document: Links } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ createLink: { document: Link } }>(`
 			mutation CreateLink($input: CreateLinkInput!) {
 				createLink(input: $input) {
 					document {
@@ -173,13 +180,15 @@ class CeramicService {
 		}
 		return data?.createLink.document!;
 	}
-	async updateLink(link_id: string, link: Links): Promise <Links> {
+	async updateLink(link_id: string, link: Link): Promise <Link> {
+		// Get index link
+
 		link.updated_at = getCurrentDateTime();
 		const payload = {
 			id: link.id,
 			content: link,
 		};
-		const { data, errors } = await this.userComposeClient.executeQuery<{ updateLink: { document: Links } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ updateLink: { document: Link } }>(`
 			mutation UpdateLink($input: UpdateLinkInput!) {
 				updateLink(input: $input) {
 					document {
@@ -205,7 +214,9 @@ class CeramicService {
 			link_id,
 			updated_at: getCurrentDateTime(),
 			created_at: getCurrentDateTime(),
-			indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
+			indexer_did: {
+				id: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
+			},
 		};
 
 		const payload = {
@@ -227,7 +238,6 @@ class CeramicService {
 						id
 						index_id
 						link_id
-
 						indexer_did {
 							id
 						}
@@ -248,7 +258,9 @@ class CeramicService {
 			link_id,
 			updated_at: getCurrentDateTime(),
 			created_at: getCurrentDateTime(),
-			indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
+			indexer_did: {
+				id: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
+			},
 		};
 
 		const payload = {
@@ -271,7 +283,7 @@ class CeramicService {
 		}
 		return data?.createIndexLink.document!;
 	}
-	async addTag(link_id: string, tag: string): Promise <Links | undefined> {
+	async addTag(link_id: string, tag: string): Promise <Link | undefined> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			let { tags } = link;
@@ -285,7 +297,7 @@ class CeramicService {
 		}
 		// TODO handle.
 	}
-	async removeTag(link_id: string, tag: string): Promise <Links | undefined> {
+	async removeTag(link_id: string, tag: string): Promise <Link | undefined> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			let { tags } = link;

@@ -15,21 +15,26 @@ export type Indexes = {
   };
   created_at: string;
   updated_at: string;
-  links: Links[];
+  deleted_at: string;
+  links: IndexLink[];
   is_in_my_indexes?: boolean;
   is_starred?: boolean;
 };
 
 export type IndexLink = {
   id?: string
-  index_id: string;
-  link_id: string;
-  indexer_did: string // This is Personal DID
+  index_id?: string;
+  link_id?: string;
+  indexer_did?: { // This is PKP DID
+    id: string
+  };
   controller_did?: { // This is PKP DID
     id: string
   };
-  created_at: string;
-  updated_at: string;
+  link?: Link;
+  index?: Indexes;
+  created_at?: string;
+  updated_at?: string;
   deleted_at?: string;
 };
 
@@ -49,7 +54,7 @@ export type UserIndex = {
  * Model links
  *
  */
-export type Links = {
+export type Link = {
   id?: string;
   index_id?: string;
   indexer_did?: string;
@@ -88,7 +93,7 @@ export interface Users {
 export interface LinkContentResult {
   id?: string;
   address: string;
-  links: Links[];
+  links: Link[];
 }
 
 export interface SyncCompleteResult {

@@ -1,7 +1,7 @@
 import axios from "axios";
 import { appConfig } from "config";
 import {
-	Indexes, Links, UserIndex,
+	Indexes, IndexLink, Link, UserIndex,
 } from "types/entity";
 import { API_ENDPOINTS } from "utils/constants";
 
@@ -49,7 +49,7 @@ export interface DidSearchResponse {
 
 export interface LinkSearchResponse {
 	totalCount: number;
-	records: Links[];
+	records: IndexLink[];
 }
 export interface UserIndexResponse {
 	my_indexes?: UserIndex;
@@ -85,7 +85,7 @@ export interface IndexesSearchRequestBody extends ApiSearchRequestBody<Indexes> 
 
 export interface LinksCrawlContentRequest {
 	id: string;
-	links: Links[];
+	links: Link[];
 }
 
 const apiAxios = axios.create({
@@ -119,9 +119,9 @@ class ApiService {
 		}
 	}
 
-	async crawlLink(url: string): Promise<Links | null> {
+	async crawlLink(url: string): Promise<Link | null> {
 		try {
-			const { data } = await apiAxios.get<Links>(API_ENDPOINTS.CRAWL, {
+			const { data } = await apiAxios.get<Link>(API_ENDPOINTS.CRAWL, {
 				params: {
 					url,
 				},

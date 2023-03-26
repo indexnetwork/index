@@ -7,7 +7,7 @@ import Flex from "components/layout/base/Grid/Flex";
 import Row from "components/layout/base/Grid/Row";
 import moment from "moment";
 import React from "react";
-import { Indexes, Links } from "types/entity";
+import {Indexes, IndexLink, Link} from "types/entity";
 import sanitize from "sanitize-html";
 import List from "components/base/List";
 import IndexOperationsPopup from "../../popup/IndexOperationsPopup";
@@ -100,7 +100,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 			<List
 				data={links || []}
 				listClass="index-list"
-				render={(l: Links) => <IndexDetailsItem search {...l} />}
+				render={(l: IndexLink) => <IndexDetailsItem search {...l} />}
 				divided
 			/>
 		</Col>

@@ -9,7 +9,7 @@ export const definition = {
 			accountRelation: { type: "list" },
 		},
 		IndexLink: {
-			id: "kjzl6hvfrbw6capisi7cx0ffmrshdiznmt127j2ldacp387g0xhedhrqbgnem31",
+			id: "kjzl6hvfrbw6c560rpemkm0l47ud63g1ydbs8yfkrbli53mxtf25uszqoqwunog",
 			accountRelation: { type: "list" },
 		},
 		BasicProfile: {
@@ -35,7 +35,7 @@ export const definition = {
 				viewType: "relation",
 				relation: {
 					source: "queryConnection",
-					model: "kjzl6hvfrbw6capisi7cx0ffmrshdiznmt127j2ldacp387g0xhedhrqbgnem31",
+					model: "kjzl6hvfrbw6c560rpemkm0l47ud63g1ydbs8yfkrbli53mxtf25uszqoqwunog",
 					property: "index_id",
 				},
 			},
@@ -44,7 +44,7 @@ export const definition = {
 				viewType: "relation",
 				relation: {
 					source: "queryCount",
-					model: "kjzl6hvfrbw6capisi7cx0ffmrshdiznmt127j2ldacp387g0xhedhrqbgnem31",
+					model: "kjzl6hvfrbw6c560rpemkm0l47ud63g1ydbs8yfkrbli53mxtf25uszqoqwunog",
 					property: "index_id",
 				},
 			},
@@ -86,6 +86,7 @@ export const definition = {
 					property: "index_id",
 				},
 			},
+			controller_did: { type: "view", viewType: "documentAccount" },
 		},
 		BasicProfile: {
 			name: { type: "string", required: true },

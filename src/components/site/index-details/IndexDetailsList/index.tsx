@@ -4,7 +4,7 @@ import { useMergedState } from "hooks/useMergedState";
 import React, { useEffect, useState } from "react";
 import InfiniteScroll from "react-infinite-scroller";
 import api, { LinkSearchResponse, LinkSearchRequestBody } from "services/api-service";
-import { Links } from "types/entity";
+import { IndexLink, Link } from "types/entity";
 // import { arrayMove } from "utils/helper";
 
 import { useLinks } from "hooks/useLinks";
@@ -98,7 +98,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		 */
 	};
 
-	const handleLinksChange = (newLink: Links) => {
+	const handleLinksChange = (newLink: Link) => {
 		// setItems(newLinks);
 	};
 	return (
@@ -136,7 +136,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 							loadMore={getData}
 							marginHeight={50}
 						>
-							<DndList <Links>
+							<DndList <IndexLink>
 								listClass="index-detail-list"
 								draggable={isOwner}
 								data={links}

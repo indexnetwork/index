@@ -3,7 +3,7 @@ import React, {
 } from "react";
 import ceramicService from "services/ceramic-service";
 import {
-	Indexes, LinkContentResult, Links, Users, UserIndex, IndexLink,
+	Indexes, LinkContentResult, Link, Users, UserIndex, IndexLink,
 } from "types/entity";
 import { CID } from "ipfs-http-client";
 import api from "../../../services/api-service";
@@ -15,13 +15,14 @@ export type ListenEvents = {
 export interface CeramicContextValue {
 	syncedData: any;
 	createIndex(doc: Partial<Indexes>): Promise<Indexes | null>;
-	updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes>;
+
+	updateIndex(index: Partial<Indexes>, content: Partial<Indexes>): Promise<Indexes>;
 	getIndexById(index_id: string): Promise<Indexes | undefined>;
 
-	createLink(data: Partial<Links>): Promise<Links | undefined>;
-	updateLink(link_id: string, data: Links): Promise<Links | undefined>;
-	addTag(link_id: string, tag: string): Promise<Links | undefined>;
-	removeTag(link_id: string, tag: string): Promise<Links | undefined>;
+	createLink(data: Partial<Link>): Promise<Link | undefined>;
+	updateLink(link_id: string, data: Link): Promise<Link | undefined>;
+	addTag(link_id: string, tag: string): Promise<Link | undefined>;
+	removeTag(link_id: string, tag: string): Promise<Link | undefined>;
 
 	addLinkToIndex(index: Partial<Indexes>, link_id: string): Promise<IndexLink | undefined>;
 	removeLinkFromIndex(index_id: string, link_id: string): Promise<IndexLink | undefined>;
@@ -56,13 +57,13 @@ const CeramicProvider: React.FC<{}> = ({
 
 	const getIndexById = (index_id: string) => api.getIndexById(index_id);
 
-	const updateIndex = async (index_id: string, content: Partial<Indexes>) => {
-		const updatedDoc = await ceramicService.updateIndex(index_id, content);
+	const updateIndex = async (index: Partial<Indexes>, content: Partial<Indexes>) => {
+		const updatedDoc = await ceramicService.updateIndex(index, content);
 		return updatedDoc;
 	};
 
-	const createLink = async (link: Partial<Links>) => ceramicService.createLink(link);
-	const updateLink = async (link_id: string, link: Links) => ceramicService.updateLink(link_id, link);
+	const createLink = async (link: Partial<Link>) => ceramicService.createLink(link);
+	const updateLink = async (link_id: string, link: Link) => ceramicService.updateLink(link_id, link);
 
 	const addLinkToIndex = async (index: Indexes, link_id: string) => ceramicService.addLinkToIndex(index, link_id);
 	const removeLinkFromIndex = async (index_id: string, link_id: string) => ceramicService.removeLinkFromIndex(index_id, link_id);

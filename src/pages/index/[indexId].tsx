@@ -20,7 +20,7 @@ import Avatar from "components/base/Avatar";
 import LinkInput from "components/site/input/LinkInput";
 import IndexDetailsList from "components/site/index-details/IndexDetailsList";
 import { useRouter } from "next/router";
-import { Indexes, Links } from "types/entity";
+import { Indexes, IndexLink } from "types/entity";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 import IndexTitleInput from "components/site/input/IndexTitleInput";
 import { useCeramic } from "hooks/useCeramic";
@@ -44,8 +44,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
 	const dispatch = useAppDispatch();
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
-	const [links, setLinks] = useState<Links[]>([]);
-	const [addedLink, setAddedLink] = useState<Links>();
+	const [links, setLinks] = useState<IndexLink[]>([]);
+	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tab, setTab] = useState<boolean>(false);
 	const [tabKey, setTabKey] = useState("index");
 	const [isOwner, setIsOwner] = useState<boolean>(false);
@@ -95,11 +95,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
  			...index,
 			is_in_my_indexes: !!userIndexes.my_indexes,
 			is_starred: !!userIndexes.starred,
-		});
+		} as Indexes);
 	};
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
-		const result = await ceramic.updateIndex(index.id!, {
+		const result = await ceramic.updateIndex(index, {
 			title,
 		});
 		setIndex(result);
@@ -107,7 +107,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
-		type === "my_indexes" ? setIndex({ ...index, is_in_my_indexes: op === "add" }) : setIndex({ ...index, is_starred: op === "add" });
+		type === "my_indexes" ? setIndex({ ...index, is_in_my_indexes: op === "add" } as Indexes) : setIndex({ ...index, is_starred: op === "add" } as Indexes);
 		if (op === "add") {
 			ceramic.addUserIndex(index_id, type);
 		} else {
@@ -126,11 +126,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		for await (const url of urls) {
 			const payload = await api.crawlLink(url);
 			if (payload) {
-				const link = await ceramic.createLink(payload);
+				const createdLink = await ceramic.createLink(payload);
 				// TODO Fix that.
-				await ceramic.addLinkToIndex(index, link?.id!);
-				if (link) {
-					setAddedLink(link);
+				const createdIndexLink = await ceramic.addLinkToIndex(index, createdLink?.id!);
+				if (createdIndexLink) {
+					setAddedLink(createdIndexLink); // Fix
 				}
 			}
 		}
