@@ -11,12 +11,6 @@ const config = {
     indexName: 'links'
 }
 
-const transformIndex = (index) => {
-    return {
-        index: index,
-        index_id: index.id
-    }
-}
 module.exports.createIndex = async (indexMsg) => {
     console.log("createIndex", indexMsg)
 
@@ -36,6 +30,7 @@ module.exports.updateIndex = async (indexMsg) => {
 
     let index = await getIndexById(indexMsg.id)
 
+    //Index index
     await client.index({
         index: config.indexName,
         id: `index-${index.id}`,
@@ -45,6 +40,7 @@ module.exports.updateIndex = async (indexMsg) => {
         },
     })
 
+    //Index links
     await client.updateByQuery({
         index: config.indexName,
         refresh: true,
@@ -78,16 +74,14 @@ module.exports.createIndexLink = async (indexLinkMsg) => {
     console.log("createIndexLink", indexLinkMsg)
 
     let indexLink = await getIndexLinkById(indexLinkMsg.id)
-    delete indexLink.link.content
+    delete indexLink.link.content // TODO fix stored in the indexer only, for now.
 
     await client.update({
         index: config.indexName,
         id: indexLink.id,
         refresh: true,
         doc_as_upsert: true,
-        body: {
-            doc: indexLink
-        },
+        body: indexLink,
     })
 }
 module.exports.updateIndexLink = async (indexLinkMsg) => {
@@ -95,16 +89,14 @@ module.exports.updateIndexLink = async (indexLinkMsg) => {
     console.log("updateIndexLink", indexLinkMsg)
 
     let indexLink = await getIndexLinkById(indexLinkMsg.id)
-    delete indexLink.link.content
+    delete indexLink.link.content  // TODO fix stored in the indexer only, for now.
 
     await client.update({
         index: config.indexName,
         id: indexLink.id,
         refresh: true,
         doc_as_upsert: true,
-        body: {
-            doc: indexLink
-        },
+        body: indexLink,
     })
 }
 module.exports.updateLinkContent = async (url, content) => {
@@ -123,7 +115,6 @@ module.exports.updateLinkContent = async (url, content) => {
             }
         },
         query: {
-
             bool: {
                 must: [
                     {

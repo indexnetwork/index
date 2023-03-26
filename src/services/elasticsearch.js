@@ -22,7 +22,7 @@ const indexesWithLinksQuery = (
         index: config.indexName,
         from: skip,
         size: take,
-        _source_excludes: ["content"],
+        _source_excludes: ["link.content"],
         query: {
             bool: {
                 must: [
@@ -78,7 +78,7 @@ const indexesWithLinksQuery = (
                 should: [
                     {
                         multi_match: {
-                            fields: ["title^10", "url", "content", "index.title"],
+                            fields: ["link.title^10", "link.url", "link.content", "index.title"],
                             analyzer: "searchable",
                             query: search,
                             type: "phrase_prefix",
@@ -88,7 +88,7 @@ const indexesWithLinksQuery = (
                     },
                     {
                         multi_match: {
-                            fields: ["tags^3"],
+                            fields: ["link.tags^3"],
                             analyzer: "searchable",
                             query: search,
                             type: "bool_prefix",
@@ -104,16 +104,16 @@ const indexesWithLinksQuery = (
             size: links_size,
             highlight: {
                 fields: {
-                    title: {
-                        number_of_fragments: 0,
-                    },
-                    url: {
-                        number_of_fragments: 0,
-                    },
                     "index.title": {
                         number_of_fragments: 0,
                     },
-                    content: {
+                    "link.title": {
+                        number_of_fragments: 0,
+                    },
+                    "link.url": {
+                        number_of_fragments: 0,
+                    },
+                    "link.content": {
                         fragment_size: 256,
                         number_of_fragments: 2,
                     },
@@ -144,12 +144,14 @@ const linksQuery = (
             index: config.indexName,
             from: skip,
             size: take,
-            _source_excludes: ["content", "index"],
+            _source_excludes: ["link.content", "link.index"],
             query: {
                 bool: {
                     must: [
                         {
-                            term: { index_id },
+                            term: {
+                                "index.id": index_id
+                            },
                         },
                         {
                             exists: {
@@ -161,6 +163,11 @@ const linksQuery = (
                         {
                             exists: {
                                 field: "deleted_at",
+                            },
+                        },
+                        {
+                            exists: {
+                                field: "link.deleted_at",
                             },
                         },
                     ],
@@ -190,7 +197,7 @@ const linksQuery = (
                     should: [
                         {
                             multi_match: {
-                                fields: ["title^10", "url", "content"],
+                                fields: ["link.title^10", "link.url", "link.content"],
                                 analyzer: "searchable",
                                 query: search,
                                 type: "phrase_prefix",
@@ -200,7 +207,7 @@ const linksQuery = (
                         },
                         {
                             multi_match: {
-                                fields: ["tags^3"],
+                                fields: ["link.tags^3"],
                                 analyzer: "searchable",
                                 query: search,
                                 type: "bool_prefix",
@@ -214,13 +221,13 @@ const linksQuery = (
             params.highlight = {
                 max_analyzed_offset: 2000,
                 fields: {
-                    title: {
+                    "link.title": {
                         number_of_fragments: 0,
                     },
-                    url: {
+                    "link.url": {
                         number_of_fragments: 0,
                     },
-                    content: {
+                    "link.content": {
                         fragment_size: 256,
                         number_of_fragments: 2,
                     },
@@ -306,25 +313,28 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
 
     let indexResult = transformIndexSearch(result, !!search);
 
-    if(totalCount > 0){
-
-        indexResult = indexResult.map(index => {
-
-            index.is_in_my_indexes = false;
-            index.is_starred = false;
-
-            if(user_indexes_by_type.my_indexes && user_indexes_by_type.my_indexes.length > 0){
-                index.is_in_my_indexes = !!user_indexes_by_type.my_indexes.filter(ui => ui.index_id == index.id && ui.type == 'my_indexes').length;
-            }
-            if(user_indexes_by_type.starred && user_indexes_by_type.starred.length > 0){
-                index.is_starred = !!user_indexes_by_type.starred.filter(ui => ui.index_id == index.id && ui.type == 'starred').length;
-            }
-            return index
-        })
-
+    if(totalCount === 0){
+        return {
+            totalCount,
+            records: []
+        }
     }
 
-    let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.controller_did.id))
+    indexResult = indexResult.map(index => {
+
+        index.is_in_my_indexes = false;
+        index.is_starred = false;
+
+        if(user_indexes_by_type.my_indexes && user_indexes_by_type.my_indexes.length > 0){
+            index.is_in_my_indexes = !!user_indexes_by_type.my_indexes.filter(ui => ui.index_id == index.id && ui.type == 'my_indexes').length;
+        }
+        if(user_indexes_by_type.starred && user_indexes_by_type.starred.length > 0){
+            index.is_starred = !!user_indexes_by_type.starred.filter(ui => ui.index_id == index.id && ui.type == 'starred').length;
+        }
+        return index
+    })
+
+    let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.controller_did.id.toLowerCase()))
     indexResult = indexResult.map((value, key) => {
         return {
             ...value,

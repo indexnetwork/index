@@ -1,6 +1,7 @@
 const _ = require('lodash')
 
 const RedisClient = require('../clients/redis.js');
+const moment = require("moment");
 const redis = RedisClient.getInstance();
 
 module.exports.getIndexLinkById = async(id) => {
@@ -22,7 +23,7 @@ module.exports.getIndexLinkById = async(id) => {
                   }
                   controller_did {
                     id
-                  }                  
+                  }
                   index {
                     id
                     controller_did {
@@ -32,7 +33,6 @@ module.exports.getIndexLinkById = async(id) => {
                     collab_action
                     created_at
                     updated_at
-            
                   }
                   link {
                     id
@@ -54,13 +54,7 @@ module.exports.getIndexLinkById = async(id) => {
         })
     })
     let res = await results.json();
-    indexLink = res.data.node;
-    return {
-        index_link: _.pick(indexLink, ["id","created_at","updated_at","deleted_at", "indexer_did", "controller_did"]),
-        index: indexLink.index,
-        ..._.omit(indexLink, ["id","created_at","updated_at","deleted_at", "indexer_did", "index"]).link
-    }
-
+    return res.data.node;
 }
 
 module.exports.getIndexById = async (id) => {
@@ -82,40 +76,37 @@ module.exports.getIndexById = async (id) => {
                     controller_did {
                         id
                     }
+                    links(last:1) {
+                        edges {
+                          node {
+                            updated_at
+                          }
+                        }
+                    }                    
                 }}
           }`
         })
     })
 
-    //TODO fix updated at.
-    /*
-
-				links(last:1) {
-					edges {
-					  node {
-						created_at
-						updated_at
-					  }
-					}
-				}
-    if (node.links.edges.length > 0 && (moment(node.links.edges[0].node.updated_at) > moment(node.updated_at))) {
-        node.updated_at = node.links.edges[0].node.updated_at;
-    }
-    */
-
     let res = await results.json();
     let index = res.data.node;
 
-    if(index){
-        // index.controller_did = index.controller_did.id
-        const owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id)
-        if(owner_did){
-            index.owner_did = { id: owner_did, basicProfile: null}
-        }
-        return res.data.node
-    }else{
+    if(!index){
         return false;
     }
+
+    if (index.links.edges.length > 0 && (moment(index.links.edges[0].node.updated_at) > moment(index.updated_at))) {
+        index.updated_at = index.links.edges[0].node.updated_at;
+    }
+
+    delete index.links;
+
+    const owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id)
+    if(owner_did){
+        index.owner_did = { id: owner_did, basicProfile: null}
+    }
+    return index
+
 }
 
 module.exports.getIndexByPKP = async (id) => {
@@ -134,6 +125,20 @@ module.exports.getIndexByPKP = async (id) => {
                     edges {
                       node {
                         id
+                        title
+                        collab_action
+                        created_at
+                        updated_at
+                        controller_did {
+                            id
+                        }
+                        links(last:1) {
+                            edges {
+                                node {
+                                    updated_at
+                                }
+                            }
+                        }                           
                       }
                     }
                   }
@@ -144,9 +149,20 @@ module.exports.getIndexByPKP = async (id) => {
     })
     let res = await results.json();
     let indexes = res.data.node.indexList.edges
-    if(indexes.length > 0){
-        return indexes[0].node.id
+    if(indexes.length === 0){
+        return false;
     }
-    return false;
+    let index = indexes[0].node.id;
+
+    if (index.links.edges.length > 0 && (moment(index.links.edges[0].node.updated_at) > moment(index.updated_at))) {
+        index.updated_at = index.links.edges[0].node.updated_at;
+    }
+    delete index.links
+
+    const owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id)
+    if(owner_did){
+        index.owner_did = { id: owner_did, basicProfile: null}
+    }
+    return index;
 }
 

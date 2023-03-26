@@ -15,7 +15,7 @@ const { getQueue, getMetadata } = require('../libs/crawl.js')
 const express = require('express')
 const cors = require('cors')
 const app = express()
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 3001;
 
 app.use(express.json())
 
@@ -60,6 +60,7 @@ app.post('/search/links', validator.body(linkSearchSchema), search.link)
 app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_index)
 
 app.get('/indexes/:id', composedb.get_index)
+app.get('/index_link/:id', composedb.get_index_link)
 
 app.post('/index/pkp', moralis.indexPKP)
 
@@ -74,7 +75,10 @@ app.get('/crawl/metadata', validator.query(crawlSchema), async (req, res) => {
     let { url } = req.query;
 
     let response = await getMetadata(url)
+
+    // TODO Move this to link listener.
     req.app.get('queue').addRequests([{url, uniqueKey: Math.random().toString()}])
+
     res.json(response)
 
 })

@@ -46,7 +46,6 @@ async function start() {
                 ..._.pick(value, ['controller_did']),
                 ...value.stream_content
             }
-
             console.log(doc)
 
 

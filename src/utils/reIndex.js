@@ -55,8 +55,12 @@ async function start() {
           "id": {
             "type": "keyword"
           },
-          "favicon": {
-            "type": "keyword"
+          "indexer_did": {
+            "properties": {
+              "id": {
+                "type" : "keyword"
+              }
+            }
           },
           "controller_did": {
             "properties": {
@@ -65,45 +69,22 @@ async function start() {
               }
             }
           },
-          "title": {
-            "type": "search_as_you_type",
-            "analyzer": "searchable",
-            "max_shingle_size": 3
-          },
-          "url": {
-            "type": "search_as_you_type",
-            "analyzer": "searchable",
-            "max_shingle_size": 3
-          },
-          "content": {
-            "type": "search_as_you_type",
-            "analyzer": "searchable",
-            "max_shingle_size": 3
-          },
-          "tags": {
-            "type": "search_as_you_type",
-            "analyzer": "searchable",
-          },
-          "created_at": {
+          "updated_at": {
             "type": "date"
           },
-          "updated_at": {
+          "created_at": {
             "type": "date"
           },
           "deleted_at": {
             "type": "date"
           },
-          "index_link": {
+          "link": {
             "properties": {
               "id": {
                 "type": "keyword"
               },
-              "indexer_did": {
-                "properties": {
-                  "id": {
-                    "type" : "keyword"
-                  }
-                }
+              "favicon": {
+                "type": "keyword"
               },
               "controller_did": {
                 "properties": {
@@ -112,10 +93,29 @@ async function start() {
                   }
                 }
               },
-              "updated_at": {
-                "type": "date"
+              "title": {
+                "type": "search_as_you_type",
+                "analyzer": "searchable",
+                "max_shingle_size": 3
+              },
+              "url": {
+                "type": "search_as_you_type",
+                "analyzer": "searchable",
+                "max_shingle_size": 3
+              },
+              "content": {
+                "type": "search_as_you_type",
+                "analyzer": "searchable",
+                "max_shingle_size": 3
+              },
+              "tags": {
+                "type": "search_as_you_type",
+                "analyzer": "searchable",
               },
               "created_at": {
+                "type": "date"
+              },
+              "updated_at": {
                 "type": "date"
               },
               "deleted_at": {
