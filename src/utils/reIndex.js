@@ -83,9 +83,6 @@ async function start() {
               "id": {
                 "type": "keyword"
               },
-              "favicon": {
-                "type": "keyword"
-              },
               "controller_did": {
                 "properties": {
                   "id": {
@@ -103,14 +100,17 @@ async function start() {
                 "analyzer": "searchable",
                 "max_shingle_size": 3
               },
-              "content": {
-                "type": "search_as_you_type",
-                "analyzer": "searchable",
-                "max_shingle_size": 3
+              "favicon": {
+                "type": "keyword"
               },
               "tags": {
                 "type": "search_as_you_type",
                 "analyzer": "searchable",
+              },
+              "content": {
+                "type": "search_as_you_type",
+                "analyzer": "searchable",
+                "max_shingle_size": 3
               },
               "created_at": {
                 "type": "date"

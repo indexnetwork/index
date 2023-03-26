@@ -22,7 +22,7 @@ const indexesWithLinksQuery = (
         index: config.indexName,
         from: skip,
         size: take,
-        _source_excludes: ["link.content"],
+        _source_excludes: ["link.content", "index"],
         query: {
             bool: {
                 must: [
@@ -144,7 +144,7 @@ const linksQuery = (
             index: config.indexName,
             from: skip,
             size: take,
-            _source_excludes: ["link.content", "link.index"],
+            _source_excludes: ["link.content", "index"],
             query: {
                 bool: {
                     must: [

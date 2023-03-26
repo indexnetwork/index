@@ -21,7 +21,9 @@ module.exports.createIndex = async (indexMsg) => {
         id: `index-${index.id}`,
         refresh: true,
         body: {
-            index
+            doc: {
+                index
+            }
         },
     })
 }
@@ -36,7 +38,9 @@ module.exports.updateIndex = async (indexMsg) => {
         id: `index-${index.id}`,
         refresh: true,
         body: {
-            index
+            doc: {
+                index
+            }
         },
     })
 
@@ -81,7 +85,9 @@ module.exports.createIndexLink = async (indexLinkMsg) => {
         id: indexLink.id,
         refresh: true,
         doc_as_upsert: true,
-        body: indexLink,
+        body: {
+            doc: indexLink
+        },
     })
 }
 module.exports.updateIndexLink = async (indexLinkMsg) => {
@@ -96,7 +102,9 @@ module.exports.updateIndexLink = async (indexLinkMsg) => {
         id: indexLink.id,
         refresh: true,
         doc_as_upsert: true,
-        body: indexLink,
+        body: {
+            doc: indexLink
+        },
     })
 }
 module.exports.updateLinkContent = async (url, content) => {
