@@ -185,7 +185,7 @@ class CeramicService {
 
 		link.updated_at = getCurrentDateTime();
 		const payload = {
-			id: link.id,
+			id: link_id,
 			content: link,
 		};
 		const { data, errors } = await this.userComposeClient.executeQuery<{ updateLink: { document: Link } }>(`
@@ -267,33 +267,41 @@ class CeramicService {
 		return data?.createIndexLink.document!;
 	}
 	async removeLinkFromIndex(index_id: string, link_id: string): Promise <IndexLink | undefined> {
-		const indexLink: IndexLink = {
-			index_id,
-			link_id,
-			updated_at: getCurrentDateTime(),
-			created_at: getCurrentDateTime(),
-			indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
-		};
+
+		const pkpPublicKey = "0x0463b0f8584ceb4b3be313ccdb5356c1b8505420bbf9334446a1228d0b9e18e9f3f21cfcf5e107c2ac11041a02139abb0ff5165f1a71fde31287a95def85a4e19f";
+		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
+		/*
+		if (!did.authenticated) {
+			// TODO handle error
+		}
+		 */
+		this.pkpComposeClient.setDID(did);
 
 		const payload = {
-			content: indexLink,
+			id: link_id!,
+			content: {
+				deleted_at: getCurrentDateTime(),
+			},
 		};
-		const { data, errors } = await this.pkpComposeClient.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
-			mutation CreateIndexLink($input: CreateIndexLinkInput!) {
-				createIndexLink(input: $input) {
+		const { data, errors } = await this.pkpComposeClient.executeQuery<{ updateIndexLink: { document: IndexLink } }>(`
+			mutation UpdateIndexLink($input: UpdateIndexLinkInput!) {
+				updateIndexLink(input: $input) {
 					document {
 						id
 						index_id
 						link_id
 						created_at
 						updated_at
+						deleted_at				
 					}
 				}
 			}`, { input: payload });
+
 		if (errors) {
 			// TODO Handle
 		}
-		return data?.createIndexLink.document!;
+
+		return data?.updateIndexLink.document!;
 	}
 	async addTag(link_id: string, tag: string): Promise <Link | undefined> {
 		const link = await this.getLinkById(link_id);

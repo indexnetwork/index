@@ -62,8 +62,8 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 
 	const handleNewTagEdit = async (val?: string | null) => {
 		if (val) {
-			const currentLink = await ceramic.addTag(id!, val) as Link;
-			const newState = links.map((l) => (l.id === id ? currentLink : l));
+			const currentLink = await ceramic.addTag(link?.id!, val) as Link;
+			const newState = links.map((l) => (l.id === id ? { ...l, link: currentLink } : l));
 			setLinks(newState);
 		}
 		setToggleNewTag(false);
