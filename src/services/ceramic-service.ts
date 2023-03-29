@@ -45,9 +45,7 @@ class CeramicService {
 	}
 
 	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
-		// const { pkpPublicKey } = await LitService.mintPkp();
-
-		const defaultActionCID = "QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM";
+		const { pkpPublicKey } = await LitService.mintPkp();
 
 		/*
 			PKP public key is 0x0463b0f8584ceb4b3be313ccdb5356c1b8505420bbf9334446a1228d0b9e18e9f3f21cfcf5e107c2ac11041a02139abb0ff5165f1a71fde31287a95def85a4e19f
@@ -55,8 +53,7 @@ class CeramicService {
 			Token ID number is 40734368072587093465276453834418008413686098135730551600338205759635841963589
 		*/
 
-		const pkpPublicKey = "0x0463b0f8584ceb4b3be313ccdb5356c1b8505420bbf9334446a1228d0b9e18e9f3f21cfcf5e107c2ac11041a02139abb0ff5165f1a71fde31287a95def85a4e19f";
-		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
+		const did = await LitService.authenticatePKP(appConfig.defaultCID, pkpPublicKey);
 		/*
 		if (!did.authenticated) {
 			// TODO handle error
@@ -71,7 +68,7 @@ class CeramicService {
 		const cdt = getCurrentDateTime();
 		content.created_at = cdt;
 		content.updated_at = cdt;
-		content.collab_action = defaultActionCID;
+		content.collab_action = appConfig.defaultCID;
 		const payload = {
 			content,
 		};
@@ -92,15 +89,12 @@ class CeramicService {
 		if (errors) {
 			// TODO Handle
 		}
-		const index = data?.createIndex.document;
-
-		this.addUserIndex(index!.id, "my_indexes");
-
-		return index!;
+		return data?.createIndex.document!;
 	}
 	async updateIndex(index: Partial<Indexes>, content: Partial<Indexes>): Promise<Indexes> {
 		const pkpPublicKey = decodeDIDWithLit(index.controller_did?.id);
-		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
+
+		const did = await LitService.authenticatePKP(index.collab_action!, pkpPublicKey);
 		/*
 		if (!did.authenticated) {
 			// TODO handle error
@@ -130,6 +124,7 @@ class CeramicService {
 		}
 		return data?.updateIndex.document!;
 	}
+
 	async getLinkById(link_id: string) {
 		const result = await this.userComposeClient.executeQuery(`{
 			node(id:"${link_id}"){
@@ -205,16 +200,17 @@ class CeramicService {
 		if (errors) {
 			// TODO Handle
 		}
+
 		return data?.updateLink.document!;
 	}
 
-	async addLinkToIndex(index: Indexes, link_id: string) : Promise <IndexLink | undefined> {
+	async addLinkToIndex(index: Indexes, link_id: string) : Promise <IndexLink> {
 		const indexLink: IndexLink = {
 			index_id: index.id,
 			link_id,
 			updated_at: getCurrentDateTime(),
 			created_at: getCurrentDateTime(),
-			indexer_did: "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx",
+			indexer_did: this.userComposeClient.did?.id,
 		};
 
 		const payload = {
@@ -222,12 +218,12 @@ class CeramicService {
 		};
 
 		const pkpPublicKey = decodeDIDWithLit(index.controller_did.id);
-		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
-		/*
+		const did = await LitService.authenticatePKP(index.collab_action, pkpPublicKey);
+
 		if (!did.authenticated) {
-			// TODO handle error
+			// handle error
 		}
-		 */
+
 		this.pkpComposeClient.setDID(did);
 		const { data, errors } = await this.pkpComposeClient.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
 			mutation CreateIndexLink($input: CreateIndexLinkInput!) {
@@ -266,8 +262,7 @@ class CeramicService {
 		}
 		return data?.createIndexLink.document!;
 	}
-	async removeLinkFromIndex(index_id: string, link_id: string): Promise <IndexLink | undefined> {
-
+	async removeLinkFromIndex(index: Indexes, link_id: string): Promise <IndexLink | undefined> {
 		const pkpPublicKey = "0x0463b0f8584ceb4b3be313ccdb5356c1b8505420bbf9334446a1228d0b9e18e9f3f21cfcf5e107c2ac11041a02139abb0ff5165f1a71fde31287a95def85a4e19f";
 		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
 		/*

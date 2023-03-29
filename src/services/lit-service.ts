@@ -26,6 +26,7 @@ class LitService {
 			throw new Error("authenticatePKP cannot be run on the server-side");
 		}
 	}
+
 	async mintPkp() {
 		const litContracts = new LitContracts();
 		await litContracts.connect();
@@ -36,10 +37,12 @@ class LitService {
 		const tokenIdFromEvent = wait.events[1].topics[3];
 		const tokenIdNumber = ethers.BigNumber.from(tokenIdFromEvent).toString();
 		const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
+
 		console.log(
 			`PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
 		);
-		const addPermissionTx = await litContracts.pkpPermissionsContractUtil.write.addPermittedAction(tokenIdNumber, appConfig.signEverythingCID);
+
+		const addPermissionTx = await litContracts.pkpPermissionsContractUtil.write.addPermittedAction(tokenIdNumber, appConfig.defaultCID);
 		await addPermissionTx.wait();
 
 		return {

@@ -27,7 +27,7 @@ export type IndexLink = {
   link_id?: string;
   indexer_did?: { // This is PKP DID
     id: string
-  };
+  } | string;
   controller_did?: { // This is PKP DID
     id: string
   };

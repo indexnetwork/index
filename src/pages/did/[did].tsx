@@ -212,7 +212,7 @@ const IndexesPage: NextPageWithLayout = () => {
 									onClick={handleClick(itm)}
 									isOwner={did === itm.owner_did?.id}
 									userIndexToggle={handleUserIndexToggle}
-									{...itm}
+									index={itm}
 								/>}
 								divided
 							/>
@@ -234,7 +234,7 @@ const IndexesPage: NextPageWithLayout = () => {
 									onClick={handleClick(itm)}
 									isOwner={did === itm.owner_did?.id}
 									userIndexToggle={handleUserIndexToggle}
-									{...itm}
+									index={itm}
 								/>}
 								divided
 							/>

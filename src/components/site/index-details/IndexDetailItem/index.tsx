@@ -13,7 +13,7 @@ import { BREAKPOINTS } from "utils/constants";
 import TagIndexDetailItem from "components/site/tag/TagIndexDetailItem";
 import Tooltip from "components/base/Tooltip";
 import IndexDetailItemPopup from "components/site/popup/IndexDetailItemPopup";
-import { IndexLink, Link } from "types/entity";
+import { Indexes, IndexLink, Link } from "types/entity";
 import moment from "moment";
 import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
@@ -24,6 +24,7 @@ import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
 export interface IndexDetailsItemProps extends IndexLink {
+	index: Indexes;
 	link?: Link;
 	provided?: DraggableProvided;
 	snapshot?: DraggableStateSnapshot;
@@ -34,6 +35,7 @@ export interface IndexDetailsItemProps extends IndexLink {
 }
 
 const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
+	index,
 	provided,
 	snapshot,
 	highlight,
@@ -81,7 +83,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 
 	const handleRemove = async () => {
 		setLinks(links?.filter((l) => l.id !== id!));
-		const currentLink = await ceramic.removeLinkFromIndex(indexId as string, id!);
+		const currentLink = await ceramic.removeLinkFromIndex(index, id!);
 		// onChange && onChange(doc?.content?.links || []);
 	};
 
