@@ -18,17 +18,16 @@ import FilterPopup from "components/site/popup/FilterPopup";
 import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import Avatar from "components/base/Avatar";
 import LinkInput from "components/site/input/LinkInput";
-import IndexDetailsList from "components/site/index-details/IndexDetailsList";
+import IndexItemList from "components/site/index-details/IndexItemList";
 import { useRouter } from "next/router";
-import { Indexes, Links } from "types/entity";
-import api from "services/api-service";
+import { Indexes, IndexLink } from "types/entity";
+import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 import IndexTitleInput from "components/site/input/IndexTitleInput";
 import { useCeramic } from "hooks/useCeramic";
 import { useMergedState } from "hooks/useMergedState";
 import moment from "moment";
 import SearchInput from "components/base/SearchInput";
 import NotFound from "components/site/indexes/NotFound";
-import { useOwner } from "hooks/useOwner";
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { selectProfile } from "store/slices/profileSlice";
@@ -45,11 +44,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
 	const dispatch = useAppDispatch();
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
-	const [links, setLinks] = useState<Links[]>([]);
-	const [addedLink, setAddedLink] = useState<Links>();
+	const [links, setLinks] = useState<IndexLink[]>([]);
+	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tab, setTab] = useState<boolean>(false);
 	const [tabKey, setTabKey] = useState("index");
-
+	const [isOwner, setIsOwner] = useState<boolean>(false);
 	const [notFound, setNotFound] = useState(false);
 	const [progress, setProgress] = useState({
 		current: 0,
@@ -65,7 +64,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
 
-	const { isOwner } = useOwner();
 	const ceramic = useCeramic();
 
 	const router = useRouter();
@@ -78,18 +76,30 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setTokenModalVisible((oldVal) => !oldVal);
 	 };
 
-	const loadIndex = async (id: string) => {
-		const doc = await ceramic.getIndexById(id);
+	const loadIndex = async (indexId: string) => {
+		const doc = await ceramic.getIndexById(indexId);
 		if (doc != null) {
 			setIndex(doc);
+			setIsOwner(doc.owner_did?.id === did);
+			loadUserIndex(indexId);
 		} else {
 			setNotFound(true);
 		}
 	};
-
+	const loadUserIndex = async (index_id: string) => {
+		const userIndexes = await api.getUserIndexes({
+			index_id, // TODO Shame
+			did,
+		} as GetUserIndexesRequestBody) as UserIndexResponse;
+		setIndex({
+ 			...index,
+			is_in_my_indexes: !!userIndexes.my_indexes,
+			is_starred: !!userIndexes.starred,
+		} as Indexes);
+	};
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
-		const result = await ceramic.updateIndex(index.id!, {
+		const result = await ceramic.updateIndex(index, {
 			title,
 		});
 		setIndex(result);
@@ -97,7 +107,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
-		type === "my_indexes" ? setIndex({ ...index, is_in_my_indexes: op === "add" }) : setIndex({ ...index, is_starred: op === "add" });
+		type === "my_indexes" ? setIndex({ ...index, is_in_my_indexes: op === "add" } as Indexes) : setIndex({ ...index, is_starred: op === "add" } as Indexes);
 		if (op === "add") {
 			ceramic.addUserIndex(index_id, type);
 		} else {
@@ -111,28 +121,26 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			current: 0,
 			total: urls.length,
 		});
-
-		urls.forEach(async (url) => {
+		// TODO Allow for syntax
+		// eslint-disable-next-line no-restricted-syntax
+		for await (const url of urls) {
 			const payload = await api.crawlLink(url);
 			if (payload) {
-				const link = await ceramic.addLink(index?.id!, payload);
-				if (link) {
-					setAddedLink(link);
+				const createdLink = await ceramic.createLink(payload);
+				// TODO Fix that.
+				const createdIndexLink = await ceramic.addIndexLink(index, createdLink?.id!);
+				if (createdIndexLink) {
+					setAddedLink(createdIndexLink); // Fix
 				}
 			}
-		});
-
-		//
-	};
-
-	useEffect(() => {
-		const { id } = router.query;
-		if (router.query) {
-			loadIndex(id as string);
-		} else {
-			setNotFound(true);
 		}
-	}, [router.query]);
+	};
+	useEffect(() => {
+		const { indexId } = router.query;
+		if (indexId && did) {
+			loadIndex(indexId as string);
+		}
+	}, [router.query, did]);
 
 	useEffect(() => {
 		if (addedLink) {
@@ -185,7 +193,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											noYGutters
 										>
 											<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-											<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
+											<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.owner_did?.id}</Text>
 										</Col>
 										<Col
 											xs={12}
@@ -303,10 +311,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										>
 
 											<Col xs={12} lg={9}>
-												<IndexDetailsList
+												<IndexItemList
 													search={search}
 													isOwner={isOwner}
-													index_id={router.query.id as any}
+													index_id={router.query.indexId as any}
 												// onChange={handleReorderLinks}
 												/>
 											</Col>

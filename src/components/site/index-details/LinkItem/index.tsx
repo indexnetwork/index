@@ -13,7 +13,7 @@ import { BREAKPOINTS } from "utils/constants";
 import TagIndexDetailItem from "components/site/tag/TagIndexDetailItem";
 import Tooltip from "components/base/Tooltip";
 import IndexDetailItemPopup from "components/site/popup/IndexDetailItemPopup";
-import { Links } from "types/entity";
+import { IndexLink, Link } from "types/entity";
 import moment from "moment";
 import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
@@ -23,28 +23,22 @@ import LogoLink from "components/base/Logo/LogoLink";
 import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
-export interface IndexDetailsItemProps extends Links {
-	favicon?: string;
+export interface LinkItemProps {
+	index_link: IndexLink;
 	provided?: DraggableProvided;
 	snapshot?: DraggableStateSnapshot;
-	onChange?(val: Links[]): void;
+	onChange?(val: IndexLink[]): void;
 	search?: boolean;
 	isOwner?: boolean;
+	highlight?: any;
 }
 
-const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
+const LinkItem: React.VFC<LinkItemProps> = ({
+	index_link,
 	provided,
 	snapshot,
-	isOwner,
-	id,
-	title,
 	highlight,
-	url,
-	updated_at,
-	content,
-	favorite,
-	tags = [],
-	favicon,
+	isOwner,
 	search = false,
 	onChange,
 }) => {
@@ -52,9 +46,11 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
 	const { links, setLinks } = useLinks();
 
+	const { link } = index_link;
+
 	const router = useRouter();
 
-	const { streamId } = router.query;
+	const { indexId } = router.query;
 
 	const ceramic = useCeramic();
 
@@ -64,8 +60,8 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 
 	const handleNewTagEdit = async (val?: string | null) => {
 		if (val) {
-			const link = await ceramic.addTag(id!, val) as Links;
-			const newState = links.map((l) => (l.id === id ? link : l));
+			const currentLink = await ceramic.addTag(link?.id!, val) as Link;
+			const newState = links.map((l) => (l.id === index_link.id ? { ...l, link: currentLink } : l));
 			setLinks(newState);
 		}
 		setToggleNewTag(false);
@@ -82,14 +78,14 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	};
 
 	const handleRemove = async () => {
-		setLinks(links?.filter((l) => l.id !== id!));
-		const link = await ceramic.removeLink(id!);
+		setLinks(links?.filter((l) => l.id !== index_link.id!));
+		const currentLink = await ceramic.removeIndexLink(index_link);
 		// onChange && onChange(doc?.content?.links || []);
 	};
 
 	const handleRemoveTag = async (val: string) => {
-		const link = await ceramic.removeTag(id!, val) as Links;
-		const newState = links.map((l) => (l.id === id ? link : l));
+		const currentLink = await ceramic.removeTag(index_link.id!, val) as Link;
+		const newState = links.map((l) => (l.id === index_link.id ? currentLink : l));
 		setLinks(newState);
 	};
 	return (
@@ -116,8 +112,8 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 						<Col
 							className="idxflex-grow-1"
 						>
-							<a target="_blank" rel="noreferrer" href={url}>
-								<Text className={cm.title} fontWeight={700} dangerouslySetInnerHTML={{ __html: sanitize((highlight?.title ? highlight.title : title) || "") }}></Text>
+							<a target="_blank" rel="noreferrer" href={link?.url}>
+								<Text className={cm.title} fontWeight={700} dangerouslySetInnerHTML={{ __html: sanitize((highlight && highlight["link.title"]) ? highlight["link.title"] : link?.title) }}></Text>
 							</a>
 						</Col>
 						{
@@ -166,11 +162,11 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 					</FlexRow>
 				</Col>
 				<Col xs={12} className="mt-2">
-					<a target="_blank" rel="noreferrer" href={url}>
-						{favicon ?
+					<a target="_blank" rel="noreferrer" href={link?.url}>
+						{link?.favicon ?
 							<img
 								className="mr-3"
-								src={favicon}
+								src={link?.favicon}
 								alt="favicon"
 								width={16}
 								height={16}
@@ -183,13 +179,13 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 								height={16}
 								style={{
 									verticalAlign: "middle",
-								}} />}<Text size="sm" theme="disabled">{url?.substring(0, 80)} • {updated_at ? moment(updated_at).format("MMM D") : ""}</Text>
+								}} />}<Text size="sm" theme="disabled">{link?.url?.substring(0, 80)} • {link?.updated_at ? moment(link?.updated_at).format("MMM D") : ""}</Text>
 					</ a>
 				</Col>
 				{
-					search && highlight && highlight.content && (
+					search && highlight && highlight["link.content"] && (
 						<Col className="mt-5">
-							<Text className="listItem" theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize(highlight.content) }}></Text>
+							<Text className="listItem" theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize(highlight["link.content"]) }}></Text>
 						</Col>
 					)
 				}
@@ -198,7 +194,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 				{
 					!search && <Col xs={12} className="mt-3 idxflex idxflex-gap-3 idxflex-wrap">
 						{
-							tags.map((t, ind) => (
+							link?.tags?.map((t, ind) => (
 								<TagIndexDetailItem
 									key={ind}
 									text={t}
@@ -224,4 +220,4 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 		</div>
 	);
 };
-export default IndexDetailsItem;
+export default LinkItem;

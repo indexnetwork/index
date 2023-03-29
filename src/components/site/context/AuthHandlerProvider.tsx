@@ -33,7 +33,6 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	const disconnect = async () => {
 		localStorage.removeItem("provider");
 		localStorage.removeItem("did");
-		await ceramicService.close();
 		session = null;
 		dispatch(disconnectApp());
 		router.push("/");
@@ -94,8 +93,8 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	};
 
 	const authToCeramic = async () => {
-		if (!ceramicService.isAuthenticated()) {
-			const result = await ceramicService.authenticate(session?.did);
+		if (!ceramicService.isUserAuthenticated()) {
+			const result = await ceramicService.authenticateUser(session?.did);
 			dispatch(setCeramicConnected(result));
 			// await ceramicService.syncContents();
 		} else {

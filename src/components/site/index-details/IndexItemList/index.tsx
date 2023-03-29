@@ -4,11 +4,11 @@ import { useMergedState } from "hooks/useMergedState";
 import React, { useEffect, useState } from "react";
 import InfiniteScroll from "react-infinite-scroller";
 import api, { LinkSearchResponse, LinkSearchRequestBody } from "services/api-service";
-import { Links } from "types/entity";
+import { IndexLink, Link } from "types/entity";
 // import { arrayMove } from "utils/helper";
 
 import { useLinks } from "hooks/useLinks";
-import IndexDetailsItem from "../IndexDetailItem";
+import LinkItem from "../LinkItem";
 import NoLinks from "../../indexes/NoLinks";
 
 export interface LinkListState {
@@ -24,9 +24,9 @@ export interface LinkListProps {
 	onFetch?(loading: boolean): void;
 }
 
-const MemoIndexDetailsItem = React.memo(IndexDetailsItem);
+const MemoLinkItem = React.memo(LinkItem);
 
-const IndexDetailsList: React.VFC<LinkListProps> = ({
+const IndexItemList: React.VFC<LinkListProps> = ({
 	search,
 	index_id,
 	isOwner,
@@ -98,7 +98,7 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 		 */
 	};
 
-	const handleLinksChange = (newLink: Links) => {
+	const handleLinksChange = (newLink: Link) => {
 		// setItems(newLinks);
 	};
 	return (
@@ -117,12 +117,12 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 							<List
 								listClass="index-list"
 
-								render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
+								render={(item, index, provided, snapshot) => <MemoLinkItem
 									provided={provided!}
 									snapshot={snapshot!}
 									search={!!search}
 									isOwner={isOwner}
-									{...item}
+									index_link={item}
 									// onChange={handleLinksChange}
 								/>}
 								divided
@@ -136,15 +136,15 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 							loadMore={getData}
 							marginHeight={50}
 						>
-							<DndList <Links>
+							<DndList <IndexLink>
 								listClass="index-detail-list"
 								draggable={isOwner}
 								data={links}
-								render={(item, index, provided, snapshot) => <MemoIndexDetailsItem
+								render={(item, index, provided, snapshot) => <MemoLinkItem
 									provided={provided!}
 									isOwner={isOwner}
 									snapshot={snapshot!}
-									{...item}
+									index_link={item}
 									// onChange={handleLinksChange}
 								/>}
 								divided
@@ -159,4 +159,4 @@ const IndexDetailsList: React.VFC<LinkListProps> = ({
 	);
 };
 
-export default IndexDetailsList;
+export default IndexItemList;

@@ -1,8 +1,8 @@
 import React, { useContext } from "react";
-import { Links } from "../types/entity";
+import { IndexLink } from "../types/entity";
 
 export interface LinksContextValue {
-	links: Links[];
+	links: IndexLink[];
 	setLinks?: any
 }
 export const LinksContext = React.createContext<LinksContextValue>({ links: [] });

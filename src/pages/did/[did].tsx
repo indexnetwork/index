@@ -39,10 +39,9 @@ const IndexesPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	const [search, setSearch] = useState("");
 	const [loading, setLoading] = useState(false);
-	const { isOwner, did } = useOwner();
+	const { did } = useOwner();
 
 	const [init, setInit] = useState(true);
-	const [test, setTest] = useState();
 	const [tabKey, setTabKey] = useState("my_indexes");
 	const [hasUserIndex, setHasUserIndex] = useState({ my_indexes: false, starred: false });
 
@@ -68,7 +67,7 @@ const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
 
 	const handleClick = useCallback((itm: Indexes) => async () => {
-		router.push(`/${router.query.did}/${itm.id}`);
+		router.push(`/${itm.id}`);
 	}, []);
 
 	const handleUserIndexToggle = async (index_id: string, type: string, op: string) => {
@@ -211,8 +210,9 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
+									isOwner={did === itm.owner_did?.id}
 									userIndexToggle={handleUserIndexToggle}
-									{...itm}
+									index={itm}
 								/>}
 								divided
 							/>
@@ -232,8 +232,9 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
+									isOwner={did === itm.owner_did?.id}
 									userIndexToggle={handleUserIndexToggle}
-									{...itm}
+									index={itm}
 								/>}
 								divided
 							/>
