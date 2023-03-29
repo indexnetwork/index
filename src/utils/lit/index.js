@@ -35,16 +35,16 @@ exports.encodeDIDWithLit = (pkpPubKey) =>  {
 	bytes[0] = 0xe7;
 	bytes[1] = 0x01;
 	bytes.set(pubBytes, 2);
-	
+
 	const did = `did:key:z${u8a.uint8arrayToString(bytes, "base58btc")}`;
 
 	return did;
 }
 
 
-            
 
-module.exports.decodeDIDWithLit = (encodedDID) => { 
+
+module.exports.decodeDIDWithLit = (encodedDID) => {
 
     const arr = encodedDID?.split(':');
 
@@ -69,6 +69,4 @@ module.exports.decodeDIDWithLit = (encodedDID) => {
     return '0x0' + pubKey;
 }
 
-exports.walletToDID = (chain, wallet) => {
-	return `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`
-}
+exports.walletToDID = (chain, wallet) => `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`

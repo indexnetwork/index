@@ -10,17 +10,21 @@ module.exports.indexPKP = async (req, res, next) => {
 
     const { headers, body } = req;
 
+    const { chainId, nftTransfers, confirmed } = body;
+
     try {
         Moralis.Streams.verifySignature({
             body,
             signature: headers["x-signature"],
         }); // throws error if not valid
     } catch (error) {
-        console.log("Invalid request signature");
-        return res.status(400).end();
+        if(confirmed){
+            return res.status(200).end();
+        }else{
+            console.log("Invalid request signature");
+            return res.status(400).end();
+        }
     }
-
-    const { chainId, nftTransfers } = body;
 
     if(nftTransfers.length === 0){
         return res.status(200).end();
