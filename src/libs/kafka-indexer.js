@@ -31,7 +31,7 @@ module.exports.createIndex = async (indexMsg) => {
 
     // Create user_index without a composedb record. Only remove requests are stored in composedb.
     await this.createUserIndex({
-        "controller_did": index.owner.id,
+        "controller_did": index.owner_did.id,
         "type":"my_indexes",
         "index_id": index.id,
         "created_at": new Date().toISOString()
