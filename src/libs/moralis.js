@@ -12,6 +12,7 @@ module.exports.indexPKP = async (req, res, next) => {
 
     const { chainId, nftTransfers, confirmed } = body;
 
+    /*
     try {
         Moralis.Streams.verifySignature({
             body,
@@ -25,7 +26,7 @@ module.exports.indexPKP = async (req, res, next) => {
             return res.status(400).end();
         }
     }
-
+    */
     if(nftTransfers.length === 0){
         return res.status(200).end();
     }
