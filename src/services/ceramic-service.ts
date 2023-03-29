@@ -378,7 +378,6 @@ class CeramicService {
 		return data?.createUserIndex.document!;
 	}
 	async removeUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
-
 		console.log("remove", index_id, this.userComposeClient.did?.parent!, type);
 		const userIndexes = await api.getUserIndexes({
 			index_id,
@@ -392,7 +391,7 @@ class CeramicService {
 
 		const userIndex: UserIndex | undefined = userIndexes[type as UserIndexKey];
 		if (userIndex && !userIndex.id && type === "my_indexes") {
-			return await this.addUserIndex(index_id, type, true)
+			return await this.addUserIndex(index_id, type, true);
 		}
 		const payload = {
 			id: userIndex?.id!,
