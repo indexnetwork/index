@@ -29,7 +29,7 @@
     "kafkajs": "^2.2.4",
     "lodash": "^4.17.21",
     "moment": "^2.29.4",
-    "moralis": "^2.16.1",
+    "moralis": "^2.18.1",
     "morgan": "~1.9.1",
     "node-fetch": "^3.3.0",
     "puppeteer": "^19.7.2",

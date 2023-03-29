@@ -5,7 +5,7 @@ const client = new Client({ node: process.env.ELASTIC_HOST })
 const RedisClient = require('../clients/redis.js');
 const redis = RedisClient.getInstance();
 
-const {getIndexById, getIndexLinkById} = require("./composedb");
+const {getIndexById, getIndexLinkById, getLinkById} = require("./composedb");
 
 const config = {
     indexName: 'links'
@@ -25,7 +25,18 @@ module.exports.createIndex = async (indexMsg) => {
                 index
             }
         },
-    })
+    });
+
+    console.log(index)
+
+    // Create user_index without a composedb record. Only remove requests are stored in composedb.
+    await this.createUserIndex({
+        "controller_did": index.owner.id,
+        "type":"my_indexes",
+        "index_id": index.id,
+        "created_at": new Date().toISOString()
+    });
+
 }
 module.exports.updateIndex = async (indexMsg) => {
     console.log("updateIndex", indexMsg)
@@ -125,7 +136,7 @@ module.exports.updateLink = async (linkMsg) => {
         conflicts: "proceed",
         script: {
             lang: 'painless',
-            source: 'ctx._source.index = params.index',
+            source: 'ctx._source.link = params.link',
             params: {
                 link
             }
@@ -135,7 +146,7 @@ module.exports.updateLink = async (linkMsg) => {
                 must: [
                     {
                         term: {
-                            "link.id": index.id
+                            "link.id": link.id
                         },
                     }
                 ],

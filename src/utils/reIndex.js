@@ -55,6 +55,12 @@ async function start() {
           "id": {
             "type": "keyword"
           },
+          "index_id": {
+            "type": "keyword"
+          },
+          "link_id": {
+            "type": "keyword"
+          },
           "indexer_did": {
             "properties": {
               "id": {

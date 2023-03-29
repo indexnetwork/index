@@ -105,7 +105,8 @@
 - [x] Update Link
 - [x] Update Link Consumer
 - [x] Remove Link
-- [] Set node count to 1
+- [x] Set node count to 1
+- [x] Add loading/progress bar for bulk actions
 - [] Handle PKP Transfer
 
 - [] Lit actions: isOwner()
@@ -115,4 +116,4 @@
 - [] Lit actions: isIndexer(link)
 - [] Lit actions: isCreator()
 
-- [] Delete link should be renamed to "tRemove link"
+- [] Delete link should be renamed to "Remove link"

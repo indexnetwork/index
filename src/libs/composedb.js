@@ -15,6 +15,8 @@ module.exports.getIndexLinkById = async(id) => {
               node(id: "${id}") {
                 ... on IndexLink {
                   id
+                  index_id
+                  link_id
                   created_at
                   updated_at
                   deleted_at

@@ -364,12 +364,12 @@ exports.did = async (req, res) => {
 
     let user_indexes = await redis.hGetAll(`user_indexes:by_did:${did.toLowerCase()}`)
 
-
     user_indexes_by_type = _.chain(user_indexes)
                             .map(i => JSON.parse(i))
                             .filter(i => !i.deleted_at)
                             .groupBy("type")
                             .value()
+
     if(type){
         let search_result = {};
         search_result[type] = await indexesSearch(user_indexes_by_type[type].map(i => i.index_id), search, skip, take, links_size, user_indexes_by_type)
@@ -391,7 +391,6 @@ exports.index = async (req, res) => {
 
     const query = indexesWithLinksQuery(index_ids, search, skip, take, links_size);
     const result = await client.search(query);
-
 
     const totalCount = result.aggregations?.totalCount?.value || 0;
 

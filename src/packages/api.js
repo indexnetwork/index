@@ -8,6 +8,7 @@ const redis = RedisClient.getInstance();
 const search = require('../services/elasticsearch.js')
 const composedb = require('../services/composedb.js')
 
+const Moralis = require("moralis").default;
 const moralis = require('../libs/moralis.js')
 
 const { getQueue, getMetadata } = require('../libs/crawl.js')
@@ -20,6 +21,7 @@ const port = process.env.PORT || 3001;
 app.use(express.json())
 
 const Joi = require('joi')
+
 const validator = require('express-joi-validation').createValidator({
   passError: true
 })
@@ -62,7 +64,7 @@ app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_in
 app.get('/indexes/:id', composedb.get_index)
 app.get('/index_link/:id', composedb.get_index_link)
 
-app.post('/index/pkp', moralis.indexPKP)
+app.post('/webhook/moralis/pkp', moralis.indexPKP)
 
 
 
@@ -98,6 +100,9 @@ app.use((err, req, res, next) => {
 
 const start = async () => {
   await redis.connect()
+  await Moralis.start({
+    apiKey: "3CDE1dEbZZtGhQKRcQrAuZMu2h7dM9qwWCTfdrEz87kqiTnDmnMSV1LPQdP0ikYu",
+  });
   await app.set('queue', await getQueue())
   await app.listen(port, async () => {
 
