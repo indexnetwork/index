@@ -345,12 +345,15 @@ class CeramicService {
 
 		 */
 	}
-	async addUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
+	async addUserIndex(index_id: string, type: string, deleted_at = false): Promise<UserIndex | undefined> {
 		const userIndex = {
 			index_id,
 			created_at: getCurrentDateTime(),
 			type,
-		};
+		} as UserIndex;
+		if (deleted_at) {
+			userIndex.deleted_at = getCurrentDateTime();
+		}
 		console.log("add", userIndex);
 		const payload = {
 			content: userIndex,
@@ -375,6 +378,7 @@ class CeramicService {
 		return data?.createUserIndex.document!;
 	}
 	async removeUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
+
 		console.log("remove", index_id, this.userComposeClient.did?.parent!, type);
 		const userIndexes = await api.getUserIndexes({
 			index_id,
@@ -385,14 +389,17 @@ class CeramicService {
 		if (!userIndexes[type as UserIndexKey]) {
 			return;
 		}
+
 		const userIndex: UserIndex | undefined = userIndexes[type as UserIndexKey];
+		if (userIndex && !userIndex.id && type === "my_indexes") {
+			return await this.addUserIndex(index_id, type, true)
+		}
 		const payload = {
 			id: userIndex?.id!,
 			content: {
 				deleted_at: getCurrentDateTime(),
 			},
 		};
-		console.log(payload);
 		const { data, errors } = await this.userComposeClient.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
 			mutation UpdateUserIndex($input: UpdateUserIndexInput!) {
 				updateUserIndex(input: $input) {
