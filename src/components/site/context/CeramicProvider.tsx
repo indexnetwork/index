@@ -24,8 +24,8 @@ export interface CeramicContextValue {
 	addTag(link_id: string, tag: string): Promise<Link | undefined>;
 	removeTag(link_id: string, tag: string): Promise<Link | undefined>;
 
-	addLinkToIndex(index: Partial<Indexes>, link_id: string): Promise<IndexLink | undefined>;
-	removeLinkFromIndex(index: Partial<Indexes>, link_id: string): Promise<IndexLink | undefined>;
+	addIndexLink(index: Partial<Indexes>, link_id: string): Promise<IndexLink | undefined>;
+	removeIndexLink(index_link: Partial<IndexLink>): Promise<IndexLink | undefined>;
 
 	getProfile(): Promise<Users | null | any>;
 	setProfile(profile: Users): Promise<Users | null | any>;
@@ -65,8 +65,8 @@ const CeramicProvider: React.FC<{}> = ({
 	const createLink = async (link: Partial<Link>) => ceramicService.createLink(link);
 	const updateLink = async (link_id: string, link: Link) => ceramicService.updateLink(link_id, link);
 
-	const addLinkToIndex = async (index: Indexes, link_id: string) => ceramicService.addLinkToIndex(index, link_id);
-	const removeLinkFromIndex = async (index: Indexes, link_id: string) => ceramicService.removeLinkFromIndex(index, link_id);
+	const addIndexLink = async (index: Indexes, link_id: string) => ceramicService.addIndexLink(index, link_id);
+	const removeIndexLink = async (index_link: IndexLink) => ceramicService.removeIndexLink(index_link);
 
 	const addTag = async (link_id: string, tag: string) => {
 		const updatedDoc = await ceramicService.addTag(link_id, tag);
@@ -99,8 +99,8 @@ const CeramicProvider: React.FC<{}> = ({
 			addTag,
 			removeTag,
 
-			addLinkToIndex,
-			removeLinkFromIndex,
+			addIndexLink,
+			removeIndexLink,
 
 			getProfile,
 			setProfile,

@@ -18,7 +18,7 @@ import FilterPopup from "components/site/popup/FilterPopup";
 import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import Avatar from "components/base/Avatar";
 import LinkInput from "components/site/input/LinkInput";
-import IndexDetailsList from "components/site/index-details/IndexDetailsList";
+import IndexItemList from "components/site/index-details/IndexItemList";
 import { useRouter } from "next/router";
 import { Indexes, IndexLink } from "types/entity";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
@@ -128,7 +128,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			if (payload) {
 				const createdLink = await ceramic.createLink(payload);
 				// TODO Fix that.
-				const createdIndexLink = await ceramic.addLinkToIndex(index, createdLink?.id!);
+				const createdIndexLink = await ceramic.addIndexLink(index, createdLink?.id!);
 				if (createdIndexLink) {
 					setAddedLink(createdIndexLink); // Fix
 				}
@@ -311,7 +311,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										>
 
 											<Col xs={12} lg={9}>
-												<IndexDetailsList
+												<IndexItemList
 													search={search}
 													isOwner={isOwner}
 													index_id={router.query.indexId as any}

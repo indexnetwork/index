@@ -13,7 +13,7 @@ import { BREAKPOINTS } from "utils/constants";
 import TagIndexDetailItem from "components/site/tag/TagIndexDetailItem";
 import Tooltip from "components/base/Tooltip";
 import IndexDetailItemPopup from "components/site/popup/IndexDetailItemPopup";
-import { Indexes, IndexLink, Link } from "types/entity";
+import { IndexLink, Link } from "types/entity";
 import moment from "moment";
 import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
@@ -23,9 +23,8 @@ import LogoLink from "components/base/Logo/LogoLink";
 import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
-export interface IndexDetailsItemProps extends IndexLink {
-	index: Indexes;
-	link?: Link;
+export interface LinkItemProps {
+	index_link: IndexLink;
 	provided?: DraggableProvided;
 	snapshot?: DraggableStateSnapshot;
 	onChange?(val: IndexLink[]): void;
@@ -34,23 +33,20 @@ export interface IndexDetailsItemProps extends IndexLink {
 	highlight?: any;
 }
 
-const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
-	index,
+const LinkItem: React.VFC<LinkItemProps> = ({
+	index_link,
 	provided,
 	snapshot,
 	highlight,
 	isOwner,
 	search = false,
 	onChange,
-	link,
-	id,
-	created_at,
-	updated_at,
-	deleted_at,
 }) => {
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
 	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
 	const { links, setLinks } = useLinks();
+
+	const { link } = index_link;
 
 	const router = useRouter();
 
@@ -65,7 +61,7 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	const handleNewTagEdit = async (val?: string | null) => {
 		if (val) {
 			const currentLink = await ceramic.addTag(link?.id!, val) as Link;
-			const newState = links.map((l) => (l.id === id ? { ...l, link: currentLink } : l));
+			const newState = links.map((l) => (l.id === index_link.id ? { ...l, link: currentLink } : l));
 			setLinks(newState);
 		}
 		setToggleNewTag(false);
@@ -82,14 +78,14 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 	};
 
 	const handleRemove = async () => {
-		setLinks(links?.filter((l) => l.id !== id!));
-		const currentLink = await ceramic.removeLinkFromIndex(index, id!);
+		setLinks(links?.filter((l) => l.id !== index_link.id!));
+		const currentLink = await ceramic.removeIndexLink(index_link);
 		// onChange && onChange(doc?.content?.links || []);
 	};
 
 	const handleRemoveTag = async (val: string) => {
-		const currentLink = await ceramic.removeTag(id!, val) as Link;
-		const newState = links.map((l) => (l.id === id ? currentLink : l));
+		const currentLink = await ceramic.removeTag(index_link.id!, val) as Link;
+		const newState = links.map((l) => (l.id === index_link.id ? currentLink : l));
 		setLinks(newState);
 	};
 	return (
@@ -224,4 +220,4 @@ const IndexDetailsItem: React.VFC<IndexDetailsItemProps> = ({
 		</div>
 	);
 };
-export default IndexDetailsItem;
+export default LinkItem;

@@ -204,7 +204,7 @@ class CeramicService {
 		return data?.updateLink.document!;
 	}
 
-	async addLinkToIndex(index: Indexes, link_id: string) : Promise <IndexLink> {
+	async addIndexLink(index: Indexes, link_id: string) : Promise <IndexLink> {
 		const indexLink: IndexLink = {
 			index_id: index.id,
 			link_id,
@@ -262,18 +262,22 @@ class CeramicService {
 		}
 		return data?.createIndexLink.document!;
 	}
-	async removeLinkFromIndex(index: Indexes, link_id: string): Promise <IndexLink | undefined> {
-		const pkpPublicKey = "0x0463b0f8584ceb4b3be313ccdb5356c1b8505420bbf9334446a1228d0b9e18e9f3f21cfcf5e107c2ac11041a02139abb0ff5165f1a71fde31287a95def85a4e19f";
-		const did = await LitService.authenticatePKP("QmWXmYFnsMuBVhgEeJ2De4DLc47c6gPVSQBPqM7aLdGDNM", pkpPublicKey);
-		/*
-		if (!did.authenticated) {
-			// TODO handle error
+	async removeIndexLink(index_link: IndexLink): Promise <IndexLink | undefined> {
+		const index = await api.getIndexById(index_link.index_id!);
+		if (!index) {
+			throw new Error("Index not found");
 		}
-		 */
+
+		const pkpPublicKey = decodeDIDWithLit(index.controller_did.id);
+		const did = await LitService.authenticatePKP(index.collab_action, pkpPublicKey);
+		if (!did.authenticated) {
+			throw new Error("Could not authenticate");
+		}
+
 		this.pkpComposeClient.setDID(did);
 
 		const payload = {
-			id: link_id!,
+			id: index_link.id!,
 			content: {
 				deleted_at: getCurrentDateTime(),
 			},

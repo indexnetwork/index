@@ -1,7 +1,7 @@
 import Avatar from "components/base/Avatar";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
-import IndexDetailsItem from "components/site/index-details/IndexDetailItem";
+import LinkItem from "components/site/index-details/LinkItem";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import Row from "components/layout/base/Grid/Row";
@@ -95,7 +95,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 			<List
 				data={index.links || []}
 				listClass="index-list"
-				render={(l: IndexLink) => <IndexDetailsItem index={index} search {...l} />}
+				render={(l: IndexLink) => <LinkItem search index_link={l} />}
 				divided
 			/>
 		</Col>

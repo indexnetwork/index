@@ -118,7 +118,6 @@ class ApiService {
 			throw new Error(err.message);
 		}
 	}
-
 	async crawlLink(url: string): Promise<Link | null> {
 		try {
 			const { data } = await apiAxios.get<Link>(API_ENDPOINTS.CRAWL, {
