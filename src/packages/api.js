@@ -101,7 +101,7 @@ app.use((err, req, res, next) => {
 const start = async () => {
   await redis.connect()
   await Moralis.start({
-    apiKey: "3CDE1dEbZZtGhQKRcQrAuZMu2h7dM9qwWCTfdrEz87kqiTnDmnMSV1LPQdP0ikYu",
+    apiKey: process.env.MORALIS_API_KEY,
   });
   await app.set('queue', await getQueue())
   await app.listen(port, async () => {
