@@ -4,12 +4,13 @@ export interface TabPaneProps {
 	tabKey: string;
 	title: string;
 	enabled?: boolean;
+	children?: React.ReactNode;
 }
 
-const TabPane: React.FC<TabPaneProps> = ({
-	children,
-}) => (
-	<div>{children}</div>
-);
+const TabPane = (
+	{
+		children,
+	}: TabPaneProps,
+) => (<div>{children}</div>);
 
 export default TabPane;

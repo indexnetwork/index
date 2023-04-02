@@ -27,25 +27,27 @@ export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAtt
 	link?: any;
 }
 
-const Button: React.FC<ButtonProps> = ({
-	customType,
-	link,
-	children,
-	className,
-	borderless,
-	group,
-	iconHover,
-	loading,
-	block,
-	iconButton,
-	outlined,
-	addOnBefore,
-	addOnAfter,
-	theme = "primary",
-	size = "md",
-	fontWeight,
-	...props
-}) => {
+const Button = (
+	{
+		customType,
+		link,
+		children,
+		className,
+		borderless,
+		group,
+		iconHover,
+		loading,
+		block,
+		iconButton,
+		outlined,
+		addOnBefore,
+		addOnAfter,
+		theme = "primary",
+		size = "md",
+		fontWeight,
+		...props
+	}: ButtonProps,
+) => {
 	switch (customType) {
 		case "google":
 			return <button {...props} className={cc(

@@ -39,9 +39,14 @@ export interface CeramicContextValue {
 
 export const CeramicContext = React.createContext<CeramicContextValue>({} as any);
 
-const CeramicProvider: React.FC<{}> = ({
-	children,
-}) => {
+export interface CeramicProviderProps {
+	children: React.ReactNode;
+}
+const CeramicProvider = (
+	{
+		children,
+	}: CeramicProviderProps,
+) => {
 	const [syncedData, setSyncedData] = useState<LinkContentResult>();
 
 	const handlers: ListenEvents = useMemo(() => ({

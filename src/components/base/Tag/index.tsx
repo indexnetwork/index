@@ -20,22 +20,24 @@ export interface TagProps extends React.DetailedHTMLProps<React.HTMLAttributes<H
 	onRemove?(val: string): void;
 }
 
-const Tag: React.FC<TagProps> = ({
-	text,
-	className,
-	placeholder,
-	clickable,
-	removable = false,
-	editable = false,
-	theme = "tag",
-	size = "md",
-	shape = "circle",
-	inputActive = false,
-	onClick,
-	onRemove,
-	onEdit,
-	...divProps
-}) => {
+const Tag = (
+	{
+		text,
+		className,
+		placeholder,
+		clickable,
+		removable = false,
+		editable = false,
+		theme = "tag",
+		size = "md",
+		shape = "circle",
+		inputActive = false,
+		onClick,
+		onRemove,
+		onEdit,
+		...divProps
+	}: TagProps,
+) => {
 	const divRef = useRef<HTMLDivElement>(null);
 	const [value, setValue] = useState<string | null | undefined>(text);
 	const [editActive, setEditActive] = useState(inputActive);

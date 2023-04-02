@@ -6,9 +6,10 @@ import React, {
 /**
  * Common Types
  */
-export type NextPageWithLayout<T = {}> = NextPage<T> & {
-  requireAuth?: boolean;
-  getLayout?: (page: ReactElement) => ReactNode;
+
+export type NextPageWithLayout<P = {}, IP = P> = NextPage<P, IP> & {
+	getLayout?: (page: ReactElement) => ReactNode
+	requireAuth?: boolean;
 };
 
 export type GridFractionType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;

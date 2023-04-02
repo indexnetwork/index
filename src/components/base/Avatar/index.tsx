@@ -13,19 +13,21 @@ export interface AvatarProps extends React.DetailedHTMLProps<React.HTMLAttribute
 	maxLetters?: number;
 }
 
-const Avatar: React.FC<AvatarProps> = ({
-	size = 40,
-	children,
-	className,
-	style,
-	bgColor,
-	contentRatio = 0.5,
-	shape = "circle",
-	hoverable = false,
-	maxLetters = 1,
-	randomColor = false,
-	...divProps
-}) => {
+const Avatar = (
+	{
+		size = 40,
+		children,
+		className,
+		style,
+		bgColor,
+		contentRatio = 0.5,
+		shape = "circle",
+		hoverable = false,
+		maxLetters = 1,
+		randomColor = false,
+		...divProps
+	}: AvatarProps,
+) => {
 	const [color, setColor] = useState<string>(bgColor || "var(--main)");
 
 	useEffect(() => {

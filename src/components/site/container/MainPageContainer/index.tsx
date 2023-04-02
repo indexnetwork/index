@@ -1,9 +1,9 @@
 import Container from "components/layout/base/Grid/Container";
 import React from "react";
 
-const MainPageContainer: React.FC = ({
+const MainPageContainer = ({
 	children,
-}) => <Container className="my-3 my-lg-8">
+} : any) => <Container className="my-3 my-lg-8">
 	{children}
 </Container>;
 

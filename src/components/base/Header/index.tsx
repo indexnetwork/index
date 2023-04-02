@@ -8,13 +8,17 @@ export interface HeaderProps extends React.DetailedHTMLProps<React.HTMLAttribute
 	theme?: TextThemeType;
 }
 
-const Header: React.FC<HeaderProps> = ({
-	level = 3, fontFamily = "default", theme, children, ...headerProps
-}) => (
-	React.createElement(`h${level}`, {
-		...headerProps,
-		className: cc([fontFamily, theme ? `text-${theme}` : undefined,
-			headerProps.className]),
-	}, children)
-);
+const Header = (
+	{
+		level = 3,
+		fontFamily = "default",
+		theme,
+		children,
+		...headerProps
+	}: HeaderProps,
+) => (React.createElement(`h${level}`, {
+	...headerProps,
+	className: cc([fontFamily, theme ? `text-${theme}` : undefined,
+		headerProps.className]),
+}, children));
 export default Header;

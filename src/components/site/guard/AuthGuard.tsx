@@ -5,9 +5,11 @@ import React, { ReactElement } from "react";
 import { selectConnection } from "store/slices/connectionSlice";
 import { isSSR } from "utils/helper";
 
-const AuthGuard: React.FC<{
-	children: ReactElement,
-}> = (props) => {
+const AuthGuard = (
+	props: {
+        children: ReactElement
+    },
+) => {
 	const router = useRouter();
 	const { loading } = useAppSelector(selectConnection);
 	const authenticated = useAuth();

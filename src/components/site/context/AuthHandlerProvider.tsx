@@ -9,6 +9,9 @@ import {
 	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected,
 } from "store/slices/connectionSlice";
 import { setProfile } from "store/slices/profileSlice";
+import {
+	PropsWithChildren,
+} from "../../../../../../../../../../Applications/WebStorm.app/Contents/plugins/JavaScriptLanguage/jsLanguageServicesImpl/external/react";
 
 declare global {
 	interface Window {
@@ -25,7 +28,7 @@ let session: DIDSession | null | undefined;
 
 export const AuthHandlerContext = React.createContext<AuthHandlerContextType>({} as any);
 
-export const AuthHandlerProvider: React.FC = ({ children }) => {
+export const AuthHandlerProvider = ({ children }: PropsWithChildren<any>) => {
 	const connection = useAppSelector(selectConnection);
 	const dispatch = useAppDispatch();
 	const router = useRouter();

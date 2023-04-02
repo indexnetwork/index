@@ -98,6 +98,8 @@ const IndexItemList: React.VFC<LinkListProps> = ({
 		 */
 	};
 
+	// write a function connect redis nodes to have consistent redis pub/sub
+
 	const handleLinksChange = (newLink: Link) => {
 		// setItems(newLinks);
 	};

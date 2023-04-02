@@ -13,19 +13,21 @@ export interface TextProps extends
 	hidden?: boolean;
 }
 
-const Text: React.FC<TextProps> = ({
-	children,
-	className,
-	style,
-	fontWeight,
-	lineHeight,
-	verticalAlign,
-	element = "span",
-	theme = "gray5",
-	size = "md",
-	hidden = false,
-	...moreProps
-}) => React.createElement(element, {
+const Text = (
+	{
+		children,
+		className,
+		style,
+		fontWeight,
+		lineHeight,
+		verticalAlign,
+		element = "span",
+		theme = "gray5",
+		size = "md",
+		hidden = false,
+		...moreProps
+	}: TextProps,
+) => React.createElement(element, {
 	className: cc(
 		[
 			"text",

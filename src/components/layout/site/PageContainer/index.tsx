@@ -5,12 +5,17 @@ import cm from "./style.module.scss";
 
 export interface PageContainerProps extends ContainerProps { }
 
-const PageContainer: React.FC<PageContainerProps> = ({ children, className, ...containerProps }) => (
-	<Container
-		className={cc([cm.pageContainer, className || ""])}
-		{...containerProps}
-	>
-		{children}
-	</Container>);
+const PageContainer = (
+	{
+		children,
+		className,
+		...containerProps
+	}: PageContainerProps,
+) => (<Container
+	className={cc([cm.pageContainer, className || ""])}
+	{...containerProps}
+>
+	{children}
+</Container>);
 
 export default PageContainer;

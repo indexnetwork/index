@@ -10,9 +10,16 @@ export interface ButtonGroupProps extends React.DetailedHTMLProps<React.HTMLAttr
 	children?: React.ReactElement<ButtonProps>[];
 }
 
-const ButtonGroup: React.FC<ButtonGroupProps> = ({
-	children, className, outlined, theme = "primary", size = "md", ...divProps
-}) => <div
+const ButtonGroup = (
+	{
+		children,
+		className,
+		outlined,
+		theme = "primary",
+		size = "md",
+		...divProps
+	}: ButtonGroupProps,
+) => <div
 	{...divProps}
 	className={
 		cc([

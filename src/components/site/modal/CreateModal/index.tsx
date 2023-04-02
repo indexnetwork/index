@@ -17,9 +17,9 @@ import { Indexes } from "types/entity";
 export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
 }
 
-const CreateModal: React.VFC<CreateModalProps> = ({
+const CreateModal = ({
 	...modalProps
-}) => {
+} : any) => {
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const handleClose = () => {

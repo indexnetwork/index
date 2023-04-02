@@ -20,10 +20,10 @@ export interface TokenModalProps extends Omit<ModalProps, "header" | "footer" | 
 	data: any;
 }
 
-const TokenModal: React.VFC<TokenModalProps> = ({
+const TokenModal = ({
 	data,
 	...modalProps
-}) => {
+} : any) => {
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const handleClose = () => {

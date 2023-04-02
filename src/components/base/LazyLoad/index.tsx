@@ -4,13 +4,16 @@ import React, { useRef, useState } from "react";
 export interface LazyLoadProps {
 	options?: IntersectionObserverInit;
 	height?: React.CSSProperties["height"];
+	children: React.ReactNode;
 }
 
-const LazyLoad: React.FC<LazyLoadProps> = ({
-	children,
-	options,
-	height = 93,
-}) => {
+const LazyLoad = (
+	{
+		children,
+		options,
+		height = 93,
+	}: LazyLoadProps,
+) => {
 	const divRef = useRef<HTMLDivElement>(null);
 	const [load, setLoad] = useState(false);
 

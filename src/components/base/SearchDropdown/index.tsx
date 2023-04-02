@@ -13,6 +13,7 @@ import Input from "../Input";
 import Spin from "../Spin";
 
 export interface SearchDropdownProps {
+	children: ReactNode;
 	value?: string;
 	size?: InputSizeType,
 	fullWidth?: boolean;
@@ -37,25 +38,27 @@ export interface SearchDropdownProps {
 	onMenuStateChanged?(open: boolean): void;
 }
 
-const SearchDropdown: React.FC<SearchDropdownProps> = ({
-	children,
-	addOnAfter,
-	inputClass,
-	size = "md",
-	fullWidth = true,
-	disabled = false,
-	showClear = true,
-	placeholder,
-	debounceTime = 1000,
-	loading = false,
-	closeMenuWhenEmpty = true,
-	clearOnClose = true,
-	closeMenuOnTextChange = false,
-	open = false,
-	defaultValue = "",
-	onMenuStateChanged,
-	onSearch,
-}) => {
+const SearchDropdown = (
+	{
+		children,
+		addOnAfter,
+		inputClass,
+		size = "md",
+		fullWidth = true,
+		disabled = false,
+		showClear = true,
+		placeholder,
+		debounceTime = 1000,
+		loading = false,
+		closeMenuWhenEmpty = true,
+		clearOnClose = true,
+		closeMenuOnTextChange = false,
+		open = false,
+		defaultValue = "",
+		onMenuStateChanged,
+		onSearch,
+	}: SearchDropdownProps,
+) => {
 	const { t } = useTranslation(["components"]);
 
 	const [loaded, setLoaded] = useState(false);

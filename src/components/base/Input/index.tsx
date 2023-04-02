@@ -15,18 +15,20 @@ export interface InputProps extends React.DetailedHTMLProps<React.InputHTMLAttri
 	type?: PropType<React.InputHTMLAttributes<HTMLInputElement>, "type">;
 }
 
-const Input: React.FC<InputProps> = ({
-	className,
-	addOnBefore,
-	addOnAfter,
-	disabled,
-	readOnly,
-	type,
-	block = true,
-	inputSize = "md",
-	ghost = false,
-	...inputProps
-}) => {
+const Input = (
+	{
+		className,
+		addOnBefore,
+		addOnAfter,
+		disabled,
+		readOnly,
+		type,
+		block = true,
+		inputSize = "md",
+		ghost = false,
+		...inputProps
+	}: InputProps,
+) => {
 	const inputRef = useRef<HTMLInputElement>(null);
 	const [showPw, setShowPw] = useState(false);
 

@@ -38,19 +38,24 @@ export interface ButtomMenuDivState {
 	collapsed?: boolean;
 }
 
-const BottomMenuDiv: React.FC<BottomMenuDivProps> = ({
-	children,
-	style,
-	menuOpen,
-	transition = "unset", // "max-height .2s cubic-bezier(0.0, .60, .75, 1.0)",
-	collapseThresholdForSingleTouch = 0.1,
-	collapseThresholdForMinSize = 0.6,
-	maxVh = 70,
-	closeAnimationDelay = 200,
-	onCollapse,
-	onMenuStateChanged,
-	...divProps
-}) => {
+const BottomMenuDiv = (
+	{
+		children,
+		style,
+		menuOpen,
+
+		// "max-height .2s cubic-bezier(0.0, .60, .75, 1.0)",
+		transition = "unset",
+
+		collapseThresholdForSingleTouch = 0.1,
+		collapseThresholdForMinSize = 0.6,
+		maxVh = 70,
+		closeAnimationDelay = 200,
+		onCollapse,
+		onMenuStateChanged,
+		...divProps
+	}: BottomMenuDivProps,
+) => {
 	const breakpoint = useBreakpoint(BREAKPOINTS);
 	const [state, setState] = useMergedState<ButtomMenuDivState>({ height: 0, maxHeight: 0, firstLoad: true });
 

@@ -14,6 +14,7 @@ import { AuthHandlerProvider } from "components/site/context/AuthHandlerProvider
 
 type AppPropsWithLayout = AppProps & {
 	Component: NextPageWithLayout;
+	children: React.ReactNode;
 };
 
 function MyApp({ Component, pageProps }: AppPropsWithLayout) {

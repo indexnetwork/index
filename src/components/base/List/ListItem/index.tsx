@@ -8,23 +8,23 @@ export interface ListItemProps {
 	snapshot?: DraggableStateSnapshot;
 }
 
-const ListItem: React.FC<PropsWithChildren<ListItemProps>> = ({
-	children,
-	className,
-	provided,
-}) => (
-	<li
-		ref={provided?.innerRef}
-		{...(provided?.draggableProps)}
-		className={cc(
-			[
-				"list-item",
-				className || "",
-			],
-		)}
-	>
-		{children}
-	</li>
-);
+const ListItem = (
+	{
+		children,
+		className,
+		provided,
+	}: PropsWithChildren<ListItemProps>,
+) => (<li
+	ref={provided?.innerRef}
+	{...(provided?.draggableProps)}
+	className={cc(
+		[
+			"list-item",
+			className || "",
+		],
+	)}
+>
+	{children}
+</li>);
 
 export default ListItem;

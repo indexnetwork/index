@@ -8,15 +8,18 @@ export interface CollapseProps {
 	className?: string;
 	collapsed?: boolean;
 	onChange?(collapsed: boolean): void;
+	children: React.ReactNode;
 }
 
-const Collapse: React.FC<CollapseProps> = ({
-	children,
-	title,
-	className,
-	collapsed = false,
-	onChange,
-}) => {
+const Collapse = (
+	{
+		children,
+		title,
+		className,
+		collapsed = false,
+		onChange,
+	}: CollapseProps,
+) => {
 	const [isCollapsed, setIsCollapsed] = useState(collapsed);
 
 	const handleToggle = () => {

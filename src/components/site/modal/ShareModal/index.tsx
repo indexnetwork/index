@@ -18,10 +18,10 @@ export interface ShareModalProps extends Omit<ModalProps, "body" | "header" | "f
 	data: any;
 }
 
-const ShareModal: React.VFC<ShareModalProps> = ({
+const ShareModal = ({
 	data,
 	...modalProps
-}) => {
+} : any) => {
 	const test = 2;
 	return <Modal
 		{...modalProps}

@@ -9,21 +9,22 @@ import DropdownMenu from "./DropdownMenu";
 export interface DropdownProps extends Omit<PopupProps, "content" | "popupClass"> {
 	dropdownClass?: string;
 	menuItems: ReactElement<DropdownMenuItemProps> | ReactElement<DropdownMenuItemProps>[];
+	children: React.ReactNode;
 }
 
-const Dropdown: React.FC<DropdownProps> = ({
-	menuItems,
-	children,
-	dropdownClass,
-	...popupProps
-}) => (
-	<Popup
-		{...popupProps}
-		popupClass={cc(["dropdown", dropdownClass || ""])}
-		content={<DropdownMenu>{menuItems}</DropdownMenu>}
-	>
-		{children}
-	</Popup>
-);
+const Dropdown = (
+	{
+		menuItems,
+		children,
+		dropdownClass,
+		...popupProps
+	}: DropdownProps,
+) => (<Popup
+	{...popupProps}
+	popupClass={cc(["dropdown", dropdownClass || ""])}
+	content={<DropdownMenu>{menuItems}</DropdownMenu>}
+>
+	{children}
+</Popup>);
 
 export default Dropdown;

@@ -4,7 +4,7 @@ import Footer, { FooterMenu } from "components/layout/base/Footer";
 import React from "react";
 import LogoFull from "components/base/Logo/LogoFull";
 
-const SiteFooter: React.FC = () => (
+const SiteFooter = () => (
 	<Footer>
 		<FooterMenu className="mt-lg-8">
 			<a href="https://discord.gg/G7UYCXfR9p" target="_blank" rel="noreferrer">

@@ -11,9 +11,13 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import { useTranslation } from "next-i18next";
 import React, { useRef } from "react";
 
-export interface FilterPopupProps { }
+export interface FilterPopupProps { children: React.ReactNode }
 
-const FilterPopup: React.FC<FilterPopupProps> = ({ children }) => {
+const FilterPopup = (
+	{
+		children,
+	}: FilterPopupProps,
+) => {
 	const { t } = useTranslation(["common", "components"]);
 
 	const popup = useRef<PopupHandles>(null);

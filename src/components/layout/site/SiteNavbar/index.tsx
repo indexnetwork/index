@@ -27,7 +27,13 @@ export interface LandingHeaderProps extends NavbarProps {
 	isLanding?: boolean;
 }
 
-const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLanding = false, ...baseProps }) => {
+const SiteNavbar = (
+	{
+		headerType = "user",
+		isLanding = false,
+		...baseProps
+	}: LandingHeaderProps,
+) => {
 	const { t } = useTranslation(["common", "components"]);
 	const router = useRouter();
 
