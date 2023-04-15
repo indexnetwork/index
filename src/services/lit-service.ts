@@ -34,16 +34,24 @@ class LitService {
 		const mintCost = await litContracts.pkpNftContract.read.mintCost();
 		const mint = await litContracts.pkpNftContract.write.mintNext(2, { value: mintCost });
 		const wait = await mint.wait();
-		const tokenIdFromEvent = wait.events[1].topics[3];
+		
+		const pkpMintedEventTopic = ethers.utils.id("PKPMinted(uint256,bytes)");
+		const eventLog = wait.logs.find(
+			(log: { topics: string[]; }) => log.topics[0] === pkpMintedEventTopic
+		);
+		if (!eventLog) {
+			throw new Error("PKP minted event not found");
+		}
+
+		const tokenIdFromEvent = eventLog.topics[1]
 		const tokenIdNumber = ethers.BigNumber.from(tokenIdFromEvent).toString();
 		const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
-
 		console.log(
 			`PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
 		);
-
 		const addPermissionTx = await litContracts.pkpPermissionsContractUtil.write.addPermittedAction(tokenIdNumber, appConfig.defaultCID);
 		await addPermissionTx.wait();
+
 
 		return {
 			tokenIdFromEvent,
