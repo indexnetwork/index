@@ -108,12 +108,19 @@
 - [x] Set node count to 1
 - [x] Add loading/progress bar for bulk actions
 - [] Handle PKP Transfer
+- [] Delete link should be renamed to "Remove link"
+- [] Fix Highlight
+- [] Unexpected end of data LIT.
 
-- [] Lit actions: isOwner()
-- [] Lit actions: getCondition()
+
+- [] Lit actions: isCreator()
 - [] Call isCreator function & Improve isOwner
+
+- [] Lit actions: getCurrentActionDetails()
+
 - [] Write Dynamic Lit Action
 - [] Lit actions: isIndexer(link)
-- [] Lit actions: isCreator()
 
-- [] Delete link should be renamed to "Remove link"
+- [] Lit actions UI
+
+- 
