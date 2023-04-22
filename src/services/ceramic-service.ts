@@ -205,12 +205,13 @@ class CeramicService {
 	}
 
 	async addIndexLink(index: Indexes, link_id: string) : Promise <IndexLink> {
+
 		const indexLink: IndexLink = {
 			index_id: index.id,
 			link_id,
 			updated_at: getCurrentDateTime(),
 			created_at: getCurrentDateTime(),
-			indexer_did: this.userComposeClient.did?.id,
+			indexer_did: this.userComposeClient.did?.parent!,
 		};
 
 		const payload = {
