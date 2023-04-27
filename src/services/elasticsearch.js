@@ -1,3 +1,4 @@
+import dotenv from "dotenv";
 if(process.env.NODE_ENV !== 'production'){
     dotenv.config()
 }
@@ -7,7 +8,7 @@ import _ from 'lodash';
 
 import { Client } from '@elastic/elasticsearch'
 import RedisClient from '../clients/redis.js';
-import * as dotenv from "dotenv";
+
 
 
 const client = new Client({ node: process.env.ELASTIC_HOST })
