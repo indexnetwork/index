@@ -17,13 +17,7 @@ const enrichConditions = async (conditions) => {
             return condition;
         }
 
-        if(condition.parameters[0] === ":userAddress"){
-            condition.metadata = {
-                rule_type: "wallet",
-                chain: condition.chain,
-                address: condition.returnValueTest.value,
-            }
-        }else if(condition.method === "ownerOf"){
+        if(condition.method === "ownerOf"){
             condition.metadata = {
                 ruleType: "nftOwner",
                 chain: condition.chain,
@@ -38,7 +32,14 @@ const enrichConditions = async (conditions) => {
                 tokenId: condition.parameters[0],
                 title: 'Content heroes'
             }
+        } else if(condition.parameters[0] === ":userAddress"){
+            condition.metadata = {
+                ruleType: "wallet",
+                chain: condition.chain,
+                address: condition.returnValueTest.value,
+            }
         }
+
         return condition;
 
     }));
