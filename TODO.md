@@ -117,8 +117,8 @@
 https://lit-share-modal-v3-playground.netlify.app/
 
 - [x] Lit actions: getAction(CID)  
-- [] Lit actions: newAction(conditions) CID
-- [] Write Dynamic Lit Action
+- [x] Lit actions: newAction(conditions) CID
+- [x] Write Dynamic Lit Action
 
 - [x] Lit actions: isCreator()
 - [x] Call isCreator function & Improve isOwner 

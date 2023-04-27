@@ -5,6 +5,10 @@ import { TextEncoder, TextDecoder } from "util";
 
 import { create } from 'ipfs-http-client'
 
+import RedisClient from '../clients/redis.js';
+const redis = RedisClient.getInstance();
+
+
 const enrichConditions = async (conditions) => {
 
     conditions = await Promise.all(conditions.map( async (condition) => {
@@ -62,6 +66,11 @@ export const get_action = async (req, res, next) => {
 
     const { cid } = req.params;
 
+    const cached = await redis.hGet(`lit_actions`, cid);
+    if(cached){
+        return res.json(JSON.parse(cached))
+    }
+
     try {
 
         const runner =  new NodeVM({
@@ -79,6 +88,7 @@ export const get_action = async (req, res, next) => {
 
             let conditions = JSON.parse(data);
             let enrichedConditions = await enrichConditions(conditions);
+            await redis.hSet(`lit_actions`, cid, JSON.stringify(enrichedConditions));
             return res.json(enrichedConditions)
         });
 
