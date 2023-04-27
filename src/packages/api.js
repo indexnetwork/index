@@ -1,28 +1,32 @@
-if(process.env.NODE_ENV !== 'production'){
-    require('dotenv').config()
-}
 
-const RedisClient = require('../clients/redis.js');
+import * as dotenv from 'dotenv'
+if(process.env.NODE_ENV !== 'production'){
+  dotenv.config()
+}
+import Moralis from 'moralis';
+import RedisClient  from '../clients/redis.js';
 const redis = RedisClient.getInstance();
 
-const search = require('../services/elasticsearch.js')
-const composedb = require('../services/composedb.js')
+import * as search from '../services/elasticsearch.js';
+import * as composedb from '../services/composedb.js';
+import * as litActions from '../services/lit_actions.js';
+import * as moralis from '../libs/moralis.js';
 
-const Moralis = require("moralis").default;
-const moralis = require('../libs/moralis.js')
+import Joi from 'joi';
+import * as ejv from 'express-joi-validation';
 
-const { getQueue, getMetadata } = require('../libs/crawl.js')
+import { getQueue, getMetadata } from '../libs/crawl.js'
 
-const express = require('express')
-const cors = require('cors')
+import express from 'express';
+
 const app = express()
 const port = process.env.PORT || 3001;
 
 app.use(express.json())
 
-const Joi = require('joi')
 
-const validator = require('express-joi-validation').createValidator({
+
+const validator = ejv.createValidator({
   passError: true
 })
 
@@ -66,6 +70,9 @@ app.get('/index_link/:id', composedb.get_index_link)
 
 app.post('/webhook/moralis/pkp', moralis.indexPKP)
 
+app.get('/lit_actions/:cid', litActions.get_action);
+app.post('/lit_actions', litActions.post_action);
+
 
 
 const crawlSchema = Joi.object({
@@ -87,6 +94,7 @@ app.get('/crawl/metadata', validator.query(crawlSchema), async (req, res) => {
 
 
 
+
 app.use((err, req, res, next) => {
   if (err && err.error && err.error.isJoi) {
     res.status(400).json({
@@ -99,11 +107,13 @@ app.use((err, req, res, next) => {
 });
 
 const start = async () => {
+
   await redis.connect()
   await Moralis.start({
     apiKey: process.env.MORALIS_API_KEY,
   });
-  await app.set('queue', await getQueue())
+
+  //await app.set('queue', await getQueue())
   await app.listen(port, async () => {
 
     console.log(`Search service listening on port ${port}`)

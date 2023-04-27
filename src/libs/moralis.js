@@ -1,12 +1,11 @@
-const Moralis = require("moralis").default;
+import Moralis from 'moralis'
+import {getPkpPublicKey, encodeDIDWithLit, walletToDID} from "../utils/lit/index.js";
 
-const {getPkpPublicKey, encodeDIDWithLit, walletToDID} = require("../utils/lit");
-
-const RedisClient = require('../clients/redis.js');
+import RedisClient from '../clients/redis.js';
 const redis = RedisClient.getInstance();
 
 
-module.exports.indexPKP = async (req, res, next) => {
+export const indexPKP = async (req, res, next) => {
 
     const { headers, body } = req;
 

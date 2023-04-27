@@ -1,5 +1,10 @@
-require('dotenv').config()
-const { Client } = require('@elastic/elasticsearch')
+import * as dotenv from 'dotenv'
+if(process.env.NODE_ENV !== 'production'){
+  dotenv.config()
+}
+
+import { Client } from '@elastic/elasticsearch'
+
 const client = new Client({ node: process.env.ELASTIC_HOST })
 
 async function reset() {

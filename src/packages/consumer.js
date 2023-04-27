@@ -1,17 +1,19 @@
+import * as dotenv from 'dotenv'
 if(process.env.NODE_ENV !== 'production'){
-    require('dotenv').config()
+    dotenv.config()
 }
 
-const _ = require('lodash')
-const { Kafka } = require('kafkajs')
-const indexer = require('../libs/kafka-indexer.js')
+import _  from 'lodash';
+import { Kafka } from 'kafkajs'
+import * as indexer from '../libs/kafka-indexer.js';
+import RedisClient from '../clients/redis.js';
 
 const kafka = new Kafka({
     clientId: 'api',
     brokers: [process.env.KAFKA_HOST],
 })
 
-const RedisClient = require('../clients/redis.js');
+
 const redis = RedisClient.getInstance();
 
 const topics = {

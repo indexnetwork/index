@@ -113,14 +113,16 @@
 - [] Unexpected end of data LIT.
 
 
-- [] Lit actions: isCreator()
-- [] Call isCreator function & Improve isOwner
 
-- [] Lit actions: getCurrentActionDetails()
+https://lit-share-modal-v3-playground.netlify.app/
 
+- [x] Lit actions: getAction(CID)  
+- [] Lit actions: newAction(conditions) CID
 - [] Write Dynamic Lit Action
-- [] Lit actions: isIndexer(link)
+
+- [x] Lit actions: isCreator()
+- [x] Call isCreator function & Improve isOwner 
+- [x] Lit actions: isIndexer(link)
 
 - [] Lit actions UI
 
-- 

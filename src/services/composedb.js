@@ -1,6 +1,6 @@
-const composedb = require('../libs/composedb.js');
+import * as composedb from '../libs/composedb.js';
 
-exports.get_index = async (req, res, next) => {
+export const get_index = async (req, res, next) => {
 
     const { id } = req.params;
 
@@ -12,7 +12,7 @@ exports.get_index = async (req, res, next) => {
 };
 
 
-exports.get_index_link = async (req, res, next) => {
+export const get_index_link = async (req, res, next) => {
 
     const { id } = req.params;
 

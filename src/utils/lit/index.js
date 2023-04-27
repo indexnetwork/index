@@ -1,17 +1,18 @@
-const { LitContracts } = require("@lit-protocol/contracts-sdk");
-const u8a = require('@lit-protocol/uint8arrays')
-const { keccak256 } = require("@ethersproject/keccak256");
-const { ethers } = require("ethers");
-const elliptic = require("elliptic");
+import { LitContracts } from "@lit-protocol/contracts-sdk";
+import u8a from '@lit-protocol/uint8arrays';
+import { keccak256 } from "@ethersproject/keccak256";
+import { ethers } from "ethers";
+import elliptic from "elliptic";
 const ec = new elliptic.ec("secp256k1");
-exports.getPkpPublicKey = async (tokenId) => {
+
+export const getPkpPublicKey = async (tokenId) => {
 	const litContracts = new LitContracts();
 	await litContracts.connect();
 	const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenId);
 	return pkpPublicKey
 }
 
-exports.getOwner = async (pkpPubKey) => {
+export const getOwner = async (pkpPubKey) => {
 	const pubkeyHash = keccak256(pkpPubKey);
     const tokenId = BigInt(pubkeyHash);
 
@@ -22,7 +23,7 @@ exports.getOwner = async (pkpPubKey) => {
     return address;
 }
 
-exports.encodeDIDWithLit = (pkpPubKey) =>  {
+export const encodeDIDWithLit = (pkpPubKey) =>  {
 
 	pkpPubKey = pkpPubKey.replace('0x', '')
 
@@ -44,7 +45,7 @@ exports.encodeDIDWithLit = (pkpPubKey) =>  {
 
 
 
-module.exports.decodeDIDWithLit = (encodedDID) => {
+export const decodeDIDWithLit = (encodedDID) => {
 
     const arr = encodedDID?.split(':');
 
@@ -69,4 +70,4 @@ module.exports.decodeDIDWithLit = (encodedDID) => {
     return '0x0' + pubKey;
 }
 
-exports.walletToDID = (chain, wallet) => `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`
+export const walletToDID = (chain, wallet) => `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`

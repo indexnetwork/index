@@ -1,17 +1,22 @@
-const { Client } = require('@elastic/elasticsearch')
+import * as dotenv from 'dotenv'
+if(process.env.NODE_ENV !== 'production'){
+    dotenv.config()
+}
+
+import { Client } from '@elastic/elasticsearch'
 
 const client = new Client({ node: process.env.ELASTIC_HOST })
 
-const RedisClient = require('../clients/redis.js');
+import RedisClient from '../clients/redis.js';
 const redis = RedisClient.getInstance();
 
-const {getIndexById, getIndexLinkById, getLinkById} = require("./composedb");
+import {getIndexById, getIndexLinkById, getLinkById} from "./composedb.js";
 
 const config = {
     indexName: 'links'
 }
 
-module.exports.createIndex = async (indexMsg) => {
+export const createIndex = async (indexMsg) => {
     console.log("createIndex", indexMsg)
 
     let index = await getIndexById(indexMsg.id)
@@ -36,7 +41,7 @@ module.exports.createIndex = async (indexMsg) => {
     });
 
 }
-module.exports.updateIndex = async (indexMsg) => {
+export const updateIndex = async (indexMsg) => {
     console.log("updateIndex", indexMsg)
 
     let index = await getIndexById(indexMsg.id)
@@ -81,7 +86,7 @@ module.exports.updateIndex = async (indexMsg) => {
         },
     })
 }
-module.exports.createIndexLink = async (indexLinkMsg) => {
+export const createIndexLink = async (indexLinkMsg) => {
     console.log("createIndexLink", indexLinkMsg)
 
     let indexLink = await getIndexLinkById(indexLinkMsg.id)
@@ -95,7 +100,7 @@ module.exports.createIndexLink = async (indexLinkMsg) => {
         doc: indexLink,
     })
 }
-module.exports.updateIndexLink = async (indexLinkMsg) => {
+export const updateIndexLink = async (indexLinkMsg) => {
 
     console.log("updateIndexLink", indexLinkMsg)
 
@@ -112,11 +117,11 @@ module.exports.updateIndexLink = async (indexLinkMsg) => {
 }
 
 
-module.exports.createLink = async (link) => {
+export const createLink = async (link) => {
     console.log("createLink - Ignore", link)
 }
 
-module.exports.updateLink = async (linkMsg) => {
+export const updateLink = async (linkMsg) => {
 
     console.log("updateLink", linkMsg)
     const link = await getLinkById(linkMsg.id)
@@ -149,7 +154,7 @@ module.exports.updateLink = async (linkMsg) => {
 
 
 
-module.exports.updateLinkContent = async (url, content) => {
+export const updateLinkContent = async (url, content) => {
 
     console.log("updateLinkContent", url, content)
 
@@ -187,11 +192,11 @@ module.exports.updateLinkContent = async (url, content) => {
         },
     })
 }
-module.exports.createUserIndex = async (user_index) => {
+export const createUserIndex = async (user_index) => {
     console.log("createUserIndex", user_index)
     await redis.hSet(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))
 }
-module.exports.updateUserIndex = async (user_index) => {
+export const updateUserIndex = async (user_index) => {
     console.log("updateUserIndex", user_index)
     if(user_index.deleted_at){
         await redis.hDel(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`)

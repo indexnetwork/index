@@ -1,10 +1,16 @@
-const moment = require("moment");
-const _ = require('lodash')
+if(process.env.NODE_ENV !== 'production'){
+    dotenv.config()
+}
 
-const { Client } = require('@elastic/elasticsearch')
+import moment from "moment";
+import _ from 'lodash';
+
+import { Client } from '@elastic/elasticsearch'
+import RedisClient from '../clients/redis.js';
+import * as dotenv from "dotenv";
+
+
 const client = new Client({ node: process.env.ELASTIC_HOST })
-
-const RedisClient = require('../clients/redis.js');
 const redis = RedisClient.getInstance();
 
 const config = {
@@ -358,13 +364,13 @@ const promiseAllOfObject = async (obj) => {
   );
 };
 
-exports.did = async (req, res) => {
+export const did = async (req, res) => {
 
     const {did, type, search, skip, take, links_size} = req.body;
 
     let user_indexes = await redis.hGetAll(`user_indexes:by_did:${did.toLowerCase()}`)
 
-    user_indexes_by_type = _.chain(user_indexes)
+    let user_indexes_by_type = _.chain(user_indexes)
                             .map(i => JSON.parse(i))
                             .filter(i => !i.deleted_at)
                             .groupBy("type")
@@ -385,7 +391,7 @@ exports.did = async (req, res) => {
 
 };
 
-exports.index = async (req, res) => {
+export const index = async (req, res) => {
 
     const {index_ids, search, skip, take, links_size} = req.body;
 
@@ -404,7 +410,7 @@ exports.index = async (req, res) => {
 
 };
 
-exports.link = async (req, res, next) => {
+export const link = async (req, res, next) => {
 
     const {index_id, search, skip, take} = req.body;
     const query = linksQuery(index_id, search, skip, take);
@@ -420,7 +426,7 @@ exports.link = async (req, res, next) => {
     res.json(response)
 };
 
-exports.user_index = async (req, res, next) => {
+export const user_index = async (req, res, next) => {
 
     const { did, index_id } = req.body;
 

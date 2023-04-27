@@ -24,6 +24,7 @@
     "express-joi-validation": "^5.0.1",
     "fetch": "^1.1.0",
     "http-errors": "~1.6.3",
+    "ipfs-http-client": "^60.0.0",
     "jade": "^1.11.0",
     "joi": "^17.8.3",
     "kafkajs": "^2.2.4",
@@ -35,8 +36,10 @@
     "puppeteer": "^19.7.2",
     "redis": "^4.6.5",
     "striptags": "^3.2.0",
-    "uint8arrays": "^4.0.3"
+    "uint8arrays": "^4.0.3",
+    "vm2": "^3.9.17"
   },
+  "type": "module",
   "devDependencies": {
     "dotenv": "^16.0.3"
   }

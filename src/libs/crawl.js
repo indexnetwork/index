@@ -1,12 +1,12 @@
-const { Actor} = require('apify');
-const { PuppeteerCrawler, RequestList, sleep }  = require("crawlee");
-const {Readability} =  require("@mozilla/readability");
-const indexer = require('./kafka-indexer.js')
-const fs = require("fs");
-const striptags = require("striptags")
+import { Actor} from 'apify';
+import { PuppeteerCrawler, RequestList, sleep } from "crawlee";
+import {Readability} from "@mozilla/readability";
+import * as indexer from './kafka-indexer.js';
+import fs from "fs";
+import striptags from "striptags";
 
 
-exports.getQueue = async () => {
+export const getQueue = async () => {
 
 	console.log("getQUEUEUE")
 	await Actor.init();
@@ -72,7 +72,7 @@ exports.getQueue = async () => {
 }
 
 
-exports.getMetadata = async (url) => {
+export const  getMetadata = async (url) => {
 
 	let results = await fetch(`https://iframe.ly/api/iframely?api_key=${process.env.IFRAMELY_API_KEY}&url=${url}&ssl=1&title=1`, {
 		method: 'GET',

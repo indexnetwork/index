@@ -1,10 +1,10 @@
-const _ = require('lodash')
+import _ from 'lodash';
+import RedisClient from '../clients/redis.js';
+import moment from "moment";
 
-const RedisClient = require('../clients/redis.js');
-const moment = require("moment");
 const redis = RedisClient.getInstance();
 
-module.exports.getIndexLinkById = async(id) => {
+export const getIndexLinkById = async(id) => {
     let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
         method: 'POST',
         headers: {
@@ -60,7 +60,7 @@ module.exports.getIndexLinkById = async(id) => {
 }
 
 
-module.exports.getLinkById = async(id) => {
+export const getLinkById = async(id) => {
     let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
         method: 'POST',
         headers: {
@@ -91,7 +91,7 @@ module.exports.getLinkById = async(id) => {
     return res.data.node;
 }
 
-module.exports.getIndexById = async (id) => {
+export const getIndexById = async (id) => {
         let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
         method: 'POST',
         headers: {
@@ -143,7 +143,7 @@ module.exports.getIndexById = async (id) => {
 
 }
 
-module.exports.getIndexByPKP = async (id) => {
+export const getIndexByPKP = async (id) => {
 
     let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
         method: 'POST',
