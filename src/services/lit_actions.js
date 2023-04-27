@@ -25,14 +25,14 @@ const enrichConditions = async (conditions) => {
             }
         }else if(condition.method === "ownerOf"){
             condition.metadata = {
-                rule_type: "nft_owner",
+                ruleType: "nftOwner",
                 chain: condition.chain,
                 contractAddress: condition.contractAddress,
                 title: 'Content heroes'
             }
         } else if(condition.method === "balanceOf"){
             condition.metadata = {
-                rule_type: "nft_owner",
+                ruleType: "nftOwner",
                 chain: condition.chain,
                 contractAddress: condition.contractAddress,
                 tokenId: condition.parameters[0],
