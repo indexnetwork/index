@@ -2,4 +2,5 @@ FROM apify/actor-node-puppeteer-chrome:latest@sha256:9b5b1138e2d78d20700ab94db0d
 COPY package*.json ./
 RUN yarn install
 COPY src/ src/
+COPY lit_action.js lit_action.js
 ENTRYPOINT yarn start
