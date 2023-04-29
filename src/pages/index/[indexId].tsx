@@ -19,6 +19,7 @@ import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import Avatar from "components/base/Avatar";
 import LinkInput from "components/site/input/LinkInput";
 import IndexItemList from "components/site/index-details/IndexItemList";
+import CreatorSettings from "components/site/index-details/CreatorSettings";
 import { useRouter } from "next/router";
 import { Indexes, IndexLink } from "types/entity";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
@@ -42,6 +43,9 @@ import Soon from "components/site/indexes/Soon";
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	// const [shareModalVisible, setShareModalVisible] = useState(false);
+	const router = useRouter();
+	const { indexId } = router.query;
+
 	const dispatch = useAppDispatch();
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
 	const [links, setLinks] = useState<IndexLink[]>([]);
@@ -66,7 +70,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const ceramic = useCeramic();
 
-	const router = useRouter();
 
 	// const handleToggleShareModal = () => {
 	// 	setShareModalVisible((oldVal) => !oldVal);
@@ -80,7 +83,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const doc = await ceramic.getIndexById(indexId);
 		if (doc != null) {
 			setIndex(doc);
-			setIsOwner(doc.owner_did?.id === did);
+			setIsOwner(true);
 			loadUserIndex(indexId);
 		} else {
 			setNotFound(true);
@@ -136,11 +139,17 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		}
 	};
 	useEffect(() => {
-		const { indexId } = router.query;
-		if (indexId && did) {
-			loadIndex(indexId as string);
+
+		if(!loading){
+			setLoading(true);
+			if (indexId && did) {
+				loadIndex(indexId as string);
+
+				console.log("aaa", indexId);
+			}
 		}
-	}, [router.query, did]);
+
+	}, [indexId, did]);
 
 	useEffect(() => {
 		if (addedLink) {
@@ -309,7 +318,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<FlexRow
 											justify="center"
 										>
-
 											<Col xs={12} lg={9}>
 												<IndexItemList
 													search={search}
@@ -318,15 +326,19 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												// onChange={handleReorderLinks}
 												/>
 											</Col>
-
-											<Col xs={12} lg={9}>
-											</Col>
-										</FlexRow> :
+										</FlexRow> : tabKey === "creators" ?
 										<Col>
+											<FlexRow justify="center">
+												<Col xs={12} lg={9}>
+													<CreatorSettings collab_action={index.collab_action}></CreatorSettings>
+												</Col>
+											</FlexRow>
+										</Col> : <Col>
 											<FlexRow justify="center">
 												<Soon section={tabKey}></Soon>
 											</FlexRow>
-										</Col>}
+										</Col>
+									}
 								</>
 							)
 					}

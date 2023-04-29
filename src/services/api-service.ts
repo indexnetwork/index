@@ -47,6 +47,10 @@ export interface DidSearchResponse {
 	records: Indexes[];
 }
 
+export interface LitActionConditions {
+
+}
+
 export interface LinkSearchResponse {
 	totalCount: number;
 	records: IndexLink[];
@@ -133,6 +137,14 @@ class ApiService {
 	async searchLink(body: LinkSearchRequestBody): Promise<LinkSearchResponse | null> {
 		try {
 			const { data } = await apiAxios.post<LinkSearchResponse>(API_ENDPOINTS.SEARCH_LINKS, body);
+			return data;
+		} catch (err) {
+			return null;
+		}
+	}
+	async getLITAction(CID: string): Promise<LitActionConditions | null > {
+		try {
+			const { data } = await apiAxios.get<LitActionConditions>(`${API_ENDPOINTS.LIT_ACTIONS}/${CID}`);
 			return data;
 		} catch (err) {
 			return null;

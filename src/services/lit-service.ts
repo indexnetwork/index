@@ -32,25 +32,26 @@ class LitService {
 		await litContracts.connect();
 
 		const mintCost = await litContracts.pkpNftContract.read.mintCost();
+		console.log(mintCost);
 		const mint = await litContracts.pkpNftContract.write.mintNext(2, { value: mintCost });
 		const wait = await mint.wait();
-		
+
 		const pkpMintedEventTopic = ethers.utils.id("PKPMinted(uint256,bytes)");
 		const eventLog = wait.logs.find(
-			(log: { topics: string[]; }) => log.topics[0] === pkpMintedEventTopic
+			(log: { topics: string[]; }) => log.topics[0] === pkpMintedEventTopic,
 		);
 		if (!eventLog) {
 			throw new Error("PKP minted event not found");
 		}
 
-		const tokenIdFromEvent = eventLog.topics[1]
+		const tokenIdFromEvent = eventLog.topics[1];
 		const tokenIdNumber = ethers.BigNumber.from(tokenIdFromEvent).toString();
 		const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
 		console.log(
 			`PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
 		);
-		const addPermissionTx = await litContracts.pkpPermissionsContractUtil.write.addPermittedAction(tokenIdNumber, appConfig.defaultCID);
-		await addPermissionTx.wait();
+		let acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
+		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenIdNumber, acid, []);
 
 
 		return {
