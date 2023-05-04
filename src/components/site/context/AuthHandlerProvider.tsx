@@ -152,7 +152,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		const hasOrigin = await litService.hasOriginNFT();
 		if (!hasOrigin) {
 			dispatch(setOriginNFTModalVisible(true));
-		}else{
+		} else {
 			await authToCeramic();
 			await getProfile();
 			await router.push(`/${session?.did.parent}`);
