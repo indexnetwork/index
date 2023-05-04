@@ -1,7 +1,7 @@
 import Text from "components/base/Text";
 import Modal, { ModalProps } from "components/base/Modal";
 import Row from "components/layout/base/Grid/Row";
-import React  from "react";
+import React from "react";
 import Col from "components/layout/base/Grid/Col";
 import Header from "components/base/Header";
 import Flex from "components/layout/base/Grid/Flex";

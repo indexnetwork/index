@@ -8,10 +8,10 @@ import IconPeople from "components/base/Icon/IconPeople";
 import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
 import React, {
-	useCallback, useContext, useEffect, useState,
+	useCallback, useContext, useState,
 } from "react";
 import IconDisconnect from "components/base/Icon/IconDisconnect";
-import Router, { useRouter } from "next/router";
+import { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
 import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";

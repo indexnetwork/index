@@ -4,7 +4,7 @@ import { normalizeAccountId } from "@ceramicnetwork/common";
 
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { useRouter } from "next/router";
-import React, {useEffect, useState} from "react";
+import React, { useEffect, useState } from "react";
 import ceramicService from "services/ceramic-service";
 import { getAddress } from "@ethersproject/address";
 import { randomBytes, randomString } from "@stablelib/random";
@@ -36,7 +36,6 @@ type SessionResponse = {
 export const AuthHandlerContext = React.createContext<AuthHandlerContextType>({} as any);
 
 export const AuthHandlerProvider = ({ children }: any) => {
-
 	const { metaMaskConnected, originNFTModalVisible, loading } = useAppSelector(selectConnection);
 	const dispatch = useAppDispatch();
 	const router = useRouter();
@@ -173,7 +172,6 @@ export const AuthHandlerProvider = ({ children }: any) => {
 	}, [session]);
 
 	useEffect(() => {
-
 		if (metaMaskConnected) {
 			// Just connected
 
