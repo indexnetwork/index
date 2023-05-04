@@ -55,7 +55,7 @@ const OriginWarningModal = ({
 						</Col>
 						<Col pullRight>
 							<Link
-								href={"https://google.com"} target={"_blank"}>
+								href={"https://docs.google.com/forms/d/1XkV-Fu4OqTDF42UiGHT7NdveTgia6QoBFscXNKzwb1U/edit"} target={"_blank"}>
 								<Button
 									theme="primary"
 									size="lg"
