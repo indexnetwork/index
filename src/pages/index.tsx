@@ -3,18 +3,18 @@ import LandingSection2 from "components/site/landing/LandingSection2";
 import LandingSection3 from "components/site/landing/LandingSection3";
 import LandingSection4 from "components/site/landing/LandingSection4";
 import LandingSection5 from "components/site/landing/LandingSection5";
+import LandingSection1v2 from "components/site/landing/LandingSection1v2";
+import LandingSection7 from "components/site/landing/LandingSection7";
+
 import Flex from "components/layout/base/Grid/Flex";
 import PageLayout from "components/layout/site/PageLayout";
 import { useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import React, { ReactElement } from "react";
 import { NextPageWithLayout } from "types";
-import LandingSection1v2 from "components/site/landing/LandingSection1v2";
-import LandingSection7 from "components/site/landing/LandingSection7";
 
 const Home: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
-
 	return (
 		<Flex
 			flexDirection="column"

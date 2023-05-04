@@ -7,7 +7,7 @@ export interface TextProps extends
 	theme?: TextThemeType;
 	size?: TextSizeType;
 	fontWeight?: number;
-	fontFamily?:  string;
+	fontFamily?: string;
 	verticalAlign?: string;
 	lineHeight?: number | string;
 	element?: TextElementType;
@@ -37,7 +37,7 @@ const Text = (
 			`text-${size}`,
 			hidden ? "hidden" : "",
 			className || "",
-			fontFamily
+			fontFamily,
 		],
 	),
 	style: fontWeight || lineHeight || style ? {

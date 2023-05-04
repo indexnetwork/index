@@ -205,7 +205,6 @@ class CeramicService {
 	}
 
 	async addIndexLink(index: Indexes, link_id: string) : Promise <IndexLink> {
-
 		const indexLink: IndexLink = {
 			index_id: index.id,
 			link_id,

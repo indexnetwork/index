@@ -4,16 +4,18 @@ import { normalizeAccountId } from "@ceramicnetwork/common";
 
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { useRouter } from "next/router";
-import React, { useEffect } from "react";
+import React, {useEffect, useState} from "react";
 import ceramicService from "services/ceramic-service";
 import { getAddress } from "@ethersproject/address";
 import { randomBytes, randomString } from "@stablelib/random";
 import { DIDSession, createDIDKey, createDIDCacao } from "did-session";
 
 import {
-	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected,
+	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected, setOriginNFTModalVisible,
 } from "store/slices/connectionSlice";
 import { setProfile } from "store/slices/profileSlice";
+import litService from "../../../services/lit-service";
+import OriginWarningModal from "../modal/OriginWarningModal";
 
 declare global {
 	interface Window {
@@ -30,31 +32,32 @@ type SessionResponse = {
 	session: DIDSession,
 	authSig: object
 };
-let session: DIDSession | null | undefined;
 
 export const AuthHandlerContext = React.createContext<AuthHandlerContextType>({} as any);
 
 export const AuthHandlerProvider = ({ children }: any) => {
-	const connection = useAppSelector(selectConnection);
+
+	const { metaMaskConnected, originNFTModalVisible, loading } = useAppSelector(selectConnection);
 	const dispatch = useAppDispatch();
 	const router = useRouter();
+
+	const [session, setSession] = useState<DIDSession | null | undefined>();
 
 	const disconnect = async () => {
 		localStorage.removeItem("provider");
 		localStorage.removeItem("did");
-		session = null;
+		setSession(null);
 		dispatch(disconnectApp());
-		router.push("/");
+		await router.push("/");
 	};
-
-	const checkExistingSession = async () => {
-		const sessionStr = localStorage.getItem("did"); // for production, you will want a better place than localStorage for your sessions.
+	const getExistingSession = async () => {
+		const sessionStr = localStorage.getItem("did");
+		// for production, you will want a better place than localStorage for your sessions.
 		if (sessionStr) {
-			session = await DIDSession.fromSession(sessionStr);
-			dispatch(setAuthLoading(false));
+			const existingSession = await DIDSession.fromSession(sessionStr);
+			setSession(existingSession);
 		}
 	};
-
 	const startNewSession = async (): Promise<SessionResponse> => {
 		if (window.ethereum === null || window.ethereum === undefined) {
 			dispatch(setAuthLoading(false));
@@ -88,16 +91,15 @@ export const AuthHandlerProvider = ({ children }: any) => {
 			expirationTime: threeMonthsLater.toISOString(),
 			resources: ["ceramic://*"],
 		});
-		const signature = await ethProvider.request({
+		siweMessage.signature = await ethProvider.request({
 			method: "personal_sign",
 			params: [siweMessage.signMessage(), getAddress(accountId.address)],
 		});
-		siweMessage.signature = signature;
 		const cacao = Cacao.fromSiweMessage(siweMessage);
 		const did = await createDIDCacao(didKey, cacao);
-		const session = new DIDSession({ cacao, keySeed, did });
+		const newSession = new DIDSession({ cacao, keySeed, did });
 		return {
-			session,
+			session: newSession,
 			authSig: {
 				signedMessage: siweMessage.toMessage(),
 				address: getAddress(accountId.address),
@@ -109,29 +111,26 @@ export const AuthHandlerProvider = ({ children }: any) => {
 	const connectMetamask = async () => {
 		// Metamask Login
 		dispatch(setAuthLoading(true));
-
-		await checkExistingSession();
-
-		if (!connection.metaMaskConnected) {
+		if (!metaMaskConnected) {
 			if (!session || (session.hasSession && session.isExpired)) {
 				const sessionResponse = await startNewSession();
-				session = sessionResponse.session;
-				try {
-					localStorage.setItem("did", sessionResponse.session.serialize());
-					localStorage.setItem("authSig", JSON.stringify(sessionResponse.authSig));
-				} catch (err) {
-					console.log(err);
-				}
+				localStorage.setItem("authSig", JSON.stringify(sessionResponse.authSig));
+				localStorage.setItem("did", sessionResponse.session.serialize());
+				setSession(sessionResponse.session);
 			}
-
-			dispatch(setAuthLoading(false));
+		} else {
+			const hasOrigin = await litService.hasOriginNFT();
+			if (!hasOrigin) {
+				dispatch(setOriginNFTModalVisible(true));
+			}
 		}
+
+		dispatch(setAuthLoading(false));
 	};
 	const getProfile = async () => {
 		try {
 			const profile = await ceramicService.getProfile();
 			if (profile) {
-				console.log(profile);
 				dispatch(setProfile({
 					...profile,
 					available: true,
@@ -141,20 +140,22 @@ export const AuthHandlerProvider = ({ children }: any) => {
 			// profile error
 		}
 	};
-
 	const authToCeramic = async () => {
 		if (!ceramicService.isUserAuthenticated()) {
 			const result = await ceramicService.authenticateUser(session?.did);
 			dispatch(setCeramicConnected(result));
-			// await ceramicService.syncContents();
 		} else {
 			dispatch(setCeramicConnected(true));
 		}
 	};
 
 	const completeConnections = async () => {
-		await authToCeramic();
-		await getProfile();
+		const hasOrigin = await litService.hasOriginNFT();
+		if (hasOrigin) {
+			await authToCeramic();
+			await getProfile();
+			await router.push(`/${session?.did.parent}`);
+		}
 	};
 
 	// App Loads
@@ -172,15 +173,21 @@ export const AuthHandlerProvider = ({ children }: any) => {
 	}, [session]);
 
 	useEffect(() => {
-		if (connection.metaMaskConnected) {
+
+		if (metaMaskConnected) {
+			// Just connected
+
 			completeConnections();
 		} else {
-			checkExistingSession();
+			// Not connected but session exists.
+			getExistingSession();
 		}
-	}, [connection.metaMaskConnected]);
+	}, [metaMaskConnected]);
 
 	return <AuthHandlerContext.Provider value={{
 		connect: connectMetamask,
 		disconnect,
-	}}>{children}</AuthHandlerContext.Provider>;
+	}}>
+		{!loading && originNFTModalVisible ? <OriginWarningModal visible={originNFTModalVisible}></OriginWarningModal> : <></>}
+		{children}</AuthHandlerContext.Provider>;
 };

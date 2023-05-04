@@ -3,8 +3,11 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { encodeDIDWithLit, Secp256k1ProviderWithLit } from "@indexas/key-did-provider-secp256k1-with-lit";
 import { DID } from "dids";
 import * as KeyDidResolver from "key-did-resolver";
+import * as LitJsSdk from "@lit-protocol/lit-node-client";
 import { isSSR } from "../utils/helper";
 import { appConfig } from "../config";
+
+const checkAndSignAuthMessage = async () => JSON.parse(localStorage.getItem("authSig")!);
 
 class LitService {
 	async authenticatePKP(ipfsId: string, pkpPublicKey: any) : Promise<DID> {
@@ -50,9 +53,8 @@ class LitService {
 		console.log(
 			`PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
 		);
-		let acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
+		const acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
 		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenIdNumber, acid, []);
-
 
 		return {
 			tokenIdFromEvent,
@@ -75,6 +77,25 @@ class LitService {
         console.log(aw);
 
         */
+	}
+
+	async hasOriginNFT() {
+		const litNodeClient = new LitJsSdk.LitNodeClient({
+			litNetwork: "serrano",
+		});
+		await litNodeClient.connect();
+		const authSig = await checkAndSignAuthMessage();
+		const resp = await litNodeClient.executeJs({
+			ipfsId: "QmPei4LwUCvBncACjUVC5JKF1WqBCHzy9ZzJ7DBCzgdhAB",
+			targetNodeRange: 1,
+			authSig,
+			jsParams: {
+				authSig,
+				chain: "ethereum",
+			},
+		});
+		// @ts-ignore
+		return resp.response.hasOrigin;
 	}
 }
 const litService = new LitService();

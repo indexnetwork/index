@@ -51,13 +51,6 @@ const SiteNavbar = (
 
 	const authenticated = useAuth();
 	const { connect, disconnect } = useContext(AuthHandlerContext);
-
-	useEffect(() => {
-		if (isLanding && authenticated) {
-			Router.push(`/${did}`);
-		}
-	}, [did, authenticated, isLanding]);
-
 	const handleConnect = async () => {
 		try {
 			await connect();
@@ -79,7 +72,7 @@ const SiteNavbar = (
 			{...baseProps}
 		>
 			<NavbarMenu placement="right">
-				{loading || (authenticated && isLanding) ? (
+				{(loading && isLanding) ? (
 					<Button
 						theme="primary"
 						className="lottie-text"

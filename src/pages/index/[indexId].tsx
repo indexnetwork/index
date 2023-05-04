@@ -29,10 +29,9 @@ import { useMergedState } from "hooks/useMergedState";
 import moment from "moment";
 import SearchInput from "components/base/SearchInput";
 import NotFound from "components/site/indexes/NotFound";
-import { useAppDispatch, useAppSelector } from "hooks/store";
+import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { selectProfile } from "store/slices/profileSlice";
-
 import { LinksContext } from "hooks/useLinks";
 import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
@@ -42,15 +41,11 @@ import Soon from "components/site/indexes/Soon";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
-	// const [shareModalVisible, setShareModalVisible] = useState(false);
 	const router = useRouter();
 	const { indexId } = router.query;
-
-	const dispatch = useAppDispatch();
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
 	const [links, setLinks] = useState<IndexLink[]>([]);
 	const [addedLink, setAddedLink] = useState<IndexLink>();
-	const [tab, setTab] = useState<boolean>(false);
 	const [tabKey, setTabKey] = useState("index");
 	const [isOwner, setIsOwner] = useState<boolean>(false);
 	const [notFound, setNotFound] = useState(false);
@@ -62,29 +57,17 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
 	const [search, setSearch] = useState("");
-
-	const [tokenModalVisible, setTokenModalVisible] = useState(false);
-
 	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
 
 	const ceramic = useCeramic();
 
-
-	// const handleToggleShareModal = () => {
-	// 	setShareModalVisible((oldVal) => !oldVal);
-	// };
-
-	const handleToggleTokenModal = () => {
-		setTokenModalVisible((oldVal) => !oldVal);
-	 };
-
-	const loadIndex = async (indexId: string) => {
-		const doc = await ceramic.getIndexById(indexId);
+	const loadIndex = async (id: string) => {
+		const doc = await ceramic.getIndexById(id);
 		if (doc != null) {
 			setIndex(doc);
 			setIsOwner(true);
-			loadUserIndex(indexId);
+			await loadUserIndex(id);
 		} else {
 			setNotFound(true);
 		}
@@ -139,8 +122,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		}
 	};
 	useEffect(() => {
-
-		if(!loading){
+		if (!loading) {
 			setLoading(true);
 			if (indexId && did) {
 				loadIndex(indexId as string);
@@ -148,7 +130,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 				console.log("aaa", indexId);
 			}
 		}
-
 	}, [indexId, did]);
 
 	useEffect(() => {
@@ -327,25 +308,22 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												/>
 											</Col>
 										</FlexRow> : tabKey === "creators" ?
-										<Col>
-											<FlexRow justify="center">
-												<Col xs={12} lg={9}>
-													<CreatorSettings collab_action={index.collab_action}></CreatorSettings>
-												</Col>
-											</FlexRow>
-										</Col> : <Col>
-											<FlexRow justify="center">
-												<Soon section={tabKey}></Soon>
-											</FlexRow>
-										</Col>
+											<Col>
+												<FlexRow justify="center">
+													<Col xs={12} lg={9}>
+														<CreatorSettings collabAction={index.collab_action!}></CreatorSettings>
+													</Col>
+												</FlexRow>
+											</Col> : <Col>
+												<FlexRow justify="center">
+													<Soon section={tabKey}></Soon>
+												</FlexRow>
+											</Col>
 									}
 								</>
 							)
 					}
 				</Container>
-
-				{/* <TokenModal data={{ }} visible={tokenModalVisible} onClose={handleToggleTokenModal}></TokenModal> */}
-				{/* <ShareModal data={{}} visible={shareModalVisible} onClose={handleToggleShareModal} /> */}
 			</>
 		</LinksContext.Provider>
 	);

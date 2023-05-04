@@ -2,7 +2,7 @@
 const { i18n } = require('./next-i18next.config');
 
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   i18n,
   async rewrites() {
     return [
