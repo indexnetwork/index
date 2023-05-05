@@ -86,7 +86,7 @@ class LitService {
 		await litNodeClient.connect();
 		const authSig = await checkAndSignAuthMessage();
 		const resp = await litNodeClient.executeJs({
-			ipfsId: "QmPei4LwUCvBncACjUVC5JKF1WqBCHzy9ZzJ7DBCzgdhAB",
+			ipfsId: "QmaHRJzgezMwroP1EPdWhEhSbwj3ntCk46ikAuE5jvAsX1",
 			targetNodeRange: 1,
 			authSig,
 			jsParams: {
