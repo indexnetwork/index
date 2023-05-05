@@ -129,7 +129,7 @@ const SiteNavbar = (
 									<DropdownMenuItem onClick={disconnect}>
 										<Flex alignItems="center">
 											<IconDisconnect className="icon-error" width={16} height="100%"/>
-											<Text className="ml-3 dropdown-text-logout" element="span" size="md" theme="error">{t("common:logout")}</Text>
+											<Text className="ml-3 dropdown-text-logout" element="span" size="md" theme="error">{t("common:disconnect")}</Text>
 										</Flex>
 									</DropdownMenuItem>
 								</>
