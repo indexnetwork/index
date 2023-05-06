@@ -155,7 +155,6 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		} else {
 			await authToCeramic();
 			await getProfile();
-			await router.push(`/${session?.did.parent}`);
 		}
 	};
 

@@ -80,6 +80,9 @@ class LitService {
 	}
 
 	async hasOriginNFT() {
+		if (localStorage.getItem("hasOrigin")) {
+			return true;
+		}
 		const litNodeClient = new LitJsSdk.LitNodeClient({
 			litNetwork: "serrano",
 		});
@@ -94,6 +97,7 @@ class LitService {
 				chain: "ethereum",
 			},
 		});
+		localStorage.setItem("hasOrigin", "1");
 		// @ts-ignore
 		return resp.response.hasOrigin;
 	}

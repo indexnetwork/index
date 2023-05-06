@@ -1,12 +1,14 @@
 import Header from "components/base/Header";
 import Text from "components/base/Text";
-import React, { useContext } from "react";
+import React, { useContext, useEffect } from "react";
 import cc from "classcat";
 import Button from "components/base/Button";
 import { useAuth } from "hooks/useAuth";
 import { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
 
+import { selectConnection } from "store/slices/connectionSlice";
+import { useAppSelector } from "hooks/store";
 import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
 
@@ -14,7 +16,15 @@ const LandingSection1 = () => {
 	const router = useRouter();
 
 	const authenticated = useAuth();
-	const { connect, disconnect } = useContext(AuthHandlerContext);
+	const { did } = useAppSelector(selectConnection);
+
+	const { connect } = useContext(AuthHandlerContext);
+
+	useEffect(() => {
+		if (authenticated && router.route === "/") {
+			router.push(`/${did}`);
+		}
+	}, [authenticated]);
 
 	const handleConnect = async () => {
 		try {
