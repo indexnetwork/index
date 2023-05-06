@@ -38,6 +38,9 @@ import { Tabs } from "components/base/Tabs";
 import IconStar from "components/base/Icon/IconStar";
 import Tooltip from "components/base/Tooltip";
 import Soon from "components/site/indexes/Soon";
+import { DID } from "dids";
+import { decodeDIDWithLit } from "../../utils/lit";
+import LitService from "../../services/lit-service";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -45,6 +48,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { indexId } = router.query;
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
 	const [links, setLinks] = useState<IndexLink[]>([]);
+	const [pkpDID, setPKPDID] = useState<DID>();
 	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tabKey, setTabKey] = useState("index");
 	const [isOwner, setIsOwner] = useState<boolean>(false);
@@ -64,13 +68,20 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const loadIndex = async (id: string) => {
 		const doc = await ceramic.getIndexById(id);
-		if (doc != null) {
+		if (!doc) {
+			setNotFound(true);
+		} else {
 			setIndex(doc);
-			setIsOwner(true);
+
+			const pkpPublicKey = decodeDIDWithLit(doc.controller_did?.id);
+			const pkpDIDResult = await LitService.authenticatePKP(doc.collab_action!, pkpPublicKey);
+			if (pkpDIDResult) {
+				setPKPDID(pkpDIDResult);
+				setIsOwner(true);
+			}
+
 			await loadUserIndex(id);
 			setLoading(false);
-		} else {
-			setNotFound(true);
 		}
 	};
 	const loadUserIndex = async (index_id: string) => {
@@ -80,7 +91,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		} as GetUserIndexesRequestBody) as UserIndexResponse;
 		setIndex({
  			...index,
-			is_in_my_indexes: !!userIndexes.my_indexes,
+			is_in_my_indexes: !!userIndexes.my_indexes, // TODO Shame
 			is_starred: !!userIndexes.starred,
 		} as Indexes);
 	};
@@ -117,7 +128,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 				// TODO Fix that.
 				const createdIndexLink = await ceramic.addIndexLink(index, createdLink?.id!);
 				if (createdIndexLink) {
-					setAddedLink(createdIndexLink); // Fix
+					setAddedLink(createdIndexLink); // TODO Fix
 				}
 			}
 		}

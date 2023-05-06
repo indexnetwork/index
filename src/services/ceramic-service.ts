@@ -89,6 +89,7 @@ class CeramicService {
 		if (errors) {
 			// TODO Handle
 		}
+		// TODO Before releasde.
 		return data?.createIndex.document!;
 	}
 	async updateIndex(index: Partial<Indexes>, content: Partial<Indexes>): Promise<Indexes> {
