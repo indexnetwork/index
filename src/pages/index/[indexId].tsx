@@ -38,7 +38,7 @@ import { Tabs } from "components/base/Tabs";
 import IconStar from "components/base/Icon/IconStar";
 import Tooltip from "components/base/Tooltip";
 import Soon from "components/site/indexes/Soon";
-import { DID } from "dids";
+import CeramicService from "services/ceramic-service";
 import { decodeDIDWithLit } from "../../utils/lit";
 import LitService from "../../services/lit-service";
 
@@ -48,7 +48,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { indexId } = router.query;
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
 	const [links, setLinks] = useState<IndexLink[]>([]);
-	const [pkpDID, setPKPDID] = useState<DID>();
+	const [pkpDID, setPKPDID] = useState<any>();
 	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tabKey, setTabKey] = useState("index");
 	const [isOwner, setIsOwner] = useState<boolean>(false);
@@ -64,6 +64,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
 
+	// TODO Rename user ceramic
 	const ceramic = useCeramic();
 
 	const loadIndex = async (id: string) => {
@@ -72,11 +73,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setNotFound(true);
 		} else {
 			setIndex(doc);
-
 			const pkpPublicKey = decodeDIDWithLit(doc.controller_did?.id);
 			const pkpDIDResult = await LitService.authenticatePKP(doc.collab_action!, pkpPublicKey);
 			if (pkpDIDResult) {
-				setPKPDID(pkpDIDResult);
+				const pkpCeramic = new CeramicService(pkpDIDResult);
+				setPKPDID(pkpCeramic);
 				setIsOwner(true);
 			}
 
@@ -97,7 +98,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
-		const result = await ceramic.updateIndex(index, {
+		const result = await pkpDID.updateIndex(index, {
 			title,
 		});
 		setIndex(result);
@@ -126,7 +127,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			if (payload) {
 				const createdLink = await ceramic.createLink(payload);
 				// TODO Fix that.
-				const createdIndexLink = await ceramic.addIndexLink(index, createdLink?.id!);
+				const createdIndexLink = await pkpDID.addIndexLink(index, createdLink?.id!);
 				if (createdIndexLink) {
 					setAddedLink(createdIndexLink); // TODO Fix
 				}

@@ -7,6 +7,7 @@ import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 
+import { DID } from "dids";
 import { definition } from "../types/merged-runtime";
 import { appConfig } from "../config";
 
@@ -17,7 +18,6 @@ class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
 	});
-
 	private userComposeClient = new ComposeClient({
 		ceramic: "https://ceramic-dev.index.as",
 		definition: definition as RuntimeCompositeDefinition,
@@ -26,6 +26,12 @@ class CeramicService {
 		ceramic: "https://ceramic-dev.index.as",
 		definition: definition as RuntimeCompositeDefinition,
 	});
+	private did: DID;
+
+	constructor(did: DID) {
+		this.did = did;
+		this.userComposeClient.setDID(did);
+	}
 
 	async authenticateUser(did: any) {
 		if (!isSSR()) {
@@ -93,21 +99,12 @@ class CeramicService {
 		return data?.createIndex.document!;
 	}
 	async updateIndex(index: Partial<Indexes>, content: Partial<Indexes>): Promise<Indexes> {
-		const pkpPublicKey = decodeDIDWithLit(index.controller_did?.id);
-
-		const did = await LitService.authenticatePKP(index.collab_action!, pkpPublicKey);
-		/*
-		if (!did.authenticated) {
-			// TODO handle error
-		}
-		 */
-		this.pkpComposeClient.setDID(did);
 		content.updated_at = getCurrentDateTime();
 		const payload = {
 			id: index.id,
 			content,
 		};
-		const { data, errors } = await this.pkpComposeClient.executeQuery<{ updateIndex: { document: Indexes } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ updateIndex: { document: Indexes } }>(`
 			mutation UpdateIndex($input: UpdateIndexInput!) {
 				updateIndex(input: $input) {
 					document {
@@ -218,15 +215,10 @@ class CeramicService {
 			content: indexLink,
 		};
 
-		const pkpPublicKey = decodeDIDWithLit(index.controller_did.id);
-		const did = await LitService.authenticatePKP(index.collab_action, pkpPublicKey);
-
-		if (!did.authenticated) {
+		if (!this.userComposeClient.did?.authenticated) {
 			// handle error
 		}
-
-		this.pkpComposeClient.setDID(did);
-		const { data, errors } = await this.pkpComposeClient.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
 			mutation CreateIndexLink($input: CreateIndexLinkInput!) {
 				createIndexLink(input: $input) {
 					document {
@@ -268,22 +260,13 @@ class CeramicService {
 		if (!index) {
 			throw new Error("Index not found");
 		}
-
-		const pkpPublicKey = decodeDIDWithLit(index.controller_did.id);
-		const did = await LitService.authenticatePKP(index.collab_action, pkpPublicKey);
-		if (!did.authenticated) {
-			throw new Error("Could not authenticate");
-		}
-
-		this.pkpComposeClient.setDID(did);
-
 		const payload = {
 			id: index_link.id!,
 			content: {
 				deleted_at: getCurrentDateTime(),
 			},
 		};
-		const { data, errors } = await this.pkpComposeClient.executeQuery<{ updateIndexLink: { document: IndexLink } }>(`
+		const { data, errors } = await this.userComposeClient.executeQuery<{ updateIndexLink: { document: IndexLink } }>(`
 			mutation UpdateIndexLink($input: UpdateIndexLinkInput!) {
 				updateIndexLink(input: $input) {
 					document {
@@ -469,6 +452,4 @@ class CeramicService {
 	}
 }
 
-const ceramicService = new CeramicService();
-
-export default ceramicService;
+export default CeramicService;

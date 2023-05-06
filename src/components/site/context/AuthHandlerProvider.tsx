@@ -5,7 +5,6 @@ import { normalizeAccountId } from "@ceramicnetwork/common";
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
-import ceramicService from "services/ceramic-service";
 import { getAddress } from "@ethersproject/address";
 import { randomBytes, randomString } from "@stablelib/random";
 import { DIDSession, createDIDKey, createDIDCacao } from "did-session";
@@ -14,6 +13,7 @@ import {
 	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected, setOriginNFTModalVisible,
 } from "store/slices/connectionSlice";
 import { setProfile } from "store/slices/profileSlice";
+import CeramicService from "services/ceramic-service";
 import litService from "../../../services/lit-service";
 import OriginWarningModal from "../modal/OriginWarningModal";
 
@@ -41,6 +41,8 @@ export const AuthHandlerProvider = ({ children }: any) => {
 	const router = useRouter();
 
 	const [session, setSession] = useState<DIDSession | null | undefined>();
+
+	const ceramicService = new CeramicService();
 
 	const disconnect = async () => {
 		localStorage.removeItem("provider");
