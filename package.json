@@ -23,7 +23,7 @@
     "@ethersproject/address": "^5.7.0",
     "@ethersproject/keccak256": "^5.7.0",
     "@ethersproject/providers": "^5.6.8",
-    "@indexas/key-did-provider-secp256k1-with-lit": "0.0.30",
+    "@indexas/key-did-provider-secp256k1-with-lit": "0.0.32",
     "@lit-protocol/contracts-sdk": "^2.1.160",
     "@lit-protocol/lit-node-client": "^2.1.160",
     "@lit-protocol/uint8arrays": "^2.1.94",

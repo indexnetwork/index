@@ -3,7 +3,7 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { encodeDIDWithLit, Secp256k1ProviderWithLit } from "@indexas/key-did-provider-secp256k1-with-lit";
 import { DID } from "dids";
 import * as KeyDidResolver from "key-did-resolver";
-import * as LitJsSdk from "@lit-protocol/lit-node-client";
+import { LitNodeClient } from "@lit-protocol/lit-node-client";
 import { isSSR } from "../utils/helper";
 import { appConfig } from "../config";
 
@@ -13,10 +13,17 @@ class LitService {
 	async authenticatePKP(ipfsId: string, pkpPublicKey: any) : Promise<DID> {
 		if (!isSSR()) {
 			try {
+
+				const litNodeClient = new LitNodeClient({
+					litNetwork: "serrano",
+				});
+				await litNodeClient.connect();
+
 				const encodedDID = await encodeDIDWithLit(pkpPublicKey);
 				const provider = new Secp256k1ProviderWithLit({
 					did: encodedDID,
 					ipfsId,
+					client: litNodeClient,
 				});
 				// @ts-ignore
 				const did = new DID({ provider, resolver: KeyDidResolver.getResolver() });
@@ -83,7 +90,7 @@ class LitService {
 		if (localStorage.getItem("hasOrigin")) {
 			return true;
 		}
-		const litNodeClient = new LitJsSdk.LitNodeClient({
+		const litNodeClient = new LitNodeClient({
 			litNetwork: "serrano",
 		});
 		await litNodeClient.connect();

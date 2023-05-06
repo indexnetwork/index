@@ -1185,12 +1185,12 @@
   resolved "https://registry.yarnpkg.com/@humanwhocodes/object-schema/-/object-schema-1.2.1.tgz#b520529ec21d8e5945a1851dfd1c32e94e39ff45"
   integrity sha512-ZnQMnLV4e7hDlUvw8H+U8ASL02SS2Gn6+9Ac3wGGLIe7+je2AeAOxPY+izIPJDfFDb7eDjev0Us8MO1iFRN8hA==
 
-"@indexas/key-did-provider-secp256k1-with-lit@0.0.30":
-  version "0.0.30"
-  resolved "https://registry.yarnpkg.com/@indexas/key-did-provider-secp256k1-with-lit/-/key-did-provider-secp256k1-with-lit-0.0.30.tgz#c6ea621bac7ad9015a9a8274ecb7d61ba66841ac"
-  integrity sha512-kDz0GCH4qhBnwi6ajmnkhzT0GDbZAJ9TSAe8MIrdP7EdSjUX8N0getbZ58PVqUD9XyWqTXULQ35Ns7mDjTT38w==
+"@indexas/key-did-provider-secp256k1-with-lit@0.0.32":
+  version "0.0.32"
+  resolved "https://registry.yarnpkg.com/@indexas/key-did-provider-secp256k1-with-lit/-/key-did-provider-secp256k1-with-lit-0.0.32.tgz#5c7dba166569ed0b2a2ff03e7da062b727b31993"
+  integrity sha512-AxyWId/GaHBky5yiD8aOZfvK+vnpWRuoB1VuuSGQmGPblSRJVxsL+igM3kRIjyTQ9fQ4eGYtl2zyb9aFoBdvPw==
   dependencies:
-    "@lit-protocol/lit-node-client-nodejs" "^2.1.135"
+    "@lit-protocol/lit-node-client" "^2.1.160"
     "@types/elliptic" "^6.4.14"
     canonicalize "^1.0.8"
     did-jwt "^7.0.0"
@@ -1359,18 +1359,6 @@
   resolved "https://registry.yarnpkg.com/@lit-labs/ssr-dom-shim/-/ssr-dom-shim-1.1.1.tgz#64df34e2f12e68e78ac57e571d25ec07fa460ca9"
   integrity sha512-kXOeFbfCm4fFf2A3WwVEeQj55tMZa8c8/f9AKHMobQMkzNUfUj+antR3fRPaZJawsa1aZiP/Da3ndpZrwEe4rQ==
 
-"@lit-protocol/access-control-conditions@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/access-control-conditions/-/access-control-conditions-2.1.135.tgz#a6218c5227343062c5a84a8d171b8ce12dfefed1"
-  integrity sha512-GtT+CiDpzmiueUcMkG/fzZ4eVX4KcBn4/fDeDdG+jcvAX3dRO0JGF3ndquoRa2FI6XfmXfNOKH4VV5z1OwNCxg==
-  dependencies:
-    "@lit-protocol/constants" "2.1.135"
-    "@lit-protocol/misc" "2.1.135"
-    "@lit-protocol/types" "2.1.135"
-    "@lit-protocol/uint8arrays" "2.1.135"
-    ethers "^5.7.1"
-    tslib "^2.3.0"
-
 "@lit-protocol/access-control-conditions@2.1.160":
   version "2.1.160"
   resolved "https://registry.yarnpkg.com/@lit-protocol/access-control-conditions/-/access-control-conditions-2.1.160.tgz#3d91b0f91cae1a1a758ec51dd439f7da2114378d"
@@ -1404,23 +1392,10 @@
     util "^0.12.4"
     web-vitals "^3.0.4"
 
-"@lit-protocol/bls-sdk@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/bls-sdk/-/bls-sdk-2.1.135.tgz#be5d61526a66d1dd2bc824758b5f2d832c68c154"
-  integrity sha512-B3cHtRVf0aRHYC+cFWV2vEVrHGYKMdcSw7I0jOvT4AI0ttk9olEJfu3zWLTo9tM59KfRQgc93sypzcQVxZrdoQ==
-
 "@lit-protocol/bls-sdk@2.1.160":
   version "2.1.160"
   resolved "https://registry.yarnpkg.com/@lit-protocol/bls-sdk/-/bls-sdk-2.1.160.tgz#92ae1748c11bd0895eae1c119506000c1fab3f83"
   integrity sha512-D/sFjd2QobwHm8eT+240UFgNDtjVdbCc76uEetC+VdVi8Oqq38hxzHG7IZiP9QSu3+Jm0cScZJymhaY7tiwDMA==
-
-"@lit-protocol/constants@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/constants/-/constants-2.1.135.tgz#01b11c803500fd94a785dcf3ab12a9e8bb3bd6a8"
-  integrity sha512-6kHBR+e4l46gHIG2actqDpItOybKF+sNdqsZoXfghF1YdSbO/s/V2ZdCZkpfaRS0gwLShlNNt3rBuit3551bEA==
-  dependencies:
-    "@lit-protocol/types" "2.1.135"
-    tslib "^2.3.0"
 
 "@lit-protocol/constants@2.1.160":
   version "2.1.160"
@@ -1445,21 +1420,6 @@
     multiformats "^9.7.1"
     tslib "^2.3.0"
 
-"@lit-protocol/crypto@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/crypto/-/crypto-2.1.135.tgz#20cdda6709640c00de64b91d6549224eb5c30676"
-  integrity sha512-pkUyUv3yUTRmjJntXOA/QpnvM5ZR6qTrxoNvvqV3ZBzqCTjkYy5VYpCeWg+DB+4EQi7HUnsXxr0w+9WYDJhaEg==
-  dependencies:
-    "@lit-protocol/bls-sdk" "2.1.135"
-    "@lit-protocol/constants" "2.1.135"
-    "@lit-protocol/ecdsa-sdk" "2.1.135"
-    "@lit-protocol/misc" "2.1.135"
-    "@lit-protocol/nacl" "2.1.135"
-    "@lit-protocol/types" "2.1.135"
-    "@lit-protocol/uint8arrays" "2.1.135"
-    ethers "^5.7.1"
-    tslib "^2.3.0"
-
 "@lit-protocol/crypto@2.1.160":
   version "2.1.160"
   resolved "https://registry.yarnpkg.com/@lit-protocol/crypto/-/crypto-2.1.160.tgz#3db072d089c227e685cf97dd3a5ef719e864256e"
@@ -1475,33 +1435,10 @@
     ethers "^5.7.1"
     tslib "^2.3.0"
 
-"@lit-protocol/ecdsa-sdk@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/ecdsa-sdk/-/ecdsa-sdk-2.1.135.tgz#9adbd803cbfe592590a319237dbfda659adec743"
-  integrity sha512-ODQnI/rb8jZGjNyK6y+j0+hciHP0RJvP5FcoshG3ojorD65g+hK2E8WXdRnbvMyNABx/UkeC7c7Vc58OYVNd3Q==
-
 "@lit-protocol/ecdsa-sdk@2.1.160":
   version "2.1.160"
   resolved "https://registry.yarnpkg.com/@lit-protocol/ecdsa-sdk/-/ecdsa-sdk-2.1.160.tgz#38a1bbdaaf0bc35679b8eeb2c694a192d2d295ec"
   integrity sha512-76zpfNq4GlZb4/L1xXekvzV08tKrwNIK4hGWtgwSIYJUT63qT/NxVvBOqWrokIFI1P5OV81FjHx4RGslkcBJDA==
-
-"@lit-protocol/encryption@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/encryption/-/encryption-2.1.135.tgz#04388d83bd400b1ac6aabcd5ba10008cb8ce00ca"
-  integrity sha512-gXu5hOyMfehwE+lybEJqmjIxLZZrfhUPjfXhco23LG1b9fBZhUE3bpeTdW2KjlnZOY0EapvTu8K5L0Pv3CCk5g==
-  dependencies:
-    "@lit-protocol/bls-sdk" "2.1.135"
-    "@lit-protocol/constants" "2.1.135"
-    "@lit-protocol/crypto" "2.1.135"
-    "@lit-protocol/ecdsa-sdk" "2.1.135"
-    "@lit-protocol/misc" "2.1.135"
-    "@lit-protocol/nacl" "2.1.135"
-    "@lit-protocol/types" "2.1.135"
-    "@lit-protocol/uint8arrays" "2.1.135"
-    ethers "^5.7.1"
-    ipfs-http-client "56.0.0"
-    jszip "^3.10.1"
-    tslib "^2.3.0"
 
 "@lit-protocol/encryption@2.1.160":
   version "2.1.160"
@@ -1549,30 +1486,6 @@
     node-fetch "^2.6.1"
     tslib "^2.3.0"
 
-"@lit-protocol/lit-node-client-nodejs@^2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/lit-node-client-nodejs/-/lit-node-client-nodejs-2.1.135.tgz#406659e4938017627d5d3bd14f0758838c67269f"
-  integrity sha512-T38axawjqd5sBjd60SmZ8KjT37vfJ3I/ozfqzK28BQagviNKWzB1EYRj47SH9SO1jU7gA1uX4XQV0ncuw2lxzg==
-  dependencies:
-    "@lit-protocol/access-control-conditions" "2.1.135"
-    "@lit-protocol/bls-sdk" "2.1.135"
-    "@lit-protocol/constants" "2.1.135"
-    "@lit-protocol/crypto" "2.1.135"
-    "@lit-protocol/ecdsa-sdk" "2.1.135"
-    "@lit-protocol/encryption" "2.1.135"
-    "@lit-protocol/lit-third-party-libs" "2.1.135"
-    "@lit-protocol/misc" "2.1.135"
-    "@lit-protocol/misc-browser" "2.1.135"
-    "@lit-protocol/nacl" "2.1.135"
-    "@lit-protocol/types" "2.1.135"
-    "@lit-protocol/uint8arrays" "2.1.135"
-    ethers "^5.7.1"
-    ipfs-http-client "56.0.0"
-    jszip "^3.10.1"
-    lit-siwe "^1.1.8"
-    node-fetch "^2.6.1"
-    tslib "^2.3.0"
-
 "@lit-protocol/lit-node-client@^2.1.160":
   version "2.1.160"
   resolved "https://registry.yarnpkg.com/@lit-protocol/lit-node-client/-/lit-node-client-2.1.160.tgz#4ee552e9cd1d5d0061a7885394c0158c0cc3e7cc"
@@ -1608,27 +1521,10 @@
     tweetnacl "^1.0.3"
     tweetnacl-util "^0.15.1"
 
-"@lit-protocol/lit-third-party-libs@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/lit-third-party-libs/-/lit-third-party-libs-2.1.135.tgz#b611fe9f33cb7fda66be7daf1a6383a1df83af8f"
-  integrity sha512-o/DmZmJCZTjR1YdKYI1JHA6/OLTuPkFXpn8KlVB6GQPqENz28BA+W6K0G8XLMITLfmd+ialHoF63i4dOY178Ng==
-
 "@lit-protocol/lit-third-party-libs@2.1.160":
   version "2.1.160"
   resolved "https://registry.yarnpkg.com/@lit-protocol/lit-third-party-libs/-/lit-third-party-libs-2.1.160.tgz#3807ec83ee80e87b81981c10947bbf3d537dbe31"
   integrity sha512-+B41f8xB7/pW+h/zzbWn7URbDa2O5sOn64yxGrvBKFXoLAhyR4koVy1XbJWauA3P4TqU1RR2BdKY0js55/S+cQ==
-
-"@lit-protocol/misc-browser@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/misc-browser/-/misc-browser-2.1.135.tgz#321e7f9c0a843ba191368208807d5a71b10c2bc9"
-  integrity sha512-gLom4B6Jzx81fT7ecDrUGRRPcD8sCcXpyWAVZPJL9TJLIpKf9R8OvfC/dHeuALVW4SJO5t5mdcEPBKDXtEeW9w==
-  dependencies:
-    "@lit-protocol/constants" "2.1.135"
-    "@lit-protocol/misc" "2.1.135"
-    "@lit-protocol/types" "2.1.135"
-    "@lit-protocol/uint8arrays" "2.1.135"
-    ethers "^5.7.1"
-    tslib "^2.3.0"
 
 "@lit-protocol/misc-browser@2.1.160":
   version "2.1.160"
@@ -1642,15 +1538,6 @@
     ethers "^5.7.1"
     tslib "^2.3.0"
 
-"@lit-protocol/misc@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/misc/-/misc-2.1.135.tgz#44d8268cef0ed49affb623c9fb7bac6321a52903"
-  integrity sha512-Rk4SRQPWwqR8vFF9WEqIA3UI86C0apmuSMARKpm7YCRIjUKnInkvpATHr5juBzEf08jHDwplYc2lVTkm8dUVCg==
-  dependencies:
-    "@lit-protocol/constants" "2.1.135"
-    "@lit-protocol/types" "2.1.135"
-    tslib "^2.3.0"
-
 "@lit-protocol/misc@2.1.160":
   version "2.1.160"
   resolved "https://registry.yarnpkg.com/@lit-protocol/misc/-/misc-2.1.160.tgz#cb0644290df328068a3aab652c92090f9d00aa63"
@@ -1660,35 +1547,25 @@
     "@lit-protocol/types" "2.1.160"
     tslib "^2.3.0"
 
-"@lit-protocol/nacl@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/nacl/-/nacl-2.1.135.tgz#66dc384420e23101f937ed09261351b160cfa2b0"
-  integrity sha512-A8dYsDGDWEJ/cZ5OspIy1Aku5s0u2/lenncm690Nn6T6fq300oxia+98ED9upmd1UmDwFDRx+Pjbrn5pYujFNA==
-
 "@lit-protocol/nacl@2.1.160":
   version "2.1.160"
   resolved "https://registry.yarnpkg.com/@lit-protocol/nacl/-/nacl-2.1.160.tgz#c4c0196e6460809b02f7220d6ad6cd415869fd04"
   integrity sha512-1ncFG5cXelP5pZn1RJqpIpYNJ9cOlnvnabjyDkii8FDEhT1s6us/G9lg7DDYywcbkaWiPZUlwt8uzUEqZnl65g==
-
-"@lit-protocol/types@2.1.135":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/types/-/types-2.1.135.tgz#5506ec024a0388c30904a57ea0805e9b030fcea7"
-  integrity sha512-n1XMVU+N4PuLuDamKmC147dzSfxq56yydzwqr59siApd81AcVbgzIFX4LjShNpm/+uslz3MqT1MHZ7a8ECNFJQ==
 
 "@lit-protocol/types@2.1.160":
   version "2.1.160"
   resolved "https://registry.yarnpkg.com/@lit-protocol/types/-/types-2.1.160.tgz#87926c43065838015774025c941293124e4e96ad"
   integrity sha512-6E6I9r2RciPFaTkdq/wKEY0ALepWMjUkI3X+/8MX2ArEO+BSfn8J9Nu5J3wwdxAbdv03QvRBa790x3i9NbWOqA==
 
-"@lit-protocol/uint8arrays@2.1.135", "@lit-protocol/uint8arrays@^2.1.94":
-  version "2.1.135"
-  resolved "https://registry.yarnpkg.com/@lit-protocol/uint8arrays/-/uint8arrays-2.1.135.tgz#176fc4a004b56bedf0a1477e8edee18e9598cd50"
-  integrity sha512-ZaK9thSRUVj5jqeUkiavUVbkVYRInf7Q2InbtdZ633OmFWstRG0+JVdv2eMHkJqGTCjx8KQpnJ/bHE6BjSPRag==
-
 "@lit-protocol/uint8arrays@2.1.160":
   version "2.1.160"
   resolved "https://registry.yarnpkg.com/@lit-protocol/uint8arrays/-/uint8arrays-2.1.160.tgz#470daf555f7d4b4e9ec8fae61d9e6aa0dbcbbd5a"
   integrity sha512-Bn9yRwKw97uk9zAotE0DmMf/v/OJBzxpMuRJoFjLnxC4l70oKyC7kCWhRxWwCy02JhoI8l7AgT0CLUrwQW4htw==
+
+"@lit-protocol/uint8arrays@^2.1.94":
+  version "2.1.135"
+  resolved "https://registry.yarnpkg.com/@lit-protocol/uint8arrays/-/uint8arrays-2.1.135.tgz#176fc4a004b56bedf0a1477e8edee18e9598cd50"
+  integrity sha512-ZaK9thSRUVj5jqeUkiavUVbkVYRInf7Q2InbtdZ633OmFWstRG0+JVdv2eMHkJqGTCjx8KQpnJ/bHE6BjSPRag==
 
 "@lit/reactive-element@^1.3.0", "@lit/reactive-element@^1.6.0":
   version "1.6.1"
