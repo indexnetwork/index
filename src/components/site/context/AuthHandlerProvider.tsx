@@ -55,6 +55,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		if (sessionStr) {
 			const existingSession = await DIDSession.fromSession(sessionStr);
 			setSession(existingSession);
+			dispatch(setAuthLoading(false));
 		}
 	};
 	const startNewSession = async (): Promise<SessionResponse> => {

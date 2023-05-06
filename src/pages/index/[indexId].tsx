@@ -68,6 +68,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setIndex(doc);
 			setIsOwner(true);
 			await loadUserIndex(id);
+			setLoading(false);
 		} else {
 			setNotFound(true);
 		}
@@ -122,13 +123,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		}
 	};
 	useEffect(() => {
-		if (!loading) {
-			setLoading(true);
-			if (indexId && did) {
-				loadIndex(indexId as string);
-
-				console.log("aaa", indexId);
-			}
+		setLoading(true);
+		if (indexId && did) {
+			loadIndex(indexId as string);
 		}
 	}, [indexId, did]);
 
