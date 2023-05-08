@@ -13,7 +13,6 @@ class LitService {
 	async authenticatePKP(ipfsId: string, pkpPublicKey: any) : Promise<DID> {
 		if (!isSSR()) {
 			try {
-
 				const litNodeClient = new LitNodeClient({
 					litNetwork: "serrano",
 				});

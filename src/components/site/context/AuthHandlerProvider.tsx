@@ -1,7 +1,6 @@
 import { getAccountId } from "@didtools/pkh-ethereum";
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { normalizeAccountId } from "@ceramicnetwork/common";
-
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { useRouter } from "next/router";
 import React, { useEffect, useState } from "react";
@@ -14,7 +13,8 @@ import {
 } from "store/slices/connectionSlice";
 import { setProfile } from "store/slices/profileSlice";
 import CeramicService from "services/ceramic-service";
-import litService from "../../../services/lit-service";
+import litService from "services/lit-service";
+import { useCeramic } from "hooks/useCeramic";
 import OriginWarningModal from "../modal/OriginWarningModal";
 
 declare global {
@@ -42,7 +42,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 
 	const [session, setSession] = useState<DIDSession | null | undefined>();
 
-	const ceramicService = new CeramicService();
+	const personalCeramic = useCeramic();
 
 	const disconnect = async () => {
 		localStorage.removeItem("provider");
@@ -131,7 +131,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 	};
 	const getProfile = async () => {
 		try {
-			const profile = await ceramicService.getProfile();
+			const profile = await personalCeramic.getProfile();
 			if (profile) {
 				dispatch(setProfile({
 					...profile,
@@ -143,12 +143,10 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		}
 	};
 	const authToCeramic = async () => {
-		if (!ceramicService.isUserAuthenticated()) {
-			const result = await ceramicService.authenticateUser(session?.did);
-			dispatch(setCeramicConnected(result));
-		} else {
-			dispatch(setCeramicConnected(true));
+		if (personalCeramic.client && !personalCeramic.client.isUserAuthenticated()) {
+			personalCeramic.setClient(new CeramicService(session?.did!));
 		}
+		dispatch(setCeramicConnected(true));
 	};
 
 	const completeConnections = async () => {

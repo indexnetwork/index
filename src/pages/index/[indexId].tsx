@@ -48,7 +48,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { indexId } = router.query;
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
 	const [links, setLinks] = useState<IndexLink[]>([]);
-	const [pkpDID, setPKPDID] = useState<any>();
+	const [pkpCeramic, setPKPCeramic] = useState<any>();
+	const personalCeramic = useCeramic();
 	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tabKey, setTabKey] = useState("index");
 	const [isOwner, setIsOwner] = useState<boolean>(false);
@@ -64,11 +65,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
 
-	// TODO Rename user ceramic
-	const ceramic = useCeramic();
-
 	const loadIndex = async (id: string) => {
-		const doc = await ceramic.getIndexById(id);
+		const doc = await pkpCeramic.getIndexById(id);
 		if (!doc) {
 			setNotFound(true);
 		} else {
@@ -76,8 +74,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			const pkpPublicKey = decodeDIDWithLit(doc.controller_did?.id);
 			const pkpDIDResult = await LitService.authenticatePKP(doc.collab_action!, pkpPublicKey);
 			if (pkpDIDResult) {
-				const pkpCeramic = new CeramicService(pkpDIDResult);
-				setPKPDID(pkpCeramic);
+				setPKPCeramic(new CeramicService(pkpDIDResult));
 				setIsOwner(true);
 			}
 
@@ -98,7 +95,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
-		const result = await pkpDID.updateIndex(index, {
+		const result = await pkpCeramic.updateIndex(index, {
 			title,
 		});
 		setIndex(result);
@@ -108,9 +105,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
 		type === "my_indexes" ? setIndex({ ...index, is_in_my_indexes: op === "add" } as Indexes) : setIndex({ ...index, is_starred: op === "add" } as Indexes);
 		if (op === "add") {
-			ceramic.addUserIndex(index_id, type);
+			personalCeramic.addUserIndex(index_id, type);
 		} else {
-			ceramic.removeUserIndex(index_id, type);
+			personalCeramic.removeUserIndex(index_id, type);
 		}
 	};
 	const handleAddLink = async (urls: string[]) => {
@@ -125,9 +122,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		for await (const url of urls) {
 			const payload = await api.crawlLink(url);
 			if (payload) {
-				const createdLink = await ceramic.createLink(payload);
+				const createdLink = await personalCeramic.createLink(payload);
 				// TODO Fix that.
-				const createdIndexLink = await pkpDID.addIndexLink(index, createdLink?.id!);
+				const createdIndexLink = await pkpCeramic.addIndexLink(index, createdLink?.id!);
 				if (createdIndexLink) {
 					setAddedLink(createdIndexLink); // TODO Fix
 				}
