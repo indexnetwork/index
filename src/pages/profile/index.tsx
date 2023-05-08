@@ -47,7 +47,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 					values.pfp = `ipfs://${result.path}`;
 				}
 				const { available, ...rest } = values;
-				await ceramic.setProfile(rest);
+				await personalCeramic.setProfile(rest);
 				dispatch(setProfile({
 					...rest,
 					available: true,
@@ -62,7 +62,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 
 	const router = useRouter();
 
-	const ceramic = useCeramic();
+	const personalCeramic = useCeramic();
 
 	const { did } = useAppSelector(selectConnection);
 
@@ -77,7 +77,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 	const handleUploadImage = async () => {
 		if (images && images.length > 0) {
 			const imgFile = images[0].file;
-			return ceramic.uploadImage(imgFile!);
+			return personalCeramic.uploadImage(imgFile!);
 		}
 	};
 
