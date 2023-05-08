@@ -2,7 +2,7 @@
 
 ## The human bridge between context and content.
 
-index.as helps you to curate all-forms of content, create searchable indexes, and monetize them independently.
+index.as helps you to create and monetize discovery engines.
 
 ![landing-2-img](https://testnet.index.as/images/landing-2.webp)
 
