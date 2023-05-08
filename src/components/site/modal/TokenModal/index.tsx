@@ -42,13 +42,6 @@ const TokenModal = ({
 	const [loading, setLoading] = useState(false);
 
 	const handleCreate = async () => {
-		if (stream.title) {
-			const doc = await ceramic.createIndex(stream);
-			if (doc != null) {
-				router.push(`/${doc.id}`);
-				modalProps.onClose?.();
-			}
-		}
 		setLoading(false);
 	};
 	const handleChange: React.ChangeEventHandler<HTMLInputElement> = ({ target }) => {
