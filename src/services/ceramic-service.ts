@@ -24,9 +24,9 @@ class CeramicService {
 
 	private did: DID;
 
-	constructor(did: DID) {
-		this.did = did;
-		this.client.setDID(did);
+	constructor(did?: DID) {
+		this.did = did!;
+		this.client.setDID(did!);
 	}
 
 	async authenticateUser(did: any) {
