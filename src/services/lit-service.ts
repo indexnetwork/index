@@ -41,7 +41,7 @@ class LitService {
 		await litContracts.connect();
 
 		const mintCost = await litContracts.pkpNftContract.read.mintCost();
-		console.log(mintCost);
+
 		const mint = await litContracts.pkpNftContract.write.mintNext(2, { value: mintCost });
 		const wait = await mint.wait();
 
