@@ -2,7 +2,6 @@ import IconDiscord from "components/base/Icon/IconDiscord";
 import IconTwitter from "components/base/Icon/IconTwitter";
 import Footer, { FooterMenu } from "components/layout/base/Footer";
 import React from "react";
-import LogoFull from "components/base/Logo/LogoFull";
 import IconGithub from "../../../base/Icon/IconGithub";
 
 const SiteFooter = () => (
@@ -20,7 +19,6 @@ const SiteFooter = () => (
 			{/* <a href="https://telegram.com/indexas" target="_blank" rel="noreferrer">
 				<IconTelegram fill="white" />
 			</a> */}
-			<LogoFull fill={"white"} className="footer-logo"></LogoFull>
 		</FooterMenu>
 	</Footer>
 );

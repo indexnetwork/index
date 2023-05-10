@@ -60,7 +60,7 @@ const Footer = (
 						className="mt-3"
 						style={{
 							color: "var(--gray-2)",
-						}}>Join our community to get support, provide feedback, or just to say hello.</Text>
+						}}>Join our community to get support, provide feedback, or just to say hello on...</Text>
 					{children}
 				</Flex>
 			</Col>
