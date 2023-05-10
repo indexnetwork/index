@@ -60,7 +60,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 			dispatch(setAuthLoading(false));
 		}
 	};
-	const startNewSession = async (): Promise<SessionResponse> => {
+	const startNewSession = async (): Promise<SessionResponse | undefined> => {
 		if (window.ethereum === null || window.ethereum === undefined) {
 			dispatch(setAuthLoading(false));
 			throw new Error("No injected Ethereum provider found.");
@@ -111,7 +111,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 				},
 			} as SessionResponse;
 		} catch (err) {
-			dispatch(setAuthLoading(false));
+			console.log(err);
 		}
 	};
 	const connectMetamask = async () => {
@@ -120,9 +120,13 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		if (!metaMaskConnected) {
 			if (!session || (session.hasSession && session.isExpired)) {
 				const sessionResponse = await startNewSession();
-				localStorage.setItem("authSig", JSON.stringify(sessionResponse.authSig));
-				localStorage.setItem("did", sessionResponse.session.serialize());
-				setSession(sessionResponse.session);
+				if (sessionResponse) {
+					localStorage.setItem("authSig", JSON.stringify(sessionResponse.authSig));
+					localStorage.setItem("did", sessionResponse.session.serialize());
+					setSession(sessionResponse.session);
+				} else {
+					dispatch(setAuthLoading(false));
+				}
 			}
 		} else {
 			const hasOrigin = await litService.hasOriginNFT();
