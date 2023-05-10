@@ -39,10 +39,9 @@ const IndexesPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	const [search, setSearch] = useState("");
 	const [loading, setLoading] = useState(false);
-	const { isOwner, did } = useOwner();
+	const { did } = useOwner();
 
 	const [init, setInit] = useState(true);
-	const [test, setTest] = useState();
 	const [tabKey, setTabKey] = useState("my_indexes");
 	const [hasUserIndex, setHasUserIndex] = useState({ my_indexes: false, starred: false });
 
@@ -64,11 +63,11 @@ const IndexesPage: NextPageWithLayout = () => {
 	const tabKeyStateKey = tabKey as StateKey;
 
 	const take = 10;
-	const ceramic = useCeramic();
+	const personalCeramic = useCeramic();
 	const router = useRouter();
 
 	const handleClick = useCallback((itm: Indexes) => async () => {
-		router.push(`/${router.query.did}/${itm.id}`);
+		router.push(`/${itm.id}`);
 	}, []);
 
 	const handleUserIndexToggle = async (index_id: string, type: string, op: string) => {
@@ -90,13 +89,13 @@ const IndexesPage: NextPageWithLayout = () => {
 		});
 
 		if (op === "add") {
-			ceramic.addUserIndex(index_id, type);
+			personalCeramic.addUserIndex(index_id, type);
 
 			newState[typeStateKey]!.indexes = [index, ...newState[typeStateKey]!.indexes!];
 			newState[typeStateKey]!.skip = newState[typeStateKey]!.skip + 1;
 			newState[typeStateKey]!.totalCount = newState[typeStateKey]!.totalCount + 1;
 		} else {
-			ceramic.removeUserIndex(index_id, type);
+			personalCeramic.removeUserIndex(index_id, type);
 
 			newState[typeStateKey]!.indexes = newState[typeStateKey]!.indexes?.filter((i: Indexes) => i.id !== index_id);
 			newState[typeStateKey]!.skip = newState[typeStateKey]!.skip - 1;
@@ -211,8 +210,9 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
+									isOwner={did === itm.owner_did?.id}
 									userIndexToggle={handleUserIndexToggle}
-									{...itm}
+									index={itm}
 								/>}
 								divided
 							/>
@@ -232,8 +232,9 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
+									isOwner={did === itm.owner_did?.id}
 									userIndexToggle={handleUserIndexToggle}
-									{...itm}
+									index={itm}
 								/>}
 								divided
 							/>

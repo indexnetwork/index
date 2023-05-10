@@ -8,7 +8,11 @@ import Text from "../Text";
 
 export interface CopyInputProps extends InputProps { }
 
-const CopyInput: React.FC<CopyInputProps> = ({ value }) => {
+const CopyInput = (
+	{
+		value,
+	}: CopyInputProps,
+) => {
 	const [copied, setCopied] = useState<boolean>();
 	const timeout = useRef<NodeJS.Timeout>();
 

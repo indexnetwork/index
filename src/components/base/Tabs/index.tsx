@@ -13,12 +13,14 @@ export interface TabsProps {
 	onTabChange?(activeTabKey: string): void;
 }
 
-export const Tabs: React.FC<TabsProps> = ({
-	children,
-	activeKey,
-	destroyInactiveTabPane = true,
-	onTabChange,
-}) => {
+export const Tabs = (
+	{
+		children,
+		activeKey,
+		destroyInactiveTabPane = true,
+		onTabChange,
+	}: TabsProps,
+) => {
 	const getActiveTab = () => {
 		if (activeKey) return activeKey;
 

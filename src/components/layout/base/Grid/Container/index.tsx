@@ -5,14 +5,18 @@ export interface ContainerProps extends React.DetailedHTMLProps<React.HTMLAttrib
 	fluid?: boolean;
 }
 
-const Container: React.FC<ContainerProps> = ({
-	children, className, fluid = false, ...divProps
-}) => (
-	<div
-		className={cc([fluid ? "container-fluid" : "container", className || ""])}
-		{...divProps}
-	>
-		{children}
-	</div>);
+const Container = (
+	{
+		children,
+		className,
+		fluid = false,
+		...divProps
+	}: ContainerProps,
+) => (<div
+	className={cc([fluid ? "container-fluid" : "container", className || ""])}
+	{...divProps}
+>
+	{children}
+</div>);
 
 export default Container;

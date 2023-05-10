@@ -8,10 +8,10 @@ import IconPeople from "components/base/Icon/IconPeople";
 import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
 import React, {
-	useCallback, useContext, useEffect, useState,
+	useCallback, useContext, useState,
 } from "react";
-import IconLogout from "components/base/Icon/IconLogout";
-import Router, { useRouter } from "next/router";
+import IconDisconnect from "components/base/Icon/IconDisconnect";
+import { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
 import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
@@ -27,7 +27,13 @@ export interface LandingHeaderProps extends NavbarProps {
 	isLanding?: boolean;
 }
 
-const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLanding = false, ...baseProps }) => {
+const SiteNavbar = (
+	{
+		headerType = "user",
+		isLanding = false,
+		...baseProps
+	}: LandingHeaderProps,
+) => {
 	const { t } = useTranslation(["common", "components"]);
 	const router = useRouter();
 
@@ -45,13 +51,6 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 
 	const authenticated = useAuth();
 	const { connect, disconnect } = useContext(AuthHandlerContext);
-
-	useEffect(() => {
-		if (isLanding && authenticated) {
-			Router.push(`/${did}`);
-		}
-	}, [did, authenticated, isLanding]);
-
 	const handleConnect = async () => {
 		try {
 			await connect();
@@ -73,7 +72,7 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 			{...baseProps}
 		>
 			<NavbarMenu placement="right">
-				{loading || (authenticated && isLanding) ? (
+				{(loading && isLanding) ? (
 					<Button
 						theme="primary"
 						className="lottie-text"
@@ -129,8 +128,8 @@ const SiteNavbar: React.FC<LandingHeaderProps> = ({ headerType = "user", isLandi
 									<DropdownMenuItem divider/>
 									<DropdownMenuItem onClick={disconnect}>
 										<Flex alignItems="center">
-											<IconLogout className="icon-error" width={16} height="100%"/>
-											<Text className="ml-3 dropdown-text-logout" element="span" size="md" theme="error">{t("common:logout")}</Text>
+											<IconDisconnect className="icon-error" width={16} height="100%"/>
+											<Text className="ml-3 dropdown-text-logout" element="span" size="md" theme="error">{t("common:disconnect")}</Text>
 										</Flex>
 									</DropdownMenuItem>
 								</>

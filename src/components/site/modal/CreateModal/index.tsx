@@ -13,13 +13,14 @@ import { useAppSelector } from "hooks/store";
 import { useTranslation } from "next-i18next";
 import { selectConnection } from "store/slices/connectionSlice";
 import { Indexes } from "types/entity";
+import CeramicService from "../../../../services/ceramic-service";
 
 export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
 }
 
-const CreateModal: React.VFC<CreateModalProps> = ({
+const CreateModal = ({
 	...modalProps
-}) => {
+} : any) => {
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const handleClose = () => {
@@ -42,10 +43,11 @@ const CreateModal: React.VFC<CreateModalProps> = ({
 	const handleCreate = async () => {
 		setLoading(true);
 		if (title) {
-			const doc = await ceramic.createIndex({ title } as Indexes);
+			const c = new CeramicService();
+			const doc = await c.createIndex({ title } as Indexes);
 			if (doc != null) {
 				// await setTitle("");
-				await router.push(`/${did}/${doc.id}`);
+				await router.push(`/${doc.id}`);
 				modalProps.onClose?.();
 			}
 		}

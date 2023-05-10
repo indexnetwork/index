@@ -89,10 +89,10 @@ const LandingSection6: React.VFC = () => {
 												<Text theme="secondary">Collaborative indexing with Lit Protocol</Text>
 											</li>
 											<li>
-												<Text theme="secondary">Subscription enabled search engines with Unlock Protocol</Text>
+												<Text theme="secondary">Subscription enabled discovery engines with Unlock Protocol</Text>
 											</li>
 											<li>
-												<Text theme="secondary">Experiments with DAOs, companies and individual curators.</Text>
+												<Text theme="secondary">Experiments with DAOs, companies and individual creators.</Text>
 											</li>
 										</ul>
 									</Flex>
@@ -191,7 +191,7 @@ const LandingSection6: React.VFC = () => {
 													<Text theme="secondary">Featuring multi-use ownership with Gnosis safe</Text>
 												</li>
 												<li>
-													<Text theme="secondary">Collaboration with DAOs, companies and individual curators</Text>
+													<Text theme="secondary">Collaboration with DAOs, companies and individual creators</Text>
 												</li>
 											</ul>
 										</Flex>

@@ -15,19 +15,21 @@ export interface TextAreaProps extends React.DetailedHTMLProps<React.TextareaHTM
 	type?: PropType<React.InputHTMLAttributes<HTMLInputElement>, "type">;
 }
 
-const TextArea: React.FC<TextAreaProps> = ({
-	className,
-	addOnBefore,
-	addOnAfter,
-	disabled,
-	readOnly,
-	type,
-	block = true,
-	ghost = false,
-	inputSize = "md",
-	rows = 6,
-	...inputProps
-}) => {
+const TextArea = (
+	{
+		className,
+		addOnBefore,
+		addOnAfter,
+		disabled,
+		readOnly,
+		type,
+		block = true,
+		ghost = false,
+		inputSize = "md",
+		rows = 6,
+		...inputProps
+	}: TextAreaProps,
+) => {
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const [showPw, setShowPw] = useState(false);
 

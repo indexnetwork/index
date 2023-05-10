@@ -24,10 +24,11 @@ const LinkInput: React.VFC<LinkInputProps> = ({
 	const [showMsg, setShowMsg] = useState(false);
 	const handleBlur: React.FocusEventHandler<HTMLInputElement> = () => {
 		const words = url.split(" ");
-
 		const links = words.filter((word) => validator.isURL(word));
-		onLinkAdd && onLinkAdd(links);
-		setUrl("");
+		if (links.length > 0) {
+			onLinkAdd && onLinkAdd(links);
+			setUrl("");
+		}
 	};
 
 	const handleEnter = (e: any) => {

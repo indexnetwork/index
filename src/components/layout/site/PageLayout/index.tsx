@@ -7,19 +7,23 @@ export interface PageLayoutProps {
 	hasFooter?: boolean;
 	headerType?: "user" | "public";
 	isLanding?: boolean;
+	children: React.ReactNode;
 }
-const PageLayout: React.FC<PageLayoutProps> = ({
-	children, headerType = "user", hasFooter = false, isLanding = false,
-}) => (
-	<>
-		<Head>
-			<title>Index.as</title>
-			{/* <script async src="/scripts/drag-drop-touch.js"></script> */}
-		</Head>
-		<SiteNavbar headerType={headerType} isLanding={isLanding} />
-		{children}
-		{hasFooter && <SiteFooter />}
-	</>
-);
+const PageLayout = (
+	{
+		children,
+		headerType = "user",
+		hasFooter = false,
+		isLanding = false,
+	}: PageLayoutProps,
+) => (<>
+	<Head>
+		<title>Index.as</title>
+		{/* <script async src="/scripts/drag-drop-touch.js"></script> */}
+	</Head>
+	<SiteNavbar headerType={headerType} isLanding={isLanding} />
+	{children}
+	{hasFooter && <SiteFooter />}
+</>);
 
 export default PageLayout;

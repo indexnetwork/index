@@ -10,30 +10,31 @@ export interface RowProps extends React.DetailedHTMLProps<React.HTMLAttributes<H
 	fullWidth?: boolean;
 }
 
-const Row: React.FC<RowProps> = ({
-	children,
-	className,
-	rowSpacing,
-	colSpacing,
-	noGutters = true,
-	fullHeight = false,
-	fullWidth = false,
-	...divProps
-}) => (
-	<div
-		className={cc([
-			"row",
-			"idxrow",
-			fullHeight ? "h-100" : "",
-			fullWidth ? "w-100" : "",
-			rowSpacing ? `idxrow-spacing-v${rowSpacing}` : "idxrow-spacing-v0",
-			colSpacing ? `idxrow-spacing-h${colSpacing}` : "idxrow-spacing-h0",
-			noGutters ? "row-no-gutters" : "",
-			className || "",
-		])}
-		{...divProps}
-	>
-		{children}
-	</div>);
+const Row = (
+	{
+		children,
+		className,
+		rowSpacing,
+		colSpacing,
+		noGutters = true,
+		fullHeight = false,
+		fullWidth = false,
+		...divProps
+	}: RowProps,
+) => (<div
+	className={cc([
+		"row",
+		"idxrow",
+		fullHeight ? "h-100" : "",
+		fullWidth ? "w-100" : "",
+		rowSpacing ? `idxrow-spacing-v${rowSpacing}` : "idxrow-spacing-v0",
+		colSpacing ? `idxrow-spacing-h${colSpacing}` : "idxrow-spacing-h0",
+		noGutters ? "row-no-gutters" : "",
+		className || "",
+	])}
+	{...divProps}
+>
+	{children}
+</div>);
 
 export default Row;

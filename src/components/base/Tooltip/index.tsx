@@ -7,11 +7,18 @@ export interface TooltipProps {
 	wrapperClass?: string;
 	tooltipClass?: string;
 	content: React.ReactNode;
+	children: React.ReactNode;
 }
 
-const Tooltip: React.FC<TooltipProps> = ({
-	content, children, wrapperClass, position = "bottom-center", delay = 500,
-}) => {
+const Tooltip = (
+	{
+		content,
+		children,
+		wrapperClass,
+		position = "bottom-center",
+		delay = 500,
+	}: TooltipProps,
+) => {
 	const [visible, setVisible] = useState(false);
 
 	const timeout = useRef<NodeJS.Timeout>();

@@ -21,16 +21,18 @@ export interface SearchInputProps extends InputProps {
 	onSearch?(value: string): void;
 }
 
-const SearchInput: React.FC<SearchInputProps> = ({
-	addOnAfter,
-	debounceTime = 1000,
-	defaultValue = "",
-	disabled,
-	loading,
-	showClear,
-	onSearch,
-	...inputProps
-}) => {
+const SearchInput = (
+	{
+		addOnAfter,
+		debounceTime = 1000,
+		defaultValue = "",
+		disabled,
+		loading,
+		showClear,
+		onSearch,
+		...inputProps
+	}: SearchInputProps,
+) => {
 	const { t } = useTranslation(["pages"]);
 
 	const [query, setQuery] = useState(defaultValue);

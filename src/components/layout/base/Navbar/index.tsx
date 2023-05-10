@@ -25,18 +25,20 @@ export interface NavbarMenuProps extends React.DetailedHTMLProps<React.HTMLAttri
 	placement?: "left" | "right" | "center";
 }
 
-const Navbar: React.FC<NavbarProps> = ({
-	children,
-	logoSize = "mini",
-	sticky = false,
-	stickyBgChangeAfter = 30,
-	stickyBgColor = "#fff",
-	bgColor,
-	bordered = true,
-	style,
-	className,
-	...menuProps
-}) => {
+const Navbar = (
+	{
+		children,
+		logoSize = "mini",
+		sticky = false,
+		stickyBgChangeAfter = 30,
+		stickyBgColor = "#fff",
+		bgColor,
+		bordered = true,
+		style,
+		className,
+		...menuProps
+	}: NavbarProps,
+) => {
 	const yOffSet = useYOffSet(sticky);
 	const [bgSticky, setBgSticky] = useState(false);
 
@@ -100,8 +102,13 @@ const Navbar: React.FC<NavbarProps> = ({
 	);
 };
 
-export const NavbarMenu: React.FC<NavbarMenuProps> = ({
-	className, children, placement = "left", ...props
-}) => <div {...props} className={cc([`navbar-menu-${placement}`, className || ""])}>{children}</div>;
+export const NavbarMenu = (
+	{
+		className,
+		children,
+		placement = "left",
+		...props
+	}: NavbarMenuProps,
+) => <div {...props} className={cc([`navbar-menu-${placement}`, className || ""])}>{children}</div>;
 
 export default Navbar;

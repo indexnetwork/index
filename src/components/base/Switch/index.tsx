@@ -10,13 +10,15 @@ export interface SwitchProps {
 	onChange?(checked: boolean): void;
 }
 
-const Switch: React.FC<SwitchProps> = ({
-	checked = true,
-	size = "sm",
-	theme = "primary",
-	disabled = false,
-	onChange,
-}) => {
+const Switch = (
+	{
+		checked = true,
+		size = "sm",
+		theme = "primary",
+		disabled = false,
+		onChange,
+	}: SwitchProps,
+) => {
 	const [active, setActive] = useState(checked);
 
 	useEffect(() => {

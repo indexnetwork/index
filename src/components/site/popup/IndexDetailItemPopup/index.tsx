@@ -8,8 +8,14 @@ import React from "react";
 
 export interface IndexDetailItemPopupProps {
 	onDelete?(): void;
+	children: React.ReactNode;
 }
-const IndexDetailItemPopup: React.FC<IndexDetailItemPopupProps> = ({ children, onDelete }) => {
+const IndexDetailItemPopup = (
+	{
+		children,
+		onDelete,
+	}: IndexDetailItemPopupProps,
+) => {
 	const { t } = useTranslation("common");
 	const handleDelete = () => {
 		onDelete && onDelete();

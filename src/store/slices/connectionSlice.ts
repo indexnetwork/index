@@ -5,7 +5,8 @@ import type { RootState } from "..";
 interface ConnectionState {
 	metaMaskConnected: boolean;
 	ceramicConnected: boolean;
-	loading: boolean;
+	originNFTModalVisible: boolean;
+	loading: boolean
 	did?: string;
 }
 
@@ -13,6 +14,7 @@ interface ConnectionState {
 const initialState: ConnectionState = {
 	metaMaskConnected: false,
 	ceramicConnected: false,
+	originNFTModalVisible: false,
 	loading: false,
 };
 
@@ -24,6 +26,10 @@ export const connectionSlice = createSlice({
 		setAuthLoading: (state, action: PayloadAction<boolean>) => ({
 			...state,
 			loading: action.payload,
+		}),
+		setOriginNFTModalVisible: (state, action: PayloadAction<boolean>) => ({
+			...state,
+			originNFTModalVisible: action.payload,
 		}),
 		setMetaMaskConnected: (state, action: PayloadAction<{
 			did?: string,
@@ -47,6 +53,7 @@ export const connectionSlice = createSlice({
 			...state,
 			metaMaskConnected: false,
 			ceramicConnected: false,
+			originNFTModalVisible: false,
 			did: undefined,
 		}),
 	},
@@ -54,6 +61,7 @@ export const connectionSlice = createSlice({
 
 export const {
 	setAuthLoading,
+	setOriginNFTModalVisible,
 	setMetaMaskConnected,
 	setCeramicConnected,
 	disconnectApp,

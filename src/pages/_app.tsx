@@ -14,6 +14,7 @@ import { AuthHandlerProvider } from "components/site/context/AuthHandlerProvider
 
 type AppPropsWithLayout = AppProps & {
 	Component: NextPageWithLayout;
+	children: React.ReactNode;
 };
 
 function MyApp({ Component, pageProps }: AppPropsWithLayout) {
@@ -32,12 +33,12 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 							<link rel="shortcut icon" href="/favicon-white.png" />
 							<title>index.as | The human bridge between context and content.</title>
 							<meta name="title" content="index.as | The human bridge between context and content." />
-							<meta name="description" content="Curate all-forms of content, create searchable indexes, and monetize them independently." />
+							<meta name="description" content="Create and monetize discovery engines." />
 
 							<meta property="twitter:card" content="summary_large_image" />
 							<meta property="twitter:url" content="https://index.as" />
 							<meta property="twitter:title" content="index.as | The human bridge between context and content." />
-							<meta property="twitter:description" content="Curate all-forms of content, create searchable indexes, and monetize them independently." />
+							<meta property="twitter:description" content="Create and monetize discovery engines." />
 							<meta property="twitter:image" content="https://testnet.index.as/images/bridge.jpg" />
 
 							<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />

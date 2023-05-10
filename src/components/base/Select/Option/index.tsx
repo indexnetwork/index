@@ -10,12 +10,14 @@ export interface OptionProps {
 	size?: InputSizeType,
 }
 
-const Option: React.FC<OptionProps> = ({
-	value,
-	children,
-	divider = false,
-	size = "md",
-}) => {
+const Option = (
+	{
+		value,
+		children,
+		divider = false,
+		size = "md",
+	}: OptionProps,
+) => {
 	const selectContext = useContext(SelectContext);
 
 	const getSelected = () => (selectContext && selectContext.getSelected ? selectContext.getSelected(value) : false);

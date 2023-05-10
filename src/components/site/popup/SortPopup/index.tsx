@@ -7,8 +7,14 @@ export type SortPopupSelection = "newest" | "oldest" | "tag" | "default";
 
 export interface SortPopupProps {
 	onChange?(type: SortPopupSelection): void;
+	children: React.ReactNode;
 }
-const SortPopup: React.FC<SortPopupProps> = ({ children, onChange }) => {
+const SortPopup = (
+	{
+		children,
+		onChange,
+	}: SortPopupProps,
+) => {
 	const handleClick = (type: SortPopupSelection) => {
 		onChange && onChange(type);
 	};

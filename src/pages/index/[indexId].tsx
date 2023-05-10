@@ -18,38 +18,41 @@ import FilterPopup from "components/site/popup/FilterPopup";
 import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import Avatar from "components/base/Avatar";
 import LinkInput from "components/site/input/LinkInput";
-import IndexDetailsList from "components/site/index-details/IndexDetailsList";
+import IndexItemList from "components/site/index-details/IndexItemList";
+import CreatorSettings from "components/site/index-details/CreatorSettings";
 import { useRouter } from "next/router";
-import { Indexes, Links } from "types/entity";
-import api from "services/api-service";
+import { Indexes, IndexLink } from "types/entity";
+import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 import IndexTitleInput from "components/site/input/IndexTitleInput";
 import { useCeramic } from "hooks/useCeramic";
 import { useMergedState } from "hooks/useMergedState";
 import moment from "moment";
 import SearchInput from "components/base/SearchInput";
 import NotFound from "components/site/indexes/NotFound";
-import { useOwner } from "hooks/useOwner";
-import { useAppDispatch, useAppSelector } from "hooks/store";
+import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { selectProfile } from "store/slices/profileSlice";
-
 import { LinksContext } from "hooks/useLinks";
 import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import IconStar from "components/base/Icon/IconStar";
 import Tooltip from "components/base/Tooltip";
 import Soon from "components/site/indexes/Soon";
+import CeramicService from "services/ceramic-service";
+import { decodeDIDWithLit } from "../../utils/lit";
+import LitService from "../../services/lit-service";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
-	// const [shareModalVisible, setShareModalVisible] = useState(false);
-	const dispatch = useAppDispatch();
+	const router = useRouter();
+	const { indexId } = router.query;
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
-	const [links, setLinks] = useState<Links[]>([]);
-	const [addedLink, setAddedLink] = useState<Links>();
-	const [tab, setTab] = useState<boolean>(false);
+	const [links, setLinks] = useState<IndexLink[]>([]);
+	const [pkpCeramic, setPKPCeramic] = useState<any>();
+	const personalCeramic = useCeramic();
+	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tabKey, setTabKey] = useState("index");
-
+	const [isOwner, setIsOwner] = useState<boolean>(false);
 	const [notFound, setNotFound] = useState(false);
 	const [progress, setProgress] = useState({
 		current: 0,
@@ -59,37 +62,40 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
 	const [search, setSearch] = useState("");
-
-	const [tokenModalVisible, setTokenModalVisible] = useState(false);
-
 	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
 
-	const { isOwner } = useOwner();
-	const ceramic = useCeramic();
-
-	const router = useRouter();
-
-	// const handleToggleShareModal = () => {
-	// 	setShareModalVisible((oldVal) => !oldVal);
-	// };
-
-	const handleToggleTokenModal = () => {
-		setTokenModalVisible((oldVal) => !oldVal);
-	 };
-
 	const loadIndex = async (id: string) => {
-		const doc = await ceramic.getIndexById(id);
-		if (doc != null) {
-			setIndex(doc);
-		} else {
+		const doc = await pkpCeramic.getIndexById(id);
+		if (!doc) {
 			setNotFound(true);
+		} else {
+			setIndex(doc);
+			const pkpPublicKey = decodeDIDWithLit(doc.controller_did?.id);
+			const pkpDIDResult = await LitService.authenticatePKP(doc.collab_action!, pkpPublicKey);
+			if (pkpDIDResult) {
+				setPKPCeramic(new CeramicService(pkpDIDResult));
+				setIsOwner(true);
+			}
+
+			await loadUserIndex(id);
+			setLoading(false);
 		}
 	};
-
+	const loadUserIndex = async (index_id: string) => {
+		const userIndexes = await api.getUserIndexes({
+			index_id, // TODO Shame
+			did,
+		} as GetUserIndexesRequestBody) as UserIndexResponse;
+		setIndex({
+ 			...index,
+			is_in_my_indexes: !!userIndexes.my_indexes, // TODO Shame
+			is_starred: !!userIndexes.starred,
+		} as Indexes);
+	};
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
-		const result = await ceramic.updateIndex(index.id!, {
+		const result = await pkpCeramic.updateIndex(index, {
 			title,
 		});
 		setIndex(result);
@@ -97,11 +103,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
-		type === "my_indexes" ? setIndex({ ...index, is_in_my_indexes: op === "add" }) : setIndex({ ...index, is_starred: op === "add" });
+		type === "my_indexes" ? setIndex({ ...index, is_in_my_indexes: op === "add" } as Indexes) : setIndex({ ...index, is_starred: op === "add" } as Indexes);
 		if (op === "add") {
-			ceramic.addUserIndex(index_id, type);
+			personalCeramic.addUserIndex(index_id, type);
 		} else {
-			ceramic.removeUserIndex(index_id, type);
+			personalCeramic.removeUserIndex(index_id, type);
 		}
 	};
 	const handleAddLink = async (urls: string[]) => {
@@ -111,28 +117,26 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			current: 0,
 			total: urls.length,
 		});
-
-		urls.forEach(async (url) => {
+		// TODO Allow for syntax
+		// eslint-disable-next-line no-restricted-syntax
+		for await (const url of urls) {
 			const payload = await api.crawlLink(url);
 			if (payload) {
-				const link = await ceramic.addLink(index?.id!, payload);
-				if (link) {
-					setAddedLink(link);
+				const createdLink = await personalCeramic.createLink(payload);
+				// TODO Fix that.
+				const createdIndexLink = await pkpCeramic.addIndexLink(index, createdLink?.id!);
+				if (createdIndexLink) {
+					setAddedLink(createdIndexLink); // TODO Fix
 				}
 			}
-		});
-
-		//
-	};
-
-	useEffect(() => {
-		const { id } = router.query;
-		if (router.query) {
-			loadIndex(id as string);
-		} else {
-			setNotFound(true);
 		}
-	}, [router.query]);
+	};
+	useEffect(() => {
+		setLoading(true);
+		if (indexId && did) {
+			loadIndex(indexId as string);
+		}
+	}, [indexId, did]);
 
 	useEffect(() => {
 		if (addedLink) {
@@ -185,7 +189,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											noYGutters
 										>
 											<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-											<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.controller_did}</Text>
+											<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.owner_did?.id}</Text>
 										</Col>
 										<Col
 											xs={12}
@@ -301,31 +305,31 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<FlexRow
 											justify="center"
 										>
-
 											<Col xs={12} lg={9}>
-												<IndexDetailsList
+												<IndexItemList
 													search={search}
 													isOwner={isOwner}
-													index_id={router.query.id as any}
+													index_id={router.query.indexId as any}
 												// onChange={handleReorderLinks}
 												/>
 											</Col>
-
-											<Col xs={12} lg={9}>
+										</FlexRow> : tabKey === "creators" ?
+											<Col>
+												<FlexRow justify="center">
+													<Col xs={12} lg={9}>
+														<CreatorSettings collabAction={index.collab_action!}></CreatorSettings>
+													</Col>
+												</FlexRow>
+											</Col> : <Col>
+												<FlexRow justify="center">
+													<Soon section={tabKey}></Soon>
+												</FlexRow>
 											</Col>
-										</FlexRow> :
-										<Col>
-											<FlexRow justify="center">
-												<Soon section={tabKey}></Soon>
-											</FlexRow>
-										</Col>}
+									}
 								</>
 							)
 					}
 				</Container>
-
-				{/* <TokenModal data={{ }} visible={tokenModalVisible} onClose={handleToggleTokenModal}></TokenModal> */}
-				{/* <ShareModal data={{}} visible={shareModalVisible} onClose={handleToggleShareModal} /> */}
 			</>
 		</LinksContext.Provider>
 	);

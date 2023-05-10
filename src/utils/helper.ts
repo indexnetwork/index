@@ -1,6 +1,4 @@
 import moment from "moment";
-import { Links } from "types/entity";
-import { v4 as uuid } from "uuid";
 
 export function copyToClipboard(str?: string) {
 	if (navigator && navigator.clipboard) navigator.clipboard.writeText(str || "");
@@ -50,16 +48,3 @@ export const setDates = <T extends { updated_at?: string, created_at?: string, [
 };
 
 export const getCurrentDateTime = () => moment.utc().toISOString();
-
-export function prepareLinks(links: Links[], update: boolean = false) {
-	return links?.map((link) => setDates({
-		...link,
-		id: uuid(),
-	}, update));
-}
-export function arrayMove(list: any[], startIndex: number, endIndex: number) {
-	const result = Array.from(list);
-	const [removed] = result.splice(startIndex, 1);
-	result.splice(endIndex, 0, removed);
-	return result;
-}

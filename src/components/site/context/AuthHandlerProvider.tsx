@@ -1,14 +1,21 @@
-import { DIDSession } from "did-session";
-import { EthereumWebAuth, getAccountId } from "@didtools/pkh-ethereum";
-
+import { getAccountId } from "@didtools/pkh-ethereum";
+import { Cacao, SiweMessage } from "@didtools/cacao";
+import { normalizeAccountId } from "@ceramicnetwork/common";
 import { useAppDispatch, useAppSelector } from "hooks/store";
 import { useRouter } from "next/router";
-import React, { useEffect } from "react";
-import ceramicService from "services/ceramic-service";
+import React, { useEffect, useState } from "react";
+import { getAddress } from "@ethersproject/address";
+import { randomBytes, randomString } from "@stablelib/random";
+import { DIDSession, createDIDKey, createDIDCacao } from "did-session";
+
 import {
-	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected,
+	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected, setOriginNFTModalVisible,
 } from "store/slices/connectionSlice";
 import { setProfile } from "store/slices/profileSlice";
+import CeramicService from "services/ceramic-service";
+import litService from "services/lit-service";
+import { useCeramic } from "hooks/useCeramic";
+import OriginWarningModal from "../modal/OriginWarningModal";
 
 declare global {
 	interface Window {
@@ -21,68 +28,119 @@ export interface AuthHandlerContextType {
 	disconnect(): void;
 }
 
-let session: DIDSession | null | undefined;
+type SessionResponse = {
+	session: DIDSession,
+	authSig: object
+};
 
 export const AuthHandlerContext = React.createContext<AuthHandlerContextType>({} as any);
 
-export const AuthHandlerProvider: React.FC = ({ children }) => {
-	const connection = useAppSelector(selectConnection);
+export const AuthHandlerProvider = ({ children }: any) => {
+	const { metaMaskConnected, originNFTModalVisible, loading } = useAppSelector(selectConnection);
 	const dispatch = useAppDispatch();
 	const router = useRouter();
+
+	const [session, setSession] = useState<DIDSession | null | undefined>();
+
+	const personalCeramic = useCeramic();
 
 	const disconnect = async () => {
 		localStorage.removeItem("provider");
 		localStorage.removeItem("did");
-		await ceramicService.close();
-		session = null;
+		setSession(null);
 		dispatch(disconnectApp());
-		router.push("/");
+		await router.push("/");
 	};
-
-	const checkExistingSession = async () => {
-		const sessionStr = localStorage.getItem("did"); // for production, you will want a better place than localStorage for your sessions.
+	const getExistingSession = async () => {
+		const sessionStr = localStorage.getItem("did");
+		// for production, you will want a better place than localStorage for your sessions.
 		if (sessionStr) {
-			session = await DIDSession.fromSession(sessionStr);
+			const existingSession = await DIDSession.fromSession(sessionStr);
+			setSession(existingSession);
 			dispatch(setAuthLoading(false));
+		}
+	};
+	const startNewSession = async (): Promise<SessionResponse | undefined> => {
+		if (window.ethereum === null || window.ethereum === undefined) {
+			dispatch(setAuthLoading(false));
+			throw new Error("No injected Ethereum provider found.");
+		}
+		// We enable the ethereum provider to get the user's addresses.
+		const ethProvider = window.ethereum;
+		// request ethereum accounts.
+		const addresses = await ethProvider.enable({
+			method: "eth_requestAccounts",
+		});
+
+		const accountId = await getAccountId(ethProvider, addresses[0]);
+		const normAccount = normalizeAccountId(accountId);
+
+		const keySeed = randomBytes(32);
+		const didKey = await createDIDKey(keySeed);
+
+		const now = new Date();
+		const threeMonthsLater = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+
+		const siweMessage = new SiweMessage({
+			domain: "index.as",
+			address: getAddress(normAccount.address),
+			statement: "Give this application access to some of your data on Ceramic",
+			uri: didKey.id,
+			version: "1",
+			chainId: normAccount.chainId.reference,
+			nonce: randomString(10),
+			issuedAt: now.toISOString(),
+			expirationTime: threeMonthsLater.toISOString(),
+			resources: ["ceramic://*"],
+		});
+		try {
+			siweMessage.signature = await ethProvider.request({
+				method: "personal_sign",
+				params: [siweMessage.signMessage(), getAddress(accountId.address)],
+			});
+			const cacao = Cacao.fromSiweMessage(siweMessage);
+			const did = await createDIDCacao(didKey, cacao);
+			const newSession = new DIDSession({ cacao, keySeed, did });
+			return {
+				session: newSession,
+				authSig: {
+					signedMessage: siweMessage.toMessage(),
+					address: getAddress(accountId.address),
+					derivedVia: "web3.eth.personal.sign",
+					sig: siweMessage.signature,
+				},
+			} as SessionResponse;
+		} catch (err) {
+			console.log(err);
 		}
 	};
 	const connectMetamask = async () => {
 		// Metamask Login
 		dispatch(setAuthLoading(true));
-
-		await checkExistingSession();
-
-		if (!connection.metaMaskConnected) {
+		if (!metaMaskConnected) {
 			if (!session || (session.hasSession && session.isExpired)) {
-				if (window.ethereum === null || window.ethereum === undefined) {
+				const sessionResponse = await startNewSession();
+				if (sessionResponse) {
+					localStorage.setItem("authSig", JSON.stringify(sessionResponse.authSig));
+					localStorage.setItem("did", sessionResponse.session.serialize());
+					setSession(sessionResponse.session);
+				} else {
 					dispatch(setAuthLoading(false));
-					throw new Error("No injected Ethereum provider found.");
-				}
-				// We enable the ethereum provider to get the user's addresses.
-				const ethProvider = window.ethereum;
-				// request ethereum accounts.
-				const addresses = await ethProvider.enable({
-					method: "eth_requestAccounts",
-				});
-				const accountId = await getAccountId(ethProvider, addresses[0]);
-				const authMethod = await EthereumWebAuth.getAuthMethod(ethProvider, accountId);
-				try {
-					session = await DIDSession.authorize(authMethod, { resources: ["ceramic://*"] });
-
-					localStorage.setItem("did", session.serialize());
-				} catch (err) {
-					console.log(err);
 				}
 			}
-
-			dispatch(setAuthLoading(false));
+		} else {
+			const hasOrigin = await litService.hasOriginNFT();
+			if (!hasOrigin) {
+				dispatch(setOriginNFTModalVisible(true));
+			}
 		}
+
+		dispatch(setAuthLoading(false));
 	};
 	const getProfile = async () => {
 		try {
-			const profile = await ceramicService.getProfile();
+			const profile = await personalCeramic.getProfile();
 			if (profile) {
-				console.log(profile);
 				dispatch(setProfile({
 					...profile,
 					available: true,
@@ -92,20 +150,21 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 			// profile error
 		}
 	};
-
 	const authToCeramic = async () => {
-		if (!ceramicService.isAuthenticated()) {
-			const result = await ceramicService.authenticate(session?.did);
-			dispatch(setCeramicConnected(result));
-			// await ceramicService.syncContents();
-		} else {
-			dispatch(setCeramicConnected(true));
+		if (personalCeramic.client && !personalCeramic.client.isUserAuthenticated()) {
+			personalCeramic.setClient(new CeramicService(session?.did!));
 		}
+		dispatch(setCeramicConnected(true));
 	};
 
 	const completeConnections = async () => {
-		await authToCeramic();
-		await getProfile();
+		const hasOrigin = await litService.hasOriginNFT();
+		if (!hasOrigin) {
+			dispatch(setOriginNFTModalVisible(true));
+		} else {
+			await authToCeramic();
+			await getProfile();
+		}
 	};
 
 	// App Loads
@@ -123,15 +182,20 @@ export const AuthHandlerProvider: React.FC = ({ children }) => {
 	}, [session]);
 
 	useEffect(() => {
-		if (connection.metaMaskConnected) {
+		if (metaMaskConnected) {
+			// Just connected
+
 			completeConnections();
 		} else {
-			checkExistingSession();
+			// Not connected but session exists.
+			getExistingSession();
 		}
-	}, [connection.metaMaskConnected]);
+	}, [metaMaskConnected]);
 
 	return <AuthHandlerContext.Provider value={{
 		connect: connectMetamask,
 		disconnect,
-	}}>{children}</AuthHandlerContext.Provider>;
+	}}>
+		{!loading && originNFTModalVisible ? <OriginWarningModal visible={originNFTModalVisible}></OriginWarningModal> : <></>}
+		{children}</AuthHandlerContext.Provider>;
 };

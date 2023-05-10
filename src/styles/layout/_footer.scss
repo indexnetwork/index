@@ -1,13 +1,9 @@
 .footer-logo{
-	margin-left:740px;
 	width: 119px;
 	height: 32px;
-	flex: none;
-	order: 1;
-	flex-grow: 0;
 }
 .footer-container {
-	background-color: $gray-5;
+	background-color: $main-color;
 	width: 100%;
 	overflow: hidden;
 	transition: $transition-bg;
@@ -49,7 +45,7 @@
 	}
 
 	@media (min-width: map-get($breakpoints, "sm")) {
-		background-color: $gray-5;
+		background-color: $main-color;
 		width: 100%;
 		overflow: hidden;
 		transition: $transition-bg;

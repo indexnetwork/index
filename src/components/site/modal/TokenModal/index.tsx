@@ -20,10 +20,10 @@ export interface TokenModalProps extends Omit<ModalProps, "header" | "footer" | 
 	data: any;
 }
 
-const TokenModal: React.VFC<TokenModalProps> = ({
+const TokenModal = ({
 	data,
 	...modalProps
-}) => {
+} : any) => {
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const handleClose = () => {
@@ -42,13 +42,6 @@ const TokenModal: React.VFC<TokenModalProps> = ({
 	const [loading, setLoading] = useState(false);
 
 	const handleCreate = async () => {
-		if (stream.title) {
-			const doc = await ceramic.createIndex(stream);
-			if (doc != null) {
-				router.push(`/${did}/${doc.id}`);
-				modalProps.onClose?.();
-			}
-		}
 		setLoading(false);
 	};
 	const handleChange: React.ChangeEventHandler<HTMLInputElement> = ({ target }) => {
@@ -90,7 +83,7 @@ const TokenModal: React.VFC<TokenModalProps> = ({
 								   </Col>
 								   <br></br>
 								   <Col pullLeft>
-										<Text>Create new token/NFT easily, choose your terms and add rule for your curators</Text>
+										<Text>Create new token/NFT easily, choose your terms and add rule for your creators.</Text>
 								   </Col>
 							 </Button>
 							</Col>
@@ -101,7 +94,7 @@ const TokenModal: React.VFC<TokenModalProps> = ({
 									className="mt-1 pr-5 mb-5 pt-5 pb-3 ml-5">
 									<IconClock width={24} height={24}></IconClock>
 									<Header>Existing Token</Header>
-									<Text>Add existing token as a curator rule</Text>
+									<Text>Add existing token as a creator rule</Text>
 								</Button>
 							</Col>
 						</Flex>

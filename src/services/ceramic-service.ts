@@ -1,34 +1,38 @@
-import moment from "moment";
-import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ComposeClient } from "@composedb/client";
 import {
-	Indexes, Links, UserIndex, Users,
+	Indexes, IndexLink, Link, UserIndex, Users,
 } from "types/entity";
 import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
-import { DID } from "dids";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
+
+import { DID } from "dids";
 import { definition } from "../types/merged-runtime";
 import { appConfig } from "../config";
 
-class CeramicService2 {
+import LitService from "./lit-service";
+
+class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
 	});
-
-	private ceramic = new CeramicClient("https://ceramic-testnet.index.as");
-	private composeClient = new ComposeClient({
-		ceramic: "https://ceramic-testnet.index.as",
-		// cast our definition as a RuntimeCompositeDefinition
+	private client = new ComposeClient({
+		ceramic: "https://ceramic-dev.index.as",
 		definition: definition as RuntimeCompositeDefinition,
 	});
 
-	async authenticate(did: any) {
+	private did: DID;
+
+	constructor(did?: DID) {
+		this.did = did!;
+		this.client.setDID(did!);
+	}
+
+	async authenticateUser(did: any) {
 		if (!isSSR()) {
 			try {
-				await this.ceramic.setDID(did);
-				await this.composeClient.setDID(did);
+				await this.client.setDID(did);
 				return true;
 			} catch (err) {
 				return false;
@@ -38,69 +42,27 @@ class CeramicService2 {
 		}
 	}
 
-	isAuthenticated() {
-		return !!(this.ceramic?.did?.authenticated);
-	}
-
-	async getIndexById(index_id: string) {
-		const result = await this.composeClient.executeQuery(`{
-			node(id:"${index_id}"){
-			  id
-			  ... on Index{
-				id
-				title
-				collab_action
-				created_at
-				updated_at
-				links(last:1) {
-					edges {
-					  node {
-						created_at
-						updated_at
-					  }
-					}
-				}
-			}}
-		  }`);
-
-		const node: any = result?.data?.node;
-
-		if (node.links.edges.length > 0 && (moment(node.links.edges[0].node.updated_at) > moment(node.updated_at))) {
-			node.updated_at = node.links.edges[0].node.updated_at;
-		}
-
-		if (this.isAuthenticated()) {
-			const userIndexes = await api.getUserIndexes({
-				index_id,
-				did: this.ceramic.did?.parent!,
-			} as GetUserIndexesRequestBody) as UserIndexResponse;
-			node.is_in_my_indexes = !!userIndexes.my_indexes;
-			node.is_starred = !!userIndexes.starred;
-		}
-
-		return (
-		<Indexes>(node as any)
-		);
-	}
-	async getLinkById(link_id: string) {
-		const result = await this.composeClient.executeQuery(`{
-			node(id:"${link_id}"){
-			  id
-			  ... on Link{
-				id
-				content
-				title
-				url
-				favicon
-				created_at
-				updated_at
-				tags
-			}}
-		  }`);
-		return <Links>(result.data?.node as any);
+	isUserAuthenticated() {
+		return !!(this.client?.did?.authenticated);
 	}
 
 	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
+		const { pkpPublicKey } = await LitService.mintPkp();
+
+		/*
+			PKP public key is 0x0463b0f8584ceb4b3be313ccdb5356c1b8505420bbf9334446a1228d0b9e18e9f3f21cfcf5e107c2ac11041a02139abb0ff5165f1a71fde31287a95def85a4e19f
+			Token ID is 0x5a0ed5d5fdf73b14b53ca25b3fa1996bbf5eb0e8004d436c3f55bd2013815645
+			Token ID number is 40734368072587093465276453834418008413686098135730551600338205759635841963589
+		*/
+
+		const did = await LitService.authenticatePKP(appConfig.defaultCID, pkpPublicKey);
+		/*
+		if (!did.authenticated) {
+			// TODO handle error
+		}
+		 */
+		this.client.setDID(did);
+
 		setDates(content, true);
 		if (!content.title) {
 			content.title = "Untitled Index";
@@ -108,11 +70,12 @@ class CeramicService2 {
 		const cdt = getCurrentDateTime();
 		content.created_at = cdt;
 		content.updated_at = cdt;
-		content.collab_action = "QmYNtw5mTnjvMZWZRe8nvubs9XVYUUaSJPEYKyKQG4BQQ8";
+		content.collab_action = appConfig.defaultCID;
 		const payload = {
 			content,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ createIndex: { document: Indexes } }>(`
+
+		const { data, errors } = await this.client.executeQuery<{ createIndex: { document: Indexes } }>(`
 			mutation CreateIndex($input: CreateIndexInput!) {
 				createIndex(input: $input) {
 					document {
@@ -128,19 +91,16 @@ class CeramicService2 {
 		if (errors) {
 			// TODO Handle
 		}
-		const index = data?.createIndex.document;
-		await this.addUserIndex(index!.id, "my_indexes");
-		return index!;
+		// TODO Before releasde.
+		return data?.createIndex.document!;
 	}
-
-	async updateIndex(index_id: string, content: Partial<Indexes>): Promise<Indexes> {
-		const cdt = getCurrentDateTime();
-		content.updated_at = cdt;
+	async updateIndex(index: Partial<Indexes>, content: Partial<Indexes>): Promise<Indexes> {
+		content.updated_at = getCurrentDateTime();
 		const payload = {
-			id: index_id,
+			id: index.id,
 			content,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ updateIndex: { document: Indexes } }>(`
+		const { data, errors } = await this.client.executeQuery<{ updateIndex: { document: Indexes } }>(`
 			mutation UpdateIndex($input: UpdateIndexInput!) {
 				updateIndex(input: $input) {
 					document {
@@ -159,11 +119,26 @@ class CeramicService2 {
 		return data?.updateIndex.document!;
 	}
 
-	async addLink(index_id: string, link: Links): Promise<Links> {
-		setDates(link); // TODO Conditional updated_at
+	async getLinkById(link_id: string) {
+		const result = await this.client.executeQuery(`{
+			node(id:"${link_id}"){
+			  id
+			  ... on Link{
+				id
+				content
+				title
+				url
+				favicon
+				created_at
+				updated_at
+				tags
+			}}
+		  }`);
+		return <Link>(result.data?.node as any);
+	}
 
-		link.index_id = index_id;
-		link.indexer_did = "did:key:z6Mkw8AsZ6ujciASAVRrfDu4UbFNTrhQJLV8Re9BKeZi8Tfx";
+	async createLink(link: Partial<Link>): Promise<Link> {
+		setDates(link); // TODO Conditional updated_at
 		link.updated_at = getCurrentDateTime();
 		if (!link.tags) {
 			link.tags = [];
@@ -171,12 +146,14 @@ class CeramicService2 {
 		const payload = {
 			content: link,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ createLink: { document: Links } }>(`
+		const { data, errors } = await this.client.executeQuery<{ createLink: { document: Link } }>(`
 			mutation CreateLink($input: CreateLinkInput!) {
 				createLink(input: $input) {
 					document {
 						id
-						index_id
+						controller_did{
+							id
+						}
 						url
 						title
 						tags
@@ -186,24 +163,25 @@ class CeramicService2 {
 					}
 				}
 			}`, { input: payload });
+
 		if (errors) {
 			// TODO Handle
 		}
 		return data?.createLink.document!;
 	}
+	async updateLink(link_id: string, link: Link): Promise <Link> {
+		// Get index link
 
-	async updateLink(link_id: string, link: Partial<Links>): Promise <Links> {
 		link.updated_at = getCurrentDateTime();
 		const payload = {
 			id: link_id,
 			content: link,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ updateLink: { document: Links } }>(`
+		const { data, errors } = await this.client.executeQuery<{ updateLink: { document: Link } }>(`
 			mutation UpdateLink($input: UpdateLinkInput!) {
 				updateLink(input: $input) {
 					document {
 						id
-						index_id
 						url
 						title
 						tags
@@ -216,20 +194,95 @@ class CeramicService2 {
 		if (errors) {
 			// TODO Handle
 		}
+
 		return data?.updateLink.document!;
 	}
 
-	async removeLink(link_id: string): Promise <Links | undefined> {
-		const link = await this.getLinkById(link_id);
-		if (link) {
-			return await this.updateLink(link_id, {
-				deleted_at: getCurrentDateTime(), // TODO fix deleted_at
-			} as Links);
-		}
-		// TODO handle
-	}
+	async addIndexLink(index: Indexes, link_id: string) : Promise <IndexLink> {
+		const indexLink: IndexLink = {
+			index_id: index.id,
+			link_id,
+			updated_at: getCurrentDateTime(),
+			created_at: getCurrentDateTime(),
+			indexer_did: this.client.did?.parent!,
+		};
 
-	async addTag(link_id: string, tag: string): Promise <Links | undefined> {
+		const payload = {
+			content: indexLink,
+		};
+
+		if (!this.client.did?.authenticated) {
+			// handle error
+		}
+		const { data, errors } = await this.client.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
+			mutation CreateIndexLink($input: CreateIndexLinkInput!) {
+				createIndexLink(input: $input) {
+					document {
+						id
+						indexer_did {
+							id
+						}
+						controller_did {
+							id
+						}
+						created_at
+						updated_at
+						deleted_at
+						link {
+							id
+							controller_did {
+								id
+							}
+							title
+							url
+							favicon
+							tags
+							content
+							created_at
+							updated_at
+							deleted_at
+						}
+					}
+				}
+			}`, { input: payload });
+
+		if (errors) {
+			// TODO Handle
+		}
+		return data?.createIndexLink.document!;
+	}
+	async removeIndexLink(index_link: IndexLink): Promise <IndexLink | undefined> {
+		const index = await api.getIndexById(index_link.index_id!);
+		if (!index) {
+			throw new Error("Index not found");
+		}
+		const payload = {
+			id: index_link.id!,
+			content: {
+				deleted_at: getCurrentDateTime(),
+			},
+		};
+		const { data, errors } = await this.client.executeQuery<{ updateIndexLink: { document: IndexLink } }>(`
+			mutation UpdateIndexLink($input: UpdateIndexLinkInput!) {
+				updateIndexLink(input: $input) {
+					document {
+						id
+						index_id
+						link_id
+						created_at
+						updated_at
+						deleted_at				
+					}
+				}
+			}`, { input: payload });
+
+		if (errors) {
+			// TODO Handle
+		}
+
+		return data?.updateIndexLink.document!;
+	}
+	async addTag(link_id: string, tag: string): Promise <Link | undefined> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			let { tags } = link;
@@ -243,8 +296,7 @@ class CeramicService2 {
 		}
 		// TODO handle.
 	}
-
-	async removeTag(link_id: string, tag: string): Promise <Links | undefined> {
+	async removeTag(link_id: string, tag: string): Promise <Link | undefined> {
 		const link = await this.getLinkById(link_id);
 		if (link) {
 			let { tags } = link;
@@ -258,7 +310,6 @@ class CeramicService2 {
 		}
 		// TODO handle.
 	}
-
 	async setLinkFavorite(streamId: string, linkId: string, favorite: boolean) {
 		/*
 		const oldDoc = await this.getIndexById(streamId);
@@ -274,24 +325,26 @@ class CeramicService2 {
 
 		 */
 	}
-
-	async addUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
+	async addUserIndex(index_id: string, type: string, deleted_at = false): Promise<UserIndex | undefined> {
 		const userIndex = {
 			index_id,
 			created_at: getCurrentDateTime(),
 			type,
-		};
+		} as UserIndex;
+		if (deleted_at) {
+			userIndex.deleted_at = getCurrentDateTime();
+		}
 		console.log("add", userIndex);
 		const payload = {
 			content: userIndex,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
+		const { data, errors } = await this.client.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
 			mutation CreateUserIndex($input: CreateUserIndexInput!) {
 				createUserIndex(input: $input) {
 					document {
 						id
 						index_id
-						owner {
+						controller_did {
 							id
 						}
 						created_at
@@ -304,32 +357,35 @@ class CeramicService2 {
 		}
 		return data?.createUserIndex.document!;
 	}
-
 	async removeUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
-		console.log("remove", index_id, this.ceramic.did?.parent!, type);
+		console.log("remove", index_id, this.client.did?.parent!, type);
 		const userIndexes = await api.getUserIndexes({
 			index_id,
-			did: this.ceramic.did?.parent!,
+			did: this.client.did?.parent!,
 		} as GetUserIndexesRequestBody) as UserIndexResponse;
 		type UserIndexKey = keyof typeof userIndexes;
 
 		if (!userIndexes[type as UserIndexKey]) {
 			return;
 		}
+
 		const userIndex: UserIndex | undefined = userIndexes[type as UserIndexKey];
+		if (userIndex && !userIndex.id && type === "my_indexes") {
+			return await this.addUserIndex(index_id, type, true);
+		}
 		const payload = {
 			id: userIndex?.id!,
 			content: {
 				deleted_at: getCurrentDateTime(),
 			},
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
+		const { data, errors } = await this.client.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
 			mutation UpdateUserIndex($input: UpdateUserIndexInput!) {
 				updateUserIndex(input: $input) {
 					document {
 						id
 						index_id
-						owner {
+						controller_did {
 							id
 						}
 						created_at
@@ -343,9 +399,8 @@ class CeramicService2 {
 		}
 		return data?.updateUserIndex.document!;
 	}
-
 	async getProfile(): Promise<Users> {
-		const { data, errors } = await this.composeClient.executeQuery<{ viewer: { indexasProfile: Users } }>(`
+		const { data, errors } = await this.client.executeQuery<{ viewer: { indexasProfile: Users } }>(`
 			query {
 				viewer {
 					indexasProfile {
@@ -368,7 +423,7 @@ class CeramicService2 {
 		const payload = {
 			content: profile,
 		};
-		const { data, errors } = await this.composeClient.executeQuery<{ createIndexasProfile: { document: Users } }>(`	
+		const { data, errors } = await this.client.executeQuery<{ createIndexasProfile: { document: Users } }>(`	
 			mutation CreateIndexasProfile($input: CreateIndexasProfileInput!) {
 				createIndexasProfile(input: $input) {
 					document {
@@ -383,7 +438,6 @@ class CeramicService2 {
 		}
 		return data?.createIndexasProfile.document!;
 	}
-
 	async uploadImage(file: File) {
 		try {
 			const { cid, path } = await this.ipfs.add(file);
@@ -392,15 +446,6 @@ class CeramicService2 {
 			//
 		}
 	}
-
-	async close() {
-		if (this.isAuthenticated()) {
-			this.ceramic.setDID(new DID());
-			return this.ceramic.close();
-		}
-	}
 }
 
-const ceramicService2 = new CeramicService2();
-
-export default ceramicService2;
+export default CeramicService;

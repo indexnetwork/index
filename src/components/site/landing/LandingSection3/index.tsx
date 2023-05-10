@@ -18,7 +18,7 @@ const LandingSection3: React.VFC = () => (
 		>
 			<Flex flexDirection="column" className="lnd-title mb-lg-8 mb-xs-6">
 				<Header className="lnd-section-title">If you index it, then search it.
-Welcome to your refined search engine. Filter your indexes, and search as you type.</Header>
+Welcome to your refined discovery engine. Filter your indexes, and search as you type.</Header>
 			</Flex>
 			<Flex className="lnd-img">
 				<img className={cm.img} alt="landing-3-img" src="/images/landing-3.webp" />
@@ -32,7 +32,7 @@ Welcome to your refined search engine. Filter your indexes, and search as you ty
 				/>
 				<IconDescription
 					icon={<IconFeatureSearch fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
-					description="Index.as will support semantically described content types such as person, company, event, place, etc."
+					description="Your indexes are interoperable, with support of semantically described content types such as product, company, event, place, etc."
 					boldDescription="Soon"
 				/>
 			</Flex>

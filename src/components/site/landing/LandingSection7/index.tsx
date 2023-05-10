@@ -8,7 +8,7 @@ import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider"
 import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
 
-const LandingSection7: React.FC = () => {
+const LandingSection7 = () => {
 	const router = useRouter();
 
 	const authenticated = useAuth();

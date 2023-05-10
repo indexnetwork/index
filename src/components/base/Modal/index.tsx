@@ -32,17 +32,19 @@ const GlobalStyle = createGlobalStyle<GlobalStyleProps>`
 
 const PORTAL_ID = "idxModalPortal";
 
-const Modal: React.FC<ModalProps> = ({
-	body,
-	footer,
-	header,
-	visible = false,
-	destroyOnClose = false,
-	mobileBackdropClose = false,
-	size = "fit",
-	mobileMaxVh = 70,
-	onClose,
-}) => {
+const Modal = (
+	{
+		body,
+		footer,
+		header,
+		visible = false,
+		destroyOnClose = false,
+		mobileBackdropClose = false,
+		size = "fit",
+		mobileMaxVh = 70,
+		onClose,
+	}: ModalProps,
+) => {
 	const [portal, setPortal] = useState<HTMLDivElement | null>(null);
 
 	const [isMobile, setIsMobile] = useState(false);
