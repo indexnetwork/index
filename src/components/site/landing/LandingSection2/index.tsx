@@ -27,7 +27,7 @@ const LandingSection2: React.VFC = () => (
 			>
 				<IconDescription
 					icon={<IconFeatureAddLink fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
-					description="Index articles, documents, NFTs, photos, videos, tweets and any other kind of content."
+					description="Index products, articles, documents, NFTs, photos, videos, tweets and any other kind of content."
 				/>
 				<IconDescription
 					icon={<IconFeatureExtension fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
