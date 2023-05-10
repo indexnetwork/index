@@ -93,22 +93,26 @@ export const AuthHandlerProvider = ({ children }: any) => {
 			expirationTime: threeMonthsLater.toISOString(),
 			resources: ["ceramic://*"],
 		});
-		siweMessage.signature = await ethProvider.request({
-			method: "personal_sign",
-			params: [siweMessage.signMessage(), getAddress(accountId.address)],
-		});
-		const cacao = Cacao.fromSiweMessage(siweMessage);
-		const did = await createDIDCacao(didKey, cacao);
-		const newSession = new DIDSession({ cacao, keySeed, did });
-		return {
-			session: newSession,
-			authSig: {
-				signedMessage: siweMessage.toMessage(),
-				address: getAddress(accountId.address),
-				derivedVia: "web3.eth.personal.sign",
-				sig: siweMessage.signature,
-			},
-		} as SessionResponse;
+		try {
+			siweMessage.signature = await ethProvider.request({
+				method: "personal_sign",
+				params: [siweMessage.signMessage(), getAddress(accountId.address)],
+			});
+			const cacao = Cacao.fromSiweMessage(siweMessage);
+			const did = await createDIDCacao(didKey, cacao);
+			const newSession = new DIDSession({ cacao, keySeed, did });
+			return {
+				session: newSession,
+				authSig: {
+					signedMessage: siweMessage.toMessage(),
+					address: getAddress(accountId.address),
+					derivedVia: "web3.eth.personal.sign",
+					sig: siweMessage.signature,
+				},
+			} as SessionResponse;
+		} catch (err) {
+			dispatch(setAuthLoading(false));
+		}
 	};
 	const connectMetamask = async () => {
 		// Metamask Login
