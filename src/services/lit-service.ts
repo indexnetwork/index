@@ -103,9 +103,12 @@ class LitService {
 				chain: "ethereum",
 			},
 		});
-		localStorage.setItem("hasOrigin", "1");
 		// @ts-ignore
-		return resp.response.hasOrigin;
+		const { hasOrigin } = resp.response;
+		if (hasOrigin) {
+			localStorage.setItem("hasOrigin", "1");
+		}
+		return hasOrigin;
 	}
 }
 const litService = new LitService();
