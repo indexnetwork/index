@@ -66,7 +66,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { available, name } = useAppSelector(selectProfile);
 
 	const loadIndex = async (id: string) => {
-		const doc = await pkpCeramic.getIndexById(id);
+		
+		const doc = await api.getIndexById(id);
 		if (!doc) {
 			setNotFound(true);
 		} else {
