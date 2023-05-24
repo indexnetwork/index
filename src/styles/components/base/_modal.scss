@@ -38,8 +38,10 @@
 		}
 
 		.modal-body {
-			padding: 0;
-
+			padding: 0px 4px;
+			flex-grow: 1;
+			overflow-y: auto;
+			overflow-x: hidden;
 
 		}
 
