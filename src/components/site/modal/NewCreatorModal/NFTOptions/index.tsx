@@ -189,7 +189,6 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 							<Text theme={"primary"} size="md">How many token does the wallet need to own:</Text>
 							<Input
 								placeholder="##"
-								defaultValue={1}
 								step={1}
 								name="minTokens"
 								onChange={handleMinTokensChange}

@@ -20,7 +20,7 @@ export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" |
 
 const CreateModal = ({
 	...modalProps
-} : any) => {
+} : CreateModalProps) => {
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const handleClose = () => {
@@ -58,63 +58,58 @@ const CreateModal = ({
 		setTitle(value);
 	 };
 
-	return <Modal
-		{...modalProps}
-		size={"xs"}
-		body={(
-			<>
-				<Row
+	return <Modal {...modalProps} size={"xs"} body={(
+		<>
+			<Row
+			>
+				<Col xs={12}
 				>
-					<Col xs={12}
+					<Flex
+						alignItems="center"
+
 					>
-						<Flex
-							alignItems="center"
-
-						>
-							<Flex flexDirection="column" flexWrap="wrap" flexGrow={1} className="ml-3">
-								<Text size="lg">Title</Text>
-							</Flex>
+						<Flex flexDirection="column" flexWrap="wrap" flexGrow={1} className="ml-3">
+							<Text size="lg">Title</Text>
 						</Flex>
-						<Col sm={12}>
-							<Flex>
-								<Input
-									autoFocus={true}
-									value={title || ""}
-									inputSize={"lg"}
-									onKeyDown={handleEnter}
-									onChange={handleChange}
-									// loading={loading}
-									className="mt-3 ml-3 mr-2"
-									placeholder="e.g. Web3 Social Ecosystem"
-								/>
-							</Flex>
-						</Col>
-						<Col pullLeft>
-							<Button
-								className="mt-7 pl-8 pr-8 ml-3"
-								size="lg"
-								theme="clear"
-								onClick={handleClose}
-							>Cancel</Button>
-						</Col>
-						<Col pullRight>
-							<Button
-								disabled={!title}
-								onClick={handleCreate}
-								theme="primary"
-								size="lg"
-								className="mt-7 pl-8 pr-8 mr-2"
-							>Create</Button>
-						</Col>
-
+					</Flex>
+					<Col sm={12}>
+						<Flex>
+							<Input
+								autoFocus={true}
+								value={title || ""}
+								inputSize={"lg"}
+								onKeyDown={handleEnter}
+								onChange={handleChange}
+								// loading={loading}
+								className="mt-3 ml-3 mr-2"
+								placeholder="e.g. Web3 Social Ecosystem"
+							/>
+						</Flex>
 					</Col>
-				</Row>
-			</>
-		)}
-		header={<Header level={2}>Create New Index</Header>}
-	>
+					<Col pullLeft>
+						<Button
+							className="mt-7 pl-8 pr-8 ml-3"
+							size="lg"
+							theme="clear"
+							onClick={handleClose}
+						>Cancel</Button>
+					</Col>
+					<Col pullRight>
+						<Button
+							disabled={!title}
+							onClick={handleCreate}
+							theme="primary"
+							size="lg"
+							className="mt-7 pl-8 pr-8 mr-2"
+						>Create</Button>
+					</Col>
 
-	</Modal>;
+				</Col>
+			</Row>
+		</>
+	)}
+	header={<Header level={2}>Create New Index</Header>}
+	/>;
 };
 
 export default CreateModal;

@@ -21,7 +21,7 @@ export interface CreatorSettingsProps {
 const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabAction }) => {
 	const [loading, setLoading] = useState(false);
 	const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
-	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(true);
+	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
 	const [conditions, setConditions] = useState<any>([]);
 	const loadAction = async (action: string) => {
 		const litAction = await api.getLITAction(action);
@@ -44,13 +44,13 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 	};
 
 	const handleToggleNewCreatorModal = () => {
-		console.log(newCreatorModalVisible);
-		setNewCreatorModalVisible(true);
+		setNewCreatorModalVisible(!newCreatorModalVisible);
 	};
 
 	useEffect(() => {
 		loadAction(collabAction);
 	}, [collabAction]);
+
 	return (
 		<>
 			<Row>
@@ -90,7 +90,6 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 						</Col>)
 				}
 			</FlexRow>
-			{/* eslint-disable-next-line max-len */}
 			{newCreatorModalVisible ? <NewCreatorModal handleCreate={handleCreate} visible={newCreatorModalVisible} onClose={handleToggleNewCreatorModal}></NewCreatorModal> : <></>}
 			{transactionApprovalWaiting ? <ConfirmTransaction handleCancel={handleCancel} visible={transactionApprovalWaiting}></ConfirmTransaction> : <></>}
 		</>
