@@ -41,6 +41,8 @@ import Soon from "components/site/indexes/Soon";
 import CeramicService from "services/ceramic-service";
 import { decodeDIDWithLit } from "../../utils/lit";
 import LitService from "../../services/lit-service";
+import {LitContracts} from "@lit-protocol/contracts-sdk";
+import {ethers} from "ethers";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -66,7 +68,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { available, name } = useAppSelector(selectProfile);
 
 	const loadIndex = async (id: string) => {
-		
 		const doc = await api.getIndexById(id);
 		if (!doc) {
 			setNotFound(true);
@@ -94,6 +95,22 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			is_starred: !!userIndexes.starred,
 		} as Indexes);
 	};
+	const handleCollabActionChange = async (CID: string) => {
+		const litContracts = new LitContracts();
+		await litContracts.connect();
+
+		const pkpPublicKey = decodeDIDWithLit(index.controller_did?.id);
+		const pubKeyHash = ethers.utils.keccak256(pkpPublicKey);
+		const tokenId = ethers.BigNumber.from(pubKeyHash);
+
+		const collabAction = litContracts.utils.getBytesFromMultihash(CID);
+		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenId, collabAction, []);
+		const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(tokenId, collabAction, []);
+		const result = await pkpCeramic.updateIndex(index, {
+			collab_action: CID,
+		});
+		setIndex(result);
+	};
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
 		const result = await pkpCeramic.updateIndex(index, {
@@ -111,6 +128,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			personalCeramic.removeUserIndex(index_id, type);
 		}
 	};
+
 	const handleAddLink = async (urls: string[]) => {
 		setCrawling(true);
 
@@ -318,7 +336,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											<Col>
 												<FlexRow justify="center">
 													<Col xs={12} lg={9}>
-														<CreatorSettings collabAction={index.collab_action!}></CreatorSettings>
+														<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collab_action!}></CreatorSettings>
 													</Col>
 												</FlexRow>
 											</Col> : <Col>

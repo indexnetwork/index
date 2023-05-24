@@ -96,6 +96,7 @@ const Select: React.VFC<SelectProps> = ({
 			const collapse = selectionsRef.current!.clientWidth > (selectInputRef.current!.clientWidth) - 32;
 			setCollapseSelections(collapse);
 		}
+		setMenuOpen(false);
 	}, [selection]);
 
 	const getMode = () => mode;

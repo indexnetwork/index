@@ -13,7 +13,7 @@
 		align-items: center;
 		justify-content: space-between;
 		min-width: 7rem;
-		padding: map-deep-get($spacing, "xs", "2") map-deep-get($spacing, "xs", "3");
+		padding: map-deep-get($spacing, "xs", "6") map-deep-get($spacing, "xs", "5");
 		border-radius: $border-radius-base;
 		padding-right: map-deep-get($spacing, "xs", "7");
 		cursor: pointer;
@@ -75,7 +75,6 @@
 				text-overflow: ellipsis;
 				font-weight: 300;
 				font-size: map-deep-get($font-size, "xs", "xs");
-				transition: $transition-bg;
 				white-space: pre;
 				&:hover {
 					background-color: lighten($main-color, 30%);
@@ -110,7 +109,6 @@
 		z-index: map-get($z-index, "select");
 		border-bottom-left-radius: $border-radius-base;
 		border-bottom-right-radius: $border-radius-base;
-		transition: opacity 0.2s ease-in-out;
 		max-height: 14.5rem;
 		overflow: auto;
 		// padding-top: map-deep-get($spacing, "xs", "2");
@@ -126,7 +124,7 @@
 			}
 			&.option-selected {
 				color: $main-color;
-				font-weight: 500;
+				font-weight: 600;
 			}
 
 			&.option-divider {
@@ -153,7 +151,6 @@
 			pointer-events: auto;
 		}
 		box-shadow: $box-shadow-base;
-		transition-duration: 0.2s;
 
 		&.select-bordered {
 			.select-input {

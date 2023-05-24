@@ -102,3 +102,13 @@ export interface SyncCompleteResult {
 /**
  * Enums
  */
+
+export interface AccessControlCondition {
+  chain: string;
+  method: string;
+  standardContractType: string;
+  contractAddress: string;
+  conditionType: string;
+  parameters: string[];
+  returnValueTest: object;
+};

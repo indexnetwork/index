@@ -111,7 +111,7 @@ const CreateModal = ({
 				</Row>
 			</>
 		)}
-		header={<Header className="mt-3" level={3}>Create New Index</Header>}
+		header={<Header level={2}>Create New Index</Header>}
 	>
 
 	</Modal>;

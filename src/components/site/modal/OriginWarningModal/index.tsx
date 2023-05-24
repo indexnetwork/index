@@ -11,11 +11,13 @@ import Link from "next/link";
 import { useAppDispatch } from "hooks/store";
 import { setOriginNFTModalVisible } from "store/slices/connectionSlice";
 
-export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {}
+export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
+	visible: boolean;
+}
 
 const OriginWarningModal = ({
 	...modalProps
-} : any) => {
+} : CreateModalProps) => {
 	const dispatch = useAppDispatch();
 
 	const handleClose = () => {
@@ -68,7 +70,7 @@ const OriginWarningModal = ({
 				</Row>
 			</>
 		)}
-		header={<Header className="mt-3" level={3}>We should meet!</Header>}
+		header={<Header level={2}>We should meet!</Header>}
 	>
 
 	</Modal>;

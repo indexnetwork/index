@@ -29,23 +29,23 @@
 		display: flex;
 		flex-direction: column;
 
+		padding: map-deep-get($spacing, "xs", "7");
+
 		.modal-header {
-			padding: map-deep-get($spacing, "xs", "6") map-deep-get($spacing, "xs", "7");
+			padding: 0 0 map-deep-get($spacing, "xs", "7") 0;
 			flex-shrink: 0;
 			//border-bottom: $border-base;
 		}
 
 		.modal-body {
-			padding: map-deep-get($spacing, "xs", "7") map-deep-get($spacing, "xs", "6");
-			flex-grow: 1;
-			overflow: auto;
+			padding: 0;
+
 
 		}
 
 		.modal-footer {
-			padding: map-deep-get($spacing, "xs", "6") map-deep-get($spacing, "xs", "7");
+			padding: map-deep-get($spacing, "xs", "7") 0 0 0;
 			flex-shrink: 0;
-			border-top: $border-base;
 		}
 	}
 
@@ -93,7 +93,7 @@
 			.modal-wrapper {
 				position: static;
 				width: 46rem;
-				max-height: 70vh;
+				max-height: 90vh;
 				border-radius: $border-radius-base;
 			}
 		}

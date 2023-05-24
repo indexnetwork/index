@@ -1,5 +1,5 @@
 import { LitContracts } from "@lit-protocol/contracts-sdk";
-import { uint8arrayFromString, uint8arrayToString } from "@lit-protocol/uint8arrays";
+import * as u8a from "uint8arrays";
 import { keccak256 } from "@ethersproject/keccak256";
 import { ec as EC } from "elliptic";
 
@@ -32,7 +32,7 @@ export const encodeDIDWithLit = (pkpPubKey: string): string => {
 	bytes[1] = 0x01;
 	bytes.set(pubBytes, 2);
 
-	return `did:key:z${uint8arrayToString(bytes, "base58btc")}`;
+	return `did:key:z${u8a.toString(bytes, "base58btc")}`;
 };
 
 export const decodeDIDWithLit = (encodedDID?: string): string => {
@@ -46,7 +46,7 @@ export const decodeDIDWithLit = (encodedDID?: string): string => {
 
 	const str = arr[2].substring(1);
 
-	const bytes = uint8arrayFromString(str, "base58btc");
+	const bytes = u8a.fromString(str, "base58btc");
 
 	const originalBytes = new Uint8Array(bytes.length - 2);
 

@@ -150,6 +150,14 @@ class ApiService {
 			return null;
 		}
 	}
+	async postLITAction(conditions: LitActionConditions): Promise<string | null > {
+		try {
+			const { data } = await apiAxios.post<LitActionConditions>(`${API_ENDPOINTS.LIT_ACTIONS}`, conditions);
+			return data as string;
+		} catch (err) {
+			return null;
+		}
+	}
 }
 
 const api = new ApiService();
