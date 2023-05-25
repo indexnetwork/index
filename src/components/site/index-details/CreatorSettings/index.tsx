@@ -99,7 +99,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 						<Col className="text-center" centerBlock>
 							<Header level={4} style={{
 								maxWidth: 350,
-							}}>No creators yet.</Header>
+							}}>No creators, yet.</Header>
 
 						</Col></>
 
