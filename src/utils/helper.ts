@@ -35,6 +35,10 @@ export function isSSR() {
 	);
 }
 
+export function maskAddress(address: string) {
+	return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
 export function isMobile() {
 	return !isSSR() && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }

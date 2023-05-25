@@ -1,8 +1,6 @@
 import Col from "components/layout/base/Grid/Col";
 import FlexRow, { FlexRowProps } from "components/layout/base/Grid/FlexRow";
-import {
-	useCallback, useEffect, useRef, useState,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 import { GridFractionType } from "types";
 import { v4 as uuidv4 } from "uuid";
 import cc from "classcat";

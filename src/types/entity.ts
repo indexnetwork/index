@@ -111,4 +111,4 @@ export interface AccessControlCondition {
   conditionType: string;
   parameters: string[];
   returnValueTest: object;
-};
+}

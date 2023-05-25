@@ -39,10 +39,10 @@ import IconStar from "components/base/Icon/IconStar";
 import Tooltip from "components/base/Tooltip";
 import Soon from "components/site/indexes/Soon";
 import CeramicService from "services/ceramic-service";
+import { LitContracts } from "@lit-protocol/contracts-sdk";
+import { ethers } from "ethers";
 import { decodeDIDWithLit } from "../../utils/lit";
 import LitService from "../../services/lit-service";
-import {LitContracts} from "@lit-protocol/contracts-sdk";
-import {ethers} from "ethers";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);

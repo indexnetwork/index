@@ -23,7 +23,7 @@ const OriginWarningModal = ({
 	const handleClose = () => {
 		dispatch(setOriginNFTModalVisible(false));
 	};
-	return <Modal {...modalProps} onClose={handleClose} size={"xs"}  body={(
+	return <Modal {...modalProps} onClose={handleClose} size={"xs"} body={(
 		<>
 			<Row
 			>

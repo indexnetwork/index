@@ -6,21 +6,16 @@ import Header from "components/base/Header";
 
 import Button from "components/base/Button";
 import { useRouter } from "next/router";
-import { useCeramic } from "hooks/useCeramic";
-import { useAppSelector } from "hooks/store";
 import { useMergedState } from "hooks/useMergedState";
 import { useTranslation } from "next-i18next";
-import { selectConnection } from "store/slices/connectionSlice";
-import {AccessControlCondition, Indexes} from "types/entity";
+import { AccessControlCondition, Indexes } from "types/entity";
 import IconGreenAdd from "components/base/Icon/IconGreenAdd";
 import IconClock from "components/base/Icon/IconClock";
 import FlexRow from "../../../layout/base/Grid/FlexRow";
 import NFTOptions from "./NFTOptions";
-import IconEditBlack from "../../../base/Icon/IconEditBlack";
 import IndividualWallet from "./IndividualWallet";
 import IconWallet from "../../../base/Icon/IconWallet";
 import IconPoap from "../../../base/Icon/IconPoap";
-import IconWorld from "../../../base/Icon/IconWorld";
 
 export interface NewCreatorModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
 	handleCreate(condition: AccessControlCondition): void;

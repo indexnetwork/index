@@ -6,12 +6,13 @@ import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Button from "components/base/Button";
-
 import api, { LitActionConditions } from "services/api-service";
-
+import { AccessControlCondition } from "types/entity";
 import NewCreatorModal from "../../modal/NewCreatorModal";
-import { AccessControlCondition } from "../../../../types/entity";
 import ConfirmTransaction from "../../modal/Common/ConfirmTransaction";
+
+import CreatorRule from "./CreatorRule";
+import IconAdd from "../../../base/Icon/IconAdd";
 
 export interface CreatorSettingsProps {
     collabAction: string;
@@ -31,15 +32,14 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 		setTransactionApprovalWaiting(false);
 	};
 	const handleCreate = async (condition: AccessControlCondition) => {
+		setNewCreatorModalVisible(false);
+		setTransactionApprovalWaiting(true);
 		const newAction = await api.postLITAction([
 			condition,
 			{ operator: "or" },
 			...conditions,
 		] as LitActionConditions);
-		setNewCreatorModalVisible(false);
-		setTransactionApprovalWaiting(true);
 		await onChange(newAction!);
-		console.log("haha");
 		setTransactionApprovalWaiting(false);
 	};
 
@@ -60,33 +60,22 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 							<Header className="mb-4">Creator Rules</Header>
 						</Col>
 						<Col>
-							<Button onClick={handleToggleNewCreatorModal}>+ Add New</Button>
+							<Button size={"md"} onClick={handleToggleNewCreatorModal}>+ Add New</Button>
 						</Col>
 					</Flex>
 				</Col>
 			</Row>
-			<Row className={"mt-4"}>
-				<Text fontFamily="freizeit" fontWeight={500}>Control write access to your index through NFTs. Creators will be able to add items, add tags to theirs and delete them.</Text>
+			<Row className={"mt-0"}>
+				<Col xs={9}>
+					<Text fontFamily="freizeit" size={"lg"} fontWeight={500}>Control write access to your index through NFTs. Creators will be able to add items, add tags to theirs and delete them.</Text>
+				</Col>
 			</Row>
 			<FlexRow className={"mt-6"} rowGutter={2} rowSpacing={2} colSpacing={2}>
 				{
 					conditions && conditions
 						.filter((c: { conditionType: string; }) => c.conditionType === "evmBasic")
 						.map((c: any, index: any) => <Col key={index} lg={6} xs={12}>
-							{c.metadata && c.metadata.ruleType === "wallet" &&
-                                <div className="p-4 card-item">
-                                	<Text theme="gray9">Individual Wallet</Text>
-                                	<Header level={4} className="mt-3 mb-1">{c.metadata.chain}</Header>
-                                	<Text size={"sm"}>{c.metadata.address}</Text>
-                                </div>
-							}
-							{c.metadata && c.metadata.ruleType === "nftOwner" &&
-                                <div className="p-4 card-item">
-                                	<Text theme="gray9">NFT Owner</Text>
-                                	<Header level={4} className="mt-3 mb-1">{c.metadata.title} {c.metadata.tokenId ? `#${c.metadata.tokenId}` : ""} </Header>
-                                	<Text size={"sm"}>{c.metadata.contractAddress}</Text>
-                                </div>
-							}
+							<CreatorRule rule={c.metadata}></CreatorRule>
 						</Col>)
 				}
 			</FlexRow>

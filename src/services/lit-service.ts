@@ -19,6 +19,7 @@ class LitService {
 				await litNodeClient.connect();
 
 				const encodedDID = await encodeDIDWithLit(pkpPublicKey);
+				// @ts-ignore
 				const provider = new Secp256k1ProviderWithLit({
 					did: encodedDID,
 					ipfsId,
