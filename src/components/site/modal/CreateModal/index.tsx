@@ -14,6 +14,9 @@ import { useTranslation } from "next-i18next";
 import { selectConnection } from "store/slices/connectionSlice";
 import { Indexes } from "types/entity";
 import CeramicService from "../../../../services/ceramic-service";
+import Select from "../../../base/Select";
+import Option from "../../../base/Select/Option";
+import FlexRow from "../../../layout/base/Grid/FlexRow";
 
 export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
 }
@@ -60,55 +63,43 @@ const CreateModal = ({
 
 	return <Modal {...modalProps} size={"xs"} body={(
 		<>
-			<Row
-			>
-				<Col xs={12}
-				>
-					<Flex
-						alignItems="center"
-
-					>
-						<Flex flexDirection="column" flexWrap="wrap" flexGrow={1} className="ml-3">
-							<Text size="lg">Title</Text>
-						</Flex>
+			<FlexRow>
+				<Col xs={12}>
+					<Flex flexDirection="column">
+						<Text theme={"primary"} size="md">Title:</Text>
+						<Input
+							autoFocus={true}
+							value={title || ""}
+							onKeyDown={handleEnter}
+							onChange={handleChange}
+							// loading={loading}
+							className="mt-3"
+							inputSize={"lg"}
+							placeholder="e.g. Web3 Social Ecosystem"
+						/>
 					</Flex>
-					<Col sm={12}>
-						<Flex>
-							<Input
-								autoFocus={true}
-								value={title || ""}
-								inputSize={"lg"}
-								onKeyDown={handleEnter}
-								onChange={handleChange}
-								// loading={loading}
-								className="mt-3 ml-3 mr-2"
-								placeholder="e.g. Web3 Social Ecosystem"
-							/>
-						</Flex>
-					</Col>
-					<Col pullLeft>
-						<Button
-							className="mt-7 pl-8 pr-8 ml-3"
-							size="lg"
-							theme="clear"
-							onClick={handleClose}
-						>Cancel</Button>
-					</Col>
-					<Col pullRight>
-						<Button
-							disabled={!title}
-							onClick={handleCreate}
-							theme="primary"
-							size="lg"
-							className="mt-7 pl-8 pr-8 mr-2"
-						>Create</Button>
-					</Col>
-
 				</Col>
-			</Row>
+			</FlexRow>
 		</>
 	)}
 	header={<Header level={2}>Create New Index</Header>}
+	footer={<><Col pullLeft>
+		<Button
+			size="lg"
+			className="mt-7 pl-8 pr-8"
+			theme="clear"
+			onClick={handleClose}
+		>Cancel</Button>
+	</Col>
+		<Col pullRight>
+			<Button
+				disabled={!title}
+				onClick={handleCreate}
+				theme="primary"
+				size="lg"
+				className="mt-7 pl-8 pr-8"
+			>Create</Button>
+		</Col></>}
 	/>;
 };
 
