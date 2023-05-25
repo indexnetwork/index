@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
 import Flex from "components/layout/base/Grid/Flex";
@@ -12,12 +12,13 @@ import CreatorRulePopup from "components/site/popup/CreatorRulePopup";
 import IconCopy from "components/base/Icon/IconCopy";
 
 import { copyToClipboard, maskAddress } from "../../../../../utils/helper";
+
 export interface CreatorRuleProps {
 	rule: any;
 }
 const CreatorRule = (
 	{
-		rule
+		rule,
 	}: CreatorRuleProps,
 ) => (<div className="p-6 card-item">
 	<FlexRow justify={"between"} fullWidth>
@@ -40,9 +41,9 @@ const CreatorRule = (
 								<Button onClick={() => {
 									copyToClipboard(`${rule.address || rule.contractAddress}`);
 								}} iconButton
-										theme="clear"
-										size={"xs"}
-										borderless>
+								theme="clear"
+								size={"xs"}
+								borderless>
 									<IconCopy />
 								</Button>
 							</Flex>
@@ -66,4 +67,3 @@ const CreatorRule = (
 </div>);
 
 export default CreatorRule;
-

@@ -10,7 +10,6 @@ import {
 } from "types";
 import animationData from "./loading.json";
 
-
 export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> {
 	customType?: "google" | "twitter" | "link";
 	theme?: ButtonThemeType;
@@ -105,7 +104,7 @@ const Button = (
 				<button
 					  {...props}
 					  style={{
-						fontWeight, textAlign
+						fontWeight, textAlign,
 					  }}
 					  className={cc(
 						[

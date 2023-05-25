@@ -69,7 +69,7 @@ const NewCreatorModal = ({
 						</Button>
 					</Col>
 					<Col xs={4}>
-						<Button textAlign={"left"} theme={"card"}  onClick={() => handleFormState("individual-wallet")} className={"px-4 py-6"}>
+						<Button textAlign={"left"} theme={"card"} onClick={() => handleFormState("individual-wallet")} className={"px-4 py-6"}>
 							<IconWallet width={24} height={24}></IconWallet>
 							<Header level={4}>Individual Wallet</Header>
 						</Button>

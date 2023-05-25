@@ -1,6 +1,5 @@
 import Text from "components/base/Text";
 import Modal, { ModalProps } from "components/base/Modal";
-import Row from "components/layout/base/Grid/Row";
 import React, { useState } from "react";
 import Col from "components/layout/base/Grid/Col";
 import Header from "components/base/Header";
@@ -14,8 +13,6 @@ import { useTranslation } from "next-i18next";
 import { selectConnection } from "store/slices/connectionSlice";
 import { Indexes } from "types/entity";
 import CeramicService from "../../../../services/ceramic-service";
-import Select from "../../../base/Select";
-import Option from "../../../base/Select/Option";
 import FlexRow from "../../../layout/base/Grid/FlexRow";
 
 export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
@@ -91,15 +88,15 @@ const CreateModal = ({
 			onClick={handleClose}
 		>Cancel</Button>
 	</Col>
-		<Col pullRight>
-			<Button
-				disabled={!title}
-				onClick={handleCreate}
-				theme="primary"
-				size="lg"
-				className="mt-7 pl-8 pr-8"
-			>Create</Button>
-		</Col></>}
+	<Col pullRight>
+		<Button
+			disabled={!title}
+			onClick={handleCreate}
+			theme="primary"
+			size="lg"
+			className="mt-7 pl-8 pr-8"
+		>Create</Button>
+	</Col></>}
 	/>;
 };
 

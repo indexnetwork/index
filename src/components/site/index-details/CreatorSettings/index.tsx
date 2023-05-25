@@ -1,20 +1,18 @@
 import React, { useEffect, useState } from "react";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
-import Flex from "components/layout/base/Grid/Flex";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Button from "components/base/Button";
 import api, { LitActionConditions } from "services/api-service";
 import { AccessControlCondition } from "types/entity";
+import Image from "next/image";
 import NewCreatorModal from "../../modal/NewCreatorModal";
 import ConfirmTransaction from "../../modal/Common/ConfirmTransaction";
 
 import CreatorRule from "./CreatorRule";
 import IconAdd from "../../../base/Icon/IconAdd";
-import IconShare from "../../../base/Icon/IconShare";
-import Image from "next/image";
 
 export interface CreatorSettingsProps {
     collabAction: string;
@@ -92,21 +90,23 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 				}
 				{
 					conditions.length === 0 && <><Col className={"mt-4"} xs={12} centerBlock style={{
-							height: 166,
-						}}>
-							<Image src="/images/no_indexes.png" alt="No Indexes" layout="fill" objectFit='contain' />
-						</Col>
-						<Col className="text-center" centerBlock>
-							<Header level={4} style={{
-								maxWidth: 350,
-							}}>No creators, yet.</Header>
+						height: 166,
+					}}>
+						<Image src="/images/no_indexes.png" alt="No Indexes" layout="fill" objectFit='contain' />
+					</Col>
+					<Col className="text-center" centerBlock>
+						<Header level={4} style={{
+							maxWidth: 350,
+						}}>No creators, yet.</Header>
 
-						</Col></>
+					</Col></>
 
 				}
 
 			</FlexRow>
+			// @ts-ignore
 			{newCreatorModalVisible ? <NewCreatorModal handleCreate={handleCreate} visible={newCreatorModalVisible} onClose={handleToggleNewCreatorModal}></NewCreatorModal> : <></>}
+			// @ts-ignore
 			{transactionApprovalWaiting ? <ConfirmTransaction handleCancel={handleCancel} visible={transactionApprovalWaiting}></ConfirmTransaction> : <></>}
 		</>
 

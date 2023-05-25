@@ -121,7 +121,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
-		type === "my_indexes" ? setIndex({ ...index, is_in_my_indexes: op === "add" } as Indexes) : setIndex({ ...index, is_starred: op === "add" } as Indexes);
+		if (type === "my_indexes") {
+			setIndex({ ...index, is_in_my_indexes: op === "add" } as Indexes);
+		} else {
+			setIndex({ ...index, is_starred: op === "add" } as Indexes);
+		}
 		if (op === "add") {
 			personalCeramic.addUserIndex(index_id, type);
 		} else {
