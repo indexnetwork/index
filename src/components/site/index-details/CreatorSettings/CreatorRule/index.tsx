@@ -36,7 +36,7 @@ const CreatorRule = (
 						<Col>
 							<Header level={4} className=" mb-1">{rule.chain}</Header>
 							<Flex alignItems={"center"}>
-								<Text size={"sm"} className={"mr-2"}>{maskAddress(rule.address || rule.contractAddress)}</Text>
+								<Text size={"md"} className={"mr-1"}>{maskAddress(rule.address || rule.contractAddress)}</Text>
 								<Button onClick={() => {
 									copyToClipboard(`${rule.address || rule.contractAddress}`);
 								}} iconButton

@@ -13,6 +13,7 @@ import ConfirmTransaction from "../../modal/Common/ConfirmTransaction";
 
 import CreatorRule from "./CreatorRule";
 import IconAdd from "../../../base/Icon/IconAdd";
+import IconShare from "../../../base/Icon/IconShare";
 
 export interface CreatorSettingsProps {
     collabAction: string;
@@ -55,14 +56,21 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 		<>
 			<Row>
 				<Col xs={12} >
-					<Flex>
-						<Col className={"idxflex-grow-1"}>
+					<Row noGutters>
+						<Col pullLeft >
 							<Header className="mb-4">Creator Rules</Header>
 						</Col>
-						<Col>
-							<Button size={"md"} onClick={handleToggleNewCreatorModal}>+ Add New</Button>
+						<Col pullRight >
+							<Button
+								addOnBefore
+								className={"mr-0"}
+								size="sm"
+								onClick={handleToggleNewCreatorModal}
+							>
+								<IconAdd width={12} stroke="white" strokeWidth={"1.5"} /> Add New
+							</Button>
 						</Col>
-					</Flex>
+					</Row>
 				</Col>
 			</Row>
 			<Row className={"mt-0"}>
