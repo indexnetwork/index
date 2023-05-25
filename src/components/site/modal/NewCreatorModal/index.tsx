@@ -15,9 +15,6 @@ import FlexRow from "../../../layout/base/Grid/FlexRow";
 import NFTOptions from "./NFTOptions";
 import IndividualWallet from "./IndividualWallet";
 import IconWallet from "../../../base/Icon/IconWallet";
-import IconPoap from "../../../base/Icon/IconPoap";
-import Tag from "../../../base/Tag";
-import TagIndexDetailItem from "../../tag/TagIndexDetailItem";
 
 export interface NewCreatorModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
 	handleCreate(condition: AccessControlCondition): void;
@@ -85,7 +82,6 @@ const NewCreatorModal = ({
 					</Col>
 					<Col xs={4}>
 						<Button textAlign={"left"} theme={"card"} className={"px-4 py-6 "}>
-							<IconPoap width={24} height={24}></IconPoap>
 							<Header theme={"gray9"} level={4}>POAP Collector (soon)</Header>
 						</Button>
 					</Col>
