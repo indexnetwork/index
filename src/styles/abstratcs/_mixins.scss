@@ -49,7 +49,7 @@
 	}
 }
 
-@mixin theme-color($color, $bg, $outlined: false) {
+@mixin 	theme-color($color, $bg, $outlined: false) {
 	@if $outlined {
 		background-color: $bg;
 		color: $color;

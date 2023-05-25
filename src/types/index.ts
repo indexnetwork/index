@@ -46,14 +46,14 @@ export type FlexPropsType = Pick<React.CSSProperties, CSSFlexPropsNamesType>;
 /**
  * Text Types
  */
-export type TextThemeType = ComponentThemeType | "gray5" | "white" | "gray9";
+export type TextThemeType = ComponentThemeType | "gray4" | "gray5" | "gray6" | "white" | "gray9";
 
 export type TextElementType = "span" | "strong" | "div" | "p" | "label";
 
 /**
  * Button Types
  */
-export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "secondary-outlined" | "success-outlined" | "error-outlined" | "warning-outlined" | "ghost" | "link" | "clear" | "blue" | "blue-outlined" | "tag";
+export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "secondary-outlined" | "success-outlined" | "error-outlined" | "warning-outlined" | "ghost" | "card" | "link" | "clear" | "blue" | "blue-outlined" | "tag";
 
 /**
  * Input Types

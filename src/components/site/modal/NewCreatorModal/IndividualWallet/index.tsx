@@ -16,10 +16,10 @@ export interface SelectNFTOptionsProps {
 const IndividualWallet: React.VFC<SelectNFTOptionsProps> = ({ handleBack }) => (
 	<>
 		<FlexRow>
-			<Col className="mt-6" xs={12}>
+			<Col xs={12}>
 				<Flex flexDirection="column">
 					<Text theme={"primary"} size="md">Choose network:</Text>
-					<Select value={"2"} bordered size="md" className={"mt-3"}>
+					<Select value={"2"} bordered size="lg" className={"mt-3"}>
 						<Option value="view"><Text size="md">Ethereum</Text></Option>
 						<Option value="1"><Text size="md">Polygon</Text></Option>
 						<Option value="2"><Text size="md">Solana</Text></Option>
@@ -32,6 +32,7 @@ const IndividualWallet: React.VFC<SelectNFTOptionsProps> = ({ handleBack }) => (
 					<Text theme={"primary"} size="md">Wallet address or blockchain domain (e.g. ENS):</Text>
 					<Input
 						name="name"
+						inputSize={"lg"}
 						className="mt-3"
 					/>
 				</Flex>

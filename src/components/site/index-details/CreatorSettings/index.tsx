@@ -14,6 +14,7 @@ import ConfirmTransaction from "../../modal/Common/ConfirmTransaction";
 import CreatorRule from "./CreatorRule";
 import IconAdd from "../../../base/Icon/IconAdd";
 import IconShare from "../../../base/Icon/IconShare";
+import Image from "next/image";
 
 export interface CreatorSettingsProps {
     collabAction: string;
@@ -51,6 +52,9 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 	useEffect(() => {
 		loadAction(collabAction);
 	}, [collabAction]);
+	useEffect(() => {
+		console.log(conditions)
+	}, [conditions]);
 
 	return (
 		<>
@@ -58,9 +62,9 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 				<Col xs={12} >
 					<Row noGutters>
 						<Col pullLeft >
-							<Header className="mb-4">Creator Rules</Header>
+							<Header className="mb-4">Creators</Header>
 						</Col>
-						<Col pullRight >
+						<Col pullRight>
 							<Button
 								addOnBefore
 								className={"mr-0"}
@@ -74,8 +78,8 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 				</Col>
 			</Row>
 			<Row className={"mt-0"}>
-				<Col xs={9}>
-					<Text fontFamily="freizeit" size={"lg"} fontWeight={500}>Control write access to your index through NFTs. Creators will be able to add items, add tags to theirs and delete them.</Text>
+				<Col xs={10}>
+					<Text fontFamily="freizeit" size={"lg"} fontWeight={500}>Control write access to your index through NFTs.<br /> Creators will be able to add items, add tags to theirs and delete them.</Text>
 				</Col>
 			</Row>
 			<FlexRow className={"mt-6"} rowGutter={2} rowSpacing={2} colSpacing={2}>
@@ -86,6 +90,21 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 							<CreatorRule rule={c.metadata}></CreatorRule>
 						</Col>)
 				}
+				{
+					conditions.length === 0 && <><Col className={"mt-4"} xs={12} centerBlock style={{
+							height: 166,
+						}}>
+							<Image src="/images/no_indexes.png" alt="No Indexes" layout="fill" objectFit='contain' />
+						</Col>
+						<Col className="text-center" centerBlock>
+							<Header level={4} style={{
+								maxWidth: 350,
+							}}>No creators yet.</Header>
+
+						</Col></>
+
+				}
+
 			</FlexRow>
 			{newCreatorModalVisible ? <NewCreatorModal handleCreate={handleCreate} visible={newCreatorModalVisible} onClose={handleToggleNewCreatorModal}></NewCreatorModal> : <></>}
 			{transactionApprovalWaiting ? <ConfirmTransaction handleCancel={handleCancel} visible={transactionApprovalWaiting}></ConfirmTransaction> : <></>}

@@ -106,10 +106,10 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 	return (
 		<>
 			<FlexRow>
-				<Col	 xs={12}>
+				<Col xs={12}>
 					<Flex flexDirection="column">
 						<Text theme={"primary"} size="md">Choose network:</Text>
-						<Select value={"2"} bordered size="md" className={"mt-3"}>
+						<Select value={"2"} bordered size="lg" className={"mt-3"}>
 							<Option value="view"><Text size="md">Ethereum</Text></Option>
 							<Option value="1"><Text size="md">Polygon</Text></Option>
 							<Option value="2"><Text size="md">Solana</Text></Option>
@@ -124,6 +124,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 							placeholder="ERC20 or ERC721 or ERC1155 Address"
 							name="contractAddress"
 							className="mt-3"
+							inputSize={"lg"}
 							value={contractAddress}
 							onChange={handleContractAddressChange}
 						/>
@@ -132,7 +133,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 				<Col className="mt-6" xs={12}>
 					<Flex flexDirection="column">
 						<Text theme={"primary"} size="md" className={"mb-3"}>Token contract type:</Text>
-						<RadioGroup value={standardContractType} onSelectionChange={handlestandardContractTypeChange} colSize={4}
+						<RadioGroup  value={standardContractType} onSelectionChange={handlestandardContractTypeChange} colSize={4}
 							items={[
 								{
 									value: "ERC20",
@@ -176,6 +177,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 								placeholder="##"
 								name="tokenId"
 								type={"text"}
+								inputSize={"lg"}
 								value={tokenId}
 								onChange={handleTokenIdChange}
 								className="mt-3"
@@ -192,6 +194,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 								step={1}
 								name="minTokens"
 								onChange={handleMinTokensChange}
+								inputSize={"lg"}
 								value={minTokens}
 								type={"number"}
 								className="mt-3"

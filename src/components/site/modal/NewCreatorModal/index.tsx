@@ -16,6 +16,8 @@ import NFTOptions from "./NFTOptions";
 import IndividualWallet from "./IndividualWallet";
 import IconWallet from "../../../base/Icon/IconWallet";
 import IconPoap from "../../../base/Icon/IconPoap";
+import Tag from "../../../base/Tag";
+import TagIndexDetailItem from "../../tag/TagIndexDetailItem";
 
 export interface NewCreatorModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
 	handleCreate(condition: AccessControlCondition): void;
@@ -54,36 +56,37 @@ const NewCreatorModal = ({
 			) : activeForm === "individual-wallet" ? (
 				<IndividualWallet handleBack={() => handleFormState("initial")}></IndividualWallet>
 			) : (
-				<FlexRow rowGutter={3} rowSpacing={0} rowGap={3} colSpacing={2}>
+				<FlexRow rowGutter={4} rowSpacing={0} rowGap={6} colSpacing={3}>
 					<Col xs={4}>
-						<Button onClick={() => handleFormState("nft-options")} textAlign={"left"} theme={"clear"} className={"px-4 py-6 card-item"}>
+						<Button textAlign={"left"} theme={"card"} onClick={() => handleFormState("nft-options")} className={"px-4 py-6"}>
 							<IconClock width={24} height={24}></IconClock>
 							<Header level={4} className={"my-4"}>NFT Owners</Header>
-							<Text>Add existing token as a creator rule</Text>
+							<Text theme={"gray4"} size={"sm"}>Add existing token as a creator rule</Text>
 						</Button>
 					</Col>
 					<Col xs={8}>
-						<Button textAlign={"left"} theme={"clear"} className={"px-4 py-6 card-item"}>
+						<Button textAlign={"left"} theme={"card"} className={"px-4 py-6"}>
 							<IconGreenAdd width={24} height={24}></IconGreenAdd>
-							<Header level={4} className={"my-4"}>Create New NFT (soon)</Header>
-							<Text>Create a new token, use as a creator rule, mint NFTs to your creators as you like.</Text>
+							<Header theme={"gray9"} level={4} className={"my-4"}>Create New NFT (soon)</Header>
+							<Text theme={"gray4"} size={"sm"}>Create a new token, use as a creator rule, mint NFTs to your creators as you like.</Text>
 						</Button>
 					</Col>
 					<Col xs={4}>
-						<Button onClick={() => handleFormState("individual-wallet")} textAlign={"left"} theme={"clear"} className={"px-4 py-6 card-item"}>
+						<Button textAlign={"left"} theme={"card"}  onClick={() => handleFormState("individual-wallet")} className={"px-4 py-6"}>
 							<IconWallet width={24} height={24}></IconWallet>
 							<Header level={4}>Individual Wallet</Header>
 						</Button>
 					</Col>
 					<Col xs={4}>
-						<Button textAlign={"left"} theme={"clear"} className={"px-4 py-6 card-item"}>
-							<Header level={4}>DAO Members (soon)</Header>
+						<Button textAlign={"left"} theme={"card"} className={"px-4 py-6"}>
+							<Header className={"mb-4"} theme={"gray9"} level={4}>DAO Members</Header>
+							<Text size={"xs"} className={"tag tag-tag tag-circle tag-outlined"}>SOON</Text>
 						</Button>
 					</Col>
 					<Col xs={4}>
-						<Button textAlign={"left"} theme={"clear"} className={"px-4 py-6 card-item"}>
+						<Button textAlign={"left"} theme={"card"} className={"px-4 py-6 "}>
 							<IconPoap width={24} height={24}></IconPoap>
-							<Header level={4}>POAP Collector (soon)</Header>
+							<Header theme={"gray9"} level={4}>POAP Collector (soon)</Header>
 						</Button>
 					</Col>
 				</FlexRow>
@@ -91,7 +94,7 @@ const NewCreatorModal = ({
 		</>
 	)}
 	header={<>
-		<Header level={2}>Add New Rule</Header>
+		<Header level={2}>Add New Creators</Header>
 		<Text className={"mt-4"} element={"p"}>Creators will be able to add items, and delete theirs.</Text>
 	</>}
 	/>;
