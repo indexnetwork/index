@@ -13,7 +13,7 @@ const enrichConditions = async (conditions) => {
 
     conditions = await Promise.all(conditions.map( async (condition) => {
 
-        if(condition.contractAddress !== "evmBasic"){
+        if(!condition.contractAddress){
             return condition;
         }
 
@@ -68,7 +68,7 @@ export const get_action = async (req, res, next) => {
     const { cid } = req.params;
 
     const cached = await redis.hGet(`lit_actions`, cid);
-    if(cached){
+    if (cached) {
         return res.json(JSON.parse(cached))
     }
 
