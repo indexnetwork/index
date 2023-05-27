@@ -93,7 +93,7 @@ export const get_action = async (req, res, next) => {
             return res.json(enrichedConditions)
         });
 
-        const litAction = await fetch(`https://ipfs.io/ipfs/${cid}`);
+        const litAction = await fetch(`https://indexas.infura-ipfs.io/ipfs/${cid}`);
         let litActionStr = await litAction.text();
         litActionStr = `const ACTION_CALL_MODE="read"; ${litActionStr}`;
         await runner.run(litActionStr);
