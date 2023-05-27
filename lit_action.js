@@ -17106,6 +17106,7 @@ attempted value: ${formattedValue}
           context: JSON.stringify(context)
         })
       });
+      return;
     }
     let toSignToValidate;
     let toSignObject;
