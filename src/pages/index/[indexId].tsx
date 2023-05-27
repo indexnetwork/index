@@ -103,9 +103,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const pubKeyHash = ethers.utils.keccak256(pkpPublicKey);
 		const tokenId = ethers.BigNumber.from(pubKeyHash);
 
-		const collabAction = litContracts.utils.getBytesFromMultihash(CID);
-		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenId, collabAction, []);
-		const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(tokenId, collabAction, []);
+		const newCollabAction = litContracts.utils.getBytesFromMultihash(CID);
+		const previousCollabAction = litContracts.utils.getBytesFromMultihash(index.collab_action!);
+		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenId, newCollabAction, []);
+		const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(tokenId, previousCollabAction, []);
 		const result = await pkpCeramic.updateIndex(index, {
 			collab_action: CID,
 		});

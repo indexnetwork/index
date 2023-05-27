@@ -11,8 +11,6 @@ import Button from "components/base/Button";
 import Row from "components/layout/base/Grid/Row";
 import { AccessControlCondition } from "types/entity";
 import { appConfig  } from "config";
-import cc from "classcat";
-import Image from "next/image";
 
 export interface SelectNFTOptionsProps {
 	handleBack(): void;
@@ -104,6 +102,9 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 	const handleMinTokensChange: React.ChangeEventHandler<HTMLInputElement> = ({ target }) => {
 		setCondition({ ...condition, minTokens: target.valueAsNumber });
 	};
+	const handleChainChange = (value: string) => {
+		setCondition({ ...condition, chain: value });
+	};
 
 	return (
 		<>
@@ -111,7 +112,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 				<Col xs={12}>
 					<Flex flexDirection="column">
 						<Text theme={"primary"} size="md">Choose network:</Text>
-						<Select value={"ethereum"} bordered size="lg" className={"mt-3"}>
+						<Select onChange={handleChainChange} defaultValue={"ethereum"} bordered size="lg" className={"mt-3"}>
 							{
 								Object.values(appConfig.chains).map((c, index) => (<Option value={c.value}>
 									<Flex alignItems={"center"}>
