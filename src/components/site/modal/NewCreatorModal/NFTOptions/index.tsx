@@ -38,7 +38,6 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 			throw new Error("Please fill in all required fields");
 		}
 		const newCondition: Partial<AccessControlCondition> = {
-			conditionType: "evmBasic",
 			contractAddress,
 			standardContractType,
 			chain,
@@ -48,7 +47,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 			newCondition.parameters = [":userAddress"];
 			newCondition.returnValueTest = {
 				comparator: ">=",
-				value: minTokens,
+				value: minTokens.toString(),
 			};
 			return newCondition;
 		}
@@ -58,7 +57,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 				newCondition.parameters = [":userAddress"];
 				newCondition.returnValueTest = {
 					comparator: ">=",
-					value: minTokens,
+					value: minTokens.toString(),
 				};
 				return newCondition;
 			} if (tokenId) {
@@ -76,7 +75,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 			newCondition.parameters = [":userAddress", tokenId];
 			newCondition.returnValueTest = {
 				comparator: ">=",
-				value: minTokens,
+				value: minTokens.toString(),
 			};
 			return newCondition;
 		}
@@ -112,16 +111,14 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 				<Col xs={12}>
 					<Flex flexDirection="column">
 						<Text theme={"primary"} size="md">Choose network:</Text>
-						<Select  value={"ethereum"} bordered size="lg" className={"mt-3"}>
+						<Select value={"ethereum"} bordered size="lg" className={"mt-3"}>
 							{
-								Object.values(appConfig.chains).map((c, index) => (
-									<Option value={c.value}>
-										<Flex alignItems={"center"}>
-											<img className={"mr-4"} src={`images/chainLogos/${c.logo}`} alt={c.label}	width={14} height={14} />
-											<Text size="md">{c.label}</Text>
-										</Flex>
-									</Option>
-								))
+								Object.values(appConfig.chains).map((c, index) => (<Option value={c.value}>
+									<Flex alignItems={"center"}>
+										<img className={"mr-4"} src={`images/chainLogos/${c.logo}`} alt={c.label}	width={14} height={14} />
+										<Text size="md">{c.label}</Text>
+									</Flex>
+								</Option>))
 							}
 						</Select>
 					</Flex>

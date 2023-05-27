@@ -34,11 +34,11 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 	const handleCreate = async (condition: AccessControlCondition) => {
 		setNewCreatorModalVisible(false);
 		setTransactionApprovalWaiting(true);
-		const newAction = await api.postLITAction([
+		const newAction = await api.postLITAction(conditions.length > 0 ? [
 			condition,
 			{ operator: "or" },
 			...conditions,
-		] as LitActionConditions);
+		] : [condition] as LitActionConditions);
 		await onChange(newAction!);
 		setTransactionApprovalWaiting(false);
 	};
