@@ -10,7 +10,7 @@ import RadioGroup from "components/base/RadioGroup";
 import Button from "components/base/Button";
 import Row from "components/layout/base/Grid/Row";
 import { AccessControlCondition } from "types/entity";
-import { appConfig  } from "config";
+import { appConfig } from "config";
 
 export interface SelectNFTOptionsProps {
 	handleBack(): void;
@@ -114,7 +114,8 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 						<Text theme={"primary"} size="md">Choose network:</Text>
 						<Select onChange={handleChainChange} defaultValue={"ethereum"} bordered size="lg" className={"mt-3"}>
 							{
-								Object.values(appConfig.chains).map((c, index) => (<Option value={c.value}>
+								// eslint-disable-next-line react/jsx-key
+								Object.values(appConfig.chains).map((c) => (<Option value={c.value}>
 									<Flex alignItems={"center"}>
 										<img className={"mr-4"} src={`images/chainLogos/${c.logo}`} alt={c.label}	width={14} height={14} />
 										<Text size="md">{c.label}</Text>

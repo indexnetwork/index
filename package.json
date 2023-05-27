@@ -38,6 +38,7 @@
     "add": "^2.0.6",
     "axios": "^0.27.2",
     "bitcoinjs-lib": "^6.1.0",
+    "caip": "^1.1.0",
     "classcat": "^5.0.3",
     "did-resolver": "^4.0.0",
     "did-session": "^1.0.0",

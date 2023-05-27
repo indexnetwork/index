@@ -35,7 +35,7 @@ type SessionResponse = {
 
 export const AuthHandlerContext = React.createContext<AuthHandlerContextType>({} as any);
 
-export const AuthHandlerProvider = ({ children }: any) => {
+export const 	AuthHandlerProvider = ({ children }: any) => {
 	const { metaMaskConnected, originNFTModalVisible, loading } = useAppSelector(selectConnection);
 	const dispatch = useAppDispatch();
 	const router = useRouter();

@@ -73,10 +73,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setNotFound(true);
 		} else {
 			setIndex(doc);
-			const pkpPublicKey = decodeDIDWithLit(doc.controller_did?.id);
-			const pkpDIDResult = await LitService.authenticatePKP(doc.collab_action!, pkpPublicKey);
-			if (pkpDIDResult) {
-				setPKPCeramic(new CeramicService(pkpDIDResult));
+			const pkpSession = await LitService.getPKPSession(doc.controller_did?.id, "Qmez182G3ek9A4u5R8yhVk8kzFKDP4jndCogW93kvDZuxv");
+			if (pkpSession) {
+				setPKPCeramic(new CeramicService(pkpSession.did));
 				setIsOwner(true);
 			}
 
@@ -189,172 +188,165 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		<LinksContext.Provider
 			value={{ links, setLinks }}
 		>
-			<>
-
-				<Container
-					className="index-details-page my-6 my-lg-8"
-				>
-					{
-						notFound ?
-							<FlexRow
-								rowSpacing={3}
-								justify="center"
-							>
-								<NotFound active={true} />
-							</FlexRow> : (
-								<>
-									<FlexRow
-										rowSpacing={3}
-										justify="center"
+			<Container
+				className="index-details-page my-6 my-lg-8"
+			>
+				{
+					notFound ?
+						<FlexRow
+							rowSpacing={3}
+							justify="center"
+						>
+							<NotFound active={true} />
+						</FlexRow> : (
+							<>
+								<FlexRow
+									rowSpacing={3}
+									justify="center"
+								>
+									<Col
+										xs={12}
+										lg={9}
+										noYGutters
 									>
-										<Col
-											xs={12}
-											lg={9}
-											noYGutters
-										>
-											<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-											<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.owner_did?.id}</Text>
-										</Col>
-										<Col
-											xs={12}
-											lg={9}
-											className="pb-0"
-										>
-											<FlexRow>
-												<Col
-													className="idxflex-grow-1 mr-5"
-												>
-													<IndexTitleInput
-														defaultValue={index?.title || ""}
-														onChange={handleTitleChange}
-														disabled={!isOwner}
-														loading={titleLoading}
-													/>
-												</Col>
-												<Col className="mr-2 mb-3">
-													<Tooltip content="Add to Starred Index">
-														<Button
-															iconHover
-															theme="clear"
-															onClick={() => handleUserIndexToggle(index.id!, "starred", index.is_starred ? "remove" : "add") }
-															borderless>
-															<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} width={20} height={20} />
-														</Button>
-													</Tooltip>
-												</Col>
-												<Col className="ml-2 mb-3">
+										<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
+										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.owner_did?.id}</Text>
+									</Col>
+									<Col
+										xs={12}
+										lg={9}
+										className="pb-0"
+									>
+										<FlexRow>
+											<Col
+												className="idxflex-grow-1 mr-5"
+											>
+												<IndexTitleInput
+													defaultValue={index?.title || ""}
+													onChange={handleTitleChange}
+													disabled={!isOwner}
+													loading={titleLoading}
+												/>
+											</Col>
+											<Col className="mr-2 mb-3">
+												<Tooltip content="Add to Starred Index">
 													<Button
 														iconHover
 														theme="clear"
+														onClick={() => handleUserIndexToggle(index.id!, "starred", index.is_starred ? "remove" : "add") }
 														borderless>
-														<IndexOperationsPopup
-															isOwner={isOwner}
-															streamId={index.id!}
-															is_in_my_indexes={index.is_in_my_indexes!} // TODO-user_index
-															mode="indexes-page"
-															userIndexToggle={handleUserIndexToggle}
-														></IndexOperationsPopup>
+														<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} width={20} height={20} />
 													</Button>
-												</Col>
-											</FlexRow>
-										</Col>
-										<Col xs={12} lg={9} noYGutters className="mb-1">
-											<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
-										</Col>
-										<Col
-											xs={12}
-											lg={9}
-										>
-											<FlexRow>
-												<Col className="idxflex-grow-1 mb-4">
-													<Tabs activeKey={tabKey} onTabChange={setTabKey}>
-														<TabPane enabled={true} tabKey={"index"} title={"Index"} />
-														<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
-														<TabPane enabled={true} tabKey={"audiences"} title={"Audiences"} />
-													</Tabs>
-												</Col>
-											</FlexRow>
-											<FlexRow>
-												{tabKey === "index" ?
-													<>
-
-														<Col
-															className="idxflex-grow-1 mr-5 mt-2"
-														>
-															<SearchInput
-																loading={loading}
-																onSearch={setSearch}
-																debounceTime={400}
-																showClear
-																placeholder={t("pages:home.searchLink")} />
-														</Col>
-														<Col>
-															<ButtonGroup
-																theme="clear"
-																className="mt-2"
-															>
-																<FilterPopup>
-																	<Button
-																		size={"xl"}
-																		group
-																		iconButton
-																	>
-																		<IconFilter width={20} height={20} stroke="var(--gray-4)" /></Button>
-																</FilterPopup>
-																<SortPopup>
-																	<Button
-																		size={"xl"}
-																		group
-																		iconButton
-																	><IconSort width={20} height={20} stroke="var(--gray-4)" /></Button>
-																</SortPopup>
-															</ButtonGroup>
-														</Col>
-
-													</> :
-													<Col></Col>}
-											</FlexRow>
-										</Col>
-										{
-											tabKey === "index" && isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
-												<LinkInput
-													loading={crawling}
-													onLinkAdd={handleAddLink}
-													progress={progress}
-												/>
+												</Tooltip>
 											</Col>
-										}
-									</FlexRow>
-									{tabKey === "index" ?
-										<FlexRow
-											justify="center"
-										>
-											<Col xs={12} lg={9}>
-												<IndexItemList
-													search={search}
-													isOwner={isOwner}
-													index_id={router.query.indexId as any}
-												// onChange={handleReorderLinks}
-												/>
+											<Col className="ml-2 mb-3">
+												<Button
+													iconHover
+													theme="clear"
+													borderless>
+													<IndexOperationsPopup
+														isOwner={isOwner}
+														streamId={index.id!}
+														is_in_my_indexes={index.is_in_my_indexes!} // TODO-user_index
+														mode="indexes-page"
+														userIndexToggle={handleUserIndexToggle}
+													></IndexOperationsPopup>
+												</Button>
 											</Col>
-										</FlexRow> : tabKey === "creators" ?
-											<Col>
-												<FlexRow justify="center">
-													<Col xs={12} lg={9}>
-														<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collab_action!}></CreatorSettings>
+										</FlexRow>
+									</Col>
+									<Col xs={12} lg={9} noYGutters className="mb-1">
+										<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
+									</Col>
+									<Col
+										xs={12}
+										lg={9}
+									>
+										<FlexRow>
+											<Col className="idxflex-grow-1 mb-4">
+												<Tabs activeKey={tabKey} onTabChange={setTabKey}>
+													<TabPane enabled={true} tabKey={"index"} title={"Index"} />
+													<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
+													<TabPane enabled={true} tabKey={"audiences"} title={"Audiences"} />
+												</Tabs>
+											</Col>
+										</FlexRow>
+										<FlexRow>
+											{tabKey === "index" ?
+												<>
+
+													<Col
+														className="idxflex-grow-1 mr-5 mt-2"
+													>
+														<SearchInput
+															loading={loading}
+															onSearch={setSearch}
+															debounceTime={400}
+															showClear
+															placeholder={t("pages:home.searchLink")} />
 													</Col>
-												</FlexRow>
-											</Col> : <Col>
-												<FlexRow justify="center">
-													<Soon section={tabKey}></Soon>
-												</FlexRow>
-											</Col>
+													<Col>
+														<ButtonGroup
+															theme="clear"
+															className="mt-2"
+														>
+															<FilterPopup>
+																<Button
+																	size={"xl"}
+																	group
+																	iconButton
+																>
+																	<IconFilter width={20} height={20} stroke="var(--gray-4)" /></Button>
+															</FilterPopup>
+															<SortPopup>
+																<Button
+																	size={"xl"}
+																	group
+																	iconButton
+																><IconSort width={20} height={20} stroke="var(--gray-4)" /></Button>
+															</SortPopup>
+														</ButtonGroup>
+													</Col>
+
+												</> :
+												<Col></Col>}
+										</FlexRow>
+									</Col>
+									{
+										tabKey === "index" && isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
+											<LinkInput
+												loading={crawling}
+												onLinkAdd={handleAddLink}
+												progress={progress}
+											/>
+										</Col>
 									}
-								</>
-							)
-					}
-				</Container>
-			</>
+								</FlexRow>
+								{tabKey === "index" ?
+									<FlexRow
+										justify="center"
+									>
+										<Col xs={12} lg={9}>
+											<IndexItemList
+												search={search}
+												isOwner={isOwner}
+												index_id={router.query.indexId as any}
+											// onChange={handleReorderLinks}
+											/>
+										</Col>
+									</FlexRow> : tabKey === "creators" ?
+										<FlexRow justify="center">
+											<Col xs={12} lg={9}>
+												{/* eslint-disable-next-line max-len */}
+												<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collab_action!}></CreatorSettings>
+											</Col>
+										</FlexRow> : <FlexRow justify="center">
+											<Soon section={tabKey}></Soon>
+										</FlexRow> }
+							</>
+						)
+				}
+			</Container>
 		</LinksContext.Provider>
 	);
 };
