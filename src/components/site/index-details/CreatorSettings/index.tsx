@@ -56,23 +56,19 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 
 	return (
 		<>
-			<Row>
-				<Col xs={12} >
-					<Row noGutters>
-						<Col pullLeft >
-							<Header className="mb-4">Creators</Header>
-						</Col>
-						<Col pullRight>
-							<Button
-								addOnBefore
-								className={"mr-0"}
-								size="sm"
-								onClick={handleToggleNewCreatorModal}
-							>
-								<IconAdd width={12} stroke="white" strokeWidth={"1.5"} /> Add New
-							</Button>
-						</Col>
-					</Row>
+			<Row noGutters>
+				<Col pullLeft>
+					<Header className="mb-4">Creators</Header>
+				</Col>
+				<Col pullRight>
+					<Button
+						addOnBefore
+						className={"mr-0"}
+						size="sm"
+						onClick={handleToggleNewCreatorModal}
+					>
+						<IconAdd width={12} stroke="white" strokeWidth={"1.5"} /> Add New
+					</Button>
 				</Col>
 			</Row>
 			<Row className={"mt-0"}>
@@ -104,9 +100,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 				}
 
 			</FlexRow>
-			// @ts-ignore
 			{newCreatorModalVisible ? <NewCreatorModal handleCreate={handleCreate} visible={newCreatorModalVisible} onClose={handleToggleNewCreatorModal}></NewCreatorModal> : <></>}
-			// @ts-ignore
 			{transactionApprovalWaiting ? <ConfirmTransaction handleCancel={handleCancel} visible={transactionApprovalWaiting}></ConfirmTransaction> : <></>}
 		</>
 
