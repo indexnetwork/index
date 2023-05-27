@@ -79,7 +79,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 			<FlexRow className={"mt-6"} rowGutter={2} rowSpacing={2} colSpacing={2}>
 				{
 					conditions && conditions
-						.filter((c: { conditionType: string; }) => c.conditionType === "evmBasic")
+						.filter((c: { contractAddress: string; }) => !!c.contractAddress)
 						.map((c: any, index: any) => <Col key={index} lg={6} xs={12}>
 							<CreatorRule rule={c.metadata}></CreatorRule>
 						</Col>)
