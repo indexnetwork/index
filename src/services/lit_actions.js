@@ -13,7 +13,7 @@ const enrichConditions = async (conditions) => {
 
     conditions = await Promise.all(conditions.map( async (condition) => {
 
-        if(condition.conditionType !== "evmBasic"){
+        if(condition.contractAddress !== "evmBasic"){
             return condition;
         }
 
