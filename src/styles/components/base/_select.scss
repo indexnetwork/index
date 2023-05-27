@@ -100,7 +100,7 @@
 		overflow: hidden;
 		height: 0;
 		opacity: 0;
-		box-shadow: 0;
+		box-shadow: $box-shadow-base;
 		pointer-events: none;
 		position: absolute;
 		left: 0;
@@ -109,6 +109,7 @@
 		z-index: map-get($z-index, "select");
 		border-bottom-left-radius: $border-radius-base;
 		border-bottom-right-radius: $border-radius-base;
+
 		max-height: 14.5rem;
 		overflow: auto;
 		// padding-top: map-deep-get($spacing, "xs", "2");

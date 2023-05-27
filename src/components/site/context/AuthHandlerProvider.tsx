@@ -82,7 +82,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		const threeMonthsLater = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
 
 		const siweMessage = new SiweMessage({
-			domain: "index.as",
+			domain: window.location.host,
 			address: getAddress(normAccount.address),
 			statement: "Give this application access to some of your data on Ceramic",
 			uri: didKey.id,
