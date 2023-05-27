@@ -17093,8 +17093,12 @@ attempted value: ${formattedValue}
     context.auth.personalDID = personalDID;
     const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId, address: Lit.Auth.authSigAddress });
     context.auth.isPermittedAddress = isPermittedAddress;
-    const isCreator = await Lit.Actions.checkConditions({ conditions: getCreatorConditions(), authSig, chain });
-    context.auth.isCreator = isCreator;
+    const conditions = getCreatorConditions();
+    let isCreator = false;
+    if (conditions.length > 0) {
+      isCreator = await Lit.Actions.checkConditions({ conditions, authSig, chain });
+      context.auth.isCreator = isCreator;
+    }
     if (!isPermittedAddress && !isCreator) {
       LitActions.setResponse({
         response: JSON.stringify({
