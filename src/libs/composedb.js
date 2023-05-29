@@ -33,6 +33,7 @@ export const getIndexLinkById = async(id) => {
                     }        
                     title
                     collabAction
+                    pkpPublicKey
                     createdAt
                     updatedAt
                     deletedAt
@@ -106,6 +107,7 @@ export const getIndexById = async (id) => {
                     id
                     title
                     collabAction
+                    pkpPublicKey
                     createdAt
                     updatedAt
                     deletedAt
@@ -163,6 +165,7 @@ export const getIndexByPKP = async (id) => {
                         id
                         title
                         collabAction
+                        pkpPublicKey
                         createdAt
                         updatedAt
                         controllerDID {
