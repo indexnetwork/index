@@ -105,7 +105,7 @@ export const getIndexById = async (id) => {
                   ... on Index{
                     id
                     title
-                    collab_action
+                    collabAction
                     createdAt
                     updatedAt
                     deletedAt
