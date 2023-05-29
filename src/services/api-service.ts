@@ -114,9 +114,9 @@ class ApiService {
 			// TODO handle;
 		}
 	}
-	async getIndexById(index_id: string) : Promise<Indexes | undefined> {
+	async getIndexById(indexId: string) : Promise<Indexes | undefined> {
 		try {
-			const { data } = await apiAxios.get(`${API_ENDPOINTS.INDEXES}/${index_id}`);
+			const { data } = await apiAxios.get(`${API_ENDPOINTS.INDEXES}/${indexId}`);
 			return data as Indexes;
 		} catch (err: any) {
 			throw new Error(err.message);

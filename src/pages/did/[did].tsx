@@ -210,7 +210,7 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
-									isOwner={did === itm.owner_did?.id}
+									isOwner={did === itm.ownerDID?.id}
 									userIndexToggle={handleUserIndexToggle}
 									index={itm}
 								/>}
@@ -232,7 +232,7 @@ const IndexesPage: NextPageWithLayout = () => {
 								render={(itm: Indexes) => <IndexItem
 									hasSearch={!!search}
 									onClick={handleClick(itm)}
-									isOwner={did === itm.owner_did?.id}
+									isOwner={did === itm.ownerDID?.id}
 									userIndexToggle={handleUserIndexToggle}
 									index={itm}
 								/>}

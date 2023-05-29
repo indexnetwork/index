@@ -42,12 +42,12 @@ export function maskAddress(address: string) {
 export function isMobile() {
 	return !isSSR() && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
-export const setDates = <T extends { updated_at?: string, created_at?: string, [key: string]: any }>(obj: T, update: boolean = false) => {
+export const setDates = <T extends { updatedAt?: string, createdAt?: string, [key: string]: any }>(obj: T, update: boolean = false) => {
 	const date = moment.utc().toISOString();
 	if (update === false) {
-		obj.created_at = date;
+		obj.createdAt = date;
 	}
-	obj.updated_at = date;
+	obj.updatedAt = date;
 	return obj;
 };
 

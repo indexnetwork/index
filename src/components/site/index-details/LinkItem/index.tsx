@@ -179,7 +179,7 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 								height={16}
 								style={{
 									verticalAlign: "middle",
-								}} />}<Text size="sm" theme="disabled">{link?.url?.substring(0, 80)} • {link?.updated_at ? moment(link?.updated_at).format("MMM D") : ""}</Text>
+								}} />}<Text size="sm" theme="disabled">{link?.url?.substring(0, 80)} • {link?.updatedAt ? moment(link?.updatedAt).format("MMM D") : ""}</Text>
 					</ a>
 				</Col>
 				{

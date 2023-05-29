@@ -5,7 +5,7 @@ export const appConfig = {
 	ceramicNetworkName: "testnet-clay",
 	ipfsProxy: "https://ipfs.io/ipfs/",
 	ipfsInfura: "https://ipfs.infura.io:5001/api/v0",
-	defaultCID: "QmNguHFZSNQ8AZ3xvHk7AXRYu1JXtR4LVQSBeH1CdBjcaH", // Empty.
+	defaultCID: "Qmez182G3ek9A4u5R8yhVk8kzFKDP4jndCogW93kvDZuxv", // Empty.
 	chains: {
 		ethereum: {
 			value: "ethereum",

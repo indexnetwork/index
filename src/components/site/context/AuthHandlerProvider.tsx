@@ -74,7 +74,7 @@ export const 	AuthHandlerProvider = ({ children }: any) => {
 
 		const accountId = await getAccountId(ethProvider, addresses[0]);
 		const normAccount = normalizeAccountId(accountId);
-
+		console.log("super", normAccount);
 		const keySeed = randomBytes(32);
 		const didKey = await createDIDKey(keySeed);
 
@@ -93,11 +93,13 @@ export const 	AuthHandlerProvider = ({ children }: any) => {
 			expirationTime: threeMonthsLater.toISOString(),
 			resources: ["ceramic://*"],
 		});
+		console.log(siweMessage);
 		try {
 			siweMessage.signature = await ethProvider.request({
 				method: "personal_sign",
 				params: [siweMessage.signMessage(), getAddress(accountId.address)],
 			});
+			console.log(siweMessage.signature);
 			const cacao = Cacao.fromSiweMessage(siweMessage);
 			const did = await createDIDCacao(didKey, cacao);
 			const newSession = new DIDSession({ cacao, keySeed, did });

@@ -12,6 +12,7 @@ import { definition } from "../types/merged-runtime";
 import { appConfig } from "../config";
 
 import LitService from "./lit-service";
+import { encodeDIDWithLit } from "../utils/lit";
 
 class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
@@ -54,23 +55,26 @@ class CeramicService {
 			Token ID is 0x5a0ed5d5fdf73b14b53ca25b3fa1996bbf5eb0e8004d436c3f55bd2013815645
 			Token ID number is 40734368072587093465276453834418008413686098135730551600338205759635841963589
 		*/
-
-		const did = await LitService.authenticatePKP(appConfig.defaultCID, pkpPublicKey);
+		const pkpDIDKey = encodeDIDWithLit(pkpPublicKey);
+		const pkpDID = await LitService.getPKPSession(pkpDIDKey, appConfig.defaultCID);
 		/*
 		if (!did.authenticated) {
 			// TODO handle error
 		}
 		 */
-		this.client.setDID(did);
+		console.log("serafettin", JSON.stringify(pkpDID));
+
+		this.client.setDID(pkpDID.did);
 
 		setDates(content, true);
 		if (!content.title) {
 			content.title = "Untitled Index";
 		}
 		const cdt = getCurrentDateTime();
-		content.created_at = cdt;
-		content.updated_at = cdt;
-		content.collab_action = appConfig.defaultCID;
+		content.createdAt = cdt;
+		content.updatedAt = cdt;
+		content.pkpPublicKey = pkpPublicKey;
+		content.collabAction = appConfig.defaultCID;
 		const payload = {
 			content,
 		};
@@ -81,9 +85,9 @@ class CeramicService {
 					document {
 						id
 						title
-						collab_action
-						created_at
-						updated_at
+						collabAction
+						createdAt
+						updatedAt
 					}
 				}
 			}`, { input: payload });
@@ -91,11 +95,12 @@ class CeramicService {
 		if (errors) {
 			// TODO Handle
 		}
-		// TODO Before releasde.
+
+		// TODO Before release.
 		return data?.createIndex.document!;
 	}
 	async updateIndex(index: Partial<Indexes>, content: Partial<Indexes>): Promise<Indexes> {
-		content.updated_at = getCurrentDateTime();
+		content.updatedAt = getCurrentDateTime();
 		const payload = {
 			id: index.id,
 			content,
@@ -106,9 +111,9 @@ class CeramicService {
 					document {
 						id
 						title
-						collab_action
-						created_at
-						updated_at
+						collabAction
+						createdAt
+						updatedAt
 					}
 				}
 			}`, { input: payload });
@@ -129,8 +134,8 @@ class CeramicService {
 				title
 				url
 				favicon
-				created_at
-				updated_at
+				createdAt
+				updatedAt
 				tags
 			}}
 		  }`);
@@ -138,8 +143,8 @@ class CeramicService {
 	}
 
 	async createLink(link: Partial<Link>): Promise<Link> {
-		setDates(link); // TODO Conditional updated_at
-		link.updated_at = getCurrentDateTime();
+		setDates(link); // TODO Conditional updatedAt
+		link.updatedAt = getCurrentDateTime();
 		if (!link.tags) {
 			link.tags = [];
 		}
@@ -151,15 +156,15 @@ class CeramicService {
 				createLink(input: $input) {
 					document {
 						id
-						controller_did{
+						controllerDID{
 							id
 						}
 						url
 						title
 						tags
 						favicon
-						created_at
-						updated_at
+						createdAt
+						updatedAt
 					}
 				}
 			}`, { input: payload });
@@ -172,7 +177,7 @@ class CeramicService {
 	async updateLink(link_id: string, link: Link): Promise <Link> {
 		// Get index link
 
-		link.updated_at = getCurrentDateTime();
+		link.updatedAt = getCurrentDateTime();
 		const payload = {
 			id: link_id,
 			content: link,
@@ -186,8 +191,8 @@ class CeramicService {
 						title
 						tags
 						favicon
-						created_at
-						updated_at						
+						createdAt
+						updatedAt						
 					}
 				}
 			}`, { input: payload });
@@ -200,11 +205,11 @@ class CeramicService {
 
 	async addIndexLink(index: Indexes, link_id: string) : Promise <IndexLink> {
 		const indexLink: IndexLink = {
-			index_id: index.id,
-			link_id,
-			updated_at: getCurrentDateTime(),
-			created_at: getCurrentDateTime(),
-			indexer_did: this.client.did?.parent!,
+			indexId: index.id,
+			linkId: link_id,
+			updatedAt: getCurrentDateTime(),
+			createdAt: getCurrentDateTime(),
+			indexerDID: this.client.did?.parent!,
 		};
 
 		const payload = {
@@ -219,18 +224,18 @@ class CeramicService {
 				createIndexLink(input: $input) {
 					document {
 						id
-						indexer_did {
+						indexerDID {
 							id
 						}
-						controller_did {
+						controllerDID {
 							id
 						}
-						created_at
-						updated_at
-						deleted_at
+						createdAt
+						updatedAt
+						deletedAt
 						link {
 							id
-							controller_did {
+							controllerDID {
 								id
 							}
 							title
@@ -238,9 +243,9 @@ class CeramicService {
 							favicon
 							tags
 							content
-							created_at
-							updated_at
-							deleted_at
+							createdAt
+							updatedAt
+							deletedAt
 						}
 					}
 				}
@@ -252,14 +257,14 @@ class CeramicService {
 		return data?.createIndexLink.document!;
 	}
 	async removeIndexLink(index_link: IndexLink): Promise <IndexLink | undefined> {
-		const index = await api.getIndexById(index_link.index_id!);
+		const index = await api.getIndexById(index_link.indexId!);
 		if (!index) {
 			throw new Error("Index not found");
 		}
 		const payload = {
 			id: index_link.id!,
 			content: {
-				deleted_at: getCurrentDateTime(),
+				deletedAt: getCurrentDateTime(),
 			},
 		};
 		const { data, errors } = await this.client.executeQuery<{ updateIndexLink: { document: IndexLink } }>(`
@@ -267,11 +272,11 @@ class CeramicService {
 				updateIndexLink(input: $input) {
 					document {
 						id
-						index_id
-						link_id
-						created_at
-						updated_at
-						deleted_at				
+						indexId
+						linkId
+						createdAt
+						updatedAt
+						deletedAt				
 					}
 				}
 			}`, { input: payload });
@@ -325,14 +330,14 @@ class CeramicService {
 
 		 */
 	}
-	async addUserIndex(index_id: string, type: string, deleted_at = false): Promise<UserIndex | undefined> {
+	async addUserIndex(index_id: string, type: string, deletedAt = false): Promise<UserIndex | undefined> {
 		const userIndex = {
-			index_id,
-			created_at: getCurrentDateTime(),
+			indexId: index_id,
+			createdAt: getCurrentDateTime(),
 			type,
 		} as UserIndex;
-		if (deleted_at) {
-			userIndex.deleted_at = getCurrentDateTime();
+		if (deletedAt) {
+			userIndex.deletedAt = getCurrentDateTime();
 		}
 		console.log("add", userIndex);
 		const payload = {
@@ -343,12 +348,12 @@ class CeramicService {
 				createUserIndex(input: $input) {
 					document {
 						id
-						index_id
-						controller_did {
+						indexId
+						controllerDID {
 							id
 						}
-						created_at
-						deleted_at
+						createdAt
+						deletedAt
 					}
 				}
 			}`, { input: payload });
@@ -376,7 +381,7 @@ class CeramicService {
 		const payload = {
 			id: userIndex?.id!,
 			content: {
-				deleted_at: getCurrentDateTime(),
+				deletedAt: getCurrentDateTime(),
 			},
 		};
 		const { data, errors } = await this.client.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
@@ -384,12 +389,12 @@ class CeramicService {
 				updateUserIndex(input: $input) {
 					document {
 						id
-						index_id
-						controller_did {
+						indexId
+						controllerDID {
 							id
 						}
-						created_at
-						deleted_at
+						createdAt
+						deletedAt
 					}
 				}
 			}`, { input: payload });

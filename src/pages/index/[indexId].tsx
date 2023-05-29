@@ -67,25 +67,24 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
 
-	const loadIndex = async (id: string) => {
-		const doc = await api.getIndexById(id);
+	const loadIndex = async (indexIdParam: string) => {
+		const doc = await api.getIndexById(indexIdParam);
 		if (!doc) {
 			setNotFound(true);
 		} else {
 			setIndex(doc);
-			const pkpSession = await LitService.getPKPSession(doc.controller_did?.id, "Qmez182G3ek9A4u5R8yhVk8kzFKDP4jndCogW93kvDZuxv");
-			if (pkpSession) {
-				setPKPCeramic(new CeramicService(pkpSession.did));
+			const pkpDID = await LitService.getPKPSession(doc.controllerDID?.id, doc.collabAction);
+			if (pkpDID) {
+				setPKPCeramic(new CeramicService(pkpDID.did!));
 				setIsOwner(true);
 			}
-
-			await loadUserIndex(id);
+			await loadUserIndex(indexIdParam);
 			setLoading(false);
 		}
 	};
-	const loadUserIndex = async (index_id: string) => {
+	const loadUserIndex = async (indexIdParam: string) => {
 		const userIndexes = await api.getUserIndexes({
-			index_id, // TODO Shame
+			index_id: indexIdParam, // TODO Shame
 			did,
 		} as GetUserIndexesRequestBody) as UserIndexResponse;
 		setIndex({
@@ -98,16 +97,16 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const litContracts = new LitContracts();
 		await litContracts.connect();
 
-		const pkpPublicKey = decodeDIDWithLit(index.controller_did?.id);
+		const pkpPublicKey = decodeDIDWithLit(index.controllerDID?.id!);
 		const pubKeyHash = ethers.utils.keccak256(pkpPublicKey);
 		const tokenId = ethers.BigNumber.from(pubKeyHash);
 
 		const newCollabAction = litContracts.utils.getBytesFromMultihash(CID);
-		const previousCollabAction = litContracts.utils.getBytesFromMultihash(index.collab_action!);
+		const previousCollabAction = litContracts.utils.getBytesFromMultihash(index.collabAction!);
 		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenId, newCollabAction, []);
 		const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(tokenId, previousCollabAction, []);
 		const result = await pkpCeramic.updateIndex(index, {
-			collab_action: CID,
+			collabAction: CID,
 		});
 		setIndex(result);
 	};
@@ -169,7 +168,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			});
 			setProgress({ ...progress, current: progress.current + 1 });
 			setLinks([addedLink, ...links]);
-			index.updated_at = addedLink.updated_at;
+			index.updatedAt = addedLink.updatedAt;
 			setIndex(index);
 		}
 	}, [addedLink]);
@@ -210,7 +209,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										noYGutters
 									>
 										<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.owner_did?.id}</Text>
+										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.ownerDID?.id}</Text>
 									</Col>
 									<Col
 										xs={12}
@@ -256,7 +255,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										</FlexRow>
 									</Col>
 									<Col xs={12} lg={9} noYGutters className="mb-1">
-										<Text size="sm" theme="disabled">{index?.updated_at ? `Updated ${moment(index.updated_at).fromNow()}` : ""} </Text>
+										<Text size="sm" theme="disabled">{index?.updatedAt ? `Updated ${moment(index.updatedAt).fromNow()}` : ""} </Text>
 									</Col>
 									<Col
 										xs={12}
@@ -338,7 +337,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<FlexRow justify="center">
 											<Col xs={12} lg={9}>
 												{/* eslint-disable-next-line max-len */}
-												<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collab_action!}></CreatorSettings>
+												<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
 											</Col>
 										</FlexRow> : <FlexRow justify="center">
 											<Soon section={tabKey}></Soon>

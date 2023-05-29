@@ -19,6 +19,7 @@
     "@composedb/client": "^0.4.4",
     "@composedb/types": "^0.4.4",
     "@didtools/cacao": "^2.0.0",
+    "@didtools/key-secp256k1": "^0.2.1",
     "@didtools/pkh-ethereum": "^0.0.3",
     "@ethersproject/address": "^5.7.0",
     "@ethersproject/keccak256": "^5.7.0",

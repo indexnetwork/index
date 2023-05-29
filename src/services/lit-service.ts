@@ -1,27 +1,34 @@
 import { ethers } from "ethers";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
-import { encodeDIDWithLit, Secp256k1ProviderWithLit } from "@indexas/key-did-provider-secp256k1-with-lit";
+import { Secp256k1ProviderWithLit } from "@indexas/key-did-provider-secp256k1-with-lit";
 import { DID } from "dids";
-import * as KeyDidResolver from "key-did-resolver";
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
-import { createDIDCacao, createDIDKey, DIDSession } from "did-session";
-
-import { randomBytes, randomString } from "@stablelib/random";
+import {randomBytes, randomString} from "@stablelib/random";
 import { Cacao, SiweMessage } from "@didtools/cacao";
-
-import { decodeDIDWithLit } from "../utils/lit";
+import { computeAddress, joinSignature } from "ethers/lib/utils";
+import { getResolver } from "key-did-resolver"
+import {decodeDIDWithLit, encodeDIDWithLit} from "../utils/lit";
 import { appConfig } from "../config";
 import { isSSR } from "../utils/helper";
-import { joinSignature } from 'ethers/lib/utils';
-import CeramicService from "./ceramic-service";
+import {createDIDCacao, createDIDKey, DIDSession} from "did-session";
+import {getAddress} from "@ethersproject/address";
+import {Ed25519Provider} from "key-did-provider-ed25519";
+import {Secp256k1Provider} from "@didtools/key-secp256k1";
 
 const checkAndSignAuthMessage = async () => JSON.parse(localStorage.getItem("authSig")!);
+
+function stringToUInt8Array(str) {
+	var buf = new ArrayBuffer(32);
+	var arr = new Uint8Array(buf);
+	for (var i = 0; i < str.length; i++) {
+		arr[i] = str.charCodeAt(i);
+	}
+	return arr;
+}
 
 class LitService {
 	async authenticatePKP(ipfsId: string, pkpPublicKey: any) : Promise<DID> {
 		if (!isSSR()) {
-			personalCeramic.setClient(new CeramicService(session?.did!));
-
 			try {
 				const litNodeClient = new LitNodeClient({
 					litNetwork: "serrano",
@@ -68,7 +75,7 @@ class LitService {
 		const tokenIdNumber = ethers.BigNumber.from(tokenIdFromEvent).toString();
 		const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
 		console.log(
-			`PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
+			`superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
 		);
 		const acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
 		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenIdNumber, acid, []);
@@ -122,30 +129,35 @@ class LitService {
 		return hasOrigin;
 	}
 
-	async getPKPSession(did: string, collabAction: string) {
+	async getPKPSession(didStr: string, collabAction: string) {
 
-		const pkpPublicKey = decodeDIDWithLit(did);
-		console.log(pkpPublicKey, did, collabAction);
-		const sessionStr = localStorage.getItem(`pkp_session_${pkpPublicKey}`);
+		const pkpPublicKey = decodeDIDWithLit(didStr);
+		const address = computeAddress(pkpPublicKey);
+		const keySeed = stringToUInt8Array(didStr);
 
-		if (sessionStr) {
-			return await DIDSession.fromSession(sessionStr);
+		const provider = new Secp256k1Provider(keySeed);
+		const didKey = new DID({ provider, resolver: getResolver() });
+		await didKey.authenticate();
+		/*
+		const existingSiwe = localStorage.getItem(`pkp_siwe_${address}`);
+		if (existingSiwe) {
+			const cacao = Cacao.fromSiweMessage(new SiweMessage(existingSiwe));
+			return await createDIDCacao(didKey, cacao);
 		}
+		*/
 
 		const litNodeClient = new LitNodeClient({
 			litNetwork: "serrano",
 		});
 		await litNodeClient.connect();
 		const authSig = await checkAndSignAuthMessage();
-		const keySeed = randomBytes(32);
-		const didKey = await createDIDKey(keySeed);
 
 		const now = new Date();
 		const threeMonthsLater = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
 
 		const siweMessage = new SiweMessage({
 			domain: window.location.host,
-			address: pkpPublicKey,
+			address: getAddress(address),
 			statement: "Give this application access to some of your data on Ceramic",
 			uri: didKey.id,
 			version: "1",
@@ -173,14 +185,11 @@ class LitService {
 			s: `0x${signature.s}`,
 			v: signature.recid,
 		});
-
+		localStorage.setItem(`pkp_siwe_${address}`, siweMessage.toMessage());
 		const cacao = Cacao.fromSiweMessage(siweMessage);
-		const pkpDID = await createDIDCacao(didKey, cacao);
-		const newSession = new DIDSession({ cacao, keySeed, did: pkpDID });
-		localStorage.setItem(`pkp_session_${pkpPublicKey}`, newSession.serialize());
-		return newSession;
+		const did = await createDIDCacao(didKey, cacao);
+		return new DIDSession({ cacao, keySeed, did });
 	}
 }
 const litService = new LitService();
-
 export default litService;
