@@ -3,16 +3,15 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { Secp256k1ProviderWithLit } from "@indexas/key-did-provider-secp256k1-with-lit";
 import { DID } from "dids";
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
-import {randomBytes, randomString} from "@stablelib/random";
+import {randomString} from "@stablelib/random";
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { computeAddress, joinSignature } from "ethers/lib/utils";
 import { getResolver } from "key-did-resolver"
-import {decodeDIDWithLit, encodeDIDWithLit} from "../utils/lit";
+import {encodeDIDWithLit} from "../utils/lit";
 import { appConfig } from "../config";
 import { isSSR } from "../utils/helper";
-import {createDIDCacao, createDIDKey, DIDSession} from "did-session";
+import {createDIDCacao, DIDSession} from "did-session";
 import {getAddress} from "@ethersproject/address";
-import {Ed25519Provider} from "key-did-provider-ed25519";
 import {Secp256k1Provider} from "@didtools/key-secp256k1";
 
 const checkAndSignAuthMessage = async () => JSON.parse(localStorage.getItem("authSig")!);
@@ -133,18 +132,17 @@ class LitService {
 
 		const encodedDID = encodeDIDWithLit(pkpPublicKey);
 		const address = computeAddress(pkpPublicKey);
-		const keySeed = stringToUInt8Array(encodedDID);
 
+		const existingSession = localStorage.getItem(`pkp_${address}`);
+		if (existingSession) {
+			return await DIDSession.fromSession(existingSession);
+		}
+
+		const keySeed = stringToUInt8Array(encodedDID);
 		const provider = new Secp256k1Provider(keySeed);
+		// @ts-ignore
 		const didKey = new DID({ provider, resolver: getResolver() });
 		await didKey.authenticate();
-		/*
-		const existingSiwe = localStorage.getItem(`pkp_siwe_${address}`);
-		if (existingSiwe) {
-			const cacao = Cacao.fromSiweMessage(new SiweMessage(existingSiwe));
-			return await createDIDCacao(didKey, cacao);
-		}
-		*/
 
 		const litNodeClient = new LitNodeClient({
 			litNetwork: "serrano",
@@ -185,10 +183,11 @@ class LitService {
 			s: `0x${signature.s}`,
 			v: signature.recid,
 		});
-		localStorage.setItem(`pkp_siwe_${address}`, siweMessage.toMessage());
 		const cacao = Cacao.fromSiweMessage(siweMessage);
 		const did = await createDIDCacao(didKey, cacao);
-		return new DIDSession({ cacao, keySeed, did });
+		const session = new DIDSession({ cacao, keySeed, did });
+		localStorage.setItem(`pkp_${address}`, session.serialize());
+		return session;
 	}
 }
 const litService = new LitService();
