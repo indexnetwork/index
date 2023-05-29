@@ -75,7 +75,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setIndex(doc);
 			const pkpDID = await LitService.getPKPSession(doc.pkpPublicKey, doc.collabAction);
 			if (pkpDID) {
-				setPKPCeramic(new CeramicService(pkpDID.did!));
+				setPKPCeramic(new CeramicService(pkpDID.did));
 				setIsOwner(true);
 			}
 			await loadUserIndex(indexIdParam);

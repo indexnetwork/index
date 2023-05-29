@@ -23,10 +23,7 @@ class CeramicService {
 		definition: definition as RuntimeCompositeDefinition,
 	});
 
-	private did: DID;
-
 	constructor(did?: DID) {
-		this.did = did!;
 		this.client.setDID(did!);
 	}
 
@@ -61,7 +58,6 @@ class CeramicService {
 			// TODO handle error
 		}
 		 */
-		console.log("serafettin", JSON.stringify(pkpDID));
 
 		this.client.setDID(pkpDID.did);
 
@@ -85,6 +81,7 @@ class CeramicService {
 						id
 						title
 						collabAction
+						pkpPublicKey
 						createdAt
 						updatedAt
 					}
@@ -104,6 +101,7 @@ class CeramicService {
 			id: index.id,
 			content,
 		};
+
 		const { data, errors } = await this.client.executeQuery<{ updateIndex: { document: Indexes } }>(`
 			mutation UpdateIndex($input: UpdateIndexInput!) {
 				updateIndex(input: $input) {
@@ -111,12 +109,12 @@ class CeramicService {
 						id
 						title
 						collabAction
+						pkpPublicKey
 						createdAt
 						updatedAt
 					}
 				}
 			}`, { input: payload });
-
 		if (errors) {
 			// TODO Handle
 		}

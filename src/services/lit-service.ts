@@ -1,58 +1,22 @@
 import { ethers } from "ethers";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
-import { Secp256k1ProviderWithLit } from "@indexas/key-did-provider-secp256k1-with-lit";
 import { DID } from "dids";
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
-import {randomString} from "@stablelib/random";
+import {randomBytes, randomString} from "@stablelib/random";
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { computeAddress, joinSignature } from "ethers/lib/utils";
-import { getResolver } from "key-did-resolver"
-import {encodeDIDWithLit} from "../utils/lit";
+import { getResolver } from "key-did-resolver";
 import { appConfig } from "../config";
 import { isSSR } from "../utils/helper";
 import {createDIDCacao, DIDSession} from "did-session";
 import {getAddress} from "@ethersproject/address";
 import {Secp256k1Provider} from "@didtools/key-secp256k1";
+import {AccountId} from "caip";
+import {Ed25519Provider} from "key-did-provider-ed25519";
 
 const checkAndSignAuthMessage = async () => JSON.parse(localStorage.getItem("authSig")!);
 
-function stringToUInt8Array(str) {
-	var buf = new ArrayBuffer(32);
-	var arr = new Uint8Array(buf);
-	for (var i = 0; i < str.length; i++) {
-		arr[i] = str.charCodeAt(i);
-	}
-	return arr;
-}
-
 class LitService {
-	async authenticatePKP(ipfsId: string, pkpPublicKey: any) : Promise<DID> {
-		if (!isSSR()) {
-			try {
-				const litNodeClient = new LitNodeClient({
-					litNetwork: "serrano",
-				});
-				await litNodeClient.connect();
-
-				const encodedDID = await encodeDIDWithLit(pkpPublicKey);
-				// @ts-ignore
-				const provider = new Secp256k1ProviderWithLit({
-					did: encodedDID,
-					ipfsId,
-					client: litNodeClient,
-				});
-				// @ts-ignore
-				const did = new DID({ provider, resolver: KeyDidResolver.getResolver() });
-				await did.authenticate();
-				return did;
-			} catch (err: any) {
-				throw new Error(`Error authenticating DID: ${err.message}`);
-			}
-		} else {
-			throw new Error("authenticatePKP cannot be run on the server-side");
-		}
-	}
-
 	async mintPkp() {
 		const litContracts = new LitContracts();
 		await litContracts.connect();
@@ -130,16 +94,20 @@ class LitService {
 
 	async getPKPSession(pkpPublicKey: string, collabAction: string) {
 
-		const encodedDID = encodeDIDWithLit(pkpPublicKey);
 		const address = computeAddress(pkpPublicKey);
-
-		const existingSession = localStorage.getItem(`pkp_${address}`);
+		const normAccount = new AccountId({
+			address: address.toLowerCase(),
+			chainId: "eip155:175177",
+		});
+		const existingSession = localStorage.getItem(`pkp_${pkpPublicKey}`);
 		if (existingSession) {
-			return await DIDSession.fromSession(existingSession);
+			const existing = await DIDSession.fromSession(existingSession);
+			await existing.did.authenticate();
+			return existing;
 		}
 
-		const keySeed = stringToUInt8Array(encodedDID);
-		const provider = new Secp256k1Provider(keySeed);
+		const keySeed = randomBytes(32);
+		const provider = new Ed25519Provider(keySeed);
 		// @ts-ignore
 		const didKey = new DID({ provider, resolver: getResolver() });
 		await didKey.authenticate();
@@ -155,11 +123,11 @@ class LitService {
 
 		const siweMessage = new SiweMessage({
 			domain: window.location.host,
-			address: getAddress(address),
+			address: getAddress(normAccount.address),
 			statement: "Give this application access to some of your data on Ceramic",
 			uri: didKey.id,
 			version: "1",
-			chainId: "175177",
+			chainId: normAccount.chainId.reference,
 			nonce: randomString(10),
 			issuedAt: now.toISOString(),
 			expirationTime: threeMonthsLater.toISOString(),
@@ -186,7 +154,8 @@ class LitService {
 		const cacao = Cacao.fromSiweMessage(siweMessage);
 		const did = await createDIDCacao(didKey, cacao);
 		const session = new DIDSession({ cacao, keySeed, did });
-		localStorage.setItem(`pkp_${address}`, session.serialize());
+
+		localStorage.setItem(`pkp_${pkpPublicKey}`, session.serialize());
 		return session;
 	}
 }
