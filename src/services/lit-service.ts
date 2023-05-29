@@ -129,11 +129,11 @@ class LitService {
 		return hasOrigin;
 	}
 
-	async getPKPSession(didStr: string, collabAction: string) {
+	async getPKPSession(pkpPublicKey: string, collabAction: string) {
 
-		const pkpPublicKey = decodeDIDWithLit(didStr);
+		const encodedDID = encodeDIDWithLit(pkpPublicKey);
 		const address = computeAddress(pkpPublicKey);
-		const keySeed = stringToUInt8Array(didStr);
+		const keySeed = stringToUInt8Array(encodedDID);
 
 		const provider = new Secp256k1Provider(keySeed);
 		const didKey = new DID({ provider, resolver: getResolver() });

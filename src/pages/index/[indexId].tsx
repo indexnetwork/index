@@ -73,7 +73,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setNotFound(true);
 		} else {
 			setIndex(doc);
-			const pkpDID = await LitService.getPKPSession(doc.controllerDID?.id, doc.collabAction);
+			const pkpDID = await LitService.getPKPSession(doc.pkpPublicKey, doc.collabAction);
 			if (pkpDID) {
 				setPKPCeramic(new CeramicService(pkpDID.did!));
 				setIsOwner(true);

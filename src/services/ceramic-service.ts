@@ -55,8 +55,7 @@ class CeramicService {
 			Token ID is 0x5a0ed5d5fdf73b14b53ca25b3fa1996bbf5eb0e8004d436c3f55bd2013815645
 			Token ID number is 40734368072587093465276453834418008413686098135730551600338205759635841963589
 		*/
-		const pkpDIDKey = encodeDIDWithLit(pkpPublicKey);
-		const pkpDID = await LitService.getPKPSession(pkpDIDKey, appConfig.defaultCID);
+		const pkpDID = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
 		/*
 		if (!did.authenticated) {
 			// TODO handle error
