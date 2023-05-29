@@ -40,7 +40,7 @@ const indexesWithLinksQuery = (
                 must_not: [
                     {
                         exists: {
-                            field: "deleted_at",
+                            field: "deletedAt",
                         },
                     },
                 ],
@@ -53,19 +53,19 @@ const indexesWithLinksQuery = (
                 name: "latest_index",
                 size: 1,
                 _source: {
-                    includes: ["index.updated_at"],
+                    includes: ["index.updatedAt"],
                 },
                 sort: [{
-                    "index.updated_at": {"order": "desc"}
+                    "index.updatedAt": {"order": "desc"}
                 }]
             },{
                 name: "latest_link",
                 size: 1,
                 _source: {
-                    includes: ["updated_at"],
+                    includes: ["updatedAt"],
                 },
                 sort: [{
-                    "updated_at": {"order": "desc"}
+                    "updatedAt": {"order": "desc"}
                 }]
             }]
         },
@@ -130,7 +130,7 @@ const indexesWithLinksQuery = (
     } else {
         params._source_includes = ["index"];
         params.sort = {
-            "index.created_at": {
+            "index.createdAt": {
                 order: "desc",
                 missing: "_last"
             },
@@ -169,12 +169,12 @@ const linksQuery = (
                     must_not: [
                         {
                             exists: {
-                                field: "deleted_at",
+                                field: "deletedAt",
                             },
                         },
                         {
                             exists: {
-                                field: "link.deleted_at",
+                                field: "link.deletedAt",
                             },
                         },
                     ],
@@ -183,14 +183,14 @@ const linksQuery = (
             },
             /*
             aggs: {
-                max_updated_at: {
+                max_updatedAt: {
                     max: {
-                        field: "updated_at"
+                        field: "updatedAt"
                     }
                 },
-                max_created_at: {
+                max_createdAt: {
                     max: {
-                        field: "created_at"
+                        field: "createdAt"
                     }
                 }
             }
@@ -242,7 +242,7 @@ const linksQuery = (
             };
         } else {
             params.sort = {
-                created_at: {
+                createdAt: {
                     order: "desc",
                     missing: "_last"
                 },
@@ -263,9 +263,9 @@ const transformIndexSearch = (
     if (hits && hits.length > 0) {
         result = hits.map((h) => {
 
-            let index_updated = h.inner_hits.latest_index.hits.hits[0]._source.index.updated_at;
-            let link_updated = h.inner_hits.latest_link.hits.hits[0]._source.updated_at || 0;
-            h._source.index.updated_at = moment(index_updated) > moment(link_updated) ? index_updated : link_updated
+            let index_updated = h.inner_hits.latest_index.hits.hits[0]._source.index.updatedAt;
+            let link_updated = h.inner_hits.latest_link.hits.hits[0]._source.updatedAt || 0;
+            h._source.index.updatedAt = moment(index_updated) > moment(link_updated) ? index_updated : link_updated
 
             let mapped = {
                 ...h._source?.index
@@ -341,11 +341,11 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
         return index
     })
 
-    let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.controller_did.id.toLowerCase()))
+    let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.controllerDID.id.toLowerCase()))
     indexResult = indexResult.map((value, key) => {
         return {
             ...value,
-            owner_did: {
+            ownerDID: {
                 id: pkpOwners[key]
             }
         }
@@ -373,7 +373,7 @@ export const did = async (req, res) => {
 
     let user_indexes_by_type = _.chain(user_indexes)
                             .map(i => JSON.parse(i))
-                            .filter(i => !i.deleted_at)
+                            .filter(i => !i.deletedAt)
                             .groupBy("type")
                             .value()
 
@@ -383,7 +383,7 @@ export const did = async (req, res) => {
         res.json(search_result)
     }else{
         let search_result = _.mapValues(user_indexes_by_type, async (type_group, key) => {
-            return indexesSearch(type_group.map(i => i.index_id), search, skip, take, links_size, user_indexes_by_type)
+            return indexesSearch(type_group.map(i => i.indexId), search, skip, take, links_size, user_indexes_by_type)
         })
         search_result = await promiseAllOfObject(search_result);
         res.json(search_result)

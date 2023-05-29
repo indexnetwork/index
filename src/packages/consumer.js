@@ -17,15 +17,15 @@ const kafka = new Kafka({
 const redis = RedisClient.getInstance();
 
 const topics = {
-    'postgres.public.kjzl6hvfrbw6c9bh2wggilqiije6udtgohahloxhuhbkm0igfjd3pm05z80164h': 'index',
-    'postgres.public.kjzl6hvfrbw6c569n1q6egc47s4u2213x1rs4jjygrgszjmdo3nedbrnt8dl46q': 'link',
-    'postgres.public.kjzl6hvfrbw6c7y832osmzcho78gnurxwflk3rsqhl026wo7uhbhwcnkd0qrcui': 'index_link',
-    'postgres.public.kjzl6hvfrbw6c8x0tvgf98z805tg08s6fn9tre7wiusghayi8f83rcoyh3hdo9b': 'user_index'
+    'postgres.public.kjzl6hvfrbw6c8e8rlhx3guuoc1o6i4vni5emzh2c48aa5pn0u71jggun7rtu2a': 'index',
+    'postgres.public.kjzl6hvfrbw6c72mna95slfmi9nth1fp3bacc2ai7i6g1scygmo7awxsjl4dlpk': 'link',
+    'postgres.public.kjzl6hvfrbw6c6vpgfoph7e98nkj4ujmd7bgw5ylb6uzmpts1yjva3zdjk0bhe9': 'index_link',
+    'postgres.public.kjzl6hvfrbw6c5gi8p8j811v4u9tpel9m9lo11hm9ks74c1l0fhmnebsbtwusso': 'user_index'
 }
 
 async function start() {
     await redis.connect()
-    const consumer = kafka.consumer({ groupId: `index-consumer-dev-7` })
+    const consumer = kafka.consumer({ groupId: `index-consumer-dev-8` })
     await consumer.connect()
     await consumer.subscribe({ topics: Object.keys(topics), fromBeginning: true})
     await consumer.run({
@@ -45,7 +45,7 @@ async function start() {
 
             let doc = {
                 id: value.stream_id,
-                ..._.pick(value, ['controller_did']),
+                controllerDID: value.controller_did,
                 ...value.stream_content
             }
             console.log(doc)

@@ -34,10 +34,10 @@ export const createIndex = async (indexMsg) => {
 
     // Create user_index without a composedb record. Only remove requests are stored in composedb.
     await this.createUserIndex({
-        "controller_did": index.owner_did.id,
+        "controllerDID": index.ownerDID.id,
         "type":"my_indexes",
-        "index_id": index.id,
-        "created_at": new Date().toISOString()
+        "indexId": index.id,
+        "createdAt": new Date().toISOString()
     });
 
 }
@@ -194,11 +194,11 @@ export const updateLinkContent = async (url, content) => {
 }
 export const createUserIndex = async (user_index) => {
     console.log("createUserIndex", user_index)
-    await redis.hSet(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`, JSON.stringify(user_index))
+    await redis.hSet(`user_indexes:by_did:${user_index.controllerDID.toLowerCase()}`, `${user_index.indexId}:${user_index.type}`, JSON.stringify(user_index))
 }
 export const updateUserIndex = async (user_index) => {
     console.log("updateUserIndex", user_index)
-    if(user_index.deleted_at){
-        await redis.hDel(`user_indexes:by_did:${user_index.controller_did.toLowerCase()}`, `${user_index.index_id}:${user_index.type}`)
+    if(user_index.deletedAt){
+        await redis.hDel(`user_indexes:by_did:${user_index.controllerDID.toLowerCase()}`, `${user_index.indexId}:${user_index.type}`)
     }
 }

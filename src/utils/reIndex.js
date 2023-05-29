@@ -60,33 +60,33 @@ async function start() {
           "id": {
             "type": "keyword"
           },
-          "index_id": {
+          "indexId": {
             "type": "keyword"
           },
-          "link_id": {
+          "linkId": {
             "type": "keyword"
           },
-          "indexer_did": {
+          "indexerDID": {
             "properties": {
               "id": {
                 "type" : "keyword"
               }
             }
           },
-          "controller_did": {
+          "controllerDID": {
             "properties": {
               "id": {
                 "type" : "keyword"
               }
             }
           },
-          "updated_at": {
+          "updatedAt": {
             "type": "date"
           },
-          "created_at": {
+          "createdAt": {
             "type": "date"
           },
-          "deleted_at": {
+          "deletedAt": {
             "type": "date"
           },
           "link": {
@@ -94,7 +94,7 @@ async function start() {
               "id": {
                 "type": "keyword"
               },
-              "controller_did": {
+              "controllerDID": {
                 "properties": {
                   "id": {
                     "type" : "keyword"
@@ -123,13 +123,13 @@ async function start() {
                 "analyzer": "searchable",
                 "max_shingle_size": 3
               },
-              "created_at": {
+              "createdAt": {
                 "type": "date"
               },
-              "updated_at": {
+              "updatedAt": {
                 "type": "date"
               },
-              "deleted_at": {
+              "deletedAt": {
                 "type": "date"
               },
             }
@@ -139,14 +139,14 @@ async function start() {
               "id": {
                 "type": "keyword"
               },
-              "controller_did": {
+              "controllerDID": {
                 "properties": {
                   "id": {
                     "type" : "keyword"
                   }
                 }
               },
-              "collab_action": {
+              "collabAction": {
                 "type": "keyword",
               },
               "title": {
@@ -154,13 +154,13 @@ async function start() {
                 "analyzer": "searchable",
                 "max_shingle_size": 3
               },
-              "updated_at": {
+              "updatedAt": {
                 "type": "date"
               },
-              "created_at": {
+              "createdAt": {
                 "type": "date"
               },
-              "deleted_at": {
+              "deletedAt": {
                 "type": "date"
               },
             }

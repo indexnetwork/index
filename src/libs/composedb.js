@@ -15,30 +15,31 @@ export const getIndexLinkById = async(id) => {
               node(id: "${id}") {
                 ... on IndexLink {
                   id
-                  index_id
-                  link_id
-                  created_at
-                  updated_at
-                  deleted_at
-                  indexer_did {
+                  indexId
+                  linkId
+                  createdAt
+                  updatedAt
+                  deletedAt
+                  indexerDID {
                     id
                   }
-                  controller_did {
+                  controllerDID {
                     id
                   }
                   index {
                     id
-                    controller_did {
+                    controllerDID {
                       id
                     }        
                     title
-                    collab_action
-                    created_at
-                    updated_at
+                    collabAction
+                    createdAt
+                    updatedAt
+                    deletedAt
                   }
                   link {
                     id
-                    controller_did {
+                    controllerDID {
                       id
                     }
                     title
@@ -46,9 +47,9 @@ export const getIndexLinkById = async(id) => {
                     favicon
                     tags
                     content
-                    created_at
-                    updated_at
-                    deleted_at
+                    createdAt
+                    updatedAt
+                    deletedAt
                   }
                 }
               }
@@ -71,7 +72,7 @@ export const getLinkById = async(id) => {
               node(id: "${id}") {
                 ... on Link {
                     id
-                    controller_did {
+                    controllerDID {
                       id
                     }
                     title
@@ -79,9 +80,9 @@ export const getLinkById = async(id) => {
                     favicon
                     tags
                     content
-                    created_at
-                    updated_at
-                    deleted_at
+                    createdAt
+                    updatedAt
+                    deletedAt
                 }
               }
             }`
@@ -105,15 +106,16 @@ export const getIndexById = async (id) => {
                     id
                     title
                     collab_action
-                    created_at
-                    updated_at
-                    controller_did {
+                    createdAt
+                    updatedAt
+                    deletedAt
+                    controllerDID {
                         id
                     }
                     links(last:1) {
                         edges {
                           node {
-                            updated_at
+                            updatedAt
                           }
                         }
                     }                    
@@ -129,15 +131,15 @@ export const getIndexById = async (id) => {
         return false;
     }
 
-    if (index.links.edges.length > 0 && (moment(index.links.edges[0].node.updated_at) > moment(index.updated_at))) {
-        index.updated_at = index.links.edges[0].node.updated_at;
+    if (index.links.edges.length > 0 && (moment(index.links.edges[0].node.updatedAt) > moment(index.updatedAt))) {
+        index.updatedAt = index.links.edges[0].node.updatedAt;
     }
 
     delete index.links;
 
-    const owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id.toLowerCase())
-    if(owner_did){
-        index.owner_did = { id: owner_did, basicProfile: null}
+    const ownerDID = await redis.hGet(`pkp:owner`, index.controllerDID.id.toLowerCase())
+    if(ownerDID){
+        index.ownerDID = { id: ownerDID, basicProfile: null}
     }
     return index
 
@@ -160,16 +162,16 @@ export const getIndexByPKP = async (id) => {
                       node {
                         id
                         title
-                        collab_action
-                        created_at
-                        updated_at
-                        controller_did {
+                        collabAction
+                        createdAt
+                        updatedAt
+                        controllerDID {
                             id
                         }
                         links(last:1) {
                             edges {
                                 node {
-                                    updated_at
+                                    updatedAt
                                 }
                             }
                         }                           
@@ -188,14 +190,14 @@ export const getIndexByPKP = async (id) => {
     }
     let index = indexes[0].node.id;
 
-    if (index.links.edges.length > 0 && (moment(index.links.edges[0].node.updated_at) > moment(index.updated_at))) {
-        index.updated_at = index.links.edges[0].node.updated_at;
+    if (index.links.edges.length > 0 && (moment(index.links.edges[0].node.updatedAt) > moment(index.updatedAt))) {
+        index.updatedAt = index.links.edges[0].node.updatedAt;
     }
     delete index.links
 
-    const owner_did = await redis.hGet(`pkp:owner`, index.controller_did.id.toLowerCase())
-    if(owner_did){
-        index.owner_did = { id: owner_did, basicProfile: null}
+    const ownerDID = await redis.hGet(`pkp:owner`, index.controllerDID.id.toLowerCase())
+    if(ownerDID){
+        index.ownerDID = { id: ownerDID, basicProfile: null}
     }
     return index;
 }
