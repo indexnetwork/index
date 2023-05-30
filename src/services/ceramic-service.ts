@@ -212,6 +212,8 @@ class CeramicService {
 						controllerDID {
 							id
 						}
+						indexId
+						linkId
 						createdAt
 						updatedAt
 						deletedAt
