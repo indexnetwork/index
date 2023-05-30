@@ -153,7 +153,7 @@ export const 	AuthHandlerProvider = ({ children }: any) => {
 		}
 	};
 	const authToCeramic = async () => {
-		if (personalCeramic.client && !personalCeramic.client.isUserAuthenticated()) {
+		if (!(personalCeramic.client && !personalCeramic.client.isUserAuthenticated())) {
 			personalCeramic.setClient(new CeramicService(session?.did!));
 		}
 		dispatch(setCeramicConnected(true));
