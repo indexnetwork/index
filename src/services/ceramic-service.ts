@@ -239,6 +239,7 @@ class CeramicService {
 		return data?.createIndexLink.document!;
 	}
 	async removeIndexLink(index_link: IndexLink): Promise <IndexLink | undefined> {
+		debugger;
 		const index = await api.getIndexById(index_link.indexId!);
 		if (!index) {
 			throw new Error("Index not found");

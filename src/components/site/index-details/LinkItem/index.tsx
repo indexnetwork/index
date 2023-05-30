@@ -20,6 +20,7 @@ import { useCeramic } from "hooks/useCeramic";
 import { useLinks } from "hooks/useLinks";
 import sanitize from "sanitize-html";
 import LogoLink from "components/base/Logo/LogoLink";
+import { useIndex } from "hooks/useIndex";
 import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
@@ -45,6 +46,8 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
 	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
 	const { links, setLinks } = useLinks();
+	const { pkpCeramic } = useIndex();
+	const personalCeramic = useCeramic();
 
 	const { link } = index_link;
 
@@ -52,15 +55,13 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 
 	const { indexId } = router.query;
 
-	const ceramic = useCeramic();
-
 	const handleToggleNewTag = () => {
 		setToggleNewTag((oldVal) => !oldVal);
 	};
 
 	const handleNewTagEdit = async (val?: string | null) => {
 		if (val) {
-			const currentLink = await ceramic.addTag(link?.id!, val) as Link;
+			const currentLink = await personalCeramic.addTag(link?.id!, val) as Link;
 			const newState = links.map((l) => (l.id === index_link.id ? { ...l, link: currentLink } : l));
 			setLinks(newState);
 		}
@@ -79,12 +80,12 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 
 	const handleRemove = async () => {
 		setLinks(links?.filter((l) => l.id !== index_link.id!));
-		const currentLink = await ceramic.removeIndexLink(index_link);
+		const currentLink = await pkpCeramic.removeIndexLink(index_link);
 		// onChange && onChange(doc?.content?.links || []);
 	};
 
 	const handleRemoveTag = async (val: string) => {
-		const currentLink = await ceramic.removeTag(index_link.id!, val) as Link;
+		const currentLink = await personalCeramic.removeTag(index_link.id!, val) as Link;
 		const newState = links.map((l) => (l.id === index_link.id ? currentLink : l));
 		setLinks(newState);
 	};

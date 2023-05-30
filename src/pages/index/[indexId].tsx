@@ -41,8 +41,9 @@ import Soon from "components/site/indexes/Soon";
 import CeramicService from "services/ceramic-service";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
-import { decodeDIDWithLit } from "../../utils/lit";
-import LitService from "../../services/lit-service";
+import { decodeDIDWithLit } from "utils/lit";
+import LitService from "services/lit-service";
+import { IndexContext } from "hooks/useIndex";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -184,42 +185,22 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [progress]);
 
 	return (
-		<LinksContext.Provider
-			value={{ links, setLinks }}
-		>
-			<Container
-				className="index-details-page my-6 my-lg-8"
-			>
-				{
-					notFound ?
-						<FlexRow
-							rowSpacing={3}
-							justify="center"
-						>
+		<IndexContext.Provider value={{ pkpCeramic }}>
+			<LinksContext.Provider value={{ links, setLinks }}>
+				<Container className="index-details-page my-6 my-lg-8">
+					{ notFound ?
+						<FlexRow rowSpacing={3} justify="center">
 							<NotFound active={true} />
 						</FlexRow> : (
 							<>
-								<FlexRow
-									rowSpacing={3}
-									justify="center"
-								>
-									<Col
-										xs={12}
-										lg={9}
-										noYGutters
-									>
+								<FlexRow rowSpacing={3} justify="center">
+									<Col xs={12} lg={9} noYGutters>
 										<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
 										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.ownerDID?.id}</Text>
 									</Col>
-									<Col
-										xs={12}
-										lg={9}
-										className="pb-0"
-									>
+									<Col xs={12} lg={9} className="pb-0">
 										<FlexRow>
-											<Col
-												className="idxflex-grow-1 mr-5"
-											>
+											<Col className="idxflex-grow-1 mr-5">
 												<IndexTitleInput
 													defaultValue={index?.title || ""}
 													onChange={handleTitleChange}
@@ -257,10 +238,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									<Col xs={12} lg={9} noYGutters className="mb-1">
 										<Text size="sm" theme="disabled">{index?.updatedAt ? `Updated ${moment(index.updatedAt).fromNow()}` : ""} </Text>
 									</Col>
-									<Col
-										xs={12}
-										lg={9}
-									>
+									<Col xs={12} lg={9}>
 										<FlexRow>
 											<Col className="idxflex-grow-1 mb-4">
 												<Tabs activeKey={tabKey} onTabChange={setTabKey}>
@@ -273,10 +251,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<FlexRow>
 											{tabKey === "index" ?
 												<>
-
-													<Col
-														className="idxflex-grow-1 mr-5 mt-2"
-													>
+													<Col className="idxflex-grow-1 mr-5 mt-2">
 														<SearchInput
 															loading={loading}
 															onSearch={setSearch}
@@ -285,34 +260,25 @@ const IndexDetailPage: NextPageWithLayout = () => {
 															placeholder={t("pages:home.searchLink")} />
 													</Col>
 													<Col>
-														<ButtonGroup
-															theme="clear"
-															className="mt-2"
-														>
+														<ButtonGroup theme="clear" className="mt-2">
 															<FilterPopup>
-																<Button
-																	size={"xl"}
-																	group
-																	iconButton
-																>
-																	<IconFilter width={20} height={20} stroke="var(--gray-4)" /></Button>
+																<Button size={"xl"} group iconButton>
+																	<IconFilter width={20} height={20} stroke="var(--gray-4)" />
+																</Button>
 															</FilterPopup>
 															<SortPopup>
-																<Button
-																	size={"xl"}
-																	group
-																	iconButton
-																><IconSort width={20} height={20} stroke="var(--gray-4)" /></Button>
+																<Button size={"xl"} group iconButton>
+																	<IconSort width={20} height={20} stroke="var(--gray-4)" />
+																</Button>
 															</SortPopup>
 														</ButtonGroup>
 													</Col>
-
 												</> :
-												<Col></Col>}
+												<></>}
 										</FlexRow>
 									</Col>
 									{
-										tabKey === "index" && isOwner &&	<Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
+										tabKey === "index" && isOwner && <Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
 											<LinkInput
 												loading={crawling}
 												onLinkAdd={handleAddLink}
@@ -322,9 +288,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									}
 								</FlexRow>
 								{tabKey === "index" ?
-									<FlexRow
-										justify="center"
-									>
+									<FlexRow justify="center">
 										<Col xs={12} lg={9}>
 											<IndexItemList
 												search={search}
@@ -341,12 +305,13 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											</Col>
 										</FlexRow> : <FlexRow justify="center">
 											<Soon section={tabKey}></Soon>
-										</FlexRow> }
+										</FlexRow>}
 							</>
 						)
-				}
-			</Container>
-		</LinksContext.Provider>
+					}
+				</Container>
+			</LinksContext.Provider>
+		</IndexContext.Provider>
 	);
 };
 
