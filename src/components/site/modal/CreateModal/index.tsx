@@ -14,6 +14,8 @@ import { selectConnection } from "store/slices/connectionSlice";
 import { Indexes } from "types/entity";
 import CeramicService from "../../../../services/ceramic-service";
 import FlexRow from "../../../layout/base/Grid/FlexRow";
+import LitService from "../../../../services/lit-service";
+import {appConfig} from "../../../../config";
 
 export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
 }
@@ -43,8 +45,10 @@ const CreateModal = ({
 	const handleCreate = async () => {
 		setLoading(true);
 		if (title) {
-			const c = new CeramicService();
-			const doc = await c.createIndex({ title } as Indexes);
+			const { pkpPublicKey } = await LitService.mintPkp();
+			const pkpDID = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
+			const c = new CeramicService(pkpDID.did);
+			const doc = await c.createIndex(pkpPublicKey, { title } as Indexes);
 			if (doc != null) {
 				// await setTitle("");
 				await router.push(`/${doc.id}`);

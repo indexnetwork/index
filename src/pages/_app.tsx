@@ -27,8 +27,8 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 	return (
 		<Web3ReactProvider getLibrary={getLibrary}>
 			<Provider store={store}>
-				<AuthHandlerProvider>
-					<CeramicProvider>
+				<CeramicProvider>
+					<AuthHandlerProvider>
 						<Head>
 							<link rel="shortcut icon" href="/favicon-white.png" />
 							<title>index.as | The human bridge between context and content.</title>
@@ -55,8 +55,8 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 						) : (
 							getLayout(<Component {...pageProps} />)
 						)}
-					</CeramicProvider>
-				</AuthHandlerProvider>
+					</AuthHandlerProvider>
+				</CeramicProvider>
 			</Provider>
 		</Web3ReactProvider>
 	);

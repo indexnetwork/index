@@ -13,9 +13,6 @@ export interface CeramicContextValue {
 	addTag(link_id: string, tag: string): Promise<Link | undefined>;
 	removeTag(link_id: string, tag: string): Promise<Link | undefined>;
 
-	addIndexLink(index: Partial<Indexes>, link_id: string): Promise<IndexLink | undefined>;
-	removeIndexLink(index_link: Partial<IndexLink>): Promise<IndexLink | undefined>;
-
 	getProfile(): Promise<Users | null | any>;
 	setProfile(profile: Users): Promise<Users | null | any>;
 
@@ -36,10 +33,8 @@ const CeramicProvider = (
 		children,
 	}: CeramicProviderProps,
 ) => {
-	const [client, setClient] = useState<any>();
 
-	const addIndexLink = async (index: Indexes, link_id: string) => client.addIndexLink(index, link_id);
-	const removeIndexLink = async (index_link: IndexLink) => client.removeIndexLink(index_link);
+	const [client, setClient] = useState<any>();
 
 	const createLink = async (link: Partial<Link>) => client.createLink(link);
 	const updateLink = async (link_id: string, link: Link) => client.updateLink(link_id, link);
@@ -70,14 +65,9 @@ const CeramicProvider = (
 			updateLink,
 			addTag,
 			removeTag,
-
-			addIndexLink,
-			removeIndexLink,
-
 			getProfile,
 			setProfile,
 			uploadImage,
-
 			addUserIndex,
 			removeUserIndex,
 		}}>

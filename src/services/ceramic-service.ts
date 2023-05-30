@@ -44,22 +44,7 @@ class CeramicService {
 		return !!(this.client?.did?.authenticated);
 	}
 
-	async createIndex(content: Partial<Indexes>): Promise<Indexes> {
-		const { pkpPublicKey } = await LitService.mintPkp();
-
-		/*
-			PKP public key is 0x0463b0f8584ceb4b3be313ccdb5356c1b8505420bbf9334446a1228d0b9e18e9f3f21cfcf5e107c2ac11041a02139abb0ff5165f1a71fde31287a95def85a4e19f
-			Token ID is 0x5a0ed5d5fdf73b14b53ca25b3fa1996bbf5eb0e8004d436c3f55bd2013815645
-			Token ID number is 40734368072587093465276453834418008413686098135730551600338205759635841963589
-		*/
-		const pkpDID = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
-		/*
-		if (!did.authenticated) {
-			// TODO handle error
-		}
-		 */
-
-		this.client.setDID(pkpDID.did);
+	async createIndex(pkpPublicKey: string, content: Partial<Indexes>): Promise<Indexes> {
 
 		setDates(content, true);
 		if (!content.title) {
