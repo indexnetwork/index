@@ -41,7 +41,6 @@ import Soon from "components/site/indexes/Soon";
 import CeramicService from "services/ceramic-service";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
-import { decodeDIDWithLit } from "utils/lit";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
 
@@ -98,8 +97,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const litContracts = new LitContracts();
 		await litContracts.connect();
 
-		const pkpPublicKey = decodeDIDWithLit(index.controllerDID?.id!);
-		const pubKeyHash = ethers.utils.keccak256(pkpPublicKey);
+		const pubKeyHash = ethers.utils.keccak256(index.pkpPublicKey!);
 		const tokenId = ethers.BigNumber.from(pubKeyHash);
 
 		const newCollabAction = litContracts.utils.getBytesFromMultihash(CID);
