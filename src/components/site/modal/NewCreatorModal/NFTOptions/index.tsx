@@ -112,12 +112,12 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 				<Col xs={12}>
 					<Flex flexDirection="column">
 						<Text theme={"primary"} size="md">Choose network:</Text>
-						<Select onChange={handleChainChange} defaultValue={"ethereum"} bordered size="lg" className={"mt-3"}>
+						<Select onChange={handleChainChange} value={"ethereum"} bordered size="lg" className={"mt-3"}>
 							{
 								// eslint-disable-next-line react/jsx-key
 								Object.values(appConfig.chains).map((c) => (<Option value={c.value}>
 									<Flex alignItems={"center"}>
-										<img className={"mr-4"} src={`images/chainLogos/${c.logo}`} alt={c.label}	width={14} height={14} />
+										<img className={"mr-4"} src={`images/chainLogos/${c.logo}`} alt={c.label} width={14} height={14} />
 										<Text size="md">{c.label}</Text>
 									</Flex>
 								</Option>))
