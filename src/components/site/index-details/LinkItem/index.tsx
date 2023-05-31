@@ -85,8 +85,8 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 	};
 
 	const handleRemoveTag = async (val: string) => {
-		const currentLink = await personalCeramic.removeTag(index_link.id!, val) as Link;
-		const newState = links.map((l) => (l.id === index_link.id ? currentLink : l));
+		const currentLink = await personalCeramic.removeTag(index_link.linkId!, val) as Link;
+		const newState = links.map((l) => (l.linkId === index_link.linkId ? { ...l, link: currentLink } : l));
 		setLinks(newState);
 	};
 	return (

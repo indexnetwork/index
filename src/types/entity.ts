@@ -67,6 +67,7 @@ export type Link = {
   favicon?: string
   createdAt?: string;
   updatedAt?: string;
+  deletedAt?: string;
   images?: string[]
   favorite?: boolean;
   tags?: string[]

@@ -97,6 +97,7 @@ class CeramicService {
 						pkpPublicKey
 						createdAt
 						updatedAt
+						deletedAt
 					}
 				}
 			}`, { input: payload });
@@ -107,7 +108,7 @@ class CeramicService {
 	}
 
 	async getLinkById(link_id: string) {
-		const result = await this.client.executeQuery(`{
+		const { data, errors } = await this.client.executeQuery(`{
 			node(id:"${link_id}"){
 			  id
 			  ... on Link{
@@ -118,10 +119,14 @@ class CeramicService {
 				favicon
 				createdAt
 				updatedAt
+				deletedAt
 				tags
 			}}
 		  }`);
-		return <Link>(result.data?.node as any);
+		if (errors) {
+			// TODO Handle
+		}
+		return <Link>(data?.node as any);
 	}
 
 	async createLink(link: Partial<Link>): Promise<Link> {
@@ -147,6 +152,7 @@ class CeramicService {
 						favicon
 						createdAt
 						updatedAt
+						deletedAt
 					}
 				}
 			}`, { input: payload });
@@ -174,7 +180,8 @@ class CeramicService {
 						tags
 						favicon
 						createdAt
-						updatedAt						
+						updatedAt
+						deletedAt						
 					}
 				}
 			}`, { input: payload });
@@ -241,7 +248,7 @@ class CeramicService {
 		return data?.createIndexLink.document!;
 	}
 	async removeIndexLink(index_link: IndexLink): Promise <IndexLink | undefined> {
-		debugger;
+
 		const index = await api.getIndexById(index_link.indexId!);
 		if (!index) {
 			throw new Error("Index not found");
@@ -312,7 +319,6 @@ class CeramicService {
 			});
 			return oldDoc;
 		}
-
 		 */
 	}
 	async addUserIndex(index_id: string, type: string, deletedAt = false): Promise<UserIndex | undefined> {
