@@ -20,7 +20,7 @@ import { selectProfile } from "store/slices/profileSlice";
 import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
 import IconSettings from "components/base/Icon/IconSettings";
-import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
+import Navbar, { NavbarProps, NavbarMenu } from "components/layout/base/Navbar";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";

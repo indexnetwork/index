@@ -6,8 +6,8 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import Input from "components/base/Input";
 import Select from "components/base/Select";
 import Option from "components/base/Select/Option";
-import Button from "../../../../base/Button";
-import Row from "../../../../layout/base/Grid/Row";
+import Button from "components/base/Button";
+import Row from "components/layout/base/Grid/Row";
 
 export interface SelectNFTOptionsProps {
 	handleBack?(): void;

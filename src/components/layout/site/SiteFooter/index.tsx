@@ -2,7 +2,7 @@ import IconDiscord from "components/base/Icon/IconDiscord";
 import IconTwitter from "components/base/Icon/IconTwitter";
 import Footer, { FooterMenu } from "components/layout/base/Footer";
 import React from "react";
-import IconGithub from "../../../base/Icon/IconGithub";
+import IconGithub from "components/base/Icon/IconGithub";
 
 const SiteFooter = () => (
 	<Footer>

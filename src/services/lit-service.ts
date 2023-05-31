@@ -2,17 +2,15 @@ import { ethers } from "ethers";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { DID } from "dids";
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
-import {randomBytes, randomString} from "@stablelib/random";
+import { randomBytes, randomString } from "@stablelib/random";
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { computeAddress, joinSignature } from "ethers/lib/utils";
 import { getResolver } from "key-did-resolver";
+import { createDIDCacao, DIDSession } from "did-session";
+import { getAddress } from "@ethersproject/address";
+import { AccountId } from "caip";
+import { Ed25519Provider } from "key-did-provider-ed25519";
 import { appConfig } from "../config";
-import { isSSR } from "../utils/helper";
-import {createDIDCacao, DIDSession} from "did-session";
-import {getAddress} from "@ethersproject/address";
-import {Secp256k1Provider} from "@didtools/key-secp256k1";
-import {AccountId} from "caip";
-import {Ed25519Provider} from "key-did-provider-ed25519";
 
 const checkAndSignAuthMessage = async () => JSON.parse(localStorage.getItem("authSig")!);
 
@@ -93,7 +91,6 @@ class LitService {
 	}
 
 	async getPKPSession(pkpPublicKey: string, collabAction: string) {
-
 		const address = computeAddress(pkpPublicKey);
 		const normAccount = new AccountId({
 			address: address.toLowerCase(),

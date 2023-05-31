@@ -10,11 +10,11 @@ import React from "react";
 import { Indexes, IndexLink } from "types/entity";
 import sanitize from "sanitize-html";
 import List from "components/base/List";
-import IndexOperationsPopup from "../../popup/IndexOperationsPopup";
+import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
+import Tooltip from "components/base/Tooltip";
+import Button from "components/base/Button";
+import IconStar from "components/base/Icon/IconStar";
 import cm from "./style.module.scss";
-import Tooltip from "../../../base/Tooltip";
-import Button from "../../../base/Button";
-import IconStar from "../../../base/Icon/IconStar";
 
 export interface IndexItemProps {
 	index: Indexes,

@@ -8,11 +8,11 @@ import Button from "components/base/Button";
 import api, { LitActionConditions } from "services/api-service";
 import { AccessControlCondition } from "types/entity";
 import Image from "next/image";
-import NewCreatorModal from "../../modal/NewCreatorModal";
-import ConfirmTransaction from "../../modal/Common/ConfirmTransaction";
+import NewCreatorModal from "components/site/modal/NewCreatorModal";
+import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 
+import IconAdd from "components/base/Icon/IconAdd";
 import CreatorRule from "./CreatorRule";
-import IconAdd from "../../../base/Icon/IconAdd";
 
 export interface CreatorSettingsProps {
     collabAction: string;

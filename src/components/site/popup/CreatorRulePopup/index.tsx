@@ -4,8 +4,8 @@ import Text from "components/base/Text";
 import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
 import React from "react";
-import IconRemove from "../../../base/Icon/IconRemove";
-import IconEmbed from "../../../base/Icon/IconEmbed";
+import IconRemove from "components/base/Icon/IconRemove";
+import IconEmbed from "components/base/Icon/IconEmbed";
 
 export interface CreatorRulePopupPopupProps {
 	onDelete?(): void;

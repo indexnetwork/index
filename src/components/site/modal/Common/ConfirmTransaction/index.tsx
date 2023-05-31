@@ -2,10 +2,10 @@ import React from "react";
 import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import Modal from "components/base/Modal";
-import Button from "../../../../base/Button";
-import Row from "../../../../layout/base/Grid/Row";
-import Header from "../../../../base/Header";
-import Flex from "../../../../layout/base/Grid/Flex";
+import Button from "components/base/Button";
+import Row from "components/layout/base/Grid/Row";
+import Header from "components/base/Header";
+import Flex from "components/layout/base/Grid/Flex";
 
 const ConfirmTransaction = ({
 	handleCancel,

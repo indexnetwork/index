@@ -11,9 +11,6 @@ import { DID } from "dids";
 import { definition } from "../types/merged-runtime";
 import { appConfig } from "../config";
 
-import LitService from "./lit-service";
-import { encodeDIDWithLit } from "../utils/lit";
-
 class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
 		url: appConfig.ipfsInfura,
@@ -45,7 +42,6 @@ class CeramicService {
 	}
 
 	async createIndex(pkpPublicKey: string, content: Partial<Indexes>): Promise<Indexes> {
-
 		setDates(content, true);
 		if (!content.title) {
 			content.title = "Untitled Index";
@@ -248,7 +244,6 @@ class CeramicService {
 		return data?.createIndexLink.document!;
 	}
 	async removeIndexLink(index_link: IndexLink): Promise <IndexLink | undefined> {
-
 		const index = await api.getIndexById(index_link.indexId!);
 		if (!index) {
 			throw new Error("Index not found");

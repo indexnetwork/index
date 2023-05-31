@@ -22,7 +22,7 @@ import { appConfig } from "config";
 import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import IconEditBlack from "components/base/Icon/IconEditBlack";
-import { Users } from "../../../types/entity";
+import { Users } from "types/entity";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);

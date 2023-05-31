@@ -11,10 +11,10 @@ import { useTranslation } from "next-i18next";
 import { AccessControlCondition, Indexes } from "types/entity";
 import IconGreenAdd from "components/base/Icon/IconGreenAdd";
 import IconClock from "components/base/Icon/IconClock";
-import FlexRow from "../../../layout/base/Grid/FlexRow";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import IconWallet from "components/base/Icon/IconWallet";
 import NFTOptions from "./NFTOptions";
 import IndividualWallet from "./IndividualWallet";
-import IconWallet from "../../../base/Icon/IconWallet";
 
 export interface NewCreatorModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
 	handleCreate(condition: AccessControlCondition): void;

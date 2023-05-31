@@ -2,7 +2,6 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import * as u8a from "uint8arrays";
 import { keccak256 } from "@ethersproject/keccak256";
 import { ec as EC } from "elliptic";
-import {randomBytes} from "@stablelib/random";
 
 const ec = new EC("secp256k1");
 
@@ -56,12 +55,10 @@ export const decodeDIDWithLit = (encodedDID: string): string => {
 	});
 
 	const pubPoint = ec.keyFromPublic(originalBytes).getPublic();
-	let pubKey = pubPoint.encode("hex", false);
-	//pubKey = pubKey.charAt(0) === "0" ? pubKey.substring(1) : pubKey;
+	const pubKey = pubPoint.encode("hex", false);
+	// pubKey = pubKey.charAt(0) === "0" ? pubKey.substring(1) : pubKey;
 
 	return `0x${pubKey}`;
 };
-
-
 
 export const walletToDID = (chain: number, wallet: string): string => `did:pkh:eip155:${parseInt(chain.toString())}:${wallet}`;

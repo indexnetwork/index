@@ -12,10 +12,10 @@ import { useAppSelector } from "hooks/store";
 import { useTranslation } from "next-i18next";
 import { selectConnection } from "store/slices/connectionSlice";
 import { Indexes } from "types/entity";
-import CeramicService from "../../../../services/ceramic-service";
-import FlexRow from "../../../layout/base/Grid/FlexRow";
-import LitService from "../../../../services/lit-service";
-import {appConfig} from "../../../../config";
+import CeramicService from "services/ceramic-service";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import LitService from "services/lit-service";
+import { appConfig } from "config";
 
 export interface CreateModalProps extends Omit<ModalProps, "header" | "footer" | "body"> {
 }

@@ -17,12 +17,12 @@ import { useRouter } from "next/router";
 import api, { DidSearchRequestBody, IndexSearchResponse } from "services/api-service";
 import { Indexes } from "types/entity";
 import InfiniteScroll from "react-infinite-scroller";
-import { Tabs } from "../../components/base/Tabs";
-import TabPane from "../../components/base/Tabs/TabPane";
+import { Tabs } from "components/base/Tabs";
+import TabPane from "components/base/Tabs/TabPane";
 
-import IndexItem from "../../components/site/indexes/IndexItem";
-import { useCeramic } from "../../hooks/useCeramic";
-import NoIndexes from "../../components/site/indexes/NoIndexes";
+import IndexItem from "components/site/indexes/IndexItem";
+import { useCeramic } from "hooks/useCeramic";
+import NoIndexes from "components/site/indexes/NoIndexes";
 
 export interface IndexListState {
 	skip: number,

@@ -8,7 +8,7 @@ import { useRouter } from "next/router";
 import { selectConnection } from "store/slices/connectionSlice";
 import { useAppSelector } from "hooks/store";
 import CreateModal from "components/site/modal/CreateModal";
-import { useOwner } from "../../../../hooks/useOwner";
+import { useOwner } from "hooks/useOwner";
 
 export interface NoIndexesProps {
 	hasIndex?: boolean;

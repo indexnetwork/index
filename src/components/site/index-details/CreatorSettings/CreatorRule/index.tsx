@@ -11,7 +11,7 @@ import Avatar from "components/base/Avatar";
 import CreatorRulePopup from "components/site/popup/CreatorRulePopup";
 import IconCopy from "components/base/Icon/IconCopy";
 
-import { copyToClipboard, maskAddress } from "../../../../../utils/helper";
+import { copyToClipboard, maskAddress } from "utils/helper";
 
 export interface CreatorRuleProps {
 	rule: any;
