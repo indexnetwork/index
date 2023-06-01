@@ -85,12 +85,12 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 
 	const handleRightTypeChange = (value: string) => {
 		value !== condition.rightType && setCondition({
-			...condition, rightType: value, tokenId: "", minTokens: 0,
+			...condition, rightType: value, tokenId: "", minTokens: 1,
 		});
 	};
 	const handlestandardContractTypeChange = (value: string) => {
 		value !== condition.standardContractType && setCondition({
-			...condition, standardContractType: value, tokenId: "", minTokens: 0,
+			...condition, standardContractType: value, tokenId: "", minTokens: 1,
 		});
 	};
 	const handleContractAddressChange: React.ChangeEventHandler<HTMLInputElement> = ({ target }) => {
