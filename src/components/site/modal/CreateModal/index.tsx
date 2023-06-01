@@ -46,8 +46,8 @@ const CreateModal = ({
 		setLoading(true);
 		if (title) {
 			const { pkpPublicKey } = await LitService.mintPkp();
-			const pkpDID = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
-			const c = new CeramicService(pkpDID.did);
+			const sessionResponse = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
+			const c = new CeramicService(sessionResponse.session.did);
 			const doc = await c.createIndex(pkpPublicKey, { title } as Indexes);
 			if (doc != null) {
 				// await setTitle("");

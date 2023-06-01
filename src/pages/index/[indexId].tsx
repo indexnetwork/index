@@ -55,6 +55,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tabKey, setTabKey] = useState("index");
 	const [isOwner, setIsOwner] = useState<boolean>(false);
+	const [isCreator, setIsCreator] = useState<boolean>(false);
 	const [notFound, setNotFound] = useState(false);
 	const [progress, setProgress] = useState({
 		current: 0,
@@ -73,10 +74,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setNotFound(true);
 		} else {
 			setIndex(doc);
-			const pkpDID = await LitService.getPKPSession(doc.pkpPublicKey, doc.collabAction);
-			if (pkpDID) {
-				setPKPCeramic(new CeramicService(pkpDID.did));
-				setIsOwner(true);
+			const sessionResponse = await LitService.getPKPSession(doc.pkpPublicKey, doc.collabAction);
+			if (sessionResponse.session) {
+				setPKPCeramic(new CeramicService(sessionResponse.session.did));
+				setIsOwner(sessionResponse.isPermittedAddress);
+				setIsCreator(sessionResponse.isCreator || sessionResponse.isPermittedAddress);
 			}
 			await loadUserIndex(indexIdParam);
 			setLoading(false);
@@ -276,7 +278,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										</FlexRow>
 									</Col>
 									{
-										tabKey === "index" && isOwner && <Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
+										tabKey === "index" && isCreator && <Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
 											<LinkInput
 												loading={crawling}
 												onLinkAdd={handleAddLink}
@@ -290,6 +292,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<Col xs={12} lg={9}>
 											<IndexItemList
 												search={search}
+												isCreator={isCreator}
 												isOwner={isOwner}
 												index_id={router.query.indexId as any}
 											// onChange={handleReorderLinks}

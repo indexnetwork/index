@@ -21,6 +21,7 @@ export interface LinkListProps {
 	search: string;
 	index_id: string;
 	isOwner?: boolean;
+	isCreator?: boolean;
 	onFetch?(loading: boolean): void;
 }
 
@@ -30,6 +31,7 @@ const IndexItemList: React.VFC<LinkListProps> = ({
 	search,
 	index_id,
 	isOwner,
+	isCreator,
 	onFetch,
 }) => {
 	const [loading, setLoading] = useState(false);

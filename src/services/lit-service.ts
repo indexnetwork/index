@@ -91,16 +91,15 @@ class LitService {
 	}
 
 	async getPKPSession(pkpPublicKey: string, collabAction: string) {
-		const address = computeAddress(pkpPublicKey);
-		const normAccount = new AccountId({
-			address: address.toLowerCase(),
-			chainId: "eip155:175177",
-		});
-		const existingSession = localStorage.getItem(`pkp_${pkpPublicKey}`);
-		if (existingSession) {
-			const existing = await DIDSession.fromSession(existingSession);
-			await existing.did.authenticate();
-			return existing;
+		const existingSessionStr = localStorage.getItem(`pkp_${pkpPublicKey}`);
+		if (existingSessionStr) {
+			const es = JSON.parse(existingSessionStr);
+			if (es.isPermittedAddress || (es.isCreator && es.collabAction === collabAction)) {
+				const existing = await DIDSession.fromSession(es.session);
+				await existing.did.authenticate();
+				es.session = existing;
+				return es;
+			}
 		}
 
 		const keySeed = randomBytes(32);
@@ -115,22 +114,6 @@ class LitService {
 		await litNodeClient.connect();
 		const authSig = await checkAndSignAuthMessage();
 
-		const now = new Date();
-		const threeMonthsLater = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
-
-		const siweMessage = new SiweMessage({
-			domain: window.location.host,
-			address: getAddress(normAccount.address),
-			statement: "Give this application access to some of your data on Ceramic",
-			uri: didKey.id,
-			version: "1",
-			chainId: normAccount.chainId.reference,
-			nonce: randomString(10),
-			issuedAt: now.toISOString(),
-			expirationTime: threeMonthsLater.toISOString(),
-			resources: ["ceramic://*"],
-		});
-
 		const resp = await litNodeClient.executeJs({
 			ipfsId: collabAction,
 			authSig,
@@ -138,10 +121,17 @@ class LitService {
 				authSig,
 				chain: "ethereum",
 				publicKey: pkpPublicKey,
-				message: siweMessage.toMessage(),
+				didKey: didKey.id,
+				nonce: randomString(10),
+				domain: window.location.host,
 				sigName: "sig1",
 			},
 		});
+		// @ts-ignore
+		const { error } = resp.response; //TODO Handle.
+		// @ts-ignore
+		const { isCreator, isPermittedAddress, siweMessage} = JSON.parse(resp.response.context);
+
 		const signature = resp.signatures.sig1;
 		siweMessage.signature = joinSignature({
 			r: `0x${signature.r}`,
@@ -152,8 +142,13 @@ class LitService {
 		const did = await createDIDCacao(didKey, cacao);
 		const session = new DIDSession({ cacao, keySeed, did });
 
-		localStorage.setItem(`pkp_${pkpPublicKey}`, session.serialize());
-		return session;
+		localStorage.setItem(`pkp_${pkpPublicKey}`, JSON.stringify({
+			isCreator,
+			isPermittedAddress,
+			collabAction,
+			session: session.serialize(),
+		}));
+		return { session, isCreator, isPermittedAddress, collabAction };
 	}
 }
 const litService = new LitService();
