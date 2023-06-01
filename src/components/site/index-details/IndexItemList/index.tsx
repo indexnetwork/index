@@ -8,6 +8,7 @@ import { IndexLink, Link } from "types/entity";
 // import { arrayMove } from "utils/helper";
 
 import { useLinks } from "hooks/useLinks";
+import { useIndex } from "hooks/useIndex";
 import LinkItem from "../LinkItem";
 import NoLinks from "../../indexes/NoLinks";
 
@@ -20,8 +21,6 @@ export interface LinkListState {
 export interface LinkListProps {
 	search: string;
 	index_id: string;
-	isOwner?: boolean;
-	isCreator?: boolean;
 	onFetch?(loading: boolean): void;
 }
 
@@ -30,10 +29,9 @@ const MemoLinkItem = React.memo(LinkItem);
 const IndexItemList: React.VFC<LinkListProps> = ({
 	search,
 	index_id,
-	isOwner,
-	isCreator,
 	onFetch,
 }) => {
+	const { isOwner } = useIndex();
 	const [loading, setLoading] = useState(false);
 	const { links, setLinks } = useLinks();
 	const [state, setState] = useMergedState<LinkListState>({
@@ -125,7 +123,6 @@ const IndexItemList: React.VFC<LinkListProps> = ({
 									provided={provided!}
 									snapshot={snapshot!}
 									search={!!search}
-									isOwner={isOwner}
 									index_link={item}
 									// onChange={handleLinksChange}
 								/>}
@@ -146,7 +143,6 @@ const IndexItemList: React.VFC<LinkListProps> = ({
 								data={links}
 								render={(item, index, provided, snapshot) => <MemoLinkItem
 									provided={provided!}
-									isOwner={isOwner}
 									snapshot={snapshot!}
 									index_link={item}
 									// onChange={handleLinksChange}

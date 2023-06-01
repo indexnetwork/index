@@ -185,7 +185,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [progress]);
 
 	return (
-		<IndexContext.Provider value={{ pkpCeramic }}>
+		<IndexContext.Provider value={{ pkpCeramic, isOwner, isCreator }}>
 			<LinksContext.Provider value={{ links, setLinks }}>
 				<Container className="index-details-page my-6 my-lg-8">
 					{ notFound ?
@@ -292,8 +292,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<Col xs={12} lg={9}>
 											<IndexItemList
 												search={search}
-												isCreator={isCreator}
-												isOwner={isOwner}
 												index_id={router.query.indexId as any}
 											// onChange={handleReorderLinks}
 											/>

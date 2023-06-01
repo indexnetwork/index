@@ -46,22 +46,7 @@ class LitService {
 			tokenIdNumber,
 			pkpPublicKey,
 		};
-
-		/*
-
-        PKP public key is 0x04c00cfcacdd09cd14f858ec1a9771f88d170ad8ac46d5deb8cced8f24cce303ff9006ee68ff0eac11ac1e4a57dc0bc48075c6813fab164fb0b36ea2c021c51005
-
-        and Token ID is 0x276c64f32ffe0f56396f60d1030d23d44b6ce50833856893ef0f311331f16d3f
-        and Token ID number is 17831717308699365721260653288176043165957324409522683475746237039328728542527
-
-        const tokenIdNumber = "17831717308699365721260653288176043165957324409522683475746237039328728542527"
-        const signEverythingCID = "QmcZ2MuxkNrMbNKAVtK37tEmKJ8zwvFudin3rBEcHyhqJc";
-        //
-        const addPermissionTx = await litContracts.pkpPermissionsContractUtil.write.revokePermittedAction(tokenIdNumber, signEverythingCID);
-        const aw = await addPermissionTx.wait();
-        console.log(aw);
-
-        */
+		
 	}
 
 	async hasOriginNFT() {
@@ -128,9 +113,12 @@ class LitService {
 			},
 		});
 		// @ts-ignore
-		const { error } = resp.response; //TODO Handle.
+		const { error } = resp.response; // TODO Handle.
+		if (error) {
+			return { isCreator: false, isPermittedAddress: false, collabAction};
+		}
 		// @ts-ignore
-		const { isCreator, isPermittedAddress, siweMessage} = JSON.parse(resp.response.context);
+		const { isCreator, isPermittedAddress, siweMessage } = JSON.parse(resp.response.context);
 
 		const signature = resp.signatures.sig1;
 		siweMessage.signature = joinSignature({

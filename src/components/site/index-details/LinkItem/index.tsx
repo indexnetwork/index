@@ -30,7 +30,6 @@ export interface LinkItemProps {
 	snapshot?: DraggableStateSnapshot;
 	onChange?(val: IndexLink[]): void;
 	search?: boolean;
-	isOwner?: boolean;
 	highlight?: any;
 }
 
@@ -39,14 +38,13 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 	provided,
 	snapshot,
 	highlight,
-	isOwner,
 	search = false,
 	onChange,
 }) => {
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
 	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
 	const { links, setLinks } = useLinks();
-	const { pkpCeramic } = useIndex();
+	const { pkpCeramic, isOwner, isCreator } = useIndex();
 	const personalCeramic = useCeramic();
 
 	const { link } = index_link;
@@ -118,7 +116,7 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 							</a>
 						</Col>
 						{
-							!search && isOwner && (
+							!search && isCreator && (
 								<Col className="idxflex-shrink-0 ml-3 index-detail-list-item-buttons">
 									<FlexRow>
 										<Col>
