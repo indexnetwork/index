@@ -333,10 +333,10 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
         index.is_starred = false;
 
         if(user_indexes_by_type.my_indexes && user_indexes_by_type.my_indexes.length > 0){
-            index.is_in_my_indexes = !!user_indexes_by_type.my_indexes.filter(ui => ui.index_id == index.id && ui.type == 'my_indexes').length;
+            index.is_in_my_indexes = !!user_indexes_by_type.my_indexes.filter(ui => ui.indexId == index.id && ui.type == 'my_indexes').length;
         }
         if(user_indexes_by_type.starred && user_indexes_by_type.starred.length > 0){
-            index.is_starred = !!user_indexes_by_type.starred.filter(ui => ui.index_id == index.id && ui.type == 'starred').length;
+            index.is_starred = !!user_indexes_by_type.starred.filter(ui => ui.indexId == index.id && ui.type == 'starred').length;
         }
         return index
     })
@@ -379,7 +379,7 @@ export const did = async (req, res) => {
 
     if(type){
         let search_result = {};
-        search_result[type] = await indexesSearch(user_indexes_by_type[type].map(i => i.index_id), search, skip, take, links_size, user_indexes_by_type)
+        search_result[type] = await indexesSearch(user_indexes_by_type[type].map(i => i.indexId), search, skip, take, links_size, user_indexes_by_type)
         res.json(search_result)
     }else{
         let search_result = _.mapValues(user_indexes_by_type, async (type_group, key) => {
