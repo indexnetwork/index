@@ -48,6 +48,7 @@ export type UserIndex = {
   indexId: string
   type: string
   createdAt: string;
+  updatedAt: string;
   deletedAt?: string;
 };
 

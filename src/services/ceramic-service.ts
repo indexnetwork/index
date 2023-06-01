@@ -320,6 +320,7 @@ class CeramicService {
 		const userIndex = {
 			indexId: index_id,
 			createdAt: getCurrentDateTime(),
+			updatedAt: getCurrentDateTime(),
 			type,
 		} as UserIndex;
 		if (deletedAt) {
