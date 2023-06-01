@@ -28,14 +28,14 @@ export const indexPKP = async (req, res, next) => {
     if(nftTransfers.length === 0){
         return res.status(200).end();
     }
-
+    /*
     const event = nftTransfers[0]
 
     let pkpPubKey = await getPkpPublicKey(event.tokenId)
     let pkpDID = encodeDIDWithLit(pkpPubKey);
     let ownerDID = walletToDID(chainId, event.to);
     await redis.hSet(`pkp:owner`, pkpDID.toLowerCase(), ownerDID.toLowerCase())
-
+    */
     return res.status(201).end();
 
 }

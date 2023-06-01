@@ -341,6 +341,7 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
         return index
     })
 
+    /* TODO Before mainnet
     let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.controllerDID.id.toLowerCase()))
     indexResult = indexResult.map((value, key) => {
         return {
@@ -350,6 +351,7 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
             }
         }
     })
+    */
 
     return {
         totalCount,

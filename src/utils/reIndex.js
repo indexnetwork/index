@@ -146,6 +146,13 @@ async function start() {
                   }
                 }
               },
+              "ownerDID": {
+                "properties": {
+                  "id": {
+                    "type" : "keyword"
+                  }
+                }
+              },
               "collabAction": {
                 "type": "keyword",
               },

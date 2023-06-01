@@ -200,10 +200,13 @@ export const getIndexByPKP = async (id) => {
     }
     delete index.links
 
+    index.ownerDID = index.controllerDID;
+    /* TODO Before mainnet, listen pkp ownership changes.
     const ownerDID = await redis.hGet(`pkp:owner`, index.controllerDID.id.toLowerCase())
     if(ownerDID){
         index.ownerDID = { id: ownerDID, basicProfile: null}
     }
+     */
     return index;
 }
 
