@@ -8,8 +8,9 @@ import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 
 import { DID } from "dids";
+
+import { appConfig } from "config";
 import { definition } from "../types/merged-runtime";
-import { appConfig } from "../config";
 
 class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
@@ -316,20 +317,29 @@ class CeramicService {
 		}
 		 */
 	}
-	async addUserIndex(index_id: string, type: string, deletedAt = false): Promise<UserIndex | undefined> {
-		const userIndex = {
-			indexId: index_id,
-			createdAt: getCurrentDateTime(),
-			updatedAt: getCurrentDateTime(),
+	async setUserIndex(indexId: string, type: string, status: boolean): Promise <UserIndex | undefined> {
+		const userIndexes = await api.getUserIndexes({
+			index_id: indexId,
+			did: this.client.did?.parent!,
+		} as GetUserIndexesRequestBody) as UserIndexResponse;
+
+		const content: Partial<UserIndex> = {
 			type,
-		} as UserIndex;
-		if (deletedAt) {
-			userIndex.deletedAt = getCurrentDateTime();
-		}
-		console.log("add", userIndex);
-		const payload = {
-			content: userIndex,
+			indexId,
+			updatedAt: getCurrentDateTime(),
+			createdAt: getCurrentDateTime(),
 		};
+		if (!status) {
+			content.deletedAt = getCurrentDateTime();
+		}
+		type UserIndexKey = keyof typeof userIndexes;
+		const userIndex: UserIndex | undefined = userIndexes[type as UserIndexKey];
+		if (!userIndex) {
+			return await this.createUserIndex(content);
+		}
+		return await this.updateUserIndex(userIndex.id!, content);
+	}
+	async createUserIndex(content: Partial<UserIndex>): Promise<UserIndex | undefined> {
 		const { data, errors } = await this.client.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
 			mutation CreateUserIndex($input: CreateUserIndexInput!) {
 				createUserIndex(input: $input) {
@@ -340,37 +350,17 @@ class CeramicService {
 							id
 						}
 						createdAt
+						updatedAt
 						deletedAt
 					}
 				}
-			}`, { input: payload });
+			}`, { input: { content } });
 		if (errors) {
 			// TODO Handle
 		}
 		return data?.createUserIndex.document!;
 	}
-	async removeUserIndex(index_id: string, type: string): Promise<UserIndex | undefined> {
-		console.log("remove", index_id, this.client.did?.parent!, type);
-		const userIndexes = await api.getUserIndexes({
-			index_id,
-			did: this.client.did?.parent!,
-		} as GetUserIndexesRequestBody) as UserIndexResponse;
-		type UserIndexKey = keyof typeof userIndexes;
-
-		if (!userIndexes[type as UserIndexKey]) {
-			return;
-		}
-
-		const userIndex: UserIndex | undefined = userIndexes[type as UserIndexKey];
-		if (userIndex && !userIndex.id && type === "my_indexes") {
-			return await this.addUserIndex(index_id, type, true);
-		}
-		const payload = {
-			id: userIndex?.id!,
-			content: {
-				deletedAt: getCurrentDateTime(),
-			},
-		};
+	async updateUserIndex(indexId: string, content: Partial<UserIndex>): Promise<UserIndex | undefined> {
 		const { data, errors } = await this.client.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
 			mutation UpdateUserIndex($input: UpdateUserIndexInput!) {
 				updateUserIndex(input: $input) {
@@ -381,10 +371,11 @@ class CeramicService {
 							id
 						}
 						createdAt
+						updatedAt
 						deletedAt
 					}
 				}
-			}`, { input: payload });
+			}`, { input: { content, id: indexId } });
 
 		if (errors) {
 			// TODO Handle

@@ -83,13 +83,13 @@ const CeramicProvider = (
 		if (!client) {
 			throw new Error("Invalid client");
 		}
-		return client.addUserIndex(index_id, type);
+		return client.setUserIndex(index_id, type, true);
 	};
 	const removeUserIndex = async (index_id: string, type: string) => {
 		if (!client) {
 			throw new Error("Invalid client");
 		}
-		return client.removeUserIndex(index_id, type);
+		return client.setUserIndex(index_id, type, false);
 	};
 
 	return (

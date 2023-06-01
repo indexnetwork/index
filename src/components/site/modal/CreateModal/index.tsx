@@ -49,6 +49,7 @@ const CreateModal = ({
 			const sessionResponse = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
 			const c = new CeramicService(sessionResponse.session.did);
 			const doc = await c.createIndex(pkpPublicKey, { title } as Indexes);
+			await ceramic.addUserIndex(doc.id, "my_indexes");
 			if (doc != null) {
 				// await setTitle("");
 				await router.push(`/${doc.id}`);

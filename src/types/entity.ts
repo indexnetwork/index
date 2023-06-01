@@ -44,9 +44,12 @@ export type IndexLink = {
  *
  */
 export type UserIndex = {
-  id: number
-  indexId: string
-  type: string
+  id: string;
+  indexId: string;
+  controllerDID?: { // This is PKP DID
+    id: string
+  };
+  type: string;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
