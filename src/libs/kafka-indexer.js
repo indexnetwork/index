@@ -32,13 +32,15 @@ export const createIndex = async (indexMsg) => {
 
     console.log(index)
 
-    // Create user_index without a composedb record. Only remove requests are stored in composedb.
+    // TODO Handle before mainnet.
+    /* Creates user_index without a composedb record. Only remove requests are stored in composedb.
     await this.createUserIndex({
         "controllerDID": index.ownerDID.id,
         "type":"my_indexes",
         "indexId": index.id,
         "createdAt": new Date().toISOString()
     });
+     */
 
 }
 export const updateIndex = async (indexMsg) => {

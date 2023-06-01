@@ -4,7 +4,6 @@ import {getPkpPublicKey, encodeDIDWithLit, walletToDID} from "../utils/lit/index
 import RedisClient from '../clients/redis.js';
 const redis = RedisClient.getInstance();
 
-
 export const indexPKP = async (req, res, next) => {
 
     const { headers, body } = req;

@@ -65,7 +65,7 @@ app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_in
 app.get('/indexes/:id', composedb.get_index)
 app.get('/index_link/:id', composedb.get_index_link)
 
-app.post('/webhook/moralis/pkp', moralis.indexPKP)
+app.post('/webhook/moralis/pkp', moralis.indexPKP) //Unavailable for chronicle. TODO Before mainnet.
 
 app.get('/lit_actions/:cid', litActions.get_action);
 app.post('/lit_actions', litActions.post_action);
