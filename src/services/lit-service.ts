@@ -3,12 +3,10 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { DID } from "dids";
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
 import { randomBytes, randomString } from "@stablelib/random";
-import { Cacao, SiweMessage } from "@didtools/cacao";
-import { computeAddress, joinSignature } from "ethers/lib/utils";
+import { Cacao } from "@didtools/cacao";
+import { joinSignature } from "ethers/lib/utils";
 import { getResolver } from "key-did-resolver";
 import { createDIDCacao, DIDSession } from "did-session";
-import { getAddress } from "@ethersproject/address";
-import { AccountId } from "caip";
 import { Ed25519Provider } from "key-did-provider-ed25519";
 import { appConfig } from "../config";
 
@@ -46,7 +44,6 @@ class LitService {
 			tokenIdNumber,
 			pkpPublicKey,
 		};
-		
 	}
 
 	async hasOriginNFT() {
@@ -115,7 +112,7 @@ class LitService {
 		// @ts-ignore
 		const { error } = resp.response; // TODO Handle.
 		if (error) {
-			return { isCreator: false, isPermittedAddress: false, collabAction};
+			return { isCreator: false, isPermittedAddress: false, collabAction };
 		}
 		// @ts-ignore
 		const { isCreator, isPermittedAddress, siweMessage } = JSON.parse(resp.response.context);
@@ -136,7 +133,9 @@ class LitService {
 			collabAction,
 			session: session.serialize(),
 		}));
-		return { session, isCreator, isPermittedAddress, collabAction };
+		return {
+			session, isCreator, isPermittedAddress, collabAction,
+		};
 	}
 }
 const litService = new LitService();
