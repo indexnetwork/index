@@ -46,7 +46,9 @@ export const AppContextProvider = ({ children } : any) => {
 	return (
 		<AppContext.Provider value={{ setCreateModalVisible, setTransactionApprovalWaiting }}>
 			{children}
+			{/* eslint-disable-next-line max-len */}
 			{transactionApprovalWaiting ? <ConfirmTransaction handleCancel={handleCancel} visible={transactionApprovalWaiting}></ConfirmTransaction> : <></>}
+			{/* eslint-disable-next-line max-len */}
 			{createModalVisible ? <CreateModal visible={createModalVisible} onClose={() => setCreateModalVisible(false)} onCreate={handleCreate}></CreateModal> : <></>}
 		</AppContext.Provider>
 	);

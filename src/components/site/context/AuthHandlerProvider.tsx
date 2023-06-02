@@ -16,8 +16,6 @@ import CeramicService from "services/ceramic-service";
 import litService from "services/lit-service";
 import { useCeramic } from "hooks/useCeramic";
 import OriginWarningModal from "../modal/OriginWarningModal";
-import ConfirmTransaction from "../modal/Common/ConfirmTransaction";
-import CreateModal from "../modal/CreateModal";
 
 declare global {
 	interface Window {

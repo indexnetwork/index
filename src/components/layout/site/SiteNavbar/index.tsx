@@ -20,7 +20,7 @@ import { appConfig } from "config";
 import IconSettings from "components/base/Icon/IconSettings";
 import Navbar, { NavbarProps, NavbarMenu } from "components/layout/base/Navbar";
 import { useApp } from "hooks/useApp";
-import {useRouter} from "next/router";
+import { useRouter } from "next/router";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
