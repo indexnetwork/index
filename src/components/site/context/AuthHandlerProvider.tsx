@@ -16,6 +16,8 @@ import CeramicService from "services/ceramic-service";
 import litService from "services/lit-service";
 import { useCeramic } from "hooks/useCeramic";
 import OriginWarningModal from "../modal/OriginWarningModal";
+import ConfirmTransaction from "../modal/Common/ConfirmTransaction";
+import CreateModal from "../modal/CreateModal";
 
 declare global {
 	interface Window {
@@ -35,7 +37,7 @@ type SessionResponse = {
 
 export const AuthHandlerContext = React.createContext<AuthHandlerContextType>({} as any);
 
-export const 	AuthHandlerProvider = ({ children }: any) => {
+export const AuthHandlerProvider = ({ children }: any) => {
 	const { metaMaskConnected, originNFTModalVisible, loading } = useAppSelector(selectConnection);
 	const dispatch = useAppDispatch();
 	const router = useRouter();

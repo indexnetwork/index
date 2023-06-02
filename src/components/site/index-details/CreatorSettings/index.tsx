@@ -101,7 +101,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 
 			</FlexRow>
 			{/* eslint-disable-next-line max-len */}
-			{newCreatorModalVisible ? <NewCreatorModal handleCreate={handleCreate} visible={newCreatorModalVisible} onClose={handleToggleNewCreatorModal}></NewCreatorModal> : <></>}
+			<NewCreatorModal handleCreate={handleCreate} visible={newCreatorModalVisible} onClose={handleToggleNewCreatorModal}></NewCreatorModal>
 			{/* eslint-disable-next-line max-len */}
 			{transactionApprovalWaiting ? <ConfirmTransaction handleCancel={handleCancel} visible={transactionApprovalWaiting}></ConfirmTransaction> : <></>}
 		</>
