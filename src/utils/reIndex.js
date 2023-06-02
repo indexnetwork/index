@@ -156,6 +156,9 @@ async function start() {
               "collabAction": {
                 "type": "keyword",
               },
+              "pkpPublicKey": {
+                "type": "keyword",
+              },
               "title": {
                 "type": "search_as_you_type",
                 "analyzer": "searchable",

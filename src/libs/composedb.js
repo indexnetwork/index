@@ -1,8 +1,8 @@
 import _ from 'lodash';
 import RedisClient from '../clients/redis.js';
 import moment from "moment";
+import {getOwner} from "../utils/lit/index.js";
 
-const redis = RedisClient.getInstance();
 
 export const getIndexLinkById = async(id) => {
     let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
@@ -139,13 +139,9 @@ export const getIndexById = async (id) => {
 
     delete index.links;
 
-    index.ownerDID = index.controllerDID;
-    /* TODO Before mainnet, listen pkp ownership changes.
-    const ownerDID = await redis.hGet(`pkp:owner`, index.controllerDID.id.toLowerCase())
-    if(ownerDID){
-        index.ownerDID = { id: ownerDID, basicProfile: null}
-    }
-     */
+    const ownerAddress = await getOwner(index.pkpPublicKey);
+    index.ownerDID = { id: `did:pkh:eip155:175177:${ownerAddress}` }
+
     return index;
 }
 
@@ -200,13 +196,9 @@ export const getIndexByPKP = async (id) => {
     }
     delete index.links
 
-    index.ownerDID = index.controllerDID;
-    /* TODO Before mainnet, listen pkp ownership changes.
-    const ownerDID = await redis.hGet(`pkp:owner`, index.controllerDID.id.toLowerCase())
-    if(ownerDID){
-        index.ownerDID = { id: ownerDID, basicProfile: null}
-    }
-     */
+    const ownerAddress = await getOwner(index.pkpPublicKey);
+    index.ownerDID = { id: `did:pkh:eip155:175177:${ownerAddress}` }
+
     return index;
 }
 

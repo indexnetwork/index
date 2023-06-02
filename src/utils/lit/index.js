@@ -5,6 +5,10 @@ import { ethers } from "ethers";
 import elliptic from "elliptic";
 const ec = new elliptic.ec("secp256k1");
 
+import RedisClient from '../../clients/redis.js';
+const redis = RedisClient.getInstance();
+
+
 export const getPkpPublicKey = async (tokenId) => {
 	const litContracts = new LitContracts();
 	await litContracts.connect();
@@ -13,12 +17,21 @@ export const getPkpPublicKey = async (tokenId) => {
 }
 
 export const getOwner = async (pkpPubKey) => {
+
+	let existing = await redis.hGet(`pkp:owner`, pkpPubKey);
+	if(existing){
+		return existing;
+	}
+
 	const pubkeyHash = keccak256(pkpPubKey);
     const tokenId = BigInt(pubkeyHash);
 
 	const litContracts = new LitContracts();
 	await litContracts.connect();
+
+
 	const address = await litContracts.pkpNftContract.read.ownerOf(tokenId);
+	await redis.hSet(`pkp:owner`, pkpPubKey, address);
 
     return address;
 }
