@@ -9,8 +9,7 @@ import api, { LitActionConditions } from "services/api-service";
 import { AccessControlCondition } from "types/entity";
 import Image from "next/image";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
-import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
-
+import { useApp } from "hooks/useApp";
 import IconAdd from "components/base/Icon/IconAdd";
 import CreatorRule from "./CreatorRule";
 
@@ -22,7 +21,7 @@ export interface CreatorSettingsProps {
 const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabAction }) => {
 	const [loading, setLoading] = useState(false);
 	const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
-	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
+	const { setTransactionApprovalWaiting } = useApp();
 	const [conditions, setConditions] = useState<any>([]);
 	const loadAction = async (action: string) => {
 		const litAction = await api.getLITAction(action);
@@ -102,8 +101,6 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 			</FlexRow>
 			{/* eslint-disable-next-line max-len */}
 			<NewCreatorModal handleCreate={handleCreate} visible={newCreatorModalVisible} onClose={handleToggleNewCreatorModal}></NewCreatorModal>
-			{/* eslint-disable-next-line max-len */}
-			{transactionApprovalWaiting ? <ConfirmTransaction handleCancel={handleCancel} visible={transactionApprovalWaiting}></ConfirmTransaction> : <></>}
 		</>
 
 	);

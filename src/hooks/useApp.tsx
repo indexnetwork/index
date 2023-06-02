@@ -10,22 +10,22 @@ import { useCeramic } from "hooks/useCeramic";
 import { useRouter } from "next/router";
 
 export interface AppContextValue {
-	createModalVisible: boolean
 	setCreateModalVisible: (visible: boolean) => void
+	setTransactionApprovalWaiting: (visible: boolean) => void
 }
 // Create Context Object
-export const AppContext = createContext({
-	createModalVisible: false,
-} as AppContextValue);
+export const AppContext = createContext({} as AppContextValue);
 
 export const AppContextProvider = ({ children } : any) => {
 	const [createModalVisible, setCreateModalVisible] = useState(false);
+	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
 	const router = useRouter();
 	const ceramic = useCeramic();
 
 	const handleCreate = async (title: string) => {
 		if (title) {
 			// handleToggleCreateModal();
+			setCreateModalVisible(false);
 			setTransactionApprovalWaiting(true);
 			const { pkpPublicKey } = await LitService.mintPkp();
 			const sessionResponse = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
@@ -39,12 +39,12 @@ export const AppContextProvider = ({ children } : any) => {
 		}
 	};
 
-	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
 	const handleCancel = () => {
 		setTransactionApprovalWaiting(false);
-	};	
+		setCreateModalVisible(true);
+	};
 	return (
-		<AppContext.Provider value={{ createModalVisible, setCreateModalVisible }}>
+		<AppContext.Provider value={{ setCreateModalVisible, setTransactionApprovalWaiting }}>
 			{children}
 			{transactionApprovalWaiting ? <ConfirmTransaction handleCancel={handleCancel} visible={transactionApprovalWaiting}></ConfirmTransaction> : <></>}
 			{createModalVisible ? <CreateModal visible={createModalVisible} onClose={() => setCreateModalVisible(false)} onCreate={handleCreate}></CreateModal> : <></>}
