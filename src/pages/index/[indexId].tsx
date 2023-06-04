@@ -74,19 +74,20 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setNotFound(true);
 		} else {
 			setIndex(doc);
-			const sessionResponse = await LitService.getPKPSession(doc.pkpPublicKey, doc.collabAction);
-			if (sessionResponse.session) {
-				setPKPCeramic(new CeramicService(sessionResponse.session.did));
-				setIsOwner(sessionResponse.isPermittedAddress);
-				setIsCreator(sessionResponse.isCreator || sessionResponse.isPermittedAddress);
-			}
-			await loadUserIndex(indexIdParam);
 			setLoading(false);
 		}
 	};
-	const loadUserIndex = async (indexIdParam: string) => {
+	const loadUserIndex = async () => {
+		const sessionResponse = await LitService.getPKPSession(index.pkpPublicKey!, index.collabAction!);
+		if (!sessionResponse || !sessionResponse.session) {
+			return false;
+		}
+		setLoading(true);
+		setPKPCeramic(new CeramicService(sessionResponse.session.did));
+		setIsOwner(sessionResponse.isPermittedAddress);
+		setIsCreator(sessionResponse.isCreator || sessionResponse.isPermittedAddress);
 		const userIndexes = await api.getUserIndexes({
-			index_id: indexIdParam, // TODO Shame
+			index_id: index.id, // TODO Shame
 			did,
 		} as GetUserIndexesRequestBody) as UserIndexResponse;
 		setIndex({
@@ -94,6 +95,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			is_in_my_indexes: !!userIndexes.my_indexes, // TODO Shame
 			is_starred: !!userIndexes.starred,
 		} as Indexes);
+		setLoading(false);
 	};
 	const handleCollabActionChange = async (CID: string) => {
 		const litContracts = new LitContracts();
@@ -155,11 +157,14 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		}
 	};
 	useEffect(() => {
+		loadUserIndex();
+	}, [index.id, did]);
+	useEffect(() => {
 		setLoading(true);
-		if (indexId && did) {
+		if (indexId) {
 			loadIndex(indexId as string);
 		}
-	}, [indexId, did]);
+	}, [indexId]);
 
 	useEffect(() => {
 		if (addedLink) {

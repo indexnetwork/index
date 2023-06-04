@@ -15,10 +15,12 @@ import { copyToClipboard, maskAddress } from "utils/helper";
 
 export interface CreatorRuleProps {
 	rule: any;
+	handleRemove: () => void;
 }
 const CreatorRule = (
 	{
 		rule,
+		handleRemove,
 	}: CreatorRuleProps,
 ) => (<div className="p-6 card-item">
 	<FlexRow justify={"between"} fullWidth>
@@ -53,7 +55,7 @@ const CreatorRule = (
 			</Flex>
 		</Col>
 		<Col pullRight>
-			<CreatorRulePopup>
+			<CreatorRulePopup onRemove={handleRemove}>
 				<Button
 					size="sm"
 					borderless

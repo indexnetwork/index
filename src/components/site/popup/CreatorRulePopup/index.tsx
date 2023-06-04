@@ -8,18 +8,18 @@ import IconRemove from "components/base/Icon/IconRemove";
 import IconEmbed from "components/base/Icon/IconEmbed";
 
 export interface CreatorRulePopupPopupProps {
-	onDelete?(): void;
+	onRemove: () => void;
 	children: React.ReactNode;
 }
 const CreatorRulePopup = (
 	{
 		children,
-		onDelete,
+		onRemove,
 	}: CreatorRulePopupPopupProps,
 ) => {
 	const { t } = useTranslation("common");
-	const handleDelete = () => {
-		onDelete && onDelete();
+	const handleRemove = () => {
+		onRemove && onRemove();
 	};
 
 	return (
@@ -27,13 +27,13 @@ const CreatorRulePopup = (
 			position="bottom-right"
 			menuItems={
 				<>
-					<DropdownMenuItem onClick={handleDelete}>
+					<DropdownMenuItem>
 						<Flex alignItems="center">
-							<IconEmbed width={20} height="auto" className="icon-" />
-							<Text className="ml-3" element="span" > View on Etherscan</Text>
+							<IconEmbed width={20} height="auto"/>
+							<Text className="ml-3" element="span" >View on Etherscan</Text>
 						</Flex>
 					</DropdownMenuItem>
-					<DropdownMenuItem onClick={handleDelete}>
+					<DropdownMenuItem onClick={handleRemove}>
 						<Flex alignItems="center">
 							<IconRemove height="auto" className="icon-error" />
 							<Text className="ml-3" element="span" theme="error" > {t("remove")}</Text>

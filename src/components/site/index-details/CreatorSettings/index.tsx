@@ -5,7 +5,7 @@ import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Button from "components/base/Button";
-import api, { LitActionConditions } from "services/api-service";
+import api from "services/api-service";
 import { AccessControlCondition } from "types/entity";
 import Image from "next/image";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
@@ -23,35 +23,37 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 	const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
 	const { setTransactionApprovalWaiting } = useApp();
 	const [conditions, setConditions] = useState<any>([]);
+	const addOrStatements = (c: AccessControlCondition[]) => c.flatMap((el, index) => (index === c.length - 1 ? el : [el, { operator: "or" }]));
 	const loadAction = async (action: string) => {
-		const litAction = await api.getLITAction(action);
-		setConditions(litAction);
+		const litAction = await api.getLITAction(action) as [any];
+		if (litAction) {
+			setConditions(litAction.filter((item: any, index: number) => index % 2 === 0));
+		}
 	};
-	const handleCancel = () => {
-		setTransactionApprovalWaiting(false);
-	};
-	const handleCreate = async (condition: AccessControlCondition) => {
+
+	const handleRemove = async (index: number) => {
 		setNewCreatorModalVisible(false);
 		setTransactionApprovalWaiting(true);
-		const newAction = await api.postLITAction(conditions.length > 0 ? [
-			condition,
-			{ operator: "or" },
-			...conditions,
-		] : [condition] as LitActionConditions);
+		const newConditions = [...conditions.slice(0, index), ...conditions.slice(index + 1)];
+		const newAction = await api.postLITAction(addOrStatements(newConditions));
 		await onChange(newAction!);
 		setTransactionApprovalWaiting(false);
 	};
 
+	const handleCreate = async (condition: AccessControlCondition) => {
+		setNewCreatorModalVisible(false);
+		setTransactionApprovalWaiting(true);
+		const newConditions = [condition, ...conditions];
+		const newAction = await api.postLITAction(addOrStatements(newConditions));
+		await onChange(newAction!);
+		setTransactionApprovalWaiting(false);
+	};
 	const handleToggleNewCreatorModal = () => {
 		setNewCreatorModalVisible(!newCreatorModalVisible);
 	};
-
 	useEffect(() => {
 		loadAction(collabAction);
 	}, [collabAction]);
-	useEffect(() => {
-		console.log(conditions);
-	}, [conditions]);
 
 	return (
 		<>
@@ -78,9 +80,8 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 			<FlexRow className={"mt-6"} rowGutter={2} rowSpacing={2} colSpacing={2}>
 				{
 					conditions && conditions
-						.filter((c: { contractAddress: string; }) => !!c.contractAddress)
 						.map((c: any, index: any) => <Col key={index} lg={6} xs={12}>
-							<CreatorRule rule={c.metadata}></CreatorRule>
+							<CreatorRule handleRemove={() => handleRemove(index)} rule={c.metadata}></CreatorRule>
 						</Col>)
 				}
 				{

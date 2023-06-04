@@ -95,6 +95,9 @@ class LitService {
 		});
 		await litNodeClient.connect();
 		const authSig = await checkAndSignAuthMessage();
+		if (!authSig) {
+			return false;
+		}
 
 		const resp = await litNodeClient.executeJs({
 			ipfsId: collabAction,

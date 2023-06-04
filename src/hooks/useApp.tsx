@@ -1,9 +1,8 @@
 import { createContext, useState, useContext } from "react";
-
+import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import LitService from "services/lit-service";
-import { appConfig } from "config";
 import CeramicService from "services/ceramic-service";
 import { Indexes } from "types/entity";
 import { useCeramic } from "hooks/useCeramic";
@@ -13,7 +12,7 @@ export interface AppContextValue {
 	setCreateModalVisible: (visible: boolean) => void
 	setTransactionApprovalWaiting: (visible: boolean) => void
 }
-// Create Context Object
+
 export const AppContext = createContext({} as AppContextValue);
 
 export const AppContextProvider = ({ children } : any) => {
