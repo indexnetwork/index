@@ -10,6 +10,7 @@ import * as search from '../services/elasticsearch.js';
 import * as composedb from '../services/composedb.js';
 import * as litActions from '../services/lit_actions.js';
 import * as moralis from '../libs/moralis.js';
+import * as infura from '../libs/infura.js';
 
 import Joi from 'joi';
 import * as ejv from 'express-joi-validation';
@@ -70,7 +71,8 @@ app.post('/webhook/moralis/pkp', moralis.indexPKP) //Unavailable for chronicle. 
 app.get('/lit_actions/:cid', litActions.get_action);
 app.post('/lit_actions', litActions.post_action);
 
-
+app.get('/nft/:chainId/:tokenAddress', infura.getCollectionMetadata);
+app.get('/nft/:chainId/:tokenAddress/:tokenId', infura.getNftMetadata);
 
 const crawlSchema = Joi.object({
   url: Joi.string().uri().required(),
