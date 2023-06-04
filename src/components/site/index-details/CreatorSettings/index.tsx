@@ -11,6 +11,7 @@ import Image from "next/image";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
 import { useApp } from "hooks/useApp";
 import IconAdd from "components/base/Icon/IconAdd";
+import { useIndex } from "hooks/useIndex";
 import CreatorRule from "./CreatorRule";
 
 export interface CreatorSettingsProps {
@@ -22,6 +23,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 	const [loading, setLoading] = useState(false);
 	const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
 	const { setTransactionApprovalWaiting } = useApp();
+	const { isOwner } = useIndex();
 	const [conditions, setConditions] = useState<any>([]);
 	const addOrStatements = (c: AccessControlCondition[]) => c.flatMap((el, index) => (index === c.length - 1 ? el : [el, { operator: "or" }]));
 	const loadAction = async (action: string) => {
@@ -61,7 +63,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 				<Col pullLeft>
 					<Header className="mb-4">Creators</Header>
 				</Col>
-				<Col pullRight>
+				{isOwner && <Col pullRight>
 					<Button
 						addOnBefore
 						className={"mr-0"}
@@ -70,11 +72,13 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 					>
 						<IconAdd width={12} stroke="white" strokeWidth={"1.5"} /> Add New
 					</Button>
-				</Col>
+				</Col>}
 			</Row>
 			<Row className={"mt-0"}>
 				<Col xs={10}>
-					<Text fontFamily="freizeit" size={"lg"} fontWeight={500}>Control write access to your index through NFTs.<br /> Creators will be able to add items, add tags to theirs and delete them.</Text>
+					<Text fontFamily="freizeit" size={"lg"} fontWeight={500}>
+						{isOwner && <>Control write access to your index through NFTs.<br /></>}
+						Creators can add items, add tags to theirs and delete them.</Text>
 				</Col>
 			</Row>
 			<FlexRow className={"mt-6"} rowGutter={2} rowSpacing={2} colSpacing={2}>

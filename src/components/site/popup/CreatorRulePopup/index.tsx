@@ -6,6 +6,7 @@ import { useTranslation } from "next-i18next";
 import React from "react";
 import IconRemove from "components/base/Icon/IconRemove";
 import IconEmbed from "components/base/Icon/IconEmbed";
+import { useIndex } from "hooks/useIndex";
 
 export interface CreatorRulePopupPopupProps {
 	onRemove: () => void;
@@ -18,6 +19,7 @@ const CreatorRulePopup = (
 	}: CreatorRulePopupPopupProps,
 ) => {
 	const { t } = useTranslation("common");
+	const { isOwner } = useIndex();
 	const handleRemove = () => {
 		onRemove && onRemove();
 	};
@@ -33,12 +35,12 @@ const CreatorRulePopup = (
 							<Text className="ml-3" element="span" >View on Etherscan</Text>
 						</Flex>
 					</DropdownMenuItem>
-					<DropdownMenuItem onClick={handleRemove}>
+					{isOwner && <DropdownMenuItem onClick={handleRemove}>
 						<Flex alignItems="center">
 							<IconRemove height="auto" className="icon-error" />
 							<Text className="ml-3" element="span" theme="error" > {t("remove")}</Text>
 						</Flex>
-					</DropdownMenuItem>
+					</DropdownMenuItem>}
 				</>
 			}
 		>
