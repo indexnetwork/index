@@ -50,20 +50,21 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 			return newCondition;
 		}
 		if (standardContractType === "ERC721") {
-			if (minTokens) {
-				newCondition.method = "balanceOf";
-				newCondition.parameters = [":userAddress"];
-				newCondition.returnValueTest = {
-					comparator: ">=",
-					value: minTokens.toString(),
-				};
-				return newCondition;
-			} if (tokenId) {
+			if (rightType === "specific" && tokenId) {
 				newCondition.method = "ownerOf";
 				newCondition.parameters = [tokenId];
 				newCondition.returnValueTest = {
 					comparator: "=",
 					value: ":userAddress",
+				};
+				return newCondition;
+			}
+			if (rightType === "any" && minTokens) {
+				newCondition.method = "balanceOf";
+				newCondition.parameters = [":userAddress"];
+				newCondition.returnValueTest = {
+					comparator: ">=",
+					value: minTokens.toString(),
 				};
 				return newCondition;
 			}

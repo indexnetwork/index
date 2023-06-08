@@ -32,12 +32,14 @@ const CreatorRule = (
 				<Row className={"mt-3"}>
 					<Flex alignItems={"center"}>
 						<Col className={"mr-3"}>
-							<Avatar className="site-navbar__avatar" hoverable size={40} randomColor>
-								<img src="https://picsum.photos/100/100" alt="profile_img"/>
-							</Avatar>
+							<Avatar contentRatio={0.3} maxLetters={4} className="site-navbar__avatar" hoverable size={40} randomColor>{
+								rule.image ?
+									<img src={rule.image} alt="profile_img"/> : (
+										rule.symbol
+									)}</Avatar>
 						</Col>
 						<Col>
-							<Header level={4} className=" mb-1">{rule.chain}</Header>
+							<Header level={4} className=" mb-1">{rule.name}</Header>
 							<Flex alignItems={"center"}>
 								<Text fontFamily={"Freizeit"} fontWeight={500} size={"sm"} className={"mr-1"}>{maskAddress(rule.address || rule.contractAddress)}</Text>
 								<Button onClick={() => {
