@@ -71,8 +71,8 @@ app.post('/webhook/moralis/pkp', moralis.indexPKP) //Unavailable for chronicle. 
 app.get('/lit_actions/:cid', litActions.get_action);
 app.post('/lit_actions', litActions.post_action);
 
-app.get('/nft/:chainId/:tokenAddress', infura.getCollectionMetadata);
-app.get('/nft/:chainId/:tokenAddress/:tokenId', infura.getNftMetadata);
+app.get('/nft/:chainName/:tokenAddress', infura.getCollectionMetadataHandler);
+app.get('/nft/:chainName/:tokenAddress/:tokenId', infura.getNftMetadataHandler);
 
 const crawlSchema = Joi.object({
   url: Joi.string().uri().required(),

@@ -8,6 +8,7 @@ import { create } from 'ipfs-http-client'
 import RedisClient from '../clients/redis.js';
 const redis = RedisClient.getInstance();
 
+import { getNftMetadataApi, getCollectionMetadataApi } from '../libs/infura.js';
 
 const enrichConditions = async (conditions) => {
 
@@ -23,20 +24,37 @@ const enrichConditions = async (conditions) => {
                 chain: condition.chain,
                 contractAddress: condition.contractAddress,
                 tokenId: condition.parameters[0],
-                title: 'Content heroes'
             }
         } else if(condition.method === "balanceOf"){
             condition.metadata = {
                 ruleType: "nftOwner",
                 chain: condition.chain,
                 contractAddress: condition.contractAddress,
-                title: 'Content heroes'
             }
         } else if(condition.parameters[0] === ":userAddress"){
             condition.metadata = {
                 ruleType: "wallet",
                 chain: condition.chain,
                 address: condition.returnValueTest.value,
+            }
+        }
+
+        if(condition.contractAddress){
+            let collectionMetadata = await getCollectionMetadataApi(condition.chain, condition.contractAddress);
+            if(collectionMetadata){
+                condition.metadata.standardContractType = collectionMetadata.tokenType;
+                condition.metadata.symbol = collectionMetadata.symbol;
+                if(condition.metadata.tokenId){
+                    let tokenMetadata = await getNftMetadataApi(condition.chain, condition.contractAddress, condition.parameters[0]);
+                    if(tokenMetadata){
+                        condition.metadata.name = `${collectionMetadata.name} - ${tokenMetadata.metadata.name}`;
+                        condition.metadata.image = tokenMetadata.metadata.image;
+                    }else{
+                        condition.metadata.name = collectionMetadata.name;
+                    }
+                }else{
+                    condition.metadata.name = collectionMetadata.name;
+                }
             }
         }
 

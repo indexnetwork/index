@@ -4,37 +4,60 @@ if(process.env.NODE_ENV !== 'production'){
 }
 import axios from 'axios';
 const BASE_URL = 'https://nft.api.infura.io';
+import { chains } from '../config/chains.js';
 
 const getAuthorizationHeader = () => {
     return Buffer.from(`${process.env.INFURA_API_KEY}:${process.env.INFURA_API_KEY_SECRET}`)
         .toString('base64')
 }
 
-export const getCollectionMetadata = async (req, res) => {
-    const { chainId, tokenAddress } = req.params;
+export const getCollectionMetadataApi = async (chainName, tokenAddress) => {
+    const chain = chains[chainName];
     try {
-        const response = await axios.get(`${BASE_URL}/networks/${chainId}/nfts/${tokenAddress}`,{
+        const response = await axios.get(`${BASE_URL}/networks/${chain.chainId}/nfts/${tokenAddress}`, {
             headers: {
-                'Authorization': `Basic ${getAuthorizationHeader()}`
-            }
+                'Authorization': `Basic ${getAuthorizationHeader()}`,
+            },
         });
-        res.json(response.data);
+        return response.data;
     } catch (error) {
-        res.status(500).json({ error});
+        //throw new Error('Failed to fetch collection metadata');
     }
-}
+};
 
-export const getNftMetadata = async (req, res) => {
-    const { chainId, tokenAddress, tokenId } = req.params;
+export const getNftMetadataApi = async (chainName, tokenAddress, tokenId, resyncMetadata = false) => {
+    const chain = chains[chainName];
+    console.log(chain, tokenAddress, tokenId);
+    try {
+        const response = await axios.get(`${BASE_URL}/networks/${chain.chainId}/nfts/${tokenAddress}/tokens/${tokenId}?resyncMetadata=${resyncMetadata}`, {
+            headers: {
+                'Authorization': `Basic ${getAuthorizationHeader()}`,
+            },
+        });
+        return response.data;
+    } catch (error) {
+        //throw new Error('Failed to fetch NFT metadata');
+    }
+};
+
+
+export const getCollectionMetadataHandler = async (req, res) => {
+    const { chainName, tokenAddress } = req.params;
+    try {
+        const metadata = await getCollectionMetadataApi(chainName, tokenAddress);
+        res.json(metadata);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const getNftMetadataHandler = async (req, res) => {
+    const { chainName, tokenAddress, tokenId } = req.params;
     const resyncMetadata = req.query.resyncMetadata || false;
     try {
-        const response = await axios.get(`${BASE_URL}/networks/${chainId}/nfts/${tokenAddress}/tokens/${tokenId}?resyncMetadata=${resyncMetadata}`,{
-            headers: {
-                'Authorization': `Basic ${getAuthorizationHeader()}`
-            }
-        });
-        res.json(response.data);
+        const metadata = await getNftMetadataApi(chainName, tokenAddress, tokenId, resyncMetadata);
+        res.json(metadata);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch data' });
+        res.status(500).json({ error: error.message });
     }
-}
+};
