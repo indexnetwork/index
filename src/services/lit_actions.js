@@ -8,13 +8,26 @@ import { create } from 'ipfs-http-client'
 import RedisClient from '../clients/redis.js';
 const redis = RedisClient.getInstance();
 
-import { getNftMetadataApi, getCollectionMetadataApi } from '../libs/infura.js';
+import {getNftMetadataApi, getCollectionMetadataApi, getProfile} from '../libs/infura.js';
 
 const enrichConditions = async (conditions) => {
 
     conditions = await Promise.all(conditions.map( async (condition) => {
 
+        if(condition.operator === "or"){
+            return condition;
+        }
+
         if(!condition.contractAddress){
+            condition.metadata = {
+                ruleType: "individualWallet",
+                walletAddress: condition.returnValueTest.value,
+                chain: condition.chain,
+            };
+            let profile = await getProfile(condition.returnValueTest.value);
+            if(profile){
+                condition.metadata.profile = profile;
+            }
             return condition;
         }
 

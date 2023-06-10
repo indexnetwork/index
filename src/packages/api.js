@@ -111,10 +111,10 @@ const start = async () => {
   await Moralis.start({
     apiKey: process.env.MORALIS_API_KEY,
   });
-
-  await app.set('queue', await getQueue())
+  if(process.env.NODE_ENV !== 'development'){
+    await app.set('queue', await getQueue())
+  }
   await app.listen(port, async () => {
-
     console.log(`Search service listening on port ${port}`)
   })
 
