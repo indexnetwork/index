@@ -8,9 +8,7 @@ import { chains } from '../config/chains.js';
 
 import { ethers } from 'ethers'
 
-const ethProvider = new ethers.InfuraProvider(
-    "mainnet",
-)
+const ethProvider = new ethers.InfuraProvider("mainnet")
 
 const getAuthorizationHeader = () => {
     return Buffer.from(`${process.env.INFURA_API_KEY}:${process.env.INFURA_API_KEY_SECRET}`)
@@ -37,7 +35,7 @@ export const getProfile = async (wallet) => {
         };
         const avatar = await getAvatar(walletData)
         if(avatar){
-            profile.avatar = avatar;
+            profile.image = avatar;
         }
         return profile;
     }

@@ -26,7 +26,10 @@ const enrichConditions = async (conditions) => {
             };
             let profile = await getProfile(condition.returnValueTest.value);
             if(profile){
-                condition.metadata.profile = profile;
+                condition.metadata.ensName = profile.ensName;
+                if(profile.image){
+                    condition.metadata.image = profile.image;
+                }
             }
             return condition;
         }
