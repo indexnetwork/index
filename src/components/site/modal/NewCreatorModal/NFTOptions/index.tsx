@@ -89,7 +89,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 			...condition, rightType: value, tokenId: "", minTokens: 1,
 		});
 	};
-	const handlestandardContractTypeChange = (value: string) => {
+	const handleStandardContractTypeChange = (value: string) => {
 		value !== condition.standardContractType && setCondition({
 			...condition, standardContractType: value, tokenId: "", minTokens: 1,
 		});
@@ -142,7 +142,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 				<Col className="mt-6" xs={12}>
 					<Flex flexDirection="column">
 						<Text theme={"primary"} size="md" className={"mb-3"}>Token contract type:</Text>
-						<RadioGroup value={standardContractType} onSelectionChange={handlestandardContractTypeChange} colSize={4}
+						<RadioGroup value={standardContractType} onSelectionChange={handleStandardContractTypeChange} colSize={4}
 							items={[
 								{
 									value: "ERC20",

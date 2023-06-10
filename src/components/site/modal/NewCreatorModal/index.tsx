@@ -51,7 +51,7 @@ const NewCreatorModal = ({
 			) : activeForm === "new-nft" ? (
 				<></>
 			) : activeForm === "individual-wallet" ? (
-				<IndividualWallet handleBack={() => handleFormState("initial")}></IndividualWallet>
+				<IndividualWallet handleCreate={handleCreate} handleBack={() => handleFormState("initial")}></IndividualWallet>
 			) : (
 				<FlexRow rowGutter={4} rowSpacing={0} rowGap={6} colSpacing={3}>
 					<Col xs={4}>

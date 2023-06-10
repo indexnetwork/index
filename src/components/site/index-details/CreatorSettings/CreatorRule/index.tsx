@@ -27,23 +27,25 @@ const CreatorRule = (
 		<Col xs={10}>
 			<Flex className={"idxflex-nowrap"} alignItems={"top"} flexDirection={"column"}>
 				<Row>
-					<Text fontFamily="Freizeit" fontWeight={500}>{rule.ruleType === "nftOwner" ? "NFT OWNER" : "INDIVIDUAL WALLET"}</Text>
+					<Text fontFamily="Freizeit" fontWeight={500}>{rule.ruleType === "nftOwner" ? (rule.standardContractType === "ERC721" && rule.tokenId ? "NFT OWNER" : "NFT OWNERS") : "INDIVIDUAL WALLET"}</Text>
 				</Row>
 				<Row className={"mt-3"}>
 					<Flex alignItems={"center"}>
-						<Col className={"mr-3"}>
-							<Avatar contentRatio={0.3} maxLetters={4} className="site-navbar__avatar" hoverable size={40} randomColor>{
-								rule.image ?
-									<img src={rule.image} alt="profile_img"/> : (
-										rule.symbol
-									)}</Avatar>
+						<Col >
+							{
+								(rule.symbol || rule.image) && (<Avatar className={"site-navbar__avatar mr-3"} contentRatio={rule.symbol ? 0.3 : 0.4} maxLetters={rule.symbol ? 4 : 2} hoverable size={40}>{
+									rule.image ?
+										<img src={rule.image} alt="profile_img"/> : (
+											rule.symbol || rule.ensName
+										)}</Avatar>)
+							}
 						</Col>
 						<Col>
-							<Header level={4} className=" mb-1">{rule.name}</Header>
+							<Header level={4} className=" mb-1">{rule.name || rule.ensName || maskAddress(rule.walletAddress)}</Header>
 							<Flex alignItems={"center"}>
-								<Text fontFamily={"Freizeit"} fontWeight={500} size={"sm"} className={"mr-1"}>{maskAddress(rule.address || rule.contractAddress)}</Text>
+								<Text fontFamily={"Freizeit"} fontWeight={500} size={"sm"} className={"mr-1"}>{maskAddress(rule.walletAddress || rule.contractAddress)}</Text>
 								<Button onClick={() => {
-									copyToClipboard(`${rule.address || rule.contractAddress}`);
+									copyToClipboard(`${rule.walletAddress || rule.contractAddress}`);
 								}} iconButton
 								theme="clear"
 								size={"xs"}
@@ -57,7 +59,7 @@ const CreatorRule = (
 			</Flex>
 		</Col>
 		<Col pullRight>
-			<CreatorRulePopup onRemove={handleRemove}>
+			<CreatorRulePopup rule={rule} onRemove={handleRemove}>
 				<Button
 					size="sm"
 					borderless

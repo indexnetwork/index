@@ -132,7 +132,7 @@ const SiteNavbar = (
 								</>
 							}
 						>
-							<Avatar className="site-navbar__avatar" hoverable size={32} randomColor>{
+							<Avatar className="site-navbar__avatar" hoverable size={32}>{
 								pfp ?
 									<img src={pfp.replace("ipfs://", appConfig.ipfsProxy)} alt="profile_img"/> : (
 										available && name ? name : "Y"

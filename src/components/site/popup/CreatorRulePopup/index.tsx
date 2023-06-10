@@ -10,11 +10,13 @@ import { useIndex } from "hooks/useIndex";
 
 export interface CreatorRulePopupPopupProps {
 	onRemove: () => void;
+	rule: any;
 	children: React.ReactNode;
 }
 const CreatorRulePopup = (
 	{
 		children,
+		rule,
 		onRemove,
 	}: CreatorRulePopupPopupProps,
 ) => {
@@ -23,13 +25,18 @@ const CreatorRulePopup = (
 	const handleRemove = () => {
 		onRemove && onRemove();
 	};
+	const handleEtherscan = () => {
+		if (rule.contractAddress) {
+			window.open(`https://etherscan.io/address/${rule.contractAddress}`, "_blank");
+		}
+	};
 
 	return (
 		<Dropdown
 			position="bottom-right"
 			menuItems={
 				<>
-					<DropdownMenuItem>
+					<DropdownMenuItem onClick={handleEtherscan}>
 						<Flex alignItems="center">
 							<IconEmbed width={20} height="auto"/>
 							<Text className="ml-3" element="span" >View on Etherscan</Text>

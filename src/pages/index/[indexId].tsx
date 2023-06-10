@@ -200,7 +200,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							<>
 								<FlexRow rowSpacing={3} justify="center">
 									<Col xs={12} lg={9} noYGutters>
-										<Avatar randomColor size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
+										<Avatar size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
 										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.ownerDID?.id}</Text>
 									</Col>
 									<Col xs={12} lg={9} className="pb-0">
