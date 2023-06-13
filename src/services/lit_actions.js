@@ -24,6 +24,7 @@ const enrichConditions = async (conditions) => {
                 walletAddress: condition.returnValueTest.value,
                 chain: condition.chain,
             };
+
             let profile = await getProfile(condition.returnValueTest.value);
             if(profile){
                 condition.metadata.ensName = profile.ensName;
@@ -34,42 +35,48 @@ const enrichConditions = async (conditions) => {
             return condition;
         }
 
-        if(condition.method === "ownerOf"){
-            condition.metadata = {
-                ruleType: "nftOwner",
-                chain: condition.chain,
-                contractAddress: condition.contractAddress,
-                tokenId: condition.parameters[0],
+        if(condition.standardContractType) {
+            if (condition.standardContractType === "ERC20") {
+                condition.metadata = {
+                    ruleType: "nftOwner",
+                    chain: condition.chain,
+                    contractAddress: condition.contractAddress,
+                }
+            } else if (condition.standardContractType === "ERC721") {
+                condition.metadata = {
+                    ruleType: "nftOwner",
+                    chain: condition.chain,
+                    contractAddress: condition.contractAddress,
+                }
+                if (condition.method === "ownerOf") {
+                    condition.metadata.tokenId = condition.parameters[0];
+                }
+            } else if (condition.standardContractType === "ERC1155") {
+                condition.metadata = {
+                    ruleType: "nftOwner",
+                    chain: condition.chain,
+                    contractAddress: condition.contractAddress,
+                    tokenId: condition.parameters[1],
+                }
             }
-        } else if(condition.method === "balanceOf"){
-            condition.metadata = {
-                ruleType: "nftOwner",
-                chain: condition.chain,
-                contractAddress: condition.contractAddress,
-            }
-        } else if(condition.parameters[0] === ":userAddress"){
-            condition.metadata = {
-                ruleType: "wallet",
-                chain: condition.chain,
-                address: condition.returnValueTest.value,
-            }
-        }
-
-        if(condition.contractAddress){
             let collectionMetadata = await getCollectionMetadataApi(condition.chain, condition.contractAddress);
             if(collectionMetadata){
-                condition.metadata.standardContractType = collectionMetadata.tokenType;
+                condition.metadata.standardContractType = condition.standardContractType;
                 condition.metadata.symbol = collectionMetadata.symbol;
                 if(condition.metadata.tokenId){
-                    let tokenMetadata = await getNftMetadataApi(condition.chain, condition.contractAddress, condition.parameters[0]);
+                    let tokenMetadata = await getNftMetadataApi(condition.chain, condition.contractAddress, condition.metadata.tokenId);
                     if(tokenMetadata){
-                        condition.metadata.name = `${collectionMetadata.name} - ${tokenMetadata.metadata.name}`;
-                        condition.metadata.image = tokenMetadata.metadata.image;
+                        if(condition.standardContractType === "ERC721"){
+                            condition.metadata.name = `${collectionMetadata.name} - ${tokenMetadata.metadata.name}`;
+                            condition.metadata.image = tokenMetadata.metadata.image;
+                        }
+                        if(condition.standardContractType === "ERC1155"){
+                            condition.metadata.name = tokenMetadata.metadata.name;
+                            condition.metadata.image = tokenMetadata.metadata.image;
+                        }
                     }else{
                         condition.metadata.name = collectionMetadata.name;
                     }
-                }else{
-                    condition.metadata.name = collectionMetadata.name;
                 }
             }
         }
@@ -105,7 +112,7 @@ export const get_action = async (req, res, next) => {
     if (cached) {
         return res.json(JSON.parse(cached))
     }
-
+    
     try {
 
         const runner =  new NodeVM({
