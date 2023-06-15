@@ -77,6 +77,8 @@ const enrichConditions = async (conditions) => {
                     }else{
                         condition.metadata.name = collectionMetadata.name;
                     }
+                }else{
+                    condition.metadata.name = collectionMetadata.name
                 }
             }
         }
@@ -112,7 +114,7 @@ export const get_action = async (req, res, next) => {
     if (cached) {
         return res.json(JSON.parse(cached))
     }
-    
+
     try {
 
         const runner =  new NodeVM({
