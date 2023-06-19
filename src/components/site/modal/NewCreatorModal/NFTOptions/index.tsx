@@ -75,7 +75,9 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 
 	const validate = async (values: any) => {
 		const errors = {} as any;
-
+		if (!values.contractAddress) {
+			return errors;
+		}
 		if (!isValidContractAddress(values.contractAddress)) {
 			errors.contractAddress = "Invalid contract address";
 			setFieldTouched("contractAddress", true, false);
@@ -143,9 +145,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 		setFieldValue("minTokens", 1);
 		setFieldValue("tokenId", "");
 	}, [values.contractAddress]);
-	useEffect(() => {
-		console.log(values, errors, touched);
-	}, [values, errors, touched]);
+
 	return (
 		<form id="nftForm" style={{
 			padding: 0,
