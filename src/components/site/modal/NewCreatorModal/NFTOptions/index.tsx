@@ -78,6 +78,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 
 		if (!isValidContractAddress(values.contractAddress)) {
 			errors.contractAddress = "Invalid contract address";
+			setFieldTouched("contractAddress", true, false);
 			return errors;
 		}
 		const contractData = await api.getContract(values.chain, values.contractAddress);
