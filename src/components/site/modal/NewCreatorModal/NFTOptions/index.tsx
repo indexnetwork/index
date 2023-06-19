@@ -87,6 +87,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 		} else {
 			errors.contractAddress = "Contract not found";
 			setStandardContractType("");
+			setFieldTouched("contractAddress", true, false);
 			return errors;
 		}
 
@@ -115,6 +116,8 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 			errors.minTokens = "Token amount is required";
 			return errors;
 		}
+
+		return errors;
 	};
 	const onSubmit = (values: any) => handleCreate && handleCreate(getCondition(values) as AccessControlCondition);
 	const {
@@ -131,6 +134,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 		},
 		validateOnBlur: true,
 		validateOnChange: true,
+		validateOnMount: true,
 		validate,
 		onSubmit,
 	});
@@ -138,7 +142,9 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 		setFieldValue("minTokens", 1);
 		setFieldValue("tokenId", "");
 	}, [values.contractAddress]);
-
+	useEffect(() => {
+		console.log(values, errors, touched);
+	}, [values, errors, touched]);
 	return (
 		<form id="nftForm" style={{
 			padding: 0,
@@ -147,7 +153,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 				<Col xs={12}>
 					<Flex flexDirection="column">
 						<Text theme={"primary"} size="md">Choose network:</Text>
-						<Select onChange={(value) => setFieldValue("chain", value)} value={"ethereum"} bordered size="lg" className={"mt-3"}>
+						<Select key="chain" onChange={(value) => setFieldValue("chain", value)} value={"ethereum"} bordered size="lg" className={"mt-3"}>
 							{
 								// eslint-disable-next-line react/jsx-key
 								Object.values(appConfig.chains).map((c) => (<Option value={c.value}>
@@ -169,7 +175,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 							type="text"
 							className="mt-3"
 							inputSize={"lg"}
-							error={errors.contractAddress ? errors.contractAddress : undefined}
+							error={touched.contractAddress && errors.contractAddress ? errors.contractAddress : undefined}
 							onChange={handleChange}
 							onBlur={handleBlur}
 						/>
@@ -178,7 +184,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 				{!errors.contractAddress && standardContractType === "ERC721" && <Col className="mt-6" xs={12}>
 					<Flex flexDirection="column">
 						<Text theme={"primary"} size="md" className={"mb-3"}>Give rights to:</Text>
-						<RadioGroup value={values.rightType} onSelectionChange={(value) => setFieldValue("rightType", value)} colSize={6}
+						<RadioGroup key="rightType" value={values.rightType} onSelectionChange={(value) => setFieldValue("rightType", value)} colSize={6}
 							items={[
 								{
 									value: "any",
@@ -247,6 +253,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 						type="submit"
 						size="lg"
 						className="mt-7 pl-8 pr-8"
+						disabled={Object.keys(touched).length === 0 || (Object.keys(touched).length > 0 && Object.keys(errors).length > 0)}
 						onClick={handleSubmit as any}
 					>Add rule</Button>
 				</Col>
