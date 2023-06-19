@@ -41,7 +41,7 @@ const CreatorRule = (
 							}
 						</Col>
 						<Col>
-							<Header level={4} className=" mb-1">{rule.name || rule.ensName || maskAddress(rule.walletAddress)}</Header>
+							<Header level={4} className="mb-1">{rule.name || rule.ensName || (rule.walletAddress && maskAddress(rule.walletAddress)) || (rule.contractAddress && maskAddress(rule.contractAddress)) }</Header>
 							<Flex alignItems={"center"}>
 								<Text fontFamily={"Freizeit"} fontWeight={500} size={"sm"} className={"mr-1"}>{maskAddress(rule.walletAddress || rule.contractAddress)}</Text>
 								<Button onClick={() => {

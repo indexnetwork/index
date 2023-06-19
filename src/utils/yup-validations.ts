@@ -5,6 +5,7 @@ const yupValidations = {
 		email: string().email().label("Email").required(),
 		password: string().label("Password").required(),
 	}),
+
 };
 
 export default yupValidations;

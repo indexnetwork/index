@@ -42,6 +42,11 @@ export function maskAddress(address: string) {
 export function isMobile() {
 	return !isSSR() && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
+
+export const isValidContractAddress = (contractAddress: string) => {
+	const ethAddressPattern = /^0x[a-fA-F0-9]{40}$/;
+	return ethAddressPattern.test(contractAddress);
+};
 export const setDates = <T extends { updatedAt?: string, createdAt?: string, [key: string]: any }>(obj: T, update: boolean = false) => {
 	const date = moment.utc().toISOString();
 	if (update === false) {
