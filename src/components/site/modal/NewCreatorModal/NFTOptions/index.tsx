@@ -88,7 +88,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 		if (contractData && contractData.tokenType) {
 			setStandardContractType(contractData.tokenType);
 		} else {
-			errors.contractAddress = "Contract not found";
+			errors.contractAddress = "The contract not found on this network.";
 			setStandardContractType("");
 			setFieldTouched("contractAddress", true, false);
 			return errors;
