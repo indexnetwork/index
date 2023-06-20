@@ -8,7 +8,7 @@ import { create } from 'ipfs-http-client'
 import RedisClient from '../clients/redis.js';
 const redis = RedisClient.getInstance();
 
-import {getNftMetadataApi, getCollectionMetadataApi, getProfile} from '../libs/infura.js';
+import {getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet} from '../libs/infura.js';
 
 const enrichConditions = async (conditions) => {
 
@@ -25,7 +25,7 @@ const enrichConditions = async (conditions) => {
                 chain: condition.chain,
             };
 
-            let profile = await getProfile(condition.returnValueTest.value);
+            let profile = await getENSProfileByWallet(condition.returnValueTest.value);
             if(profile){
                 condition.metadata.ensName = profile.ensName;
                 if(profile.image){

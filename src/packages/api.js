@@ -18,6 +18,7 @@ import * as ejv from 'express-joi-validation';
 import { getQueue, getMetadata } from '../libs/crawl.js'
 
 import express from 'express';
+import {getWalletByENSHandler} from "../libs/infura.js";
 
 const app = express()
 const port = process.env.PORT || 3001;
@@ -73,6 +74,7 @@ app.post('/lit_actions', litActions.post_action);
 
 app.get('/nft/:chainName/:tokenAddress', infura.getCollectionMetadataHandler);
 app.get('/nft/:chainName/:tokenAddress/:tokenId', infura.getNftMetadataHandler);
+app.get('/ens/:ensName', infura.getWalletByENSHandler);
 
 const crawlSchema = Joi.object({
   url: Joi.string().uri().required(),

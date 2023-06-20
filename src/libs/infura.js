@@ -27,7 +27,7 @@ export const getAvatar = async (ensName) => {
     }
 }
 
-export const getProfile = async (wallet) => {
+export const getENSProfileByWallet = async (wallet) => {
     const walletData = await ethProvider.lookupAddress(wallet);
     if(walletData){
         let profile = {
@@ -40,7 +40,10 @@ export const getProfile = async (wallet) => {
         return profile;
     }
 };
-
+export const getWalletByENS = async (ens) => {
+    const walletData = await ethProvider.resolveName(ens);
+    return walletData;
+};
 export const getCollectionMetadataApi = async (chainName, tokenAddress) => {
     const chain = chains[chainName];
     try {
@@ -93,6 +96,18 @@ export const getNftMetadataHandler = async (req, res) => {
             contract.token = tokenData.metadata;
         }
         res.json(contract);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const getWalletByENSHandler = async (req, res) => {
+    const { ensName } = req.params;
+    try {
+        const metadata = await getWalletByENS(ensName);
+        res.json({
+            walletAddress: metadata
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
