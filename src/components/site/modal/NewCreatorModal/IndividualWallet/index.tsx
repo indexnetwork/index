@@ -27,7 +27,7 @@ const IndividualWallet: React.VFC<IndividualWalletOptionsProps> = ({ handleBack,
 		if (values.walletAddress.endsWith(".eth")) {
 			const addressResponse = await api.getWallet(values.walletAddress);
 			if (!addressResponse || !addressResponse.walletAddress) {
-				errors.walletAddress = "Invalid ens name";
+				errors.walletAddress = "Invalid ENS name";
 			} else {
 				setAddress(addressResponse.walletAddress);
 			}
