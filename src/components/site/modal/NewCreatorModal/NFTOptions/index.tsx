@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import Text from "components/base/Text";
 import Flex from "components/layout/base/Grid/Flex";
 import Col from "components/layout/base/Grid/Col";
@@ -83,7 +83,7 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 			setFieldTouched("contractAddress", true, false);
 			return errors;
 		}
-		const contractData = await api.getContract(values.chain, values.contractAddress);
+		const contractData = await api.getContract(values.chain, values.contractAddress, values.tokenId);
 		// if (values.contractAddress !== contractAddress || values.chain !== chain) return;
 		if (contractData && contractData.tokenType) {
 			setStandardContractType(contractData.tokenType);
@@ -95,9 +95,16 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 		}
 
 		if (standardContractType === "ERC721") {
-			if (values.rightType === "specific" && !values.tokenId) {
-				errors.tokenId = "Token ID is required";
-				return errors;
+			if (values.rightType === "specific") {
+				if (!values.tokenId) {
+					errors.tokenId = "Token ID is required";
+					return errors;
+				}
+				if (values.tokenId && !contractData.token) {
+					setFieldTouched("tokenId", true, false);
+					errors.tokenId = "Token not found";
+					return errors;
+				}
 			}
 			if (values.rightType === "any" && !values.minTokens) {
 				errors.minTokens = "Token amount is required";
@@ -108,6 +115,10 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 			if (!values.tokenId) {
 				errors.tokenId = "Token ID is required";
 				return errors;
+			}
+			if (values.tokenId && !contractData.token) {
+				setFieldTouched("tokenId", true, false);
+				errors.tokenId = "Token not found";
 			}
 			if (!values.minTokens) {
 				errors.minTokens = "Token amount is required";
@@ -137,14 +148,9 @@ const NFTOptions: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate
 		},
 		validateOnBlur: true,
 		validateOnChange: true,
-		validateOnMount: true,
 		validate,
 		onSubmit,
 	});
-	useEffect(() => {
-		setFieldValue("minTokens", 1);
-		setFieldValue("tokenId", "");
-	}, [values.contractAddress]);
 
 	return (
 		<form id="nftForm" style={{

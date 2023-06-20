@@ -160,7 +160,8 @@ class ApiService {
 	}
 	async getContract(network: string, address: string, tokenId?: string): Promise<any | null > {
 		try {
-			const { data } = await apiAxios.get<LitActionConditions>(`${API_ENDPOINTS.NFT_METADATA}/${network}/${address}`);
+			// eslint-disable-next-line max-len
+			const { data } = await apiAxios.get<LitActionConditions>(tokenId ? `${API_ENDPOINTS.NFT_METADATA}/${network}/${address}/${tokenId}` : `${API_ENDPOINTS.NFT_METADATA}/${network}/${address}`);
 			return data;
 		} catch (err) {
 			return null;
