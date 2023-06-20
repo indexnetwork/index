@@ -8,43 +8,77 @@ import Select from "components/base/Select";
 import Option from "components/base/Select/Option";
 import Button from "components/base/Button";
 import Row from "components/layout/base/Grid/Row";
-import { appConfig } from "config";
 import { AccessControlCondition } from "types/entity";
+import { appConfig } from "config";
+import { useFormik } from "formik";
+import api from "services/api-service";
+import { isValidContractAddress } from "utils/helper";
 
-export interface SelectNFTOptionsProps {
-	handleBack?(): void;
+export interface IndividualWalletOptionsProps {
+	handleBack(): void;
 	handleCreate(condition: AccessControlCondition): void;
 }
 
-const IndividualWallet: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handleCreate }) => {
-	const [condition, setCondition] = useState({
-		conditionType: "evmBasic",
-		contractAddress: "",
-		standardContractType: "",
-		chain: "ethereum",
-		method: "",
-		parameters: [":userAddress"],
-		returnValueTest: {
-			comparator: "=",
-			value: "",
-		},
-	});
-	const handleChainChange = (value: string) => {
-		setCondition({ ...condition, chain: value });
-	};
+const IndividualWallet: React.VFC<IndividualWalletOptionsProps> = ({ handleBack, handleCreate }) => {
+	const [address, setAddress] = useState("");
 
-	const handleWalletAddressChange: React.ChangeEventHandler<HTMLInputElement> = ({ target }) => {
-		setCondition({ ...condition, returnValueTest: { comparator: "=", value: target.value } });
+	const validate = async (values: any) => {
+		const errors = {} as any;
+		if (values.walletAddress.endsWith(".eth")) {
+			const addressResponse = await api.getWallet(values.walletAddress);
+			if (!addressResponse.walletAddress) {
+				errors.walletAddress = "Invalid ens name";
+			} else {
+				setAddress(addressResponse.walletAddress);
+			}
+			return errors;
+		}
+		if (!isValidContractAddress(values.walletAddress)) {
+			errors.walletAddress = "Invalid address";
+			return errors;
+		}
+		setAddress(values.walletAddress);
+		return errors;
 	};
-	const handleSubmit = () => handleCreate && handleCreate(condition as AccessControlCondition);
+	const onSubmit = (values: any) => {
+		const conditions = {
+			conditionType: "evmBasic",
+			contractAddress: "",
+			standardContractType: "",
+			chain: values.chain,
+			method: "",
+			parameters: [":userAddress"],
+			returnValueTest: {
+				comparator: "=",
+				value: address,
+			},
+		};
+		return handleCreate(conditions as AccessControlCondition);
+	};
+	const {
+		setFieldValue,
+		errors, touched,
+		handleChange, handleBlur, handleSubmit,
+	} = useFormik({
+		initialValues: {
+			chain: "ethereum",
+			walletAddress: "",
+		},
+		validateOnBlur: true,
+		validateOnChange: true,
+		validate,
+		onSubmit,
+	});
 
 	return (
-		<>
+		<form id="nftForm" style={{
+			padding: 0,
+		}}>
 			<FlexRow>
 				<Col xs={12}>
 					<Flex flexDirection="column">
 						<Text theme={"primary"} size="md">Choose network:</Text>
-						<Select onChange={handleChainChange} value={"ethereum"} bordered size="lg" className={"mt-3"}>
+						<Select key="chain" onChange={(value) => setFieldValue("chain", value)} value={"ethereum"} bordered size="lg" className={"mt-3"}>
 							{
 								// eslint-disable-next-line react/jsx-key
 								Object.values(appConfig.chains).map((c) => (<Option value={c.value}>
@@ -62,11 +96,12 @@ const IndividualWallet: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handle
 						<Text theme={"primary"} size="md">Wallet address or blockchain domain (e.g. ENS):</Text>
 						<Input
 							placeholder="Address"
-							name="address"
+							name="walletAddress"
 							className="mt-3"
 							inputSize={"lg"}
-							value={condition.returnValueTest.value}
-							onChange={handleWalletAddressChange}
+							error={touched.walletAddress && errors.walletAddress ? errors.walletAddress : undefined}
+							onChange={handleChange}
+							onBlur={handleBlur}
 						/>
 					</Flex>
 				</Col>
@@ -83,13 +118,15 @@ const IndividualWallet: React.VFC<SelectNFTOptionsProps> = ({ handleBack, handle
 				<Col pullRight>
 					<Button
 						theme="primary"
+						type="submit"
 						size="lg"
 						className="mt-7 pl-8 pr-8"
-						onClick={handleSubmit}
+						disabled={Object.keys(touched).length === 0 || (Object.keys(touched).length > 0 && Object.keys(errors).length > 0)}
+						onClick={handleSubmit as any}
 					>Add rule</Button>
 				</Col>
 			</Row>
-		</>
+		</form>
 	);
 };
 

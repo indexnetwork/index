@@ -167,6 +167,14 @@ class ApiService {
 			return null;
 		}
 	}
+	async getWallet(ensName: string): Promise<any | null > {
+		try {
+			const { data } = await apiAxios.get<LitActionConditions>(`${API_ENDPOINTS.ENS}/${ensName}`);
+			return data;
+		} catch (err) {
+			return null;
+		}
+	}
 }
 
 const api = new ApiService();

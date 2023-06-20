@@ -17,4 +17,5 @@ export const API_ENDPOINTS = {
 	FIND_CONTENT: "/links/find-content",
 	SYNC_CONTENT: "/links/sync-content",
 	NFT_METADATA: "/nft",
+	ENS: "/ens",
 };
