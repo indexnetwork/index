@@ -88,7 +88,10 @@ export const getNftMetadataHandler = async (req, res) => {
         if(!contract){
             return res.status(404).json({ error: 'Contract not found' });
         }
-        contract.token = await getNftMetadataApi(chainName, tokenAddress, tokenId, resyncMetadata);
+        const tokenData = await getNftMetadataApi(chainName, tokenAddress, tokenId, resyncMetadata);
+        if(tokenData){
+            contract.token = tokenData.metadata;
+        }
         res.json(contract);
     } catch (error) {
         res.status(500).json({ error: error.message });
