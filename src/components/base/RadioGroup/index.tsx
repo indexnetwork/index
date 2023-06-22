@@ -15,13 +15,15 @@ export interface RadioGroupProps extends FlexRowProps {
 	value?: string;
 	colSize?: GridFractionType;
 	onSelectionChange?(values: string | undefined): void;
+	className?: string;
 }
 
 const RadioGroup: React.VFC<RadioGroupProps> = ({
 	items,
 	value,
-	colSize = 6,
+	colSize,
 	onSelectionChange,
+	className,
 	...rowProps
 }) => {
 	const [selected, setSelected] = useState(value);
@@ -37,14 +39,18 @@ const RadioGroup: React.VFC<RadioGroupProps> = ({
 	return (
 		<FlexRow
 			rowSpacing={2}
-			colSpacing={2}
-			rowGutter={2}
+			colSpacing={1}
 			{...rowProps}
-			className="radio-group"
+			className={cc(
+				[
+					"radio-group",
+					className || "",
+				],
+			)}
 		>
 			{
 				items.map((btn, index) => (
-					<Col key={`radioGroup_${randKey}${index}`} xs={colSize}>
+					<Col key={`radioGroup_${randKey}${index}`} {...(colSize && { xs: colSize })}>
 						<Button
 							size="md"
 							block
@@ -52,6 +58,7 @@ const RadioGroup: React.VFC<RadioGroupProps> = ({
 							value={btn.value}
 							className={cc([
 								"radio-group-button",
+								"btn-borderless",
 								value === btn.value ? "radio-group-button-selected" : "",
 							])}
 							onClick={handleClick}

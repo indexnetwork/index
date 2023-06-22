@@ -43,6 +43,7 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
+import RadioGroup from "../../components/base/RadioGroup";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -61,6 +62,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		current: 0,
 		total: 0,
 	});
+	const [interactionMode, setInteractionMode] = useState<"search" | "ask">("search");
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
@@ -253,10 +255,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												</Tabs>
 											</Col>
 										</FlexRow>
-										<FlexRow>
+										<FlexRow colSpacing={1} className="mt-2">
 											{tabKey === "index" ?
 												<>
-													<Col className="idxflex-grow-1 mr-5 mt-2">
+													<Col className="idxflex-grow-1  ">
 														<SearchInput
 															loading={loading}
 															onSearch={setSearch}
@@ -264,8 +266,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 															showClear
 															placeholder={t("pages:home.searchLink")} />
 													</Col>
-													<Col>
-														<ButtonGroup theme="clear" className="mt-2">
+													{ false && <Col>
+														<ButtonGroup theme="clear" className="">
 															<FilterPopup>
 																<Button size={"xl"} group iconButton>
 																	<IconFilter width={20} height={20} stroke="var(--gray-4)" />
@@ -277,6 +279,20 @@ const IndexDetailPage: NextPageWithLayout = () => {
 																</Button>
 															</SortPopup>
 														</ButtonGroup>
+													</Col>}
+													<Col>
+														<RadioGroup className={" px-1"} value={interactionMode} onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
+															items={[
+																{
+																	value: "search",
+																	title: "Search",
+																},
+																{
+																	value: "ask",
+																	title: "Ask",
+																},
+															]}
+														/>
 													</Col>
 												</> :
 												<></>}

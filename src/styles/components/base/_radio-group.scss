@@ -1,6 +1,7 @@
 .radio-group {
+	border: $border-base;
 	.radio-group-button {
-		@extend .px-2;
+		@extend .px-3;
 		&.btn:hover {
 			background-color: unset !important;
 		}
@@ -12,9 +13,5 @@
 				}
 			}
 		}
-	}
-
-	.tag {
-		border: $border-base;
 	}
 }
