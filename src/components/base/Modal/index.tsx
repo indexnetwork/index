@@ -72,7 +72,17 @@ const Modal = (
 			setPortal(el);
 		}
 	}, []);
+	useEffect(() => {
+		const handleEscapeKeyPress = (event: KeyboardEvent) => {
+			if (event.key === "Escape") {
+				handleClose()
+			}
+		};
 
+		document.addEventListener("keydown", handleEscapeKeyPress);
+
+		return () => document.removeEventListener("keydown", handleEscapeKeyPress);
+	});
 	useEffect(() => {
 		createPortalIfNotExists();
 
