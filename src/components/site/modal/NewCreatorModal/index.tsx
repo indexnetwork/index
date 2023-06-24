@@ -64,8 +64,11 @@ const NewCreatorModal = ({
 					<Col xs={8}>
 						<Button textAlign={"left"} theme={"card"} className={"px-4 py-6"}>
 							<IconGreenAdd width={24} height={24}></IconGreenAdd>
-							<Header theme={"gray9"} level={4} className={"my-4"}>Create New NFT (soon)</Header>
+							<Header theme={"gray9"} level={4} className={"my-4"}>Create New NFT <Text size={"xs"} className={"tag tag-soon tag-circle "}>SOON</Text></Header>
+
 							<Text theme={"gray4"} size={"sm"}>Create a new token, use as a creator rule, mint NFTs to your creators as you like.</Text>
+
+
 						</Button>
 					</Col>
 					<Col xs={4}>
@@ -77,12 +80,13 @@ const NewCreatorModal = ({
 					<Col xs={4}>
 						<Button textAlign={"left"} theme={"card"} className={"px-4 py-6"}>
 							<Header className={"mb-4"} theme={"gray9"} level={4}>DAO Members</Header>
-							<Text size={"xs"} className={"tag tag-tag tag-circle tag-outlined"}>SOON</Text>
+							<Text size={"xs"} className={"tag tag-soon tag-circle tag-outlined"}>SOON</Text>
 						</Button>
 					</Col>
 					<Col xs={4}>
 						<Button textAlign={"left"} theme={"card"} className={"px-4 py-6 "}>
-							<Header theme={"gray9"} level={4}>POAP Collector (soon)</Header>
+							<Header className="mb-4" theme={"gray9"} level={4}>POAP Collector</Header>
+							<Text size={"xs"} className={"tag tag-soon tag-circle tag-outlined"}>SOON</Text>
 						</Button>
 					</Col>
 				</FlexRow>
