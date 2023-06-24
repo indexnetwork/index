@@ -326,7 +326,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 													search={search}
 													index_id={router.query.indexId as any}
 													// onChange={handleReorderLinks}
-												/> : <Soon section="ask"></Soon>
+												/> : <div className={"pt-5"}><Soon section="ask"></Soon></div>
 											}
 
 										</Col>

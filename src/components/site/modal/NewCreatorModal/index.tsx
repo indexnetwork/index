@@ -68,7 +68,6 @@ const NewCreatorModal = ({
 
 							<Text theme={"gray4"} size={"sm"}>Create a new token, use as a creator rule, mint NFTs to your creators as you like.</Text>
 
-
 						</Button>
 					</Col>
 					<Col xs={4}>

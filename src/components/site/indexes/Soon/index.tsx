@@ -23,7 +23,10 @@ const Soon: React.VFC<SoonProps> = ({
 				<Col className="mb-7" xs={12} centerBlock style={{
 					height: 150,
 				}}>
-					<Image src="/images/tabsoon.webp" alt="tabsoon" layout="fill" objectFit='contain'/>
+					{
+						section === "ask" ? <Image src="/images/landing-5.webp" alt="tabsoon" layout="fill" objectFit='contain'/> : <Image src="/images/tabsoon.webp" alt="tabsoon" layout="fill" objectFit='contain'/>
+					}
+
 				</Col>
 				<Col className="text-center" centerBlock>
 					<Header level={4} style={{
