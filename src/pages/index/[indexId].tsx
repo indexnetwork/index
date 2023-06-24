@@ -44,6 +44,7 @@ import { ethers } from "ethers";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
 import RadioGroup from "../../components/base/RadioGroup";
+import AskInput from "../../components/base/AskInput";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -262,13 +263,18 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											{tabKey === "index" ?
 												<>
 													<Col className="idxflex-grow-1  ">
-														<SearchInput
-															loading={loading}
-															onSearch={setSearch}
-															debounceTime={400}
-															showClear
-															defaultValue={search}
-															placeholder={t("pages:home.searchLink")} />
+														{
+															interactionMode === "search" && <SearchInput
+																loading={loading}
+																onSearch={setSearch}
+																debounceTime={400}
+																showClear
+																defaultValue={search}
+																placeholder={t("pages:home.searchLink")} />
+														}
+														{
+															interactionMode === "ask" && <AskInput placeholder={t("pages:home.askLink")} />
+														}
 													</Col>
 													{ false && <Col>
 														<ButtonGroup theme="clear" className="">
@@ -303,7 +309,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										</FlexRow>
 									</Col>
 									{
-										tabKey === "index" && isCreator && <Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
+										interactionMode === "search" && tabKey === "index" && isCreator && <Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
 											<LinkInput
 												loading={crawling}
 												onLinkAdd={handleAddLink}
@@ -315,11 +321,14 @@ const IndexDetailPage: NextPageWithLayout = () => {
 								{tabKey === "index" ?
 									<FlexRow justify="center">
 										<Col xs={12} lg={9}>
-											<IndexItemList
-												search={search}
-												index_id={router.query.indexId as any}
-											// onChange={handleReorderLinks}
-											/>
+											{
+												interactionMode === "search" ? <IndexItemList
+													search={search}
+													index_id={router.query.indexId as any}
+													// onChange={handleReorderLinks}
+												/> : <Soon section="ask"></Soon>
+											}
+
 										</Col>
 									</FlexRow> : tabKey === "creators" ?
 										<FlexRow justify="center">
