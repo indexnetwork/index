@@ -43,8 +43,8 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
-import RadioGroup from "../../components/base/RadioGroup";
-import AskInput from "../../components/base/AskInput";
+import RadioGroup from "components/base/RadioGroup";
+import AskInput from "components/base/AskInput";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);

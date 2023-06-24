@@ -1,5 +1,6 @@
 .radio-group {
 	border: $border-base;
+	border-radius: $border-radius-base;
 	.radio-group-button {
 		@extend .px-3;
 		&.btn:hover {
@@ -7,9 +8,10 @@
 		}
 		&.radio-group-button-selected {
 			&.btn {
-				background-color: $gray-8;
+				background-color: $gray-6;
+				color: $main-color;
 				&:hover {
-					background-color: $gray-8 !important;
+					background-color: $gray-6 !important;
 				}
 			}
 		}
