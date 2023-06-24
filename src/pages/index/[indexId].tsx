@@ -187,6 +187,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 				current: 0,
 				total: 0,
 			});
+		}
+		if (progress.total === 0) {
 			setCrawling(false);
 		}
 	}, [progress]);
