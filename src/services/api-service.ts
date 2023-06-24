@@ -119,7 +119,7 @@ class ApiService {
 			const { data } = await apiAxios.get(`${API_ENDPOINTS.INDEXES}/${indexId}`);
 			return data as Indexes;
 		} catch (err: any) {
-			//throw new Error(err.message);
+			// throw new Error(err.message);
 		}
 	}
 	async crawlLink(url: string): Promise<Link | null> {

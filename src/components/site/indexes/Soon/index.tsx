@@ -14,7 +14,7 @@ const Soon: React.VFC<SoonProps> = ({
 }) => {
 	if (section === "creators") {
 		text = `This section will soon allow you to curate together, through NFTs.`;
-	} else if (section === "audiences") {
+	} else if (section === "audience") {
 		text = `This section will soon allow you to monetize your index through NFT-based access rules.`;
 	}
 	return (

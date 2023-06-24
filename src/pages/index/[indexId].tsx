@@ -254,7 +254,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 												<Tabs activeKey={tabKey} onTabChange={setTabKey}>
 													<TabPane enabled={true} tabKey={"index"} title={"Index"} />
 													<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
-													<TabPane enabled={true} tabKey={"audiences"} title={"Audiences"} />
+													<TabPane enabled={true} tabKey={"audience"} title={"Audience"} />
 												</Tabs>
 											</Col>
 										</FlexRow>
