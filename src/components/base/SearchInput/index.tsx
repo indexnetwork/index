@@ -1,5 +1,5 @@
 import React, {
-	useCallback, useState,
+	useCallback, useEffect, useState,
 } from "react";
 import { useTranslation } from "next-i18next";
 import debounce from "lodash.debounce";
@@ -54,6 +54,10 @@ const SearchInput = (
 		setQuery("");
 		handleOnSearch("");
 	};
+
+	useEffect(() => {
+		setQuery(defaultValue);
+	}, [defaultValue]);
 
 	return (
 		<Input

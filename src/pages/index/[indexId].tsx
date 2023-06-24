@@ -144,6 +144,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			current: 0,
 			total: urls.length,
 		});
+		setSearch("");
 		// TODO Allow for syntax
 		// eslint-disable-next-line no-restricted-syntax
 		for await (const url of urls) {
@@ -266,6 +267,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 															onSearch={setSearch}
 															debounceTime={400}
 															showClear
+															defaultValue={search}
 															placeholder={t("pages:home.searchLink")} />
 													</Col>
 													{ false && <Col>
