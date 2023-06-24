@@ -70,6 +70,10 @@ const IndexesPage: NextPageWithLayout = () => {
 		router.push(`/${itm.id}`);
 	}, []);
 
+	useEffect(() => {
+		search && setSearch("");
+	}, [router]);
+
 	const handleUserIndexToggle = async (index_id: string, type: string, op: string) => {
 		const newState = { ...state };
 
@@ -183,6 +187,7 @@ const IndexesPage: NextPageWithLayout = () => {
 				<SearchInput
 					loading={loading}
 					onSearch={setSearch}
+					defaultValue={search}
 					debounceTime={400}
 					showClear
 				/>
