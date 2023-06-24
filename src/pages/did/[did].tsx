@@ -189,6 +189,7 @@ const IndexesPage: NextPageWithLayout = () => {
 					onSearch={setSearch}
 					defaultValue={search}
 					debounceTime={400}
+					placeholder={t("pages:home.searchHome")}
 					showClear
 				/>
 			</Col>

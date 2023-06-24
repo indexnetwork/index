@@ -67,7 +67,6 @@ const SearchInput = (
 			addOnAfter={loading ? (<Spin active={true} thickness="light" theme="secondary" />) :
 				(!disabled && showClear && query && <IconClose onClick={handleClear} style={{ cursor: "pointer" }} />)
 			}
-			placeholder={t("pages:home.searchPh")}
 			onChange={handleChange}
 			value={query}
 		/>
