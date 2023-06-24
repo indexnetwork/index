@@ -93,11 +93,13 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			index_id: index.id, // TODO Shame
 			did,
 		} as GetUserIndexesRequestBody) as UserIndexResponse;
-		setIndex({
- 			...index,
-			is_in_my_indexes: !!userIndexes.my_indexes, // TODO Shame
-			is_starred: !!userIndexes.starred,
-		} as Indexes);
+		if (userIndexes) {
+			setIndex({
+				...index,
+				is_in_my_indexes: !!userIndexes.my_indexes, // TODO Shame
+				is_starred: !!userIndexes.starred,
+			} as Indexes);
+		}
 		setLoading(false);
 	};
 	const handleCollabActionChange = async (CID: string) => {
