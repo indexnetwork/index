@@ -166,7 +166,7 @@ export const updateLinkContent = async (url, content) => {
         conflicts: "proceed",
         script: {
             lang: 'painless',
-            source: 'ctx._source.content = params.content',
+            source: 'ctx._source.link.content = params.content',
             params: {
                 content
             }
