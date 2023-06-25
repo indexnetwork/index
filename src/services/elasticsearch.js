@@ -226,7 +226,7 @@ const linksQuery = (
             });
 
             params.highlight = {
-                max_analyzed_offset: 2000,
+                max_analyzed_offset: 20000,
                 fields: {
                     "link.title": {
                         number_of_fragments: 0,
