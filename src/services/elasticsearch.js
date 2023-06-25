@@ -109,6 +109,9 @@ const indexesWithLinksQuery = (
         params.collapse.inner_hits.push({
             name: "links",
             size: links_size,
+            _source: {
+                excludes: ["link.content"],
+            },
             highlight: {
                 fields: {
                     "index.title": {
@@ -271,14 +274,17 @@ const transformIndexSearch = (
                 ...h._source?.index
             }
             if(hasSearchTerm){
-                mapped.highlight= h.highlight;
-                mapped.links= h.inner_hits?.links?.hits?.hits?.map((ih) => (
-                    {
+                mapped.highlight = h.highlight;
+                mapped.links= h.inner_hits?.links?.hits?.hits?.map((ih) => {
+                    const mappedValues = Object.entries(ih.highlight).map(([key, value]) => [key, value.join("...")]);
+                    const mappedObj = Object.fromEntries(mappedValues);
+                    return {
                         ..._.omit(ih._source, "index"),
-                        highlight: ih.highlight,
-                    }
-                ));
+                        highlight: mappedObj,
+                    };
+                });
             }
+
             return mapped
 
         });
