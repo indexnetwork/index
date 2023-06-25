@@ -179,7 +179,7 @@ export const updateLinkContent = async (url, content) => {
                             "query": url,
                             "type": "bool_prefix",
                             "fields": [
-                                "url"
+                                "link.url"
                             ],
                             "minimum_should_match": "100%"
                         }
