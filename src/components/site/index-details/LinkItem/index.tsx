@@ -30,14 +30,12 @@ export interface LinkItemProps {
 	snapshot?: DraggableStateSnapshot;
 	onChange?(val: IndexLink[]): void;
 	search?: boolean;
-	highlight?: any;
 }
 
 const LinkItem: React.VFC<LinkItemProps> = ({
 	index_link,
 	provided,
 	snapshot,
-	highlight,
 	search = false,
 	onChange,
 }) => {
@@ -112,7 +110,7 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 							className="idxflex-grow-1"
 						>
 							<a target="_blank" rel="noreferrer" href={link?.url}>
-								<Text className={cm.title} fontWeight={700} dangerouslySetInnerHTML={{ __html: sanitize((highlight && highlight["link.title"]) ? highlight["link.title"] : link?.title) }}></Text>
+								<Text className={cm.title} fontWeight={700} dangerouslySetInnerHTML={{ __html: sanitize((index_link.highlight && index_link.highlight["link.title"]) ? index_link.highlight["link.title"] : link?.title as string) }}></Text>
 							</a>
 						</Col>
 						{
@@ -182,9 +180,9 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 					</ a>
 				</Col>
 				{
-					search && highlight && highlight["link.content"] && (
+					search && index_link.highlight && index_link.highlight["link.content"] && (
 						<Col className="mt-5">
-							<Text className="listItem" theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize(highlight["link.content"]) }}></Text>
+							<Text className="listItem" theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize(index_link.highlight["link.content"]) }}></Text>
 						</Col>
 					)
 				}

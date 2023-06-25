@@ -124,7 +124,6 @@ const IndexItemList: React.VFC<LinkListProps> = ({
 									snapshot={snapshot!}
 									search={!!search}
 									index_link={item}
-									highlight={item.highlight}
 									// onChange={handleLinksChange}
 								/>}
 								divided

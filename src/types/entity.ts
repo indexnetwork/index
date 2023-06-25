@@ -37,6 +37,13 @@ export type IndexLink = {
   createdAt?: string;
   updatedAt?: string;
   deletedAt?: string;
+  highlight?: {
+    title?: string;
+    "link.content"?: string;
+    "link.tags"?: string;
+    "link.url"?: string;
+    "link.title"?: string;
+  }
 };
 
 /**
@@ -74,13 +81,7 @@ export type Link = {
   deletedAt?: string;
   images?: string[]
   favorite?: boolean;
-  tags?: string[]
-  highlight?: {
-    title?: string
-    content?: string
-    tags?: string
-    url?: string
-  }
+  tags?: string[];
 };
 
 /**
