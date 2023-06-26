@@ -111,6 +111,9 @@ async function start() {
                 "analyzer": "searchable",
                 "max_shingle_size": 3
               },
+              "url_exact_match": {
+                "type": "keyword",
+              },
               "favicon": {
                 "type": "keyword"
               },

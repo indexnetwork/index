@@ -93,7 +93,7 @@ export const createIndexLink = async (indexLinkMsg) => {
 
     let indexLink = await getIndexLinkById(indexLinkMsg.id)
     delete indexLink.link.content // TODO fix stored in the indexer only, for now.
-
+    indexLink.url_exact_match = indexLink.url;
     await client.update({
         index: config.indexName,
         id: indexLink.id,
@@ -108,7 +108,7 @@ export const updateIndexLink = async (indexLinkMsg) => {
 
     let indexLink = await getIndexLinkById(indexLinkMsg.id)
     delete indexLink.link.content  // TODO fix stored in the indexer only, for now.
-
+    indexLink.url_exact_match = indexLink.url;
     await client.update({
         index: config.indexName,
         id: indexLink.id,
@@ -128,6 +128,7 @@ export const updateLink = async (linkMsg) => {
     console.log("updateLink", linkMsg)
     const link = await getLinkById(linkMsg.id)
     delete link.content
+    link.url_exact_match = link.url;
     //Index links
     await client.updateByQuery({
         index: config.indexName,
@@ -175,12 +176,8 @@ export const updateLinkContent = async (url, content) => {
             bool: {
                 must: [
                     {
-                        "multi_match": {
-                            "query": url,
-                            "type": "phrase",
-                            "fields": [
-                                "link.url"
-                            ],
+                        term: {
+                            "url_exact_match": url
                         }
                     },
                     {
