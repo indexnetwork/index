@@ -177,11 +177,10 @@ export const updateLinkContent = async (url, content) => {
                     {
                         "multi_match": {
                             "query": url,
-                            "type": "bool_prefix",
+                            "type": "phrase",
                             "fields": [
                                 "link.url"
                             ],
-                            "minimum_should_match": "100%"
                         }
                     },
                     {

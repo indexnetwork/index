@@ -72,7 +72,7 @@ export const getQueue = async () => {
 }
 
 
-export const  getMetadata = async (url) => {
+export const getMetadata = async (url) => {
 
 	let results = await fetch(`https://iframe.ly/api/iframely?api_key=${process.env.IFRAMELY_API_KEY}&url=${url}&ssl=1&title=1`, {
 		method: 'GET',
