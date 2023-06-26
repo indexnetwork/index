@@ -177,7 +177,7 @@ export const updateLinkContent = async (url, content) => {
                 must: [
                     {
                         term: {
-                            "url_exact_match": url
+                            "link.url_exact_match": url
                         }
                     },
                     {
