@@ -93,7 +93,7 @@ export const createIndexLink = async (indexLinkMsg) => {
 
     let indexLink = await getIndexLinkById(indexLinkMsg.id)
     delete indexLink.link.content // TODO fix stored in the indexer only, for now.
-    indexLink.link.url_exact_match = indexLink.url;
+    indexLink.url_exact_match = indexLink.url;
     await client.update({
         index: config.indexName,
         id: indexLink.id,
@@ -108,7 +108,7 @@ export const updateIndexLink = async (indexLinkMsg) => {
 
     let indexLink = await getIndexLinkById(indexLinkMsg.id)
     delete indexLink.link.content  // TODO fix stored in the indexer only, for now.
-    indexLink.link.url_exact_match = indexLink.url;
+    indexLink.url_exact_match = indexLink.url;
     await client.update({
         index: config.indexName,
         id: indexLink.id,
