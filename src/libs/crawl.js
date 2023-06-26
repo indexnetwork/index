@@ -90,12 +90,12 @@ export const getMetadata = async (url) => {
 		}
 	}
 
-	if(response.meta.site && response.meta.title && response.meta.title.length > 0 && !response.meta.title.includes(response.meta.site)){
-		response.meta.title = `${response.meta.site} | ${response.meta.title}`
-	}else if(response.meta.site){
-		response.meta.title = response.meta.site
+	const site = response.meta.site || (new URL(url)).hostname;
+
+	if(response.meta.title && response.meta.title.length > 0 && !response.meta.title.includes(response.meta.site)){
+		response.meta.title = `${site} | ${response.meta.title}`
 	}else{
-		response.meta.title = (new URL(url)).hostname
+		response.meta.title = site;
 	}
 
 	if(response.links && response.links.icon){
