@@ -7,7 +7,7 @@ import IconGithub from "components/base/Icon/IconGithub";
 const SiteFooter = () => (
 	<Footer>
 		<FooterMenu className="mt-lg-8">
-			<a href="https://discord.gg/G7UYCXfR9p" target="_blank" rel="noreferrer">
+			<a href="https://discord.gg/wvdxP6XvYu" target="_blank" rel="noreferrer">
 				<IconDiscord fill="white" />
 			</a>
 			<a href="https://twitter.com/indexas" target="_blank" rel="noreferrer">
