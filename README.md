@@ -55,6 +55,7 @@ We use NFTs as creator roles for broader contexts with large groups. index.as is
 - [x] Creator Monetization: Utilize membership NFTs to earn revenue with complete autonomy.
 - [ ] Launch Mainnet
 - [ ] Enable 3rd-party Algorithms: Integrate with the LLMs, search algorithms.
+- [ ] Integrations (eg. zapier)
 - [ ] Token curated indexes
 - [x] New Schemas: Expand the supported schemas:
 	- [x] Links
