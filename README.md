@@ -37,7 +37,7 @@ index.as allows creators to make contextual discovery engines from their informa
 We use NFTs as creator roles for broader contexts with large groups. index.as is useful for creators​, communities, DAOs, brands, curators, researchers, enthusiasts.
 
 ## Table of contents
-1. [Roadmap](#roadmap)
+1. [Features](#features)
 2. [Examples](#examples)
 3. [Architecture overview](#architecture-overview)
 4. [Components](#components)
