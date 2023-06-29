@@ -13,7 +13,7 @@ const SiteFooter = () => (
 			<a href="https://twitter.com/indexas" target="_blank" rel="noreferrer">
 				<IconTwitter fill="white" />
 			</a>
-			<a href="https://github.com/indexas" target="_blank" rel="noreferrer">
+			<a href="https://github.com/indexas/indexas" target="_blank" rel="noreferrer">
 				<IconGithub fill="white" />
 			</a>
 			{/* <a href="https://telegram.com/indexas" target="_blank" rel="noreferrer">
