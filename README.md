@@ -71,10 +71,15 @@ We use NFTs as creator roles for broader contexts with large groups. index.as is
 
 ## Examples
 !TODO
-## Architecture Overview
-![dataflow](https://dev.index.as/images/dataflow-black.png#gh-dark-mode-only)
-![dataflow](https://dev.index.as/images/dataflow-white.png#gh-light-mode-only)
 
+
+## Architecture Overview
+
+<picture>
+	<source media="(prefers-color-scheme: dark)" srcset="https://dev.index.as/images/dataflow-black.png">
+	<source media="(prefers-color-scheme: light)" srcset="https://dev.index.as/images/dataflow-white.png">
+	<img alt="Dataflow" src="https://dev.index.as/images/dataflow-white.png">
+</picture>
 
 ## Components
 
