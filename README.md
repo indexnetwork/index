@@ -72,7 +72,8 @@ We use NFTs as creator roles for broader contexts with large groups. index.as is
 ## Examples
 !TODO
 ## Architecture Overview
-![enter image description here](https://forum.ceramic.network/uploads/default/original/1X/d7bbbdc792bfe63680f2e0ddac43928af27b6292.png)
+![dataflow](https://dev.index.as/images/dataflow-black.png#gh-dark-mode-only)
+![dataflow](https://dev.index.as/images/dataflow-white.png#gh-light-mode-only)
 
 
 ## Components
