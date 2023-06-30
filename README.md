@@ -278,4 +278,4 @@ Index.as leverages the power of several open protocols to enhance its capabiliti
 -   **[Twitter](https://twitter.com/indexas)**  for the latest updates on the product and published blogs.
 
 ## License
-index.as is under the MIT license. See the  [LICENSE](https://github.com/indexas/indexas/blob/main/LICENSE.md)  for more information.
+index.as is under the MIT license. See the  [LICENSE](https://github.com/indexas/indexas/blob/main/LICENSE)  for more information.
