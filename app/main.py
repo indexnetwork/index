@@ -27,9 +27,10 @@ import openai #
 
 import redis
 
-redisClient = redis.Redis(host='localhost', port=6379, db=0)
-
 load_dotenv()
+
+redisClient = redis.Redis.from_url(os.environ["REDIS_CONNECTION_STRING"]);
+
 
 origins = [
     "http://localhost",
@@ -65,6 +66,7 @@ def get_index(index_id: str):
     collection = chroma_client.get_or_create_collection(name="index-" + index_id)
     vector_store = ChromaVectorStore(chroma_collection=collection)
     index = VectorStoreIndex.from_vector_store(vector_store=vector_store, service_context=service_context)
+    
     return index
 
 class ChatHistory(BaseModel):
@@ -84,7 +86,7 @@ class Composition(BaseModel):
 def add(index_id, link: Link):
     
     index = get_index(index_id=index_id)
-
+    
     UnstructuredURLLoader = download_loader("UnstructuredURLLoader")
     loader = UnstructuredURLLoader(urls=[link.url])
     kb_data = loader.load()
@@ -117,6 +119,7 @@ async def query(index_id, prompt: Prompt):
 async def chat_stream(index_id, chat_history: ChatHistory):
 
     index = get_index(index_id=index_id)
+
     chat_engine = index.as_chat_engine(streaming=True, verbose=True)
 
     messages = chat_history.messages
@@ -160,8 +163,10 @@ async def compose(c: Composition):
     index_ids = [item.rstrip(":my_indexes") for item in id_resp]
     
     indexes = list(map(lambda index_id: get_index(index_id=index_id), index_ids))
-    summaries = redisClient.hmget("summaries", index_ids)
+    indexes = [get_index(index_id=index_id) for index_id in index_ids if get_index(index_id=index_id)]
 
+    summaries = redisClient.hmget("summaries", index_ids)
+    
     graph = ComposableGraph.from_indices(
         ListIndex,
         indexes,
