@@ -60,4 +60,4 @@ jobs:
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/llm-indexer api=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/llm-indexer:${{ steps.build-time.outputs.time }} --namespace web3-${GITHUB_REF#refs/heads/}
+          kubectl set image deployment/llm-indexer llm-indexer=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/llm-indexer:${{ steps.build-time.outputs.time }} --namespace web3-${GITHUB_REF#refs/heads/}
