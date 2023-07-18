@@ -63,7 +63,7 @@ service_context = ServiceContext.from_defaults(llm_predictor=llm_predictor)
 
 
 def get_index(index_id: str):
-    collection = chroma_client.get_or_create_collection(name="index-" + index_id)
+    collection = chroma_client.get_or_create_collection(name=index_id)
     vector_store = ChromaVectorStore(chroma_collection=collection)
     index = VectorStoreIndex.from_vector_store(vector_store=vector_store, service_context=service_context)
     
