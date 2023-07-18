@@ -106,17 +106,17 @@ def remove(index_id: str, link: Link):
 
 
 @app.post("/index/{index_id}/prompt")
-async def query(index_id, prompt: Prompt):
+def query(index_id, prompt: Prompt):
     index = get_index(index_id=index_id)
-    response = index.as_query_engine(streaming=True).query(prompt.prompt)
-    # return JSONResponse(content={
-    #     "response": response.response,
-    #     "sources": [{"id": s.node.id_, "url": s.node.metadata.get("source")} for s in response.source_nodes]
-    # })
-    return StreamingResponse(response.response_gen, media_type='text/event-stream')
+    response = index.as_query_engine().query(prompt.prompt)
+    return JSONResponse(content={
+        #"sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.sources]
+        "response": response.response
+    })
+    #return StreamingResponse(response.response_gen, media_type='text/event-stream')
 
 @app.post("/index/{index_id}/chat_stream")
-async def chat_stream(index_id, chat_history: ChatHistory):
+def chat_stream(index_id, chat_history: ChatHistory):
 
     index = get_index(index_id=index_id)
 
@@ -148,15 +148,14 @@ async def chat(index_id, chat_history: ChatHistory):
     last_message = messages[-1]
 
     response = chat_engine.chat(message=last_message.content, chat_history=messages)
-
     return JSONResponse(content={
-        "response": response.response,
-        "sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.source_nodes]
+        #"sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.sources]
+        "response": response.response
     })
 
 
 @app.post("/compose")
-async def compose(c: Composition):
+def compose(c: Composition):
 
 
     id_resp = redisClient.hkeys("user_indexes:by_did:" + c.did.lower())
@@ -176,8 +175,8 @@ async def compose(c: Composition):
     query_engine = graph.as_query_engine()
     response = query_engine.query(c.prompt)
     return JSONResponse(content={
-        "response": response.response,
-        "sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.source_nodes]
+        #"sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.source_nodes],                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+        "response": response.response
     })
       
 
