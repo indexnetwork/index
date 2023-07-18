@@ -92,7 +92,7 @@ export const updateIndex = async (indexMsg) => {
 }
 export const createIndexLink = async (indexLinkMsg) => {
     console.log("createIndexLink", indexLinkMsg)
-
+    let indexLink = await getIndexLinkById(indexLinkMsg.id)
     await axios.post(`http://llm-indexer/index/${indexLink.indexId}/links`, {url: indexLink.link.url})
 
     delete indexLink.link.content // TODO fix stored in the indexer only, for now.
