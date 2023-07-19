@@ -74,8 +74,15 @@ app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_in
 app.post('/ask/did/:did', validator.body(askSchema), async (req, res) => {
   let { prompt } = req.body;
   const { did } = req.params;
-  let resp = await axios.post(`http://llm-indexer/compose`, {did, prompt})
-  res.json(resp.data)
+  try{
+    let resp = await axios.post(`http://llm-indexer.web3-dev/compose`, {did, prompt})
+    res.json(resp.data)
+  } catch (error) {
+    // Handle the exception
+    console.error('An error occurred:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+
 
 })
 app.post('/ask/index/:id', validator.body(askSchema), async (req, res) => {
