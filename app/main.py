@@ -159,7 +159,8 @@ def compose(c: Composition):
 
 
     id_resp = redisClient.hkeys("user_indexes:by_did:" + c.did.lower())
-    index_ids = [item.rstrip(":my_indexes") for item in id_resp]
+    
+    index_ids = [item.decode("utf-8").rstrip(":my_indexes") for item in id_resp]
     
     indexes = list(map(lambda index_id: get_index(index_id=index_id), index_ids))
     indexes = [get_index(index_id=index_id) for index_id in index_ids if get_index(index_id=index_id)]
