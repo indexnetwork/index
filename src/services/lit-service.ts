@@ -47,6 +47,7 @@ class LitService {
 	}
 
 	async hasOriginNFT() {
+		return true;
 		if (localStorage.getItem("hasOrigin")) {
 			return true;
 		}
