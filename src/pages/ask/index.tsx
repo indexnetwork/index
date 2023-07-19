@@ -23,8 +23,6 @@ import TabPane from "components/base/Tabs/TabPane";
 import IndexItem from "components/site/indexes/IndexItem";
 import { useCeramic } from "hooks/useCeramic";
 import NoIndexes from "components/site/indexes/NoIndexes";
-import AskInput from "../../components/base/AskInput";
-import RadioGroup from "../../components/base/RadioGroup";
 
 export interface IndexListState {
 	skip: number,
@@ -43,12 +41,10 @@ const IndexesPage: NextPageWithLayout = () => {
 	const [loading, setLoading] = useState(false);
 	const { did } = useOwner();
 
-	const [askResponse, setAskResponse] = useState("");
-
 	const [init, setInit] = useState(true);
 	const [tabKey, setTabKey] = useState("my_indexes");
 	const [hasUserIndex, setHasUserIndex] = useState({ my_indexes: false, starred: false });
-	const [interactionMode, setInteractionMode] = useState<"search" | "ask">("search");
+
 	const [state, setState] = useState<MultipleIndexListState>({
 		my_indexes: {
 			skip: 0,
@@ -69,15 +65,6 @@ const IndexesPage: NextPageWithLayout = () => {
 	const take = 10;
 	const personalCeramic = useCeramic();
 	const router = useRouter();
-
-	const handleAsk = async (prompt: string) => {
-		setAskResponse("");
-		const pp = `use all indexes in your response. ${prompt}. mention Near and Composedb seperatly in your responses, separately`;
-		const res = await api.askDID(did!, pp) as any;
-		if(res && res.response){
-			setAskResponse(res.response!);
-		}
-	};
 
 	const handleClick = useCallback((itm: Indexes) => async () => {
 		router.push(`/${itm.id}`);
@@ -192,107 +179,75 @@ const IndexesPage: NextPageWithLayout = () => {
 			rowSpacing={3}
 			justify="center"
 		>
-
 			<Col
 				xs={12}
 				lg={9}
 				centerBlock
 			>
-				<FlexRow colSpacing={1}>
-					<Col
-						className="idxflex-grow-1"
-					>
-						{
-							interactionMode === "search" && <SearchInput
-								loading={loading}
-								onSearch={setSearch}
-								debounceTime={400}
-								showClear
-								defaultValue={search}
-								placeholder={t("pages:home.searchHome")} />
-						}
-						{
-							interactionMode === "ask" && <AskInput onEnter={handleAsk} placeholder={t("pages:home.askHome")} />
-						}
-					</Col>
-					<Col>
-						<RadioGroup className={" px-1"} value={interactionMode} onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
-							items={[
-								{
-									value: "search",
-									title: "Search",
-								},
-								{
-									value: "ask",
-									title: "Ask",
-								},
-							]}
-						/>
+				<SearchInput
+					loading={loading}
+					onSearch={setSearch}
+					defaultValue={search}
+					debounceTime={400}
+					placeholder={t("pages:home.searchHome")}
+					showClear
+				/>
+			</Col>
+			<Col xs={12} lg={9}>
+				<FlexRow>
+					<Col className="idxflex-grow-1 mb-4">
+						<Tabs activeKey={tabKey} onTabChange={setTabKey}>
+							<TabPane enabled={true} tabKey={"my_indexes"} title={`My Indexes (${state.my_indexes?.totalCount || 0})`} />
+							<TabPane enabled={true} tabKey={"starred"} title={`Starred (${state.starred?.totalCount || 0})`} />
+						</Tabs>
 					</Col>
 				</FlexRow>
+				{tabKey === "my_indexes" ? (
+					state.my_indexes && state.my_indexes.indexes?.length! > 0 ? <>
+						<InfiniteScroll
+							initialLoad={false}
+							hasMore={state.my_indexes?.hasMore}
+							loadMore={getData}
+							marginHeight={50}
+						>
+							<List
+								data={state.my_indexes?.indexes || []}
+								listClass="index-list"
+								render={(itm: Indexes) => <IndexItem
+									hasSearch={!!search}
+									onClick={handleClick(itm)}
+									isOwner={did === itm.ownerDID?.id}
+									userIndexToggle={handleUserIndexToggle}
+									index={itm}
+								/>}
+								divided
+							/>
+						</InfiniteScroll>
+					</> : <NoIndexes hasIndex={hasUserIndex.my_indexes} search={search} tabKey={tabKey} />
+				) : (
+					state.starred && state.starred.indexes?.length! > 0 ? <>
+						<InfiniteScroll
+							initialLoad={false}
+							hasMore={state.starred?.hasMore}
+							loadMore={getData}
+							marginHeight={50}
+						>
+							<List
+								data={state.starred?.indexes || []}
+								listClass="index-list"
+								render={(itm: Indexes) => <IndexItem
+									hasSearch={!!search}
+									onClick={handleClick(itm)}
+									isOwner={did === itm.ownerDID?.id}
+									userIndexToggle={handleUserIndexToggle}
+									index={itm}
+								/>}
+								divided
+							/>
+						</InfiniteScroll>
+					</> : <NoIndexes hasIndex={hasUserIndex.starred} search={search} tabKey={tabKey} />
+				)}
 			</Col>
-			{
-				interactionMode === "ask" && <Col xs={12} lg={9}>
-					{askResponse}
-				</Col>
-			}
-			{
-				interactionMode === "search" && <Col xs={12} lg={9}>
-					<FlexRow>
-						<Col className="idxflex-grow-1 mb-4">
-							<Tabs activeKey={tabKey} onTabChange={setTabKey}>
-								<TabPane enabled={true} tabKey={"my_indexes"} title={`My Indexes (${state.my_indexes?.totalCount || 0})`} />
-								<TabPane enabled={true} tabKey={"starred"} title={`Starred (${state.starred?.totalCount || 0})`} />
-							</Tabs>
-						</Col>
-					</FlexRow>
-					{tabKey === "my_indexes" ? (
-						state.my_indexes && state.my_indexes.indexes?.length! > 0 ? <>
-							<InfiniteScroll
-								initialLoad={false}
-								hasMore={state.my_indexes?.hasMore}
-								loadMore={getData}
-								marginHeight={50}
-							>
-								<List
-									data={state.my_indexes?.indexes || []}
-									listClass="index-list"
-									render={(itm: Indexes) => <IndexItem
-										hasSearch={!!search}
-										onClick={handleClick(itm)}
-										isOwner={did === itm.ownerDID?.id}
-										userIndexToggle={handleUserIndexToggle}
-										index={itm}
-									/>}
-									divided
-								/>
-							</InfiniteScroll>
-						</> : <NoIndexes hasIndex={hasUserIndex.my_indexes} search={search} tabKey={tabKey} />
-					) : (
-						state.starred && state.starred.indexes?.length! > 0 ? <>
-							<InfiniteScroll
-								initialLoad={false}
-								hasMore={state.starred?.hasMore}
-								loadMore={getData}
-								marginHeight={50}
-							>
-								<List
-									data={state.starred?.indexes || []}
-									listClass="index-list"
-									render={(itm: Indexes) => <IndexItem
-										hasSearch={!!search}
-										onClick={handleClick(itm)}
-										isOwner={did === itm.ownerDID?.id}
-										userIndexToggle={handleUserIndexToggle}
-										index={itm}
-									/>}
-									divided
-								/>
-							</InfiniteScroll>
-						</> : <NoIndexes hasIndex={hasUserIndex.starred} search={search} tabKey={tabKey} />
-					)}
-				</Col>
-			}
 		</FlexRow>
 	</PageContainer>;
 };

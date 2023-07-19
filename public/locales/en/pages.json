@@ -4,6 +4,7 @@
 		"tab2Ttl": "Shared with you ({{count}})",
 		"searchHome": "Search in your indexes",
 		"searchLink": "Search in this index",
-		"askLink": "Ask to your index"
+		"askLink": "Ask to your index",
+		"askHome": "Ask to your indexes"
 	}
 }

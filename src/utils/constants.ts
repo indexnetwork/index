@@ -7,6 +7,8 @@ export const BREAKPOINTS = {
 };
 
 export const API_ENDPOINTS = {
+	ASK_DID: "/ask/did",
+	ASK_INDEX: "/ask/index",
 	INDEXES: "/indexes",
 	SEARCH_DID: "/search/did",
 	SEARCH_LINKS: "/search/links",
