@@ -19,6 +19,7 @@ import { getQueue, getMetadata } from '../libs/crawl.js'
 
 import express from 'express';
 import {getWalletByENSHandler} from "../libs/infura.js";
+import axios from "axios";
 
 const app = express()
 const port = process.env.PORT || 3001;
@@ -37,6 +38,7 @@ const didSearchSchema = Joi.object({
   take: Joi.number().default(10),
   links_size: Joi.number().max(100)
 })
+
 
 const indexSearchSchema = Joi.object({
   index_ids: Joi.array().items(Joi.string()).min(1).required(),
@@ -59,10 +61,26 @@ const userIndexSchema = Joi.object({
   index_id: Joi.string().min(40).required(),
 })
 
+
+const didAskSchema = Joi.object({
+  did: Joi.string().required(),
+  prompt: Joi.string().min(1).default(false),
+})
+
 app.post('/search/did', validator.body(didSearchSchema), search.did)
 app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
 app.post('/search/links', validator.body(linkSearchSchema), search.link)
 app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_index)
+
+app.post('/ask/did', validator.body(didAskSchema), async (req, res) => {
+
+  let { did, prompt } = req.query;
+
+  let resp = await axios.post(`http://llm-indexer/compose`, {did, prompt})
+  res.json(response.data)
+
+})
+
 
 app.get('/indexes/:id', composedb.get_index)
 app.get('/index_link/:id', composedb.get_index_link)
