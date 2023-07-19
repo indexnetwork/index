@@ -62,8 +62,7 @@ const userIndexSchema = Joi.object({
 })
 
 
-const didAskSchema = Joi.object({
-  did: Joi.string().required(),
+const askSchema = Joi.object({
   prompt: Joi.string().min(1).default(false),
 })
 
@@ -72,12 +71,18 @@ app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
 app.post('/search/links', validator.body(linkSearchSchema), search.link)
 app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_index)
 
-app.post('/ask/did', validator.body(didAskSchema), async (req, res) => {
-
-  let { did, prompt } = req.query;
-
+app.post('/ask/did/:did', validator.body(askSchema), async (req, res) => {
+  let { prompt } = req.body;
+  const { did } = req.params;
   let resp = await axios.post(`http://llm-indexer/compose`, {did, prompt})
-  res.json(response.data)
+  res.json(resp.data)
+
+})
+app.post('/ask/index/:id', validator.body(askSchema), async (req, res) => {
+  let { prompt } = req.body;
+  const { id } = req.params;
+  let resp = await axios.post(`http://llm-indexer/index/${id}/prompt`, {prompt})
+  res.json(resp.data)
 
 })
 
