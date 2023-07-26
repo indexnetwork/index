@@ -34,15 +34,15 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 						<AppContextProvider>
 							<Head>
 								<link rel="shortcut icon" href="/favicon-white.png" />
-								<title>index.as | The human bridge between context and content.</title>
-								<meta name="title" content="index.as | The human bridge between context and content." />
+								<title>index.network | The human bridge between context and content.</title>
+								<meta name="title" content="index.network | The human bridge between context and content." />
 								<meta name="description" content="Create and monetize discovery engines." />
 
 								<meta property="twitter:card" content="summary_large_image" />
-								<meta property="twitter:url" content="https://index.as" />
-								<meta property="twitter:title" content="index.as | The human bridge between context and content." />
+								<meta property="twitter:url" content="https://index.network" />
+								<meta property="twitter:title" content="index.network | The human bridge between context and content." />
 								<meta property="twitter:description" content="Create and monetize discovery engines." />
-								<meta property="twitter:image" content="https://testnet.index.as/images/bridge.jpg" />
+								<meta property="twitter:image" content="https://index.network/images/bridge.jpg" />
 
 								<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />
 								<link rel="preload" as="font" href="/fonts/Freizeit-Bold.woff2" type="font/woff2" crossOrigin="anonymous" />

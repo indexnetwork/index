@@ -31,8 +31,8 @@
 </h4>
 
 
-## About index.as
-index.as allows creators to make contextual discovery engines from their information. It enables data-ownership, collaboration, and monetization to form discovery ecosystem as a network.  It cultivates greater participation in decentralized discovery and creates diverse and inclusive ecosystem.
+## About index.network
+index.network allows creators to make contextual discovery engines from their information. It enables data-ownership, collaboration, and monetization to form discovery ecosystem as a network.  It cultivates greater participation in decentralized discovery and creates diverse and inclusive ecosystem.
 
 We use NFTs as creator roles for broader contexts with large groups. index.as is useful for creators​, communities, DAOs, brands, curators, researchers, enthusiasts.
 
