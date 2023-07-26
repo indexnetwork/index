@@ -34,13 +34,13 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 						<AppContextProvider>
 							<Head>
 								<link rel="shortcut icon" href="/favicon-white.png" />
-								<title>index.network | The human bridge between context and content.</title>
-								<meta name="title" content="index.network | The human bridge between context and content." />
+								<title>Index Network | The human bridge between context and content.</title>
+								<meta name="title" content="Index Network | The human bridge between context and content." />
 								<meta name="description" content="Create and monetize discovery engines." />
 
 								<meta property="twitter:card" content="summary_large_image" />
 								<meta property="twitter:url" content="https://index.network" />
-								<meta property="twitter:title" content="index.network | The human bridge between context and content." />
+								<meta property="twitter:title" content="Index Network | The human bridge between context and content." />
 								<meta property="twitter:description" content="Create and monetize discovery engines." />
 								<meta property="twitter:image" content="https://index.network/images/bridge.jpg" />
 
