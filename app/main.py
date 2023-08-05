@@ -10,7 +10,6 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-
 from llama_index import download_loader
 from llama_index.llms import ChatMessage
 from llama_index.vector_stores import ChromaVectorStore
@@ -18,7 +17,12 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index import VectorStoreIndex, ListIndex, LLMPredictor, ServiceContext
 from llama_index.chat_engine.types import ChatMode
 from llama_index.indices.composability import ComposableGraph
+from llama_index.indices.query.query_transform import HyDEQueryTransform
+from llama_index.query_engine.transform_query_engine import TransformQueryEngine
+
 from langchain.chat_models import ChatOpenAI
+
+from llama_index.vector_stores.types import ExactMatchFilter, MetadataFilters
 
 import chromadb
 from chromadb.config import Settings
@@ -57,19 +61,37 @@ chroma_client = chromadb.Client(Settings(
     persist_directory=persist_directory
 ))
 
-llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
-llm_predictor = LLMPredictor(llm=llm)
-service_context = ServiceContext.from_defaults(llm_predictor=llm_predictor)
+print(os.environ["OPENAI_API_KEY"])
 
+embed_model = OpenAIEmbedding(model="text-embedding-ada-002", openai_api_key=os.environ["OPENAI_API_KEY"],)
+llm = ChatOpenAI(temperature=0, model_name="gpt-4", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
+service_context = ServiceContext.from_defaults(llm=llm, embed_model=embed_model)
+hyde = HyDEQueryTransform(include_original=True)
 
-def get_index(index_id: str):
-    collection = chroma_client.get_or_create_collection(name=index_id)
+def get_collection():
+    collection = chroma_client.get_or_create_collection(name="indexes")
     vector_store = ChromaVectorStore(chroma_collection=collection)
     index = VectorStoreIndex.from_vector_store(vector_store=vector_store, service_context=service_context)
     
     return index
 
+def get_query_engine(indexes):
+    collection = get_collection()
+    
+    if len(indexes) > 1:
+        index_filters =  {"$or": [{"index_id": {"$eq": i}} for i in indexes]}
+    else:
+        index_filters =  {"index_id": {"$eq": indexes[0]}}
+
+    return collection.as_query_engine(streaming=True, verbose=True, vector_store_kwargs={"where": index_filters})
+
+def get_index_chat_engine(indexes):
+    collection = get_collection()
+    index_filters =  [{"index_id": {"$eq": i}} for i in indexes]
+    return collection.as_chat_engine(chat_mode="condense_question", streaming=True, verbose=True, vector_store_kwargs={"where": {"$or": index_filters}})
+
 class ChatHistory(BaseModel):
+    id: str
     messages: list[ChatMessage]
 
 class Prompt(BaseModel):
@@ -82,21 +104,32 @@ class Composition(BaseModel):
     did: str
     prompt: str
 
+def response_generator(response):
+    yield json.dumps({
+        "sources": [{"id": s.node.id_, "url": s.node.metadata.get("source")} for s in response.source_nodes]
+    })
+    yield "\n ###endjson### \n\n"
+    for text in response.response_gen:
+        yield text
+
+@app.get("/")
+def home():
+    return JSONResponse(content="ia")
+
 @app.post("/index/{index_id}/links")
 def add(index_id, link: Link):
     
-    index = get_index(index_id=index_id)
+    collection = get_collection()
     
     UnstructuredURLLoader = download_loader("UnstructuredURLLoader")
     loader = UnstructuredURLLoader(urls=[link.url])
     kb_data = loader.load()
-    
-    index.insert(kb_data[0])
+    kb_data[0].metadata["index_id"] = index_id
+    collection.insert(kb_data[0],)
     chroma_client.persist()
 
-    summary = index.as_query_engine().query("summarize").response
-    x = redisClient.hset("summaries", index_id, summary)
-    print(x)
+    #summary = collection.as_query_engine().query("summarize").response #WRONG ONLY SUMMARIZE THIS DOC
+    #redisClient.hset("summaries", index_id, summary)
     
     return JSONResponse(content={'message': 'Document added successfully'})
 
@@ -105,28 +138,39 @@ def remove(index_id: str, link: Link):
     return JSONResponse(content={"message": "Documents deleted successfully"})
 
 
-@app.post("/index/{index_id}/prompt")
-def query(index_id, prompt: Prompt):
-    index = get_index(index_id=index_id)
-    response = index.as_query_engine().query(prompt.prompt)
+@app.post("/compose_new")
+def query(prompt: Prompt):
+
+    collection = get_collection()
+
+    
+    hyde_query_engine = TransformQueryEngine( collection.as_query_engine(), hyde)
+
+    response = hyde_query_engine.query(prompt.prompt)
+
+    print(response.get_formatted_sources())
+
     return JSONResponse(content={
-        #"sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.sources]
+        "sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.source_nodes],
         "response": response.response
     })
-    #return StreamingResponse(response.response_gen, media_type='text/event-stream')
+
+@app.post("/index/{index_id}/prompt")
+async def query(index_id, prompt: Prompt):
+    response = get_query_engine([index_id]).query(prompt.prompt)    
+    return StreamingResponse(response_generator(response), media_type='text/event-stream')
+
 
 @app.post("/index/{index_id}/chat_stream")
 def chat_stream(index_id, chat_history: ChatHistory):
-
-    index = get_index(index_id=index_id)
-
-    chat_engine = index.as_chat_engine(streaming=True, verbose=True)
+    print(index_id)
+    index = get_index_chat_engine([index_id, index_id])
 
     messages = chat_history.messages
     last_message = messages[-1]
     print(last_message.content, messages)
     # TODO Pop last "user" message from chat history. 
-    streaming_response = chat_engine.stream_chat(message=last_message.content, chat_history=messages)
+    streaming_response = index.stream_chat(message=last_message.content, chat_history=messages)
 
     def response_generator():
         yield json.dumps({
