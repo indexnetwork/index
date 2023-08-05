@@ -19,10 +19,9 @@ from llama_index.chat_engine.types import ChatMode
 from llama_index.indices.composability import ComposableGraph
 from llama_index.indices.query.query_transform import HyDEQueryTransform
 from llama_index.query_engine.transform_query_engine import TransformQueryEngine
+from llama_index.vector_stores.types import ExactMatchFilter, MetadataFilters
 
 from langchain.chat_models import ChatOpenAI
-
-from llama_index.vector_stores.types import ExactMatchFilter, MetadataFilters
 
 import chromadb
 from chromadb.config import Settings
@@ -173,12 +172,15 @@ def chat_stream(index_id, chat_history: ChatHistory):
     streaming_response = index.stream_chat(message=last_message.content, chat_history=messages)
 
     def response_generator():
-        yield json.dumps({
-            "sources": [{"id": s.node.id_, "url": s.node.metadata.get("source")} for s in streaming_response.source_nodes]
-        })
-        yield "\n ###endjson### \n\n"
         for text in streaming_response.response_gen:
             yield text
+
+        yield '\n\nSources:'
+        for s in streaming_response.source_nodes:
+            yield '\n\n'
+            yield  s.node.metadata.get("source")
+            
+        
     return StreamingResponse(response_generator(), media_type='text/event-stream')
 
 
