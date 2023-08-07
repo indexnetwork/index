@@ -18,6 +18,9 @@ import TabPane from "components/base/Tabs/TabPane";
 import IndexItem from "components/site/indexes/IndexItem";
 import { useCeramic } from "hooks/useCeramic";
 import NoIndexes from "components/site/indexes/NoIndexes";
+import SearchInput from "../../../base/SearchInput";
+import AskInput from "../../../base/AskInput";
+import RadioGroup from "../../../base/RadioGroup";
 
 export interface IndexListState {
 	skip: number,
@@ -31,24 +34,23 @@ export interface MultipleIndexListState {
 }
 
 export interface SearchIndexesProps {
-	search: string;
 	did?: string;
-	loading: boolean;
 	onLoading?(value: boolean): void;
+	setInteractionMode(value: string): void;
 }
 
 const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 	onLoading,
-	loading,
-	search,
 	did,
+	setInteractionMode,
 }) => {
 	const { t } = useTranslation(["pages"]);
 	const owner = useOwner();
-
+	const [search, setSearch] = useState("");
 	const [askResponse, setAskResponse] = useState("");
 
 	const [init, setInit] = useState(true);
+	const [isLoading, setIsLoading] = useState(false);
 	const [tabKey, setTabKey] = useState("my_indexes");
 	const [hasUserIndex, setHasUserIndex] = useState({ my_indexes: false, starred: false });
 	const [state, setState] = useState<MultipleIndexListState>({
@@ -71,7 +73,9 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 	const take = 10;
 	const personalCeramic = useCeramic();
 	const router = useRouter();
-
+	useEffect(() => {
+		setSearch && setSearch("");
+	}, [router]);
 	const handleClick = useCallback((itm: Indexes) => async () => {
 		router.push(`/${itm.id}`);
 	}, []);
@@ -119,10 +123,10 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 	}, [search]);
 
 	const getData = async (page?: number, newSearch?: boolean) => {
-		if (loading) {
+		if (isLoading) {
 			return;
 		}
-		onLoading && onLoading(true);
+		setIsLoading && setIsLoading(true);
 
 		const queryParams = {
 			did,
@@ -173,9 +177,41 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 				setState(newState as MultipleIndexListState);
 			}
 		}
-		onLoading && onLoading(false);
+		setIsLoading && setIsLoading(false);
 	};
+	useEffect(() => {
+		onLoading?.(isLoading);
+	}, [isLoading]);
 	return <>
+		<FlexRow colSpacing={1}>
+			<Col
+				className="idxflex-grow-1 mb-4"
+			>
+				<SearchInput
+					loading={isLoading}
+					onSearch={setSearch}
+					debounceTime={400}
+					showClear
+					defaultValue={search}
+					placeholder={t("pages:home.searchHome")} />
+			</Col>
+			<Col>
+				<Col>
+					<RadioGroup className={" px-1"} value="search" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
+						items={[
+							{
+								value: "search",
+								title: "Search",
+							},
+							{
+								value: "ask",
+								title: "Ask",
+							},
+						]}
+					/>
+				</Col>
+			</Col>
+		</FlexRow>
 		<FlexRow>
 			<Col className="idxflex-grow-1 mb-4">
 				<Tabs activeKey={tabKey} onTabChange={setTabKey}>

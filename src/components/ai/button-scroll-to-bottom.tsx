@@ -14,11 +14,6 @@ export function ButtonScrollToBottom({ className, ...props }: ButtonProps) {
 		<Button
 			variant="outline"
 			size="icon"
-			className={cc(
-				"absolute right-4 top-1 z-10 bg-background transition-opacity duration-300 sm:right-8 md:top-2",
-				isAtBottom ? "opacity-0" : "opacity-100",
-				className,
-			)}
 			onClick={() => window.scrollTo({
 				top: document.body.offsetHeight,
 				behavior: "smooth",
