@@ -1,5 +1,5 @@
 import React, {
-	ReactElement, useEffect, useState,
+	ReactElement,
 } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -11,7 +11,9 @@ import { useChat } from "ai/react";
 const IndexAskPage: NextPageWithLayout = () => {
 	const router = useRouter();
 	const { indexId } = router.query;
-	const { messages, input, handleInputChange, handleSubmit } = useChat({
+	const {
+		messages, input, handleInputChange, handleSubmit,
+	} = useChat({
 		api: "http://dev.index.as/api/ask/did",
 	});
 

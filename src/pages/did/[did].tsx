@@ -39,7 +39,7 @@ const IndexesPage: NextPageWithLayout = () => {
 				xs={12}
 				lg={9}
 				centerBlock
-				style={{ position: "absolute", bottom: "20px", width: "720px" }}
+				style={{ position: "fixed", bottom: "20px", width: "720px" }}
 			>
 				<FlexRow colSpacing={1}>
 					<Col

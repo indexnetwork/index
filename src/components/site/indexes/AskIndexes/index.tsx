@@ -5,17 +5,17 @@ import React, {
 } from "react";
 import api from "services/api-service";
 
-import { useChat, type Message } from "ai/react"
+import { useChat, type Message } from "ai/react";
 import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
 import { EmptyScreen } from "components/ai/empty-screen";
 import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
 
-import { toast } from "react-hot-toast"
+import { toast } from "react-hot-toast";
 import cc from "classcat";
-import {TooltipProvider} from "@radix-ui/react-tooltip";
+import { TooltipProvider } from "@radix-ui/react-tooltip";
 
-export interface ChatProps extends React.ComponentProps<'div'> {
+export interface ChatProps extends React.ComponentProps<"div"> {
 	initialMessages?: Message[]
 	id?: string
 }
@@ -48,7 +48,9 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 	const apiUrl = "http://localhost:8000/index/seref/chat_stream";
 	const initialMessages = [];
 	const id = "aaa";
-	const { messages, append, reload, stop, isLoading, input, setInput } =
+	const {
+		messages, append, reload, stop, isLoading, input, setInput,
+	} =
 	useChat({
 		api: apiUrl,
 		initialMessages,
@@ -56,17 +58,17 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 		body: {
 			id,
 		},
-		headers: { 'Content-Type': 'application/json; charset=utf-8' },
+		headers: { "Content-Type": "application/json; charset=utf-8" },
 		onResponse(response) {
 			if (response.status === 401) {
-				toast.error(response.statusText)
+				toast.error(response.statusText);
 			}
-		}
-	})
+		},
+	});
 
-	return <Col xs={12} lg={9}>
+	return <Col xs={12} lg={12}>
 		<TooltipProvider>
-			<div className={cc('pb-[200px] pt-4 md:pt-10')}>
+			<div className={cc("pb-[200px] pt-4 md:pt-10")}>
 				{messages.length ? (
 					<>
 						<ChatList messages={messages} />
@@ -91,4 +93,3 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 };
 
 export default AskIndexes;
-
