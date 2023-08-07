@@ -75,7 +75,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 
 					<FlexRow>
 						<Col centerBlock xs={12} lg={6}>
-							<FlexRow className={"mb-3"} align={"center"}>
+							<FlexRow className={"mb-5"} justify={"center"} align={"center"}>
 								<ChatPanel
 									isLoading={isLoading}
 									stop={stop}
@@ -83,7 +83,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 									messages={messages}
 								/>
 							</FlexRow>
-							<FlexRow style={{"background": "white"}}>
+							<FlexRow  colSpacing={1} style={{ background: "white" }}>
 								<Col
 									className="idxflex-grow-1"
 								>
@@ -99,7 +99,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 											  placeholder={"Ask"} />
 								</Col>
 								<Col>
-									<RadioGroup className={" px-1"} value="ask" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
+									<RadioGroup className={"px-1"} value="ask" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
 										items={[
 											{
 												value: "search",

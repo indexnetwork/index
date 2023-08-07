@@ -1,10 +1,9 @@
 import { type UseChatHelpers } from "ai/react";
 
 import Button from "components/base/Button";
-import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { IconRefresh, IconStop } from "components/ai/ui/icons";
-import FlexRow from "../layout/base/Grid/FlexRow";
-import Flex from "../layout/base/Grid/Flex";
+import IconSearch from "../base/Icon/IconSearch";
+import React from "react";
 
 export interface ChatPanelProps
   extends Pick<
@@ -25,30 +24,28 @@ export function ChatPanel({
 }: ChatPanelProps) {
 	return (
 		<>
-			<div className="mx-auto sm:max-w-2xl sm:px-4">
-				<Flex alignItems="center" className={"text-center"}>
-					{isLoading ? (
+			<div>
+				{isLoading ? (
+					<Button
+						addOnBefore={<IconStop width={20} />}
+						onClick={() => stop()}
+						size="lg"
+						theme="clear"
+					>
+						<div className={"mx-2"}>Stop generating</div>
+					</Button>
+				) : (
+					messages?.length > 0 && (
 						<Button
-							onClick={() => stop()}
+							addOnBefore={<IconRefresh width={20} />}
+							onClick={() => reload()}
 							size="lg"
 							theme="clear"
 						>
-							<IconStop width={20} className="mr-2" />
-              Stop generating
+							<div className={"mx-2"}> Regenerate response</div>
 						</Button>
-					) : (
-						messages?.length > 0 && (
-							<Button
-								onClick={() => reload()}
-								size="lg"
-								theme="clear"
-							>
-								<IconRefresh width={20} className="mr-2" />
-                Regenerate response
-							</Button>
-						)
-					)}
-				</Flex>
+					)
+				)}
 			</div>
 		</>
 	);

@@ -197,7 +197,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 			</Col>
 			<Col>
 				<Col>
-					<RadioGroup className={" px-1"} value="search" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
+					<RadioGroup className={"px-1"} value="search" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
 						items={[
 							{
 								value: "search",
