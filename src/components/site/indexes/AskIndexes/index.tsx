@@ -57,6 +57,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 	}, [isLoading]);
 
 	return <>
+		<FlexRow colSpacing={1}>
 		<TooltipProvider>
 			<Col>
 				<div style={{
@@ -73,7 +74,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 						<ButtonScrollToBottom/>
 					</div>
 
-					<FlexRow>
+					<FlexRow colSpacing={4}>
 						<Col centerBlock xs={12} lg={6}>
 							<FlexRow className={"mb-5"} justify={"center"} align={"center"}>
 								<ChatPanel
@@ -130,6 +131,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 				</div>
 			</Col>
 		</TooltipProvider>
+		</FlexRow>
 	</>;
 };
 
