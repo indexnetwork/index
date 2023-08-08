@@ -26,7 +26,7 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 
 	return (
 		<>
-			<Row rowSpacing={5} >
+			<Row fullWidth rowSpacing={5} >
 				<Col xs={12} centerBlock style={{
 					height: 166,
 				}}>
