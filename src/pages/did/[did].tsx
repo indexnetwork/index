@@ -20,6 +20,10 @@ const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
 	const { did } = router.query;
 
+	useEffect(() => {
+		setInteractionMode("search");
+	}, [router.query]);
+
 	return <PageContainer>
 		{
 			interactionMode === "ask" && <AskIndexes setInteractionMode={setInteractionMode} did={did!.toString()} />
