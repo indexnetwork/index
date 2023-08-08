@@ -311,11 +311,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
 									</Col>
 								</FlexRow>}
-								{ tabKey === "chat" && <FlexRow>
-									<Col className="idxflex-grow-1">
-										<AskIndexes setInteractionMode={setInteractionMode} did={did!.toString()} />
-									</Col>
-								</FlexRow>}
 								{ tabKey === "audience" && <FlexRow justify="center">
 									<Col className="mt-8">
 										<Soon section={tabKey}></Soon>
@@ -324,6 +319,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							</>}
 						</Col>
 					</FlexRow>
+					{ !notFound && tabKey === "chat" && <div className={"mt-6"}><AskIndexes setInteractionMode={setInteractionMode} did={did!.toString()} /></div>}
 				</LinksContext.Provider>
 			</IndexContext.Provider>
 		</PageContainer>
