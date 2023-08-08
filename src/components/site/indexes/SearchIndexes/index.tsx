@@ -21,6 +21,7 @@ import NoIndexes from "components/site/indexes/NoIndexes";
 import SearchInput from "../../../base/SearchInput";
 import AskInput from "../../../base/AskInput";
 import RadioGroup from "../../../base/RadioGroup";
+import Row from "../../../layout/base/Grid/Row";
 
 export interface IndexListState {
 	skip: number,
@@ -35,12 +36,10 @@ export interface MultipleIndexListState {
 
 export interface SearchIndexesProps {
 	did?: string;
-	onLoading?(value: boolean): void;
 	setInteractionMode(value: string): void;
 }
 
 const SearchIndexes: React.VFC<SearchIndexesProps> = ({
-	onLoading,
 	did,
 	setInteractionMode,
 }) => {
@@ -179,92 +178,95 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		}
 		setIsLoading && setIsLoading(false);
 	};
-	useEffect(() => {
-		onLoading?.(isLoading);
-	}, [isLoading]);
 	return <>
-		<FlexRow colSpacing={1}>
-			<Col
-				className="idxflex-grow-1 mb-4"
-			>
-				<SearchInput
-					loading={isLoading}
-					onSearch={setSearch}
-					debounceTime={400}
-					showClear
-					defaultValue={search}
-					placeholder={t("pages:home.searchHome")} />
-			</Col>
-			<Col>
-				<Col>
-					<RadioGroup className={"px-1"} value="search" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
-						items={[
-							{
-								value: "search",
-								title: "Search",
-							},
-							{
-								value: "ask",
-								title: "Ask",
-							},
-						]}
-					/>
-				</Col>
-			</Col>
-		</FlexRow>
 		<FlexRow>
-			<Col className="idxflex-grow-1 mb-4">
-				<Tabs activeKey={tabKey} onTabChange={setTabKey}>
-					<TabPane enabled={true} tabKey={"my_indexes"} title={`My Indexes (${state.my_indexes?.totalCount || 0})`} />
-					<TabPane enabled={true} tabKey={"starred"} title={`Starred (${state.starred?.totalCount || 0})`} />
-				</Tabs>
+			<Col xs={12} lg={9} centerBlock>
+				<FlexRow colGap={2}>
+					<Col
+						className="idxflex-grow-1 mb-4"
+					>
+						<SearchInput
+							loading={isLoading}
+							onSearch={setSearch}
+							debounceTime={400}
+							showClear
+							defaultValue={search}
+							placeholder={t("pages:home.searchHome")} />
+					</Col>
+					<Col>
+						<Col>
+							<RadioGroup className={"px-1"} value="search" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
+								items={[
+									{
+										value: "search",
+										title: "Search",
+									},
+									{
+										value: "ask",
+										title: "Ask",
+									},
+								]}
+							/>
+						</Col>
+					</Col>
+				</FlexRow>
+				<FlexRow>
+					<Col className="idxflex-grow-1 mb-4">
+						<Tabs activeKey={tabKey} onTabChange={setTabKey}>
+							<TabPane enabled={true} tabKey={"my_indexes"} title={`My Indexes (${state.my_indexes?.totalCount || 0})`} />
+							<TabPane enabled={true} tabKey={"starred"} title={`Starred (${state.starred?.totalCount || 0})`} />
+						</Tabs>
+					</Col>
+				</FlexRow>
+				<FlexRow>
+					{tabKey === "my_indexes" ? (
+						state.my_indexes && state.my_indexes.indexes?.length! > 0 ? <>
+							<InfiniteScroll
+								initialLoad={false}
+								hasMore={state.my_indexes?.hasMore}
+								loadMore={getData}
+								marginHeight={50}
+							>
+								<List
+									data={state.my_indexes?.indexes || []}
+									listClass="index-list"
+									render={(itm: Indexes) => <IndexItem
+										hasSearch={!!search}
+										onClick={handleClick(itm)}
+										isOwner={did === itm.ownerDID?.id}
+										userIndexToggle={handleUserIndexToggle}
+										index={itm}
+									/>}
+									divided
+								/>
+							</InfiniteScroll>
+						</> : <NoIndexes hasIndex={hasUserIndex.my_indexes} search={search} tabKey={tabKey} />
+					) : (
+						state.starred && state.starred.indexes?.length! > 0 ? <>
+							<InfiniteScroll
+								initialLoad={false}
+								hasMore={state.starred?.hasMore}
+								loadMore={getData}
+								marginHeight={50}
+							>
+								<List
+									data={state.starred?.indexes || []}
+									listClass="index-list"
+									render={(itm: Indexes) => <IndexItem
+										hasSearch={!!search}
+										onClick={handleClick(itm)}
+										isOwner={did === itm.ownerDID?.id}
+										userIndexToggle={handleUserIndexToggle}
+										index={itm}
+									/>}
+									divided
+								/>
+							</InfiniteScroll>
+						</> : <NoIndexes hasIndex={hasUserIndex.starred} search={search} tabKey={tabKey} />
+					)}
+				</FlexRow>
 			</Col>
 		</FlexRow>
-		{tabKey === "my_indexes" ? (
-			state.my_indexes && state.my_indexes.indexes?.length! > 0 ? <>
-				<InfiniteScroll
-					initialLoad={false}
-					hasMore={state.my_indexes?.hasMore}
-					loadMore={getData}
-					marginHeight={50}
-				>
-					<List
-						data={state.my_indexes?.indexes || []}
-						listClass="index-list"
-						render={(itm: Indexes) => <IndexItem
-							hasSearch={!!search}
-							onClick={handleClick(itm)}
-							isOwner={did === itm.ownerDID?.id}
-							userIndexToggle={handleUserIndexToggle}
-							index={itm}
-						/>}
-						divided
-					/>
-				</InfiniteScroll>
-			</> : <NoIndexes hasIndex={hasUserIndex.my_indexes} search={search} tabKey={tabKey} />
-		) : (
-			state.starred && state.starred.indexes?.length! > 0 ? <>
-				<InfiniteScroll
-					initialLoad={false}
-					hasMore={state.starred?.hasMore}
-					loadMore={getData}
-					marginHeight={50}
-				>
-					<List
-						data={state.starred?.indexes || []}
-						listClass="index-list"
-						render={(itm: Indexes) => <IndexItem
-							hasSearch={!!search}
-							onClick={handleClick(itm)}
-							isOwner={did === itm.ownerDID?.id}
-							userIndexToggle={handleUserIndexToggle}
-							index={itm}
-						/>}
-						divided
-					/>
-				</InfiniteScroll>
-			</> : <NoIndexes hasIndex={hasUserIndex.starred} search={search} tabKey={tabKey} />
-		)}
 	</>;
 };
 

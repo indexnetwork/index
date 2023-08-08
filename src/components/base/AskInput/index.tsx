@@ -7,7 +7,7 @@ export interface AskInputProps {
 	onSubmit: (value: string) => Promise<void>
 	input: string,
 	setInput: (value: string) => void,
-	isLoading: (value: boolean) => void,
+	isLoading: boolean,
 }
 
 const AskInput = ({
@@ -35,6 +35,7 @@ const AskInput = ({
 				inputSize={"lg"}
 				addOnAfter={<IconSend width={20} height={20} />}
 				spellCheck={false}
+				placeholder={"Ask to your indexes"}
 			/>
 		</form>
 

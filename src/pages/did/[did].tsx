@@ -16,40 +16,17 @@ import AskIndexes from "../../components/site/indexes/AskIndexes";
 const IndexesPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 
-	const [prompt, setPrompt] = useState("");
-	const [isLoading, setIsLoading] = useState(false);
 	const [interactionMode, setInteractionMode] = useState<string>("search");
 	const router = useRouter();
 	const { did } = router.query;
 
-	const handleAsk = async (value: string) => {
-		setPrompt && setPrompt(value);
-	};
 	return <PageContainer>
-		<FlexRow
-			rowSpacing={3}
-			justify="center"
-		>
-
-			<Col
-				xs={12}
-				lg={9}
-				centerBlock
-				style={ interactionMode === "ask" ? { position: "fixed", bottom: "20px", width: "720px" } : {} }
-			>
-			</Col>
-			{
-				interactionMode === "ask" && <Col xs={12} lg={9}>
-					{/* eslint-disable-next-line max-len */}
-					<AskIndexes setInteractionMode={setInteractionMode} onLoading={setIsLoading} did={did!.toString()} />
-				</Col>
-			}
-			{
-				interactionMode === "search" && <Col xs={12} lg={9}>
-					<SearchIndexes setInteractionMode={setInteractionMode} onLoading={setIsLoading} did={did!.toString()} />
-				</Col>
-			}
-		</FlexRow>
+		{
+			interactionMode === "ask" && <AskIndexes setInteractionMode={setInteractionMode} did={did!.toString()} />
+		}
+		{
+			interactionMode === "search" && <SearchIndexes setInteractionMode={setInteractionMode} did={did!.toString()} />
+		}
 	</PageContainer>;
 };
 
