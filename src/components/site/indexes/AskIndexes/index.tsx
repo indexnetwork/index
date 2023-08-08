@@ -28,7 +28,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 	did,
 	indexes,
 }) => {
-	const apiUrl = `https://index.network/api${API_ENDPOINTS.CHAT_STREAM}`;
+	const apiUrl = `/api${API_ENDPOINTS.CHAT_STREAM}`;
 	const initialMessages: Message[] = [];
 	const id = "placeholder";
 	const {
