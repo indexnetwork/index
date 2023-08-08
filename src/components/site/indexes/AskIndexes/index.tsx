@@ -8,10 +8,10 @@ import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
 import { toast } from "react-hot-toast";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import AskInput from "components/base/AskInput";
-import RadioGroup from "components/base/RadioGroup";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import Container from "components/layout/base/Grid/Container";
+import { API_ENDPOINTS } from "../../../../utils/constants";
 
 export interface ChatProps extends React.ComponentProps<"div"> {
 	initialMessages?: Message[]
@@ -19,16 +19,18 @@ export interface ChatProps extends React.ComponentProps<"div"> {
 }
 export interface SearchIndexesProps {
 	did?: string;
+	indexes?: string[],
 	interactionToggle?: React.ReactNode;
 }
 
 const AskIndexes: React.VFC<SearchIndexesProps> = ({
 	interactionToggle,
 	did,
+	indexes,
 }) => {
-	const apiUrl = "http://localhost:8000/index/seref/chat_stream";
+	const apiUrl = `https://index.network/api${API_ENDPOINTS.CHAT_STREAM}`;
 	const initialMessages: Message[] = [];
-	const id = "aaa";
+	const id = "placeholder";
 	const {
 		messages, append, reload, stop, isLoading, input, setInput,
 	} =
@@ -38,6 +40,8 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 		id,
 		body: {
 			id,
+			did,
+			indexes,
 		},
 		headers: { "Content-Type": "application/json; charset=utf-8" },
 		onResponse(response) {

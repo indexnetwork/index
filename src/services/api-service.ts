@@ -97,23 +97,6 @@ const apiAxios = axios.create({
 });
 
 class ApiService {
-	async askDID(did: string, prompt: string): Promise<any> {
-		try {
-			const { data } = await apiAxios.post<any>(`${API_ENDPOINTS.ASK_DID}/${did}`, { prompt });
-			return data;
-		} catch (err) {
-			return null;
-		}
-	}
-	async askIndex(id: string, prompt: string): Promise<any> {
-		try {
-			const { data } = await apiAxios.post<any>(`${API_ENDPOINTS.ASK_INDEX}/${id}`, { prompt });
-			return data;
-		} catch (err) {
-			return null;
-		}
-	}
-
 	async searchIndex(body: DidSearchRequestBody): Promise<IndexSearchResponse | null> {
 		try {
 			const { data } = await apiAxios.post<IndexSearchResponse>(API_ENDPOINTS.SEARCH_DID, body);

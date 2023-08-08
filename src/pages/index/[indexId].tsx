@@ -319,7 +319,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							</>}
 						</Col>
 					</FlexRow>
-					{ !notFound && tabKey === "chat" && <div className={"mt-6"}><AskIndexes setInteractionMode={setInteractionMode} did={did!.toString()} /></div>}
+					{ !notFound && tabKey === "chat" && <div className={"mt-6"}><AskIndexes indexes={[index.id!]} /></div>}
 				</LinksContext.Provider>
 			</IndexContext.Provider>
 		</PageContainer>
