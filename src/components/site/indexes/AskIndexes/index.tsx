@@ -61,7 +61,8 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 								zIndex: 10,
 							}}>
 								<div style={{
-									right: "50px",
+									right: "30px",
+									bottom: "70px",
 									position: "fixed",
 								}}>
 									<ButtonScrollToBottom/>
