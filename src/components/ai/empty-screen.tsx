@@ -25,15 +25,15 @@ export function EmptyScreen({ setInput }: Pick<UseChatHelpers, "setInput">) {
 		<div className="card-item mx-auto ">
 			<div className="rounded-lg border bg-background p-8">
 
-				<Text fontFamily="freizeit" size={"lg"} fontWeight={700}>
+				<Text fontFamily="freizeit" size={"lg"} fontWeight={700} className={"mb-2"}>
 					Chat with your indexes
 				</Text>
-				<p className="mb-2 leading-normal text-muted-foreground">
+				<br /><br />
+				<Text fontFamily="freizeit" size={"md"} fontWeight={500}>
 					Your responses will align with all your indexes.
-				</p>
-				<p className="leading-normal text-muted-foreground">
-          You can start a conversation here or try the following examples:
-				</p>
+					<br />
+          			You can start a conversation here or try the following examples:
+				</Text>
 				<div className="mt-4">
 					{exampleMessages.map((message, index) => (<div>
 						<Button
