@@ -43,6 +43,7 @@ import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
 import AskIndexes from "../../components/site/indexes/AskIndexes";
 import PageContainer from "../../components/layout/site/PageContainer";
+import Soon from "../../components/site/indexes/Soon";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -199,7 +200,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		<PageContainer>
 			<IndexContext.Provider value={{ pkpCeramic, isOwner, isCreator }}>
 				<LinksContext.Provider value={{ links, setLinks }}>
-					<FlexRow  colGap={2}>
+					<FlexRow colGap={2}>
 						<Col xs={12} lg={9} centerBlock>
 							{ notFound && <FlexRow>
 								<Col className="idxflex-grow-1">
@@ -313,6 +314,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 								{ tabKey === "chat" && <FlexRow>
 									<Col className="idxflex-grow-1">
 										<AskIndexes setInteractionMode={setInteractionMode} did={did!.toString()} />
+									</Col>
+								</FlexRow>}
+								{ tabKey === "audience" && <FlexRow justify="center">
+									<Col className="mt-8">
+										<Soon section={tabKey}></Soon>
 									</Col>
 								</FlexRow>}
 							</>}
