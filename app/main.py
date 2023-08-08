@@ -9,6 +9,8 @@ from fastapi.responses import JSONResponse
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional, List
+
 
 from llama_index import download_loader
 from llama_index.llms import ChatMessage
@@ -60,8 +62,6 @@ chroma_client = chromadb.Client(Settings(
     persist_directory=persist_directory
 ))
 
-print(os.environ["OPENAI_API_KEY"])
-
 embed_model = OpenAIEmbedding(model="text-embedding-ada-002", openai_api_key=os.environ["OPENAI_API_KEY"],)
 llm = ChatOpenAI(temperature=0, model_name="gpt-4", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
 service_context = ServiceContext.from_defaults(llm=llm, embed_model=embed_model)
@@ -86,12 +86,19 @@ def get_query_engine(indexes):
 
 def get_index_chat_engine(indexes):
     collection = get_collection()
-    index_filters =  [{"index_id": {"$eq": i}} for i in indexes]
-    return collection.as_chat_engine(chat_mode="condense_question", streaming=True, verbose=True, vector_store_kwargs={"where": {"$or": index_filters}})
+    
+    if len(indexes) > 1:
+        index_filters =  {"$or": [{"index_id": {"$eq": i}} for i in indexes]}
+    else:
+        index_filters =  {"index_id": {"$eq": indexes[0]}}
 
-class ChatHistory(BaseModel):
+    return collection.as_chat_engine(chat_mode="context", streaming=True, verbose=True, vector_store_kwargs={"where": index_filters})
+
+class ChatStream(BaseModel):
     id: str
-    messages: list[ChatMessage]
+    did: Optional[str]
+    indexes: Optional[List[str]]
+    messages: List[ChatMessage]
 
 class Prompt(BaseModel):
     prompt: str
@@ -160,44 +167,37 @@ async def query(index_id, prompt: Prompt):
     return StreamingResponse(response_generator(response), media_type='text/event-stream')
 
 
-@app.post("/index/{index_id}/chat_stream")
-def chat_stream(index_id, chat_history: ChatHistory):
-    print(index_id)
-    index = get_index_chat_engine([index_id, index_id])
+@app.post("/chat_stream")
+def chat_stream(params: ChatStream):
+    
+    if params.did:
+        id_resp = redisClient.hkeys("user_indexes:by_did:" + params.did.lower())
+        if not id_resp:
+            return "You have no indexes"
+        indexes = [item.decode('utf-8').split(':')[0] for item in id_resp]
+    elif params.indexes:
+        indexes = params.indexes
 
-    messages = chat_history.messages
+    print(indexes)
+    index = get_index_chat_engine(indexes)
+
+    messages = params.messages
     last_message = messages[-1]
-    print(last_message.content, messages)
-    # TODO Pop last "user" message from chat history. 
+
     streaming_response = index.stream_chat(message=last_message.content, chat_history=messages)
 
     def response_generator():
         for text in streaming_response.response_gen:
             yield text
 
-        yield '\n\nSources:'
-        for s in streaming_response.source_nodes:
-            yield '\n\n'
-            yield  s.node.metadata.get("source")
+#        yield '\n\nSources:'
+#        for s in streaming_response.source_nodes:
+#            yield '\n\n'
+#            yield  s.node.metadata.get("source")
             
         
     return StreamingResponse(response_generator(), media_type='text/event-stream')
 
-
-@app.post("/index/{index_id}/chat")
-async def chat(index_id, chat_history: ChatHistory):
-
-    index = get_index(index_id=index_id)
-    chat_engine = index.as_chat_engine()
-
-    messages = chat_history.messages
-    last_message = messages[-1]
-
-    response = chat_engine.chat(message=last_message.content, chat_history=messages)
-    return JSONResponse(content={
-        #"sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.sources]
-        "response": response.response
-    })
 
 
 @app.post("/compose")
