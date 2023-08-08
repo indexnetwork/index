@@ -19,9 +19,7 @@ import IndexItem from "components/site/indexes/IndexItem";
 import { useCeramic } from "hooks/useCeramic";
 import NoIndexes from "components/site/indexes/NoIndexes";
 import SearchInput from "../../../base/SearchInput";
-import AskInput from "../../../base/AskInput";
 import RadioGroup from "../../../base/RadioGroup";
-import Row from "../../../layout/base/Grid/Row";
 
 export interface IndexListState {
 	skip: number,

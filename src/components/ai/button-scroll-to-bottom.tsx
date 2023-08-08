@@ -2,7 +2,6 @@
 
 import * as React from "react";
 
-import cc from "classcat";
 import { useAtBottom } from "hooks/useAtBottom";
 import Button, { type ButtonProps } from "components/base/Button";
 import { IconArrowDown } from "components/ai/ui/icons";

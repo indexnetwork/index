@@ -18,7 +18,7 @@ export function ChatList({ messages }: ChatList) {
 					<ChatMessage message={message} />
 					{index < messages.length - 1 && (
 						<div className="pl-8">
-							<div className={"my-6"} style={{height: "1px", backgroundColor: "var(--gray-2)"}}></div>
+							<div className={"my-6"} style={{ height: "1px", backgroundColor: "var(--gray-2)" }}></div>
 						</div>
 					)}
 				</div>

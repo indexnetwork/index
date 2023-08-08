@@ -1,6 +1,3 @@
-import SearchInput from "components/base/SearchInput";
-import Col from "components/layout/base/Grid/Col";
-import FlexRow from "components/layout/base/Grid/FlexRow";
 import PageContainer from "components/layout/site/PageContainer";
 import PageLayout from "components/layout/site/PageLayout";
 import { useTranslation } from "next-i18next";

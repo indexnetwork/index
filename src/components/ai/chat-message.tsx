@@ -5,7 +5,6 @@ import { Message } from "ai";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
-import cc from "classcat";
 import { CodeBlock } from "components/ai/ui/codeblock";
 import { MemoizedReactMarkdown } from "components/ai/markdown";
 import { IconOpenAI, IconUser } from "components/ai/ui/icons";
