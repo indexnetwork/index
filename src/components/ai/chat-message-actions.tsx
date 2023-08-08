@@ -1,5 +1,3 @@
-"use client";
-
 import { type Message } from "ai";
 
 import Button from "components/base/Button";

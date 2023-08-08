@@ -1,5 +1,3 @@
-"use client";
-
 import { useChat, type Message } from "ai/react";
 
 import { ChatList } from "components/ai/chat-list";
