@@ -62,37 +62,33 @@ const userIndexSchema = Joi.object({
 })
 
 
-const askSchema = Joi.object({
-  prompt: Joi.string().min(1).default(false),
+const chatStreamSchema = Joi.object({
+    id: Joi.string().required(),
+    did: Joi.string().optional(),
+    indexes: Joi.array().items(Joi.string()).optional(),
+    messages: Joi.array().required(),
 })
+
 
 app.post('/search/did', validator.body(didSearchSchema), search.did)
 app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
 app.post('/search/links', validator.body(linkSearchSchema), search.link)
 app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_index)
 
-app.post('/ask/did/:did', validator.body(askSchema), async (req, res) => {
-  let { prompt } = req.body;
-  const { did } = req.params;
+app.post('/chat_stream', validator.body(chatStreamSchema), async (req, res) => {
   try{
-    let resp = await axios.post(`http://llm-indexer.web3-dev/compose`, {did, prompt})
-    res.json(resp.data)
+    let resp = await axios.post(`${process.env.LLM_INDEXER_HOST}/chat_stream`, req.body, {
+        responseType: 'stream'
+    })
+    res.set(resp.headers);
+    resp.data.pipe(res);
   } catch (error) {
     // Handle the exception
     console.error('An error occurred:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 
-
 })
-app.post('/ask/index/:id', validator.body(askSchema), async (req, res) => {
-  let { prompt } = req.body;
-  const { id } = req.params;
-  let resp = await axios.post(`http://llm-indexer/index/${id}/prompt`, {prompt})
-  res.json(resp.data)
-
-})
-
 
 app.get('/indexes/:id', composedb.get_index)
 app.get('/index_link/:id', composedb.get_index_link)
