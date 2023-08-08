@@ -307,7 +307,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									</Col>
 								</FlexRow>}
 								{ tabKey === "creators" && <FlexRow>
-									<Col className="idxflex-grow-1">
+									<Col className="mt-4 idxflex-grow-1">
 										<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
 									</Col>
 								</FlexRow>}
