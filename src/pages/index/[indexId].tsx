@@ -3,7 +3,6 @@ import React, {
 } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
-import Container from "components/layout/base/Grid/Container";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Col from "components/layout/base/Grid/Col";
 import { useTranslation } from "next-i18next";
@@ -37,13 +36,13 @@ import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import IconStar from "components/base/Icon/IconStar";
 import Tooltip from "components/base/Tooltip";
-import Soon from "components/site/indexes/Soon";
 import CeramicService from "services/ceramic-service";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
-import RadioGroup from "components/base/RadioGroup";
+import AskIndexes from "../../components/site/indexes/AskIndexes";
+import PageContainer from "../../components/layout/site/PageContainer";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -55,6 +54,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const personalCeramic = useCeramic();
 	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tabKey, setTabKey] = useState("index");
+	const [interactionMode, setInteractionMode] = useState("index");
 	const [isOwner, setIsOwner] = useState<boolean>(false);
 	const [isCreator, setIsCreator] = useState<boolean>(false);
 	const [notFound, setNotFound] = useState(false);
@@ -62,7 +62,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		current: 0,
 		total: 0,
 	});
-	const [interactionMode, setInteractionMode] = useState<"search" | "ask">("search");
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [titleLoading, setTitleLoading] = useState(false);
@@ -197,152 +196,131 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [progress]);
 
 	return (
-		<IndexContext.Provider value={{ pkpCeramic, isOwner, isCreator }}>
-			<LinksContext.Provider value={{ links, setLinks }}>
-				<Container className="index-details-page my-6 my-lg-8">
-					{ notFound ?
-						<FlexRow rowSpacing={3} justify="center">
-							<NotFound active={true} />
-						</FlexRow> : (
-							<>
-								<FlexRow rowSpacing={3} justify="center">
-									<Col xs={12} lg={9} noYGutters>
+		<PageContainer>
+			<IndexContext.Provider value={{ pkpCeramic, isOwner, isCreator }}>
+				<LinksContext.Provider value={{ links, setLinks }}>
+					<FlexRow  colGap={2}>
+						<Col xs={12} lg={9} centerBlock>
+							{ notFound && <FlexRow>
+								<Col className="idxflex-grow-1">
+									<NotFound active={true} />
+								</Col>
+							</FlexRow>
+							}
+							{ !notFound && <>
+								<FlexRow>
+									<Col centerBlock className="idxflex-grow-1">
 										<Avatar size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
 										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.ownerDID?.id}</Text>
 									</Col>
-									<Col xs={12} lg={9} className="pb-0">
-										<FlexRow>
-											<Col className="idxflex-grow-1 mr-5">
-												<IndexTitleInput
-													defaultValue={index?.title || ""}
-													onChange={handleTitleChange}
-													disabled={!isOwner}
-													loading={titleLoading}
-												/>
-											</Col>
-											<Col className="mr-2 mb-3">
-												<Tooltip content="Add to Starred Index">
-													<Button
-														iconHover
-														theme="clear"
-														onClick={() => handleUserIndexToggle(index.id!, "starred", index.is_starred ? "remove" : "add") }
-														borderless>
-														<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} width={20} height={20} />
-													</Button>
-												</Tooltip>
-											</Col>
-											<Col className="ml-2 mb-3">
-												<Button
-													iconHover
-													theme="clear"
-													borderless>
-													<IndexOperationsPopup
-														isOwner={isOwner}
-														streamId={index.id!}
-														is_in_my_indexes={index.is_in_my_indexes!} // TODO-user_index
-														mode="indexes-page"
-														userIndexToggle={handleUserIndexToggle}
-													></IndexOperationsPopup>
-												</Button>
-											</Col>
-										</FlexRow>
-									</Col>
-									<Col xs={12} lg={9} noYGutters className="mb-1">
-										<Text size="sm" theme="disabled">{index?.updatedAt ? `Updated ${moment(index.updatedAt).fromNow()}` : ""} </Text>
-									</Col>
-									<Col xs={12} lg={9}>
-										<FlexRow>
-											<Col className="idxflex-grow-1 mb-4">
-												<Tabs activeKey={tabKey} onTabChange={setTabKey}>
-													<TabPane enabled={true} tabKey={"index"} title={"Index"} />
-													<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
-													<TabPane enabled={true} tabKey={"audience"} title={"Audience"} />
-												</Tabs>
-											</Col>
-										</FlexRow>
-										<FlexRow colSpacing={1} className="mt-2">
-											{tabKey === "index" ?
-												<>
-													<Col className="idxflex-grow-1  ">
-														{
-															interactionMode === "search" && <SearchInput
-																loading={loading}
-																onSearch={setSearch}
-																debounceTime={400}
-																showClear
-																defaultValue={search}
-																placeholder={t("pages:home.searchLink")} />
-														}
-													</Col>
-													{ false && <Col>
-														<ButtonGroup theme="clear" className="">
-															<FilterPopup>
-																<Button size={"xl"} group iconButton>
-																	<IconFilter width={20} height={20} stroke="var(--gray-4)" />
-																</Button>
-															</FilterPopup>
-															<SortPopup>
-																<Button size={"xl"} group iconButton>
-																	<IconSort width={20} height={20} stroke="var(--gray-4)" />
-																</Button>
-															</SortPopup>
-														</ButtonGroup>
-													</Col>}
-													<Col>
-														<RadioGroup className={" px-1"} value={interactionMode} onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
-															items={[
-																{
-																	value: "search",
-																	title: "Search",
-																},
-																{
-																	value: "ask",
-																	title: "Ask",
-																},
-															]}
-														/>
-													</Col>
-												</> :
-												<></>}
-										</FlexRow>
-									</Col>
-									{
-										interactionMode === "search" && tabKey === "index" && isCreator && <Col xs={12} lg={9} noYGutters className="pb-0 mt-3 mb-3">
-											<LinkInput
-												loading={crawling}
-												onLinkAdd={handleAddLink}
-												progress={progress}
-											/>
-										</Col>
-									}
 								</FlexRow>
-								{tabKey === "index" ?
-									<FlexRow justify="center">
-										<Col xs={12} lg={9}>
-											{
-												interactionMode === "search" ? <IndexItemList
-													search={search}
-													index_id={router.query.indexId as any}
-													// onChange={handleReorderLinks}
-												/> : <div className={"pt-5"}><Soon section="ask"></Soon></div>
-											}
-
-										</Col>
-									</FlexRow> : tabKey === "creators" ?
-										<FlexRow justify="center">
-											<Col xs={12} lg={9}>
-												{/* eslint-disable-next-line max-len */}
-												<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
-											</Col>
-										</FlexRow> : <FlexRow justify="center">
-											<Soon section={tabKey}></Soon>
-										</FlexRow>}
-							</>
-						)
-					}
-				</Container>
-			</LinksContext.Provider>
-		</IndexContext.Provider>
+								<FlexRow className="pt-3">
+									<Col className="idxflex-grow-1 mr-5">
+										<IndexTitleInput
+											defaultValue={index?.title || ""}
+											onChange={handleTitleChange}
+											disabled={!isOwner}
+											loading={titleLoading}
+										/>
+									</Col>
+									<Col className="mr-2 mb-3">
+										<Tooltip content="Add to Starred Index">
+											<Button
+												iconHover
+												theme="clear"
+												onClick={() => handleUserIndexToggle(index.id!, "starred", index.is_starred ? "remove" : "add") }
+												borderless>
+												<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} width={20} height={20} />
+											</Button>
+										</Tooltip>
+									</Col>
+									<Col className="ml-2 mb-3">
+										<Button
+											iconHover
+											theme="clear"
+											borderless>
+											<IndexOperationsPopup
+												isOwner={isOwner}
+												streamId={index.id!}
+												is_in_my_indexes={index.is_in_my_indexes!} // TODO-user_index
+												mode="indexes-page"
+												userIndexToggle={handleUserIndexToggle}
+											></IndexOperationsPopup>
+										</Button>
+									</Col>
+								</FlexRow>
+								<FlexRow>
+									<Text size="sm" theme="disabled">{index?.updatedAt ? `Updated ${moment(index.updatedAt).fromNow()}` : ""} </Text>
+								</FlexRow>
+								<FlexRow>
+									<Col className="idxflex-grow-1 mt-3">
+										<Tabs activeKey={tabKey} onTabChange={setTabKey}>
+											<TabPane enabled={true} tabKey={"chat"} title={"Chat"} />
+											<TabPane enabled={true} tabKey={"index"} title={"Index"} />
+											<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
+											<TabPane enabled={true} tabKey={"audience"} title={"Audience"} />
+										</Tabs>
+									</Col>
+								</FlexRow>
+								{tabKey === "index" && <FlexRow>
+									<Col className="idxflex-grow-1 mt-6">
+										<SearchInput
+											loading={loading}
+											onSearch={setSearch}
+											debounceTime={400}
+											showClear
+											defaultValue={search}
+											placeholder={t("pages:home.searchLink")} />
+									</Col>
+									{ false && <Col>
+										<ButtonGroup theme="clear" className="">
+											<FilterPopup>
+												<Button size={"xl"} group iconButton>
+													<IconFilter width={20} height={20} stroke="var(--gray-4)" />
+												</Button>
+											</FilterPopup>
+											<SortPopup>
+												<Button size={"xl"} group iconButton>
+													<IconSort width={20} height={20} stroke="var(--gray-4)" />
+												</Button>
+											</SortPopup>
+										</ButtonGroup>
+									</Col>}
+								</FlexRow>}
+								{tabKey === "index" && isCreator && <FlexRow>
+									<Col className="idxflex-grow-1 pb-0 mt-6">
+										<LinkInput
+											loading={crawling}
+											onLinkAdd={handleAddLink}
+											progress={progress}
+										/>
+									</Col>
+								</FlexRow>}
+								{tabKey === "index" && <FlexRow>
+									<Col className="idxflex-grow-1">
+										<IndexItemList
+											search={search}
+											index_id={router.query.indexId as any}
+											// onChange={handleReorderLinks}
+										/>
+									</Col>
+								</FlexRow>}
+								{ tabKey === "creators" && <FlexRow>
+									<Col className="idxflex-grow-1">
+										<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
+									</Col>
+								</FlexRow>}
+								{ tabKey === "chat" && <FlexRow>
+									<Col className="idxflex-grow-1">
+										<AskIndexes setInteractionMode={setInteractionMode} did={did!.toString()} />
+									</Col>
+								</FlexRow>}
+							</>}
+						</Col>
+					</FlexRow>
+				</LinksContext.Provider>
+			</IndexContext.Provider>
+		</PageContainer>
 	);
 };
 

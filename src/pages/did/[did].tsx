@@ -1,6 +1,5 @@
 import PageContainer from "components/layout/site/PageContainer";
 import PageLayout from "components/layout/site/PageLayout";
-import { useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import React, {
 	ReactElement, useState, useEffect,
@@ -11,8 +10,6 @@ import SearchIndexes from "../../components/site/indexes/SearchIndexes";
 import AskIndexes from "../../components/site/indexes/AskIndexes";
 
 const IndexesPage: NextPageWithLayout = () => {
-	const { t } = useTranslation(["pages"]);
-
 	const [interactionMode, setInteractionMode] = useState<string>("search");
 	const router = useRouter();
 	const { did } = router.query;
