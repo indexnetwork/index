@@ -44,7 +44,6 @@ import { ethers } from "ethers";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
 import RadioGroup from "components/base/RadioGroup";
-import AskInput from "components/base/AskInput";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -273,9 +272,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 																showClear
 																defaultValue={search}
 																placeholder={t("pages:home.searchLink")} />
-														}
-														{
-															interactionMode === "ask" && <AskInput placeholder={t("pages:home.askLink")} />
 														}
 													</Col>
 													{ false && <Col>
