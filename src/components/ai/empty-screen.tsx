@@ -25,7 +25,7 @@ export function EmptyScreen({ setInput }: Pick<UseChatHelpers, "setInput">) {
 		<div className="card-item mx-auto ">
 			<div className="rounded-lg border bg-background p-8">
 
-				<Text fontFamily="freizeit" size={"lg"} fontWeight={700} className={"mb-2"}>
+				<Text fontFamily="freizeit" size={"xl"} fontWeight={700} className={"mb-2"}>
 					Chat with your indexes
 				</Text>
 				<br /><br />
