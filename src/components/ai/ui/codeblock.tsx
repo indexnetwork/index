@@ -2,7 +2,9 @@
 // @see https://github.com/mckaywrigley/chatbot-ui/blob/main/components/Markdown/CodeBlock.tsx
 
 import { FC, memo } from "react";
+// @ts-ignore
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+// @ts-ignore
 import { coldarkDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 
 import { useCopyToClipboard } from "hooks/useCopyToClipboard";
@@ -14,11 +16,11 @@ interface Props {
   value: string
 }
 
-interface languageMap {
+interface LanguageMap {
   [key: string]: string | undefined
 }
 
-export const programmingLanguages: languageMap = {
+export const programmingLanguages: LanguageMap = {
 	javascript: ".js",
 	python: ".py",
 	java: ".java",
@@ -96,18 +98,16 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
 				<span className="text-xs lowercase">{language}</span>
 				<div className="flex items-center space-x-1">
 					<Button
-						variant="ghost"
-						className="hover:bg-zinc-800 focus-visible:ring-1 focus-visible:ring-slate-700 focus-visible:ring-offset-0"
+						theme="ghost"
 						onClick={downloadAsFile}
-						size="icon"
+						iconButton
 					>
 						<IconDownload />
 						<span className="sr-only">Download</span>
 					</Button>
 					<Button
-						variant="ghost"
-						size="icon"
-						className="text-xs hover:bg-zinc-800 focus-visible:ring-1 focus-visible:ring-slate-700 focus-visible:ring-offset-0"
+						theme="ghost"
+						iconButton
 						onClick={onCopy}
 					>
 						{isCopied ? <IconCheck /> : <IconCopy />}

@@ -9,8 +9,7 @@ export function ButtonScrollToBottom({ className, ...props }: ButtonProps) {
 
 	return (
 		<Button
-			variant="outline"
-			size="icon"
+			iconButton
 			onClick={() => window.scrollTo({
 				top: document.body.offsetHeight,
 				behavior: "smooth",

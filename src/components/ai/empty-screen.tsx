@@ -35,7 +35,7 @@ export function EmptyScreen({ setInput }: Pick<UseChatHelpers, "setInput">) {
           			You can start a conversation here or try the following examples:
 				</Text>
 				<div className="mt-4">
-					{exampleMessages.map((message, index) => (<div>
+					{exampleMessages.map((message, index) => (<div key={index}>
 						<Button
 							key={index}
 							theme={"ghost"}

@@ -3,7 +3,6 @@ import { type Message } from "ai";
 import Button from "components/base/Button";
 import { IconCheck, IconCopy } from "components/ai/ui/icons";
 
-import cc from "classcat";
 import { useCopyToClipboard } from "hooks/useCopyToClipboard";
 
 interface ChatMessageActionsProps extends React.ComponentProps<"div"> {
@@ -24,10 +23,6 @@ export function ChatMessageActions({
 
 	return (
 		<div
-			className={cc(
-				"flex items-center justify-end transition-opacity group-hover:opacity-100 md:absolute md:-right-10 md:-top-2 md:opacity-0",
-				className,
-			)}
 			{...props}
 		>
 			<Button iconButton theme={"ghost"} onClick={onCopy}>

@@ -17,7 +17,7 @@ const SheetPortal = ({
 	...props
 }: SheetPrimitive.DialogPortalProps) => (
 	<SheetPrimitive.Portal
-		className={cc("fixed inset-0 z-50 flex", className)}
+		className={cc("fixed inset-0 z-50 flex")}
 		{...props}
 	>
 		{children}
@@ -32,7 +32,6 @@ const SheetOverlay = React.forwardRef<
 	<SheetPrimitive.Overlay
 		className={cc(
 			"fixed inset-0 z-50 transition-all duration-100 data-[state=closed]:animate-out data-[state=closed]:fade-out data-[state=open]:fade-in",
-			className,
 		)}
 		{...props}
 		ref={ref}
@@ -49,7 +48,6 @@ const SheetContent = React.forwardRef<
 			ref={ref}
 			className={cc(
 				"fixed inset-y-0 left-0 z-50 h-full border-r bg-background p-6 shadow-lg transition ease-in-out data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left data-[state=closed]:duration-300 data-[state=open]:duration-500 sm:max-w-sm",
-				className,
 			)}
 			{...props}
 		>
@@ -67,7 +65,7 @@ const SheetHeader = ({
 	className,
 	...props
 }: React.HTMLAttributes<HTMLDivElement>) => (
-	<div className={cc("flex flex-col space-y-2", className)} {...props} />
+	<div className={cc("flex flex-col space-y-2")} {...props} />
 );
 SheetHeader.displayName = "SheetHeader";
 
@@ -78,7 +76,6 @@ const SheetFooter = ({
 	<div
 		className={cc(
 			"flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2",
-			className,
 		)}
 		{...props}
 	/>
@@ -91,7 +88,7 @@ const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
 	<SheetPrimitive.Title
 		ref={ref}
-		className={cc("text-lg font-semibold text-foreground", className)}
+		className={cc("text-lg font-semibold text-foreground")}
 		{...props}
 	/>
 ));
@@ -103,7 +100,7 @@ const SheetDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
 	<SheetPrimitive.Description
 		ref={ref}
-		className={cc("text-sm text-muted-foreground", className)}
+		className={cc("text-sm text-muted-foreground")}
 		{...props}
 	/>
 ));

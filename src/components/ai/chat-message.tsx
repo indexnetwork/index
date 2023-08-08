@@ -17,10 +17,9 @@ export interface ChatMessageProps {
   message: Message
 }
 
-export function ChatMessage({ message, ...props }: ChatMessageProps) {
+export function ChatMessage({ message }: ChatMessageProps) {
 	return (
-
-		<FlexRow wrap={false} {...props}>
+		<FlexRow wrap={false}>
 			<Col>
 				{message.role === "user" ? <IconUser width={20} /> : <IconOpenAI width={20} />}
 			</Col>
@@ -36,7 +35,7 @@ export function ChatMessage({ message, ...props }: ChatMessageProps) {
 							node, inline, className, children, ...props
 						}) {
 							if (children.length) {
-								if (children[0] == "▍") {
+								if (children[0] === "▍") {
 									return (
 										<span className="mt-1 cursor-default animate-pulse">▍</span>
 									);

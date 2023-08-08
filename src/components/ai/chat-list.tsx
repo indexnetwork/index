@@ -3,11 +3,11 @@ import { type Message } from "ai";
 import { ChatMessage } from "components/ai/chat-message";
 import React from "react";
 
-export interface ChatList {
+export interface ChatListInterface {
   messages: Message[]
 }
 
-export function ChatList({ messages }: ChatList) {
+export const ChatList = ({ messages }: ChatListInterface) => {
 	if (!messages.length) {
 		return null;
 	}
@@ -25,4 +25,4 @@ export function ChatList({ messages }: ChatList) {
 			))}
 		</div>
 	);
-}
+};

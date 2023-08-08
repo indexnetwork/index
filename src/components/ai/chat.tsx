@@ -48,11 +48,8 @@ export function Chat({ id, initialMessages, className }: ChatProps) {
 				id={id}
 				isLoading={isLoading}
 				stop={stop}
-				append={append}
 				reload={reload}
 				messages={messages}
-				input={input}
-				setInput={setInput}
 			/>
 		</>
 	);
