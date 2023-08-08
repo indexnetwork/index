@@ -8,6 +8,8 @@ import { NextPageWithLayout } from "types";
 import { useRouter } from "next/router";
 import SearchIndexes from "../../components/site/indexes/SearchIndexes";
 import AskIndexes from "../../components/site/indexes/AskIndexes";
+import RadioGroup from "../../components/base/RadioGroup";
+import Col from "../../components/layout/base/Grid/Col";
 
 const IndexesPage: NextPageWithLayout = () => {
 	const [interactionMode, setInteractionMode] = useState<string>("search");
@@ -20,7 +22,20 @@ const IndexesPage: NextPageWithLayout = () => {
 
 	return <PageContainer>
 		{
-			interactionMode === "ask" && <AskIndexes setInteractionMode={setInteractionMode} did={did!.toString()} />
+			interactionMode === "ask" && <AskIndexes interactionToggle={<Col>
+				<RadioGroup className={"px-1"} value="ask" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
+					items={[
+						{
+							value: "search",
+							title: "Search",
+						},
+						{
+							value: "ask",
+							title: "Ask",
+						},
+					]}
+				/>
+			</Col>} did={did!.toString()} />
 		}
 		{
 			interactionMode === "search" && <SearchIndexes setInteractionMode={setInteractionMode} did={did!.toString()} />

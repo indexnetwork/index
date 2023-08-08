@@ -19,11 +19,11 @@ export interface ChatProps extends React.ComponentProps<"div"> {
 }
 export interface SearchIndexesProps {
 	did?: string;
-	setInteractionMode(value: string): void;
+	interactionToggle?: React.ReactNode;
 }
 
 const AskIndexes: React.VFC<SearchIndexesProps> = ({
-	setInteractionMode,
+	interactionToggle,
 	did,
 }) => {
 	const apiUrl = "http://localhost:8000/index/seref/chat_stream";
@@ -93,20 +93,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 												  setInput={setInput}
 												/>
 											</Col>
-											<Col>
-												<RadioGroup className={"px-1"} value="ask" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
-													items={[
-														{
-															value: "search",
-															title: "Search",
-														},
-														{
-															value: "ask",
-															title: "Ask",
-														},
-													]}
-												/>
-											</Col>
+											{interactionToggle}
 										</FlexRow>
 									</Col>
 								</FlexRow>
