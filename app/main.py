@@ -67,6 +67,8 @@ llm = ChatOpenAI(temperature=0, model_name="gpt-4", openai_api_key=os.environ["O
 service_context = ServiceContext.from_defaults(llm=llm, embed_model=embed_model)
 hyde = HyDEQueryTransform(include_original=True)
 
+UnstructuredURLLoader = download_loader("UnstructuredURLLoader")
+
 def get_collection():
     collection = chroma_client.get_or_create_collection(name="indexes")
     vector_store = ChromaVectorStore(chroma_collection=collection)
@@ -127,16 +129,24 @@ def add(index_id, link: Link):
     
     collection = get_collection()
     
-    UnstructuredURLLoader = download_loader("UnstructuredURLLoader")
     loader = UnstructuredURLLoader(urls=[link.url])
+
+    try:
+        kb_data = loader.load()
+        if not kb_data:
+            return JSONResponse(content={'message': 'No data loaded from the provided link'}, status_code=400)
+    except Exception as e:
+        return JSONResponse(content={'message': 'Url load error'}, status_code=400)
+    
     kb_data = loader.load()
+
+    if not kb_data:
+        return JSONResponse(content={'message': 'No data loaded from the provided link'}, status_code=400)
+
     kb_data[0].metadata["index_id"] = index_id
-    collection.insert(kb_data[0],)
+    collection.insert(kb_data[0])
     chroma_client.persist()
 
-    #summary = collection.as_query_engine().query("summarize").response #WRONG ONLY SUMMARIZE THIS DOC
-    #redisClient.hset("summaries", index_id, summary)
-    
     return JSONResponse(content={'message': 'Document added successfully'})
 
 @app.delete("/index/{index_id}/links")
