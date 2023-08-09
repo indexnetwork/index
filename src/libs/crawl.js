@@ -100,7 +100,7 @@ export const getMetadata = async (url) => {
 
 	if(response.links && response.links.icon){
 		return {
-			url: response.meta.canonical,
+			url: url,
 			title: response.meta.title,
 			favicon: response.links.icon[0].href,
 		}
