@@ -93,8 +93,12 @@ export const updateIndex = async (indexMsg) => {
 export const createIndexLink = async (indexLinkMsg) => {
     console.log("createIndexLink", indexLinkMsg)
     let indexLink = await getIndexLinkById(indexLinkMsg.id)
-    await axios.post(`http://llm-indexer/index/${indexLink.indexId}/links`, {url: indexLink.link.url})
-
+    
+    try {
+        await axios.post(`http://llm-indexer/index/${indexLink.indexId}/links`, {url: indexLink.link.url})
+    } catch (e) {
+        console.log("Indexer error:", e.message);
+    }
     delete indexLink.link.content // TODO fix stored in the indexer only, for now.
     indexLink.link.url_exact_match = indexLink.link.url;
     await client.update({
