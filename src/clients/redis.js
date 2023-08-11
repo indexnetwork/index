@@ -1,15 +1,16 @@
-const { createClient } = require('redis');
-
+import dotenv from 'dotenv'
 if(process.env.NODE_ENV !== 'production'){
-    require('dotenv').config()    
+    dotenv.config()
 }
 
+
+import { createClient } from 'redis';
 
 class RedisClient {
 
   constructor() {
-      throw new Error('Use Singleton.getInstance()');    
-      
+      throw new Error('Use Singleton.getInstance()');
+
   }
 
   static getInstance() {
@@ -23,4 +24,4 @@ class RedisClient {
 
 }
 
-module.exports = RedisClient;
+export default RedisClient;

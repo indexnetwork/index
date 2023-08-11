@@ -1,18 +1,17 @@
-const { Actor} = require('apify');
-const Apify = require('apify');
-const { PuppeteerCrawler, Configuration, RequestList, RequestQueue, sleep }  = require("crawlee");
-const {Readability} =  require("@mozilla/readability");
-const indexer = require('./indexer.js')
-const fs = require("fs");
-const striptags = require("striptags")
+import { Actor} from 'apify';
+import { PuppeteerCrawler, RequestList, sleep } from "crawlee";
+import {Readability} from "@mozilla/readability";
+import * as indexer from './kafka-indexer.js';
+import fs from "fs";
+import striptags from "striptags";
 
 
-exports.getQueue = async () => {
+export const getQueue = async () => {
 
 	console.log("getQUEUEUE")
 	await Actor.init();
 
-	
+
 	const requestList = await RequestList.open('my-list', [], {
 		keepDuplicateUrls: true
 	});
@@ -53,18 +52,15 @@ exports.getQueue = async () => {
 	                ${executor}
 	                return executor();
 	            }())
-	        `);     
-
-
+	        `);
 
 	        const content = striptags(resultArticle.textContent)
 	        .replace(/(?:\r\n|\r|\n)/g, '...')
 	        .replaceAll('.......','...');
 
-	        await indexer.updateLinkContent(request.url, content)    
+	        await indexer.updateLinkContent(request.url, content)
 
 	        queue.markRequestHandled(request)
-
 
 	    },
 	});
@@ -73,5 +69,46 @@ exports.getQueue = async () => {
 
 	return crawler
 
+}
+
+
+export const getMetadata = async (url) => {
+
+	let results = await fetch(`https://iframe.ly/api/iframely?api_key=${process.env.IFRAMELY_API_KEY}&url=${url}&ssl=1&title=1`, {
+		method: 'GET',
+		headers: {
+			"Content-Type": "application/json"
+		}
+	})
+
+	let response = await results.json();
+
+	if(!response || response.error){
+		return {
+			url: url,
+			title: (new URL(url)).hostname
+		}
+	}
+
+	const site = response.meta.site || (new URL(url)).hostname;
+
+	if(response.meta.title && response.meta.title.length > 0 && !response.meta.title.includes(response.meta.site)){
+		response.meta.title = `${site} | ${response.meta.title}`
+	}else{
+		response.meta.title = site;
+	}
+
+	if(response.links && response.links.icon){
+		return {
+			url: url,
+			title: response.meta.title,
+			favicon: response.links.icon[0].href,
+		}
+	}
+
+	return {
+		url: response.meta.canonical,
+		title: response.meta.title
+	}
 }
 

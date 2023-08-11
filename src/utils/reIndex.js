@@ -1,5 +1,10 @@
-require('dotenv').config()
-const { Client } = require('@elastic/elasticsearch')
+import dotenv from 'dotenv'
+if(process.env.NODE_ENV !== 'production'){
+  dotenv.config()
+}
+
+import { Client } from '@elastic/elasticsearch'
+
 const client = new Client({ node: process.env.ELASTIC_HOST })
 
 async function reset() {
@@ -55,52 +60,106 @@ async function start() {
           "id": {
             "type": "keyword"
           },
-          "controller_did": {
+          "indexId": {
             "type": "keyword"
           },
-          "indexer_did": {
+          "linkId": {
             "type": "keyword"
           },
-          "index_id": {
-            "type": "keyword"
+          "indexerDID": {
+            "properties": {
+              "id": {
+                "type" : "keyword"
+              }
+            }
           },
-          "content": {
-            "type": "search_as_you_type",
-            "analyzer": "searchable",
-            "max_shingle_size": 3
+          "controllerDID": {
+            "properties": {
+              "id": {
+                "type" : "keyword"
+              }
+            }
           },
-          "title": {
-            "type": "search_as_you_type",
-            "analyzer": "searchable",
-            "max_shingle_size": 3
-          },
-          "url": {
-            "type": "search_as_you_type",
-            "analyzer": "searchable",
-            "max_shingle_size": 3
-          },
-          "tags": {
-            "type": "search_as_you_type",
-            "analyzer": "searchable",
-          },
-          "created_at": {
+          "updatedAt": {
             "type": "date"
           },
-          "updated_at": {
+          "createdAt": {
             "type": "date"
           },
-          "deleted_at": {
+          "deletedAt": {
             "type": "date"
-          },          
+          },
+          "link": {
+            "properties": {
+              "id": {
+                "type": "keyword"
+              },
+              "controllerDID": {
+                "properties": {
+                  "id": {
+                    "type" : "keyword"
+                  }
+                }
+              },
+              "title": {
+                "type": "search_as_you_type",
+                "analyzer": "searchable",
+                "max_shingle_size": 3
+              },
+              "url": {
+                "type": "search_as_you_type",
+                "analyzer": "searchable",
+                "max_shingle_size": 3
+              },
+              "url_exact_match": {
+                "type": "keyword",
+              },
+              "favicon": {
+                "type": "keyword"
+              },
+              "tags": {
+                "type": "search_as_you_type",
+                "analyzer": "searchable",
+              },
+              "content": {
+                "type": "search_as_you_type",
+                "analyzer": "searchable",
+                "max_shingle_size": 3
+              },
+              "createdAt": {
+                "type": "date"
+              },
+              "updatedAt": {
+                "type": "date"
+              },
+              "deletedAt": {
+                "type": "date"
+              },
+            }
+          },
           "index": {
             "properties": {
               "id": {
                 "type": "keyword"
               },
-              "controller_did": {
+              "controllerDID": {
+                "properties": {
+                  "id": {
+                    "type" : "keyword"
+                  }
+                }
+              },
+              "ownerDID": {
+                "properties": {
+                  "id": {
+                    "type" : "keyword"
+                  }
+                }
+              },
+              "collabAction": {
                 "type": "keyword",
               },
-              "collab_action": {
+              "pkpPublicKey": {
                 "type": "keyword",
               },
               "title": {
@@ -108,15 +167,15 @@ async function start() {
                 "analyzer": "searchable",
                 "max_shingle_size": 3
               },
-              "updated_at": {
+              "updatedAt": {
                 "type": "date"
               },
-              "created_at": {
+              "createdAt": {
                 "type": "date"
               },
-              "deleted_at": {
+              "deletedAt": {
                 "type": "date"
-              },              
+              },
             }
           }
         }

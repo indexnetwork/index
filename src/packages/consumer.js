@@ -1,31 +1,33 @@
+import dotenv from 'dotenv'
 if(process.env.NODE_ENV !== 'production'){
-    require('dotenv').config()
+    dotenv.config()
 }
 
-const _ = require('lodash')
-const { Kafka } = require('kafkajs')
-const indexer = require('./controllers/indexer.js')
+import _  from 'lodash';
+import { Kafka } from 'kafkajs'
+import * as indexer from '../libs/kafka-indexer.js';
+import RedisClient from '../clients/redis.js';
 
 const kafka = new Kafka({
     clientId: 'api',
     brokers: [process.env.KAFKA_HOST],
 })
 
-const RedisClient = require('./clients/redis.js');
+
 const redis = RedisClient.getInstance();
 
 const topics = {
-    'postgres.public.kjzl6hvfrbw6casje7g29aekjral6tocm9tbzyc7n3dwtp4j1il3sd3l5k6q7x4': 'link',
-    'postgres.public.kjzl6hvfrbw6c90qlqsw8wknzoi3rhspund6qzgz8vifalod8jk8ujwdji5kdm1': 'index',
-    'postgres.public.kjzl6hvfrbw6cb2dygt8kwbw3jfcgny4omo1patq3iipe2o24jcwl5v99by7qye': 'user_index'
+    'postgres.public.kjzl6hvfrbw6c8e8rlhx3guuoc1o6i4vni5emzh2c48aa5pn0u71jggun7rtu2a': 'index',
+    'postgres.public.kjzl6hvfrbw6c72mna95slfmi9nth1fp3bacc2ai7i6g1scygmo7awxsjl4dlpk': 'link',
+    'postgres.public.kjzl6hvfrbw6c6vpgfoph7e98nkj4ujmd7bgw5ylb6uzmpts1yjva3zdjk0bhe9': 'index_link',
+    'postgres.public.kjzl6hvfrbw6c5gi8p8j811v4u9tpel9m9lo11hm9ks74c1l0fhmnebsbtwusso': 'user_index'
 }
 
 async function start() {
     await redis.connect()
-    const consumer = kafka.consumer({ groupId: `index-consumer-${Math.random()}` })
+    const consumer = kafka.consumer({ groupId: `index-consumer-dev-8` })
     await consumer.connect()
-    await consumer.subscribe({ topics: Object.keys(topics) })
-    //conflicts: "proceed",
+    await consumer.subscribe({ topics: Object.keys(topics), fromBeginning: true})
     await consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
 
@@ -43,10 +45,11 @@ async function start() {
 
             let doc = {
                 id: value.stream_id,
-                ..._.pick(value, ['controller_did']),
+                controllerDID: value.controller_did,
                 ...value.stream_content
             }
-            console.log(doc);
+            console.log(doc)
+
 
             switch (model) {
                 case 'index':
@@ -56,16 +59,6 @@ async function start() {
                             break
                         case "u":
                             indexer.updateIndex(doc)
-                            break
-                    }
-                    break
-                case 'link':
-                    switch (op) {
-                        case "c":
-                            indexer.createLink(doc)
-                            break
-                        case "u":
-                            indexer.updateLink(doc)
                             break
                     }
                     break
@@ -79,14 +72,30 @@ async function start() {
                             break
                     }
                     break
+                case 'index_link':
+                    switch (op) {
+                        case "c":
+                            indexer.createIndexLink(doc)
+                            break
+                        case "u":
+                            indexer.updateIndexLink(doc)
+                            break
+                    }
+                    break
+                case 'link':
+                    switch (op) {
+                        case "c":
+                            indexer.createLink(doc)
+                            break
+                        case "u":
+                            indexer.updateLink(doc)
+                            break
+                    }
+                    break
             }
 
         },
     })
-
 }
 
 start()
-
-
-
