@@ -20,6 +20,7 @@ import { useCeramic } from "hooks/useCeramic";
 import { useLinks } from "hooks/useLinks";
 import sanitize from "sanitize-html";
 import LogoLink from "components/base/Logo/LogoLink";
+import { useIndex } from "hooks/useIndex";
 import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
@@ -29,22 +30,20 @@ export interface LinkItemProps {
 	snapshot?: DraggableStateSnapshot;
 	onChange?(val: IndexLink[]): void;
 	search?: boolean;
-	isOwner?: boolean;
-	highlight?: any;
 }
 
 const LinkItem: React.VFC<LinkItemProps> = ({
 	index_link,
 	provided,
 	snapshot,
-	highlight,
-	isOwner,
 	search = false,
 	onChange,
 }) => {
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
 	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
 	const { links, setLinks } = useLinks();
+	const { pkpCeramic, isOwner, isCreator } = useIndex();
+	const personalCeramic = useCeramic();
 
 	const { link } = index_link;
 
@@ -52,15 +51,13 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 
 	const { indexId } = router.query;
 
-	const ceramic = useCeramic();
-
 	const handleToggleNewTag = () => {
 		setToggleNewTag((oldVal) => !oldVal);
 	};
 
 	const handleNewTagEdit = async (val?: string | null) => {
 		if (val) {
-			const currentLink = await ceramic.addTag(link?.id!, val) as Link;
+			const currentLink = await personalCeramic.addTag(link?.id!, val) as Link;
 			const newState = links.map((l) => (l.id === index_link.id ? { ...l, link: currentLink } : l));
 			setLinks(newState);
 		}
@@ -79,13 +76,13 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 
 	const handleRemove = async () => {
 		setLinks(links?.filter((l) => l.id !== index_link.id!));
-		const currentLink = await ceramic.removeIndexLink(index_link);
+		const currentLink = await pkpCeramic.removeIndexLink(index_link);
 		// onChange && onChange(doc?.content?.links || []);
 	};
 
 	const handleRemoveTag = async (val: string) => {
-		const currentLink = await ceramic.removeTag(index_link.id!, val) as Link;
-		const newState = links.map((l) => (l.id === index_link.id ? currentLink : l));
+		const currentLink = await personalCeramic.removeTag(index_link.linkId!, val) as Link;
+		const newState = links.map((l) => (l.linkId === index_link.linkId ? { ...l, link: currentLink } : l));
 		setLinks(newState);
 	};
 	return (
@@ -113,11 +110,11 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 							className="idxflex-grow-1"
 						>
 							<a target="_blank" rel="noreferrer" href={link?.url}>
-								<Text className={cm.title} fontWeight={700} dangerouslySetInnerHTML={{ __html: sanitize((highlight && highlight["link.title"]) ? highlight["link.title"] : link?.title) }}></Text>
+								<Text className={cm.title} fontWeight={700} dangerouslySetInnerHTML={{ __html: sanitize((index_link.highlight && index_link.highlight["link.title"]) ? index_link.highlight["link.title"] : link?.title as string) }}></Text>
 							</a>
 						</Col>
 						{
-							!search && isOwner && (
+							!search && isCreator && (
 								<Col className="idxflex-shrink-0 ml-3 index-detail-list-item-buttons">
 									<FlexRow>
 										<Col>
@@ -179,13 +176,13 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 								height={16}
 								style={{
 									verticalAlign: "middle",
-								}} />}<Text size="sm" theme="disabled">{link?.url?.substring(0, 80)} • {link?.updated_at ? moment(link?.updated_at).format("MMM D") : ""}</Text>
+								}} />}<Text size="sm" theme="disabled">{link?.url?.substring(0, 80)} • {link?.updatedAt ? moment(link?.updatedAt).format("MMM D") : ""}</Text>
 					</ a>
 				</Col>
 				{
-					search && highlight && highlight["link.content"] && (
+					search && index_link.highlight && index_link.highlight["link.content"] && (
 						<Col className="mt-5">
-							<Text className="listItem" theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize(highlight["link.content"]) }}></Text>
+							<Text className="listItem" theme="secondary" dangerouslySetInnerHTML={{ __html: sanitize(index_link.highlight["link.content"]) }}></Text>
 						</Col>
 					)
 				}

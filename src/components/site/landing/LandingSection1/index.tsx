@@ -42,7 +42,7 @@ const LandingSection1 = () => {
 			<div className="lnd-desc">
 				<Header className="lnd-blue-ttl">The human bridge between context and content.</Header>
 				<Text size="xl" className={cc([cm.descLine, "mb-6", "mb-sm-7"])}>
-					index.as helps you to create and monetize discovery engines.</Text>
+					Index Network helps you to create and monetize discovery engines.</Text>
 				<Button
 					theme="primary"
 					onClick={handleConnect}

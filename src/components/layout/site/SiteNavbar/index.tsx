@@ -8,19 +8,19 @@ import IconPeople from "components/base/Icon/IconPeople";
 import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
 import React, {
-	useCallback, useContext, useState,
+	useCallback, useContext,
 } from "react";
 import IconDisconnect from "components/base/Icon/IconDisconnect";
-import { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
 import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { useAuth } from "hooks/useAuth";
 import { selectProfile } from "store/slices/profileSlice";
 import { appConfig } from "config";
-import CreateModal from "components/site/modal/CreateModal";
 import IconSettings from "components/base/Icon/IconSettings";
-import Navbar, { NavbarProps, NavbarMenu } from "../../base/Navbar";
+import Navbar, { NavbarProps, NavbarMenu } from "components/layout/base/Navbar";
+import { useApp } from "hooks/useApp";
+import { useRouter } from "next/router";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
@@ -36,8 +36,6 @@ const SiteNavbar = (
 ) => {
 	const { t } = useTranslation(["common", "components"]);
 	const router = useRouter();
-
-	const [createModalVisible, setCreateModalVisible] = useState(false);
 	const {
 		did,
 		loading,
@@ -59,9 +57,8 @@ const SiteNavbar = (
 		}
 	};
 
-	const handleToggleCreateModal = () => {
-		setCreateModalVisible((oldVal) => !oldVal);
-	 };
+	const { setCreateModalVisible } = useApp();
+
 	const renderHeader = useCallback(() => (headerType === "public" ? (
 		<Navbar
 			className="site-navbar"
@@ -135,13 +132,12 @@ const SiteNavbar = (
 								</>
 							}
 						>
-							<Avatar className="site-navbar__avatar" hoverable size={32} randomColor>{
+							<Avatar className="site-navbar__avatar" hoverable size={32}>{
 								pfp ?
 									<img src={pfp.replace("ipfs://", appConfig.ipfsProxy)} alt="profile_img"/> : (
 										available && name ? name : "Y"
 									)}</Avatar>
 						</Dropdown>
-						{createModalVisible ? <CreateModal visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal> : <></>}
 					</NavbarMenu>
 				) :
 					(

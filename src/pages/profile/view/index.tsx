@@ -22,7 +22,7 @@ import { appConfig } from "config";
 import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import IconEditBlack from "components/base/Icon/IconEditBlack";
-import { Users } from "../../../types/entity";
+import { Users } from "types/entity";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -95,7 +95,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 						</Col>
 						<Col>
 							<Flex>
-								<Avatar className="site-navbar__avatar mr-8" hoverable size={80} randomColor>{
+								<Avatar className="site-navbar__avatar mr-8" hoverable size={80}>{
 									pfp ?
 										<img src={pfp.replace("ipfs://", appConfig.ipfsProxy)} alt="profile_img"/> : (
 											available && name ? name : "Y"

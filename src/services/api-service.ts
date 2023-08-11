@@ -114,12 +114,12 @@ class ApiService {
 			// TODO handle;
 		}
 	}
-	async getIndexById(index_id: string) : Promise<Indexes | undefined> {
+	async getIndexById(indexId: string) : Promise<Indexes | undefined> {
 		try {
-			const { data } = await apiAxios.get(`${API_ENDPOINTS.INDEXES}/${index_id}`);
+			const { data } = await apiAxios.get(`${API_ENDPOINTS.INDEXES}/${indexId}`);
 			return data as Indexes;
 		} catch (err: any) {
-			throw new Error(err.message);
+			// throw new Error(err.message);
 		}
 	}
 	async crawlLink(url: string): Promise<Link | null> {
@@ -145,6 +145,31 @@ class ApiService {
 	async getLITAction(CID: string): Promise<LitActionConditions | null > {
 		try {
 			const { data } = await apiAxios.get<LitActionConditions>(`${API_ENDPOINTS.LIT_ACTIONS}/${CID}`);
+			return data;
+		} catch (err) {
+			return null;
+		}
+	}
+	async postLITAction(conditions: LitActionConditions): Promise<string | null > {
+		try {
+			const { data } = await apiAxios.post<LitActionConditions>(`${API_ENDPOINTS.LIT_ACTIONS}`, conditions);
+			return data as string;
+		} catch (err) {
+			return null;
+		}
+	}
+	async getContract(network: string, address: string, tokenId?: string): Promise<any | null > {
+		try {
+			// eslint-disable-next-line max-len
+			const { data } = await apiAxios.get<LitActionConditions>(tokenId ? `${API_ENDPOINTS.NFT_METADATA}/${network}/${address}/${tokenId}` : `${API_ENDPOINTS.NFT_METADATA}/${network}/${address}`);
+			return data;
+		} catch (err) {
+			return null;
+		}
+	}
+	async getWallet(ensName: string): Promise<any | null > {
+		try {
+			const { data } = await apiAxios.get<LitActionConditions>(`${API_ENDPOINTS.ENS}/${ensName}`);
 			return data;
 		} catch (err) {
 			return null;

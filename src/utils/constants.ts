@@ -7,6 +7,7 @@ export const BREAKPOINTS = {
 };
 
 export const API_ENDPOINTS = {
+	CHAT_STREAM: "/chat_stream",
 	INDEXES: "/indexes",
 	SEARCH_DID: "/search/did",
 	SEARCH_LINKS: "/search/links",
@@ -16,4 +17,6 @@ export const API_ENDPOINTS = {
 	CRAWL_CONTENT: "/links/crawl-content",
 	FIND_CONTENT: "/links/find-content",
 	SYNC_CONTENT: "/links/sync-content",
+	NFT_METADATA: "/nft",
+	ENS: "/ens",
 };

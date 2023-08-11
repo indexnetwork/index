@@ -4,7 +4,7 @@
 
 	.tooltip-tip {
 		@include no-select;
-		font-family: Inter;
+		font-family: 'Inter';
 		position: absolute;
 		padding: $tooltip-spacing;
 		border-radius: 4px;

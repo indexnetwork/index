@@ -3,12 +3,10 @@ import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import Image from "next/image";
-import React, { useState } from "react";
+import React from "react";
 import { useRouter } from "next/router";
-import { selectConnection } from "store/slices/connectionSlice";
-import { useAppSelector } from "hooks/store";
-import CreateModal from "components/site/modal/CreateModal";
-import { useOwner } from "../../../../hooks/useOwner";
+import { useOwner } from "hooks/useOwner";
+import { useApp } from "hooks/useApp";
 
 export interface NoIndexesProps {
 	hasIndex?: boolean;
@@ -22,15 +20,13 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 	tabKey,
 }) => {
 	const router = useRouter();
-	const [createModalVisible, setCreateModalVisible] = useState(false);
-	const { did } = useAppSelector(selectConnection);
+
 	const { isOwner } = useOwner();
-	const handleToggleCreateModal = () => {
-		setCreateModalVisible((oldVal) => !oldVal);
-	 };
+	const { setCreateModalVisible } = useApp();
+
 	return (
 		<>
-			<Row rowSpacing={5} >
+			<Row fullWidth rowSpacing={5} >
 				<Col xs={12} centerBlock style={{
 					height: 166,
 				}}>
@@ -67,8 +63,7 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 				{
 					(!search && isOwner && !hasIndex && tabKey !== "starred") && (
 						<Col centerBlock>
-							<Button onClick={handleToggleCreateModal}>Create a new index</Button>
-							{createModalVisible ? <CreateModal visible={createModalVisible} onClose={handleToggleCreateModal}></CreateModal> : <></>}
+							<Button onClick={() => { setCreateModalVisible(true); }} >Create a new index</Button>
 						</Col>
 					)
 				}

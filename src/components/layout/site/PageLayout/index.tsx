@@ -18,7 +18,7 @@ const PageLayout = (
 	}: PageLayoutProps,
 ) => (<>
 	<Head>
-		<title>Index.as</title>
+		<title>Index Network</title>
 		{/* <script async src="/scripts/drag-drop-touch.js"></script> */}
 	</Head>
 	<SiteNavbar headerType={headerType} isLanding={isLanding} />

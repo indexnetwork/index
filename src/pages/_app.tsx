@@ -12,6 +12,8 @@ import { Provider } from "react-redux";
 import { store } from "store";
 import { AuthHandlerProvider } from "components/site/context/AuthHandlerProvider";
 
+import { AppContextProvider } from "hooks/useApp";
+
 type AppPropsWithLayout = AppProps & {
 	Component: NextPageWithLayout;
 	children: React.ReactNode;
@@ -27,36 +29,41 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 	return (
 		<Web3ReactProvider getLibrary={getLibrary}>
 			<Provider store={store}>
-				<AuthHandlerProvider>
-					<CeramicProvider>
-						<Head>
-							<link rel="shortcut icon" href="/favicon-white.png" />
-							<title>index.as | The human bridge between context and content.</title>
-							<meta name="title" content="index.as | The human bridge between context and content." />
-							<meta name="description" content="Create and monetize discovery engines." />
+				<CeramicProvider>
+					<AuthHandlerProvider>
+						<AppContextProvider>
+							<Head>
+								<link rel="shortcut icon" href="/favicon-white.png" />
+								<title>Index Network | The human bridge between context and content.</title>
+								<meta name="title" content="Index Network | The human bridge between context and content." />
+								<meta name="description" content="Create and monetize discovery engines." />
 
-							<meta property="twitter:card" content="summary_large_image" />
-							<meta property="twitter:url" content="https://index.as" />
-							<meta property="twitter:title" content="index.as | The human bridge between context and content." />
-							<meta property="twitter:description" content="Create and monetize discovery engines." />
-							<meta property="twitter:image" content="https://testnet.index.as/images/bridge.jpg" />
+								<meta property="twitter:card" content="summary_large_image" />
+								<meta property="twitter:url" content="https://index.network" />
+								<meta property="twitter:title" content="Index Network | The human bridge between context and content." />
+								<meta property="twitter:description" content="Create and monetize discovery engines." />
+								<meta property="twitter:image" content="https://index.network/images/bridge.jpg" />
 
-							<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />
-							<link rel="preload" as="font" href="/fonts/Freizeit-Bold.woff2" type="font/woff2" crossOrigin="anonymous" />
-							<link rel="preload" as="font" href="/fonts/Roquefort-Standart.woff2" type="font/woff2" crossOrigin="anonymous" />
-							<link rel="preload" as="font" href="/fonts/Inter-Bold.woff2" type="font/woff2" crossOrigin="anonymous" />
-							<link rel="preload" as="font" href="/fonts/Inter-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />
-							<link href="/fonts/fonts.css" rel="stylesheet" />
-						</Head>
-						{Component.requireAuth ? (
-							<AuthGuard>
-								{getLayout(<Component {...pageProps} />)}
-							</AuthGuard>
-						) : (
-							getLayout(<Component {...pageProps} />)
-						)}
-					</CeramicProvider>
-				</AuthHandlerProvider>
+								<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />
+								<link rel="preload" as="font" href="/fonts/Freizeit-Bold.woff2" type="font/woff2" crossOrigin="anonymous" />
+								<link rel="preload" as="font" href="/fonts/Roquefort-Standart.woff2" type="font/woff2" crossOrigin="anonymous" />
+								<link rel="preconnect" href="https://fonts.googleapis.com" />
+								<link rel="preconnect" href="https://fonts.gstatic.com"/>
+								<link
+									href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap"
+									rel="stylesheet" />
+								<link href="/fonts/fonts.css" rel="stylesheet" />
+							</Head>
+							{Component.requireAuth ? (
+								<AuthGuard>
+									{getLayout(<Component {...pageProps} />)}
+								</AuthGuard>
+							) : (
+								getLayout(<Component {...pageProps} />)
+							)}
+						</AppContextProvider>
+					</AuthHandlerProvider>
+				</CeramicProvider>
 			</Provider>
 		</Web3ReactProvider>
 	);

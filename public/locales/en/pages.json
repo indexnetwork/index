@@ -2,7 +2,9 @@
 	"home": {
 		"tab1Ttl": "Your indexes ({{count}})",
 		"tab2Ttl": "Shared with you ({{count}})",
-		"searchPh": "Search in your indexes",
-		"searchLink": "Search in your links"
+		"searchHome": "Search in your indexes",
+		"searchLink": "Search in this index",
+		"askLink": "Ask to your index",
+		"askHome": "Ask to your indexes"
 	}
 }

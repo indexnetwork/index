@@ -1,7 +1,9 @@
 name: deploy
 on:
   push:
-    branches: dev
+    branches:
+      - testnet
+      - dev
 jobs:
   main:
     runs-on: ubuntu-latest
@@ -11,7 +13,7 @@ jobs:
         uses: azure/setup-kubectl@v2.0
         with:
           version: 'v1.23.6' # default is latest stable
-        id: install
+        id: install       
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -24,8 +26,15 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - run: |-
-          aws eks --region us-east-1 update-kubeconfig --name indexas
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v2.0   
+
+      - name: Set kubectl context
+        uses: azure/k8s-set-context@v3
+        with:
+           method: kubeconfig
+           kubeconfig: ${{ secrets.KUBECONFIG }}
+           context: microk8s
 
       - name: Check k8s connection
         run: kubectl get pods
@@ -53,9 +62,9 @@ jobs:
           docker build -t $DOCKER_TAG .
           docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
           docker push $DOCKER_REGISTRY/$DOCKER_TAG
-          docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexas/web3-web-app:latest
-          docker push $DOCKER_REGISTRY/indexas/web3-web-app:latest 
+          docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexas/web3-web-app:latest-${GITHUB_REF#refs/heads/}
+          docker push $DOCKER_REGISTRY/indexas/web3-web-app:latest-${GITHUB_REF#refs/heads/}
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/frontend frontend=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace web3-testnet
+          kubectl set image deployment/frontend frontend=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace ${GITHUB_REF#refs/heads/}

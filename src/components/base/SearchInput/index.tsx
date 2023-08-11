@@ -1,5 +1,5 @@
 import React, {
-	useCallback, useState,
+	useCallback, useEffect, useState,
 } from "react";
 import { useTranslation } from "next-i18next";
 import debounce from "lodash.debounce";
@@ -55,6 +55,10 @@ const SearchInput = (
 		handleOnSearch("");
 	};
 
+	useEffect(() => {
+		setQuery(defaultValue);
+	}, [defaultValue]);
+
 	return (
 		<Input
 			{...inputProps}
@@ -63,7 +67,6 @@ const SearchInput = (
 			addOnAfter={loading ? (<Spin active={true} thickness="light" theme="secondary" />) :
 				(!disabled && showClear && query && <IconClose onClick={handleClear} style={{ cursor: "pointer" }} />)
 			}
-			placeholder={t("pages:home.searchPh")}
 			onChange={handleChange}
 			value={query}
 		/>

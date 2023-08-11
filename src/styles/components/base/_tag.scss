@@ -29,6 +29,10 @@
 			);
 		}
 	}
+	&.tag-soon {
+		background-color: $gray-9;
+		color: $white;
+	}
 
 	&.tag-editable {
 		cursor: text;

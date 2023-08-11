@@ -1,41 +1,18 @@
 import { ethers } from "ethers";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
-import { encodeDIDWithLit, Secp256k1ProviderWithLit } from "@indexas/key-did-provider-secp256k1-with-lit";
 import { DID } from "dids";
-import * as KeyDidResolver from "key-did-resolver";
 import { LitNodeClient } from "@lit-protocol/lit-node-client";
-import { isSSR } from "../utils/helper";
+import { randomBytes, randomString } from "@stablelib/random";
+import { Cacao } from "@didtools/cacao";
+import { joinSignature } from "ethers/lib/utils";
+import { getResolver } from "key-did-resolver";
+import { createDIDCacao, DIDSession } from "did-session";
+import { Ed25519Provider } from "key-did-provider-ed25519";
 import { appConfig } from "../config";
 
 const checkAndSignAuthMessage = async () => JSON.parse(localStorage.getItem("authSig")!);
 
 class LitService {
-	async authenticatePKP(ipfsId: string, pkpPublicKey: any) : Promise<DID> {
-		if (!isSSR()) {
-			try {
-				const litNodeClient = new LitNodeClient({
-					litNetwork: "serrano",
-				});
-				await litNodeClient.connect();
-
-				const encodedDID = await encodeDIDWithLit(pkpPublicKey);
-				const provider = new Secp256k1ProviderWithLit({
-					did: encodedDID,
-					ipfsId,
-					client: litNodeClient,
-				});
-				// @ts-ignore
-				const did = new DID({ provider, resolver: KeyDidResolver.getResolver() });
-				await did.authenticate();
-				return did;
-			} catch (err: any) {
-				throw new Error(`Error authenticating DID: ${err.message}`);
-			}
-		} else {
-			throw new Error("authenticatePKP cannot be run on the server-side");
-		}
-	}
-
 	async mintPkp() {
 		const litContracts = new LitContracts();
 		await litContracts.connect();
@@ -57,7 +34,7 @@ class LitService {
 		const tokenIdNumber = ethers.BigNumber.from(tokenIdFromEvent).toString();
 		const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
 		console.log(
-			`PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
+			`superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
 		);
 		const acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
 		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenIdNumber, acid, []);
@@ -67,25 +44,10 @@ class LitService {
 			tokenIdNumber,
 			pkpPublicKey,
 		};
-
-		/*
-
-        PKP public key is 0x04c00cfcacdd09cd14f858ec1a9771f88d170ad8ac46d5deb8cced8f24cce303ff9006ee68ff0eac11ac1e4a57dc0bc48075c6813fab164fb0b36ea2c021c51005
-
-        and Token ID is 0x276c64f32ffe0f56396f60d1030d23d44b6ce50833856893ef0f311331f16d3f
-        and Token ID number is 17831717308699365721260653288176043165957324409522683475746237039328728542527
-
-        const tokenIdNumber = "17831717308699365721260653288176043165957324409522683475746237039328728542527"
-        const signEverythingCID = "QmcZ2MuxkNrMbNKAVtK37tEmKJ8zwvFudin3rBEcHyhqJc";
-        //
-        const addPermissionTx = await litContracts.pkpPermissionsContractUtil.write.revokePermittedAction(tokenIdNumber, signEverythingCID);
-        const aw = await addPermissionTx.wait();
-        console.log(aw);
-
-        */
 	}
 
 	async hasOriginNFT() {
+		return true;
 		if (localStorage.getItem("hasOrigin")) {
 			return true;
 		}
@@ -110,7 +72,75 @@ class LitService {
 		}
 		return hasOrigin;
 	}
+
+	async getPKPSession(pkpPublicKey: string, collabAction: string) {
+		const existingSessionStr = localStorage.getItem(`pkp_${pkpPublicKey}`);
+		if (existingSessionStr) {
+			const es = JSON.parse(existingSessionStr);
+			if (es.isPermittedAddress || (es.isCreator && es.collabAction === collabAction)) {
+				const existing = await DIDSession.fromSession(es.session);
+				await existing.did.authenticate();
+				es.session = existing;
+				return es;
+			}
+		}
+
+		const keySeed = randomBytes(32);
+		const provider = new Ed25519Provider(keySeed);
+		// @ts-ignore
+		const didKey = new DID({ provider, resolver: getResolver() });
+		await didKey.authenticate();
+
+		const litNodeClient = new LitNodeClient({
+			litNetwork: "serrano",
+		});
+		await litNodeClient.connect();
+		const authSig = await checkAndSignAuthMessage();
+		if (!authSig) {
+			return false;
+		}
+
+		const resp = await litNodeClient.executeJs({
+			ipfsId: collabAction,
+			authSig,
+			jsParams: {
+				authSig,
+				chain: "ethereum",
+				publicKey: pkpPublicKey,
+				didKey: didKey.id,
+				nonce: randomString(10),
+				domain: window.location.host,
+				sigName: "sig1",
+			},
+		});
+		// @ts-ignore
+		const { error } = resp.response; // TODO Handle.
+		if (error) {
+			return { isCreator: false, isPermittedAddress: false, collabAction };
+		}
+		// @ts-ignore
+		const { isCreator, isPermittedAddress, siweMessage } = JSON.parse(resp.response.context);
+
+		const signature = resp.signatures.sig1;
+		siweMessage.signature = joinSignature({
+			r: `0x${signature.r}`,
+			s: `0x${signature.s}`,
+			v: signature.recid,
+		});
+		const cacao = Cacao.fromSiweMessage(siweMessage);
+		const did = await createDIDCacao(didKey, cacao);
+		const session = new DIDSession({ cacao, keySeed, did });
+
+		localStorage.setItem(`pkp_${pkpPublicKey}`, JSON.stringify({
+			isCreator,
+			isPermittedAddress,
+			collabAction,
+			session: session.serialize(),
+		}));
+		return {
+			session, isCreator, isPermittedAddress, collabAction,
+		};
+	}
 }
 const litService = new LitService();
-
 export default litService;

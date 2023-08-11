@@ -6,16 +6,17 @@
 export type Indexes = {
   id: string
   title: string | null
-  collab_action: string
-  controller_did: { // This is PKP DID
+  collabAction: string
+  pkpPublicKey: string
+  controllerDID: { // This is PKP DID
     id: string
   };
-  owner_did: { // This is PKP Owner DID
+  ownerDID: { // This is PKP Owner DID
     id: string
   };
-  created_at: string;
-  updated_at: string;
-  deleted_at: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string;
   links: IndexLink[];
   is_in_my_indexes?: boolean;
   is_starred?: boolean;
@@ -23,19 +24,26 @@ export type Indexes = {
 
 export type IndexLink = {
   id?: string
-  index_id?: string;
-  link_id?: string;
-  indexer_did?: { // This is PKP DID
+  indexId?: string;
+  linkId?: string;
+  indexerDID?: { // This is PKP DID
     id: string
   } | string;
-  controller_did?: { // This is PKP DID
+  controllerDID?: { // This is PKP DID
     id: string
   };
   link?: Link;
   index?: Indexes;
-  created_at?: string;
-  updated_at?: string;
-  deleted_at?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string;
+  highlight?: {
+    title?: string;
+    "link.content"?: string;
+    "link.tags"?: string;
+    "link.url"?: string;
+    "link.title"?: string;
+  }
 };
 
 /**
@@ -43,11 +51,15 @@ export type IndexLink = {
  *
  */
 export type UserIndex = {
-  id: number
-  index_id: string
-  type: string
-  created_at: string;
-  deleted_at?: string;
+  id: string;
+  indexId: string;
+  controllerDID?: { // This is PKP DID
+    id: string
+  };
+  type: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
 };
 
 /**
@@ -56,25 +68,20 @@ export type UserIndex = {
  */
 export type Link = {
   id?: string;
-  index_id?: string;
-  indexer_did?: string;
+  indexId?: string;
+  indexerDID?: string;
   content?: string
   title?: string
   url?: string
   description?: string
   language?: string
   favicon?: string
-  created_at?: string;
-  updated_at?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string;
   images?: string[]
   favorite?: boolean;
-  tags?: string[]
-  highlight?: {
-    title?: string
-    content?: string
-    tags?: string
-    url?: string
-  }
+  tags?: string[];
 };
 
 /**
@@ -85,8 +92,8 @@ export interface Users {
   name?: string;
   description?: string;
   pfp?: string;
-  created_at?: Date;
-  updated_at?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
   available?: boolean; // TODO debug
 }
 
@@ -102,3 +109,13 @@ export interface SyncCompleteResult {
 /**
  * Enums
  */
+
+export interface AccessControlCondition {
+  chain: string;
+  method: string;
+  standardContractType: string;
+  contractAddress: string;
+  conditionType: string;
+  parameters: string[];
+  returnValueTest: object;
+}

@@ -74,7 +74,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 
 		const accountId = await getAccountId(ethProvider, addresses[0]);
 		const normAccount = normalizeAccountId(accountId);
-
+		console.log("super", normAccount);
 		const keySeed = randomBytes(32);
 		const didKey = await createDIDKey(keySeed);
 
@@ -82,7 +82,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		const threeMonthsLater = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
 
 		const siweMessage = new SiweMessage({
-			domain: "index.as",
+			domain: window.location.host,
 			address: getAddress(normAccount.address),
 			statement: "Give this application access to some of your data on Ceramic",
 			uri: didKey.id,
@@ -93,11 +93,13 @@ export const AuthHandlerProvider = ({ children }: any) => {
 			expirationTime: threeMonthsLater.toISOString(),
 			resources: ["ceramic://*"],
 		});
+		console.log(siweMessage);
 		try {
 			siweMessage.signature = await ethProvider.request({
 				method: "personal_sign",
 				params: [siweMessage.signMessage(), getAddress(accountId.address)],
 			});
+			console.log(siweMessage.signature);
 			const cacao = Cacao.fromSiweMessage(siweMessage);
 			const did = await createDIDCacao(didKey, cacao);
 			const newSession = new DIDSession({ cacao, keySeed, did });
@@ -151,7 +153,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		}
 	};
 	const authToCeramic = async () => {
-		if (personalCeramic.client && !personalCeramic.client.isUserAuthenticated()) {
+		if (!(personalCeramic.client && !personalCeramic.client.isUserAuthenticated())) {
 			personalCeramic.setClient(new CeramicService(session?.did!));
 		}
 		dispatch(setCeramicConnected(true));

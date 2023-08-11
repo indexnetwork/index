@@ -24,7 +24,7 @@ import Avatar from "components/base/Avatar";
 import IconTrash from "components/base/Icon/IconTrash";
 import { appConfig } from "config";
 import IconEdit from "components/base/Icon/IconEdit";
-import { Users } from "../../types/entity";
+import { Users } from "types/entity";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);

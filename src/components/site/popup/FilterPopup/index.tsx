@@ -126,8 +126,6 @@ const FilterPopup = (
 									className="mb-3"
 								/>
 								<RadioGroup
-									showTags
-									multiselect
 									items={[
 										{
 											value: "today",

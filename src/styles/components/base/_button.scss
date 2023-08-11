@@ -65,6 +65,12 @@
 		border-color: $border-color;
 	}
 
+	&.btn-card {
+		@include button-color($gray-5, $gray-10, $hover-darken, $visited-lighten, $transition-bg, $outlined: false);
+		height: 100%;
+		border:none;
+	}
+
 	&.btn-block {
 		display: block;
 		width: 100%;
@@ -90,7 +96,7 @@
 			display: flex;
 		}
 	}
-	
+
 	&.btn-addon-b {
 		display: inline-block;
 		vertical-align: middle;
