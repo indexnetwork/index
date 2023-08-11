@@ -26,11 +26,25 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - run: |-
-          aws eks --region us-east-1 update-kubeconfig --name indexas
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v2.0   
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: 'eu-central-1'
+
+      - name: Set kubectl context
+        uses: azure/k8s-set-context@v3
+        with:
+           method: kubeconfig
+           kubeconfig: ${{ secrets.KUBECONFIG }}
+           context: microk8s
 
       - name: Check k8s connection
-        run: kubectl get pods   
+        run: kubectl get pods
 
       - name: Store build time
         id: build-time
@@ -60,4 +74,4 @@ jobs:
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/frontend frontend=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace web3-${GITHUB_REF#refs/heads/}
+          kubectl set image deployment/frontend frontend=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace ${GITHUB_REF#refs/heads/}
