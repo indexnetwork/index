@@ -44,8 +44,8 @@
   };
   var getResources = (isPermittedAddress = false) => {
     const models = {
-      "Index": "kjzl6hvfrbw6c8e8rlhx3guuoc1o6i4vni5emzh2c48aa5pn0u71jggun7rtu2a",
-      "IndexLink": "kjzl6hvfrbw6c6vpgfoph7e98nkj4ujmd7bgw5ylb6uzmpts1yjva3zdjk0bhe9"
+      "Index": "kjzl6hvfrbw6caw09g11y7vy1qza903xne35pi30xvmelvnvlfxy9tadwwkzzd6",
+      "IndexLink": "kjzl6hvfrbw6c8a1u7qrk1xcz5oty0temwn2szbmhl8nfnw9tddljj4ue8wba68"
     };
     return isPermittedAddress ? [models.Index, models.IndexLink] : [models.IndexLink];
   };
