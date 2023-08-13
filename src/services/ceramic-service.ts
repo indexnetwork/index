@@ -17,7 +17,7 @@ class CeramicService {
 		url: appConfig.ipfsInfura,
 	});
 	private client = new ComposeClient({
-		ceramic: "https://ceramic-dev.index.as",
+		ceramic: "https://composedb.index.network",
 		definition: definition as RuntimeCompositeDefinition,
 	});
 
