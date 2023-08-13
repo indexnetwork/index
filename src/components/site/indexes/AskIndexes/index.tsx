@@ -12,6 +12,7 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import Container from "components/layout/base/Grid/Container";
 import { API_ENDPOINTS } from "../../../../utils/constants";
+import { v4 as uuidv4 } from 'uuid';
 
 export interface ChatProps extends React.ComponentProps<"div"> {
 	initialMessages?: Message[]
@@ -30,7 +31,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 }) => {
 	const apiUrl = `https://index.network/api${API_ENDPOINTS.CHAT_STREAM}`;
 	const initialMessages: Message[] = [];
-	const id = "placeholder";
+	const id = uuidv4();
 	const {
 		messages, append, reload, stop, isLoading, input, setInput,
 	} =
