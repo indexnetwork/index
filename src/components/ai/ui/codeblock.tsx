@@ -5,7 +5,7 @@ import { FC, memo } from "react";
 // @ts-ignore
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 // @ts-ignore
-import { coldarkDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import { darkula } from "react-syntax-highlighter/dist/cjs/styles/prism";
 
 import { useCopyToClipboard } from "hooks/useCopyToClipboard";
 import { IconCheck, IconCopy, IconDownload } from "components/ai/ui/icons";
@@ -117,7 +117,7 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
 			</div>
 			<SyntaxHighlighter
 				language={language}
-				style={coldarkDark}
+				style={darkula}
 				PreTag="div"
 				showLineNumbers
 				customStyle={{
@@ -128,7 +128,7 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
 				}}
 				codeTagProps={{
 					style: {
-						fontSize: "0.9rem",
+						fontSize: "1.2rem",
 						fontFamily: "var(--font-mono)",
 					},
 				}}
