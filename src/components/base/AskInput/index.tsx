@@ -33,7 +33,7 @@ const AskInput = ({
 				onKeyDown={onKeyDown}
 				onChange={(e) => setInput(e.target.value)}
 				inputSize={"lg"}
-				addOnAfter={<IconSend onClick={async () => {
+				addOnAfter={<IconSend cursor="pointer" onClick={async () => {
 					if (!input?.trim()) {
 						return;
 					}
