@@ -33,7 +33,13 @@ const AskInput = ({
 				onKeyDown={onKeyDown}
 				onChange={(e) => setInput(e.target.value)}
 				inputSize={"lg"}
-				addOnAfter={<IconSend width={20} height={20} />}
+				addOnAfter={<IconSend onClick={async () => {
+					if (!input?.trim()) {
+						return;
+					}
+					setInput("");
+					await onSubmit(input);
+				}} width={20} height={20} />}
 				spellCheck={false}
 				placeholder={"Ask to your indexes"}
 			/>
