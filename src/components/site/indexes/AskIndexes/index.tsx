@@ -12,7 +12,6 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import Container from "components/layout/base/Grid/Container";
 import { API_ENDPOINTS } from "../../../../utils/constants";
-import { v4 as uuidv4 } from 'uuid';
 
 export interface ChatProps extends React.ComponentProps<"div"> {
 	initialMessages?: Message[]
