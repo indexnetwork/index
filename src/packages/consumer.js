@@ -17,10 +17,10 @@ const kafka = new Kafka({
 const redis = RedisClient.getInstance();
 
 const topics = {
-    'postgres.public.kjzl6hvfrbw6c8e8rlhx3guuoc1o6i4vni5emzh2c48aa5pn0u71jggun7rtu2a': 'index',
-    'postgres.public.kjzl6hvfrbw6c72mna95slfmi9nth1fp3bacc2ai7i6g1scygmo7awxsjl4dlpk': 'link',
-    'postgres.public.kjzl6hvfrbw6c6vpgfoph7e98nkj4ujmd7bgw5ylb6uzmpts1yjva3zdjk0bhe9': 'index_link',
-    'postgres.public.kjzl6hvfrbw6c5gi8p8j811v4u9tpel9m9lo11hm9ks74c1l0fhmnebsbtwusso': 'user_index'
+    'postgres.public.kjzl6hvfrbw6caw09g11y7vy1qza903xne35pi30xvmelvnvlfxy9tadwwkzzd6': 'index',
+    'postgres.public.kjzl6hvfrbw6c92114fj79ii6shyl8cbnsz5ol3v62s0uu3m78gy76gzaovpaiu': 'link',
+    'postgres.public.kjzl6hvfrbw6c8a1u7qrk1xcz5oty0temwn2szbmhl8nfnw9tddljj4ue8wba68': 'index_link',
+    'postgres.public.kjzl6hvfrbw6c9aw0xd4vlhqc5mx57f0y2xmm8xiyxzzj1abrizfyppup22r9ac': 'user_index'
 }
 
 async function start() {
