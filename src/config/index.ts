@@ -3,7 +3,7 @@ export const appConfig = {
 	apiUrl: "https://index.network/api",
 	ipfsProxy: "https://ipfs.io/ipfs/",
 	ipfsInfura: "https://ipfs.infura.io:5001/api/v0",
-	defaultCID: "QmSBSz4GFaEskvbcRdbJVMzwbe9K2yxWsDHPn8Yh29WLRG", // Empty.
+	defaultCID: "QmWxCRESjmETX2PLXFSopsGT8dbRBUJM6PdFUXZZzb5Nv9", // Empty.
 	chains: {
 		ethereum: {
 			value: "ethereum",
