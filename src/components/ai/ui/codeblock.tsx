@@ -101,7 +101,7 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
 			<FlexRow
 				justify="between"
 				className="p-4"
-				style={{ width:"100%", background: "rgb(39, 39, 42)", borderRadius: "5px 5px 0px 0px" }}
+				style={{ width: "100%", background: "rgb(39, 39, 42)", borderRadius: "5px 5px 0px 0px" }}
 			>
 				<Col className={"idxflex-grow-1"}>
 					<Flex className={"mt-3"} >
