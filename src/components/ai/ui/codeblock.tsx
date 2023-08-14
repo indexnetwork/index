@@ -5,11 +5,15 @@ import { FC, memo } from "react";
 // @ts-ignore
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 // @ts-ignore
-import { darkula } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import { coldarkDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 
 import { useCopyToClipboard } from "hooks/useCopyToClipboard";
 import { IconCheck, IconCopy, IconDownload } from "components/ai/ui/icons";
 import Button from "components/base/Button";
+import FlexRow from "../../layout/base/Grid/FlexRow";
+import Col from "../../layout/base/Grid/Col";
+import Flex from "../../layout/base/Grid/Flex";
+import Text from "../../base/Text";
 
 interface Props {
   language: string
@@ -93,38 +97,48 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
 	};
 
 	return (
-		<div className="relative w-full font-sans codeblock bg-zinc-950">
-			<div className="flex items-center justify-between w-full px-6 py-2 pr-4 bg-zinc-800 text-zinc-100">
-				<span className="text-xs lowercase">{language}</span>
-				<div className="flex items-center space-x-1">
-					<Button
-						theme="ghost"
-						onClick={downloadAsFile}
-						iconButton
-					>
-						<IconDownload />
-						<span className="sr-only">Download</span>
-					</Button>
-					<Button
-						theme="ghost"
-						iconButton
-						onClick={onCopy}
-					>
-						{isCopied ? <IconCheck /> : <IconCopy />}
-						<span className="sr-only">Copy code</span>
-					</Button>
-				</div>
-			</div>
+		<>
+			<FlexRow
+				justify="between"
+				className="p-4"
+				style={{ width:"100%", background: "rgb(39, 39, 42)", borderRadius: "5px 5px 0px 0px" }}
+			>
+				<Col className={"idxflex-grow-1"}>
+					<Flex className={"mt-3"} >
+						<Text theme="gray6" size={"md"}>{language}</Text>
+					</Flex>
+				</Col>
+				<Col>
+					<Flex>
+						<Button
+							theme="primary"
+							onClick={downloadAsFile}
+							iconButton
+						>
+							<IconDownload />
+							<span className="sr-only">Download</span>
+						</Button>
+						<Button
+							theme="primary"
+							iconButton
+							onClick={onCopy}
+						>
+							{isCopied ? <IconCheck /> : <IconCopy />}
+							<span className="sr-only">Copy code</span>
+						</Button>
+					</Flex>
+				</Col>
+			</FlexRow>
 			<SyntaxHighlighter
 				language={language}
-				style={darkula}
+				style={coldarkDark}
 				PreTag="div"
 				showLineNumbers
 				customStyle={{
 					margin: 0,
 					width: "100%",
-					background: "transparent",
 					padding: "1.5rem 1rem",
+					borderRadius: "0px 0px 5px 5px ",
 				}}
 				codeTagProps={{
 					style: {
@@ -135,7 +149,7 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
 			>
 				{value}
 			</SyntaxHighlighter>
-		</div>
+		</>
 	);
 });
 CodeBlock.displayName = "CodeBlock";
