@@ -6,6 +6,7 @@ import React, {
 } from "react";
 import { NextPageWithLayout } from "types";
 import { useRouter } from "next/router";
+import { v4 as uuidv4 } from "uuid";
 import SearchIndexes from "../../components/site/indexes/SearchIndexes";
 import AskIndexes from "../../components/site/indexes/AskIndexes";
 import RadioGroup from "../../components/base/RadioGroup";
@@ -15,6 +16,7 @@ const IndexesPage: NextPageWithLayout = () => {
 	const [interactionMode, setInteractionMode] = useState<string>("search");
 	const router = useRouter();
 	const { did } = router.query;
+	const chatId = uuidv4();
 
 	useEffect(() => {
 		setInteractionMode("search");
@@ -22,7 +24,7 @@ const IndexesPage: NextPageWithLayout = () => {
 
 	return <PageContainer>
 		{
-			interactionMode === "ask" && <AskIndexes interactionToggle={<Col>
+			interactionMode === "ask" && <AskIndexes id={chatId} interactionToggle={<Col>
 				<RadioGroup className={"px-1"} value="ask" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
 					items={[
 						{

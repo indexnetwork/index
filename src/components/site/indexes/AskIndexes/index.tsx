@@ -18,19 +18,20 @@ export interface ChatProps extends React.ComponentProps<"div"> {
 	id?: string
 }
 export interface SearchIndexesProps {
+	id: string;
 	did?: string;
 	indexes?: string[],
 	interactionToggle?: React.ReactNode;
 }
 
 const AskIndexes: React.VFC<SearchIndexesProps> = ({
+	id,
 	interactionToggle,
 	did,
 	indexes,
 }) => {
 	const apiUrl = `https://index.network/api${API_ENDPOINTS.CHAT_STREAM}`;
 	const initialMessages: Message[] = [];
-	const id = did || (indexes ? indexes[0] : "placeholder");
 	const {
 		messages, append, reload, stop, isLoading, input, setInput,
 	} =

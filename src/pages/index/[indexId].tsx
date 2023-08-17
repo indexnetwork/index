@@ -29,6 +29,7 @@ import moment from "moment";
 import SearchInput from "components/base/SearchInput";
 import NotFound from "components/site/indexes/NotFound";
 import { useAppSelector } from "hooks/store";
+import { v4 as uuidv4 } from "uuid";
 import { selectConnection } from "store/slices/connectionSlice";
 import { selectProfile } from "store/slices/profileSlice";
 import { LinksContext } from "hooks/useLinks";
@@ -69,7 +70,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [search, setSearch] = useState("");
 	const { did } = useAppSelector(selectConnection);
 	const { available, name } = useAppSelector(selectProfile);
-
+	const chatId = uuidv4();
 	const loadIndex = async (indexIdParam: string) => {
 		const doc = await api.getIndexById(indexIdParam);
 		if (!doc) {
@@ -319,7 +320,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							</>}
 						</Col>
 					</FlexRow>
-					{ !notFound && tabKey === "chat" && <div className={"mt-6"}><AskIndexes indexes={[index.id!]} /></div>}
+					{ !notFound && tabKey === "chat" && <div className={"mt-6"}><AskIndexes id={chatId} indexes={[index.id!]} /></div>}
 				</LinksContext.Provider>
 			</IndexContext.Provider>
 		</PageContainer>

@@ -121,24 +121,28 @@ class LitService {
 		// @ts-ignore
 		const { isCreator, isPermittedAddress, siweMessage } = JSON.parse(resp.response.context);
 
-		const signature = resp.signatures.sig1;
-		siweMessage.signature = joinSignature({
-			r: `0x${signature.r}`,
-			s: `0x${signature.s}`,
-			v: signature.recid,
-		});
-		const cacao = Cacao.fromSiweMessage(siweMessage);
-		const did = await createDIDCacao(didKey, cacao);
-		const session = new DIDSession({ cacao, keySeed, did });
-
-		localStorage.setItem(`pkp_${pkpPublicKey}`, JSON.stringify({
-			isCreator,
-			isPermittedAddress,
-			collabAction,
-			session: session.serialize(),
-		}));
+		if (isCreator || isPermittedAddress) {
+			const signature = resp.signatures.sig1;
+			siweMessage.signature = joinSignature({
+				r: `0x${signature.r}`,
+				s: `0x${signature.s}`,
+				v: signature.recid,
+			});
+			const cacao = Cacao.fromSiweMessage(siweMessage);
+			const did = await createDIDCacao(didKey, cacao);
+			const session = new DIDSession({ cacao, keySeed, did });
+			localStorage.setItem(`pkp_${pkpPublicKey}`, JSON.stringify({
+				isCreator,
+				isPermittedAddress,
+				collabAction,
+				session: session.serialize(),
+			}));
+			return {
+				session, isCreator, isPermittedAddress, collabAction,
+			};
+		}
 		return {
-			session, isCreator, isPermittedAddress, collabAction,
+			isCreator, isPermittedAddress,
 		};
 	}
 }
