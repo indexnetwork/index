@@ -1,9 +1,9 @@
 <h1 align="center">
     <a href="https://amplication.com/#gh-light-mode-only">
-    <img style="width:400px" src="https://dev.index.as/images/indexasLogo.png">
+    <img style="width:400px" src="https://index.network/images/indexasLogo.png">
     </a>
     <a href="https://amplication.com/#gh-dark-mode-only">
-    <img style="width:400px" src="https://dev.index.as/images/indexasLogo-white.png">
+    <img style="width:400px" src="https://index.network/images/indexasLogo-white.png">
     </a>
 </h1>
 
