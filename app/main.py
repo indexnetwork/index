@@ -62,17 +62,19 @@ chroma_client = chromadb.Client(Settings(
     persist_directory=persist_directory
 ))
 
-embed_model = OpenAIEmbedding(model="text-embedding-ada-002", openai_api_key=os.environ["OPENAI_API_KEY"],)
-llm = ChatOpenAI(temperature=0, model_name="gpt-4", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
-service_context = ServiceContext.from_defaults(llm=llm, embed_model=embed_model)
+UnstructuredURLLoader = download_loader("UnstructuredURLLoader")
 hyde = HyDEQueryTransform(include_original=True)
 
-UnstructuredURLLoader = download_loader("UnstructuredURLLoader")
+def get_service_context():
+    embed_model = OpenAIEmbedding(model="text-embedding-ada-002", openai_api_key=os.environ["OPENAI_API_KEY"])
+    llm = ChatOpenAI(temperature=0, model_name="gpt-4", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
+    service_context = ServiceContext.from_defaults(llm=llm, embed_model=embed_model)
+    return service_context
 
 def get_collection():
     collection = chroma_client.get_or_create_collection(name="indexes")
     vector_store = ChromaVectorStore(chroma_collection=collection)
-    index = VectorStoreIndex.from_vector_store(vector_store=vector_store, service_context=service_context)
+    index = VectorStoreIndex.from_vector_store(vector_store=vector_store, service_context=get_service_context())
     
     return index
 
