@@ -94,7 +94,7 @@ def get_index_chat_engine(indexes):
     else:
         index_filters =  {"index_id": {"$eq": indexes[0]}}
 
-    return collection.as_chat_engine(chat_mode="context", streaming=True, verbose=True, vector_store_kwargs={"where": index_filters})
+    return collection.as_chat_engine(chat_mode="context", similarity_top_k=5, streaming=True, verbose=True, vector_store_kwargs={"where": index_filters})
 
 class ChatStream(BaseModel):
     id: str
