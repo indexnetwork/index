@@ -1,6 +1,6 @@
 .chroma/*
 chroma-indexes/*
 .idea/*
-__pycache__/*
+app/__pycache__/*
 .DS_Store
 .env
