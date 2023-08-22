@@ -1,9 +1,9 @@
 <h1 align="center">
     <a href="https://amplication.com/#gh-light-mode-only">
-    <img style="width:400px" src="https://dev.index.as/images/indexasLogo.png">
+    <img style="width:400px" src="https://index.network/images/IndexNetworkLogo.png">
     </a>
     <a href="https://amplication.com/#gh-dark-mode-only">
-    <img style="width:400px" src="https://dev.index.as/images/indexasLogo-white.png">
+    <img style="width:400px" src="https://index.network/images/IndexNetworkLogo-white.png">
     </a>
 </h1>
 
@@ -76,9 +76,9 @@ We use NFTs as creator roles for broader contexts with large groups. Index is us
 ## Architecture Overview
 
 <picture>
-	<source media="(prefers-color-scheme: dark)" srcset="https://dev.index.as/images/dataflow-black.png">
-	<source media="(prefers-color-scheme: light)" srcset="https://dev.index.as/images/dataflow-white.png">
-	<img alt="Dataflow" src="https://dev.index.as/images/dataflow-white.png">
+	<source media="(prefers-color-scheme: dark)" srcset="https://index.network/images/dataflow-black.png">
+	<source media="(prefers-color-scheme: light)" srcset="https://index.network/images/dataflow-white.png">
+	<img alt="Dataflow" src="https://index.network/images/dataflow-white.png">
 </picture>
 
 ## Components
