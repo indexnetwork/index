@@ -55,7 +55,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [pkpCeramic, setPKPCeramic] = useState<any>();
 	const personalCeramic = useCeramic();
 	const [addedLink, setAddedLink] = useState<IndexLink>();
-	const [tabKey, setTabKey] = useState("index");
+	const [tabKey, setTabKey] = useState("chat");
 	const [interactionMode, setInteractionMode] = useState("index");
 	const [isOwner, setIsOwner] = useState<boolean>(false);
 	const [isCreator, setIsCreator] = useState<boolean>(false);
