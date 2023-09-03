@@ -27,8 +27,8 @@ const IconDescription: React.VFC<IconDescriptionProps> = ({
 				<>
 					{icon}
 					<Flex className="lnd-icon-desc-text">
-						<Header>{title}</Header>
-						<Text size="xl" theme="gray5">{description}</Text>
+						<Header className={"mb-5"}>{title}</Header>
+						<Text size="xl" theme="gray5">{description} <div className={cm.italic}>{boldDescription}</div></Text>
 					</Flex>
 				</>
 			) : (

@@ -18,51 +18,27 @@ const LandingSection5: React.VFC = () => (
 		>
 			<Header className="lnd-5-title text-left">Built with open protocols</Header>
 			<FlexRow
-				className="lnd-5-list"
+				className="lnd-5-list mt-4"
+				colSpacing={6}
+				rowGutter={6}
 			>
-				<Col lg={6} xs={12}>
-					<Flex
-						flexDirection="column"
-						gap={"16px"}
-						className="py-3"
-						alignItems="flex-start"
-					>
-						<img className="lnd-5-img" alt="ceramic-img" src="/images/ceramic.png" />
+				<Col lg={4} xs={12}>
+					<img className="lnd-5-img" alt="ceramic-img" src="/images/ceramic.png" />
+					<div>
 						<Text className="lnd-5-text" theme="secondary">Ceramic is a decentralized data network that brings unlimited data composability to Web3 applications.</Text>
-					</Flex>
+					</div>
 				</Col>
-				<Col lg={6} xs={12}>
-					<Flex
-						flexDirection="column"
-						gap={"16px"}
-						className="py-3"
-						alignItems="flex-start"
-					>
-						<img className="lnd-5-img" alt="lit-img" src="/images/lit.png" />
+				<Col lg={4} xs={12}>
+					<img className="lnd-5-img" alt="lit-img" src="/images/lit.png" />
+					<div>
 						<Text className="lnd-5-text" theme="secondary">Lit Protocol is decentralized access control infrastructure designed to bring more utility to the web.</Text>
-					</Flex>
+					</div>
 				</Col>
-				<Col lg={6} xs={12}>
-					<Flex
-						flexDirection="column"
-						gap={"16px"}
-						className="py-3"
-						alignItems="flex-start"
-					>
-						<img className="lnd-5-img" alt="ipfs-img" src="/images/ipfs.png" />
+				<Col lg={4} xs={12}>
+					<img className="lnd-5-img" alt="ipfs-img" src="/images/ipfs.png" />
+					<div>
 						<Text className="lnd-5-text" theme="secondary">A peer-to-peer hypermedia protocol designed to preserve and grow humanity&apos;s knowledge by making the web upgradeable, resilient, and more open.</Text>
-					</Flex>
-				</Col>
-				<Col lg={6} xs={12}>
-					<Flex
-						flexDirection="column"
-						gap={"16px"}
-						className="py-3"
-						alignItems="flex-start"
-					>
-						<img className="lnd-5-img" alt="unlock-img" src="/images/unlock.png" />
-						<Text className="lnd-5-text" theme="secondary">Unlock is a protocol which enables creators to monetize their content with a few lines of code in a fully decentralized way.</Text>
-					</Flex>
+					</div>
 				</Col>
 			</FlexRow>
 		</Flex>

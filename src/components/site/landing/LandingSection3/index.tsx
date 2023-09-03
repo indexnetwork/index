@@ -1,41 +1,51 @@
 import Header from "components/base/Header";
 import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
-import IconFeatureFilterTag from "components/base/Icon/IconFeatureFilterTag";
-import IconFeatureSearch from "components/base/Icon/IconFeatureSearch";
+import IconFeatureAddLink from "components/base/Icon/IconFeatureAddLink";
+import IconFeatureExtension from "components/base/Icon/IconFeatureExtension";
 import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
 import IconDescription from "../IconDescription";
+import FlexRow from "../../../layout/base/Grid/FlexRow";
+import Col from "../../../layout/base/Grid/Col";
 
 const LandingSection3: React.VFC = () => (
 	<LandingSection>
 		<Flex
-			alignItems="center"
 			style={{
 				position: "relative",
 			}}
-			className="lnd-card lnd-reorder"
+			className="lnd-card"
 		>
-			<Flex flexDirection="column" className="lnd-title mb-lg-8 mb-xs-6">
-				<Header className="lnd-section-title">If you index it, then search it.
-Welcome to your refined discovery engine. Filter your indexes, and search as you type.</Header>
-			</Flex>
-			<Flex className="lnd-img">
-				<img className={cm.img} alt="landing-3-img" src="/images/landing-3.webp" />
-			</Flex>
-			<Flex
-				className="lnd-features"
-			>
-				<IconDescription
-					icon={<IconFeatureFilterTag fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
-					description="Filter your index by date, type, or any tag you want."
-				/>
-				<IconDescription
-					icon={<IconFeatureSearch fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
-					description="Your indexes are interoperable, with support of semantically described content types such as product, company, event, place, etc."
-					boldDescription="Soon"
-				/>
-			</Flex>
+			<FlexRow className="pb-5">
+				<Col xs={12} md={9}>
+					<Header className="lnd-section-title">Collaborate on two-person projects up to DAO-scale. Monetize independently.</Header>
+				</Col>
+			</FlexRow>
+			<FlexRow align={"center"}>
+				<Col sm={12} lg={6} >
+					<Flex flexDirection={"column"} className="lnd-features pr-lg-10 mr-lg-10">
+						<div className={"mb-10"}>
+							<IconDescription
+								title={"Multiplayer Indexes"}
+								icon={<IconFeatureAddLink fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
+								description='Specify on-chain criteria like "user must hold an NFT" and the network will provide permission to those who meet those criteria.'
+							/>
+						</div>
+						<div>
+							<IconDescription
+								title={"Creator Monetization"}
+								icon={<IconFeatureExtension fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
+								description="Monetize indexes with your own terms by composing access control conditions"
+								boldDescription="[soon]"
+							/>
+						</div>
+					</Flex>
+				</Col>
+				<Col sm={12} lg={6}>
+					<img className={cm.img} alt="landing-2-img" src="/images/screen-multiplayer.png" />
+				</Col>
+			</FlexRow>
 		</Flex>
 	</LandingSection>
 );

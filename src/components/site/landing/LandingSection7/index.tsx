@@ -5,7 +5,6 @@ import React, { useContext } from "react";
 import { useAuth } from "hooks/useAuth";
 import { useRouter } from "next/router";
 import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
-import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
 
 const LandingSection7 = () => {
@@ -23,14 +22,14 @@ const LandingSection7 = () => {
 		}
 	};
 
-	return <LandingSection>
+	return <LandingSection noContainer >
 		<Flex
-			flexDirection="column"
-			alignItems="center"
-			justifyContent="center"
-			className={cm.container}
+			flexGrow={1}
+			alignItems={"center"}
+			flexDirection={"column"}
+			className={"py-10 pt-10 mt-10"}
 		>
-			<Header level={1} fontFamily="roquefort" className="lnd-7-title">Decentralization requires bundling</Header>
+			<Header fontFamily="roquefort" className="lnd-7-title">Decentralization requires bundling</Header>
 			<Button onClick={handleConnect} className="px-8" >Create Your First Index</Button>
 		</Flex>
 	</LandingSection>;

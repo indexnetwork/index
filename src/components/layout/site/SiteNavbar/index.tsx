@@ -64,8 +64,9 @@ const SiteNavbar = (
 			className="site-navbar"
 			logoSize="full"
 			sticky
-			bgColor={isLanding ? "#f4fbf6" : undefined}
+			bgColor={isLanding ? "#fff" : undefined}
 			bordered={false}
+			isLanding
 			{...baseProps}
 		>
 			<NavbarMenu placement="right">

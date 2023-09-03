@@ -18,3 +18,19 @@
 .mbMd {
   margin-bottom: 2.4rem;
 }
+
+.usecase{
+  padding-left:20px;
+  padding-bottom:1rem;
+}
+.usecase .usecaseDetail{
+  display:none !important;
+}
+.usecaseActive .usecaseDetail{
+  display:block;
+}
+.usecaseActive{
+  border-left: 5px solid blue;
+  padding-left: 15px;
+  padding-bottom:1rem;
+}

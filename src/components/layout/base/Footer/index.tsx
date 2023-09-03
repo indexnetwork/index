@@ -44,14 +44,11 @@ const Footer = (
 	{...menuProps}
 >
 	<Container
-		className="footer"
+
+		fluid
 	>
-		<FlexRow
-			fullHeight
-			align="center"
-			wrap={false}
-		>
-			<Col>
+		<FlexRow fullWidth fullHeight align={"center"}>
+			<Col xs={10} centerBlock>
 				<Flex
 					flexDirection="column"
 				>

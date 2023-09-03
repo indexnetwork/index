@@ -1,9 +1,7 @@
 .lnd-container {
 	.lnd-card {
-		padding-top: 6.4rem;
-		padding-bottom: 6.4rem;
 		display: flex;
-		align-items: center;
+
 		flex-direction: column;
 		flex-wrap: wrap;
 
@@ -21,7 +19,6 @@
 		.lnd-section-title {
 			font-size: 3.2rem;
 			line-height: 4rem;
-			text-align: center;
 		}
 	}
 
@@ -29,49 +26,10 @@
 		width: 100%;
 	}
 
-	.lnd-first {
-		padding-top: 3.2rem;
-		.lnd-img {
-			order: 1;
-		}
-
-		.lnd-desc {
-			order: 1;
-		}
-
-		@media (max-width: map-get($breakpoints, "sm")) {
-			.lnd-desc {
-				order: 2;
-			}
-		}
-
-		.lnd-blue-ttl {
-			font-family: "Roquefort";
-			font-size: 2.8rem;
-			font-weight: 400;
-			line-height: 2.7rem;
-			color: var(--blue);
-			margin-bottom: 1.6rem;
-			margin-top: 4rem;
-		}
-	}
-
 
 	.lnd-features {
 		flex-direction: column;
-		gap: map-deep-get($spacing, "xs", "6");
-		margin-top: map-deep-get($spacing, "xs", "6");
-
 		.lnd-icon-desc {
-			@extend .mt-6;
-
-			@media (max-width: map-get($breakpoints, "sm")) {
-				&-icon {
-					width: 20px;
-					height: 20px;
-				}
-			}
-
 			&-icon {
 				flex-shrink: 0;
 			}
@@ -91,9 +49,15 @@
 	}
 
 	.lnd-5-img {
-		max-height: 24px;
 		width: auto;
 		object-fit: contain;
+		height: 40px;
+		margin-bottom: 1.6rem;
+	}
+
+	.lnd-5-text {
+		font-size: 1.4rem;
+		line-height: 1.6rem;
 	}
 
 
@@ -115,49 +79,13 @@
 		font-weight: normal;
 	}
 
-	@media (max-width: map-get($breakpoints, "xs")) {
-		.lnd-reorder {
-			.lnd-title {
-				order: 2;
-				.lnd-section-title {
-					font-size: 2.4rem;
-					line-height: 2.952rem;
-					margin-top: 2.8rem;
-				}
-			}
 
-			.lnd-img {
-				order: 1;
-			}
-
-			.lnd-features {
-				order: 3;
-			}
-		}
-	}
 
 	@media (min-width: map-get($breakpoints, "sm")) {
 		.lnd-2-container {
 			align-items: center !important;
 		}
 
-		.lnd-first {
-			padding-top: 8rem;
-			padding-bottom: 8rem;
-			.lnd-img {
-				max-width: 48rem;
-			}
-
-			&.lnd-card {
-				min-height: 45rem;
-			}
-
-			.lnd-blue-ttl {
-				font-size: 4rem;
-				line-height: 4.9rem;
-				margin-bottom: 2.4rem;
-			}
-		}
 
 		.lnd-img {
 			flex-basis: 50%;
@@ -166,15 +94,11 @@
 			margin-left: calc((100vw - 964px) / 2);
 		}
 		.lnd-card {
-			padding-top: 12rem;
-			padding-bottom: 12rem;
 			flex-direction: row;
-			min-height: 30rem;
 
 			.lnd-section-title {
-				font-size: 4rem;
+				font-size: 4.5rem;
 				line-height: 4.9rem;
-				text-align: center;
 			}
 
 			.lnd-desc {
@@ -199,53 +123,16 @@
 			}
 		}
 
-		.lnd-features {
-			margin-top: 0;
-			flex-direction: column;
-			gap: map-deep-get($spacing, "xs", "8");
-			max-width: 43rem;
-			flex-basis: 50%;
-			.lnd-icon-desc {
-				flex-direction: row;
-			}
-		}
+
 
 		.lnd-5-title {
 			font-size: 6rem;
 			line-height: 7.38rem;
 		}
-		.lnd-5-text{
-			width: 450px;
-			height: 72px;
 
-			font-family: 'Inter';
-			font-style: normal;
-			font-weight: 400;
-			font-size: 16px;
-			line-height: 150.02%;
-			/* or 24px */
-
-			letter-spacing: 0.02em;
-
-			/* Grey7 */
-
-			color: #686868;
-
-
-			/* Inside auto layout */
-
-			flex: none;
-			order: 1;
-			align-self: stretch;
-			flex-grow: 0;
-		}
-
-		.lnd-5-img {
-			max-height: 32px;
-		}
 
 		.lnd-5-list {
-			row-gap: map-deep-get($spacing, "xs", 8);
+			row-gap: map-deep-get($spacing, "xs", 4);
 		}
 
 		.lnd-7-title {

@@ -6,35 +6,44 @@ import IconFeatureExtension from "components/base/Icon/IconFeatureExtension";
 import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
 import IconDescription from "../IconDescription";
+import Col from "../../../layout/base/Grid/Col";
+import FlexRow from "../../../layout/base/Grid/FlexRow";
 
 const LandingSection2: React.VFC = () => (
 	<LandingSection>
 		<Flex
-			alignItems="center"
 			style={{
 				position: "relative",
 			}}
-			className="lnd-card lnd-reorder"
+			className="lnd-card"
 		>
-			<Flex flexDirection="column" className="lnd-title mb-lg-8 mb-xs-6">
-				<Header className="lnd-section-title">Create your indexes by adding any content you like and find relevant.</Header>
-			</Flex>
-			<Flex className="lnd-img">
-				<img className={cm.img} alt="landing-2-img" src="/images/landing-2.webp" />
-			</Flex>
-			<Flex
-				className="lnd-features"
-			>
-				<IconDescription
-					icon={<IconFeatureAddLink fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
-					description="Index products, articles, documents, NFTs, photos, videos, tweets and any other kind of content."
-				/>
-				<IconDescription
-					icon={<IconFeatureExtension fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
-					description="Index the web with a browser extension"
-					boldDescription="Soon"
-				/>
-			</Flex>
+			<FlexRow className="pb-5">
+				<Col xs={12} md={9}>
+					<Header className="lnd-section-title">Create contextual discovery engines from your data</Header>
+				</Col>
+			</FlexRow>
+			<FlexRow align={"center"}>
+				<Col sm={12} lg={6} >
+					<Flex flexDirection={"column"} className="lnd-features pr-lg-10 mr-lg-10">
+						<div className={"mb-10"}>
+							<IconDescription
+								title={"For any kind of content"}
+								icon={<IconFeatureAddLink fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
+								description="Index products, articles, documents, NFTs, photos, videos, tweets and any other kind of content."
+							/>
+						</div>
+						<IconDescription
+							title={"From any source"}
+							icon={<IconFeatureExtension fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
+							description="Update your indexes directly from the apps you use or stay up-to-date with the indexes you follow."
+							boldDescription="[soon]"
+						/>
+					</Flex>
+				</Col>
+				<Col sm={12} lg={6}>
+					<img className={cm.img} alt="landing-2-img" src="/images/screen-index.png" />
+				</Col>
+			</FlexRow>
 		</Flex>
 	</LandingSection>
 );

@@ -18,6 +18,7 @@ export interface NavbarProps extends
 	stickyBgChangeAfter?: number;
 	stickyBgColor?: string;
 	bordered?: boolean;
+	isLanding?: boolean;
 	bgColor?: string;
 }
 
@@ -36,6 +37,7 @@ const Navbar = (
 		bordered = true,
 		style,
 		className,
+		isLanding,
 		...menuProps
 	}: NavbarProps,
 ) => {
@@ -81,20 +83,23 @@ const Navbar = (
 		>
 			<Container
 				className="navbar"
+				fluid={isLanding}
 			>
-				<FlexRow
-					fullHeight
-					align="center"
-					justify="between"
-					wrap={false}
-				>
-					<Col>
-						{logoSize === "mini" ? <LogoMini className="navbar-logo" onClick={handleLogoClick} style={{
-							cursor: "pointer",
-						}} /> : <LogoFull className="navbar-logo navbar-logo-full" />}
-					</Col>
-					<Col>
-						{children}
+				<FlexRow fullWidth fullHeight align={"center"}>
+					<Col xs={isLanding ? 10 : 12} centerBlock>
+						<FlexRow
+							justify="between"
+							wrap={false}
+						>
+							<Col>
+								{logoSize === "mini" ? <LogoMini className="navbar-logo" onClick={handleLogoClick} style={{
+									cursor: "pointer",
+								}} /> : <LogoFull className="navbar-logo navbar-logo-full" />}
+							</Col>
+							<Col>
+								{children}
+							</Col>
+						</FlexRow>
 					</Col>
 				</FlexRow>
 			</Container>
