@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <i align="center">Create and monetize interoperable discovery engines. 🚀</i>
+  <i align="center">Create composable discovery engines. 🚀</i>
 </p>
 
 <h4 align="center">

@@ -36,12 +36,12 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 								<link rel="shortcut icon" href="/favicon-white.png" />
 								<title>Index Network | The human bridge between context and content.</title>
 								<meta name="title" content="Index Network | The human bridge between context and content." />
-								<meta name="description" content="Create and monetize discovery engines." />
+								<meta name="description" content="Create composable discovery engines." />
 
 								<meta property="twitter:card" content="summary_large_image" />
 								<meta property="twitter:url" content="https://index.network" />
 								<meta property="twitter:title" content="Index Network | The human bridge between context and content." />
-								<meta property="twitter:description" content="Create and monetize discovery engines." />
+								<meta property="twitter:description" content="Create composable discovery engines." />
 								<meta property="twitter:image" content="https://index.network/images/bridge.jpg" />
 
 								<link rel="preload" as="font" href="/fonts/Freizeit-Regular.woff2" type="font/woff2" crossOrigin="anonymous" />
