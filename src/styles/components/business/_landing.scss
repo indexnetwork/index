@@ -101,26 +101,7 @@
 				line-height: 4.9rem;
 			}
 
-			.lnd-desc {
-				align-items: flex-start;
-				width: 45rem;
-				flex-shrink: 0;
-				display: flex;
-				flex-direction: column;
-				flex-grow: 1;
-				text-align: left;
-			}
 
-			.lnd-lottie {
-				opacity: 0;
-				transition: opacity 0.3s ease;
-				display: flex;
-				align-items: center;
-				justify-content: flex-end;
-				&.lnd-lottie-fade {
-					opacity: 1;
-				}
-			}
 		}
 
 

@@ -17,7 +17,7 @@ const LandingSection4: React.VFC = () => {
 				}}
 				className="lnd-card"
 			>
-				<Flex flexDirection="column" className="pb-5">
+				<Flex flexDirection="column" className={"mb-5"}>
 					<Header className="lnd-section-title">Use cases</Header>
 				</Flex>
 				<FlexRow align={"center"}>
@@ -26,9 +26,9 @@ const LandingSection4: React.VFC = () => {
 							<FlexRow className={section === "documentation" ? cm.usecaseActive : cm.usecase}>
 								<Header onClick={() => setSection("documentation")} className={"pointer mb-4"}>Documentation</Header>
 								<div className={cm.usecaseDetail}>
-									<Text>Enable builders to interact with technologies using composable
+									<Text size={"lg"}>Enable builders to interact with technologies using composable
 										discovery engines.</Text>
-									<ul className={"pl-6"}>
+									<ul className={"pl-6 mb-0"}>
 										<li>Ask how to integrate multiple technologies</li>
 										<li>Build with real-time, verified knowledge</li>
 									</ul>
@@ -37,9 +37,9 @@ const LandingSection4: React.VFC = () => {
 							<FlexRow className={section === "journalism" ? cm.usecaseActive : cm.usecase}>
 								<Header onClick={() => setSection("journalism")} className={"pointer mb-4"}>Journalism</Header>
 								<div className={cm.usecaseDetail}>
-									<Text>Use composable indexes to provide readers navigate diverse narratives
+									<Text size={"lg"}>Use composable indexes to provide readers navigate diverse narratives
 										and viewpoints in news media, promoting a well-rounded understanding.</Text>
-									<ul className={"pl-6"}>
+									<ul className={"pl-6 mb-0"}>
 										<li>Compare different perspectives, understand biases</li>
 										<li>Explore historical context from verified sources</li>
 										<li>Ask for facts by using fact-check indexes</li>
@@ -49,9 +49,9 @@ const LandingSection4: React.VFC = () => {
 							<FlexRow className={section === "science" ? cm.usecaseActive : cm.usecase}>
 								<Header onClick={() => setSection("science")} className={"pointer mb-4"}>Science</Header>
 								<div className={cm.usecaseDetail}>
-									<Text>Facilitate collaboration and data sharing among researchers for decentralized
+									<Text size={"lg"}>Facilitate collaboration and data sharing among researchers for decentralized
 										scientific discovery.</Text>
-									<ul className={"pl-6"}>
+									<ul className={"pl-6 mb-0"}>
 										<li>Bridge gaps between different research fields</li>
 										<li>Connect academia with industry partners</li>
 										<li>Engage in scientific debate</li>
@@ -61,9 +61,9 @@ const LandingSection4: React.VFC = () => {
 							<FlexRow className={section === "consultancy" ? cm.usecaseActive : cm.usecase}>
 								<Header onClick={() => setSection("consultancy")} className={"pointer mb-4"}>Consultancy</Header>
 								<div className={cm.usecaseDetail}>
-									<Text>Access and compare insights from various consulting firms. Evaluate strategies,
+									<Text size={"lg"}>Access and compare insights from various consulting firms. Evaluate strategies,
 										market analyses, and industry trends for informed decisions.</Text>
-									<ul className={"pl-6"}>
+									<ul className={"pl-6 mb-0"}>
 										<li>Expose perspectives to multiple contexts</li>
 										<li>Evaluate the business impacts of new technologies</li>
 										<li>Review diverse perspectives on trends</li>
@@ -73,9 +73,9 @@ const LandingSection4: React.VFC = () => {
 							<FlexRow className={section === "brand" ? cm.usecaseActive : cm.usecase}>
 								<Header onClick={() => setSection("brand")} className={"pointer mb-4"}>Brand + Tastemaker</Header>
 								<div className={cm.usecaseDetail}>
-									<Text>Redefine how taste-makers engage with brands and audiences, shifting
+									<Text size={"lg"}>Redefine how taste-makers engage with brands and audiences, shifting
 										from specific brand curation to indexing personal taste for authentic recommendations.</Text>
-									<ul className={"pl-6"}>
+									<ul className={"pl-6 mb-0"}>
 										<li>Blend taste with products</li>
 										<li>Compose a style symphony that is uniquely yours</li>
 										<li>Uncover hidden brand synergies</li>
