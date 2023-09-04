@@ -22,7 +22,7 @@
     <img src="https://img.shields.io/badge/mit-blue.svg?label=license" alt="license">
   </a>
   <br>
-  <a href="https://discord.gg/wvdxP6XvYu">
+  <a href="https://discord.gg/XkQw8gDVw4">
     <img src="https://img.shields.io/badge/discord-7289da.svg" alt="discord">
   </a>
   <a href="https://twitter.com/indexas">
@@ -273,7 +273,7 @@ Index.as leverages the power of several open protocols to enhance its capabiliti
 ## Resources
 
 -   **[index.as](https://index.as)**  to explore the app.
--   **[Discord](https://discord.gg/wvdxP6XvYu)**  for support and discussions with the community and the team.
+-   **[Discord](https://discord.gg/XkQw8gDVw4)**  for support and discussions with the community and the team.
 -   **[GitHub](https://github.com/indexas/indexas)**  for source code, project board, issues, and pull requests.
 -   **[Twitter](https://twitter.com/indexas)**  for the latest updates on the product and published blogs.
 
