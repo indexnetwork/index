@@ -352,9 +352,7 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
     indexResult = indexResult.map((value, key) => {
         return {
             ...value,
-            ownerDID: {
-                id: pkpOwners[key]
-            }
+            ownerDID: { id: `did:pkh:eip155:175177:${pkpOwners[key]}` }
         }
     })
 
