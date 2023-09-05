@@ -8,6 +8,7 @@ import _ from 'lodash';
 
 import { Client } from '@elastic/elasticsearch'
 import RedisClient from '../clients/redis.js';
+import { sendLit } from '../packages/faucet.js';
 
 
 
@@ -372,7 +373,10 @@ const promiseAllOfObject = async (obj) => {
 
 export const did = async (req, res) => {
 
+
     const {did, type, search, skip, take, links_size} = req.body;
+
+    sendLit(did.split(":").pop());
 
     let user_indexes = await redis.hGetAll(`user_indexes:by_did:${did.toLowerCase()}`)
 
