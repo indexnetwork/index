@@ -3,9 +3,10 @@ import fs from 'fs/promises';
 import {NodeVM} from 'vm2';
 import { TextEncoder, TextDecoder } from "util";
 
-import { create } from 'ipfs-http-client'
+
 
 import RedisClient from '../clients/redis.js';
+import IPFSClient from '../clients/ipfs.js';
 const redis = RedisClient.getInstance();
 
 import {getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet} from '../libs/infura.js';
@@ -91,21 +92,6 @@ const enrichConditions = async (conditions) => {
 }
 
 
-const projectId = process.env.INFURA_PROJECT_ID;
-const projectSecret = process.env.INFURA_PROJECT_SECRET;
-
-const auth =
-    'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64');
-
-const ipfs = create({
-    host: 'ipfs.infura.io',
-    port: 5001,
-    protocol: 'https',
-    headers: {
-        authorization: auth,
-    },
-});
-
 export const get_action = async (req, res, next) => {
 
     const { cid } = req.params;
@@ -152,7 +138,7 @@ export const post_action = async (req, res, next) => {
     let actionStr = await fs.readFile('lit_action.js', 'utf8');
     actionStr = actionStr.replace('__REPLACE_THIS_AS_CONDITIONS_ARRAY__', JSON.stringify(req.body));
 
-    ipfs.add(actionStr).then((r) => {
+    IPFSClient.add(actionStr).then((r) => {
         return res.json(r.path)
     });
 };
