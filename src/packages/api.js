@@ -147,7 +147,7 @@ app.post('/upload_avatar', multerUpload.single('file'), async (req, res) => {
     const addedFile = await IPFSClient.add({ path: file.originalname, content: file.buffer });
 
     // Respond with the IPFS hash
-    res.json({ hash: addedFile.cid.toString() });
+    res.json({ cid: addedFile.cid.toString() });
   } catch (error) {
     console.error(error);
     res.status(500).send('An error occurred while uploading the file to IPFS.');
