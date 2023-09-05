@@ -15,6 +15,23 @@ import * as infura from '../libs/infura.js';
 import Joi from 'joi';
 import * as ejv from 'express-joi-validation';
 
+import IPFSClient from '../clients/ipfs.js';
+
+import multer from 'multer';
+
+const multerUpload = multer({
+  fileFilter: function (req, file, cb) {
+    // Check if the file is an image
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Not an image. Please upload an image file.'), false);
+    }
+  }
+});
+
+
+
 import { getQueue, getMetadata } from '../libs/crawl.js'
 
 import express from 'express';
@@ -120,6 +137,22 @@ app.get('/crawl/metadata', validator.query(crawlSchema), async (req, res) => {
 })
 
 
+
+app.post('/upload_avatar', multerUpload.single('file'), async (req, res) => {
+  try {
+    // Get the uploaded file from the request
+    const file = req.file;
+
+    // Add the file to IPFS
+    const addedFile = await IPFSClient.add({ path: file.originalname, content: file.buffer });
+
+    // Respond with the IPFS hash
+    res.json({ hash: addedFile.cid.toString() });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('An error occurred while uploading the file to IPFS.');
+  }
+});
 
 
 app.use((err, req, res, next) => {
