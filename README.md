@@ -8,7 +8,7 @@
 </h1>
 
 <p align="center">
-  <i align="center">Create composable discovery engines. 🚀</i>
+  <i align="center">Create and monetize interoperable discovery engines. 🚀</i>
 </p>
 
 <h4 align="center">
@@ -22,7 +22,7 @@
     <img src="https://img.shields.io/badge/mit-blue.svg?label=license" alt="license">
   </a>
   <br>
-  <a href="https://discord.gg/XkQw8gDVw4">
+  <a href="https://discord.gg/wvdxP6XvYu">
     <img src="https://img.shields.io/badge/discord-7289da.svg" alt="discord">
   </a>
   <a href="https://twitter.com/indexas">
@@ -94,7 +94,7 @@ The [API](https://github.com/indexas/web3-api) repository also hosts the code fo
 
 ### Ceramic Network Node
 ComposeDB on Ceramic is a composable graph database built for Web3.  Here you can find the steps to deploy along with an IPFS Node:
-https://composedb.js.org/docs/0.4.x/guides/composedb-server
+[https://composedb.js.org/docs/0.5.x/guides/composedb-server](https://composedb.js.org/docs/0.5.x/guides/composedb-server)
 
 We built four different schemas to store information on Ceramic:
 - Index _[(view model)](https://s3.xyz/models/modelview/kjzl6hvfrbw6c8e8rlhx3guuoc1o6i4vni5emzh2c48aa5pn0u71jggun7rtu2a?network=TESTNET)_
@@ -104,7 +104,7 @@ We built four different schemas to store information on Ceramic:
 
 ### IPFS Node
 ComposeDB on Ceramic is a composable graph database built for Web3.  Here you can find the steps to deploy along with an IPFS Node:
-https://composedb.js.org/docs/0.4.x/guides/composedb-server
+[https://composedb.js.org/docs/0.5.x/guides/composedb-server](https://composedb.js.org/docs/0.5.x/guides/composedb-server)
 
 ### Others
 We use [PostgreSQL](https://www.postgresql.org/) indexing feature of [Ceramic Network](https://ceramic.network/) and use [KafkaConnect CDC](https://docs.confluent.io/cloud/current/connectors/cc-postgresql-source.html) to produce db changes to [Apache Kafka](https://kafka.apache.org/) and finally write data to [Elasticsearch](https://www.elastic.co/) via the consumer service.
@@ -273,7 +273,7 @@ Index.as leverages the power of several open protocols to enhance its capabiliti
 ## Resources
 
 -   **[index.as](https://index.as)**  to explore the app.
--   **[Discord](https://discord.gg/XkQw8gDVw4)**  for support and discussions with the community and the team.
+-   **[Discord](https://discord.gg/wvdxP6XvYu)**  for support and discussions with the community and the team.
 -   **[GitHub](https://github.com/indexas/indexas)**  for source code, project board, issues, and pull requests.
 -   **[Twitter](https://twitter.com/indexas)**  for the latest updates on the product and published blogs.
 
