@@ -44,7 +44,7 @@ const SiteNavbar = (
 	const {
 		available,
 		name,
-		pfp,
+		avatar,
 	} = useAppSelector(selectProfile);
 
 	const authenticated = useAuth();
@@ -134,8 +134,8 @@ const SiteNavbar = (
 							}
 						>
 							<Avatar className="site-navbar__avatar" hoverable size={32}>{
-								pfp ?
-									<img src={pfp.replace("ipfs://", appConfig.ipfsProxy)} alt="profile_img"/> : (
+								avatar ?
+									<img src={`${appConfig.ipfsProxy}/${avatar}`} alt="profile_img"/> : (
 										available && name ? name : "Y"
 									)}</Avatar>
 						</Dropdown>

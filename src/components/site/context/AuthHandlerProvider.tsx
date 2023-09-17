@@ -9,11 +9,10 @@ import { randomBytes, randomString } from "@stablelib/random";
 import { DIDSession, createDIDKey, createDIDCacao } from "did-session";
 
 import {
-	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected, setOriginNFTModalVisible,
+	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected,
 } from "store/slices/connectionSlice";
 import { setProfile } from "store/slices/profileSlice";
 import CeramicService from "services/ceramic-service";
-import litService from "services/lit-service";
 import { useCeramic } from "hooks/useCeramic";
 import OriginWarningModal from "../modal/OriginWarningModal";
 
@@ -36,7 +35,9 @@ type SessionResponse = {
 export const AuthHandlerContext = React.createContext<AuthHandlerContextType>({} as any);
 
 export const AuthHandlerProvider = ({ children }: any) => {
-	const { metaMaskConnected, originNFTModalVisible, loading } = useAppSelector(selectConnection);
+	const {
+		metaMaskConnected, ceramicConnected, originNFTModalVisible, loading,
+	} = useAppSelector(selectConnection);
 	const dispatch = useAppDispatch();
 	const router = useRouter();
 
@@ -57,6 +58,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		if (sessionStr) {
 			const existingSession = await DIDSession.fromSession(sessionStr);
 			setSession(existingSession);
+		} else {
 			dispatch(setAuthLoading(false));
 		}
 	};
@@ -74,7 +76,6 @@ export const AuthHandlerProvider = ({ children }: any) => {
 
 		const accountId = await getAccountId(ethProvider, addresses[0]);
 		const normAccount = normalizeAccountId(accountId);
-		console.log("super", normAccount);
 		const keySeed = randomBytes(32);
 		const didKey = await createDIDKey(keySeed);
 
@@ -93,13 +94,11 @@ export const AuthHandlerProvider = ({ children }: any) => {
 			expirationTime: threeMonthsLater.toISOString(),
 			resources: ["ceramic://*"],
 		});
-		console.log(siweMessage);
 		try {
 			siweMessage.signature = await ethProvider.request({
 				method: "personal_sign",
 				params: [siweMessage.signMessage(), getAddress(accountId.address)],
 			});
-			console.log(siweMessage.signature);
 			const cacao = Cacao.fromSiweMessage(siweMessage);
 			const did = await createDIDCacao(didKey, cacao);
 			const newSession = new DIDSession({ cacao, keySeed, did });
@@ -113,7 +112,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 				},
 			} as SessionResponse;
 		} catch (err) {
-			console.log(err);
+			dispatch(setAuthLoading(false));
 		}
 	};
 	const connectMetamask = async () => {
@@ -126,18 +125,9 @@ export const AuthHandlerProvider = ({ children }: any) => {
 					localStorage.setItem("authSig", JSON.stringify(sessionResponse.authSig));
 					localStorage.setItem("did", sessionResponse.session.serialize());
 					setSession(sessionResponse.session);
-				} else {
-					dispatch(setAuthLoading(false));
 				}
 			}
-		} else {
-			const hasOrigin = await litService.hasOriginNFT();
-			if (!hasOrigin) {
-				dispatch(setOriginNFTModalVisible(true));
-			}
 		}
-
-		dispatch(setAuthLoading(false));
 	};
 	const getProfile = async () => {
 		try {
@@ -147,12 +137,15 @@ export const AuthHandlerProvider = ({ children }: any) => {
 					...profile,
 					available: true,
 				}));
+				dispatch(setAuthLoading(false));
+			}else{
+				dispatch(setAuthLoading(false));
 			}
 		} catch (err) {
 			// profile error
 		}
 	};
-	const authToCeramic = async () => {
+	const authToCeramic = () => {
 		if (!(personalCeramic.client && !personalCeramic.client.isUserAuthenticated())) {
 			personalCeramic.setClient(new CeramicService(session?.did!));
 		}
@@ -160,13 +153,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 	};
 
 	const completeConnections = async () => {
-		const hasOrigin = await litService.hasOriginNFT();
-		if (!hasOrigin) {
-			dispatch(setOriginNFTModalVisible(true));
-		} else {
-			await authToCeramic();
-			await getProfile();
-		}
+		await authToCeramic();
 	};
 
 	// App Loads
@@ -186,14 +173,17 @@ export const AuthHandlerProvider = ({ children }: any) => {
 	useEffect(() => {
 		if (metaMaskConnected) {
 			// Just connected
-
 			completeConnections();
 		} else {
-			// Not connected but session exists.
 			getExistingSession();
 		}
 	}, [metaMaskConnected]);
 
+	useEffect(() => {
+		if (ceramicConnected && personalCeramic.client) {
+			getProfile();
+		}
+	}, [ceramicConnected, personalCeramic.client]);
 	return <AuthHandlerContext.Provider value={{
 		connect: connectMetamask,
 		disconnect,

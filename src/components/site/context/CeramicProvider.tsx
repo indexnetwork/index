@@ -3,7 +3,8 @@ import CeramicService from "services/ceramic-service";
 import {
 	Link, Users, UserIndex,
 } from "types/entity";
-import { CID } from "ipfs-http-client";
+
+import { CID } from "multiformats";
 
 export interface CeramicContextValue {
 	setClient: React.Dispatch<React.SetStateAction<CeramicService | undefined>>;

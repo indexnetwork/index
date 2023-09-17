@@ -19,4 +19,5 @@ export const API_ENDPOINTS = {
 	SYNC_CONTENT: "/links/sync-content",
 	NFT_METADATA: "/nft",
 	ENS: "/ens",
+	UPLOAD_AVATAR: "/upload_avatar",
 };

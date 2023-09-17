@@ -4,7 +4,7 @@
 	display: inline-block;
 	border: $border-base;
 	border-radius: $border-radius-base;
-	padding: map-deep-get($spacing, "xs", "3") map-deep-get($spacing, "xs", "6");
+	padding: map-deep-get($spacing, "xs", "4") map-deep-get($spacing, "xs", "4");
 	line-height: 0;
 	align-items: center;
 

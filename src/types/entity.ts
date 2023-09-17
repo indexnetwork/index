@@ -3,6 +3,8 @@
  *
  */
 
+import { CID } from "multiformats";
+
 export type Indexes = {
   id: string
   title: string | null
@@ -90,10 +92,8 @@ export type Link = {
  */
 export interface Users {
   name?: string;
-  description?: string;
-  pfp?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
+  bio?: string;
+  avatar?: CID;
   available?: boolean; // TODO debug
 }
 

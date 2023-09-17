@@ -45,6 +45,7 @@ import { IndexContext } from "hooks/useIndex";
 import AskIndexes from "../../components/site/indexes/AskIndexes";
 import PageContainer from "../../components/layout/site/PageContainer";
 import Soon from "../../components/site/indexes/Soon";
+import {appConfig} from "../../config";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -213,7 +214,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 								<FlexRow>
 									<Col centerBlock className="idxflex-grow-1">
 										<Avatar size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{isOwner && available && name ? name : index?.ownerDID?.id}</Text>
+
+										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{available && name ? name : index?.ownerDID?.id}</Text>
 									</Col>
 								</FlexRow>
 								<FlexRow className="pt-3">

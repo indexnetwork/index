@@ -383,13 +383,13 @@ class CeramicService {
 		return data?.updateUserIndex.document!;
 	}
 	async getProfile(): Promise<Users> {
-		const { data, errors } = await this.client.executeQuery<{ viewer: { indexasProfile: Users } }>(`
+		const { data, errors } = await this.client.executeQuery<{ viewer: { profile: Users } }>(`
 			query {
 				viewer {
-					indexasProfile {
+					profile {
 						name
-						description
-						pfp
+						bio
+						avatar
 					}
 				}
 			}
@@ -397,29 +397,27 @@ class CeramicService {
 		if (errors) {
 			// TODO Handle
 		}
-		return <Users>data?.viewer?.indexasProfile!;
+		return <Users>data?.viewer?.profile!;
 	}
 	async setProfile(profile: Users) {
-		if (!profile.pfp) {
-			delete profile.pfp;
-		}
 		const payload = {
 			content: profile,
 		};
-		const { data, errors } = await this.client.executeQuery<{ createIndexasProfile: { document: Users } }>(`	
-			mutation CreateIndexasProfile($input: CreateIndexasProfileInput!) {
-				createIndexasProfile(input: $input) {
+		const { data, errors } = await this.client.executeQuery<{ createProfile: { document: Users } }>(`	
+			mutation CreateProfile($input: CreateProfileInput!) {
+				createProfile(input: $input) {
 					document {
 					  name
-					  description
-					  pfp					
+					  bio
+					  avatar					
 					}
 				}
 			}`, { input: payload });
 		if (errors) {
+			console.log(errors)
 			// TODO Handle
 		}
-		return data?.createIndexasProfile.document!;
+		return data?.createProfile.document!;
 	}
 	async uploadImage(file: File) {
 		try {

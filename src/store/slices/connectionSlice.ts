@@ -15,7 +15,7 @@ const initialState: ConnectionState = {
 	metaMaskConnected: false,
 	ceramicConnected: false,
 	originNFTModalVisible: false,
-	loading: false,
+	loading: true,
 };
 
 export const connectionSlice = createSlice({

@@ -11,15 +11,16 @@ const AuthGuard = (
     },
 ) => {
 	const router = useRouter();
-	const { loading } = useAppSelector(selectConnection);
+	const { loading, ceramicConnected, metaMaskConnected } = useAppSelector(selectConnection);
 	const authenticated = useAuth();
-
 	if (loading) {
 		return <div>Loading</div>;
 	}
+
 	if (!loading && authenticated) {
 		return props.children!;
 	}
+
 	if (!isSSR()) {
 		router.push("/");
 	}

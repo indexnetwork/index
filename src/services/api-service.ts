@@ -4,6 +4,7 @@ import {
 	Indexes, IndexLink, Link, UserIndex,
 } from "types/entity";
 import { API_ENDPOINTS } from "utils/constants";
+import { CID } from "multiformats";
 
 export type HighlightType<T = {}> = T & {
 	highlight?: { [key: string]: string[] }
@@ -142,9 +143,9 @@ class ApiService {
 			return null;
 		}
 	}
-	async getLITAction(CID: string): Promise<LitActionConditions | null > {
+	async getLITAction(cid: string): Promise<LitActionConditions | null > {
 		try {
-			const { data } = await apiAxios.get<LitActionConditions>(`${API_ENDPOINTS.LIT_ACTIONS}/${CID}`);
+			const { data } = await apiAxios.get<LitActionConditions>(`${API_ENDPOINTS.LIT_ACTIONS}/${cid}`);
 			return data;
 		} catch (err) {
 			return null;
@@ -170,6 +171,20 @@ class ApiService {
 	async getWallet(ensName: string): Promise<any | null > {
 		try {
 			const { data } = await apiAxios.get<LitActionConditions>(`${API_ENDPOINTS.ENS}/${ensName}`);
+			return data;
+		} catch (err) {
+			return null;
+		}
+	}
+	async uploadAvatar(file: File): Promise<{ cid: CID } | null> {
+		try {
+			const formData = new FormData();
+			formData.append("file", file);
+			const { data } = await apiAxios.post<{ cid: CID }>(API_ENDPOINTS.UPLOAD_AVATAR, formData, {
+				headers: {
+					"Content-Type": "multipart/form-data",
+				},
+			});
 			return data;
 		} catch (err) {
 			return null;
