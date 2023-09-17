@@ -11,9 +11,7 @@ from fastapi.responses import JSONResponse
 
 class Transformers:
     @staticmethod
-    def unstructured(url, file_type):
-        fileName = save_file(url, file_type)
-        print("Processing with unstructured...", url, file_type, fileName)
+    def unstructured(fileName, file_type):
         loader = UnstructuredFileLoader(file_path=fileName, mode="paged")
         return loader.load()        
 
@@ -24,9 +22,8 @@ class Transformers:
         return url
 
     @staticmethod
-    def langchainJSON(url, file_type):
+    def langchainJSON(fileName, file_type):
         print("Processing with Langchain JSON Loader...")
-        fileName = save_file(url, file_type)
         loader = JSONLoader(file_path=fileName, jq_schema='.', text_content=False)
         return loader.load()
 
@@ -68,6 +65,15 @@ def save_file(url, file_type):
         f.write(response.content)
     
     return full_path
+
+
+def delete_file(file_path):
+    try:
+        os.remove(file_path)
+    except FileNotFoundError:
+        print(f"File {file_path} not found!")
+    except OSError as e:
+        print(f"Error deleting file {file_path}. Reason: {e}")
 
 def guess_file_type(url_or_file_path):
     mime_type, encoding = mimetypes.guess_type(url_or_file_path)
@@ -119,4 +125,8 @@ def resolve_file(url):
 
 def get_document(url):
     transformer, file_type = resolve_file(url)
-    return transformer(url, file_type)
+    fileName = save_file(url, file_type)
+    print("Processing", url, file_type, transformer, fileName)
+    nodes = transformer(fileName, file_type)
+    delete_file(fileName)
+    return nodes
