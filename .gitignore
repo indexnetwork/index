@@ -4,3 +4,4 @@ chroma-indexes/*
 app/__pycache__/*
 .DS_Store
 .env
+files

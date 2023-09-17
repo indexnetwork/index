@@ -24,11 +24,18 @@ from llama_index.query_engine.transform_query_engine import TransformQueryEngine
 from llama_index.vector_stores.types import ExactMatchFilter, MetadataFilters
 
 from langchain.chat_models import ChatOpenAI
+from llama_index import Document
+
+from unstructured.partition.auto import partition
+
+from app.document_parser import get_document
 
 import chromadb
 from chromadb.config import Settings
 
-import openai # 
+import openai #
+
+
 
 import redis
 
@@ -53,17 +60,15 @@ app.add_middleware(
 )
 
 openai.api_key = os.environ["OPENAI_API_KEY"]
+openai.log = "error"
 
 local_directory = "chroma-indexes"
 persist_directory = os.path.join(os.getcwd(), local_directory)
 
-chroma_client = chromadb.Client(Settings(
-    chroma_db_impl="duckdb+parquet",
-    persist_directory=persist_directory
-))
+chroma_client = chromadb.PersistentClient(path=persist_directory)
 
-UnstructuredURLLoader = download_loader("UnstructuredURLLoader")
 hyde = HyDEQueryTransform(include_original=True)
+
 
 def get_service_context():
     embed_model = OpenAIEmbedding(model="text-embedding-ada-002", openai_api_key=os.environ["OPENAI_API_KEY"])
@@ -75,12 +80,12 @@ def get_collection():
     collection = chroma_client.get_or_create_collection(name="indexes")
     vector_store = ChromaVectorStore(chroma_collection=collection)
     index = VectorStoreIndex.from_vector_store(vector_store=vector_store, service_context=get_service_context())
-    
+
     return index
 
 def get_query_engine(indexes):
     collection = get_collection()
-    
+
     if len(indexes) > 1:
         index_filters =  {"$or": [{"index_id": {"$eq": i}} for i in indexes]}
     else:
@@ -90,7 +95,7 @@ def get_query_engine(indexes):
 
 def get_index_chat_engine(indexes):
     collection = get_collection()
-    
+
     if len(indexes) > 1:
         index_filters =  {"$or": [{"index_id": {"$eq": i}} for i in indexes]}
     else:
@@ -128,26 +133,14 @@ def home():
 
 @app.post("/index/{index_id}/links")
 def add(index_id, link: Link):
-    
+
     collection = get_collection()
     
-    loader = UnstructuredURLLoader(urls=[link.url])
+    documents = get_document(link.url) 
 
-    try:
-        kb_data = loader.load()
-        if not kb_data:
-            return JSONResponse(content={'message': 'No data loaded from the provided link'}, status_code=400)
-    except Exception as e:
-        return JSONResponse(content={'message': 'Url load error'}, status_code=400)
-    
-    kb_data = loader.load()
-
-    if not kb_data:
-        return JSONResponse(content={'message': 'No data loaded from the provided link'}, status_code=400)
-
-    kb_data[0].metadata["index_id"] = index_id
-    collection.insert(kb_data[0])
-    chroma_client.persist()
+    for node in documents:
+        node.metadata = {"source": link.url,"index_id": index_id}
+        collection.insert(Document.from_langchain_format(node))
 
     return JSONResponse(content={'message': 'Document added successfully'})
 
@@ -161,7 +154,7 @@ def query(prompt: Prompt):
 
     collection = get_collection()
 
-    
+
     hyde_query_engine = TransformQueryEngine( collection.as_query_engine(), hyde)
 
     response = hyde_query_engine.query(prompt.prompt)
@@ -175,13 +168,13 @@ def query(prompt: Prompt):
 
 @app.post("/index/{index_id}/prompt")
 async def query(index_id, prompt: Prompt):
-    response = get_query_engine([index_id]).query(prompt.prompt)    
+    response = get_query_engine([index_id]).query(prompt.prompt)
     return StreamingResponse(response_generator(response), media_type='text/event-stream')
 
 
 @app.post("/chat_stream")
 def chat_stream(params: ChatStream):
-    
+
     if params.did:
         id_resp = redisClient.hkeys("user_indexes:by_did:" + params.did.lower())
         if not id_resp:
@@ -206,8 +199,8 @@ def chat_stream(params: ChatStream):
 #        for s in streaming_response.source_nodes:
 #            yield '\n\n'
 #            yield  s.node.metadata.get("source")
-            
-        
+
+
     return StreamingResponse(response_generator(), media_type='text/event-stream')
 
 
@@ -217,28 +210,28 @@ def compose(c: Composition):
 
 
     id_resp = redisClient.hkeys("user_indexes:by_did:" + c.did.lower())
-    
+
     index_ids = [item.decode('utf-8').split(':')[0] for item in id_resp]
-    
+
     indexes = list(map(lambda index_id: get_index(index_id=index_id), index_ids))
     indexes = [get_index(index_id=index_id) for index_id in index_ids if get_index(index_id=index_id)]
-    
-    
+
+
     summaries = redisClient.hmget("summaries", index_ids)
-    
+
     graph = ComposableGraph.from_indices(
         ListIndex,
         indexes,
         index_summaries=summaries,
-        max_keywords_per_chunk=2000,  
+        max_keywords_per_chunk=2000,
     )
     query_engine = graph.as_query_engine()
     response = query_engine.query(c.prompt)
     return JSONResponse(content={
-        #"sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.source_nodes],                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
+        #"sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.source_nodes],
         "response": response.response
     })
-      
+
 
 if __name__ == "__main__":
     import uvicorn
