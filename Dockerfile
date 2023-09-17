@@ -1,6 +1,6 @@
 FROM python:3.11.3
 WORKDIR /code
-RUN pip3 install numpy==1.24.2 fastapi==0.99.1 pydantic==1.10.11 llama_index==0.7.14 chromadb==0.4.10  uuid  openai redis --no-cache-dir
+RUN pip3 install numpy==1.24.2 fastapi==0.99.1 pydantic==1.10.11 llama_index==0.8.28 chromadb==0.4.10  uuid  openai redis --no-cache-dir
 RUN pip3 install "unstructured[all-docs]"
 
 COPY ./app /code/app
