@@ -1,9 +1,7 @@
 import mimetypes
 import os
 import requests
-import json
 import uuid
-import jq
 from unstructured.partition.auto import partition
 from langchain.document_loaders import JSONLoader, UnstructuredFileLoader
 
