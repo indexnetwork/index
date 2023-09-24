@@ -14,5 +14,10 @@
 			width: 100%;
 			background-color: $border-color;
 		}
+
+		:hover{
+			background: #F8FAFC;
+			cursor: pointer;
+		}
 	}
 }

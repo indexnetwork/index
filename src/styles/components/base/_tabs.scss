@@ -2,18 +2,19 @@
 	@include no-select;
 	display: flex;
 	flex-direction: column;
+	flex-grow: 1;
 	.tabs-list {
 		display: flex;
 		gap: map-deep-get($spacing, "xs", "6");
 		flex-shrink: 0;
+
 		border-bottom: $border-base;
-		margin-bottom: map-deep-get($spacing, "xs", "3");
 		.tabs-list-item {
 			position: relative;
 			cursor: pointer;
 			padding: map-deep-get($spacing, "xs", "3") 0;
 			margin-right: map-deep-get($spacing, "xs", "7");
-			
+
 			&.tabs-list-item-active {
 				font-weight: 700;
 				padding-left: 4px;
@@ -21,7 +22,7 @@
 				.tabs-list-item-bottom {
 					visibility: visible;
 					position: absolute;
-					
+
 					height: 3px;
 					background-color: $main-color;
 					border-radius: 3px;
@@ -33,7 +34,7 @@
 
 			&.tabs-list-item-disabled {
 				cursor: not-allowed;
-				
+
 			}
 
 			.tabs-list-item-bottom {
@@ -45,7 +46,7 @@
 	.tabs-contents {
 		flex-grow: 1;
 		.tabs-contents-item {
-			
+
 		}
 	}
 }

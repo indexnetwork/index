@@ -20,6 +20,13 @@ import { useCeramic } from "hooks/useCeramic";
 import NoIndexes from "components/site/indexes/NoIndexes";
 import SearchInput from "../../../base/SearchInput";
 import RadioGroup from "../../../base/RadioGroup";
+import Avatar from "../../../base/Avatar";
+import {maskDID} from "../../../../utils/helper";
+import Flex from "../../../layout/base/Grid/Flex";
+import Text from "../../../base/Text";
+import Header from "../../../base/Header";
+import cm from "../IndexItem/style.module.scss";
+import sanitize from "sanitize-html";
 
 export interface IndexListState {
 	skip: number,
@@ -178,91 +185,69 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 	};
 	return <>
 		<FlexRow>
-			<Col xs={12} lg={9} centerBlock>
-				<FlexRow colGap={2}>
-					<Col
-						className="idxflex-grow-1 mb-4"
-					>
-						<SearchInput
-							loading={isLoading}
-							onSearch={setSearch}
-							debounceTime={400}
-							showClear
-							defaultValue={search}
-							placeholder={t("pages:home.searchHome")} />
-					</Col>
-					<Col>
+			<Col xs={12} >
+				<Flex flexDirection={"column"} className={"scrollable-container"} >
+					<FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{background: "#efefef", borderRadius: "5px"}}>
 						<Col>
-							<RadioGroup className={"px-1"} value="search" onSelectionChange={(value: "search" | "ask") => setInteractionMode(value)}
-								items={[
-									{
-										value: "search",
-										title: "Search",
-									},
-									{
-										value: "ask",
-										title: "Ask",
-									},
-								]}
-							/>
+							<Avatar size={60}>serafettin</Avatar>
 						</Col>
-					</Col>
-				</FlexRow>
-				<FlexRow>
-					<Col className="idxflex-grow-1 mb-4">
-						<Tabs activeKey={tabKey} onTabChange={setTabKey}>
-							<TabPane enabled={true} tabKey={"my_indexes"} title={`My Indexes (${state.my_indexes?.totalCount || 0})`} />
-							<TabPane enabled={true} tabKey={"starred"} title={`Starred (${state.starred?.totalCount || 0})`} />
-						</Tabs>
-					</Col>
-				</FlexRow>
-				<FlexRow>
-					{tabKey === "my_indexes" ? (
-						state.my_indexes && state.my_indexes.indexes?.length! > 0 ? <>
-							<InfiniteScroll
-								initialLoad={false}
-								hasMore={state.my_indexes?.hasMore}
-								loadMore={getData}
-								marginHeight={50}
-							>
-								<List
-									data={state.my_indexes?.indexes || []}
-									listClass="index-list"
-									render={(itm: Indexes) => <IndexItem
-										hasSearch={!!search}
-										onClick={handleClick(itm)}
-										isOwner={did === itm.ownerDID?.id}
-										userIndexToggle={handleUserIndexToggle}
-										index={itm}
-									/>}
-									divided
-								/>
-							</InfiniteScroll>
-						</> : <NoIndexes hasIndex={hasUserIndex.my_indexes} search={search} tabKey={tabKey} />
-					) : (
-						state.starred && state.starred.indexes?.length! > 0 ? <>
-							<InfiniteScroll
-								initialLoad={false}
-								hasMore={state.starred?.hasMore}
-								loadMore={getData}
-								marginHeight={50}
-							>
-								<List
-									data={state.starred?.indexes || []}
-									listClass="index-list"
-									render={(itm: Indexes) => <IndexItem
-										hasSearch={!!search}
-										onClick={handleClick(itm)}
-										isOwner={did === itm.ownerDID?.id}
-										userIndexToggle={handleUserIndexToggle}
-										index={itm}
-									/>}
-									divided
-								/>
-							</InfiniteScroll>
-						</> : <NoIndexes hasIndex={hasUserIndex.starred} search={search} tabKey={tabKey} />
-					)}
-				</FlexRow>
+						<Col className="idxflex-grow-1 ml-6">
+							<Flex flexDirection={"column"} >
+								<Header level={4} className={"mb-1"}>serafettin</Header>
+								<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">Web3, design, building @indexnetwork_</Text>
+							</Flex>
+						</Col>
+					</FlexRow>
+					<FlexRow className={"mr-6"}>
+						<Col className="idxflex-grow-1">
+							<Tabs activeKey={tabKey} onTabChange={setTabKey}>
+								<TabPane enabled={true} tabKey={"my_indexes"} title={`My Indexes (${state.my_indexes?.totalCount || 0})`} />
+								<TabPane enabled={true} tabKey={"starred"} title={`Starred (${state.starred?.totalCount || 0})`} />
+							</Tabs>
+						</Col>
+					</FlexRow>
+					<FlexRow className={"scrollable-area pt-4 pr-6"}>
+						{tabKey === "my_indexes" ? (
+							state.my_indexes && state.my_indexes.indexes?.length! > 0 ? <>
+								<InfiniteScroll
+									initialLoad={false}
+									hasMore={state.my_indexes?.hasMore}
+									loadMore={getData}
+									marginHeight={50}
+									className={"idxflex-grow-1"}
+								>
+									<List
+										data={state.my_indexes?.indexes || []}
+										render={(itm: Indexes) => <IndexItem
+											onClick={handleClick(itm)}
+											index={itm}
+										/>}
+										divided={false}
+									/>
+								</InfiniteScroll>
+							</> : <NoIndexes hasIndex={hasUserIndex.my_indexes} search={search} tabKey={tabKey} />
+						) : (
+							state.starred && state.starred.indexes?.length! > 0 ? <>
+								<InfiniteScroll
+									initialLoad={false}
+									hasMore={state.starred?.hasMore}
+									loadMore={getData}
+									marginHeight={50}
+									className={"idxflex-grow-1"}
+								>
+									<List
+										data={state.starred?.indexes || []}
+										render={(itm: Indexes) => <IndexItem
+											onClick={handleClick(itm)}
+											index={itm}
+										/>}
+										divided
+									/>
+								</InfiniteScroll>
+							</> : <NoIndexes hasIndex={hasUserIndex.starred} search={search} tabKey={tabKey} />
+						)}
+					</FlexRow>
+				</Flex>
 			</Col>
 		</FlexRow>
 	</>;

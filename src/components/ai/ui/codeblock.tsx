@@ -116,7 +116,7 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
 							iconButton
 						>
 							<IconDownload />
-							<span className="sr-only">Download</span>
+							<span className="sr-only hidden">Download</span>
 						</Button>
 						<Button
 							theme="primary"
@@ -124,7 +124,7 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
 							onClick={onCopy}
 						>
 							{isCopied ? <IconCheck /> : <IconCopy />}
-							<span className="sr-only">Copy code</span>
+							<span className="sr-only hidden">Copy code</span>
 						</Button>
 					</Flex>
 				</Col>

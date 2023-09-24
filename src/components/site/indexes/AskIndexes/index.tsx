@@ -12,6 +12,7 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import Container from "components/layout/base/Grid/Container";
 import { API_ENDPOINTS } from "../../../../utils/constants";
+import Flex from "../../../layout/base/Grid/Flex";
 
 export interface ChatProps extends React.ComponentProps<"div"> {
 	initialMessages?: Message[]
@@ -21,12 +22,10 @@ export interface SearchIndexesProps {
 	id: string;
 	did?: string;
 	indexes?: string[],
-	interactionToggle?: React.ReactNode;
 }
 
 const AskIndexes: React.VFC<SearchIndexesProps> = ({
 	id,
-	interactionToggle,
 	did,
 	indexes,
 }) => {
@@ -53,74 +52,68 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 	});
 
 	return <>
-		<FlexRow>
-			<Col xs={12} lg={9} centerBlock>
-				<FlexRow>
-					<TooltipProvider>
-						<Col>
-							<Container style={{
-								position: "fixed",
-								left: 0,
-								right: 0,
-								bottom: "20px",
-								zIndex: 10,
-							}}>
-								<div style={{
-									right: "30px",
-									bottom: "70px",
-									position: "fixed",
-								}}>
-									<ButtonScrollToBottom/>
-								</div>
-
-								<FlexRow>
-									<Col centerBlock xs={12} lg={9}>
-										<FlexRow className={"mb-5"} justify={"center"} align={"center"}>
-											<ChatPanel
-												isLoading={isLoading}
-												stop={stop}
-												reload={reload}
-												messages={messages}
-											/>
-										</FlexRow>
-										<FlexRow colGap={2} style={{ background: "white" }}>
-											<Col
-												className="idxflex-grow-1"
-											>
-												<AskInput onSubmit={async (value) => {
-													await append({
-														id,
-														content: value,
-														role: "user",
-													});
-												}}
-												  isLoading={isLoading}
-												  input={input}
-												  setInput={setInput}
-												/>
-											</Col>
-											{interactionToggle}
-										</FlexRow>
-									</Col>
-								</FlexRow>
-							</Container>
-						</Col>
-						<Col xs={12}>
-							<div style={{ paddingBottom: "150px" }}>
-								{messages.length ? (
-									<>
-										<ChatList messages={messages} />
-										<ChatScrollAnchor trackVisibility={isLoading} />
-									</>
-								) : (
-									<EmptyScreen setInput={setInput} />
-								)}
-							</div>
-						</Col>
-					</TooltipProvider>
-				</FlexRow>
-			</Col>
-		</FlexRow>
+		<TooltipProvider>
+			<FlexRow wrap={true} >
+				<Col xs={12}>
+					<Flex flexDirection={"column"} className={"scrollable-container"}>
+						<Flex className={"px-11 pt-8 scrollable-area "} flexDirection={"column"}>
+							<FlexRow wrap={true} align={"start"} >
+								<Col className="idxflex-grow-1 " style={{width: "100%"}}>
+									{messages.length ? (
+										<>
+											<ChatList messages={messages} />
+										</>
+									) : (
+										<Flex style={{ height: "300px", borderRadius: "5px" }}>
+											<EmptyScreen setInput={setInput} />
+										</Flex>
+									)}
+								</Col>
+							</FlexRow>
+						</Flex>
+						<Flex flexDirection={"column"} style={{
+							position: "absolute",
+							bottom: "0px",
+							width: "100%",
+						}}>
+							<FlexRow className={"mb-5"} justify={"center"} align={"center"}>
+								<ChatPanel
+									isLoading={isLoading}
+									stop={stop}
+									reload={reload}
+									messages={messages}
+								/>
+							</FlexRow>
+							<FlexRow fullWidth className={"idxflex-grow-1 px-10"} colGap={0}>
+								<Col
+									className="idxflex-grow-1 pb-8"
+									style={{ background: "white" }}
+								>
+									<AskInput onSubmit={async (value) => {
+										await append({
+											id,
+											content: value,
+											role: "user",
+										});
+									}}
+											  isLoading={isLoading}
+											  input={input}
+											  setInput={setInput}
+									/>
+								</Col>
+							</FlexRow>
+						</Flex>
+					</Flex>
+				</Col>
+			</FlexRow>
+			{ false && <div style={{
+				right: "30px",
+				bottom: "70px",
+				position: "fixed",
+			}}>
+				<ButtonScrollToBottom/>
+			</div>}
+		</TooltipProvider>
 	</>;
 };
 

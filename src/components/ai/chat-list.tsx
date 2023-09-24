@@ -2,6 +2,7 @@ import { type Message } from "ai";
 
 import { ChatMessage } from "components/ai/chat-message";
 import React from "react";
+import Col from "../layout/base/Grid/Col";
 
 export interface ChatListInterface {
   messages: Message[]
@@ -18,11 +19,12 @@ export const ChatList = ({ messages }: ChatListInterface) => {
 					<ChatMessage message={message} />
 					{index < messages.length - 1 && (
 						<div className="pl-8">
-							<div className={"my-6"} style={{ height: "1px", backgroundColor: "var(--gray-2)" }}></div>
+							<div className={"my-8"}></div>
 						</div>
 					)}
 				</div>
 			))}
+			<div style={{ width: "100%", height: "15rem" }}></div>
 		</div>
 	);
 };

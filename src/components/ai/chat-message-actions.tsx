@@ -27,7 +27,7 @@ export function ChatMessageActions({
 		>
 			<Button iconButton theme={"ghost"} onClick={onCopy}>
 				{isCopied ? <IconCheck /> : <IconCopy />}
-				<span className="sr-only">Copy message</span>
+				<span className="sr-only hidden">Copy message</span>
 			</Button>
 		</div>
 	);

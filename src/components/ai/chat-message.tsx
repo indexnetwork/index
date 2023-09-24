@@ -19,54 +19,55 @@ export interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
 	return (
-		<FlexRow wrap={false}>
+		<FlexRow wrap={false} align={"start"}>
 			<Col>
 				{message.role === "user" ? <IconUser width={20} /> : <IconOpenAI width={20} />}
 			</Col>
-			<Col className="idxflex-grow-1 mx-4">
-				<MemoizedReactMarkdown
-					className="prose break-words dark:prose-invert prose-p:leading-relaxed prose-pre:p-0"
-					remarkPlugins={[remarkGfm, remarkMath]}
-					components={{
-						p({ children }) {
-							return <Text>{children}</Text>;
-						},
-						code({
-							node, inline, className, children, ...props
-						}) {
-							if (children.length) {
-								if (children[0] === "▍") {
+			<Col className="idxflex-grow-1 mx-4" style={{ "overflow": "auto"}}>
+				<div style={{overflowWrap: "break-word"}}>
+					<MemoizedReactMarkdown
+						remarkPlugins={[remarkGfm, remarkMath]}
+						components={{
+							p({ children }) {
+								return <Text>{children}</Text>;
+							},
+							code({
+								node, inline, className, children, ...props
+							}) {
+								if (children.length) {
+									if (children[0] === "▍") {
+										return (
+											<span className="mt-1 cursor-default animate-pulse">▍</span>
+										);
+									}
+
+									children[0] = (children[0] as string).replace("`▍`", "▍");
+								}
+
+								const match = /language-(\w+)/.exec(className || "");
+
+								if (inline) {
 									return (
-										<span className="mt-1 cursor-default animate-pulse">▍</span>
+										<code className={className} {...props}>
+											{children}
+										</code>
 									);
 								}
 
-								children[0] = (children[0] as string).replace("`▍`", "▍");
-							}
-
-							const match = /language-(\w+)/.exec(className || "");
-
-							if (inline) {
 								return (
-									<code className={className} {...props}>
-										{children}
-									</code>
+									<CodeBlock
+										key={Math.random()}
+										language={(match && match[1]) || ""}
+										value={String(children).replace(/\n$/, "")}
+										{...props}
+									/>
 								);
-							}
-
-							return (
-								<CodeBlock
-									key={Math.random()}
-									language={(match && match[1]) || ""}
-									value={String(children).replace(/\n$/, "")}
-									{...props}
-								/>
-							);
-						},
-					}}
-				>
-					{message.content}
-				</MemoizedReactMarkdown>
+							},
+						}}
+					>
+						{message.content}
+					</MemoizedReactMarkdown>
+				</div>
 			</Col>
 			<Col>
 				<ChatMessageActions message={message} />

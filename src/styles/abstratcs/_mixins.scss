@@ -134,3 +134,15 @@
 		}
 	}
 }
+
+@mixin height-without-navbar() {
+	@each $breakpoint, $value in $navbar-height {
+		@if ($breakpoint == "xs") {
+			height: calc(100vh - $value);
+		} @else {
+			@media (min-width: map-get($breakpoints, $breakpoint)) {
+				height: calc(100vh - $value);
+			}
+		}
+	}
+}

@@ -36,7 +36,11 @@ export function isSSR() {
 }
 
 export function maskAddress(address: string) {
-	return `${address.slice(0, 6)}...${address.slice(-4)}`;
+	return `${address.slice(0, 5)}...${address.slice(-4)}`;
+}
+export function maskDID(did: string) {
+	const address = did.split(":").pop();
+	return maskAddress(address!);
 }
 
 export function isMobile() {

@@ -73,6 +73,7 @@
     "react-lazyload": "^3.2.0",
     "react-lottie-player": "^1.4.3",
     "react-markdown": "^8.0.7",
+    "react-modern-drawer": "^1.2.2",
     "react-redux": "^8.0.2",
     "react-syntax-highlighter": "^15.5.0",
     "react-textarea-autosize": "^8.5.2",

@@ -8072,6 +8072,11 @@ react-markdown@^8.0.7:
     unist-util-visit "^4.0.0"
     vfile "^5.0.0"
 
+react-modern-drawer@^1.2.2:
+  version "1.2.2"
+  resolved "https://registry.yarnpkg.com/react-modern-drawer/-/react-modern-drawer-1.2.2.tgz#cee2d3355a1ac7ac0842d3fba33a28cd8f7f2464"
+  integrity sha512-SXUNjofHzeoEas0kdMWWafuF2+vwdtbQD1cpkHxo7oyFj3v+2l2CMeJjc/GodYsnxVhSiYj75xosMJXXed9ykQ==
+
 react-native-fetch-api@^3.0.0:
   version "3.0.0"
   resolved "https://registry.yarnpkg.com/react-native-fetch-api/-/react-native-fetch-api-3.0.0.tgz#81e1bb6562c292521bc4eca52fe1097f4c1ebab5"

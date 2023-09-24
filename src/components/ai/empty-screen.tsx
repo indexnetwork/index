@@ -22,7 +22,7 @@ const exampleMessages = [
 
 export function EmptyScreen({ setInput }: Pick<UseChatHelpers, "setInput">) {
 	return (
-		<div className="card-item mx-auto ">
+		<div className="card-item mx-10 idxflex-grow-1">
 			<div className="rounded-lg border bg-background p-8">
 
 				<Text fontFamily="freizeit" size={"xl"} fontWeight={700} className={"mb-2"}>

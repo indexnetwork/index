@@ -83,7 +83,7 @@ const Navbar = (
 		>
 			<Container
 				className="navbar"
-				fluid={isLanding}
+				fluid={true}
 			>
 				<FlexRow fullWidth fullHeight align={"center"}>
 					<Col xs={isLanding ? 10 : 12} centerBlock>

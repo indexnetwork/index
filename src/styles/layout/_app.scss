@@ -1,0 +1,37 @@
+.app-container {
+
+  .scrollable-container{
+    @include height-without-navbar();
+    min-height: 0;
+  }
+  .scrollable-area{
+    overflow: auto;
+  }
+
+  .drawer-left, .sidebar-left {
+  }
+
+  @media (max-width: map-get($breakpoints, "sm")) {
+    .drawer-left {
+      display: block;
+    }
+    .sidebar-left {
+      display: none;
+    }
+  }
+  @media (min-width: map-get($breakpoints, "md")) {
+    .drawer-left {
+      display: none;
+      background: red;
+    }
+    .sidebar-left {
+      display: block;
+      border-right: 1px solid $gray-2
+    }
+    .sidebar-right {
+      border-left: 1px solid $gray-2;
+    }
+  }
+
+
+}
