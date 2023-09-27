@@ -1,12 +1,9 @@
-import DndList from "components/base/DndList";
 import List from "components/base/List";
 import { useMergedState } from "hooks/useMergedState";
 import React, { useEffect, useState } from "react";
 import InfiniteScroll from "react-infinite-scroller";
 import api, { LinkSearchResponse, LinkSearchRequestBody } from "services/api-service";
-import { IndexLink, Link } from "types/entity";
-// import { arrayMove } from "utils/helper";
-
+import { Link } from "types/entity";
 import { useLinks } from "hooks/useLinks";
 import { useIndex } from "hooks/useIndex";
 import LinkItem from "../LinkItem";
@@ -85,21 +82,6 @@ const IndexItemList: React.VFC<LinkListProps> = ({
 		onFetch && onFetch(loading);
 	}, [onFetch, loading]);
 
-	const handleOrderChange = (value: {
-		source: number,
-		destination: number,
-	}) => {
-		/*
-		setItems((oldVal) => {
-			const newArray = arrayMove(oldVal, value.source, value.destination);
-			onChange && onChange(newArray);
-			return newArray;
-		});
-		 */
-	};
-
-	// write a function connect redis nodes to have consistent redis pub/sub
-
 	const handleLinksChange = (newLink: Link) => {
 		// setItems(newLinks);
 	};
@@ -109,16 +91,10 @@ const IndexItemList: React.VFC<LinkListProps> = ({
 				links.length === 0 ? (
 					<NoLinks search={search}></NoLinks>
 				) : (
-					<InfiniteScroll
-						initialLoad={false}
-						hasMore={state.hasMore}
-						loadMore={getData}
-						marginHeight={50}
-					>
+					<InfiniteScroll useWindow={false} initialLoad={false} hasMore={state.hasMore} loadMore={getData} marginHeight={50}>
 						<List
 							listClass="index-list"
-
-							render={(item, index, provided, snapshot) => <MemoLinkItem
+							render={(item) => <MemoLinkItem
 								search={!!search}
 								index_link={item}
 								// onChange={handleLinksChange}

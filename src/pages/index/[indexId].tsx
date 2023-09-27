@@ -267,7 +267,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 								</FlexRow>
 							</Flex>
 							{ tabKey === "index" && <>
-								<FlexRow id={"search-input pt-6"}>
+								<FlexRow className={"mt-6"}>
 									<Col className="idxflex-grow-1">
 										<SearchInput
 											loading={loading}
@@ -292,8 +292,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										</ButtonGroup>
 									</Col>}
 								</FlexRow>
-								{isCreator && <FlexRow id={"link-input"}>
-									<Col className="idxflex-grow-1 pb-0 mt-6">
+								{isCreator && <FlexRow>
+									<Col className="idxflex-grow-1 pb-0 mt-6 mb-3">
 										<LinkInput
 											loading={crawling}
 											onLinkAdd={handleAddLink}
@@ -302,21 +302,18 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									</Col>
 								</FlexRow>}
 								<FlexRow className={"scrollable-area"}>
-									<Col className="idxflex-grow-1">
-										<IndexItemList
-											search={search}
-											index_id={router.query.indexId as any}
-											// onChange={handleReorderLinks}
-										/>
-									</Col>
+									<IndexItemList
+										search={search}
+										index_id={router.query.indexId as any}
+									/>
 								</FlexRow>
 							</>}
-							{ tabKey === "creators" && <FlexRow className={"pt-6 scrollable-area"}>
+							{ tabKey === "creators" && <FlexRow className={"mt-6 scrollable-area"}>
 								<Col className="idxflex-grow-1">
 									<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
 								</Col>
 							</FlexRow>}
-							{ tabKey === "audience" && <FlexRow className={"pt-6"} justify="center">
+							{ tabKey === "audience" && <FlexRow className={"mt-6"} justify="center">
 								<Col>
 									<Soon section={tabKey}></Soon>
 								</Col>
