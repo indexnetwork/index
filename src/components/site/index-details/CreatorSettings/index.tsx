@@ -81,7 +81,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 						Creators can add items, add tags to theirs and delete them.</Text>
 				</Col>
 			</Row>
-			<FlexRow className={"mt-6"} rowGutter={2} rowSpacing={2} colSpacing={2}>
+			<FlexRow className={"mt-6"} rowGutter={0} rowSpacing={2} colSpacing={2}>
 				{
 					conditions && conditions
 						.map((c: any, index: any) => <Col key={index} lg={6} xs={12}>

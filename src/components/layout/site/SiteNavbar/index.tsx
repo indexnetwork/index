@@ -95,7 +95,7 @@ const SiteNavbar = (
 			{
 				authenticated ? (
 					<NavbarMenu>
-						<Button className="pr-5 pl-5" onClick={() => { setCreateModalVisible(true); }} theme="primary">{t("components:header.newIndexBtn")}</Button>
+						<Button style={{ height: "32px" }} className="pr-5 pl-5" onClick={() => { setCreateModalVisible(true); }} theme="primary">{t("components:header.newIndexBtn")}</Button>
 						<Dropdown
 							dropdownClass="ml-6"
 							position="bottom-right"

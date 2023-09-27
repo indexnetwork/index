@@ -45,7 +45,7 @@ import { IndexContext } from "hooks/useIndex";
 import AskIndexes from "../../components/site/indexes/AskIndexes";
 import PageContainer from "../../components/layout/site/PageContainer";
 import Soon from "../../components/site/indexes/Soon";
-import {appConfig} from "../../config";
+import Flex from "../../components/layout/base/Grid/Flex";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -199,23 +199,22 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [progress]);
 
 	return (
-		<PageContainer>
+		<PageContainer section={"index"}>
 			<IndexContext.Provider value={{ pkpCeramic, isOwner, isCreator }}>
 				<LinksContext.Provider value={{ links, setLinks }}>
-					<FlexRow colGap={2}>
-						<Col xs={12} lg={9} centerBlock>
-							{ notFound && <FlexRow>
-								<Col className="idxflex-grow-1">
-									<NotFound active={true} />
-								</Col>
-							</FlexRow>
-							}
-							{ !notFound && <>
+					<Flex className={"px-0 px-md-10 pt-6 scrollable-container"} flexDirection={"column"}>
+						{ notFound && <FlexRow>
+							<Col className="idxflex-grow-1">
+								<NotFound active={true} />
+							</Col>
+						</FlexRow>
+						}
+						{ !notFound && <>
+							<Flex flexDirection={"column"}>
 								<FlexRow>
 									<Col centerBlock className="idxflex-grow-1">
-										<Avatar size={20}>{isOwner ? (available && name ? name : "Y") : "O"}</Avatar>
-
-										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{available && name ? name : index?.ownerDID?.id}</Text>
+										<Avatar size={20}>{isOwner ? (available && name ? name : "") : "O"}</Avatar>
+										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{available && name ? name : ""}</Text>
 									</Col>
 								</FlexRow>
 								<FlexRow className="pt-3">
@@ -266,8 +265,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										</Tabs>
 									</Col>
 								</FlexRow>
-								{tabKey === "index" && <FlexRow>
-									<Col className="idxflex-grow-1 mt-6">
+							</Flex>
+							{ tabKey === "index" && <>
+								<FlexRow id={"search-input pt-6"}>
+									<Col className="idxflex-grow-1">
 										<SearchInput
 											loading={loading}
 											onSearch={setSearch}
@@ -290,8 +291,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											</SortPopup>
 										</ButtonGroup>
 									</Col>}
-								</FlexRow>}
-								{tabKey === "index" && isCreator && <FlexRow>
+								</FlexRow>
+								{isCreator && <FlexRow id={"link-input"}>
 									<Col className="idxflex-grow-1 pb-0 mt-6">
 										<LinkInput
 											loading={crawling}
@@ -300,7 +301,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										/>
 									</Col>
 								</FlexRow>}
-								{tabKey === "index" && <FlexRow>
+								<FlexRow className={"scrollable-area"}>
 									<Col className="idxflex-grow-1">
 										<IndexItemList
 											search={search}
@@ -308,21 +309,21 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											// onChange={handleReorderLinks}
 										/>
 									</Col>
-								</FlexRow>}
-								{ tabKey === "creators" && <FlexRow>
-									<Col className="mt-4 idxflex-grow-1">
-										<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
-									</Col>
-								</FlexRow>}
-								{ tabKey === "audience" && <FlexRow justify="center">
-									<Col className="mt-8">
-										<Soon section={tabKey}></Soon>
-									</Col>
-								</FlexRow>}
+								</FlexRow>
 							</>}
-						</Col>
-					</FlexRow>
-					{ !notFound && tabKey === "chat" && <div className={"mt-6"}><AskIndexes id={chatId} indexes={[index.id!]} /></div>}
+							{ tabKey === "creators" && <FlexRow className={"pt-6 scrollable-area"}>
+								<Col className="idxflex-grow-1">
+									<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
+								</Col>
+							</FlexRow>}
+							{ tabKey === "audience" && <FlexRow className={"pt-6"} justify="center">
+								<Col>
+									<Soon section={tabKey}></Soon>
+								</Col>
+							</FlexRow>}
+							{ tabKey === "chat" && <AskIndexes id={chatId} indexes={[index.id!]} />}
+						</>}
+					</Flex>
 				</LinksContext.Provider>
 			</IndexContext.Provider>
 		</PageContainer>

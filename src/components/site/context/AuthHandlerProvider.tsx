@@ -138,7 +138,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 					available: true,
 				}));
 				dispatch(setAuthLoading(false));
-			}else{
+			} else {
 				dispatch(setAuthLoading(false));
 			}
 		} catch (err) {

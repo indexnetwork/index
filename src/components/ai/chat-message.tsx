@@ -23,8 +23,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
 			<Col>
 				{message.role === "user" ? <IconUser width={20} /> : <IconOpenAI width={20} />}
 			</Col>
-			<Col className="idxflex-grow-1 mx-4" style={{ "overflow": "auto"}}>
-				<div style={{overflowWrap: "break-word"}}>
+			<Col className="idxflex-grow-1 mx-4" style={{ overflow: "auto" }}>
+				<div style={{ overflowWrap: "break-word" }}>
 					<MemoizedReactMarkdown
 						remarkPlugins={[remarkGfm, remarkMath]}
 						components={{

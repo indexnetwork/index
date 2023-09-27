@@ -26,16 +26,12 @@ import cm from "./style.module.scss";
 // TODO: data prop will be Index object
 export interface LinkItemProps {
 	index_link: IndexLink;
-	provided?: DraggableProvided;
-	snapshot?: DraggableStateSnapshot;
 	onChange?(val: IndexLink[]): void;
 	search?: boolean;
 }
 
 const LinkItem: React.VFC<LinkItemProps> = ({
 	index_link,
-	provided,
-	snapshot,
 	search = false,
 	onChange,
 }) => {
@@ -69,11 +65,6 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 	const handleCloseTag = () => {
 		setToggleNewTag(false);
 	};
-
-	const handleSetFavorite = async () => {
-
-	};
-
 	const handleRemove = async () => {
 		setLinks(links?.filter((l) => l.id !== index_link.id!));
 		const currentLink = await pkpCeramic.removeIndexLink(index_link);
@@ -86,29 +77,11 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 		setLinks(newState);
 	};
 	return (
-		<div
-			className="index-detail-list-item-wrapper"
-			{...(breakpoint === "xs" || breakpoint === "sm" ? (provided && provided.dragHandleProps) : undefined)}
-		>
+		<div className="index-detail-list-item-wrapper">
 			<FlexRow className="py-6 index-detail-list-item">
-				{
-					!search && isOwner && !(breakpoint === "xs" || breakpoint === "sm") && (
-						<div {...(provided ? provided.dragHandleProps : undefined)}>
-							<Flex className="index-detail-list-item-drag-handle">
-								<IconDrag
-									stroke="#000" fill="#000" />
-							</Flex>
-						</div>
-					)
-				}
-
 				<Col xs={12}>
-					<FlexRow
-						wrap={false}
-					>
-						<Col
-							className="idxflex-grow-1"
-						>
+					<FlexRow wrap={false}>
+						<Col className="idxflex-grow-1" >
 							<a target="_blank" rel="noreferrer" href={link?.url}>
 								<Text className={cm.title} fontWeight={700} dangerouslySetInnerHTML={{ __html: sanitize((index_link.highlight && index_link.highlight["link.title"]) ? index_link.highlight["link.title"] : link?.title as string) }}></Text>
 							</a>
@@ -130,19 +103,6 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 												</Button>
 											</Tooltip>
 										</Col>
-										{/* <Col>
-											<Tooltip content="Favorite">
-												<Button
-													size="xs"
-													iconButton
-													theme="clear"
-													borderless
-													onClick={handleSetFavorite}
-												>
-													<IconStar fill={favorite ? "var(--blue)" : "none"} stroke={favorite ? "var(--blue)" : undefined}/>
-												</Button>
-											</Tooltip>
-										</Col> */}
 										<Col>
 											<IndexDetailItemPopup onDelete={handleRemove}>
 												<Button

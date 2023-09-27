@@ -18,15 +18,10 @@ import TabPane from "components/base/Tabs/TabPane";
 import IndexItem from "components/site/indexes/IndexItem";
 import { useCeramic } from "hooks/useCeramic";
 import NoIndexes from "components/site/indexes/NoIndexes";
-import SearchInput from "../../../base/SearchInput";
-import RadioGroup from "../../../base/RadioGroup";
 import Avatar from "../../../base/Avatar";
-import {maskDID} from "../../../../utils/helper";
 import Flex from "../../../layout/base/Grid/Flex";
 import Text from "../../../base/Text";
 import Header from "../../../base/Header";
-import cm from "../IndexItem/style.module.scss";
-import sanitize from "sanitize-html";
 
 export interface IndexListState {
 	skip: number,
@@ -187,7 +182,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		<FlexRow>
 			<Col xs={12} >
 				<Flex flexDirection={"column"} className={"scrollable-container"} >
-					<FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{background: "#efefef", borderRadius: "5px"}}>
+					<FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{ background: "#efefef", borderRadius: "5px" }}>
 						<Col>
 							<Avatar size={60}>serafettin</Avatar>
 						</Col>

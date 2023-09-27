@@ -2,7 +2,9 @@ import { ComposeClient } from "@composedb/client";
 import {
 	Indexes, IndexLink, Link, UserIndex, Users,
 } from "types/entity";
-import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
+import {
+	getCurrentDateTime, isSSR, maskDID, setDates,
+} from "utils/helper";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
@@ -397,6 +399,11 @@ class CeramicService {
 		if (errors) {
 			// TODO Handle
 		}
+		if (data && this.client.did && !data.viewer.profile) {
+			data.viewer.profile = {
+				name: maskDID(this.client.did.id),
+			};
+		}
 		return <Users>data?.viewer?.profile!;
 	}
 	async setProfile(profile: Users) {
@@ -414,7 +421,7 @@ class CeramicService {
 				}
 			}`, { input: payload });
 		if (errors) {
-			console.log(errors)
+			console.log(errors);
 			// TODO Handle
 		}
 		return data?.createProfile.document!;

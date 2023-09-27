@@ -109,49 +109,24 @@ const IndexItemList: React.VFC<LinkListProps> = ({
 				links.length === 0 ? (
 					<NoLinks search={search}></NoLinks>
 				) : (
-					search ? (
-						<InfiniteScroll
-							initialLoad={false}
-							hasMore={state.hasMore}
-							loadMore={getData}
-							marginHeight={50}
-						>
-							<List
-								listClass="index-list"
+					<InfiniteScroll
+						initialLoad={false}
+						hasMore={state.hasMore}
+						loadMore={getData}
+						marginHeight={50}
+					>
+						<List
+							listClass="index-list"
 
-								render={(item, index, provided, snapshot) => <MemoLinkItem
-									provided={provided!}
-									snapshot={snapshot!}
-									search={!!search}
-									index_link={item}
-									// onChange={handleLinksChange}
-								/>}
-								divided
-								data={links}
-							/>
-						</InfiniteScroll>
-					) : (
-						<InfiniteScroll
-							initialLoad={false}
-							hasMore={state.hasMore}
-							loadMore={getData}
-							marginHeight={50}
-						>
-							<DndList <IndexLink>
-								listClass="index-detail-list"
-								draggable={isOwner}
-								data={links}
-								render={(item, index, provided, snapshot) => <MemoLinkItem
-									provided={provided!}
-									snapshot={snapshot!}
-									index_link={item}
-									// onChange={handleLinksChange}
-								/>}
-								divided
-								onOrderChange={handleOrderChange}
-							/>
-						</InfiniteScroll>
-					)
+							render={(item, index, provided, snapshot) => <MemoLinkItem
+								search={!!search}
+								index_link={item}
+								// onChange={handleLinksChange}
+							/>}
+							divided
+							data={links}
+						/>
+					</InfiniteScroll>
 				)
 			}
 		</>

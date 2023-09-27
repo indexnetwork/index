@@ -1,5 +1,5 @@
 .navbar-container {
-	@include responsive-sizes-flat($navbar-height, "height");
+	height: 63px;
 	width: 100%;
 	transition: $transition-bg;
 
@@ -30,15 +30,10 @@
 			align-items: center;
 		}
 		.navbar-logo {
-			height: 2.6rem;
+			height: 3.2rem;
 			cursor: pointer;
 		}
 
-		@media (min-width: map-get($breakpoints, "sm")) {
-			.navbar-logo {
-				height: 3.2rem;
-			}
-		}
 	}
 }
 .lottie-logo{
