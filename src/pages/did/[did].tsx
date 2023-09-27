@@ -9,9 +9,6 @@ import { useRouter } from "next/router";
 import { v4 as uuidv4 } from "uuid";
 import AskIndexes from "../../components/site/indexes/AskIndexes";
 import "react-modern-drawer/dist/index.css";
-import Col from "../../components/layout/base/Grid/Col";
-import Flex from "../../components/layout/base/Grid/Flex";
-import FlexRow from "../../components/layout/base/Grid/FlexRow";
 
 const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
