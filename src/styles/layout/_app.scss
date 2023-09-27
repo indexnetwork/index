@@ -32,7 +32,6 @@
     border-left: 1px solid $gray-2;
   }
 
-
   @media (max-width: map-get($breakpoints, "lg")) {
     .sidebar-right, .sidebar-left{
       position: absolute;

@@ -8,6 +8,7 @@ import SearchIndexes from "../../../site/indexes/SearchIndexes";
 import Flex from "../../base/Grid/Flex";
 import { Tabs } from "../../../base/Tabs";
 import TabPane from "../../../base/Tabs/TabPane";
+import Soon from "../../../site/indexes/Soon";
 
 export interface PageContainerProps extends ContainerProps {
 	section: string;
@@ -62,11 +63,11 @@ const PageContainer = (
 					<FlexRow wrap={false} className={"mt-6 idxflex-grow-1"}>
 						<Tabs activeKey={"history"} onTabChange={setRightTabKey}>
 							<TabPane enabled={true} tabKey={"history"} title={`History`} />
-							<TabPane enabled={false} tabKey={"discover"} title={`Discover`} />
+							<TabPane enabled={false} tabKey={"discover"} title={``} />
 						</Tabs>
 					</FlexRow>
 					{rightTabKey === "history" && <Flex className={"scrollable-area px-11 idxflex-grow-1"} >
-						<div style={{ width: "100px", height: "1500px", background: "linear-gradient(0deg, rgba(255,0,0,1) 0%, rgba(255,255,255,1) 100%)" }}> </div>
+						<div className={"ml-3"}><Soon section={"chat_history"}></Soon></div>
 					</Flex>}
 				</Flex>
 			</Col>

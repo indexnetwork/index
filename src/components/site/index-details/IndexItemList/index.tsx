@@ -91,9 +91,9 @@ const IndexItemList: React.VFC<LinkListProps> = ({
 				links.length === 0 ? (
 					<NoLinks search={search}></NoLinks>
 				) : (
-					<InfiniteScroll useWindow={false} initialLoad={false} hasMore={state.hasMore} loadMore={getData} marginHeight={50}>
+					<InfiniteScroll className={"idxflex-grow-1"} useWindow={false} initialLoad={false} hasMore={state.hasMore} loadMore={getData} marginHeight={50}>
 						<List
-							listClass="index-list"
+							listClass="index-item-list"
 							render={(item) => <MemoLinkItem
 								search={!!search}
 								index_link={item}

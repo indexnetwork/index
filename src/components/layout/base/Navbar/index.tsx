@@ -10,6 +10,9 @@ import { useAuth } from "hooks/useAuth";
 import Container from "../Grid/Container";
 import Col from "../Grid/Col";
 import FlexRow from "../Grid/FlexRow";
+import IconMenu from "../../../base/Icon/IconMenu";
+import Button from "../../../base/Button";
+import Flex from "../Grid/Flex";
 
 export interface NavbarProps extends
 	React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
@@ -91,10 +94,15 @@ const Navbar = (
 							justify="between"
 							wrap={false}
 						>
-							<Col>
-								{logoSize === "mini" ? <LogoMini className="navbar-logo" onClick={handleLogoClick} style={{
-									cursor: "pointer",
-								}} /> : <LogoFull className="navbar-logo navbar-logo-full" />}
+							<Col className={"navbar-logo"}>
+								<Flex alignItems={"center"}>
+									{logoSize === "mini" ? <LogoMini className="navbar-logo" onClick={handleLogoClick} style={{
+										cursor: "pointer",
+									}} /> : <LogoFull className="navbar-logo navbar-logo-full" />}
+								</Flex>
+							</Col>
+							<Col className={"navbar-sidebar-handlers"}>
+								<Button iconButton theme="clear"><IconMenu width={32} /></Button>
 							</Col>
 							<Col>
 								{children}

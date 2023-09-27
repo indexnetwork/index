@@ -75,7 +75,7 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 	};
 	return (
 		<div className="index-detail-list-item-wrapper">
-			<FlexRow className="py-6 index-detail-list-item">
+			<FlexRow className="py-3 index-detail-list-item">
 				<Col xs={12}>
 					<FlexRow wrap={false}>
 						<Col className="idxflex-grow-1" >
@@ -143,8 +143,6 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 						</Col>
 					)
 				}
-				<Col>
-				</Col>
 				{
 					!search && <Col xs={12} className="mt-3 idxflex idxflex-gap-3 idxflex-wrap">
 						{

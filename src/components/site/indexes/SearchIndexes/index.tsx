@@ -201,7 +201,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 							</Tabs>
 						</Col>
 					</FlexRow>
-					<FlexRow className={"scrollable-area pt-4 pr-6"}>
+					<FlexRow className={"scrollable-area index-list pt-4 pr-6"}>
 						{tabKey === "my_indexes" ? (
 							state.my_indexes && state.my_indexes.indexes?.length! > 0 ? <>
 								<InfiniteScroll

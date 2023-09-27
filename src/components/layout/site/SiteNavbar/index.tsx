@@ -21,6 +21,7 @@ import IconSettings from "components/base/Icon/IconSettings";
 import Navbar, { NavbarProps, NavbarMenu } from "components/layout/base/Navbar";
 import { useApp } from "hooks/useApp";
 import { useRouter } from "next/router";
+import IconHistory from "../../../base/Icon/IconHistory";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
@@ -94,10 +95,12 @@ const SiteNavbar = (
 		>
 			{
 				authenticated ? (
+
 					<NavbarMenu>
+						<div className={"navbar-sidebar-handlers mr-3"}> <Button iconButton theme="clear"><IconHistory width={32} /></Button></div>
 						<Button style={{ height: "32px" }} className="pr-5 pl-5" onClick={() => { setCreateModalVisible(true); }} theme="primary">{t("components:header.newIndexBtn")}</Button>
 						<Dropdown
-							dropdownClass="ml-6"
+							dropdownClass="ml-3"
 							position="bottom-right"
 							menuItems={
 								<>

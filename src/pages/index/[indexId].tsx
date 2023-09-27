@@ -301,7 +301,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										/>
 									</Col>
 								</FlexRow>}
-								<FlexRow className={"scrollable-area"}>
+								<FlexRow className={"scrollable-area"} justify="center">
 									<IndexItemList
 										search={search}
 										index_id={router.query.indexId as any}

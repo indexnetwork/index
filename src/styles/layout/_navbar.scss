@@ -35,6 +35,17 @@
 		}
 
 	}
+
+	@media (max-width: map-get($breakpoints, "lg")) {
+		.navbar-logo{
+			display: none;
+		}
+	}
+	@media (min-width: map-get($breakpoints, "lg")) {
+		.navbar-sidebar-handlers{
+			display: none;
+		}
+	}
 }
 .lottie-logo{
 	height: 20px;
