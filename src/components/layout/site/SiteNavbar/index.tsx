@@ -37,6 +37,7 @@ const SiteNavbar = (
 ) => {
 	const { t } = useTranslation(["common", "components"]);
 	const router = useRouter();
+	const { setCreateModalVisible, rightSidebarOpen, setRightSidebarOpen } = useApp();
 	const {
 		did,
 		loading,
@@ -57,8 +58,6 @@ const SiteNavbar = (
 			console.log(err);
 		}
 	};
-
-	const { setCreateModalVisible } = useApp();
 
 	const renderHeader = useCallback(() => (headerType === "public" ? (
 		<Navbar
@@ -97,7 +96,7 @@ const SiteNavbar = (
 				authenticated ? (
 
 					<NavbarMenu>
-						<div className={"navbar-sidebar-handlers mr-3"}> <Button iconButton theme="clear"><IconHistory width={32} /></Button></div>
+						<div className={"navbar-sidebar-handlers mr-3"}> <Button onClick={() => setRightSidebarOpen(!rightSidebarOpen)} iconButton theme="clear"><IconHistory width={32} /></Button></div>
 						<Button style={{ height: "32px" }} className="pr-5 pl-5" onClick={() => { setCreateModalVisible(true); }} theme="primary">{t("components:header.newIndexBtn")}</Button>
 						<Dropdown
 							dropdownClass="ml-3"

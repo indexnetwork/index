@@ -11,12 +11,18 @@ import { useRouter } from "next/router";
 export interface AppContextValue {
 	setCreateModalVisible: (visible: boolean) => void
 	setTransactionApprovalWaiting: (visible: boolean) => void
+	leftSidebarOpen: boolean
+	setLeftSidebarOpen: (visible: boolean) => void
+	rightSidebarOpen: boolean
+	setRightSidebarOpen: (visible: boolean) => void
 }
 
 export const AppContext = createContext({} as AppContextValue);
 
 export const AppContextProvider = ({ children } : any) => {
 	const [createModalVisible, setCreateModalVisible] = useState(false);
+	const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
+	const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
 	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
 	const router = useRouter();
 	const ceramic = useCeramic();
@@ -42,7 +48,14 @@ export const AppContextProvider = ({ children } : any) => {
 		setTransactionApprovalWaiting(false);
 	};
 	return (
-		<AppContext.Provider value={{ setCreateModalVisible, setTransactionApprovalWaiting }}>
+		<AppContext.Provider value={{
+			setCreateModalVisible,
+			setTransactionApprovalWaiting,
+			leftSidebarOpen,
+			setLeftSidebarOpen,
+			rightSidebarOpen,
+			setRightSidebarOpen,
+		}}>
 			{children}
 			{/* eslint-disable-next-line max-len */}
 			{transactionApprovalWaiting ? <ConfirmTransaction handleCancel={handleTransactionCancel} visible={transactionApprovalWaiting}></ConfirmTransaction> : <></>}

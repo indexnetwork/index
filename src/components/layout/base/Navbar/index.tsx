@@ -13,6 +13,7 @@ import FlexRow from "../Grid/FlexRow";
 import IconMenu from "../../../base/Icon/IconMenu";
 import Button from "../../../base/Button";
 import Flex from "../Grid/Flex";
+import {useApp} from "../../../../hooks/useApp";
 
 export interface NavbarProps extends
 	React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
@@ -50,6 +51,8 @@ const Navbar = (
 	const { did } = useAppSelector(selectConnection);
 	const authenticated = useAuth();
 	const router = useRouter();
+	const { leftSidebarOpen, setLeftSidebarOpen } = useApp();
+
 
 	useEffect(() => {
 		if (sticky) {
@@ -102,7 +105,7 @@ const Navbar = (
 								</Flex>
 							</Col>
 							<Col className={"navbar-sidebar-handlers"}>
-								<Button iconButton theme="clear"><IconMenu width={32} /></Button>
+								<Button onClick={() => setLeftSidebarOpen(!leftSidebarOpen)} iconButton theme="clear"><IconMenu width={32} /></Button>
 							</Col>
 							<Col>
 								{children}

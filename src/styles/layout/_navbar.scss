@@ -41,10 +41,10 @@
 			display: none;
 		}
 	}
-	@media (min-width: map-get($breakpoints, "lg")) {
-		.navbar-sidebar-handlers{
-			display: none;
-		}
+}
+@media (min-width: map-get($breakpoints, "lg")) {
+	.navbar-sidebar-handlers{
+		display: none !important;
 	}
 }
 .lottie-logo{
