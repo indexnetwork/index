@@ -4,7 +4,6 @@ import {
 	Link, Users, UserIndex,
 } from "types/entity";
 
-import { CID } from "multiformats";
 import { DID } from "dids";
 
 export interface CeramicContextValue {
@@ -18,8 +17,6 @@ export interface CeramicContextValue {
 	getProfile(): Promise<Users | null | any>;
 	getProfileByDID(did: string): Promise<Users | null | any>;
 	setProfile(profile: Users): Promise<Users | null | any>;
-
-	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
 
 	addUserIndex(index_id: string, type: string): Promise<UserIndex | undefined>;
 	removeUserIndex(index_id: string, type: string): Promise<UserIndex | undefined>;
@@ -81,12 +78,7 @@ const CeramicProvider = (
 		}
 		return client.setProfile(profile);
 	};
-	const uploadImage = async (file: File) => {
-		if (!client) {
-			throw new Error("Invalid client");
-		}
-		return client.uploadImage(file);
-	};
+
 	const addUserIndex = async (index_id: string, type: string) => {
 		if (!client.isUserAuthenticated()) {
 			throw new Error("Invalid client");
@@ -111,7 +103,6 @@ const CeramicProvider = (
 			getProfile,
 			getProfileByDID,
 			setProfile,
-			uploadImage,
 			addUserIndex,
 			removeUserIndex,
 		}}>

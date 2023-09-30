@@ -91,13 +91,13 @@ export type Link = {
  *
  */
 export interface Users {
-  id: string;
+  id?: string;
   name?: string;
   bio?: string;
   avatar?: CID;
   available?: boolean; // TODO debug
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface LinkContentResult {

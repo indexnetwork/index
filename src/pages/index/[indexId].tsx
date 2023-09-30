@@ -86,7 +86,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			return false;
 		}
 		setLoading(true);
-		setPKPCeramic(new CeramicService(sessionResponse.session.did));
+		const c = new CeramicService();
+		c.authenticateUser(sessionResponse.session.did);
+		setPKPCeramic(c);
 		setIsOwner(sessionResponse.isPermittedAddress);
 		setIsCreator(sessionResponse.isCreator || sessionResponse.isPermittedAddress);
 		const userIndexes = await api.getUserIndexes({

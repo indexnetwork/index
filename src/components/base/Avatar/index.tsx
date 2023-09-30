@@ -4,10 +4,11 @@ import { generateRandomColor, isSSR } from "utils/helper";
 import { ShapeType } from "types";
 import { Users } from "types/entity";
 import { appConfig } from "config";
+import { ProfileState } from "store/slices/profileSlice";
 
 export interface AvatarProps extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
 	size?: number;
-	user?: Users;
+	user?: Users | ProfileState;
 	creatorRule?: any;
 	shape?: ShapeType;
 	hoverable?: boolean;

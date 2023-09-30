@@ -5,7 +5,7 @@ import {
 import {
 	getCurrentDateTime, isSSR, setDates,
 } from "utils/helper";
-import { create, IPFSHTTPClient } from "ipfs-http-client";
+
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 
@@ -14,9 +14,6 @@ import { DID } from "dids";
 import { definition } from "../types/merged-runtime";
 
 class CeramicService {
-	private ipfs: IPFSHTTPClient = create({
-		url: appConfig.ipfsInfura,
-	});
 	private client = new ComposeClient({
 		ceramic: "https://composedb.index.network",
 		definition: definition as RuntimeCompositeDefinition,
@@ -300,20 +297,7 @@ class CeramicService {
 		}
 		// TODO handle.
 	}
-	async setLinkFavorite(streamId: string, linkId: string, favorite: boolean) {
-		/*
-		const oldDoc = await this.getIndexById(streamId);
-		const newContent = { ...oldDoc.content };
-		const link = newContent.links?.find((l) => l.id === linkId);
-		if (link) {
-			link.favorite = favorite;
-			await oldDoc.update(newContent, undefined, {
-				publish: true,
-			});
-			return oldDoc;
-		}
-		 */
-	}
+
 	async setUserIndex(indexId: string, type: string, status: boolean): Promise <UserIndex | undefined> {
 		const userIndexes = await api.getUserIndexes({
 			index_id: indexId,
@@ -380,7 +364,7 @@ class CeramicService {
 		return data?.updateUserIndex.document!;
 	}
 	async getProfile(): Promise<Users | undefined> {
-		const p = await this.getProfileByDID(this.client.did?.parent);
+		const p = await this.getProfileByDID(this.client.did?.parent!);
 		if (p) {
 			return p;
 		}
@@ -439,14 +423,6 @@ class CeramicService {
 			// TODO Handle
 		}
 		return data?.createProfile.document!;
-	}
-	async uploadImage(file: File) {
-		try {
-			const { cid, path } = await this.ipfs.add(file);
-			return { cid, path };
-		} catch (err) {
-			//
-		}
 	}
 }
 
