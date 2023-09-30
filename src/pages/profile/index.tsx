@@ -26,11 +26,11 @@ import { Users } from "types/entity";
 import { CID } from "multiformats";
 import apiService from "services/api-service";
 
-const CreateIndexPage: NextPageWithLayout = () => {
+const ProfileSettingsPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 
 	const [loading, setLoading] = useState(false);
-
+	const personalCeramic = useCeramic();
 	const profile = useAppSelector(selectProfile);
 	const [image, setImage] = useState<CID>();
 
@@ -62,7 +62,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 		},
 	});
 
-	const personalCeramic = useCeramic();
+
 
 	const onChange = async (imageList: any) => {
 		if (imageList.length > 0) {
@@ -188,7 +188,7 @@ const CreateIndexPage: NextPageWithLayout = () => {
 	);
 };
 
-CreateIndexPage.getLayout = function getLayout(page: ReactElement) {
+ProfileSettingsPage.getLayout = function getLayout(page: ReactElement) {
 	return (
 		<PageLayout
 			hasFooter={false}
@@ -198,7 +198,7 @@ CreateIndexPage.getLayout = function getLayout(page: ReactElement) {
 	);
 };
 
-CreateIndexPage.requireAuth = true;
+ProfileSettingsPage.requireAuth = true;
 
 export async function getServerSideProps({ locale }: any) {
 	return {
@@ -207,4 +207,4 @@ export async function getServerSideProps({ locale }: any) {
 		},
 	};
 }
-export default CreateIndexPage;
+export default ProfileSettingsPage;
