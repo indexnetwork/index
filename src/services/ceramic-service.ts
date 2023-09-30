@@ -400,7 +400,8 @@ class CeramicService {
 	}
 	async setProfile(profile: Users) {
 		const cdt = getCurrentDateTime();
-		profile.createdAt = cdt;
+		delete profile.id;
+		if (!profile.createdAt) profile.createdAt = cdt;
 		profile.updatedAt = cdt;
 		const payload = {
 			content: profile,

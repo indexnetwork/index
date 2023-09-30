@@ -9,8 +9,6 @@ import { NextPageWithLayout } from "types";
 import { useRouter } from "next/router";
 import { v4 as uuidv4 } from "uuid";
 
-import "react-modern-drawer/dist/index.css";
-
 const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
 	const { did } = router.query;
