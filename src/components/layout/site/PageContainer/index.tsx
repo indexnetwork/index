@@ -1,18 +1,23 @@
 import Container, { ContainerProps } from "components/layout/base/Grid/Container";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import cc from "classcat";
 import { useRouter } from "next/router";
-import FlexRow from "../../base/Grid/FlexRow";
-import Col from "../../base/Grid/Col";
-import SearchIndexes from "../../../site/indexes/SearchIndexes";
-import Flex from "../../base/Grid/Flex";
-import { Tabs } from "../../../base/Tabs";
-import TabPane from "../../../base/Tabs/TabPane";
-import Soon from "../../../site/indexes/Soon";
-import {useApp} from "../../../../hooks/useApp";
-import Button from "../../../base/Button";
-import IconHistory from "../../../base/Icon/IconHistory";
-import IconClose from "../../../base/Icon/IconClose";
+import { useIndex } from "hooks/useIndex";
+import { useApp } from "hooks/useApp";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
+import Flex from "components/layout/base/Grid/Flex";
+import { Tabs } from "components/base/Tabs";
+import TabPane from "components/base/Tabs/TabPane";
+import Button from "components/base/Button";
+import IconClose from "components/base/Icon/IconClose";
+import Soon from "components/site/indexes/Soon";
+import SearchIndexes from "components/site/indexes/SearchIndexes";
+import Avatar from "../../../base/Avatar";
+import Header from "../../../base/Header";
+import Text from "../../../base/Text";
+import { Users } from "../../../../types/entity";
+import { useCeramic } from "../../../../hooks/useCeramic";
 
 export interface PageContainerProps extends ContainerProps {
 	section: string;
@@ -22,15 +27,38 @@ const PageContainer = (
 	{
 		children,
 		section,
-		className,
 		...containerProps
 	}: PageContainerProps,
 ) => {
-	const { leftSidebarOpen, setLeftSidebarOpen, rightSidebarOpen, setRightSidebarOpen } = useApp();
+	const {
+		leftSidebarOpen,
+		setLeftSidebarOpen,
+		rightSidebarOpen,
+		setRightSidebarOpen,
+	} = useApp();
+
 	const [rightTabKey, setRightTabKey] = useState("history");
-	const [interactionMode, setInteractionMode] = useState<string>("search");
+	const [profileDID, setProfileDID] = useState<string>();
+	const [viewedProfile, setViewedProfile] = useState<Users>();
 	const router = useRouter();
 	const { did } = router.query;
+	const { index } = useIndex();
+	const personalCeramic = useCeramic();
+
+	useEffect(() => {
+		if (did) {
+			setProfileDID(did.toString());
+		} else if (index && index.ownerDID) {
+			setProfileDID(index.ownerDID.id);
+		}
+	}, [did, index]);
+	useEffect(() => {
+		if (profileDID) {
+			personalCeramic.getProfileByDID(profileDID).then((p) => {
+				setViewedProfile(p);
+			});
+		}
+	}, [profileDID]);
 	const closeSidebars = () => {
 		setLeftSidebarOpen(false);
 		setRightSidebarOpen(false);
@@ -47,7 +75,18 @@ const PageContainer = (
 				leftSidebarOpen ? "sidebar-open" : "sidebar-closed",
 			])}>
 				<Flex justifyContent={"right"} className={"navbar-sidebar-handlers mr-6 mt-6 idxflex-grow-1"}> <Button onClick={() => setLeftSidebarOpen(false)} iconButton theme="clear"><IconClose width={32} /></Button></Flex>
-				<SearchIndexes setInteractionMode={setInteractionMode} did={"did:pkh:eip155:175177:0x1b9Aceb609a62bae0c0a9682A9268138Faff4F5f"} />
+				<FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{ background: "#efefef", borderRadius: "5px" }}>
+					<Col>
+						<Avatar size={60} user={viewedProfile} />
+					</Col>
+					<Col className="idxflex-grow-1 ml-6">
+						<Flex flexDirection={"column"} >
+							<Header level={4} className={"mb-1"}>{viewedProfile?.name}</Header>
+							<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{viewedProfile?.bio}</Text>
+						</Flex>
+					</Col>
+				</FlexRow>
+				{ profileDID && <SearchIndexes did={profileDID} />}
 			</Col>
 			<Col className={cc([
 				"main-panel",

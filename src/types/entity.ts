@@ -95,6 +95,8 @@ export interface Users {
   bio?: string;
   avatar?: CID;
   available?: boolean; // TODO debug
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface LinkContentResult {

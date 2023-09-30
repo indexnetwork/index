@@ -43,11 +43,7 @@ const SiteNavbar = (
 		loading,
 	} = useAppSelector(selectConnection);
 
-	const {
-		available,
-		name,
-		avatar,
-	} = useAppSelector(selectProfile);
+	const profile = useAppSelector(selectProfile);
 
 	const authenticated = useAuth();
 	const { connect, disconnect } = useContext(AuthHandlerContext);
@@ -103,14 +99,7 @@ const SiteNavbar = (
 							position="bottom-right"
 							menuItems={
 								<>
-									<DropdownMenuItem onClick={() => {
-										router.push("/profile/view");
-									}}>
-										<Flex alignItems="center">
-											<IconPeople width={16} height="100%"/>
-											<Text className="ml-3" element="span" size="md" >{t("common:profile")}</Text>
-										</Flex>
-									</DropdownMenuItem>
+
 									<DropdownMenuItem onClick={() => {
 										router.push("/profile");
 									}}>
@@ -135,11 +124,7 @@ const SiteNavbar = (
 								</>
 							}
 						>
-							<Avatar className="site-navbar__avatar" hoverable size={32}>{
-								avatar ?
-									<img src={`${appConfig.ipfsProxy}/${avatar}`} alt="profile_img"/> : (
-										available && name ? name : "Y"
-									)}</Avatar>
+							<Avatar className="site-navbar__avatar" hoverable size={32} user={profile} />
 						</Dropdown>
 					</NavbarMenu>
 				) :

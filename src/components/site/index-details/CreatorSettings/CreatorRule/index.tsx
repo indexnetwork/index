@@ -31,14 +31,8 @@ const CreatorRule = (
 				</Row>
 				<Row className={"mt-3"}>
 					<Flex alignItems={"center"}>
-						<Col >
-							{
-								(rule.symbol || rule.image) && (<Avatar className={"site-navbar__avatar mr-3"} contentRatio={rule.symbol ? 0.3 : 0.4} maxLetters={rule.symbol ? 4 : 2} hoverable size={40}>{
-									rule.image ?
-										<img src={rule.image} alt="profile_img"/> : (
-											rule.symbol || rule.ensName
-										)}</Avatar>)
-							}
+						<Col>
+							<Avatar className={"site-navbar__avatar mr-3"} creatorRule={rule} hoverable size={40} />
 						</Col>
 						<Col>
 							<Header level={4} className="mb-1">{rule.name || rule.ensName || (rule.walletAddress && maskAddress(rule.walletAddress)) || (rule.contractAddress && maskAddress(rule.contractAddress)) }</Header>

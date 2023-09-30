@@ -384,39 +384,57 @@ class CeramicService {
 		}
 		return data?.updateUserIndex.document!;
 	}
-	async getProfile(): Promise<Users> {
-		const { data, errors } = await this.client.executeQuery<{ viewer: { profile: Users } }>(`
-			query {
-				viewer {
-					profile {
-						name
-						bio
-						avatar
-					}
-				}
+	async getProfile(): Promise<Users | undefined> {
+		const p = await this.getProfileByDID(this.client.did?.parent);
+		if (p) {
+			return p;
+		}
+	}
+	async getProfileByDID(did: string): Promise<Users | undefined> {
+		console.log("seref", did);
+		const { data, errors } = await this.client.executeQuery<{ node: { profile: Users } }>(`
+			{
+			  node(id: "${did}") {
+				...on CeramicAccount{
+				  profile {
+					name
+					bio
+					avatar
+					createdAt
+					updatedAt	
+				  }
+			    }
+			  }
 			}
 		`);
+		console.log(data, errors, "seref");
 		if (errors) {
 			// TODO Handle
 		}
-		if (data && this.client.did && !data.viewer.profile) {
-			data.viewer.profile = {
-				name: maskDID(this.client.did.id),
+		if (data && !data.node.profile) {
+			data.node.profile = {
+				name: maskDID(did),
 			};
 		}
-		return <Users>data?.viewer?.profile!;
+		return <Users>data?.node?.profile!;
 	}
 	async setProfile(profile: Users) {
+		const cdt = getCurrentDateTime();
+		profile.createdAt = cdt;
+		profile.updatedAt = cdt;
 		const payload = {
 			content: profile,
 		};
+
 		const { data, errors } = await this.client.executeQuery<{ createProfile: { document: Users } }>(`	
 			mutation CreateProfile($input: CreateProfileInput!) {
 				createProfile(input: $input) {
 					document {
 					  name
 					  bio
-					  avatar					
+					  avatar
+					  createdAt
+					  updatedAt				
 					}
 				}
 			}`, { input: payload });

@@ -37,15 +37,16 @@ import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
 import IconStar from "components/base/Icon/IconStar";
 import Tooltip from "components/base/Tooltip";
+import AskIndexes from "components/site/indexes/AskIndexes";
+import PageContainer from "components/layout/site/PageContainer";
+import Soon from "components/site/indexes/Soon";
+import Flex from "components/layout/base/Grid/Flex";
 import CeramicService from "services/ceramic-service";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
-import AskIndexes from "../../components/site/indexes/AskIndexes";
-import PageContainer from "../../components/layout/site/PageContainer";
-import Soon from "../../components/site/indexes/Soon";
-import Flex from "../../components/layout/base/Grid/Flex";
+
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -57,7 +58,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const personalCeramic = useCeramic();
 	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tabKey, setTabKey] = useState("chat");
-	const [interactionMode, setInteractionMode] = useState("index");
 	const [isOwner, setIsOwner] = useState<boolean>(false);
 	const [isCreator, setIsCreator] = useState<boolean>(false);
 	const [notFound, setNotFound] = useState(false);
@@ -199,9 +199,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [progress]);
 
 	return (
-		<PageContainer section={"index"}>
-			<IndexContext.Provider value={{ pkpCeramic, isOwner, isCreator }}>
-				<LinksContext.Provider value={{ links, setLinks }}>
+		<IndexContext.Provider value={{ pkpCeramic, isOwner, isCreator, index }}>
+			<LinksContext.Provider value={{ links, setLinks }}>
+				<PageContainer section={"index"}>
 					<Flex className={"px-0 px-md-10 pt-6 scrollable-container"} flexDirection={"column"}>
 						{ notFound && <FlexRow>
 							<Col className="idxflex-grow-1">
@@ -293,7 +293,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									</Col>}
 								</FlexRow>
 								{isCreator && <FlexRow>
-									<Col className="idxflex-grow-1 pb-0 mt-6 mb-3">
+									<Col className="idxflex-grow-1 pb-0 mt-6">
 										<LinkInput
 											loading={crawling}
 											onLinkAdd={handleAddLink}
@@ -301,7 +301,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										/>
 									</Col>
 								</FlexRow>}
-								<FlexRow className={"scrollable-area"} justify="center">
+								<FlexRow className={"scrollable-area mt-6"} justify="center">
 									<IndexItemList
 										search={search}
 										index_id={router.query.indexId as any}
@@ -313,7 +313,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
 								</Col>
 							</FlexRow>}
-							{ tabKey === "audience" && <FlexRow className={"mt-6"} justify="center">
+							{ tabKey === "audience" && <FlexRow justify="center" align="center"  fullHeight>
 								<Col>
 									<Soon section={tabKey}></Soon>
 								</Col>
@@ -321,9 +321,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							{ tabKey === "chat" && <AskIndexes id={chatId} indexes={[index.id!]} />}
 						</>}
 					</Flex>
-				</LinksContext.Provider>
-			</IndexContext.Provider>
-		</PageContainer>
+				</PageContainer>
+			</LinksContext.Provider>
+		</IndexContext.Provider>
 	);
 };
 

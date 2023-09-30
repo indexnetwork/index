@@ -18,10 +18,7 @@ import TabPane from "components/base/Tabs/TabPane";
 import IndexItem from "components/site/indexes/IndexItem";
 import { useCeramic } from "hooks/useCeramic";
 import NoIndexes from "components/site/indexes/NoIndexes";
-import Avatar from "../../../base/Avatar";
 import Flex from "../../../layout/base/Grid/Flex";
-import Text from "../../../base/Text";
-import Header from "../../../base/Header";
 
 export interface IndexListState {
 	skip: number,
@@ -36,18 +33,12 @@ export interface MultipleIndexListState {
 
 export interface SearchIndexesProps {
 	did?: string;
-	setInteractionMode(value: string): void;
 }
 
 const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 	did,
-	setInteractionMode,
 }) => {
-	const { t } = useTranslation(["pages"]);
-	const owner = useOwner();
 	const [search, setSearch] = useState("");
-	const [askResponse, setAskResponse] = useState("");
-
 	const [init, setInit] = useState(true);
 	const [isLoading, setIsLoading] = useState(false);
 	const [tabKey, setTabKey] = useState("my_indexes");
@@ -70,52 +61,15 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 	const tabKeyStateKey = tabKey as StateKey;
 
 	const take = 10;
-	const personalCeramic = useCeramic();
 	const router = useRouter();
+	const { indexId } = router.query;
 	useEffect(() => {
 		setSearch && setSearch("");
 	}, [router]);
+
 	const handleClick = useCallback((itm: Indexes) => async () => {
 		router.push(`/${itm.id}`);
 	}, []);
-	const handleUserIndexToggle = async (index_id: string, type: string, op: string) => {
-		const newState = { ...state };
-
-		const typeStateKey = type as StateKey;
-		const index: Indexes = (state[tabKeyStateKey] as any).indexes?.filter((i:Indexes) => i.id === index_id)[0];
-
-		newState[tabKeyStateKey]!.indexes = newState[tabKeyStateKey]!.indexes!.map((i:Indexes) => {
-			if (i.id === index_id) {
-				if (type === "my_indexes") {
-					i.is_in_my_indexes = (op === "add");
-				}
-				if (type === "starred") {
-					i.is_starred = (op === "add");
-				}
-			}
-			return i;
-		});
-
-		if (op === "add") {
-			personalCeramic.addUserIndex(index_id, type);
-
-			newState[typeStateKey]!.indexes = [index, ...newState[typeStateKey]!.indexes!];
-			newState[typeStateKey]!.skip = newState[typeStateKey]!.skip + 1;
-			newState[typeStateKey]!.totalCount = newState[typeStateKey]!.totalCount + 1;
-		} else {
-			personalCeramic.removeUserIndex(index_id, type);
-
-			newState[typeStateKey]!.indexes = newState[typeStateKey]!.indexes?.filter((i: Indexes) => i.id !== index_id);
-			newState[typeStateKey]!.skip = newState[typeStateKey]!.skip - 1;
-			newState[typeStateKey]!.totalCount = newState[typeStateKey]!.totalCount - 1;
-		}
-
-		setHasUserIndex({
-			my_indexes: newState?.my_indexes?.totalCount! > 0,
-			starred: newState?.starred?.totalCount! > 0,
-		});
-		setState(newState);
-	};
 
 	useEffect(() => {
 		getData(1, true);
@@ -143,7 +97,6 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		if (search && search.length > 0) {
 			queryParams.search = search;
 		}
-
 		const res = await api.searchIndex(queryParams) as IndexSearchResponse;
 		if (res) {
 			if (init || newSearch) {
@@ -182,17 +135,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		<FlexRow>
 			<Col xs={12} >
 				<Flex flexDirection={"column"} className={"scrollable-container"} >
-					<FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{ background: "#efefef", borderRadius: "5px" }}>
-						<Col>
-							<Avatar size={60}>serafettin</Avatar>
-						</Col>
-						<Col className="idxflex-grow-1 ml-6">
-							<Flex flexDirection={"column"} >
-								<Header level={4} className={"mb-1"}>serafettin</Header>
-								<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">Web3, design, building @indexnetwork_</Text>
-							</Flex>
-						</Col>
-					</FlexRow>
+
 					<FlexRow className={"mr-6"}>
 						<Col className="idxflex-grow-1">
 							<Tabs activeKey={tabKey} onTabChange={setTabKey}>
@@ -216,6 +159,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 										render={(itm: Indexes) => <IndexItem
 											onClick={handleClick(itm)}
 											index={itm}
+											selected={itm.id === indexId}
 										/>}
 										divided={false}
 									/>
@@ -235,6 +179,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 										render={(itm: Indexes) => <IndexItem
 											onClick={handleClick(itm)}
 											index={itm}
+											selected={itm.id === indexId}
 										/>}
 										divided
 									/>

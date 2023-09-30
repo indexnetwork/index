@@ -15,6 +15,7 @@ export interface CeramicContextValue {
 	removeTag(link_id: string, tag: string): Promise<Link | undefined>;
 
 	getProfile(): Promise<Users | null | any>;
+	getProfileByDID(did: string): Promise<Users | null | any>;
 	setProfile(profile: Users): Promise<Users | null | any>;
 
 	uploadImage(file: File): Promise<{ cid: CID, path: string } | undefined>
@@ -68,6 +69,12 @@ const CeramicProvider = (
 		}
 		return client.getProfile();
 	};
+	const getProfileByDID = async (did: string) => {
+		if (!client) {
+			throw new Error("Invalid client");
+		}
+		return client.getProfileByDID(did);
+	};
 	const setProfile = async (profile: Users) => {
 		if (!client) {
 			throw new Error("Invalid client");
@@ -102,6 +109,7 @@ const CeramicProvider = (
 			addTag,
 			removeTag,
 			getProfile,
+			getProfileByDID,
 			setProfile,
 			uploadImage,
 			addUserIndex,

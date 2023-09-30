@@ -12,7 +12,7 @@ const NoLinks: React.VFC<NoLinksProps> = ({
 	search,
 }) => (
 	<>
-		<Row rowSpacing={5} >
+		<Row rowSpacing={5} fullWidth>
 			<Col xs={12} centerBlock style={{
 				height: 166,
 			}}>
