@@ -348,13 +348,18 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
         return index
     })
 
-
     let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.pkpPublicKey.toLowerCase()))
+    let ownerProfiles = await redis.hmGet(`profiles`, pkpOwners.map(p => `did:pkh:eip155:175177:${p}`))
+
     indexResult = indexResult.map((value, key) => {
-        return {
-            ...value,
-            ownerDID: { id: `did:pkh:eip155:175177:${pkpOwners[key]}` }
+        if(ownerProfiles[key]){
+            value.ownerDID = JSON.parse(ownerProfiles[key])
+        }else{
+            value.ownerDID = {
+                id: `did:pkh:eip155:175177:${pkpOwners[key]}`
+            }
         }
+        return value
     })
 
     return {

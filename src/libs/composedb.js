@@ -1,7 +1,65 @@
 import _ from 'lodash';
 import RedisClient from '../clients/redis.js';
 import moment from "moment";
-import {getOwner} from "../utils/lit/index.js";
+import {getOwner, getOwnerProfile} from "../utils/lit/index.js";
+
+
+export const getProfile = async(did) => {
+    let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
+        method: 'POST',
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            query: `{
+              node(id: "${id}") {
+                ... on IndexLink {
+                  id
+                  indexId
+                  linkId
+                  createdAt
+                  updatedAt
+                  deletedAt
+                  indexerDID {
+                    id
+                  }
+                  controllerDID {
+                    id
+                  }
+                  index {
+                    id
+                    controllerDID {
+                      id
+                    }        
+                    title
+                    collabAction
+                    pkpPublicKey
+                    createdAt
+                    updatedAt
+                    deletedAt
+                  }
+                  link {
+                    id
+                    controllerDID {
+                      id
+                    }
+                    title
+                    url
+                    favicon
+                    tags
+                    content
+                    createdAt
+                    updatedAt
+                    deletedAt
+                  }
+                }
+              }
+            }`
+        })
+    })
+    let res = await results.json();
+    return res.data.node;
+}
 
 
 export const getIndexLinkById = async(id) => {
@@ -139,8 +197,7 @@ export const getIndexById = async (id) => {
 
     delete index.links;
 
-    const ownerAddress = await getOwner(index.pkpPublicKey);
-    index.ownerDID = { id: `did:pkh:eip155:175177:${ownerAddress}` }
+    index.ownerDID = await getOwnerProfile(index.pkpPublicKey);
 
     return index;
 }
@@ -196,8 +253,7 @@ export const getIndexByPKP = async (id) => {
     }
     delete index.links
 
-    const ownerAddress = await getOwner(index.pkpPublicKey);
-    index.ownerDID = { id: `did:pkh:eip155:175177:${ownerAddress}` }
+    index.ownerDID = await getOwnerProfile(index.pkpPublicKey);
 
     return index;
 }

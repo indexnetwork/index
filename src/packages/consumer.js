@@ -20,7 +20,8 @@ const topics = {
     'postgres.public.kjzl6hvfrbw6caw09g11y7vy1qza903xne35pi30xvmelvnvlfxy9tadwwkzzd6': 'index',
     'postgres.public.kjzl6hvfrbw6c92114fj79ii6shyl8cbnsz5ol3v62s0uu3m78gy76gzaovpaiu': 'link',
     'postgres.public.kjzl6hvfrbw6c8a1u7qrk1xcz5oty0temwn2szbmhl8nfnw9tddljj4ue8wba68': 'index_link',
-    'postgres.public.kjzl6hvfrbw6c9aw0xd4vlhqc5mx57f0y2xmm8xiyxzzj1abrizfyppup22r9ac': 'user_index'
+    'postgres.public.kjzl6hvfrbw6c9aw0xd4vlhqc5mx57f0y2xmm8xiyxzzj1abrizfyppup22r9ac': 'user_index',
+    'postgres.public.kjzl6hvfrbw6c7h2l07sxzkzorsuzc5ps9wbjrxwhcqxwrhpwh14jd5a07n7ye3': 'profile',
 }
 
 async function start() {
@@ -89,6 +90,16 @@ async function start() {
                             break
                         case "u":
                             indexer.updateLink(doc)
+                            break
+                    }
+                    break
+                case 'profile':
+                    switch (op) {
+                        case "c":
+                            indexer.createProfile(doc)
+                            break
+                        case "u":
+                            indexer.updateProfile(doc)
                             break
                     }
                     break

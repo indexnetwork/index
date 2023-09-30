@@ -23,18 +23,28 @@ export const getOwner = async (pkpPubKey) => {
 		return existing;
 	}
 
-	const pubkeyHash = keccak256(pkpPubKey);
-    const tokenId = BigInt(pubkeyHash);
+	const pubKeyHash = keccak256(pkpPubKey);
+	const tokenId = BigInt(pubKeyHash);
 
 	const litContracts = new LitContracts();
 	await litContracts.connect();
-
 
 	const address = await litContracts.pkpNftContract.read.ownerOf(tokenId);
 	await redis.hSet(`pkp:owner`, pkpPubKey, address);
 
     return address;
 }
+
+export const getOwnerProfile = async (pkpPubKey) => {
+	const owner = await getOwner(pkpPubKey);
+	const profile = await redis.hGet(`profiles`, `did:pkh:eip155:175177:${owner}`)
+	if(profile){
+		return JSON.parse(profile);
+	}else{
+		return { id: `did:pkh:eip155:175177:${owner}` }
+	}
+}
+
 
 export const encodeDIDWithLit = (pkpPubKey) =>  {
 

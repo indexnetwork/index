@@ -93,7 +93,7 @@ export const updateIndex = async (indexMsg) => {
 export const createIndexLink = async (indexLinkMsg) => {
     console.log("createIndexLink", indexLinkMsg)
     let indexLink = await getIndexLinkById(indexLinkMsg.id)
-    
+
     try {
         await axios.post(`http://llm-indexer/index/${indexLink.indexId}/links`, {url: indexLink.link.url})
     } catch (e) {
@@ -206,4 +206,16 @@ export const updateUserIndex = async (user_index) => {
     if(user_index.deletedAt){
         await redis.hDel(`user_indexes:by_did:${user_index.controllerDID.toLowerCase()}`, `${user_index.indexId}:${user_index.type}`)
     }
+}
+
+
+export const createProfile = async (profile) => {
+    console.log("profile", profile)
+    profile.id = profile.controllerDID;
+    delete profile.controllerDID;
+    await redis.hSet(`profiles`, profile.id.toString(), JSON.stringify(profile));
+
+}
+export const updateProfile = async (profile) => {
+    return await createProfile(profile);
 }
