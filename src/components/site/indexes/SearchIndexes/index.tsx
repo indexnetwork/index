@@ -150,7 +150,6 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 						<List
 							data={state.my_indexes?.indexes || []}
 							render={(itm: Indexes) => <IndexItem
-								onClick={handleClick(itm)}
 								index={itm}
 								selected={itm.id === indexId}
 							/>}
@@ -171,7 +170,6 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 						<List
 							data={state.starred?.indexes || []}
 							render={(itm: Indexes) => <IndexItem
-								onClick={handleClick(itm)}
 								index={itm}
 								selected={itm.id === indexId}
 							/>}

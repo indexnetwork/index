@@ -7,9 +7,9 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import React from "react";
 import { Indexes } from "types/entity";
 import sanitize from "sanitize-html";
-import { useRouter } from "next/router";
 import cc from "classcat";
 import { maskDID } from "utils/helper";
+import Link from "next/link";
 import cm from "./style.module.scss";
 
 export interface IndexItemProps {
@@ -22,10 +22,8 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 	index,
 	selected,
 	onClick,
-}) => {
-	const router = useRouter();
-	const { indexId } = router.query;
-	return <FlexRow onClick={onClick} className={cc([
+}) => <Link href="/index/[indexId]" as={`/index/${index.id}`}>
+	<FlexRow onClick={onClick} className={cc([
 		selected ? "index-list-item-selected" : "index-list-item",
 		"p-6",
 	])} wrap={false} align={"center"}>
@@ -38,7 +36,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 				<Header level={4} className={cm.title} dangerouslySetInnerHTML={{ __html: sanitize(index.title || "") }}></Header>
 			</Flex>
 		</Col>
-	</FlexRow>;
-};
+	</FlexRow>
+</Link>;
 
 export default IndexItem;

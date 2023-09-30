@@ -21,6 +21,9 @@
 }
 
 .index-list {
+	a {
+		color: $black;
+	}
 	.list-item{
 		cursor: pointer;
 	}
