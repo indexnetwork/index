@@ -9,10 +9,9 @@ import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 
-import { DID } from "dids";
-
 import { appConfig } from "config";
 import { definition } from "../types/merged-runtime";
+import {DID} from "dids";
 
 class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
@@ -23,14 +22,10 @@ class CeramicService {
 		definition: definition as RuntimeCompositeDefinition,
 	});
 
-	constructor(did?: DID) {
-		this.client.setDID(did!);
-	}
-
-	async authenticateUser(did: any) {
+	authenticateUser(did: DID) {
 		if (!isSSR()) {
 			try {
-				await this.client.setDID(did);
+				this.client.setDID(did);
 				return true;
 			} catch (err) {
 				return false;
@@ -391,11 +386,12 @@ class CeramicService {
 		}
 	}
 	async getProfileByDID(did: string): Promise<Users | undefined> {
-		console.log("seref", did);
-		const { data, errors } = await this.client.executeQuery<{ node: { profile: Users } }>(`
+
+		const { data, errors } = await this.client.executeQuery<{ node: { id: string, profile: Users } }>(`
 			{
 			  node(id: "${did}") {
 				...on CeramicAccount{
+				  id
 				  profile {
 					name
 					bio
@@ -407,16 +403,17 @@ class CeramicService {
 			  }
 			}
 		`);
-		console.log(data, errors, "seref");
-		if (errors) {
-			// TODO Handle
+		if (errors || !data?.node){
+			// TODO Handle.
 		}
-		if (data && !data.node.profile) {
-			data.node.profile = {
-				name: maskDID(did),
-			};
+		if (data && data.node) {
+			if (data.node.profile) {
+				data.node.profile.id = data.node.id;
+			} else {
+				data.node.profile = { id: data.node.id } as Users;
+			}
 		}
-		return <Users>data?.node?.profile!;
+		return <Users>data?.node?.profile;
 	}
 	async setProfile(profile: Users) {
 		const cdt = getCurrentDateTime();

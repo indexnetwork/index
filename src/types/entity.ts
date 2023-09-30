@@ -91,6 +91,7 @@ export type Link = {
  *
  */
 export interface Users {
+  id: string;
   name?: string;
   bio?: string;
   avatar?: CID;

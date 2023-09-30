@@ -36,11 +36,15 @@ const Avatar = (
 ) => {
 	const [color, setColor] = useState<string>(bgColor || "var(--main)");
 	const getFontSize = () => {
-		if(creatorRule && creatorRule.symbol){
-			return 0.3
+		console.log("seref", user);
+		if (user && !user.avatar && !user.name) {
+			return 15;
+		}
+		if (creatorRule && creatorRule.symbol) {
+			return 12;
 		}
 		return contentRatio > 1 ? size : contentRatio * size;
-	}
+	};
 	useEffect(() => {
 		if (!isSSR() && randomColor) {
 			setColor(generateRandomColor());
@@ -73,7 +77,7 @@ const Avatar = (
 					user.avatar ? (
 						<img src={`${appConfig.ipfsProxy}/${user.avatar}`} alt="profile_img"/>
 					) : (
-						user.name ? user.name!.substring(0, maxLetters).toUpperCase() : "Y"
+						user.name ? user.name!.substring(0, 1).toUpperCase() : (user.id ? user.id.toString().slice(-4).toUpperCase() : "Y")
 					)
 				) : creatorRule ? (
 					creatorRule.image ? (

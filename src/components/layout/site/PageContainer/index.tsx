@@ -74,19 +74,25 @@ const PageContainer = (
 				"sidebar-left",
 				leftSidebarOpen ? "sidebar-open" : "sidebar-closed",
 			])}>
-				<Flex justifyContent={"right"} className={"navbar-sidebar-handlers mr-6 mt-6 idxflex-grow-1"}> <Button onClick={() => setLeftSidebarOpen(false)} iconButton theme="clear"><IconClose width={32} /></Button></Flex>
-				<FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{ background: "#efefef", borderRadius: "5px" }}>
-					<Col>
-						<Avatar size={60} user={viewedProfile} />
-					</Col>
-					<Col className="idxflex-grow-1 ml-6">
-						<Flex flexDirection={"column"} >
-							<Header level={4} className={"mb-1"}>{viewedProfile?.name}</Header>
-							<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{viewedProfile?.bio}</Text>
+				<FlexRow>
+					<Col xs={12} >
+						<Flex flexDirection={"column"} className={"scrollable-container"} >
+							<Flex justifyContent={"right"} className={"navbar-sidebar-handlers mr-6 mt-6 "}> <Button onClick={() => setLeftSidebarOpen(false)} iconButton theme="clear"><IconClose width={32} /></Button></Flex>
+							<FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{ background: "#efefef", borderRadius: "5px" }}>
+								<Col>
+									<Avatar size={60} user={viewedProfile} />
+								</Col>
+								<Col className="idxflex-grow-1 ml-6">
+									<Flex flexDirection={"column"} >
+										<Header level={4} className={"mb-1"}>{viewedProfile?.name}</Header>
+										<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{viewedProfile?.bio}</Text>
+									</Flex>
+								</Col>
+							</FlexRow>
+							{ profileDID && <SearchIndexes did={profileDID} />}
 						</Flex>
 					</Col>
 				</FlexRow>
-				{ profileDID && <SearchIndexes did={profileDID} />}
 			</Col>
 			<Col className={cc([
 				"main-panel",

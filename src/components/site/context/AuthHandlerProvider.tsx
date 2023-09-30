@@ -12,7 +12,6 @@ import {
 	disconnectApp, selectConnection, setAuthLoading, setCeramicConnected, setMetaMaskConnected,
 } from "store/slices/connectionSlice";
 import { setProfile } from "store/slices/profileSlice";
-import CeramicService from "services/ceramic-service";
 import { useCeramic } from "hooks/useCeramic";
 import OriginWarningModal from "../modal/OriginWarningModal";
 
@@ -146,8 +145,8 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		}
 	};
 	const authToCeramic = () => {
-		if (!(personalCeramic.client && !personalCeramic.client.isUserAuthenticated())) {
-			personalCeramic.setClient(new CeramicService(session?.did!));
+		if (!personalCeramic.isUserAuthenticated()) {
+			personalCeramic.authenticateUser(session?.did!);
 		}
 		dispatch(setCeramicConnected(true));
 	};
@@ -180,10 +179,10 @@ export const AuthHandlerProvider = ({ children }: any) => {
 	}, [metaMaskConnected]);
 
 	useEffect(() => {
-		if (ceramicConnected && personalCeramic.client) {
+		if (ceramicConnected && personalCeramic.isUserAuthenticated()) {
 			getProfile();
 		}
-	}, [ceramicConnected, personalCeramic.client]);
+	}, [ceramicConnected, personalCeramic]);
 	return <AuthHandlerContext.Provider value={{
 		connect: connectMetamask,
 		disconnect,

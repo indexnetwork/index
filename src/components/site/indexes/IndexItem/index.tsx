@@ -30,7 +30,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 		"p-6",
 	])} wrap={false} align={"center"}>
 		<Col>
-			<Avatar size={40}>{maskDID(index.controllerDID.id)}</Avatar>
+			<Avatar maxLetters={4} size={40}>{maskDID(index.controllerDID.id)}</Avatar>
 		</Col>
 		<Col className="px-3">
 			<Flex flexDirection={"column"} >
