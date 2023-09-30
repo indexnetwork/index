@@ -37,7 +37,6 @@ const Avatar = (
 ) => {
 	const [color, setColor] = useState<string>(bgColor || "var(--main)");
 	const getFontSize = () => {
-		console.log("seref", user);
 		if (user && !user.avatar && !user.name) {
 			return 15;
 		}
