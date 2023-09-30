@@ -13,9 +13,7 @@ export type Indexes = {
   controllerDID: { // This is PKP DID
     id: string
   };
-  ownerDID: { // This is PKP Owner DID
-    id: string
-  };
+  ownerDID: Users;
   createdAt: string;
   updatedAt: string;
   deletedAt: string;

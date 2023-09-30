@@ -46,6 +46,7 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
+import { maskDID } from "../../utils/helper";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -216,8 +217,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							<Flex flexDirection={"column"}>
 								<FlexRow>
 									<Col centerBlock className="idxflex-grow-1">
-										<Avatar size={20}>{isOwner ? (available && name ? name : "") : "O"}</Avatar>
-										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{available && name ? name : ""}</Text>
+										<Avatar size={20} user={index.ownerDID} />
+										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{index.ownerDID?.name || maskDID(index.ownerDID!.id!) || ""}</Text>
 									</Col>
 								</FlexRow>
 								<FlexRow className="pt-3">

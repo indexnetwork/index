@@ -28,11 +28,11 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 		"p-6",
 	])} wrap={false} align={"center"}>
 		<Col>
-			<Avatar maxLetters={4} size={40}>{maskDID(index.controllerDID.id)}</Avatar>
+			<Avatar size={40} user={index.ownerDID} />
 		</Col>
 		<Col className="px-3">
 			<Flex flexDirection={"column"} >
-				<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{maskDID(index.controllerDID.id) || ""}</Text>
+				<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{index.ownerDID.name || maskDID(index.ownerDID.id!) || ""}</Text>
 				<Header level={4} className={cm.title} dangerouslySetInnerHTML={{ __html: sanitize(index.title || "") }}></Header>
 			</Flex>
 		</Col>
