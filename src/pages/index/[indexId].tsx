@@ -218,7 +218,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 								<FlexRow>
 									<Col centerBlock className="idxflex-grow-1">
 										<Avatar size={20} user={index.ownerDID} />
-										{index && <Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{index.ownerDID?.name || index.ownerDID && maskDID(index.ownerDID?.id!) || ""}</Text>}
+										{index && <Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{index.ownerDID?.name || (index.ownerDID && maskDID(index.ownerDID?.id!)) || ""}</Text>}
 									</Col>
 								</FlexRow>
 								<FlexRow className="pt-3">

@@ -62,8 +62,6 @@ const ProfileSettingsPage: NextPageWithLayout = () => {
 		},
 	});
 
-
-
 	const onChange = async (imageList: any) => {
 		if (imageList.length > 0) {
 			const res = await apiService.uploadAvatar(imageList[0].file);
