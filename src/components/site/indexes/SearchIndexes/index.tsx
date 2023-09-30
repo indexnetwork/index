@@ -147,6 +147,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 						initialLoad={false}
 						hasMore={state.my_indexes?.hasMore}
 						loadMore={getData}
+						useWindow={false}
 						marginHeight={50}
 						className={"idxflex-grow-1"}
 					>
@@ -167,6 +168,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 						initialLoad={false}
 						hasMore={state.starred?.hasMore}
 						loadMore={getData}
+						useWindow={false}
 						marginHeight={50}
 						className={"idxflex-grow-1"}
 					>
