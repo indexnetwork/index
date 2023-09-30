@@ -79,7 +79,7 @@ const PageContainer = (
 					<Col xs={12} >
 						<Flex flexDirection={"column"} className={"scrollable-container"} >
 							<Flex justifyContent={"right"} className={"navbar-sidebar-handlers mr-6 mt-6 "}> <Button onClick={() => setLeftSidebarOpen(false)} iconButton theme="clear"><IconClose width={32} /></Button></Flex>
-							<FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{ background: "#efefef", borderRadius: "5px" }}>
+							{viewedProfile && <FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{ background: "#efefef", borderRadius: "5px" }}>
 								<Col>
 									<Avatar size={60} user={viewedProfile} />
 								</Col>
@@ -89,7 +89,7 @@ const PageContainer = (
 										<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{viewedProfile?.bio}</Text>
 									</Flex>
 								</Col>
-							</FlexRow>
+							</FlexRow>}
 							{ profileDID && <SearchIndexes did={profileDID} />}
 						</Flex>
 					</Col>
