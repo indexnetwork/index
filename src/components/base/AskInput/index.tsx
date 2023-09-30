@@ -1,7 +1,7 @@
 import React from "react";
+import { useEnterSubmit } from "hooks/useEnterSubmit";
 import Input from "../Input";
 import IconSend from "../Icon/IconSend";
-import { useEnterSubmit } from "../../../hooks/useEnterSubmit";
 
 export interface AskInputProps {
 	onSubmit: (value: string) => Promise<void>

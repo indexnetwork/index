@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import cc from "classcat";
 import { generateRandomColor, isSSR } from "utils/helper";
 import { ShapeType } from "types";
-import {Users} from "../../../types/entity";
-import {appConfig} from "../../../config";
+import { Users } from "types/entity";
+import { appConfig } from "config";
 
 export interface AvatarProps extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
 	size?: number;

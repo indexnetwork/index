@@ -3,15 +3,15 @@ import {
 	Indexes, IndexLink, Link, UserIndex, Users,
 } from "types/entity";
 import {
-	getCurrentDateTime, isSSR, maskDID, setDates,
+	getCurrentDateTime, isSSR, setDates,
 } from "utils/helper";
 import { create, IPFSHTTPClient } from "ipfs-http-client";
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 
 import { appConfig } from "config";
+import { DID } from "dids";
 import { definition } from "../types/merged-runtime";
-import {DID} from "dids";
 
 class CeramicService {
 	private ipfs: IPFSHTTPClient = create({
@@ -386,7 +386,6 @@ class CeramicService {
 		}
 	}
 	async getProfileByDID(did: string): Promise<Users | undefined> {
-
 		const { data, errors } = await this.client.executeQuery<{ node: { id: string, profile: Users } }>(`
 			{
 			  node(id: "${did}") {
@@ -403,7 +402,7 @@ class CeramicService {
 			  }
 			}
 		`);
-		if (errors || !data?.node){
+		if (errors || !data?.node) {
 			// TODO Handle.
 		}
 		if (data && data.node) {

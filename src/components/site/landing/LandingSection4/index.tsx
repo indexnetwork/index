@@ -1,11 +1,11 @@
 import Header from "components/base/Header";
 import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
+import Text from "components/base/Text";
 import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
-import FlexRow from "../../../layout/base/Grid/FlexRow";
-import Col from "../../../layout/base/Grid/Col";
-import Text from "../../../base/Text";
 
 const LandingSection4: React.VFC = () => {
 	const [section, setSection] = React.useState("brand");

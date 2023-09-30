@@ -24,7 +24,7 @@ import { appConfig } from "config";
 import IconEdit from "components/base/Icon/IconEdit";
 import { Users } from "types/entity";
 import { CID } from "multiformats";
-import apiService from "../../services/api-service";
+import apiService from "services/api-service";
 
 const CreateIndexPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);

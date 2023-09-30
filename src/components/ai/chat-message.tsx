@@ -9,9 +9,9 @@ import { CodeBlock } from "components/ai/ui/codeblock";
 import { MemoizedReactMarkdown } from "components/ai/markdown";
 import { IconOpenAI, IconUser } from "components/ai/ui/icons";
 import { ChatMessageActions } from "components/ai/chat-message-actions";
-import Col from "../layout/base/Grid/Col";
-import FlexRow from "../layout/base/Grid/FlexRow";
-import Text from "../base/Text";
+import Col from "components/layout/base/Grid/Col";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Text from "components/base/Text";
 
 export interface ChatMessageProps {
   message: Message

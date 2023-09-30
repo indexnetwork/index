@@ -10,10 +10,10 @@ import { coldarkDark } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useCopyToClipboard } from "hooks/useCopyToClipboard";
 import { IconCheck, IconCopy, IconDownload } from "components/ai/ui/icons";
 import Button from "components/base/Button";
-import FlexRow from "../../layout/base/Grid/FlexRow";
-import Col from "../../layout/base/Grid/Col";
-import Flex from "../../layout/base/Grid/Flex";
-import Text from "../../base/Text";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
+import Flex from "components/layout/base/Grid/Flex";
+import Text from "components/base/Text";
 
 interface Props {
   language: string

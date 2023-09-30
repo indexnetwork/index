@@ -3,14 +3,14 @@ import Header from "components/base/Header";
 import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
+import FlexRow from "components/layout/base/Grid/FlexRow";
 import React from "react";
 import { Indexes } from "types/entity";
 import sanitize from "sanitize-html";
 import { useRouter } from "next/router";
 import cc from "classcat";
+import { maskDID } from "utils/helper";
 import cm from "./style.module.scss";
-import { maskDID } from "../../../../utils/helper";
-import FlexRow from "../../../layout/base/Grid/FlexRow";
 
 export interface IndexItemProps {
 	index: Indexes,

@@ -7,13 +7,13 @@ import { useRouter } from "next/router";
 import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { useAuth } from "hooks/useAuth";
+import IconMenu from "components/base/Icon/IconMenu";
+import Button from "components/base/Button";
+import { useApp } from "hooks/useApp";
 import Container from "../Grid/Container";
 import Col from "../Grid/Col";
 import FlexRow from "../Grid/FlexRow";
-import IconMenu from "../../../base/Icon/IconMenu";
-import Button from "../../../base/Button";
 import Flex from "../Grid/Flex";
-import {useApp} from "../../../../hooks/useApp";
 
 export interface NavbarProps extends
 	React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
@@ -52,7 +52,6 @@ const Navbar = (
 	const authenticated = useAuth();
 	const router = useRouter();
 	const { leftSidebarOpen, setLeftSidebarOpen } = useApp();
-
 
 	useEffect(() => {
 		if (sticky) {

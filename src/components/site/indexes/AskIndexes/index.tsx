@@ -8,8 +8,8 @@ import { toast } from "react-hot-toast";
 import AskInput from "components/base/AskInput";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
-import { API_ENDPOINTS } from "../../../../utils/constants";
-import Flex from "../../../layout/base/Grid/Flex";
+import { API_ENDPOINTS } from "utils/constants";
+import Flex from "components/layout/base/Grid/Flex";
 
 export interface ChatProps extends React.ComponentProps<"div"> {
 	initialMessages?: Message[]

@@ -10,11 +10,11 @@ import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider"
 import { selectConnection } from "store/slices/connectionSlice";
 import { useAppSelector } from "hooks/store";
 import { useTranslation } from "next-i18next";
-import cm from "./style.module.scss";
+import Flex from "components/layout/base/Grid/Flex";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
 import LandingSection from "../LandingSection";
-import Flex from "../../../layout/base/Grid/Flex";
-import FlexRow from "../../../layout/base/Grid/FlexRow";
-import Col from "../../../layout/base/Grid/Col";
+import cm from "./style.module.scss";
 
 const LandingSection1 = () => {
 	const router = useRouter();

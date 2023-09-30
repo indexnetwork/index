@@ -1,5 +1,6 @@
 import PageContainer from "components/layout/site/PageContainer";
 import PageLayout from "components/layout/site/PageLayout";
+import AskIndexes from "components/site/indexes/AskIndexes";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import React, {
 	ReactElement, useEffect, useState,
@@ -7,7 +8,7 @@ import React, {
 import { NextPageWithLayout } from "types";
 import { useRouter } from "next/router";
 import { v4 as uuidv4 } from "uuid";
-import AskIndexes from "../../components/site/indexes/AskIndexes";
+
 import "react-modern-drawer/dist/index.css";
 
 const IndexesPage: NextPageWithLayout = () => {

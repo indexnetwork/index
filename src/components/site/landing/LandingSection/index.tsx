@@ -1,9 +1,9 @@
 import Container from "components/layout/base/Grid/Container";
 import React from "react";
 import cc from "classcat";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
 import cm from "./style.module.scss";
-import FlexRow from "../../../layout/base/Grid/FlexRow";
-import Col from "../../../layout/base/Grid/Col";
 
 export interface LandingSectionProps {
 	dark?: boolean;

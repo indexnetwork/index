@@ -3,11 +3,11 @@ import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
 import IconFeatureAddLink from "components/base/Icon/IconFeatureAddLink";
 import IconFeatureExtension from "components/base/Icon/IconFeatureExtension";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
 import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
 import IconDescription from "../IconDescription";
-import FlexRow from "../../../layout/base/Grid/FlexRow";
-import Col from "../../../layout/base/Grid/Col";
 
 const LandingSection3: React.VFC = () => (
 	<LandingSection>

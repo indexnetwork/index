@@ -47,7 +47,6 @@ import { ethers } from "ethers";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
 
-
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
@@ -199,7 +198,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [progress]);
 
 	return (
-		<IndexContext.Provider value={{ pkpCeramic, isOwner, isCreator, index }}>
+		<IndexContext.Provider value={{
+			pkpCeramic, isOwner, isCreator, index,
+		}}>
 			<LinksContext.Provider value={{ links, setLinks }}>
 				<PageContainer section={"index"}>
 					<Flex className={"px-0 px-md-10 pt-6 scrollable-container"} flexDirection={"column"}>
@@ -313,7 +314,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
 								</Col>
 							</FlexRow>}
-							{ tabKey === "audience" && <FlexRow justify="center" align="center"  fullHeight>
+							{ tabKey === "audience" && <FlexRow justify="center" align="center" fullHeight>
 								<Col>
 									<Soon section={tabKey}></Soon>
 								</Col>

@@ -1,7 +1,5 @@
-import { useOwner } from "hooks/useOwner";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { useTranslation } from "next-i18next";
 import React, {
 	useState, useCallback, useEffect,
 } from "react";
@@ -16,9 +14,7 @@ import { Tabs } from "components/base/Tabs";
 import TabPane from "components/base/Tabs/TabPane";
 
 import IndexItem from "components/site/indexes/IndexItem";
-import { useCeramic } from "hooks/useCeramic";
 import NoIndexes from "components/site/indexes/NoIndexes";
-import Flex from "../../../layout/base/Grid/Flex";
 
 export interface IndexListState {
 	skip: number,

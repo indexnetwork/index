@@ -13,11 +13,12 @@ import Button from "components/base/Button";
 import IconClose from "components/base/Icon/IconClose";
 import Soon from "components/site/indexes/Soon";
 import SearchIndexes from "components/site/indexes/SearchIndexes";
-import Avatar from "../../../base/Avatar";
-import Header from "../../../base/Header";
-import Text from "../../../base/Text";
-import { Users } from "../../../../types/entity";
-import { useCeramic } from "../../../../hooks/useCeramic";
+import Avatar from "components/base/Avatar";
+import Header from "components/base/Header";
+import Text from "components/base/Text";
+import { Users } from "types/entity";
+import { useCeramic } from "hooks/useCeramic";
+import { maskDID } from "utils/helper";
 
 export interface PageContainerProps extends ContainerProps {
 	section: string;
@@ -84,7 +85,7 @@ const PageContainer = (
 								</Col>
 								<Col className="idxflex-grow-1 ml-6">
 									<Flex flexDirection={"column"} >
-										<Header level={4} className={"mb-1"}>{viewedProfile?.name}</Header>
+										<Header level={4} className={"mb-1"}>{viewedProfile?.name || maskDID(viewedProfile?.id)}</Header>
 										<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{viewedProfile?.bio}</Text>
 									</Flex>
 								</Col>

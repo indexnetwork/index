@@ -1,4 +1,4 @@
-import React  from "react";
+import React from "react";
 import CeramicService from "services/ceramic-service";
 import {
 	Link, Users, UserIndex,
@@ -74,9 +74,7 @@ const CeramicProvider = (
 		}
 		return client.getProfile();
 	};
-	const getProfileByDID = async (did: string) => {
-		return client.getProfileByDID(did);
-	};
+	const getProfileByDID = async (did: string) => client.getProfileByDID(did);
 	const setProfile = async (profile: Users) => {
 		if (!client.isUserAuthenticated()) {
 			throw new Error("Invalid client");

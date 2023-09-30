@@ -4,7 +4,6 @@ import Text from "components/base/Text";
 import Dropdown from "components/base/Dropdown";
 import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
 
-import IconPeople from "components/base/Icon/IconPeople";
 import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
 import React, {
@@ -16,12 +15,11 @@ import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { useAuth } from "hooks/useAuth";
 import { selectProfile } from "store/slices/profileSlice";
-import { appConfig } from "config";
 import IconSettings from "components/base/Icon/IconSettings";
 import Navbar, { NavbarProps, NavbarMenu } from "components/layout/base/Navbar";
 import { useApp } from "hooks/useApp";
 import { useRouter } from "next/router";
-import IconHistory from "../../../base/Icon/IconHistory";
+import IconHistory from "components/base/Icon/IconHistory";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
