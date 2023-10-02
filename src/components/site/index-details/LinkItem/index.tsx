@@ -117,23 +117,21 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 				</Col>
 				<Col xs={12} className="mt-2">
 					<a target="_blank" rel="noreferrer" href={link?.url}>
-						{link?.favicon ?
-							<img
-								className="mr-3"
-								src={link?.favicon}
-								alt="favicon"
-								width={16}
-								height={16}
-								style={{
-									verticalAlign: "middle",
-								}} /> :
-							<LogoLink
-								className="mr-3"
-								width={16}
-								height={16}
-								style={{
-									verticalAlign: "middle",
-								}} />}<Text size="sm" theme="disabled">{link?.url?.substring(0, 80)} • {link?.updatedAt ? moment(link?.updatedAt).format("MMM D") : ""}</Text>
+						<img
+							className="mr-3"
+							src={link?.favicon || "/images/globe.svg"}
+							alt="favicon"
+							width={16}
+							height={16}
+							onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+								const target = e.target as HTMLImageElement;
+								target.onerror = null; // Prevents infinite loop in case fallback image also fails
+								target.src = "/images/globe.svg";
+							}}
+							style={{
+								verticalAlign: "middle",
+							}} />
+						<Text size="sm" theme="disabled">{link?.url?.substring(0, 80)} • {link?.updatedAt ? moment(link?.updatedAt).format("MMM D") : ""}</Text>
 					</ a>
 				</Col>
 				{
