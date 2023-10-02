@@ -120,9 +120,8 @@ const ProfileSettingsPage: NextPageWithLayout = () => {
 																		className="img-upload-btns"
 																		onClick={(e) => e.stopPropagation()}
 																	>
-																		<Avatar
+																		<Avatar size={32}
 																			shape="square"
-																			size={32}
 																			hoverable
 																			onClick={() => onImageRemove(0)}>
 																			<IconTrash/>

@@ -32,7 +32,7 @@ const CreatorRule = (
 				<Row className={"mt-3"}>
 					<Flex alignItems={"center"}>
 						<Col>
-							<Avatar className={"site-navbar__avatar mr-3"} creatorRule={rule} hoverable size={40} />
+							<Avatar size={40} creatorRule={rule} hoverable className={"site-navbar__avatar mr-3"} />
 						</Col>
 						<Col>
 							<Header level={4} className="mb-1">{rule.name || rule.ensName || (rule.walletAddress && maskAddress(rule.walletAddress)) || (rule.contractAddress && maskAddress(rule.contractAddress)) }</Header>

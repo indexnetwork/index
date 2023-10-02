@@ -122,7 +122,7 @@ const SiteNavbar = (
 								</>
 							}
 						>
-							<Avatar className="site-navbar__avatar" hoverable size={32} user={profile} />
+							<Avatar size={32} user={profile} className="site-navbar__avatar" hoverable />
 						</Dropdown>
 					</NavbarMenu>
 				) :

@@ -15,7 +15,6 @@ export interface AvatarProps extends React.DetailedHTMLProps<React.HTMLAttribute
 	contentRatio?: number;
 	randomColor?: boolean;
 	bgColor?: string;
-	maxLetters?: number;
 }
 
 const Avatar = (
@@ -27,23 +26,16 @@ const Avatar = (
 		className,
 		style,
 		bgColor,
-		contentRatio = 0.5,
 		shape = "circle",
 		hoverable = false,
-		maxLetters = 1,
 		randomColor = false,
 		...divProps
 	}: AvatarProps,
 ) => {
+	const maxLetters = size > 32 ? 4 : 2;
 	const [color, setColor] = useState<string>(bgColor || "var(--main)");
 	const getFontSize = () => {
-		if (user && !user.avatar && !user.name) {
-			return 15;
-		}
-		if (creatorRule && creatorRule.symbol) {
-			return 12;
-		}
-		return contentRatio > 1 ? size : contentRatio * size;
+		return size * (1 / maxLetters);
 	};
 	useEffect(() => {
 		if (!isSSR() && randomColor) {
@@ -77,7 +69,7 @@ const Avatar = (
 					user.avatar ? (
 						<img src={`${appConfig.ipfsProxy}/${user.avatar}`} alt="profile_img"/>
 					) : (
-						user.name ? user.name!.substring(0, 1).toUpperCase() : (user.id ? user.id.toString().slice(-4).toUpperCase() : "Y")
+						user.name ? user.name!.substring(0, 1).toUpperCase() : (user.id ? user.id.toString().slice(maxLetters * -1).toUpperCase() : "Y")
 					)
 				) : creatorRule ? (
 					creatorRule.image ? (
