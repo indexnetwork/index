@@ -11,6 +11,7 @@ export interface TabsProps {
 	activeKey?: string;
 	destroyInactiveTabPane?: boolean;
 	onTabChange?(activeTabKey: string): void;
+	theme?: "classic" | "rounded";
 }
 
 export const Tabs = (
@@ -19,6 +20,7 @@ export const Tabs = (
 		activeKey,
 		destroyInactiveTabPane = true,
 		onTabChange,
+		theme = "classic",
 	}: TabsProps,
 ) => {
 	const getActiveTab = () => {
@@ -72,7 +74,7 @@ export const Tabs = (
 
 	return (
 		<div
-			className="tabs"
+			className={cc(["tabs", theme])}
 		>
 			<div className="tabs-list">
 				{
@@ -98,7 +100,7 @@ export const Tabs = (
 								>
 									{title}
 								</Text>
-								{tabKey === activeTab && <div className="tabs-list-item-bottom"></div>}
+								{theme === "classic" && tabKey === activeTab && <div className="tabs-list-item-bottom"></div>}
 							</div>
 						);
 					})
