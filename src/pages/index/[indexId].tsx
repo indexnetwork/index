@@ -31,7 +31,6 @@ import NotFound from "components/site/indexes/NotFound";
 import { useAppSelector } from "hooks/store";
 import { v4 as uuidv4 } from "uuid";
 import { selectConnection } from "store/slices/connectionSlice";
-import { selectProfile } from "store/slices/profileSlice";
 import { LinksContext } from "hooks/useLinks";
 import TabPane from "components/base/Tabs/TabPane";
 import { Tabs } from "components/base/Tabs";
@@ -46,6 +45,7 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
+import Link from "next/link";
 import { maskDID } from "../../utils/helper";
 
 const IndexDetailPage: NextPageWithLayout = () => {
@@ -70,7 +70,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [titleLoading, setTitleLoading] = useState(false);
 	const [search, setSearch] = useState("");
 	const { did } = useAppSelector(selectConnection);
-	const { available, name } = useAppSelector(selectProfile);
 	const chatId = uuidv4();
 	const loadIndex = async (indexIdParam: string) => {
 		const doc = await api.getIndexById(indexIdParam);
@@ -168,8 +167,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	useEffect(() => {
 		loadUserIndex();
 	}, [index.id, did]);
+
 	useEffect(() => {
 		setLoading(true);
+		setSearch("");
 		if (indexId) {
 			loadIndex(indexId as string);
 		}
@@ -218,7 +219,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 								<FlexRow>
 									<Col centerBlock className="idxflex-grow-1">
 										<Avatar size={20} user={index.ownerDID} />
-										{index && <Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{index.ownerDID?.name || (index.ownerDID && maskDID(index.ownerDID?.id!)) || ""}</Text>}
+										{index && <Link href="/[did]" as={`/${index.ownerDID?.id!}`} ><Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{index.ownerDID?.name || (index.ownerDID && maskDID(index.ownerDID?.id!)) || ""}</Text></Link>}
 									</Col>
 								</FlexRow>
 								<FlexRow className="pt-3">
@@ -305,10 +306,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										/>
 									</Col>
 								</FlexRow>}
-								<FlexRow className={"scrollable-area mt-6"} justify="center">
+								<FlexRow key={indexId!.toString()} className={"scrollable-area mt-6"} justify="center">
 									<IndexItemList
 										search={search}
-										index_id={router.query.indexId as any}
+										indexId={router.query.indexId as any}
 									/>
 								</FlexRow>
 							</>}

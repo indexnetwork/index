@@ -16,7 +16,6 @@ import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
 import { useLinks } from "hooks/useLinks";
 import sanitize from "sanitize-html";
-import LogoLink from "components/base/Logo/LogoLink";
 import { useIndex } from "hooks/useIndex";
 import cm from "./style.module.scss";
 

@@ -34,9 +34,7 @@ const Avatar = (
 ) => {
 	const maxLetters = size > 32 ? 4 : 2;
 	const [color, setColor] = useState<string>(bgColor || "var(--main)");
-	const getFontSize = () => {
-		return size * (1 / maxLetters);
-	};
+	const getFontSize = () => size * (1 / maxLetters);
 	useEffect(() => {
 		if (!isSSR() && randomColor) {
 			setColor(generateRandomColor());
