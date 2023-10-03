@@ -128,16 +128,16 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		setIsLoading && setIsLoading(false);
 	};
 	return <>
-		<FlexRow className={"mr-6"}>
+		<FlexRow className={"mr-6 pb-4"}>
 			<Col className="idxflex-grow-1">
 				<Tabs theme={"rounded"} activeKey={tabKey} onTabChange={setTabKey}>
 					<TabPane enabled={true} tabKey={"all_indexes"} title={`All Indexes`} />
 					<TabPane enabled={true} tabKey={"my_indexes"} title={`Owned (${state.my_indexes?.totalCount || 0})`} />
-					<TabPane enabled={true} tabKey={"starred"} title={`Starred (${state.starred?.totalCount || 0})`} />
+					<TabPane enabled={true} tabKey={"starred"} title={`Starred (1${state.starred?.totalCount || 0})`} />
 				</Tabs>
 			</Col>
 		</FlexRow>
-		<FlexRow className={"scrollable-area index-list pt-4 pr-6"}>
+		<FlexRow className={"scrollable-area index-list pr-6"}>
 			{tabKey === "my_indexes" ? (
 				state.my_indexes && state.my_indexes.indexes?.length! > 0 ? <>
 					<InfiniteScroll

@@ -42,9 +42,9 @@ const PageContainer = (
 	const [profileDID, setProfileDID] = useState<string>();
 	const [viewedProfile, setViewedProfile] = useState<Users>();
 	const router = useRouter();
-	const { did } = router.query;
 	const { index } = useIndex();
 	const personalCeramic = useCeramic();
+	const { did } = router.query;
 
 	useEffect(() => {
 		if (did) {
