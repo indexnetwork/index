@@ -1,4 +1,4 @@
-import { createContext, useState, useContext } from "react";
+import {createContext, useState, useContext, useEffect} from "react";
 import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
@@ -40,7 +40,7 @@ export const AppContextProvider = ({ children } : any) => {
 			await ceramic.addUserIndex(doc.id, "my_indexes");
 			if (doc != null) {
 				setTransactionApprovalWaiting(false);
-				await router.push(`/${doc.id}`);
+				await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
 			}
 		}
 	};

@@ -33,11 +33,11 @@ const CeramicProvider = (
 		children,
 	}: CeramicProviderProps,
 ) => {
-	const client = new CeramicService();
-
+	const clientRef = React.useRef<CeramicService>(new CeramicService());
 	const authenticateUser = (did: DID) => {
-		client.authenticateUser(did);
+		clientRef.current.authenticateUser(did);
 	};
+	const client = clientRef.current;
 	const isUserAuthenticated = () => client.isUserAuthenticated();
 	const createLink = async (link: Partial<Link>) => {
 		if (!client.isUserAuthenticated()) {

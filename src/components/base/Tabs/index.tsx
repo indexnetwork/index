@@ -82,7 +82,6 @@ export const Tabs = (
 						child: React.ReactElement<TabPaneProps>,
 					) => {
 						const { title, total, enabled, tabKey } = child.props;
-
 						return (
 							<div
 								className={cc([
@@ -100,7 +99,7 @@ export const Tabs = (
 								>
 									{title}
 								</Text>
-								{total && <Text
+								{(total || (total === 0)) && <Text
 									size="md"
 									fontWeight={300}
 									theme={tabKey === activeTab ? "primary" : "disabled"}
