@@ -81,7 +81,7 @@ export const Tabs = (
 					React.Children.map(children || [], (
 						child: React.ReactElement<TabPaneProps>,
 					) => {
-						const { title, enabled, tabKey } = child.props;
+						const { title, total, enabled, tabKey } = child.props;
 
 						return (
 							<div
@@ -100,6 +100,11 @@ export const Tabs = (
 								>
 									{title}
 								</Text>
+								{total && <Text
+									size="md"
+									fontWeight={300}
+									theme={tabKey === activeTab ? "primary" : "disabled"}
+								> ({total})</Text>}
 								{theme === "classic" && tabKey === activeTab && <div className="tabs-list-item-bottom"></div>}
 							</div>
 						);
