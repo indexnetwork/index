@@ -4,15 +4,18 @@ const { i18n } = require('./next-i18next.config');
 const nextConfig = {
   reactStrictMode: false,
   i18n,
+  images: {
+    remotePatterns: [
+      {
+        hostname: '*',
+      },
+    ],
+  },
   async rewrites() {
     return [
       {
         source: '/:did(did:.*)',
         destination: '/did/:did',
-      },
-      {
-        source: '/:indexId',
-        destination: '/index/:indexId',
       }
     ]
   },
