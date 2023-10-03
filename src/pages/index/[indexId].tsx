@@ -277,7 +277,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<SearchInput
 											loading={loading}
 											onSearch={setSearch}
-											debounceTime={400}
+											debounceTime={300}
 											showClear
 											defaultValue={search}
 											placeholder={t("pages:home.searchLink")} />
@@ -306,7 +306,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										/>
 									</Col>
 								</FlexRow>}
-								<FlexRow key={indexId!.toString()} className={"scrollable-area mt-6"} justify="center">
+								<FlexRow key={indexId!.toString()} className={"scrollable-area mb-4 mt-6"} justify="center">
 									<IndexItemList
 										search={search}
 										indexId={router.query.indexId as any}

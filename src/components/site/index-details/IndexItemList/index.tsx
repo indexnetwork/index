@@ -50,7 +50,7 @@ const IndexItemList: React.VFC<LinkListProps> = ({ search, indexId }) => {
 				links.length === 0 ? (
 					<NoLinks search={search}></NoLinks>
 				) : (
-					<InfiniteScroll className={"scrollable-area idxflex-grow-1"} useWindow={false} hasMore={hasMore} loadMore={getData} marginHeight={50}>
+					<InfiniteScroll className={"scrollable-area idxflex-grow-1 pb-6"} useWindow={false} hasMore={hasMore} loadMore={getData} marginHeight={50}>
 						<List
 							listClass="index-item-list "
 							render={(item) => <MemoLinkItem

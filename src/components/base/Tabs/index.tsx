@@ -81,7 +81,9 @@ export const Tabs = (
 					React.Children.map(children || [], (
 						child: React.ReactElement<TabPaneProps>,
 					) => {
-						const { title, total, enabled, tabKey } = child.props;
+						const {
+							title, total, enabled, tabKey,
+						} = child.props;
 						return (
 							<div
 								className={cc([
