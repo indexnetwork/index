@@ -34,9 +34,15 @@
 	& input::placeholder {
 		color: $secondary-text-color;
 	}
-
-	&.input-disabled,
-	&.input-readonly {
+	&.input-disabled.nonstyled{
+		background-color: transparent;
+		color: $primary-text-color;
+		input {
+			background-color: transparent;
+			color: $primary-text-color;
+		}
+	}
+	&.input-disabled:not(.nonstyled) , &.input-readonly {
 		background-color: $input-disabled-bg !important;
 		color: $secondary-text-color;
 

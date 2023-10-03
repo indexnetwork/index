@@ -32,7 +32,6 @@ const IndexTitleInput: React.VFC<IndexTitleInputProps> = ({
 	return (
 		<HeaderInput
 			type="text"
-			style={{ backgroundColor: "white !important", color: "var(--main) !important" }}
 			onBlur={handleBlur}
 			value={title}
 			onChange={handleChange}
