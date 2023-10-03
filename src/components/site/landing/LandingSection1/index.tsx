@@ -26,7 +26,7 @@ const LandingSection1 = () => {
 
 	useEffect(() => {
 		if (authenticated && router.route === "/") {
-			router.push(`/${did}`);
+			router.push(`/[did]`, `/${did}`, { shallow: true });
 		}
 	}, [authenticated]);
 

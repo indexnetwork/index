@@ -26,7 +26,7 @@ export const AppContextProvider = ({ children } : any) => {
 	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
 	const router = useRouter();
 	const ceramic = useCeramic();
-
+	const { did } = router.query;
 	const handleCreate = async (title: string) => {
 		if (title) {
 			// handleToggleCreateModal();
@@ -40,7 +40,7 @@ export const AppContextProvider = ({ children } : any) => {
 			await ceramic.addUserIndex(doc.id, "my_indexes");
 			if (doc != null) {
 				setTransactionApprovalWaiting(false);
-				await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
+				await router.push(`/[did]/[indexId]`, `/${did}/${doc.id}`, { shallow: true });
 			}
 		}
 	};

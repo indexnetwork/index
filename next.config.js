@@ -13,10 +13,7 @@ const nextConfig = {
   },
   async rewrites() {
     return [
-      {
-        source: '/:did(did:.*)',
-        destination: '/did/:did',
-      }
+
     ]
   },
   async headers() {

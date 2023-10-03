@@ -67,7 +67,7 @@ const Navbar = (
 
 	const handleLogoClick = () => {
 		if (authenticated) {
-			router.push(`/${did}`);
+			router.push(`/[did]`, `/${did}`, { shallow: true });
 		} else {
 			router.push(`/`);
 		}

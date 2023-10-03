@@ -63,10 +63,6 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		setSearch && setSearch("");
 	}, [router]);
 
-	const handleClick = useCallback((itm: Indexes) => async () => {
-		router.push(`/${itm.id}`);
-	}, []);
-
 	useEffect(() => {
 		getData(1, true);
 	}, [search]);

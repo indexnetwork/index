@@ -47,19 +47,11 @@ const PageContainer = (
 	const { did } = router.query;
 
 	useEffect(() => {
-		if (did) {
-			setProfileDID(did.toString());
-		} else if (index && index.ownerDID) {
-			setProfileDID(index.ownerDID.id);
-		}
-	}, [did, index]);
-	useEffect(() => {
-		if (profileDID) {
-			personalCeramic.getProfileByDID(profileDID).then((p) => {
-				setViewedProfile(p);
-			});
-		}
-	}, [profileDID]);
+		personalCeramic.getProfileByDID(did!.toString()).then((p) => {
+			setViewedProfile(p);
+		});
+	}, [did]);
+
 	const closeSidebars = () => {
 		setLeftSidebarOpen(false);
 		setRightSidebarOpen(false);
@@ -79,18 +71,18 @@ const PageContainer = (
 					<Col xs={12} >
 						<Flex flexDirection={"column"} className={"scrollable-container"} >
 							<Flex justifyContent={"right"} className={"navbar-sidebar-handlers mr-6 mt-6 "}> <Button onClick={() => setLeftSidebarOpen(false)} iconButton theme="clear"><IconClose width={32} /></Button></Flex>
-							{viewedProfile && <FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{ background: "#efefef", borderRadius: "5px" }}>
+							<FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{ background: "#efefef", borderRadius: "5px" }}>
 								<Col>
 									<Avatar size={60} user={viewedProfile} />
 								</Col>
 								<Col className="idxflex-grow-1 ml-6">
 									<Flex flexDirection={"column"} >
-										<Header level={4} className={"mb-1"}>{viewedProfile?.name || maskDID(viewedProfile?.id!)}</Header>
+										<Header level={4} className={"mb-1"}>{viewedProfile?.name || viewedProfile?.id ? maskDID(viewedProfile?.id!) : ""}</Header>
 										<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{viewedProfile?.bio}</Text>
 									</Flex>
 								</Col>
-							</FlexRow>}
-							{ profileDID && <SearchIndexes did={profileDID} />}
+							</FlexRow>
+							{ viewedProfile && <SearchIndexes did={viewedProfile.id} />}
 						</Flex>
 					</Col>
 				</FlexRow>
