@@ -1,10 +1,12 @@
-import {createContext, useState, useContext, useEffect} from "react";
+import {
+	createContext, useState, useContext, useEffect,
+} from "react";
 import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import LitService from "services/lit-service";
 import CeramicService from "services/ceramic-service";
-import {Indexes, Users} from "types/entity";
+import { Indexes, Users } from "types/entity";
 import { useCeramic } from "hooks/useCeramic";
 import { useRouter } from "next/router";
 

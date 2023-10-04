@@ -10,9 +10,8 @@ import sanitize from "sanitize-html";
 import cc from "classcat";
 import { maskDID } from "utils/helper";
 import Link from "next/link";
-import cm from "./style.module.scss";
 import { useRouter } from "next/router";
-
+import cm from "./style.module.scss";
 
 export interface IndexItemProps {
 	index: Indexes,
@@ -43,6 +42,6 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 			</Col>
 		</FlexRow>
 	</Link>;
-}
+};
 
 export default IndexItem;

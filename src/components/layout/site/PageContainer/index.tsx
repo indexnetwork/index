@@ -1,8 +1,6 @@
 import Container, { ContainerProps } from "components/layout/base/Grid/Container";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import cc from "classcat";
-import { useRouter } from "next/router";
-import { useIndex } from "hooks/useIndex";
 import { useApp } from "hooks/useApp";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Col from "components/layout/base/Grid/Col";
@@ -16,8 +14,6 @@ import SearchIndexes from "components/site/indexes/SearchIndexes";
 import Avatar from "components/base/Avatar";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
-import { Users } from "types/entity";
-import { useCeramic } from "hooks/useCeramic";
 import { maskDID } from "utils/helper";
 
 export interface PageContainerProps extends ContainerProps {

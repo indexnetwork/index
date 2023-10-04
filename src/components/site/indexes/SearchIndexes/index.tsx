@@ -1,7 +1,7 @@
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import React, {
-	useState, useCallback, useEffect,
+	useState, useEffect,
 } from "react";
 
 import List from "components/base/List";
