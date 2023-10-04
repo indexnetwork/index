@@ -10,13 +10,11 @@ import { useApp } from "hooks/useApp";
 
 export interface NoIndexesProps {
 	hasIndex?: boolean;
-	search?: string;
 	tabKey?: string;
 }
 
 const NoIndexes: React.VFC<NoIndexesProps> = ({
 	hasIndex,
-	search,
 	tabKey,
 }) => {
 	const router = useRouter();
@@ -34,14 +32,7 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 				</Col>
 				<Col className="text-center" centerBlock>
 					{
-						search && (
-							<Header level={4} style={{
-								maxWidth: 350,
-							}}>{`Your search "${search}" did not match any indexes.`}</Header>
-						)
-					}
-					{
-						!search && !hasIndex && (
+						!hasIndex && (
 							isOwner ? (
 								tabKey === "starred" ? (
 									<Header style={{
@@ -61,7 +52,7 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 					}
 				</Col>
 				{
-					(!search && isOwner && !hasIndex && tabKey !== "starred") && (
+					(isOwner && !hasIndex && tabKey !== "starred") && (
 						<Col centerBlock>
 							<Button onClick={() => { setCreateModalVisible(true); }} >Create a new index</Button>
 						</Col>

@@ -36,22 +36,10 @@ const PageContainer = (
 		setLeftSidebarOpen,
 		rightSidebarOpen,
 		setRightSidebarOpen,
+		viewedProfile,
 	} = useApp();
 
 	const [rightTabKey, setRightTabKey] = useState("history");
-	const [profileDID, setProfileDID] = useState<string>();
-	const [viewedProfile, setViewedProfile] = useState<Users>();
-	const router = useRouter();
-	const { index } = useIndex();
-	const personalCeramic = useCeramic();
-	const { did } = router.query;
-
-	useEffect(() => {
-		personalCeramic.getProfileByDID(did!.toString()).then((p) => {
-			setViewedProfile(p);
-		});
-	}, [did]);
-
 	const closeSidebars = () => {
 		setLeftSidebarOpen(false);
 		setRightSidebarOpen(false);
@@ -73,7 +61,7 @@ const PageContainer = (
 							<Flex justifyContent={"right"} className={"navbar-sidebar-handlers mr-6 mt-6 "}> <Button onClick={() => setLeftSidebarOpen(false)} iconButton theme="clear"><IconClose width={32} /></Button></Flex>
 							<FlexRow wrap={false} className={"my-6 mr-6 p-6"} style={{ background: "#efefef", borderRadius: "5px" }}>
 								<Col>
-									<Avatar size={60} user={viewedProfile} />
+									<Avatar size={60} placeholder={"black"} user={viewedProfile} />
 								</Col>
 								<Col className="idxflex-grow-1 ml-6">
 									<Flex flexDirection={"column"} >

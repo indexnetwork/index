@@ -1,10 +1,10 @@
-import { createContext, useState, useContext } from "react";
+import {createContext, useState, useContext, useEffect} from "react";
 import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import LitService from "services/lit-service";
 import CeramicService from "services/ceramic-service";
-import { Indexes } from "types/entity";
+import {Indexes, Users} from "types/entity";
 import { useCeramic } from "hooks/useCeramic";
 import { useRouter } from "next/router";
 
@@ -15,6 +15,7 @@ export interface AppContextValue {
 	setLeftSidebarOpen: (visible: boolean) => void
 	rightSidebarOpen: boolean
 	setRightSidebarOpen: (visible: boolean) => void
+	viewedProfile: Users | undefined
 }
 
 export const AppContext = createContext({} as AppContextValue);
@@ -24,6 +25,7 @@ export const AppContextProvider = ({ children } : any) => {
 	const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
 	const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
 	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
+	const [viewedProfile, setViewedProfile] = useState<Users>();
 	const router = useRouter();
 	const ceramic = useCeramic();
 	const { did } = router.query;
@@ -44,6 +46,22 @@ export const AppContextProvider = ({ children } : any) => {
 			}
 		}
 	};
+	const getProfile = async (viewedDid: string) => {
+		try {
+			const profile = await ceramic.getProfileByDID(viewedDid);
+			if (profile) {
+				setViewedProfile(profile);
+			}
+		} catch (err) {
+			// profile error
+		}
+	};
+
+	useEffect(() => {
+		if (did) {
+			getProfile(did.toString());
+		}
+	}, [did]);
 
 	const handleTransactionCancel = () => {
 		setTransactionApprovalWaiting(false);
@@ -56,6 +74,7 @@ export const AppContextProvider = ({ children } : any) => {
 			setLeftSidebarOpen,
 			rightSidebarOpen,
 			setRightSidebarOpen,
+			viewedProfile,
 		}}>
 			{children}
 			{/* eslint-disable-next-line max-len */}

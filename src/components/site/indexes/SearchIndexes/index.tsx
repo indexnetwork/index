@@ -34,7 +34,6 @@ export interface SearchIndexesProps {
 const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 	did,
 }) => {
-	const [search, setSearch] = useState("");
 	const [init, setInit] = useState(true);
 	const [isLoading, setIsLoading] = useState(false);
 	const [tabKey, setTabKey] = useState("my_indexes");
@@ -55,23 +54,19 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 	});
 	type StateKey = keyof typeof state;
 	const tabKeyStateKey = tabKey as StateKey;
-
 	const take = 10;
 	const router = useRouter();
 	const { indexId } = router.query;
-	useEffect(() => {
-		setSearch && setSearch("");
-	}, [router]);
 
 	useEffect(() => {
 		getData(1, true);
-	}, [search]);
+	}, [did]);
 
 	const getData = async (page?: number, newSearch?: boolean) => {
 		if (isLoading) {
 			return;
 		}
-		setIsLoading && setIsLoading(true);
+		setIsLoading(true);
 
 		const queryParams = {
 			did,
@@ -86,9 +81,6 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 			queryParams.skip = state[tabKey]?.indexes.length;
 		}
 
-		if (search && search.length > 0) {
-			queryParams.search = search;
-		}
 		const res = await api.searchIndex(queryParams) as IndexSearchResponse;
 		if (res) {
 			if (init || newSearch) {
@@ -153,7 +145,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 							divided={false}
 						/>
 					</InfiniteScroll>
-				</> : <NoIndexes hasIndex={hasUserIndex.my_indexes} search={search} tabKey={tabKey} />
+				</> : <NoIndexes hasIndex={hasUserIndex.my_indexes} tabKey={tabKey} />
 			) : (
 				state.starred && state.starred.indexes?.length! > 0 ? <>
 					<InfiniteScroll
@@ -173,7 +165,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 							divided
 						/>
 					</InfiniteScroll>
-				</> : <NoIndexes hasIndex={hasUserIndex.starred} search={search} tabKey={tabKey} />
+				</> : <NoIndexes hasIndex={hasUserIndex.starred} tabKey={tabKey} />
 			)}
 		</FlexRow>
 	</>;

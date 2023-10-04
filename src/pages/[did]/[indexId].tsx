@@ -202,11 +202,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [progress]);
 
 	return (
-		<IndexContext.Provider value={{
-			pkpCeramic, isOwner, isCreator, index,
-		}}>
-			<LinksContext.Provider value={{ links, setLinks }}>
-				<PageContainer section={"index"}>
+		<PageContainer section={"index"}>
+			<IndexContext.Provider value={{
+				pkpCeramic, isOwner, isCreator, index,
+			}}>
+				<LinksContext.Provider value={{ links, setLinks }}>
 					<Flex className={"px-0 px-md-10 pt-6 scrollable-container"} flexDirection={"column"}>
 						{ notFound && <FlexRow>
 							<Col className="idxflex-grow-1">
@@ -326,9 +326,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							{ tabKey === "chat" && <AskIndexes id={chatId} indexes={[index.id!]} />}
 						</>}
 					</Flex>
-				</PageContainer>
-			</LinksContext.Provider>
-		</IndexContext.Provider>
+				</LinksContext.Provider>
+			</IndexContext.Provider>
+		</PageContainer>
 	);
 };
 
