@@ -6,6 +6,7 @@ import React, {
 
 import List from "components/base/List";
 import { useRouter } from "next/router";
+import { useSearchParams } from "next/navigation";
 
 import api, { DidSearchRequestBody, IndexSearchResponse } from "services/api-service";
 import { Indexes } from "types/entity";
@@ -23,10 +24,10 @@ export interface IndexListState {
 	indexes?: Indexes[],
 }
 export interface MultipleIndexListState {
-	my_indexes?: IndexListState,
-	starred?: IndexListState,
+	all_indexes: IndexListState,
+	my_indexes: IndexListState,
+	starred: IndexListState,
 }
-
 export interface SearchIndexesProps {
 	did?: string;
 }
@@ -34,11 +35,21 @@ export interface SearchIndexesProps {
 const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 	did,
 }) => {
+	const router = useRouter();
+	const searchParams = useSearchParams();
+
 	const [init, setInit] = useState(true);
 	const [isLoading, setIsLoading] = useState(false);
-	const [tabKey, setTabKey] = useState("my_indexes");
+	const [tabKey, setTabKey] = useState<keyof MultipleIndexListState>((searchParams.get("section") || "my_indexes") as keyof MultipleIndexListState);
+
 	const [hasUserIndex, setHasUserIndex] = useState({ my_indexes: false, starred: false });
 	const [state, setState] = useState<MultipleIndexListState>({
+		all_indexes: {
+			skip: 0,
+			totalCount: 0,
+			hasMore: true,
+			indexes: [],
+		} as IndexListState,
 		my_indexes: {
 			skip: 0,
 			totalCount: 0,
@@ -52,15 +63,25 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 			indexes: [],
 		} as IndexListState,
 	});
-	type StateKey = keyof typeof state;
-	const tabKeyStateKey = tabKey as StateKey;
+
 	const take = 10;
-	const router = useRouter();
+
 	const { indexId } = router.query;
+
+	useEffect(() => {
+		// console.log(indexId, "seref");
+		!init && router.push({
+			pathname: `/${did}`,
+			query: { section: tabKey.toString() || "all_indexes" },
+		});
+	}, [tabKey]);
 
 	useEffect(() => {
 		getData(1, true);
 	}, [did]);
+	useEffect(() => {
+		console.log(searchParams.get("section"), tabKey, "seref");
+	}, [searchParams]);
 
 	const getData = async (page?: number, newSearch?: boolean) => {
 		if (isLoading) {
@@ -85,6 +106,11 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		if (res) {
 			if (init || newSearch) {
 				setState({
+					all_indexes: {
+						hasMore: false,
+						indexes: [] as Indexes[],
+						totalCount: 0,
+					},
 					my_indexes: {
 						hasMore: res.my_indexes?.totalCount! > queryParams.skip + take,
 						indexes: res.my_indexes?.records || [],
@@ -105,10 +131,10 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 				setInit(false);
 			} else {
 				const newState = state;
-				newState[tabKeyStateKey] = {
-					hasMore: res[tabKeyStateKey]?.totalCount! > queryParams.skip + take,
-					indexes: newSearch ? res[tabKeyStateKey]?.records! : state[tabKeyStateKey]?.indexes?.concat(res[tabKeyStateKey]?.records!),
-					totalCount: res[tabKeyStateKey]?.totalCount,
+				newState[tabKey] = {
+					hasMore: res[tabKey]?.totalCount! > queryParams.skip + take,
+					indexes: newSearch ? res[tabKey]?.records! : state[tabKey]?.indexes?.concat(res[tabKey]?.records!),
+					totalCount: res[tabKey]?.totalCount,
 				} as IndexListState;
 				setState(newState as MultipleIndexListState);
 			}
@@ -126,47 +152,25 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 			</Col>
 		</FlexRow>
 		<FlexRow className={"scrollable-area index-list pr-6"}>
-			{tabKey === "my_indexes" ? (
-				state.my_indexes && state.my_indexes.indexes?.length! > 0 ? <>
-					<InfiniteScroll
-						initialLoad={false}
-						hasMore={state.my_indexes?.hasMore}
-						loadMore={getData}
-						useWindow={false}
-						marginHeight={50}
-						className={"idxflex-grow-1"}
-					>
-						<List
-							data={state.my_indexes?.indexes || []}
-							render={(itm: Indexes) => <IndexItem
-								index={itm}
-								selected={itm.id === indexId}
-							/>}
-							divided={false}
-						/>
-					</InfiniteScroll>
-				</> : <NoIndexes hasIndex={hasUserIndex.my_indexes} tabKey={tabKey} />
-			) : (
-				state.starred && state.starred.indexes?.length! > 0 ? <>
-					<InfiniteScroll
-						initialLoad={false}
-						hasMore={state.starred?.hasMore}
-						loadMore={getData}
-						useWindow={false}
-						marginHeight={50}
-						className={"idxflex-grow-1"}
-					>
-						<List
-							data={state.starred?.indexes || []}
-							render={(itm: Indexes) => <IndexItem
-								index={itm}
-								selected={itm.id === indexId}
-							/>}
-							divided
-						/>
-					</InfiniteScroll>
-				</> : <NoIndexes hasIndex={hasUserIndex.starred} tabKey={tabKey} />
-			)}
+			{(state[tabKey].totalCount > 0) ? <>
+				<InfiniteScroll
+					initialLoad={false}
+					hasMore={state[tabKey].hasMore}
+					loadMore={getData}
+					useWindow={false}
+					marginHeight={50}
+					className={"idxflex-grow-1"}
+				>
+					<List
+						data={state[tabKey].indexes || []}
+						render={(itm: Indexes) => <IndexItem
+							index={itm}
+							selected={itm.id === indexId}
+						/>}
+						divided={false}
+					/>
+				</InfiniteScroll>
+			</> : <NoIndexes tabKey={tabKey} />}
 		</FlexRow>
 	</>;
 };

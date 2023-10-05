@@ -13,6 +13,10 @@ export interface IndexResponse extends Indexes {
   highlight?: HighlightType;
 }
 export interface IndexSearchResponse {
+	all_indexes: {
+		totalCount: number;
+		records: Indexes[];
+	},
 	starred?: {
 		totalCount: number;
 		records: Indexes[];

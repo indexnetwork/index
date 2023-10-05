@@ -48,7 +48,7 @@ import { IndexContext } from "hooks/useIndex";
 import Link from "next/link";
 import { maskDID } from "../../utils/helper";
 
-const IndexDetailPage: NextPageWithLayout = () => {
+const IndexDetailPage: NextPageWithLayout = (params, searchParams) => {
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const { indexId } = router.query;
@@ -165,6 +165,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		}
 	};
 	useEffect(() => {
+		console.log(params, searchParams, "seref");
 		loadUserIndex();
 	}, [index.id, did]);
 
@@ -202,7 +203,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [progress]);
 
 	return (
-		<PageContainer section={"index"}>
+		<PageContainer page={"index"}>
 			<IndexContext.Provider value={{
 				pkpCeramic, isOwner, isCreator, index,
 			}}>

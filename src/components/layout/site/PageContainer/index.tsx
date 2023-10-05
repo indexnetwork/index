@@ -17,13 +17,13 @@ import Text from "components/base/Text";
 import { maskDID } from "utils/helper";
 
 export interface PageContainerProps extends ContainerProps {
-	section: string;
+	page: string;
 }
 
 const PageContainer = (
 	{
 		children,
-		section,
+		page,
 		...containerProps
 	}: PageContainerProps,
 ) => {
@@ -73,7 +73,7 @@ const PageContainer = (
 			</Col>
 			<Col className={cc([
 				"main-panel",
-				`page-${section}`,
+				`page-${page}`,
 			])}>
 				{children}
 			</Col>

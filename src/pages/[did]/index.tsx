@@ -11,15 +11,17 @@ import { v4 as uuidv4 } from "uuid";
 
 const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
+
 	const { did } = router.query;
 	const [chatId, setChatId] = useState<string>(uuidv4());
 
 	useEffect(() => {
 		setChatId(uuidv4());
-	}, [did, router.query]);
-	return <PageContainer section={"profile"}>
+	}, [did, router]);
+
+	return <PageContainer page={"profile"}>
 		<div className={"scrollable-container"}>
-			<AskIndexes id={chatId} did={did!.toString()} />
+			<AskIndexes id={chatId} did={did!.toString()}  />
 		</div>
 	</PageContainer>;
 };
@@ -42,4 +44,5 @@ export async function getServerSideProps({ locale }: any) {
 		},
 	};
 }
+
 export default IndexesPage;

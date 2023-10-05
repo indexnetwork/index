@@ -9,15 +9,12 @@ import { useOwner } from "hooks/useOwner";
 import { useApp } from "hooks/useApp";
 
 export interface NoIndexesProps {
-	hasIndex?: boolean;
 	tabKey?: string;
 }
 
 const NoIndexes: React.VFC<NoIndexesProps> = ({
-	hasIndex,
 	tabKey,
 }) => {
-	const router = useRouter();
 
 	const { isOwner } = useOwner();
 	const { setCreateModalVisible } = useApp();
@@ -32,27 +29,25 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 				</Col>
 				<Col className="text-center" centerBlock>
 					{
-						!hasIndex && (
-							isOwner ? (
-								tabKey === "starred" ? (
-									<Header style={{
-										maxWidth: 350,
-									}} level={4}>{`You have no starred indexes yet.`}</Header>
-								) : (
-									<Header style={{
-										maxWidth: 350,
-									}} level={4}>{`You have no indexes yet. Create an index to get started.`}</Header>
-								)
+						isOwner ? (
+							tabKey === "starred" ? (
+								<Header style={{
+									maxWidth: 350,
+								}} level={4}>{`You have no starred indexes yet.`}</Header>
 							) : (
 								<Header style={{
 									maxWidth: 350,
-								}} level={4}>{`There are no indexes yet...`}</Header>
+								}} level={4}>{`You have no indexes yet. Create an index to get started.`}</Header>
 							)
+						) : (
+							<Header style={{
+								maxWidth: 350,
+							}} level={4}>{`There are no indexes yet...`}</Header>
 						)
 					}
 				</Col>
 				{
-					(isOwner && !hasIndex && tabKey !== "starred") && (
+					(isOwner && tabKey !== "starred") && (
 						<Col centerBlock>
 							<Button onClick={() => { setCreateModalVisible(true); }} >Create a new index</Button>
 						</Col>
