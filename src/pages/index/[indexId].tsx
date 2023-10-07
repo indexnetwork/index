@@ -47,8 +47,9 @@ import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
 import Link from "next/link";
 import { maskDID } from "../../utils/helper";
+import { useApp } from "../../hooks/useApp";
 
-const IndexDetailPage: NextPageWithLayout = (params, searchParams) => {
+const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const { indexId } = router.query;
@@ -67,9 +68,15 @@ const IndexDetailPage: NextPageWithLayout = (params, searchParams) => {
 	});
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
+	const [init, setInit] = useState(true);
 	const [titleLoading, setTitleLoading] = useState(false);
 	const [search, setSearch] = useState("");
 	const { did } = useAppSelector(selectConnection);
+	const {
+		viewedProfile,
+		setViewedProfile,
+	} = useApp();
+
 	const chatId = uuidv4();
 	const loadIndex = async (indexIdParam: string) => {
 		const doc = await api.getIndexById(indexIdParam);
@@ -77,6 +84,8 @@ const IndexDetailPage: NextPageWithLayout = (params, searchParams) => {
 			setNotFound(true);
 		} else {
 			setIndex(doc);
+			!viewedProfile && setViewedProfile(doc.ownerDID);
+			setInit(false);
 			setLoading(false);
 		}
 	};
@@ -165,7 +174,6 @@ const IndexDetailPage: NextPageWithLayout = (params, searchParams) => {
 		}
 	};
 	useEffect(() => {
-		console.log(params, searchParams, "seref");
 		loadUserIndex();
 	}, [index.id, did]);
 

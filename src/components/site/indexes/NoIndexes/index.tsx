@@ -4,7 +4,6 @@ import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import Image from "next/image";
 import React from "react";
-import { useRouter } from "next/router";
 import { useOwner } from "hooks/useOwner";
 import { useApp } from "hooks/useApp";
 
@@ -15,7 +14,6 @@ export interface NoIndexesProps {
 const NoIndexes: React.VFC<NoIndexesProps> = ({
 	tabKey,
 }) => {
-
 	const { isOwner } = useOwner();
 	const { setCreateModalVisible } = useApp();
 

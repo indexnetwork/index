@@ -26,7 +26,7 @@ const IndexItem: React.VFC<IndexItemProps> = ({
 }) => {
 	const router = useRouter();
 	const { did } = router.query;
-	return <Link href="/[did]/[indexId]" as={`/${did}/${index.id}`}>
+	return <Link href="/index/[indexId]" as={`/index/${index.id}`} shallow={true}>
 		<FlexRow onClick={onClick} className={cc([
 			selected ? "index-list-item-selected" : "index-list-item",
 			"p-6",

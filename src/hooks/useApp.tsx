@@ -6,11 +6,21 @@ import CreateModal from "components/site/modal/CreateModal";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import LitService from "services/lit-service";
 import CeramicService from "services/ceramic-service";
-import { Indexes, Users } from "types/entity";
+import {
+	Indexes,
+	Users,
+	MultipleIndexListState,
+	IndexListState,
+} from "types/entity";
 import { useCeramic } from "hooks/useCeramic";
 import { useRouter } from "next/router";
+import { useSearchParams } from "next/navigation";
 
 export interface AppContextValue {
+	indexes: MultipleIndexListState
+	setIndexes: (indexes: MultipleIndexListState) => void
+	section: keyof MultipleIndexListState
+	setSection: (section: keyof MultipleIndexListState) => void
 	setCreateModalVisible: (visible: boolean) => void
 	setTransactionApprovalWaiting: (visible: boolean) => void
 	leftSidebarOpen: boolean
@@ -18,19 +28,42 @@ export interface AppContextValue {
 	rightSidebarOpen: boolean
 	setRightSidebarOpen: (visible: boolean) => void
 	viewedProfile: Users | undefined
+	setViewedProfile: (profile: Users | undefined) => void
 }
 
 export const AppContext = createContext({} as AppContextValue);
 
 export const AppContextProvider = ({ children } : any) => {
+	const [indexes, setIndexes] = useState<MultipleIndexListState>({
+		all_indexes: {
+			skip: 0,
+			totalCount: 0,
+			hasMore: true,
+			indexes: [] as Indexes[],
+		} as IndexListState,
+		my_indexes: {
+			skip: 0,
+			totalCount: 0,
+			hasMore: true,
+			indexes: [] as Indexes[],
+		} as IndexListState,
+		starred: {
+			skip: 0,
+			totalCount: 0,
+			hasMore: true,
+			indexes: [] as Indexes[],
+		} as IndexListState,
+	});
+	const searchParams = useSearchParams();
 	const [createModalVisible, setCreateModalVisible] = useState(false);
 	const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
 	const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
 	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
 	const [viewedProfile, setViewedProfile] = useState<Users>();
+	const [section, setSection] = useState((searchParams.get("section") || "all_indexes") as keyof MultipleIndexListState);
 	const router = useRouter();
 	const ceramic = useCeramic();
-	const { did } = router.query;
+	const { did, indexId } = router.query;
 	const handleCreate = async (title: string) => {
 		if (title) {
 			// handleToggleCreateModal();
@@ -48,28 +81,20 @@ export const AppContextProvider = ({ children } : any) => {
 			}
 		}
 	};
-	const getProfile = async (viewedDid: string) => {
-		try {
-			const profile = await ceramic.getProfileByDID(viewedDid);
-			if (profile) {
-				setViewedProfile(profile);
-			}
-		} catch (err) {
-			// profile error
-		}
-	};
-
-	useEffect(() => {
-		if (did) {
-			getProfile(did.toString());
-		}
-	}, [did]);
 
 	const handleTransactionCancel = () => {
 		setTransactionApprovalWaiting(false);
 	};
+
+	useEffect(() => {
+		 section && viewedProfile && router.replace(`/[did]`, section === "all_indexes" ? `/${did || viewedProfile.id}` : `/${did || viewedProfile.id}?section=${section}`, { shallow: true });
+	}, [section]);
 	return (
 		<AppContext.Provider value={{
+			indexes,
+			setIndexes,
+			section,
+			setSection,
 			setCreateModalVisible,
 			setTransactionApprovalWaiting,
 			leftSidebarOpen,
@@ -77,6 +102,7 @@ export const AppContextProvider = ({ children } : any) => {
 			rightSidebarOpen,
 			setRightSidebarOpen,
 			viewedProfile,
+			setViewedProfile,
 		}}>
 			{children}
 			{/* eslint-disable-next-line max-len */}

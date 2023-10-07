@@ -120,3 +120,15 @@ export interface AccessControlCondition {
   parameters: string[];
   returnValueTest: object;
 }
+
+export interface IndexListState {
+  skip: number,
+  totalCount: number,
+  hasMore: boolean,
+  indexes?: Indexes[],
+}
+export interface MultipleIndexListState {
+  all_indexes: IndexListState,
+  my_indexes: IndexListState,
+  starred: IndexListState,
+}
