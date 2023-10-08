@@ -42,7 +42,7 @@ const LandingSection1 = () => {
 		<FlexRow align={"center"} fullWidth justify={"between"} >
 			<Col sm={12} md={6} >
 				<Flex flexDirection={"column"} justifyContent={"left"} className={cc([" lnd-card lnd-first", cm.container])}>
-					<Header className={cm.lndBlueTtl}> The human bridge between context and content.</Header>
+					<Header className={cm.lndBlueTtl}> The human bridge between context and content</Header>
 					<Text style={{ fontSize: "2.4rem", lineHeight: "1.50" }} className={cc([cm.descLine, "mr-lg-10 pr-lg-10 mb-6", "mb-sm-7"])}>
 						Index Network helps you to create composable discovery engines.</Text>
 					<Button
