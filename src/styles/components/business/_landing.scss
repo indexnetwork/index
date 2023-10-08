@@ -44,14 +44,14 @@
 	}
 
 	.lnd-5-title {
-		font-size: 3.6rem;
-		line-height: 4.4rem;
+		font-size: 4rem;
+		line-height: 6rem;
 	}
 
 	.lnd-5-img {
 		width: auto;
 		object-fit: contain;
-		height: 40px;
+		height: 60px;
 		margin-bottom: 1.6rem;
 	}
 
@@ -64,6 +64,7 @@
 	.lnd-5-list {
 		row-gap: map-deep-get($spacing, "xs", "6");
 	}
+
 
 	.lnd-steps {
 		align-items: flex-start;
@@ -81,7 +82,28 @@
 
 
 
+	@media (max-width: map-get($breakpoints, "md")) {
+		.lnd-5-title{
+			text-align: left;
+		}
+		.lnd-5-logos{
+			width: 100%;
+			margin-bottom: 2rem;
+		}
+	}
+	@media (min-width: map-get($breakpoints, "md")) {
+		.lnd-5-title{
+			text-align: center;
+			margin:auto;
+		}
+		.lnd-5-logos-container{
+			padding: 0px 80px;
+			justify-content: space-around;
+		}
+
+	}
 	@media (min-width: map-get($breakpoints, "sm")) {
+
 		.lnd-2-container {
 			align-items: center !important;
 		}
@@ -107,8 +129,8 @@
 
 
 		.lnd-5-title {
-			font-size: 6rem;
-			line-height: 7.38rem;
+			font-size: 4rem;
+			line-height: 6rem;
 		}
 
 

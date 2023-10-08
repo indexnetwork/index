@@ -13,7 +13,9 @@ import {
 } from "store/slices/connectionSlice";
 import { setProfile } from "store/slices/profileSlice";
 import { useCeramic } from "hooks/useCeramic";
+import { switchTestNetwork } from "utils/helper";
 import OriginWarningModal from "../modal/OriginWarningModal";
+import {appConfig} from "../../../config";
 
 declare global {
 	interface Window {
@@ -68,6 +70,14 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		}
 		// We enable the ethereum provider to get the user's addresses.
 		const ethProvider = window.ethereum;
+
+		if (ethProvider.chainId !== appConfig.testNetwork.chainId) {
+			const switchRes = await switchTestNetwork();
+			if (!switchRes) {
+				dispatch(setAuthLoading(false));
+				throw new Error("Network error.");
+			}
+		}
 		// request ethereum accounts.
 		const addresses = await ethProvider.enable({
 			method: "eth_requestAccounts",

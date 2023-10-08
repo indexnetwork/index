@@ -4,6 +4,17 @@ export const appConfig = {
 	ipfsProxy: "https://ipfs.io/ipfs",
 	ipfsInfura: "http://localhost:3001/avatar",
 	defaultCID: "QmWxCRESjmETX2PLXFSopsGT8dbRBUJM6PdFUXZZzb5Nv9", // Empty.
+	testNetwork: {
+		chainId: "0x2ac49",
+		chainName: "Chronicle - Lit Protocol Testnet",
+		nativeCurrency: {
+			name: "LIT",
+			symbol: "LIT",
+			decimals: 18,
+		},
+		rpcUrls: ["https://chain-rpc.litprotocol.com/http"],
+		blockExplorerUrls: ["https://chain.litprotocol.com"],
+	},
 	chains: {
 		ethereum: {
 			value: "ethereum",

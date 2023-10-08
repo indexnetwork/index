@@ -14,6 +14,8 @@ import Container from "../Grid/Container";
 import Col from "../Grid/Col";
 import FlexRow from "../Grid/FlexRow";
 import Flex from "../Grid/Flex";
+import Text from "../../../base/Text";
+import {appConfig} from "../../../../config";
 
 export interface NavbarProps extends
 	React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {
@@ -50,8 +52,19 @@ const Navbar = (
 
 	const { did } = useAppSelector(selectConnection);
 	const authenticated = useAuth();
+
 	const router = useRouter();
 	const { leftSidebarOpen, setLeftSidebarOpen } = useApp();
+
+	/*
+	const [showTestnetWarning, setShowTestnetWarning] = useState(false);
+	useEffect(() => {
+		const handleChainChanged = (newChainId: string) => setShowTestnetWarning(newChainId !== appConfig.testNetwork.chainId);
+		handleChainChanged(window.ethereum?.chainId);
+		window.ethereum?.on("chainChanged", handleChainChanged);
+		return () => window.ethereum?.removeListener("chainChanged", handleChainChanged);
+	}, []);
+	 */
 
 	useEffect(() => {
 		if (sticky) {
@@ -73,47 +86,52 @@ const Navbar = (
 		}
 	};
 	return (
-		<div
-			className={cc([
-				className,
-				"navbar-container",
-				sticky ? "navbar-sticky" : "",
-				bordered ? "navbar-bordered" : "",
-			])}
-			style={sticky || bgColor ? {
-				...style,
-				backgroundColor: sticky && bgSticky ? stickyBgColor : bgColor,
-			} : style}
-			{...menuProps}
-		>
-			<Container
-				className="navbar"
-				fluid={true}
+		<>
+			{isLanding && <Flex alignItems={"center"} justifyContent={"space-around"} style={{ background: "var(--landing)" }}>
+				<Text className={"p-5"} size={"md"}>Index Network is live on testnet.</Text>
+			</Flex>}
+			<div
+				className={cc([
+					className,
+					"navbar-container",
+					sticky ? "navbar-sticky" : "",
+					bordered ? "navbar-bordered" : "",
+				])}
+				style={sticky || bgColor ? {
+					...style,
+					backgroundColor: sticky && bgSticky ? stickyBgColor : bgColor,
+				} : style}
+				{...menuProps}
 			>
-				<FlexRow fullWidth fullHeight align={"center"}>
-					<Col xs={isLanding ? 10 : 12} centerBlock>
-						<FlexRow
-							justify="between"
-							wrap={false}
-						>
-							<Col className={"navbar-logo"}>
-								<Flex alignItems={"center"}>
-									{logoSize === "mini" ? <LogoMini className="navbar-logo" onClick={handleLogoClick} style={{
-										cursor: "pointer",
-									}} /> : <LogoFull className="navbar-logo navbar-logo-full" />}
-								</Flex>
-							</Col>
-							<Col className={"navbar-sidebar-handlers"}>
-								<Button onClick={() => setLeftSidebarOpen(!leftSidebarOpen)} iconButton theme="clear"><IconMenu width={32} /></Button>
-							</Col>
-							<Col>
-								{children}
-							</Col>
-						</FlexRow>
-					</Col>
-				</FlexRow>
-			</Container>
-		</div>
+				<Container
+					className="navbar"
+					fluid={true}
+				>
+					<FlexRow fullWidth fullHeight align={"center"}>
+						<Col xs={isLanding ? 10 : 12} centerBlock>
+							<FlexRow
+								justify="between"
+								wrap={false}
+							>
+								<Col className={"navbar-logo"}>
+									<Flex alignItems={"center"}>
+										{logoSize === "mini" ? <LogoMini className="navbar-logo" onClick={handleLogoClick} style={{
+											cursor: "pointer",
+										}} /> : <LogoFull className="navbar-logo navbar-logo-full" />}
+									</Flex>
+								</Col>
+								<Col className={"navbar-sidebar-handlers"}>
+									<Button onClick={() => setLeftSidebarOpen(!leftSidebarOpen)} iconButton theme="clear"><IconMenu width={32} /></Button>
+								</Col>
+								<Col>
+									{children}
+								</Col>
+							</FlexRow>
+						</Col>
+					</FlexRow>
+				</Container>
+			</div>
+		</>
 	);
 };
 
