@@ -15,7 +15,6 @@ import Col from "../Grid/Col";
 import FlexRow from "../Grid/FlexRow";
 import Flex from "../Grid/Flex";
 import Text from "../../../base/Text";
-import {appConfig} from "../../../../config";
 
 export interface NavbarProps extends
 	React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {

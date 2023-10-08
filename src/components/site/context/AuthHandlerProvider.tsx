@@ -15,7 +15,7 @@ import { setProfile } from "store/slices/profileSlice";
 import { useCeramic } from "hooks/useCeramic";
 import { switchTestNetwork } from "utils/helper";
 import OriginWarningModal from "../modal/OriginWarningModal";
-import {appConfig} from "../../../config";
+import { appConfig } from "../../../config";
 
 declare global {
 	interface Window {
