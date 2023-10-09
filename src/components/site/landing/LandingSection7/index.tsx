@@ -29,7 +29,7 @@ const LandingSection7 = () => {
 			flexDirection={"column"}
 			className={"py-10 pt-10 mt-10"}
 		>
-			<Header fontFamily="roquefort" className="lnd-7-title">Decentralization requires bundling</Header>
+			<Header fontFamily="roquefort" className="lnd-7-title">The human bridge between context and content.</Header>
 			<Button onClick={handleConnect} className="px-8" >Create Your First Index</Button>
 		</Flex>
 	</LandingSection>;
