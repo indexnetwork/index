@@ -39,7 +39,8 @@ const LandingSection5: React.VFC = () => (
 					</Col>
 				</FlexRow>
 			</Flex>
-			<Flex
+
+			{false && <Flex
 				className={"mt-11"}
 				gap={"16px"}
 				flexWrap={"wrap"}
@@ -59,10 +60,7 @@ const LandingSection5: React.VFC = () => (
 						</Link>
 					</Col>
 				</FlexRow>
-			</Flex>
-		</LandingSection>
-		<LandingSection>
-
+			</Flex> }
 		</LandingSection>
 	</>
 );
