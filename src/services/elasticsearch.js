@@ -383,13 +383,14 @@ export const did = async (req, res) => {
 
     sendLit(did.split(":").pop());
 
-    let user_indexes = await redis.hGetAll(`user_indexes:by_did:${did.toLowerCase()}`)
+    let user_indexes_res = await redis.hGetAll(`user_indexes:by_did:${did.toLowerCase()}`)
 
-    let user_indexes_by_type = _.chain(user_indexes)
+    let user_indexes = _.chain(user_indexes_res)
                             .map(i => JSON.parse(i))
                             .filter(i => !i.deletedAt)
-                            .groupBy("type")
-                            .value()
+
+    let user_indexes_by_type = user_indexes.groupBy("type").value()
+    user_indexes_by_type["all_indexes"] = user_indexes.value();
 
     if(type){
         let search_result = {};
