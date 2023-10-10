@@ -14,7 +14,6 @@ import {
 } from "types/entity";
 import { useCeramic } from "hooks/useCeramic";
 import { useRouter } from "next/router";
-import { useSearchParams } from "next/navigation";
 
 export interface AppContextValue {
 	indexes: MultipleIndexListState
@@ -54,16 +53,31 @@ export const AppContextProvider = ({ children } : any) => {
 			indexes: [] as Indexes[],
 		} as IndexListState,
 	});
-	const searchParams = useSearchParams();
 	const [createModalVisible, setCreateModalVisible] = useState(false);
 	const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
 	const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
 	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
 	const [viewedProfile, setViewedProfile] = useState<Users>();
-	const [section, setSection] = useState((searchParams.get("section") || "all_indexes") as keyof MultipleIndexListState);
+	const [section, setSection] = useState <keyof MultipleIndexListState>("all_indexes");
 	const router = useRouter();
 	const ceramic = useCeramic();
 	const { did, indexId } = router.query;
+
+	const activeKey = () => {
+		if (did) {
+			const url = new URL(`https://index.network${router.asPath}`);
+			const active = (url.searchParams.get("section") || "all_indexes") as keyof MultipleIndexListState;
+			return active;
+		}
+		if (indexId && section) {
+			return section;
+		}
+		return "all_indexes";
+	};
+	useEffect(() => {
+		setSection(activeKey());
+	}, [router.asPath]);
+
 	const handleCreate = async (title: string) => {
 		if (title) {
 			// handleToggleCreateModal();
@@ -86,9 +100,6 @@ export const AppContextProvider = ({ children } : any) => {
 		setTransactionApprovalWaiting(false);
 	};
 
-	useEffect(() => {
-		 section && viewedProfile && router.replace(`/[did]`, section === "all_indexes" ? `/${did || viewedProfile.id}` : `/${did || viewedProfile.id}?section=${section}`, { shallow: true });
-	}, [section]);
 	return (
 		<AppContext.Provider value={{
 			indexes,

@@ -8,8 +8,8 @@ import React, {
 import { NextPageWithLayout } from "types";
 import { useRouter } from "next/router";
 import { v4 as uuidv4 } from "uuid";
-import { useCeramic } from "../../hooks/useCeramic";
-import { useApp } from "../../hooks/useApp";
+import { useCeramic } from "hooks/useCeramic";
+import { useApp } from "hooks/useApp";
 
 const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
@@ -18,8 +18,6 @@ const IndexesPage: NextPageWithLayout = () => {
 	const [chatId, setChatId] = useState<string>(uuidv4());
 	const ceramic = useCeramic();
 	const {
-		section,
-		setSection,
 		setViewedProfile,
 	} = useApp();
 
@@ -33,12 +31,8 @@ const IndexesPage: NextPageWithLayout = () => {
 			// profile error
 		}
 	};
-
 	useEffect(() => {
 		setChatId(uuidv4());
-		if (did && !router.asPath.includes("section") && section !== "all_indexes") {
-			setSection("all_indexes");
-		}
 		did && getProfile(did.toString());
 	}, [router.query]);
 

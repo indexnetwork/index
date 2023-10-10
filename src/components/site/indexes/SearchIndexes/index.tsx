@@ -1,10 +1,10 @@
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import List from "components/base/List";
 import { useRouter } from "next/router";
 import api, { DidSearchRequestBody, IndexSearchResponse } from "services/api-service";
-import { Indexes, IndexListState, MultipleIndexListState } from "types/entity";
+import { Indexes, MultipleIndexListState } from "types/entity";
 import InfiniteScroll from "react-infinite-scroller";
 import { Tabs } from "components/base/Tabs";
 import TabPane from "components/base/Tabs/TabPane";
@@ -14,29 +14,33 @@ import NoIndexes from "components/site/indexes/NoIndexes";
 import { useApp } from "hooks/useApp";
 
 export interface SearchIndexesProps {
-	did?: string;
+	didParam?: string;
 }
 
 const SearchIndexes: React.VFC<SearchIndexesProps> = ({
-	did,
+	didParam,
 }) => {
 	const router = useRouter();
 	const {
 		section,
-		setSection,
 		indexes,
 		setIndexes,
 	} = useApp();
-
 	const take = 10;
-	const { indexId } = router.query;
+	const { did, indexId } = router.query;
+
+	const [tabClickValue, handleTabClick] = useState<string>();
+	useEffect(() => {
+		tabClickValue && router.replace(`/[did]`, tabClickValue === "all_indexes" ? `/${didParam}` : `/${didParam}?section=${tabClickValue}`, { shallow: true });
+	}, [tabClickValue]);
 
 	useEffect(() => {
 		getData(1, true);
-	}, [did]);
+	}, [didParam]);
+
 	const getData = async (page?: number, newSearch?: boolean) => {
 		const queryParams = {
-			did,
+			did: didParam,
 			take,
 		} as DidSearchRequestBody;
 
@@ -53,9 +57,9 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 			if (newSearch) {
 				setIndexes({
 					all_indexes: {
-						hasMore: res.my_indexes?.totalCount! > queryParams.skip + take,
-						indexes: res.my_indexes?.records.slice(0, 1) || [],
-						totalCount: res.my_indexes?.totalCount || 0,
+						hasMore: res.all_indexes?.totalCount! > queryParams.skip + take,
+						indexes: res.all_indexes?.records || [],
+						totalCount: res.all_indexes?.totalCount || 0,
 					},
 					my_indexes: {
 						hasMore: res.my_indexes?.totalCount! > queryParams.skip + take,
@@ -69,20 +73,22 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 					},
 				} as MultipleIndexListState);
 			} else {
-				const newState = indexes;
-				newState[section] = {
-					hasMore: res[section]?.totalCount! > queryParams.skip + take,
-					indexes: newSearch ? res[section]?.records! : indexes[section]?.indexes?.concat(res[section]?.records!),
-					totalCount: res[section]?.totalCount,
-				} as IndexListState;
-				setIndexes(newState as MultipleIndexListState);
+				setIndexes({
+					...indexes,
+					[section]: {
+						hasMore: res[section]?.totalCount! > queryParams.skip + take,
+						// eslint-disable-next-line no-unsafe-optional-chaining
+						indexes: newSearch ? res[section]?.records! : [...(indexes[section]?.indexes || []), ...res[section]?.records!],
+						totalCount: res[section]?.totalCount,
+					},
+				} as MultipleIndexListState);
 			}
 		}
 	};
 	return <>
 		<FlexRow className={"mr-6 pb-4"}>
 			<Col className="idxflex-grow-1">
-				<Tabs theme={"rounded"} activeKey={section} onTabChange={setSection}>
+				<Tabs theme={"rounded"} activeKey={section} onTabChange={handleTabClick}>
 					<TabPane enabled={true} tabKey={"all_indexes"} title={`All Indexes`} />
 					<TabPane enabled={true} tabKey={"my_indexes"} total={indexes.my_indexes?.totalCount} title={`Owned`} />
 					<TabPane enabled={true} tabKey={"starred"} total={indexes.starred?.totalCount} title={`Starred`} />
@@ -90,8 +96,9 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 			</Col>
 		</FlexRow>
 		<FlexRow className={"scrollable-area index-list pr-6"}>
-			{(indexes[section].totalCount > 0) ? <>
+			{ (indexes[section].totalCount > 0) ? <>
 				<InfiniteScroll
+					key={section}
 					initialLoad={false}
 					hasMore={indexes[section].hasMore}
 					loadMore={getData}

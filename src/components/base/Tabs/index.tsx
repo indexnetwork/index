@@ -68,7 +68,7 @@ export const Tabs = (
 	}, [children, activeTab]);
 
 	const handleTabChange = (tabKey: string) => {
-		setActiveTab(tabKey);
+		tabKey && setActiveTab(tabKey);
 		onTabChange && onTabChange(tabKey);
 	};
 

@@ -4,8 +4,12 @@ import Button from "components/base/Button";
 
 import { IconArrowRight } from "components/ai/ui/icons";
 import { useSearchParams } from "next/navigation";
+import { selectProfile } from "store/slices/profileSlice";
 import Text from "../base/Text";
 import { useIndex } from "../../hooks/useIndex";
+import { useApp } from "../../hooks/useApp";
+import { maskDID } from "../../utils/helper";
+import { useAppSelector } from "../../hooks/store";
 
 const exampleMessages = [
 	{
@@ -25,19 +29,31 @@ const exampleMessages = [
 export function EmptyScreen({ setInput }: Pick<UseChatHelpers, "setInput">) {
 	const searchParams = useSearchParams();
 	const index = useIndex();
+	const {
+		viewedProfile,
+		section,
+	} = useApp();
+	const profile = useAppSelector(selectProfile);
+
 	const getChatContextMessage = () => {
-		const section = searchParams.get("section");
-		if (section) {
-			switch (section) {
-				case "my_indexes":
-					return `Chat with indexes created by you`;
-				case "starred":
-					return `Chat with indexes starred by you`;
-				default:
-					return `Chat with all your indexes`;
-			}
-		} else if (index.index) {
+		if (index.index && index.index.title) {
 			return `Chat with ${index.index.title}`;
+		}
+		if (viewedProfile && profile && viewedProfile.id === profile.id) {
+			 const sections = {
+				 my_indexes: "indexes owned by you",
+				 starred: "indexes starred by you",
+				 all_indexes: "all your indexes",
+			 };
+			return `Chat with ${sections[section]} `;
+		}
+		if (viewedProfile && viewedProfile?.id) {
+			 const sections = {
+				 my_indexes: "indexes owned by",
+				 starred: "indexes starred by",
+				 all_indexes: "all indexes of",
+			 };
+			return `Chat with ${sections[section]} ${viewedProfile.name || maskDID(viewedProfile.id)}`;
 		}
 	};
 	return (
