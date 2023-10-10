@@ -21,12 +21,12 @@ const topics = {
     'postgres.public.kjzl6hvfrbw6c92114fj79ii6shyl8cbnsz5ol3v62s0uu3m78gy76gzaovpaiu': 'link',
     'postgres.public.kjzl6hvfrbw6c8a1u7qrk1xcz5oty0temwn2szbmhl8nfnw9tddljj4ue8wba68': 'index_link',
     'postgres.public.kjzl6hvfrbw6c9aw0xd4vlhqc5mx57f0y2xmm8xiyxzzj1abrizfyppup22r9ac': 'user_index',
-    'postgres.public.kjzl6hvfrbw6c7h2l07sxzkzorsuzc5ps9wbjrxwhcqxwrhpwh14jd5a07n7ye3': 'profile',
+    'postgres.public.kjzl6hvfrbw6ca52q3feusjpl2r49wv9x0odyd2zmaytyq8ddunud4243rvl3gm': 'profile',
 }
 
 async function start() {
     await redis.connect()
-    const consumer = kafka.consumer({ groupId: `index-consumer-dev-8` })
+    const consumer = kafka.consumer({ groupId: `index-consumer-dev-11` })
     await consumer.connect()
     await consumer.subscribe({ topics: Object.keys(topics), fromBeginning: true})
     await consumer.run({
