@@ -374,6 +374,7 @@ class CeramicService {
 			{
 			  node(id: "${did}") {
 				...on CeramicAccount{
+				 id
 				  profile {
 					name
 					bio
