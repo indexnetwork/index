@@ -35,7 +35,9 @@ const SiteNavbar = (
 ) => {
 	const { t } = useTranslation(["common", "components"]);
 	const router = useRouter();
-	const { setCreateModalVisible, rightSidebarOpen, setRightSidebarOpen } = useApp();
+	const {
+		setCreateModalVisible, rightSidebarOpen, setRightSidebarOpen, setEditProfileModalVisible,
+	} = useApp();
 	const {
 		did,
 		loading,
@@ -99,7 +101,7 @@ const SiteNavbar = (
 								<>
 
 									<DropdownMenuItem onClick={() => {
-										router.push("/profile");
+										setEditProfileModalVisible(true);
 									}}>
 										<Flex alignItems="center">
 											<IconSettings width={16} height="100%"/>

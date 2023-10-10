@@ -61,7 +61,7 @@ const PageContainer = (
 								</Col>
 								<Col className="idxflex-grow-1 ml-6">
 									<Flex flexDirection={"column"} >
-										<Header level={4} className={"mb-1"}>{viewedProfile?.name || viewedProfile?.id ? maskDID(viewedProfile?.id!) : ""}</Header>
+										<Header level={4} className={"mb-1"}>{viewedProfile?.name || (viewedProfile?.id ? maskDID(viewedProfile?.id!) : "")}</Header>
 										<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{viewedProfile?.bio}</Text>
 									</Flex>
 								</Col>

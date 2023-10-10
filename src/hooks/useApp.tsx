@@ -3,6 +3,7 @@ import {
 } from "react";
 import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
+import EditProfileModal from "components/site/modal/EditProfileModal";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import LitService from "services/lit-service";
 import CeramicService from "services/ceramic-service";
@@ -28,6 +29,7 @@ export interface AppContextValue {
 	setRightSidebarOpen: (visible: boolean) => void
 	viewedProfile: Users | undefined
 	setViewedProfile: (profile: Users | undefined) => void
+	setEditProfileModalVisible: (visible: boolean) => void
 }
 
 export const AppContext = createContext({} as AppContextValue);
@@ -56,6 +58,7 @@ export const AppContextProvider = ({ children } : any) => {
 	const [createModalVisible, setCreateModalVisible] = useState(false);
 	const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
 	const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+	const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
 	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
 	const [viewedProfile, setViewedProfile] = useState<Users>();
 	const [section, setSection] = useState <keyof MultipleIndexListState>("all_indexes");
@@ -114,12 +117,16 @@ export const AppContextProvider = ({ children } : any) => {
 			setRightSidebarOpen,
 			viewedProfile,
 			setViewedProfile,
+			setEditProfileModalVisible,
 		}}>
 			{children}
 			{/* eslint-disable-next-line max-len */}
 			{transactionApprovalWaiting ? <ConfirmTransaction handleCancel={handleTransactionCancel} visible={transactionApprovalWaiting}></ConfirmTransaction> : <></>}
 			{/* eslint-disable-next-line max-len */}
 			{createModalVisible ? <CreateModal visible={createModalVisible} onClose={() => setCreateModalVisible(false)} onCreate={handleCreate}></CreateModal> : <></>}
+			{/* eslint-disable-next-line max-len */}
+			{editProfileModalVisible ? <EditProfileModal visible={editProfileModalVisible} onClose={() => setEditProfileModalVisible(false)}></EditProfileModal> : <></>}
+
 		</AppContext.Provider>
 	);
 };
