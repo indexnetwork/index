@@ -15,6 +15,8 @@ import {
 } from "types/entity";
 import { useCeramic } from "hooks/useCeramic";
 import { useRouter } from "next/router";
+import { useAppSelector } from "./store";
+import { selectProfile } from "../store/slices/profileSlice";
 
 export interface AppContextValue {
 	indexes: MultipleIndexListState
@@ -65,6 +67,7 @@ export const AppContextProvider = ({ children } : any) => {
 	const router = useRouter();
 	const ceramic = useCeramic();
 	const { did, indexId } = router.query;
+	const profile = useAppSelector(selectProfile);
 
 	const activeKey = () => {
 		if (did) {
@@ -80,6 +83,10 @@ export const AppContextProvider = ({ children } : any) => {
 	useEffect(() => {
 		setSection(activeKey());
 	}, [router.asPath]);
+
+	useEffect(() => {
+		(viewedProfile && (viewedProfile.id === profile.id)) && setViewedProfile(profile);
+	}, [profile]);
 
 	const handleCreate = async (title: string) => {
 		if (title) {

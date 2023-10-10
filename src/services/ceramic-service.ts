@@ -374,7 +374,6 @@ class CeramicService {
 			{
 			  node(id: "${did}") {
 				...on CeramicAccount{
-				  id
 				  profile {
 					name
 					bio
@@ -387,11 +386,11 @@ class CeramicService {
 			}
 		`);
 		if (errors || !data?.node) {
-			// TODO Handle.
+			return { id: did };
 		}
 		if (data && data.node) {
 			if (data.node.profile) {
-				data.node.profile.id = data.node.id;
+				data.node.profile = { ...data.node.profile, id: data.node.id };
 			} else {
 				data.node.profile = { id: data.node.id } as Users;
 			}
@@ -411,6 +410,9 @@ class CeramicService {
 			mutation CreateProfile($input: CreateProfileInput!) {
 				createProfile(input: $input) {
 					document {
+					  controllerDID {
+					  	id
+					  }
 					  name
 					  bio
 					  avatar
@@ -423,7 +425,12 @@ class CeramicService {
 			console.log(errors);
 			// TODO Handle
 		}
-		return data?.createProfile.document!;
+		// @ts-ignore
+		let p = data.createProfile.document;
+		// @ts-ignore
+		p = { ...p, id: p.controllerDID.id };
+		// @ts-ignore
+		return p;
 	}
 }
 
