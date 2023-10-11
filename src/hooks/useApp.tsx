@@ -99,7 +99,7 @@ export const AppContextProvider = ({ children } : any) => {
 			c.authenticateUser(sessionResponse.session.did);
 			const doc = await c.createIndex(pkpPublicKey, { title } as Indexes);
 			await ceramic.addUserIndex(doc.id, "my_indexes");
-			if (doc != null) {
+			if (doc) {
 				setTransactionApprovalWaiting(false);
 				await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
 			}
