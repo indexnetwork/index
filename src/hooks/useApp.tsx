@@ -101,7 +101,7 @@ export const AppContextProvider = ({ children } : any) => {
 			await ceramic.addUserIndex(doc.id, "my_indexes");
 			if (doc != null) {
 				setTransactionApprovalWaiting(false);
-				await router.push(`/[did]/[indexId]`, `/${did}/${doc.id}`, { shallow: true });
+				await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
 			}
 		}
 	};
