@@ -390,7 +390,7 @@ export const did = async (req, res) => {
                             .filter(i => !i.deletedAt)
 
     let user_indexes_by_type = user_indexes.groupBy("type").value()
-    user_indexes_by_type["all_indexes"] = user_indexes.value();
+    user_indexes_by_type["all"] = user_indexes.value();
 
     if(type){
         let search_result = {};
