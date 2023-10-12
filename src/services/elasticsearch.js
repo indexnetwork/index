@@ -336,14 +336,14 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
 
     indexResult = indexResult.map(index => {
 
-        index.is_in_my_indexes = false;
-        index.is_starred = false;
+        index.isOwner = false;
+        index.isStarred = false;
 
-        if(user_indexes_by_type.my_indexes && user_indexes_by_type.my_indexes.length > 0){
-            index.is_in_my_indexes = !!user_indexes_by_type.my_indexes.filter(ui => ui.indexId == index.id && ui.type == 'my_indexes').length;
+        if(user_indexes_by_type.owner && user_indexes_by_type.owner.length > 0){
+            index.isOwner = !!user_indexes_by_type.owner.filter(ui => ui.indexId == index.id && ui.type == 'my_indexes').length;
         }
         if(user_indexes_by_type.starred && user_indexes_by_type.starred.length > 0){
-            index.is_starred = !!user_indexes_by_type.starred.filter(ui => ui.indexId == index.id && ui.type == 'starred').length;
+            index.isStarred = !!user_indexes_by_type.starred.filter(ui => ui.indexId == index.id && ui.type == 'starred').length;
         }
         return index
     })
@@ -447,10 +447,10 @@ export const user_index = async (req, res, next) => {
     const { did, index_id } = req.body;
 
     if(index_id){
-        let my_indexes = await redis.hGet(`user_indexes:by_did:${did.toLowerCase()}`, `${index_id}:my_indexes`)
+        let owner = await redis.hGet(`user_indexes:by_did:${did.toLowerCase()}`, `${index_id}:my_indexes`)
         let starred = await redis.hGet(`user_indexes:by_did:${did.toLowerCase()}`, `${index_id}:starred`)
         res.json({
-            my_indexes: JSON.parse(my_indexes),
+            owner: JSON.parse(owner),
             starred: JSON.parse(starred),
         })
     }
