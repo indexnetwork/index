@@ -32,19 +32,21 @@ export interface AppContextValue {
 	viewedProfile: Users | undefined
 	setViewedProfile: (profile: Users | undefined) => void
 	setEditProfileModalVisible: (visible: boolean) => void
+	updateUserIndexState: (index: Indexes, type: keyof MultipleIndexListState, op: string) => void
+	updateIndex: (index: Indexes) => void
 }
 
 export const AppContext = createContext({} as AppContextValue);
 
 export const AppContextProvider = ({ children } : any) => {
 	const [indexes, setIndexes] = useState<MultipleIndexListState>({
-		all_indexes: {
+		all: {
 			skip: 0,
 			totalCount: 0,
 			hasMore: true,
 			indexes: [] as Indexes[],
 		} as IndexListState,
-		my_indexes: {
+		owner: {
 			skip: 0,
 			totalCount: 0,
 			hasMore: true,
@@ -63,7 +65,7 @@ export const AppContextProvider = ({ children } : any) => {
 	const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
 	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
 	const [viewedProfile, setViewedProfile] = useState<Users>();
-	const [section, setSection] = useState <keyof MultipleIndexListState>("all_indexes");
+	const [section, setSection] = useState <keyof MultipleIndexListState>("all" as keyof MultipleIndexListState);
 	const router = useRouter();
 	const ceramic = useCeramic();
 	const { did, indexId } = router.query;
@@ -72,16 +74,13 @@ export const AppContextProvider = ({ children } : any) => {
 	const activeKey = () => {
 		if (did) {
 			const url = new URL(`https://index.network${router.asPath}`);
-			const active = (url.searchParams.get("section") || "all_indexes") as keyof MultipleIndexListState;
-			return active;
+			return (url.searchParams.get("section") || "all") as keyof MultipleIndexListState;
 		}
-		if (indexId && section) {
-			return section;
-		}
-		return "all_indexes";
+		return section;
 	};
 	useEffect(() => {
-		setSection(activeKey());
+		const xx = activeKey();
+		setSection(xx);
 	}, [router.asPath]);
 
 	useEffect(() => {
@@ -98,14 +97,55 @@ export const AppContextProvider = ({ children } : any) => {
 			const c = new CeramicService();
 			c.authenticateUser(sessionResponse.session.did);
 			const doc = await c.createIndex(pkpPublicKey, { title } as Indexes);
-			await ceramic.addUserIndex(doc.id, "my_indexes");
+			await ceramic.addUserIndex(doc.id, "owner");
 			if (doc) {
 				setTransactionApprovalWaiting(false);
 				await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
 			}
 		}
 	};
-
+	const removeIndex = (group : IndexListState, index: Indexes) => {
+		const newIndexes = group.indexes?.filter((i: Indexes) => i.id !== index.id) || [];
+		if (newIndexes?.length < group.indexes!.length) {
+			group.totalCount -= 1;
+			group.skip -= 1;
+		}
+		group.indexes = newIndexes;
+		return group;
+	};
+	const addIndex = (group : IndexListState, index: Indexes) => {
+		const isExist = group.indexes?.filter((i: Indexes) => i.id === index.id) || [];
+		if (isExist.length > 0) {
+			return group;
+		}
+		group.indexes = [index, ...group.indexes!];
+		group.skip += 1;
+		group.totalCount += 1;
+		return group;
+	};
+	const updateIndex = (index: Indexes) => {
+		const newState = { ...indexes };
+		Object.keys(indexes).forEach((key) => {
+			newState[key as keyof MultipleIndexListState].indexes = indexes[key as keyof MultipleIndexListState].indexes?.map(
+				(i) => (i.id === index.id ? { ...i, ...index } : i),
+			);
+		});
+		setIndexes(newState);
+	};
+	const updateUserIndexState = (index: Indexes, type: keyof MultipleIndexListState, op: string) => {
+		const newState = { ...indexes };
+		const allIndexes : keyof MultipleIndexListState = "all";
+		if (op === "add") {
+			newState[type]! = addIndex(newState[type]!, index);
+			newState[allIndexes]! = addIndex(newState[allIndexes]!, index);
+		} else {
+			newState[type]! = removeIndex(newState[type]!, index);
+			if (!index.isStarred && !index.isOwner) {
+				newState[allIndexes]! = removeIndex(newState[allIndexes]!, index);
+			}
+		}
+		setIndexes(newState);
+	};
 	const handleTransactionCancel = () => {
 		setTransactionApprovalWaiting(false);
 	};
@@ -125,6 +165,8 @@ export const AppContextProvider = ({ children } : any) => {
 			viewedProfile,
 			setViewedProfile,
 			setEditProfileModalVisible,
+			updateUserIndexState,
+			updateIndex,
 		}}>
 			{children}
 			{/* eslint-disable-next-line max-len */}

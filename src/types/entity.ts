@@ -18,8 +18,8 @@ export type Indexes = {
   updatedAt: string;
   deletedAt: string;
   links: IndexLink[];
-  is_in_my_indexes?: boolean;
-  is_starred?: boolean;
+  isOwner?: boolean;
+  isStarred?: boolean;
 };
 
 export type IndexLink = {
@@ -128,7 +128,7 @@ export interface IndexListState {
   indexes?: Indexes[],
 }
 export interface MultipleIndexListState {
-  all_indexes: IndexListState,
-  my_indexes: IndexListState,
+  all: IndexListState,
+  owner: IndexListState,
   starred: IndexListState,
 }

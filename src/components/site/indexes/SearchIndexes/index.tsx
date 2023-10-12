@@ -31,7 +31,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 
 	const [tabClickValue, handleTabClick] = useState<string>();
 	useEffect(() => {
-		tabClickValue && router.replace(`/[did]`, tabClickValue === "all_indexes" ? `/${didParam}` : `/${didParam}?section=${tabClickValue}`, { shallow: true });
+		tabClickValue && router.replace(`/[did]`, tabClickValue === "all" ? `/${didParam}` : `/${didParam}?section=${tabClickValue}`, { shallow: true });
 	}, [tabClickValue]);
 
 	useEffect(() => {
@@ -56,15 +56,15 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		if (res) {
 			if (newSearch) {
 				setIndexes({
-					all_indexes: {
-						hasMore: res.all_indexes?.totalCount! > queryParams.skip + take,
-						indexes: res.all_indexes?.records || [],
-						totalCount: res.all_indexes?.totalCount || 0,
+					all: {
+						hasMore: res.all?.totalCount! > queryParams.skip + take,
+						indexes: res.all?.records || [],
+						totalCount: res.all?.totalCount || 0,
 					},
-					my_indexes: {
-						hasMore: res.my_indexes?.totalCount! > queryParams.skip + take,
-						indexes: res.my_indexes?.records || [],
-						totalCount: res.my_indexes?.totalCount || 0,
+					owner: {
+						hasMore: res.owner?.totalCount! > queryParams.skip + take,
+						indexes: res.owner?.records || [],
+						totalCount: res.owner?.totalCount || 0,
 					},
 					starred: {
 						hasMore: res.starred?.totalCount! > queryParams.skip + take,
@@ -89,8 +89,8 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		<FlexRow className={"mr-6 pb-4"}>
 			<Col className="idxflex-grow-1">
 				<Tabs theme={"rounded"} activeKey={section} onTabChange={handleTabClick}>
-					<TabPane enabled={true} tabKey={"all_indexes"} title={`All Indexes`} />
-					<TabPane enabled={true} tabKey={"my_indexes"} total={indexes.my_indexes?.totalCount} title={`Owned`} />
+					<TabPane enabled={true} tabKey={"all"} title={`All Indexes`} />
+					<TabPane enabled={true} tabKey={"owner"} total={indexes.owner?.totalCount} title={`Owned`} />
 					<TabPane enabled={true} tabKey={"starred"} total={indexes.starred?.totalCount} title={`Starred`} />
 				</Tabs>
 			</Col>

@@ -41,17 +41,17 @@ export function EmptyScreen({ setInput }: Pick<UseChatHelpers, "setInput">) {
 		}
 		if (viewedProfile && profile && viewedProfile.id === profile.id) {
 			 const sections = {
-				 my_indexes: "indexes owned by you",
+				 owner: "indexes owned by you",
 				 starred: "indexes starred by you",
-				 all_indexes: "all your indexes",
+				 all: "all your indexes",
 			 };
 			return `Chat with ${sections[section]} `;
 		}
 		if (viewedProfile && viewedProfile?.id) {
 			 const sections = {
-				 my_indexes: "indexes owned by",
+				 owner: "indexes owned by",
 				 starred: "indexes starred by",
-				 all_indexes: "all indexes of",
+				 all: "all indexes of",
 			 };
 			return `Chat with ${sections[section]} ${viewedProfile.name || maskDID(viewedProfile.id)}`;
 		}

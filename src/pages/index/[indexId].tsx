@@ -7,20 +7,15 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import Col from "components/layout/base/Grid/Col";
 import { useTranslation } from "next-i18next";
 import PageLayout from "components/layout/site/PageLayout";
-import ButtonGroup from "components/base/ButtonGroup";
 import Button from "components/base/Button";
 import Text from "components/base/Text";
-import IconFilter from "components/base/Icon/IconFilter";
-import IconSort from "components/base/Icon/IconSort";
-import SortPopup from "components/site/popup/SortPopup";
-import FilterPopup from "components/site/popup/FilterPopup";
 import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import Avatar from "components/base/Avatar";
 import LinkInput from "components/site/input/LinkInput";
 import IndexItemList from "components/site/index-details/IndexItemList";
 import CreatorSettings from "components/site/index-details/CreatorSettings";
 import { useRouter } from "next/router";
-import { Indexes, IndexLink } from "types/entity";
+import { Indexes, IndexLink, MultipleIndexListState } from "types/entity";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 import IndexTitleInput from "components/site/input/IndexTitleInput";
 import { useCeramic } from "hooks/useCeramic";
@@ -46,8 +41,9 @@ import { ethers } from "ethers";
 import LitService from "services/lit-service";
 import { IndexContext } from "hooks/useIndex";
 import Link from "next/link";
-import { maskDID } from "../../utils/helper";
-import { useApp } from "../../hooks/useApp";
+import { maskDID } from "utils/helper";
+import { useApp } from "hooks/useApp";
+import { selectProfile } from "store/slices/profileSlice";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -66,6 +62,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		current: 0,
 		total: 0,
 	});
+	const profile = useAppSelector(selectProfile);
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [init, setInit] = useState(true);
@@ -75,6 +72,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const {
 		viewedProfile,
 		setViewedProfile,
+		updateUserIndexState,
+		updateIndex,
 	} = useApp();
 
 	const chatId = uuidv4();
@@ -90,6 +89,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		}
 	};
 	const loadUserIndex = async () => {
+		setIsOwner(false);
 		const sessionResponse = await LitService.getPKPSession(index.pkpPublicKey!, index.collabAction!);
 		if (!sessionResponse || !sessionResponse.session) {
 			return false;
@@ -105,11 +105,12 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			did,
 		} as GetUserIndexesRequestBody) as UserIndexResponse;
 		if (userIndexes) {
-			setIndex({
+			const newIndex = {
 				...index,
-				is_in_my_indexes: !!userIndexes.my_indexes, // TODO Shame
-				is_starred: !!userIndexes.starred,
-			} as Indexes);
+				isOwner: !!userIndexes.owner, // TODO Shame
+				isStarred: !!userIndexes.starred,
+			} as Indexes;
+			setIndex(newIndex);
 		}
 		setLoading(false);
 	};
@@ -138,16 +139,19 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setTitleLoading(false);
 	};
 
-	const handleUserIndexToggle = (index_id: string, type: string, op: string) => {
-		if (type === "my_indexes") {
-			setIndex({ ...index, is_in_my_indexes: op === "add" } as Indexes);
+	const handleUserIndexToggle = (toggleIndex: Indexes, type: string, op: string) => {
+		let updatedIndex: Indexes;
+		if (type === "owner") {
+			updatedIndex = { ...toggleIndex, isOwner: op === "add" };
 		} else {
-			setIndex({ ...index, is_starred: op === "add" } as Indexes);
+			updatedIndex = { ...toggleIndex, isStarred: op === "add" };
 		}
+		setIndex(updatedIndex);
+		(viewedProfile && viewedProfile.id === profile.id) && updateUserIndexState(updatedIndex, type as keyof MultipleIndexListState, op);
 		if (op === "add") {
-			personalCeramic.addUserIndex(index_id, type);
+			personalCeramic.addUserIndex(updatedIndex.id, type);
 		} else {
-			personalCeramic.removeUserIndex(index_id, type);
+			personalCeramic.removeUserIndex(updatedIndex.id, type);
 		}
 	};
 
@@ -177,6 +181,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		loadUserIndex();
 	}, [index.id, did]);
 
+	useEffect(() => {
+		if (viewedProfile && viewedProfile.id === profile.id) {
+			updateIndex(index as Indexes);
+		}
+	}, [index.isOwner, index.isStarred, index.title, index.ownerDID]);
 	useEffect(() => {
 		setLoading(true);
 		setSearch("");
@@ -247,9 +256,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											<Button
 												iconHover
 												theme="clear"
-												onClick={() => handleUserIndexToggle(index.id!, "starred", index.is_starred ? "remove" : "add") }
+												onClick={() => handleUserIndexToggle(index as Indexes, "starred", index.isStarred ? "remove" : "add") }
 												borderless>
-												<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} width={20} height={20} />
+												<IconStar fill={index.isStarred ? "var(--main)" : "var(--white)"} width={20} height={20} />
 											</Button>
 										</Tooltip>
 									</Col>
@@ -260,9 +269,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											borderless>
 											<IndexOperationsPopup
 												isOwner={isOwner}
-												streamId={index.id!}
-												is_in_my_indexes={index.is_in_my_indexes!} // TODO-user_index
-												mode="indexes-page"
+												index={index as Indexes}
 												userIndexToggle={handleUserIndexToggle}
 											></IndexOperationsPopup>
 										</Button>
@@ -293,20 +300,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											defaultValue={search}
 											placeholder={t("pages:home.searchLink")} />
 									</Col>
-									{ false && <Col>
-										<ButtonGroup theme="clear" className="">
-											<FilterPopup>
-												<Button size={"xl"} group iconButton>
-													<IconFilter width={20} height={20} stroke="var(--gray-4)" />
-												</Button>
-											</FilterPopup>
-											<SortPopup>
-												<Button size={"xl"} group iconButton>
-													<IconSort width={20} height={20} stroke="var(--gray-4)" />
-												</Button>
-											</SortPopup>
-										</ButtonGroup>
-									</Col>}
 								</FlexRow>
 								{isCreator && <FlexRow>
 									<Col className="idxflex-grow-1 pb-0 mt-6">

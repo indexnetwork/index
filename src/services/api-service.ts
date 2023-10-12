@@ -13,18 +13,18 @@ export interface IndexResponse extends Indexes {
   highlight?: HighlightType;
 }
 export interface IndexSearchResponse {
-	all_indexes: {
+	all: {
 		totalCount: number;
 		records: Indexes[];
 	},
+	owner?: {
+		totalCount: number;
+		records: Indexes[];
+	}
 	starred?: {
 		totalCount: number;
 		records: Indexes[];
 	},
-	my_indexes?: {
-		totalCount: number;
-		records: Indexes[];
-	}
 }
 
 export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
@@ -61,7 +61,7 @@ export interface LinkSearchResponse {
 	records: IndexLink[];
 }
 export interface UserIndexResponse {
-	my_indexes?: UserIndex;
+	owner?: UserIndex;
 	starred?: UserIndex;
 }
 
