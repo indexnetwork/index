@@ -340,10 +340,10 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
         index.isStarred = false;
 
         if(user_indexes_by_type.owner && user_indexes_by_type.owner.length > 0){
-            index.isOwner = !!user_indexes_by_type.owner.filter(ui => ui.indexId == index.id && ui.type == 'my_indexes').length;
+            index.isOwner = !!user_indexes_by_type.owner.filter(ui => ui.indexId === index.id && ui.type === 'owner').length;
         }
         if(user_indexes_by_type.starred && user_indexes_by_type.starred.length > 0){
-            index.isStarred = !!user_indexes_by_type.starred.filter(ui => ui.indexId == index.id && ui.type == 'starred').length;
+            index.isStarred = !!user_indexes_by_type.starred.filter(ui => ui.indexId === index.id && ui.type === 'starred').length;
         }
         return index
     })
