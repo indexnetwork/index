@@ -447,7 +447,7 @@ export const user_index = async (req, res, next) => {
     const { did, index_id } = req.body;
 
     if(index_id){
-        let owner = await redis.hGet(`user_indexes:by_did:${did.toLowerCase()}`, `${index_id}:my_indexes`)
+        let owner = await redis.hGet(`user_indexes:by_did:${did.toLowerCase()}`, `${index_id}:owner`)
         let starred = await redis.hGet(`user_indexes:by_did:${did.toLowerCase()}`, `${index_id}:starred`)
         res.json({
             owner: JSON.parse(owner),
