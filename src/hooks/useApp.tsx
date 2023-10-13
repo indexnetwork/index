@@ -79,8 +79,7 @@ export const AppContextProvider = ({ children } : any) => {
 		return section;
 	};
 	useEffect(() => {
-		const xx = activeKey();
-		setSection(xx);
+		setSection(activeKey());
 	}, [router.asPath]);
 
 	useEffect(() => {

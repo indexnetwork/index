@@ -88,7 +88,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 	return <>
 		<FlexRow className={"mr-6 pb-4"}>
 			<Col className="idxflex-grow-1">
-				<Tabs theme={"rounded"} activeKey={section} onTabChange={handleTabClick}>
+				<Tabs destroyInactiveTabPane={false} theme={"rounded"} activeKey={section} onTabChange={handleTabClick}>
 					<TabPane enabled={true} tabKey={"all"} title={`All Indexes`} />
 					<TabPane enabled={true} tabKey={"owner"} total={indexes.owner?.totalCount} title={`Owned`} />
 					<TabPane enabled={true} tabKey={"starred"} total={indexes.starred?.totalCount} title={`Starred`} />

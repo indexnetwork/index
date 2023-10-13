@@ -1,5 +1,5 @@
 import React, {
-	ReactElement, useCallback, useEffect, useState,
+	ReactElement, useCallback,
 } from "react";
 import cc from "classcat";
 import { v4 as uuidv4 } from "uuid";
@@ -23,20 +23,6 @@ export const Tabs = (
 		theme = "classic",
 	}: TabsProps,
 ) => {
-	const getActiveTab = () => {
-		if (activeKey) return activeKey;
-
-		return children && children.length > 0 ? children[0].props.tabKey : undefined;
-	};
-
-	const [activeTab, setActiveTab] = useState<string | undefined>(() => getActiveTab());
-
-	useEffect(() => {
-		if (activeKey) {
-			setActiveTab(activeKey);
-		}
-	}, [activeKey]);
-
 	const renderTabContent = useCallback(() => {
 		function renderItem(child: React.ReactNode, visible: boolean) {
 			return (
@@ -58,17 +44,16 @@ export const Tabs = (
 					children.map((child: React.ReactElement<TabPaneProps>) => {
 						const { tabKey } = child.props;
 						if (destroyInactiveTabPane) {
-							return tabKey === activeTab ? renderItem(child, true) : null;
+							return tabKey === activeKey ? renderItem(child, true) : null;
 						}
-						return tabKey === activeTab ? renderItem(child, true) : renderItem(child, false);
+						return tabKey === activeKey ? renderItem(child, true) : renderItem(child, false);
 					})
 				}
 			</>
 		);
-	}, [children, activeTab]);
+	}, [children, activeKey]);
 
 	const handleTabChange = (tabKey: string) => {
-		tabKey && setActiveTab(tabKey);
 		onTabChange && onTabChange(tabKey);
 	};
 
@@ -88,7 +73,7 @@ export const Tabs = (
 							<div
 								className={cc([
 									"tabs-list-item",
-									tabKey === activeTab ? "tabs-list-item-active" : "",
+									tabKey === activeKey ? "tabs-list-item-active" : "",
 									enabled ? "" : "tabs-list-item-disabled",
 								])}
 								onClick={() => {
@@ -97,16 +82,16 @@ export const Tabs = (
 							>
 								<Text
 									size="md"
-									theme={tabKey === activeTab ? "primary" : "disabled"}
+									theme={tabKey === activeKey ? "primary" : "disabled"}
 								>
 									{title}
 								</Text>
 								{(total || (total === 0)) && <Text
 									size="md"
 									fontWeight={300}
-									theme={tabKey === activeTab ? "primary" : "disabled"}
+									theme={tabKey === activeKey ? "primary" : "disabled"}
 								> ({total})</Text>}
-								{theme === "classic" && tabKey === activeTab && <div className="tabs-list-item-bottom"></div>}
+								{theme === "classic" && tabKey === activeKey && <div className="tabs-list-item-bottom"></div>}
 							</div>
 						);
 					})
