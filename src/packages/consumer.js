@@ -26,7 +26,7 @@ const topics = {
 
 async function start() {
     await redis.connect()
-    const consumer = kafka.consumer({ groupId: `index-consumer-dev-11` })
+    const consumer = kafka.consumer({ groupId: `index-consumer-dev-12` })
     await consumer.connect()
     await consumer.subscribe({ topics: Object.keys(topics), fromBeginning: true})
     await consumer.run({
