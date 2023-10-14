@@ -79,67 +79,13 @@ const indexesWithLinksQuery = (
         },
     };
 
-    if (search) {
-        (params.query?.bool?.must).push({
-            bool: {
-                minimum_should_match: 1,
-                should: [
-                    {
-                        multi_match: {
-                            fields: ["link.title^10", "link.url", "link.content", "index.title"],
-                            analyzer: "searchable",
-                            query: search,
-                            type: "phrase_prefix",
-                            slop: 1,
-                            zero_terms_query: "all",
-                        },
-                    },
-                    {
-                        multi_match: {
-                            fields: ["link.tags^3"],
-                            analyzer: "searchable",
-                            query: search,
-                            type: "bool_prefix",
-                            zero_terms_query: "all",
-                        },
-                    },
-                ],
-            },
-        });
-
-        params.collapse.inner_hits.push({
-            name: "links",
-            size: links_size,
-            _source: {
-                excludes: ["link.content"],
-            },
-            highlight: {
-                fields: {
-                    "index.title": {
-                        number_of_fragments: 0,
-                    },
-                    "link.title": {
-                        number_of_fragments: 0,
-                    },
-                    "link.url": {
-                        number_of_fragments: 0,
-                    },
-                    "link.content": {
-                        fragment_size: 256,
-                        number_of_fragments: 2,
-                    },
-                },
-            },
-        });
-    } else {
-        params._source_includes = ["index"];
-        params.sort = {
-            "index.createdAt": {
-                order: "desc",
-                missing: "_last"
-            },
-        };
-    }
+    params._source_includes = ["index"];
+    params.sort = {
+        "index.createdAt": {
+            order: "desc",
+            missing: "_last"
+        },
+    };
 
     return params;
 };
@@ -246,7 +192,7 @@ const linksQuery = (
             };
         } else {
             params.sort = {
-                createdAt: {
+                "index.createdAt": {
                     order: "desc",
                     missing: "_last"
                 },
@@ -348,19 +294,23 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
         return index
     })
 
-    let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.pkpPublicKey.toLowerCase()))
-    let ownerProfiles = await redis.hmGet(`profiles`, pkpOwners.map(p => `did:pkh:eip155:175177:${p}`))
-
-    indexResult = indexResult.map((value, key) => {
-        if(ownerProfiles[key]){
-            value.ownerDID = JSON.parse(ownerProfiles[key])
-        }else{
-            value.ownerDID = {
-                id: `did:pkh:eip155:175177:${pkpOwners[key]}`
-            }
+    let ownerProfiles = [];
+    if(indexResult.length > 0){
+        let pkpOwners = await redis.hmGet(`pkp:owner`, indexResult.map(index => index.pkpPublicKey.toLowerCase()))
+        if(pkpOwners.length > 0){
+            ownerProfiles = await redis.hmGet(`profiles`, pkpOwners.map(p => `did:pkh:eip155:175177:${p}`))
         }
-        return value
-    })
+        indexResult = indexResult.map((value, key) => {
+            if(ownerProfiles[key]){
+                value.ownerDID = JSON.parse(ownerProfiles[key])
+            }else{
+                value.ownerDID = {
+                    id: `did:pkh:eip155:175177:${pkpOwners[key] || value.controllerDID.id}`
+                }
+            }
+            return value
+        })
+    }
 
     return {
         totalCount,
