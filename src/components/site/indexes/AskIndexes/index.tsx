@@ -49,7 +49,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 	});
 
 	return <>
-		<Flex className={"px-0 px-md-10 pt-8 scrollable-area"} flexDirection={"column"}>
+		<Flex key={id} className={"px-0 px-md-10 pt-8 scrollable-area"} flexDirection={"column"}>
 			<FlexRow wrap={true} align={"start"} >
 				<Col className="idxflex-grow-1" style={{ width: "100%" }}>
 					{messages.length ? (
