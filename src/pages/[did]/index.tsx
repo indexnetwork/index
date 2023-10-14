@@ -34,7 +34,7 @@ const IndexesPage: NextPageWithLayout = () => {
 	useEffect(() => {
 		setChatId(uuidv4());
 		did && getProfile(did.toString());
-	}, []);
+	}, [did]);
 
 	return <PageContainer page={"profile"}>
 		<div className={"scrollable-container"}>
