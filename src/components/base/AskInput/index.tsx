@@ -8,10 +8,11 @@ export interface AskInputProps {
 	input: string,
 	setInput: (value: string) => void,
 	isLoading: boolean,
+	contextMessage: string,
 }
 
 const AskInput = ({
-	onSubmit, input, setInput, isLoading, ...inputProps
+	onSubmit, input, setInput, isLoading, contextMessage, ...inputProps
 }: AskInputProps) => {
 	const { formRef, onKeyDown } = useEnterSubmit();
 	const inputRef = React.useRef<HTMLInputElement>(null);
@@ -41,7 +42,7 @@ const AskInput = ({
 					await onSubmit(input);
 				}} width={20} height={20} />}
 				spellCheck={false}
-				placeholder={"Ask to your indexes"}
+				placeholder={`Ask to ${contextMessage}`}
 			/>
 		</form>
 

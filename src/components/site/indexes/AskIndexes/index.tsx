@@ -10,6 +10,11 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { API_ENDPOINTS } from "utils/constants";
 import Flex from "components/layout/base/Grid/Flex";
+import { maskDID } from "utils/helper";
+import { useIndex } from "hooks/useIndex";
+import { useApp } from "hooks/useApp";
+import { useAppSelector } from "hooks/store";
+import { selectProfile } from "store/slices/profileSlice";
 
 export interface ChatProps extends React.ComponentProps<"div"> {
 	initialMessages?: Message[]
@@ -26,6 +31,36 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 	did,
 	indexes,
 }) => {
+	const index = useIndex();
+	const {
+		viewedProfile,
+		section,
+	} = useApp();
+	const profile = useAppSelector(selectProfile);
+
+	const getChatContextMessage = (): string => {
+		if (index.index && index.index.title) {
+			return index.index.title;
+		}
+		if (viewedProfile && profile && viewedProfile.id === profile.id) {
+			const sections = {
+				owner: "indexes owned by you",
+				starred: "indexes starred by you",
+				all: "all your indexes",
+			};
+			return sections[section];
+		}
+		if (viewedProfile && viewedProfile?.id) {
+			const sections = {
+				owner: "indexes owned by",
+				starred: "indexes starred by",
+				all: "all indexes of",
+			};
+			return `${sections[section]} ${viewedProfile.name || maskDID(viewedProfile.id)}`;
+		}
+		return `indexes`;
+	};
+
 	const apiUrl = `https://index.network/api${API_ENDPOINTS.CHAT_STREAM}`;
 	const initialMessages: Message[] = [];
 	const {
@@ -58,7 +93,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 						</>
 					) : (
 						<Flex style={{ height: "300px", borderRadius: "5px" }}>
-							<EmptyScreen setInput={setInput} />
+							<EmptyScreen contextMessage={getChatContextMessage()} setInput={setInput} />
 						</Flex>
 					)}
 				</Col>
@@ -78,7 +113,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 					className="idxflex-grow-1 pb-8"
 					style={{ background: "white" }}
 				>
-					<AskInput onSubmit={async (value) => {
+					<AskInput contextMessage={getChatContextMessage()} onSubmit={async (value) => {
 						await append({
 							id,
 							content: value,
