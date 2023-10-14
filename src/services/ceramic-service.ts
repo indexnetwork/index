@@ -142,7 +142,7 @@ class CeramicService {
 	}
 
 	async createLink(link: Partial<Link>): Promise<Link> {
-		setDates(link); // TODO Conditional updatedAt
+		setDates(link);
 		link.updatedAt = getCurrentDateTime();
 		if (!link.tags) {
 			link.tags = [];
