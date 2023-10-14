@@ -312,7 +312,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											placeholder={t("pages:home.searchLink")} />
 									</Col>
 								</FlexRow>
-								{index.isCreator && <FlexRow>
+								{index.isOwner && <FlexRow>
 									<Col className="idxflex-grow-1 pb-0 mt-6">
 										<LinkInput
 											loading={crawling}
