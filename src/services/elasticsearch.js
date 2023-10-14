@@ -309,7 +309,7 @@ const indexesSearch = async (index_ids , search, skip, take, links_size, user_in
                 }
             }
             return value
-        }).sort((a, b) => new Date(b.createdAt).getSeconds() - new Date(a.createdAt).getSeconds())
+        })
     }
 
     return {
