@@ -34,6 +34,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		tabClickValue && router.replace(`/[did]`, tabClickValue === "all" ? `/${didParam}` : `/${didParam}?section=${tabClickValue}`, { shallow: true });
 	}, [tabClickValue]);
 
+	const sortIndexes = (items: Indexes[]) => items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 	useEffect(() => {
 		getData(1, true);
 	}, [didParam]);
@@ -107,7 +108,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 					className={"idxflex-grow-1"}
 				>
 					<List
-						data={indexes[section].indexes || []}
+						data={sortIndexes(indexes[section].indexes!) || []}
 						render={(itm: Indexes) => <IndexItem
 							index={itm}
 							selected={itm.id === indexId}
