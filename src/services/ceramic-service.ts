@@ -8,9 +8,10 @@ import {
 
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
-
 import { appConfig } from "config";
 import { DID } from "dids";
+// eslint-disable-next-line import/no-extraneous-dependencies
+import { ExecutionResult, Source } from "graphql/index";
 import { definition } from "../types/merged-runtime";
 
 class CeramicService {
@@ -18,6 +19,12 @@ class CeramicService {
 		ceramic: "https://composedb.index.network",
 		definition: definition as RuntimeCompositeDefinition,
 	});
+
+	private authenticateCallback: (() => Promise<DID>) | undefined;
+
+	constructor(callback?: () => Promise<DID>) {
+		this.authenticateCallback = callback;
+	}
 
 	authenticateUser(did: DID) {
 		if (!isSSR()) {
@@ -35,7 +42,21 @@ class CeramicService {
 	isUserAuthenticated() {
 		return !!(this.client?.did?.authenticated);
 	}
-
+	// eslint-disable-next-line max-len
+	async executeQuery <Data = Record<string, unknown>>(source: string | Source, variableValues?: Record<string, unknown>): Promise<ExecutionResult<Data>> {
+		if (!this.isUserAuthenticated()) {
+			if (!this.authenticateCallback) {
+				throw new Error("User not authenticated");
+			}
+			const callback = await this.authenticateCallback();
+			if (callback) {
+				this.authenticateUser(callback);
+			} else {
+				throw new Error("User not authenticated");
+			}
+		}
+		return await this.client.executeQuery(source, variableValues);
+	}
 	async createIndex(pkpPublicKey: string, content: Partial<Indexes>): Promise<Indexes> {
 		setDates(content, true);
 		if (!content.title) {
@@ -50,7 +71,7 @@ class CeramicService {
 			content,
 		};
 
-		const { data, errors } = await this.client.executeQuery<{ createIndex: { document: Indexes } }>(`
+		const { data, errors } = await this.executeQuery<{ createIndex: { document: Indexes } }>(`
 			mutation CreateIndex($input: CreateIndexInput!) {
 				createIndex(input: $input) {
 					document {
@@ -78,7 +99,7 @@ class CeramicService {
 			content,
 		};
 
-		const { data, errors } = await this.client.executeQuery<{ updateIndex: { document: Indexes } }>(`
+		const { data, errors } = await this.executeQuery<{ updateIndex: { document: Indexes } }>(`
 			mutation UpdateIndex($input: UpdateIndexInput!) {
 				updateIndex(input: $input) {
 					document {
@@ -99,7 +120,7 @@ class CeramicService {
 	}
 
 	async getLinkById(link_id: string) {
-		const { data, errors } = await this.client.executeQuery(`{
+		const { data, errors } = await this.executeQuery(`{
 			node(id:"${link_id}"){
 			  id
 			  ... on Link{
@@ -129,7 +150,7 @@ class CeramicService {
 		const payload = {
 			content: link,
 		};
-		const { data, errors } = await this.client.executeQuery<{ createLink: { document: Link } }>(`
+		const { data, errors } = await this.executeQuery<{ createLink: { document: Link } }>(`
 			mutation CreateLink($input: CreateLinkInput!) {
 				createLink(input: $input) {
 					document {
@@ -161,7 +182,7 @@ class CeramicService {
 			id: link_id,
 			content: link,
 		};
-		const { data, errors } = await this.client.executeQuery<{ updateLink: { document: Link } }>(`
+		const { data, errors } = await this.executeQuery<{ updateLink: { document: Link } }>(`
 			mutation UpdateLink($input: UpdateLinkInput!) {
 				updateLink(input: $input) {
 					document {
@@ -199,7 +220,7 @@ class CeramicService {
 		if (!this.client.did?.authenticated) {
 			// handle error
 		}
-		const { data, errors } = await this.client.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
+		const { data, errors } = await this.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
 			mutation CreateIndexLink($input: CreateIndexLinkInput!) {
 				createIndexLink(input: $input) {
 					document {
@@ -249,7 +270,7 @@ class CeramicService {
 				deletedAt: getCurrentDateTime(),
 			},
 		};
-		const { data, errors } = await this.client.executeQuery<{ updateIndexLink: { document: IndexLink } }>(`
+		const { data, errors } = await this.executeQuery<{ updateIndexLink: { document: IndexLink } }>(`
 			mutation UpdateIndexLink($input: UpdateIndexLinkInput!) {
 				updateIndexLink(input: $input) {
 					document {
@@ -321,7 +342,7 @@ class CeramicService {
 		return await this.updateUserIndex(userIndex.id!, content);
 	}
 	async createUserIndex(content: Partial<UserIndex>): Promise<UserIndex | undefined> {
-		const { data, errors } = await this.client.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
+		const { data, errors } = await this.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
 			mutation CreateUserIndex($input: CreateUserIndexInput!) {
 				createUserIndex(input: $input) {
 					document {
@@ -342,7 +363,7 @@ class CeramicService {
 		return data?.createUserIndex.document!;
 	}
 	async updateUserIndex(indexId: string, content: Partial<UserIndex>): Promise<UserIndex | undefined> {
-		const { data, errors } = await this.client.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
+		const { data, errors } = await this.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
 			mutation UpdateUserIndex($input: UpdateUserIndexInput!) {
 				updateUserIndex(input: $input) {
 					document {
@@ -406,8 +427,7 @@ class CeramicService {
 		const payload = {
 			content: profile,
 		};
-
-		const { data, errors } = await this.client.executeQuery<{ createProfile: { document: Users } }>(`	
+		const { data, errors } = await this.executeQuery<{ createProfile: { document: Users } }>(`	
 			mutation CreateProfile($input: CreateProfileInput!) {
 				createProfile(input: $input) {
 					document {
@@ -430,6 +450,8 @@ class CeramicService {
 		let p = data.createProfile.document;
 		// @ts-ignore
 		p = { ...p, id: p.controllerDID.id };
+		// @ts-ignore
+		delete p.controllerDID;
 		// @ts-ignore
 		return p;
 	}

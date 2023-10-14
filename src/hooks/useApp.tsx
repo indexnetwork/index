@@ -83,7 +83,8 @@ export const AppContextProvider = ({ children } : any) => {
 	}, [router.asPath]);
 
 	useEffect(() => {
-		(viewedProfile && (viewedProfile.id === profile.id)) && setViewedProfile(profile);
+		profile && (viewedProfile?.id === profile.id) && setViewedProfile(profile);
+		updateProfile(profile);
 	}, [profile]);
 
 	const handleCreate = async (title: string) => {
@@ -117,7 +118,10 @@ export const AppContextProvider = ({ children } : any) => {
 		if (isExist.length > 0) {
 			return group;
 		}
-		group.indexes = [index, ...group.indexes!];
+		if (group.indexes) {
+			group.indexes.push(index);
+			group.indexes.sort((a, b) => new Date(b.createdAt).getSeconds() - new Date(a.createdAt).getSeconds());
+		}
 		group.skip += 1;
 		group.totalCount += 1;
 		return group;
@@ -127,6 +131,15 @@ export const AppContextProvider = ({ children } : any) => {
 		Object.keys(indexes).forEach((key) => {
 			newState[key as keyof MultipleIndexListState].indexes = indexes[key as keyof MultipleIndexListState].indexes?.map(
 				(i) => (i.id === index.id ? { ...i, ...index } : i),
+			);
+		});
+		setIndexes(newState);
+	};
+	const updateProfile = (p: Users) => {
+		const newState = { ...indexes };
+		Object.keys(indexes).forEach((key) => {
+			newState[key as keyof MultipleIndexListState].indexes = indexes[key as keyof MultipleIndexListState].indexes?.map(
+				(i) => (i.ownerDID.id === p.id ? { ...i, ownerDID: p } : i),
 			);
 		});
 		setIndexes(newState);

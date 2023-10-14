@@ -44,6 +44,7 @@ import Link from "next/link";
 import { maskDID } from "utils/helper";
 import { useApp } from "hooks/useApp";
 import { selectProfile } from "store/slices/profileSlice";
+import { DID } from "dids";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -51,12 +52,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const { indexId } = router.query;
 	const [index, setIndex] = useMergedState<Partial<Indexes>>({});
 	const [links, setLinks] = useState<IndexLink[]>([]);
-	const [pkpCeramic, setPKPCeramic] = useState<any>();
 	const personalCeramic = useCeramic();
+	const [pkpCeramic, setPKPCeramic] = useState<any>();
 	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tabKey, setTabKey] = useState("chat");
-	const [isOwner, setIsOwner] = useState<boolean>(false);
-	const [isCreator, setIsCreator] = useState<boolean>(false);
 	const [notFound, setNotFound] = useState(false);
 	const [progress, setProgress] = useState({
 		current: 0,
@@ -81,46 +80,47 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const doc = await api.getIndexById(indexIdParam);
 		if (!doc) {
 			setNotFound(true);
-		} else {
-			setIndex(doc);
-			!viewedProfile && setViewedProfile(doc.ownerDID);
-			setInit(false);
-			setLoading(false);
+			return;
 		}
+		!viewedProfile && setViewedProfile(doc.ownerDID);
+		const c = new CeramicService(getPKPSessionDID(doc));
+		setIndex(doc);
+		setPKPCeramic(c);
+		setInit(false);
+		setLoading(false);
 	};
 	const loadUserIndex = async () => {
-		setIsOwner(false);
-		const sessionResponse = await LitService.getPKPSession(index.pkpPublicKey!, index.collabAction!);
-		if (!sessionResponse || !sessionResponse.session) {
-			return false;
-		}
-		setLoading(true);
-		const c = new CeramicService();
-		c.authenticateUser(sessionResponse.session.did);
-		setPKPCeramic(c);
-		setIsOwner(sessionResponse.isPermittedAddress);
-		setIsCreator(sessionResponse.isCreator || sessionResponse.isPermittedAddress);
 		const userIndexes = await api.getUserIndexes({
 			index_id: index.id, // TODO Shame
 			did,
 		} as GetUserIndexesRequestBody) as UserIndexResponse;
+
 		if (userIndexes) {
 			const newIndex = {
 				...index,
-				isOwner: !!userIndexes.owner, // TODO Shame
-				isStarred: !!userIndexes.starred,
+				isOwner: userIndexes.owner && !userIndexes.owner.deletedAt,
+				isStarred: userIndexes.starred && !userIndexes.starred.deletedAt,
 			} as Indexes;
 			setIndex(newIndex);
 		}
-		setLoading(false);
 	};
+	const getPKPSessionDID: (index: Indexes) => () => Promise<DID> = (i: Indexes) => async () => {
+		try {
+			const sessionResponse = await LitService.getPKPSession(i.pkpPublicKey!, i.collabAction!);
+			if (sessionResponse && sessionResponse.session) {
+				return sessionResponse.session.did;
+			}
+		} catch (error) {
+			throw new Error("Could not get PKP session DID");
+		}
+	};
+
 	const handleCollabActionChange = async (CID: string) => {
 		const litContracts = new LitContracts();
 		await litContracts.connect();
 
 		const pubKeyHash = ethers.utils.keccak256(index.pkpPublicKey!);
 		const tokenId = ethers.BigNumber.from(pubKeyHash);
-
 		const newCollabAction = litContracts.utils.getBytesFromMultihash(CID);
 		const previousCollabAction = litContracts.utils.getBytesFromMultihash(index.collabAction!);
 		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenId, newCollabAction, []);
@@ -170,15 +170,16 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			if (payload) {
 				const createdLink = await personalCeramic.createLink(payload);
 				// TODO Fix that.
-				const createdIndexLink = await pkpCeramic.addIndexLink(index, createdLink?.id!);
+				const createdIndexLink = await pkpCeramic.addIndexLink(index as Indexes, createdLink?.id!);
 				if (createdIndexLink) {
 					setAddedLink(createdIndexLink); // TODO Fix
 				}
 			}
 		}
 	};
+
 	useEffect(() => {
-		loadUserIndex();
+		index.id && did && loadUserIndex();
 	}, [index.id, did]);
 
 	useEffect(() => {
@@ -188,11 +189,21 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [index.isOwner, index.isStarred, index.title, index.ownerDID]);
 	useEffect(() => {
 		setLoading(true);
+		setPKPCeramic(null);
 		setSearch("");
 		if (indexId) {
 			loadIndex(indexId as string);
 		}
 	}, [indexId]);
+
+	useEffect(() => {
+		if (!index || !profile) return;
+
+		const newIndex = { ...index, ownerDID: profile };
+		if (index.ownerDID && index.ownerDID.id === profile.id) {
+			setIndex(newIndex);
+		}
+	}, [profile]);
 
 	useEffect(() => {
 		if (addedLink) {
@@ -222,7 +233,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	return (
 		<PageContainer page={"index"}>
 			<IndexContext.Provider value={{
-				pkpCeramic, isOwner, isCreator, index,
+				pkpCeramic, isOwner: index.isOwner!, isCreator: index.isCreator!, index,
 			}}>
 				<LinksContext.Provider value={{ links, setLinks }}>
 					<Flex className={"px-0 px-md-10 pt-6 scrollable-container"} flexDirection={"column"}>
@@ -247,7 +258,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<IndexTitleInput
 											defaultValue={index?.title || ""}
 											onChange={handleTitleChange}
-											disabled={!isOwner}
+											disabled={!index.isOwner}
 											loading={titleLoading}
 										/>
 									</Col>
@@ -268,7 +279,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											theme="clear"
 											borderless>
 											<IndexOperationsPopup
-												isOwner={isOwner}
+												isOwner={index.ownerDID && index.ownerDID.id === profile.id}
 												index={index as Indexes}
 												userIndexToggle={handleUserIndexToggle}
 											></IndexOperationsPopup>
@@ -301,7 +312,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											placeholder={t("pages:home.searchLink")} />
 									</Col>
 								</FlexRow>
-								{isCreator && <FlexRow>
+								{index.isCreator && <FlexRow>
 									<Col className="idxflex-grow-1 pb-0 mt-6">
 										<LinkInput
 											loading={crawling}

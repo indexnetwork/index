@@ -1,7 +1,11 @@
 // This is an auto-generated file, do not edit manually
 export const definition = {
 	models: {
-		Profile: { id: "kjzl6hvfrbw6ca52q3feusjpl2r49wv9x0odyd2zmaytyq8ddunud4243rvl3gm", accountRelation: { type: "single" } }, Index: { id: "kjzl6hvfrbw6caw09g11y7vy1qza903xne35pi30xvmelvnvlfxy9tadwwkzzd6", accountRelation: { type: "list" } }, Link: { id: "kjzl6hvfrbw6c92114fj79ii6shyl8cbnsz5ol3v62s0uu3m78gy76gzaovpaiu", accountRelation: { type: "list" } }, IndexLink: { id: "kjzl6hvfrbw6c8a1u7qrk1xcz5oty0temwn2szbmhl8nfnw9tddljj4ue8wba68", accountRelation: { type: "list" } }, UserIndex: { id: "kjzl6hvfrbw6c9aw0xd4vlhqc5mx57f0y2xmm8xiyxzzj1abrizfyppup22r9ac", accountRelation: { type: "list" } },
+		Profile: { id: "kjzl6hvfrbw6ca52q3feusjpl2r49wv9x0odyd2zmaytyq8ddunud4243rvl3gm", accountRelation: { type: "single" } },
+		Index: { id: "kjzl6hvfrbw6caw09g11y7vy1qza903xne35pi30xvmelvnvlfxy9tadwwkzzd6", accountRelation: { type: "list" } },
+		Link: { id: "kjzl6hvfrbw6c92114fj79ii6shyl8cbnsz5ol3v62s0uu3m78gy76gzaovpaiu", accountRelation: { type: "list" } },
+		IndexLink: { id: "kjzl6hvfrbw6c8a1u7qrk1xcz5oty0temwn2szbmhl8nfnw9tddljj4ue8wba68", accountRelation: { type: "list" } },
+		UserIndex: { id: "kjzl6hvfrbw6c9aw0xd4vlhqc5mx57f0y2xmm8xiyxzzj1abrizfyppup22r9ac", accountRelation: { type: "list" } },
 	},
 	objects: {
 		Profile: {

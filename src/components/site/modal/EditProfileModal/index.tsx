@@ -54,12 +54,13 @@ const EditProfileModal = ({
 					delete values.avatar;
 				}
 				const { available, ...rest } = values;
-				await personalCeramic.setProfile(rest);
+				const newProfile = await personalCeramic.setProfile(rest);
 				dispatch(setProfile({
-					...rest,
+					...newProfile,
 					available: true,
 				}));
 			} catch (err) {
+				console.log("heyyo", err, personalCeramic.isUserAuthenticated());
 				console.log(err);
 			} finally {
 				setLoading(false);

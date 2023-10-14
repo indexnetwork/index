@@ -19,6 +19,7 @@ export type Indexes = {
   deletedAt: string;
   links: IndexLink[];
   isOwner?: boolean;
+  isCreator: boolean;
   isStarred?: boolean;
 };
 
