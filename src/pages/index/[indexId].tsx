@@ -45,6 +45,7 @@ import { maskDID } from "utils/helper";
 import { useApp } from "hooks/useApp";
 import { selectProfile } from "store/slices/profileSlice";
 import { DID } from "dids";
+import crypto from "crypto";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -64,7 +65,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const profile = useAppSelector(selectProfile);
 	const [crawling, setCrawling] = useState(false);
 	const [loading, setLoading] = useState(false);
-	const [init, setInit] = useState(true);
+	const [chatId, setChatId] = useState(uuidv4());
 	const [titleLoading, setTitleLoading] = useState(false);
 	const [search, setSearch] = useState("");
 	const { did } = useAppSelector(selectConnection);
@@ -75,7 +76,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		updateIndex,
 	} = useApp();
 
-	const chatId = uuidv4();
 	const loadIndex = async (indexIdParam: string) => {
 		const doc = await api.getIndexById(indexIdParam);
 		if (!doc) {
@@ -86,7 +86,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const c = new CeramicService(getPKPSessionDID(doc));
 		setIndex(doc);
 		setPKPCeramic(c);
-		setInit(false);
 		setLoading(false);
 	};
 	const loadUserIndex = async () => {
@@ -188,6 +187,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		}
 	}, [index.isOwner, index.isStarred, index.title, index.ownerDID]);
 	useEffect(() => {
+		if (!indexId) return;
+		const suffix = crypto.createHash("sha256").update(indexId as string).digest("hex");
+		setChatId(`${localStorage.getItem("chatterID")}-${suffix}`);
 		setLoading(true);
 		setPKPCeramic(null);
 		setSearch("");
@@ -231,7 +233,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [progress]);
 
 	return (
-		<PageContainer page={"index"}>
+		<PageContainer key={indexId!.toString()} page={"index"}>
 			<IndexContext.Provider value={{
 				pkpCeramic, isOwner: index.isOwner!, isCreator: index.isCreator!, index,
 			}}>
@@ -249,7 +251,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									<Col centerBlock className="idxflex-grow-1">
 										<Link href="/[did]" as={`/${index.ownerDID?.id!}`} >
 											<Avatar size={20} user={index.ownerDID} />
-											<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{index.ownerDID?.name || (index.ownerDID && maskDID(index.ownerDID?.id!)) || ""}</Text>
+											<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">
+												{index.ownerDID?.name || (index.ownerDID && maskDID(index.ownerDID?.id!)) || ""}
+											</Text>
 										</Link>
 									</Col>
 								</FlexRow>
@@ -338,7 +342,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									<Soon section={tabKey}></Soon>
 								</Col>
 							</FlexRow>}
-							{ tabKey === "chat" && <AskIndexes id={chatId} indexes={[index.id!]} />}
+							{ tabKey === "chat" && chatId && <AskIndexes id={indexId!.toString()} indexes={[index.id!]} />}
 						</>}
 					</Flex>
 				</LinksContext.Provider>

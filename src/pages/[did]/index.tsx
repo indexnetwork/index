@@ -10,6 +10,7 @@ import { useRouter } from "next/router";
 import { v4 as uuidv4 } from "uuid";
 import { useCeramic } from "hooks/useCeramic";
 import { useApp } from "hooks/useApp";
+import crypto from "crypto";
 
 const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
@@ -34,13 +35,13 @@ const IndexesPage: NextPageWithLayout = () => {
 	useEffect(() => {
 		did && getProfile(did.toString());
 	}, [did]);
-
 	useEffect(() => {
-		setChatId(uuidv4());
-	}, [router.query]);
+		const suffix = crypto.createHash("sha256").update(router.asPath).digest("hex");
+		setChatId(`${localStorage.getItem("chatterID")}-${suffix}`);
+	}, [router.asPath]);
 
-	return <PageContainer page={"profile"}>
-		<div className={"scrollable-container"}>
+	return <PageContainer key={chatId.toString()} page={"profile"}>
+		<div>
 			<AskIndexes id={chatId} did={did!.toString()} />
 		</div>
 	</PageContainer>;

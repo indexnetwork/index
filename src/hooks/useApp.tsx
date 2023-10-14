@@ -15,6 +15,7 @@ import {
 } from "types/entity";
 import { useCeramic } from "hooks/useCeramic";
 import { useRouter } from "next/router";
+import { v4 as uuidv4 } from "uuid";
 import { useAppSelector } from "./store";
 import { selectProfile } from "../store/slices/profileSlice";
 
@@ -78,6 +79,13 @@ export const AppContextProvider = ({ children } : any) => {
 		}
 		return section;
 	};
+
+	useEffect(() => {
+		if (!localStorage.getItem("chatterID")) {
+			localStorage.setItem("chatterID", uuidv4());
+		}
+	}, []);
+
 	useEffect(() => {
 		setSection(activeKey());
 	}, [router.asPath]);

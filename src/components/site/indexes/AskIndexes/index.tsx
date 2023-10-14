@@ -20,13 +20,13 @@ export interface ChatProps extends React.ComponentProps<"div"> {
 	initialMessages?: Message[]
 	id?: string
 }
-export interface SearchIndexesProps {
+export interface AskIndexesProps {
 	id: string;
 	did?: string;
 	indexes?: string[],
 }
 
-const AskIndexes: React.VFC<SearchIndexesProps> = ({
+const AskIndexes: React.VFC<AskIndexesProps> = ({
 	id,
 	did,
 	indexes,
@@ -84,7 +84,7 @@ const AskIndexes: React.VFC<SearchIndexesProps> = ({
 	});
 
 	return <>
-		<Flex key={id} className={"px-0 px-md-10 pt-8 scrollable-area"} flexDirection={"column"}>
+		<Flex id={id} key={id} className={"px-0 px-md-10 pt-8 scrollable-area"} flexDirection={"column"}>
 			<FlexRow wrap={true} align={"start"} >
 				<Col className="idxflex-grow-1" style={{ width: "100%" }}>
 					{messages.length ? (
