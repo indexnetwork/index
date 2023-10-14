@@ -33,7 +33,7 @@ const IndexesPage: NextPageWithLayout = () => {
 	};
 	useEffect(() => {
 		setChatId(uuidv4());
-		getProfile(did.toString());
+		did && getProfile(did.toString());
 	}, [did]);
 
 	return <PageContainer page={"profile"}>
