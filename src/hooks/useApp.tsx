@@ -84,6 +84,7 @@ export const AppContextProvider = ({ children } : any) => {
 
 	useEffect(() => {
 		profile && (viewedProfile?.id === profile.id) && setViewedProfile(profile);
+		did && profile && !viewedProfile && setViewedProfile(profile);
 		updateProfile(profile);
 	}, [profile]);
 
