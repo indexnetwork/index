@@ -329,16 +329,6 @@ class CeramicService {
 	}
 
 	async setUserIndex(indexId: string, type: string, status: boolean): Promise <UserIndex | undefined> {
-		if (!this.authenticateCallback) {
-			throw new Error("User not authenticated");
-		}
-		const callback = await this.authenticateCallback();
-		if (callback) {
-			this.authenticateUser(callback);
-		} else {
-			throw new Error("User not authenticated");
-		}
-
 		const userIndexes = await api.getUserIndexes({
 			index_id: indexId,
 			did: this.client.did?.parent!,
@@ -361,7 +351,7 @@ class CeramicService {
 		return await this.updateUserIndex(userIndex.id!, content);
 	}
 	async createUserIndex(content: Partial<UserIndex>): Promise<UserIndex | undefined> {
-		const { data, errors } = await this.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
+		const { data, errors } = await this.client.executeQuery<{ createUserIndex: { document: UserIndex } }>(`
 			mutation CreateUserIndex($input: CreateUserIndexInput!) {
 				createUserIndex(input: $input) {
 					document {
@@ -382,7 +372,7 @@ class CeramicService {
 		return data?.createUserIndex.document!;
 	}
 	async updateUserIndex(indexId: string, content: Partial<UserIndex>): Promise<UserIndex | undefined> {
-		const { data, errors } = await this.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
+		const { data, errors } = await this.client.executeQuery<{ updateUserIndex: { document: UserIndex } }>(`
 			mutation UpdateUserIndex($input: UpdateUserIndexInput!) {
 				updateUserIndex(input: $input) {
 					document {
