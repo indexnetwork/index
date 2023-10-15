@@ -205,6 +205,15 @@ class CeramicService {
 	}
 
 	async addIndexLink(index: Indexes, link_id: string) : Promise <IndexLink> {
+		if (!this.authenticateCallback) {
+			throw new Error("User not authenticated");
+		}
+		const callback = await this.authenticateCallback();
+		if (callback) {
+			this.authenticateUser(callback);
+		} else {
+			throw new Error("User not authenticated");
+		}
 		const indexLink: IndexLink = {
 			indexId: index.id,
 			linkId: link_id,
@@ -320,6 +329,16 @@ class CeramicService {
 	}
 
 	async setUserIndex(indexId: string, type: string, status: boolean): Promise <UserIndex | undefined> {
+		if (!this.authenticateCallback) {
+			throw new Error("User not authenticated");
+		}
+		const callback = await this.authenticateCallback();
+		if (callback) {
+			this.authenticateUser(callback);
+		} else {
+			throw new Error("User not authenticated");
+		}
+
 		const userIndexes = await api.getUserIndexes({
 			index_id: indexId,
 			did: this.client.did?.parent!,
