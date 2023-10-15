@@ -192,7 +192,7 @@ const linksQuery = (
             };
         } else {
             params.sort = {
-                "index.createdAt": {
+                "createdAt": {
                     order: "desc",
                     missing: "_last"
                 },
