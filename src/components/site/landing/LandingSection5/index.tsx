@@ -40,7 +40,7 @@ const LandingSection5: React.VFC = () => (
 				</FlexRow>
 			</Flex>
 
-			{false && <Flex
+			{true && <Flex
 				className={"mt-11"}
 				gap={"16px"}
 				flexWrap={"wrap"}
