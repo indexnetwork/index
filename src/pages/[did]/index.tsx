@@ -11,22 +11,37 @@ import { v4 as uuidv4 } from "uuid";
 import { useCeramic } from "hooks/useCeramic";
 import { useApp } from "hooks/useApp";
 import crypto from "crypto";
+import apiService from "services/api-service";
+import { Indexes } from "types/entity";
 
 const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
 
 	const { did } = router.query;
 	const [chatId, setChatId] = useState<string>(uuidv4());
-	const ceramic = useCeramic();
+	const personalCeramic = useCeramic();
 	const {
 		setViewedProfile,
+		updateUserIndexState,
 	} = useApp();
 
 	const getProfile = async (viewedDid: string) => {
 		try {
-			const profile = await ceramic.getProfileByDID(viewedDid);
+			const profile = await personalCeramic.getProfileByDID(viewedDid);
 			if (profile) {
 				setViewedProfile(profile);
+			}
+			const suggested = localStorage.getItem("suggestIndex");
+			if (!suggested) {
+				setTimeout(async () => {
+					const suggestedIndex = await apiService.getIndexById("kjzl6kcym7w8y7zvi7lvn12vioylmcbv0awup1xj9in1qb4kxp94569hjhx93s5");
+					if (suggestedIndex) {
+						localStorage.setItem("suggestIndex", "true");
+						suggestedIndex.isStarred = true;
+						personalCeramic.addUserIndex(suggestedIndex.id, "starred");
+						updateUserIndexState({ ...suggestedIndex } as Indexes, "starred", "add");
+					}
+				}, 500);
 			}
 		} catch (err) {
 			// profile error
