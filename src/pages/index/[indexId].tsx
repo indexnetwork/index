@@ -200,8 +200,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	useEffect(() => {
 		if (!index || !profile) return;
-
 		const newIndex = { ...index, ownerDID: profile };
+		newIndex.isOwner = index.ownerDID && profile ? index.ownerDID!.id === profile.id : false;
 		if (index.ownerDID && index.ownerDID.id === profile.id) {
 			setIndex(newIndex);
 		}
@@ -283,7 +283,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											theme="clear"
 											borderless>
 											<IndexOperationsPopup
-												isOwner={index.ownerDID && index.ownerDID.id === profile.id}
+												isOwner={index.ownerDID.id === profile.id}
 												index={index as Indexes}
 												userIndexToggle={handleUserIndexToggle}
 											></IndexOperationsPopup>
