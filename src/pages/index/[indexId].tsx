@@ -283,7 +283,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											theme="clear"
 											borderless>
 											<IndexOperationsPopup
-												isOwner={index.ownerDID.id === profile.id}
+												isOwner={profile && index && index.ownerDID && index.ownerDID.id === profile.id}
 												index={index as Indexes}
 												userIndexToggle={handleUserIndexToggle}
 											></IndexOperationsPopup>
