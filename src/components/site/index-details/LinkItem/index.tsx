@@ -83,7 +83,7 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 							</a>
 						</Col>
 						{
-							!search && isCreator && (
+							!search && (isCreator || isOwner) && (
 								<Col className="idxflex-shrink-0 ml-3 index-detail-list-item-buttons">
 									<FlexRow>
 										<Col>
