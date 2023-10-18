@@ -14,8 +14,6 @@ const pkpClient = new ComposeClient({
     definition: definition,
 });
 
-
-
 export const addLink = async (link, session) => {
 
     const didSession = await DIDSession.fromSession(session);
@@ -56,7 +54,6 @@ export const addLink = async (link, session) => {
     }
     return data?.createLink.document;
 }
-
 export const addIndexLink = async(indexId, linkId, session) => {
 
     const didSession = await DIDSession.fromSession(session);
@@ -173,8 +170,6 @@ export const getProfile = async(did) => {
     let res = await results.json();
     return res.data.node;
 }
-
-
 export const getIndexLinkById = async(id) => {
     let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
         method: 'POST',
@@ -231,8 +226,6 @@ export const getIndexLinkById = async(id) => {
     let res = await results.json();
     return res.data.node;
 }
-
-
 export const getLinkById = async(id) => {
     let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
         method: 'POST',
@@ -263,7 +256,6 @@ export const getLinkById = async(id) => {
     let res = await results.json();
     return res.data.node;
 }
-
 export const getIndexById = async (id) => {
         let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
         method: 'POST',
@@ -314,7 +306,6 @@ export const getIndexById = async (id) => {
 
     return index;
 }
-
 export const getIndexByPKP = async (id) => {
 
     let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
@@ -370,4 +361,3 @@ export const getIndexByPKP = async (id) => {
 
     return index;
 }
-
