@@ -1,18 +1,11 @@
-import _ from 'lodash';
-import RedisClient from '../clients/redis.js';
 import moment from "moment";
-import {getOwner, getOwnerProfile} from "../utils/lit/index.js";
+import { getOwnerProfile } from "../utils/lit/index.js";
 import { DIDSession } from "did-session"
 
 export const getCurrentDateTime = () => moment.utc().toISOString();
 
 import { ComposeClient }from "@composedb/client"
 import { definition } from "../types/merged-runtime.js";
-
-const pkpClient = new ComposeClient({
-    ceramic: "https://composedb.index.network",
-    definition: definition,
-});
 
 export const addLink = async (link, session) => {
 

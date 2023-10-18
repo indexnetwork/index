@@ -2,7 +2,7 @@
   "name": "indexas-backend",
   "version": "0.0.1",
   "scripts": {
-    "api": "node  --experimental-fetch src/packages/api.js",
+    "api": "node  --experimental-specifier-resolution=node  --experimental-fetch src/packages/api.js",
     "dev-api": "nodemon  --experimental-fetch src/packages/api.js",
     "kafka-consumer": "node  --experimental-fetch src/packages/consumer.js",
     "reIndex": "node  --experimental-fetch src/utils/reIndex.js"
