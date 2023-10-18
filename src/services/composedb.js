@@ -1,6 +1,6 @@
 import * as composedb from '../libs/composedb.js';
 import { getQueue, getMetadata } from '../libs/crawl.js'
-import {getIndexById} from "../libs/composedb.js";
+
 
 export const get_index = async (req, res, next) => {
 
@@ -58,7 +58,7 @@ export const zapier_auth = async (req, res, next) => {
 
     const sessionStr = Buffer.from(req.headers.authorization, "base64").toString("utf8");
     const auth = JSON.parse(sessionStr);
-    const index = await getIndexById(auth.indexId);
+    const index = await composedb.getIndexById(auth.indexId);
     return res.json(index);
 };
 
