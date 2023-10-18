@@ -106,7 +106,9 @@ app.post('/chat_stream', validator.body(chatStreamSchema), async (req, res) => {
   }
 
 })
-app.post('/indexes/links', composedb.index_link);
+app.post('/zapier/index_link', composedb.zapier_index_link);
+app.get('/zapier/auth', composedb.zapier_auth);
+
 app.get('/indexes/:id', composedb.get_index)
 app.get('/index_link/:id', composedb.get_index_link)
 
