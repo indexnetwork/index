@@ -5,7 +5,6 @@
 	&.input {
 		@extend .pr-6;
 		@extend .pl-3;
-		background: white;
 		overflow: hidden;
 	}
 
@@ -26,8 +25,8 @@
 	&__button {
 		@include no-select;
 		height: 100%;
+		background: white;
 		align-items: center;
-		background: transparent;
 		position: absolute;
 		right: 0;
 
