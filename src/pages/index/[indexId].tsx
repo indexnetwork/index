@@ -46,6 +46,7 @@ import { useApp } from "hooks/useApp";
 import { selectProfile } from "store/slices/profileSlice";
 import { DID } from "dids";
 import crypto from "crypto";
+import IndexSettings from "../../components/site/index-details/IndexSettings";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -232,6 +233,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		}
 	}, [progress]);
 
+	// @ts-ignore
 	return (
 		<PageContainer key={indexId!.toString()} page={"index"}>
 			<IndexContext.Provider value={{
@@ -300,6 +302,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											<TabPane enabled={true} tabKey={"index"} title={"Index"} />
 											<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
 											<TabPane enabled={true} tabKey={"audience"} title={"Audience"} />
+											<TabPane hidden={!index?.isOwner} enabled={true} tabKey={"settings"} title={"Settings"} />
 										</Tabs>
 									</Col>
 								</FlexRow>
@@ -342,6 +345,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 									<Soon section={tabKey}></Soon>
 								</Col>
 							</FlexRow>}
+							{ tabKey === "settings" && <>
+								<IndexSettings></IndexSettings>
+							</>}
 							{ tabKey === "chat" && chatId && <AskIndexes id={indexId!.toString()} indexes={[index.id!]} />}
 						</>}
 					</Flex>

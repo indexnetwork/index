@@ -31,7 +31,6 @@
 
 		&:hover {
 			cursor: pointer;
-			background: $copy-input-icon-bg;
 		}
 
 		.copy-input__icon {
@@ -49,13 +48,13 @@
 		}
 
 		&.copied {
-			background: $copy-input-icon-bg;
 
+			@extend .px-3;
 			.copy-input__text {
 				@extend .mx-2;
 				overflow: hidden;
-				-webkit-animation: flexSlideIn 0.2s forwards;
-				animation: flexSlideIn 0.2s forwards;
+				flex-basis: 100%;
+				max-width: 100%;
 			}
 		}
 	}

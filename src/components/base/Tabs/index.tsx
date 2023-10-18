@@ -42,7 +42,8 @@ export const Tabs = (
 			<>
 				{
 					children.map((child: React.ReactElement<TabPaneProps>) => {
-						const { tabKey } = child.props;
+						const { tabKey, hidden } = child.props;
+						if (hidden) return null;
 						if (destroyInactiveTabPane) {
 							return tabKey === activeKey ? renderItem(child, true) : null;
 						}
@@ -67,10 +68,10 @@ export const Tabs = (
 						child: React.ReactElement<TabPaneProps>,
 					) => {
 						const {
-							title, total, enabled, tabKey,
+							title, total, enabled, tabKey, hidden,
 						} = child.props;
 						return (
-							<div
+							hidden ? null : <div
 								className={cc([
 									"tabs-list-item",
 									tabKey === activeKey ? "tabs-list-item-active" : "",

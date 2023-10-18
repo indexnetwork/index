@@ -5,6 +5,7 @@ export interface TabPaneProps {
 	title: string;
 	total?: number;
 	enabled?: boolean;
+	hidden?: boolean;
 	children?: React.ReactNode;
 }
 

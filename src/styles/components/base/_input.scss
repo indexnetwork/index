@@ -42,7 +42,7 @@
 			color: $primary-text-color;
 		}
 	}
-	&.input-disabled:not(.nonstyled) , &.input-readonly {
+	&.input-disabled:not(.nonstyled) , &.input-readonly:not(.nonstyled) {
 		background-color: $input-disabled-bg !important;
 		color: $secondary-text-color;
 
