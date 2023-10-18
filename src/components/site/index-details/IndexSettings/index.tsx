@@ -14,7 +14,7 @@ export interface IndexSettingsProps {
 
 const IndexSettings: React.VFC<IndexSettingsProps> = () => {
 	const { index } = useIndex();
-	const [key, setKey] = useState<string>("");
+	const [key, setKey] = useState<string>();
 	const getIntegrationKey = async () => {
 		const indexSession = await LitService.getPKPSession(index.pkpPublicKey!, index.collabAction!);
 		const personalSession = localStorage.getItem("did");
@@ -39,7 +39,7 @@ const IndexSettings: React.VFC<IndexSettingsProps> = () => {
 				<Col className="mt-6" xs={8}>
 					<Flex flexDirection="column">
 						<Text className={"mb-4"} theme={"primary"} size="md">Integration Key</Text>
-						<CopyInput value={key} />
+						<CopyInput value={key || "Loading..."} />
 					</Flex>
 				</Col>
 			</FlexRow>

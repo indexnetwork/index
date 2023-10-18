@@ -47,6 +47,7 @@ import { selectProfile } from "store/slices/profileSlice";
 import { DID } from "dids";
 import crypto from "crypto";
 import IndexSettings from "../../components/site/index-details/IndexSettings";
+import Head from "next/head";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -351,6 +352,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							{ tabKey === "chat" && chatId && <AskIndexes id={indexId!.toString()} indexes={[index.id!]} />}
 						</>}
 					</Flex>
+					{ index && <Head>
+						<title>{index.title} - Index Network</title>
+						<meta name="title" content={`${index.title} - Index Network`} />
+						<meta name="description" content="The human bridge between context and content." />
+					</Head>}
 				</LinksContext.Provider>
 			</IndexContext.Provider>
 		</PageContainer>
