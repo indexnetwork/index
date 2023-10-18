@@ -21,7 +21,7 @@ const IndexSettings: React.VFC<IndexSettingsProps> = () => {
 		if (!indexSession || !personalSession) return;
 		setKey(btoa(JSON.stringify({
 			session: {
-				index: indexSession,
+				index: indexSession.session,
 				personal: personalSession,
 			},
 			indexId: index.id!,
