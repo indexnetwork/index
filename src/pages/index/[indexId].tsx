@@ -352,7 +352,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 							{ tabKey === "chat" && chatId && <AskIndexes id={indexId!.toString()} indexes={[index.id!]} />}
 						</>}
 					</Flex>
-					{ index && <Head>
+					{ index && index.id && <Head>
 						<title>{index.title} - Index Network</title>
 						<meta name="title" content={`${index.title} - Index Network`} />
 						<meta name="description" content="The human bridge between context and content." />
