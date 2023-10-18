@@ -18,10 +18,10 @@ const IndexSettings: React.VFC<IndexSettingsProps> = () => {
 	const getIntegrationKey = async () => {
 		const indexSession = await LitService.getPKPSession(index.pkpPublicKey!, index.collabAction!);
 		const personalSession = localStorage.getItem("did");
-		if (!indexSession.session.serialize() || !personalSession) return;
+		if (!indexSession.session || !personalSession) return;
 		setKey(btoa(JSON.stringify({
 			session: {
-				index: indexSession.session,
+				index: indexSession.session.serialize(),
 				personal: personalSession,
 			},
 			indexId: index.id!,
