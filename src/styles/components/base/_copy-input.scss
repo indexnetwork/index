@@ -4,6 +4,8 @@
 
 	&.input {
 		@extend .pr-6;
+		@extend .pl-3;
+		background: white;
 		overflow: hidden;
 	}
 
