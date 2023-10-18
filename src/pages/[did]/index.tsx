@@ -13,6 +13,8 @@ import { useApp } from "hooks/useApp";
 import crypto from "crypto";
 import apiService from "services/api-service";
 import { Indexes } from "types/entity";
+import Head from "next/head";
+import { maskDID } from "../../utils/helper";
 
 const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
@@ -22,6 +24,7 @@ const IndexesPage: NextPageWithLayout = () => {
 	const personalCeramic = useCeramic();
 	const {
 		setViewedProfile,
+		viewedProfile,
 		updateUserIndexState,
 	} = useApp();
 
@@ -55,11 +58,18 @@ const IndexesPage: NextPageWithLayout = () => {
 		setChatId(`${localStorage.getItem("chatterID")}-${suffix}`);
 	}, [router.asPath]);
 
-	return <PageContainer key={chatId.toString()} page={"profile"}>
-		<div>
-			<AskIndexes id={chatId} did={did!.toString()} />
-		</div>
-	</PageContainer>;
+	return <>
+		<PageContainer key={chatId.toString()} page={"profile"}>
+			<div>
+				<AskIndexes id={chatId} did={did!.toString()} />
+			</div>
+		</PageContainer>
+		{ viewedProfile && <Head>
+			<title>{viewedProfile.name || maskDID(viewedProfile.id!)} - Index Network</title>
+			<meta name="title" content={`${viewedProfile.name || maskDID(viewedProfile.id!)} - Index Network`} />
+			<meta name="description" content="The human bridge between context and content." />
+		</Head>}
+	</>;
 };
 
 IndexesPage.getLayout = function getLayout(page: ReactElement) {
