@@ -38,12 +38,23 @@ export const post_link = async (req, res, next) => {
     return res.json(index);
 };
 
+const isValidURL = (url) => {
+    try {
+        new URL(url);
+        return true;
+    } catch (error) {
+        return false;
+    }
+};
+
 export const zapier_index_link = async (req, res, next) => {
 
     const sessionStr = Buffer.from(req.headers.authorization, "base64").toString("utf8");
     const auth = JSON.parse(sessionStr);
     const payload = req.body;
-
+    if(!payload.url || !isValidURL(payload.url)){
+        return res.json({error: "No valid URL provided"});
+    }
     let linkData = await getMetadata(payload.url);
     linkData.tags = [];
     if (payload.content) linkData.content = payload.content;
