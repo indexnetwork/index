@@ -46,8 +46,8 @@ import { useApp } from "hooks/useApp";
 import { selectProfile } from "store/slices/profileSlice";
 import { DID } from "dids";
 import crypto from "crypto";
-import IndexSettings from "../../components/site/index-details/IndexSettings";
 import Head from "next/head";
+import IndexSettings from "../../components/site/index-details/IndexSettings";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
