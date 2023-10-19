@@ -86,6 +86,11 @@ const chatStreamSchema = Joi.object({
     messages: Joi.array().required(),
 })
 
+const zapierTestLoginSchema = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().min(8).required(),
+})
+
 
 app.post('/search/did', validator.body(didSearchSchema), search.did)
 app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
@@ -108,6 +113,16 @@ app.post('/chat_stream', validator.body(chatStreamSchema), async (req, res) => {
 })
 app.post('/zapier/index_link', composedb.zapier_index_link);
 app.get('/zapier/auth', composedb.zapier_auth);
+app.post('/zapier/testlogin', validator.body(zapierTestLoginSchema), async (req, res) => {
+
+  let { email, password } = req.body;
+  if(email === process.env.ZAPIER_TEST_EMAIL && password === process.env.ZAPIER_TEST_PASSWORD){
+    return res.json({success: true, sessionData: process.env.ZAPIER_TEST_SESSION})
+  }else{
+    return res.json({error: 'Invalid credentials'})
+  }
+
+});
 
 app.get('/indexes/:id', composedb.get_index)
 app.get('/index_link/:id', composedb.get_index_link)
