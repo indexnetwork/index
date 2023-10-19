@@ -113,7 +113,7 @@ app.post('/chat_stream', validator.body(chatStreamSchema), async (req, res) => {
 })
 app.post('/zapier/index_link', composedb.zapier_index_link);
 app.get('/zapier/auth', composedb.zapier_auth);
-app.post('/zapier/testlogin', validator.body(zapierTestLoginSchema), async (req, res) => {
+app.post('/zapier/test_login', validator.body(zapierTestLoginSchema), async (req, res) => {
 
   let { email, password } = req.body;
   if(email === process.env.ZAPIER_TEST_EMAIL && password === process.env.ZAPIER_TEST_PASSWORD){
