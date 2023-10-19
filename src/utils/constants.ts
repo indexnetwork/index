@@ -20,4 +20,5 @@ export const API_ENDPOINTS = {
 	NFT_METADATA: "/nft",
 	ENS: "/ens",
 	UPLOAD_AVATAR: "/upload_avatar",
+	ZAPIER_TEST_LOGIN: "/zapier/test_login",
 };

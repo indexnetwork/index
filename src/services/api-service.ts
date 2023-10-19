@@ -194,6 +194,14 @@ class ApiService {
 			return null;
 		}
 	}
+	async zapierTestLogin(email: string, password: string) : Promise<any | undefined> {
+		try {
+			const { data } = await apiAxios.post(`${API_ENDPOINTS.ZAPIER_TEST_LOGIN}`, { email, password });
+			return data as any;
+		} catch (err: any) {
+			// throw new Error(err.message);
+		}
+	}
 }
 
 const api = new ApiService();
