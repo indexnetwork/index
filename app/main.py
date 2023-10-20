@@ -3,46 +3,43 @@ import json
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI
-from fastapi import Request
+from fastapi import FastAPI, Request
+
 from fastapi.responses import JSONResponse
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 
+import chromadb
+import openai
+import redis
+from chromadb.config import Settings
 
-from llama_index import download_loader
-from llama_index.llms import ChatMessage
-from llama_index.vector_stores import ChromaVectorStore
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index import VectorStoreIndex, ListIndex, LLMPredictor, ServiceContext
-from llama_index.chat_engine.types import ChatMode
-from llama_index.indices.composability import ComposableGraph
-from llama_index.indices.query.query_transform import HyDEQueryTransform
-from llama_index.query_engine.transform_query_engine import TransformQueryEngine
-from llama_index.vector_stores.types import ExactMatchFilter, MetadataFilters
-
+from langchain.schema import ChatMessage
+from langchain.vectorstores import Chroma
+from langchain.memory import ConversationBufferMemory, ChatMessageHistory
+from langchain.schema import HumanMessage, AIMessage
+from langchain.embeddings import OpenAIEmbeddings
 from langchain.chat_models import ChatOpenAI
-from llama_index import Document
+from langchain.chains import RetrievalQA
+from langchain.agents import Tool
+from langchain.agents import AgentExecutor
+from langchain.utilities import SerpAPIWrapper
+
+from langchain.tools.render import render_text_description
+from langchain.agents.output_parsers import ReActSingleInputOutputParser
+from langchain.agents.format_scratchpad import format_log_to_str
+from langchain import hub
+
 
 from unstructured.partition.auto import partition
 
-from app.document_parser import get_document
 
-import chromadb
-from chromadb.config import Settings
-
-import openai #
-
-
-
-import redis
 
 load_dotenv()
 
-redisClient = redis.Redis.from_url(os.environ["REDIS_CONNECTION_STRING"]);
-
+redisClient = redis.Redis.from_url(os.environ["REDIS_CONNECTION_STRING"])
 
 origins = [
     "http://localhost",
@@ -58,50 +55,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+from app.document_parser import get_document
+from langchain.agents.agent_toolkits import (
+    create_vectorstore_agent,
+    VectorStoreToolkit,
+    VectorStoreInfo,
+)
 
 openai.api_key = os.environ["OPENAI_API_KEY"]
 openai.log = "error"
 
 local_directory = "chroma-indexes"
 persist_directory = os.path.join(os.getcwd(), local_directory)
-
 chroma_client = chromadb.PersistentClient(path=persist_directory)
-
-hyde = HyDEQueryTransform(include_original=True)
-
-
-def get_service_context():
-    embed_model = OpenAIEmbedding(model="text-embedding-ada-002", openai_api_key=os.environ["OPENAI_API_KEY"])
-    llm = ChatOpenAI(temperature=0, model_name="gpt-4", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
-    service_context = ServiceContext.from_defaults(llm=llm, embed_model=embed_model)
-    return service_context
-
-def get_collection():
-    collection = chroma_client.get_or_create_collection(name="indexes")
-    vector_store = ChromaVectorStore(chroma_collection=collection)
-    index = VectorStoreIndex.from_vector_store(vector_store=vector_store, service_context=get_service_context())
-
-    return index
+llm = ChatOpenAI(temperature=0, model_name="gpt-4", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
+embedding_function = OpenAIEmbeddings(model="text-embedding-ada-002", openai_api_key=os.environ["OPENAI_API_KEY"])
+collection = Chroma(
+        client=chroma_client,
+        collection_name="indexes",
+        embedding_function=embedding_function,
+    )
 
 def get_query_engine(indexes):
-    collection = get_collection()
 
     if len(indexes) > 1:
         index_filters =  {"$or": [{"index_id": {"$eq": i}} for i in indexes]}
     else:
         index_filters =  {"index_id": {"$eq": indexes[0]}}
 
-    return collection.as_query_engine(streaming=True, verbose=True, vector_store_kwargs={"where": index_filters})
-
-def get_index_chat_engine(indexes):
-    collection = get_collection()
-
-    if len(indexes) > 1:
-        index_filters =  {"$or": [{"index_id": {"$eq": i}} for i in indexes]}
-    else:
-        index_filters =  {"index_id": {"$eq": indexes[0]}}
-
-    return collection.as_chat_engine(chat_mode="context", similarity_top_k=5, streaming=True, verbose=True, vector_store_kwargs={"where": index_filters})
 
 class ChatStream(BaseModel):
     id: str
@@ -134,42 +115,20 @@ def home():
 @app.post("/index/{index_id}/links")
 def add(index_id, link: Link):
 
-    collection = get_collection()
-    
-    documents = get_document(link.url) 
+    documents = get_document(link.url)
 
     for node in documents:
+
         node.metadata = {"source": link.url,"index_id": index_id}
-        collection.insert(Document.from_langchain_format(node))
+        collection.add_documents(documents)
 
     return JSONResponse(content={'message': 'Document added successfully'})
+
 
 @app.delete("/index/{index_id}/links")
 def remove(index_id: str, link: Link):
     return JSONResponse(content={"message": "Documents deleted successfully"})
 
-
-@app.post("/compose_new")
-def query(prompt: Prompt):
-
-    collection = get_collection()
-
-
-    hyde_query_engine = TransformQueryEngine( collection.as_query_engine(), hyde)
-
-    response = hyde_query_engine.query(prompt.prompt)
-
-    print(response.get_formatted_sources())
-
-    return JSONResponse(content={
-        "sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.source_nodes],
-        "response": response.response
-    })
-
-@app.post("/index/{index_id}/prompt")
-async def query(index_id, prompt: Prompt):
-    response = get_query_engine([index_id]).query(prompt.prompt)
-    return StreamingResponse(response_generator(response), media_type='text/event-stream')
 
 
 @app.post("/chat_stream")
@@ -183,54 +142,46 @@ def chat_stream(params: ChatStream):
     elif params.indexes:
         indexes = params.indexes
 
-    print(indexes)
-    index = get_index_chat_engine(indexes)
-
     messages = params.messages
     last_message = messages[-1]
+    message_instances = list(
+        map(lambda msg: HumanMessage(content=msg.content) if msg.role == "user" else AIMessage(content=msg.content), messages))
 
-    streaming_response = index.stream_chat(message=last_message.content, chat_history=messages)
+    history = ChatMessageHistory()
+    history.messages = message_instances
 
-    def response_generator():
-        for text in streaming_response.response_gen:
-            yield text
+    memory = ConversationBufferMemory(memory_key="chat_history", chat_memory=history, return_messages=True)
 
-#        yield '\n\nSources:'
-#        for s in streaming_response.source_nodes:
-#            yield '\n\n'
-#            yield  s.node.metadata.get("source")
-
-
-    return StreamingResponse(response_generator(), media_type='text/event-stream')
-
-
-
-@app.post("/compose")
-def compose(c: Composition):
-
-
-    id_resp = redisClient.hkeys("user_indexes:by_did:" + c.did.lower())
-
-    index_ids = [item.decode('utf-8').split(':')[0] for item in id_resp]
-
-    indexes = list(map(lambda index_id: get_index(index_id=index_id), index_ids))
-    indexes = [get_index(index_id=index_id) for index_id in index_ids if get_index(index_id=index_id)]
-
-
-    summaries = redisClient.hmget("summaries", index_ids)
-
-    graph = ComposableGraph.from_indices(
-        ListIndex,
-        indexes,
-        index_summaries=summaries,
-        max_keywords_per_chunk=2000,
+    indexChain = RetrievalQA.from_chain_type(
+        llm=llm, chain_type="stuff", retriever=collection.as_retriever()
     )
-    query_engine = graph.as_query_engine()
-    response = query_engine.query(c.prompt)
-    return JSONResponse(content={
-        #"sources": [{"id": s.node.id_, "url": s.node.metadata.get("source"), "index_id": s.node.metadata.get("index_id")} for s in response.source_nodes],
-        "response": response.response
-    })
+
+    search = SerpAPIWrapper()
+
+    tools = [
+        Tool(
+            name="Vector Database",
+            func=indexChain.run,
+            description="Useful for getting information about anything",
+        )
+    ]
+
+    prompt = hub.pull("hwchase17/react-chat")
+    prompt = prompt.partial(
+        tools=render_text_description(tools),
+        tool_names=", ".join([t.name for t in tools]),
+    )
+
+    llm_with_stop = llm.bind(stop=["\nObservation"])
+    agent = {
+                "input": lambda x: x["input"],
+                "agent_scratchpad": lambda x: format_log_to_str(x['intermediate_steps']),
+                "chat_history": lambda x: x["chat_history"]
+            } | prompt | llm_with_stop | ReActSingleInputOutputParser()
+
+    agent_chain = AgentExecutor.from_agent_and_tools(agent, tools=tools, memory=memory, verbose=True )
+    return agent_chain.invoke({"input": last_message.content})
+
 
 
 if __name__ == "__main__":

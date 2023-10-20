@@ -12,8 +12,8 @@ from fastapi.responses import JSONResponse
 class Transformers:
     @staticmethod
     def unstructured(fileName, file_type):
-        loader = UnstructuredFileLoader(file_path=fileName, mode="paged")
-        return loader.load()        
+        loader = UnstructuredFileLoader(file_path=fileName, mode="paged") #elements
+        return loader.load()
 
     @staticmethod
     def apify(url):
@@ -46,7 +46,7 @@ fileTypes = {
     'docx': Transformers.unstructured,
     'xml': Transformers.unstructured,
     'json': Transformers.langchainJSON,
-    'html': Transformers.unstructured, # ? 
+    'html': Transformers.unstructured, # ?
 }
 
 def save_file(url, file_type):
@@ -56,14 +56,14 @@ def save_file(url, file_type):
 
     # Generate a unique filename based on UUID
     unique_filename = f"{uuid.uuid4()}.{file_type}"
-    
-    output_path = os.environ.get('OUTPUT_PATH', '.') 
+
+    output_path = os.environ.get('OUTPUT_PATH', '.')
     full_path = os.path.join(output_path, unique_filename)
 
     # Save the content to the specified path with the generated filename
     with open(full_path, 'wb') as f:
         f.write(response.content)
-    
+
     return full_path
 
 
@@ -116,7 +116,7 @@ def resolve_file(url):
     transformer = fileTypes.get(file_type)
     if transformer:
         return transformer, file_type
-    
+
     mime_type = get_mime_from_head_request(url)
     if mime_type:
         file_type = map_mime_to_filetype(mime_type)
