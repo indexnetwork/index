@@ -58,16 +58,18 @@ const IndexesPage: NextPageWithLayout = () => {
 		setChatId(`${localStorage.getItem("chatterID")}-${suffix}`);
 	}, [router.asPath]);
 
-	return <PageContainer key={chatId.toString()} page={"profile"}>
-		<div>
-			<AskIndexes id={chatId} did={did!.toString()} />
-		</div>
-		{ viewedProfile && viewedProfile.id && <Head>
+	return <>
+		<PageContainer key={chatId.toString()} page={"profile"}>
+			<div className={"scrollable-container"}>
+				<AskIndexes id={chatId} did={did!.toString()} />
+			</div>
+		</PageContainer>
+		{ viewedProfile && <Head>
 			<title>{viewedProfile.name || maskDID(viewedProfile.id!)} - Index Network</title>
 			<meta name="title" content={`${viewedProfile.name || maskDID(viewedProfile.id!)} - Index Network`} />
 			<meta name="description" content="The human bridge between context and content." />
 		</Head>}
-	</PageContainer>;
+	</>;
 };
 
 IndexesPage.getLayout = function getLayout(page: ReactElement) {
