@@ -64,7 +64,7 @@ const IndexesPage: NextPageWithLayout = () => {
 				<AskIndexes id={chatId} did={did!.toString()} />
 			</div>
 		</PageContainer>
-		{ viewedProfile && <Head>
+		{ viewedProfile && viewedProfile.id && <Head>
 			<title>{viewedProfile.name || maskDID(viewedProfile.id!)} - Index Network</title>
 			<meta name="title" content={`${viewedProfile.name || maskDID(viewedProfile.id!)} - Index Network`} />
 			<meta name="description" content="The human bridge between context and content." />
