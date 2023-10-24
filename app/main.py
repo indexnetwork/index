@@ -23,7 +23,7 @@ from langchain.schema import HumanMessage, AIMessage
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
-from langchain.agents import Tool
+from langchain.agents import Tool, AgentType, initialize_agent
 from langchain.agents import AgentExecutor
 from langchain.utilities import SerpAPIWrapper
 
@@ -68,7 +68,7 @@ openai.log = "error"
 local_directory = "chroma-indexes"
 persist_directory = os.path.join(os.getcwd(), local_directory)
 chroma_client = chromadb.PersistentClient(path=persist_directory)
-llm = ChatOpenAI(temperature=0, model_name="gpt-4", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
+llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
 embedding_function = OpenAIEmbeddings(model="text-embedding-ada-002", openai_api_key=os.environ["OPENAI_API_KEY"])
 collection = Chroma(
         client=chroma_client,
@@ -179,7 +179,11 @@ def chat_stream(params: ChatStream):
                 "chat_history": lambda x: x["chat_history"]
             } | prompt | llm_with_stop | ReActSingleInputOutputParser()
 
-    agent_chain = AgentExecutor.from_agent_and_tools(agent, tools=tools, memory=memory, verbose=True )
+    #agent_chain = AgentExecutor.from_agent_and_tools(agent, tools=tools, memory=memory, verbose=True )
+
+    agent_chain = initialize_agent(tools, llm, agent=AgentType.CHAT_CONVERSATIONAL_REACT_DESCRIPTION, verbose=True,
+                                   memory=memory)
+
     return agent_chain.invoke({"input": last_message.content})
 
 
