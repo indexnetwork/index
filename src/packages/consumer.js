@@ -3,7 +3,7 @@ if(process.env.NODE_ENV !== 'production'){
     dotenv.config()
 }
 
-import _, {random} from 'lodash';
+import _  from 'lodash';
 import { Kafka } from 'kafkajs'
 import * as indexer from '../libs/kafka-indexer.js';
 import RedisClient from '../clients/redis.js';
@@ -26,7 +26,8 @@ const topics = {
 
 async function start() {
     await redis.connect()
-    const consumer = kafka.consumer({ groupId: `index-consumer-dev-${random(false)}` })
+    const rnd = Math.random().toString(36).slice(2, 7);
+    const consumer = kafka.consumer({ groupId: `index-consumer-dev-${rnd}` })
     await consumer.connect()
     await consumer.subscribe({ topics: Object.keys(topics), fromBeginning: true})
     await consumer.run({
