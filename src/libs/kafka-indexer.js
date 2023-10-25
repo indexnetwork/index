@@ -12,16 +12,16 @@ const client = new Client({ node: process.env.ELASTIC_HOST })
 import RedisClient from '../clients/redis.js';
 const redis = RedisClient.getInstance();
 
-import {getIndexById, getIndexLinkById, getLinkById} from "./composedb.js";
+import {getIndexById, getIndexLinkById, getLinkById, getProfileById, getUserIndexById} from "./composedb.js";
 
 const config = {
     indexName: 'links'
 }
 
-export const createIndex = async (indexMsg) => {
-    console.log("createIndex", indexMsg)
+export const createIndex = async (indexId) => {
+    console.log("createIndex", indexId)
 
-    let index = await getIndexById(indexMsg.id)
+    let index = await getIndexById(indexId)
 
     await client.index({
         index: config.indexName,
@@ -45,10 +45,10 @@ export const createIndex = async (indexMsg) => {
      */
 
 }
-export const updateIndex = async (indexMsg) => {
-    console.log("updateIndex", indexMsg)
+export const updateIndex = async (indexId) => {
+    console.log("updateIndex", indexId)
 
-    let index = await getIndexById(indexMsg.id)
+    let index = await getIndexById(indexId)
 
     //Index index
     await client.index({
@@ -90,12 +90,12 @@ export const updateIndex = async (indexMsg) => {
         },
     })
 }
-export const createIndexLink = async (indexLinkMsg) => {
-    console.log("createIndexLink", indexLinkMsg)
-    let indexLink = await getIndexLinkById(indexLinkMsg.id)
+export const createIndexLink = async (indexLinkId) => {
+    console.log("createIndexLink", indexLinkId)
+    let indexLink = await getIndexLinkById(indexLinkId)
 
     try {
-        await axios.post(`http://llm-indexer/index/${indexLink.indexId}/links`, {url: indexLink.link.url})
+        await axios.post(`http://llm-indexer.testnet/index/${indexLink.indexId}/links`, {url: indexLink.link.url})
     } catch (e) {
         console.log("Indexer error:", e.message);
     }
@@ -109,11 +109,11 @@ export const createIndexLink = async (indexLinkMsg) => {
         doc: indexLink,
     })
 }
-export const updateIndexLink = async (indexLinkMsg) => {
+export const updateIndexLink = async (indexLinkId) => {
 
-    console.log("updateIndexLink", indexLinkMsg)
+    console.log("updateIndexLink", indexLinkId)
 
-    let indexLink = await getIndexLinkById(indexLinkMsg.id)
+    let indexLink = await getIndexLinkById(indexLinkId)
     delete indexLink.link.content  // TODO fix stored in the indexer only, for now.
     indexLink.link.url_exact_match = indexLink.link.url;
     await client.update({
@@ -130,10 +130,10 @@ export const createLink = async (link) => {
     console.log("createLink - Ignore", link)
 }
 
-export const updateLink = async (linkMsg) => {
+export const updateLink = async (linkId) => {
 
-    console.log("updateLink", linkMsg)
-    const link = await getLinkById(linkMsg.id)
+    console.log("updateLink", linkId)
+    const link = await getLinkById(linkId)
     delete link.content
     link.url_exact_match = link.url;
     //Index links
@@ -197,25 +197,28 @@ export const updateLinkContent = async (url, content) => {
         },
     })
 }
-export const createUserIndex = async (user_index) => {
-    console.log("createUserIndex", user_index)
-    await redis.hSet(`user_indexes:by_did:${user_index.controllerDID.toLowerCase()}`, `${user_index.indexId}:${user_index.type}`, JSON.stringify(user_index))
+export const createUserIndex = async (userIndexId) => {
+    console.log("createUserIndex", userIndexId)
+    const userIndex = await getUserIndexById(userIndexId)
+    await redis.hSet(`user_indexes:by_did:${userIndex.controllerDID.toLowerCase()}`, `${userIndex.indexId}:${userIndex.type}`, JSON.stringify(userIndex))
 }
-export const updateUserIndex = async (user_index) => {
-    console.log("updateUserIndex", user_index)
-    if(user_index.deletedAt){
-        await redis.hDel(`user_indexes:by_did:${user_index.controllerDID.toLowerCase()}`, `${user_index.indexId}:${user_index.type}`)
+export const updateUserIndex = async (userIndexId) => {
+    console.log("createUserIndex", userIndexId)
+    const userIndex = await getUserIndexById(userIndexId)
+    if(userIndex.deletedAt){
+        await redis.hDel(`user_indexes:by_did:${userIndex.controllerDID.toLowerCase()}`, `${userIndex.indexId}:${userIndex.type}`)
     }
 }
 
 
-export const createProfile = async (profile) => {
-    console.log("profile", profile)
-    profile.id = profile.controllerDID;
+export const createProfile = async (id) => {
+    console.log("createUserIndex", id)
+    const profile = await getProfileById(id)
+    profile.id = profile.controllerDID.id;
     delete profile.controllerDID;
     await redis.hSet(`profiles`, profile.id.toString(), JSON.stringify(profile));
 
 }
-export const updateProfile = async (profile) => {
-    return await createProfile(profile);
+export const updateProfile = async (id) => {
+    return await createProfile(id);
 }

@@ -2,6 +2,9 @@ import moment from "moment";
 import { getOwnerProfile } from "../utils/lit/index.js";
 import { DIDSession } from "did-session"
 
+import { profileFragment, indexLinkFragment, userIndexFragment, linkFragment, indexFragment } from '../types/fragments.js';
+
+
 export const getCurrentDateTime = () => moment.utc().toISOString();
 
 import { ComposeClient }from "@composedb/client"
@@ -107,7 +110,9 @@ export const addIndexLink = async(indexId, linkId, session) => {
     }
     return data?.createIndexLink.document;
 }
-export const getProfile = async(did) => {
+
+
+export const getProfileById = async(id) => {
     let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
         method: 'POST',
         headers: {
@@ -115,47 +120,8 @@ export const getProfile = async(did) => {
         },
         body: JSON.stringify({
             query: `{
-              node(id: "${id}") {
-                ... on IndexLink {
-                  id
-                  indexId
-                  linkId
-                  createdAt
-                  updatedAt
-                  deletedAt
-                  indexerDID {
-                    id
-                  }
-                  controllerDID {
-                    id
-                  }
-                  index {
-                    id
-                    controllerDID {
-                      id
-                    }        
-                    title
-                    collabAction
-                    pkpPublicKey
-                    createdAt
-                    updatedAt
-                    deletedAt
-                  }
-                  link {
-                    id
-                    controllerDID {
-                      id
-                    }
-                    title
-                    url
-                    favicon
-                    tags
-                    content
-                    createdAt
-                    updatedAt
-                    deletedAt
-                  }
-                }
+              node( id: "${id}") {
+                ${profileFragment}
               }
             }`
         })
@@ -172,46 +138,24 @@ export const getIndexLinkById = async(id) => {
         body: JSON.stringify({
             query: `{
               node(id: "${id}") {
-                ... on IndexLink {
-                  id
-                  indexId
-                  linkId
-                  createdAt
-                  updatedAt
-                  deletedAt
-                  indexerDID {
-                    id
-                  }
-                  controllerDID {
-                    id
-                  }
-                  index {
-                    id
-                    controllerDID {
-                      id
-                    }        
-                    title
-                    collabAction
-                    pkpPublicKey
-                    createdAt
-                    updatedAt
-                    deletedAt
-                  }
-                  link {
-                    id
-                    controllerDID {
-                      id
-                    }
-                    title
-                    url
-                    favicon
-                    tags
-                    content
-                    createdAt
-                    updatedAt
-                    deletedAt
-                  }
-                }
+                ${indexLinkFragment}
+              }
+            }`
+        })
+    })
+    let res = await results.json();
+    return res.data.node;
+}
+export const getUserIndexById = async(id) => {
+    let results = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
+        method: 'POST',
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            query: `{
+              node(id: "${id}") {
+                ${userIndexFragment}
               }
             }`
         })
@@ -228,20 +172,7 @@ export const getLinkById = async(id) => {
         body: JSON.stringify({
             query: `{
               node(id: "${id}") {
-                ... on Link {
-                    id
-                    controllerDID {
-                      id
-                    }
-                    title
-                    url
-                    favicon
-                    tags
-                    content
-                    createdAt
-                    updatedAt
-                    deletedAt
-                }
+                ${linkFragment}
               }
             }`
         })
@@ -258,26 +189,8 @@ export const getIndexById = async (id) => {
         body: JSON.stringify({
             query: `{
                 node(id:"${id}"){
-                  id
-                  ... on Index{
-                    id
-                    title
-                    collabAction
-                    pkpPublicKey
-                    createdAt
-                    updatedAt
-                    deletedAt
-                    controllerDID {
-                        id
-                    }
-                    links(last:1) {
-                        edges {
-                          node {
-                            updatedAt
-                          }
-                        }
-                    }                    
-                }}
+                  ${indexFragment}                    
+                }
           }`
         })
     })
@@ -314,22 +227,7 @@ export const getIndexByPKP = async (id) => {
                   indexList(first: 1) {
                     edges {
                       node {
-                        id
-                        title
-                        collabAction
-                        pkpPublicKey
-                        createdAt
-                        updatedAt
-                        controllerDID {
-                            id
-                        }
-                        links(last:1) {
-                            edges {
-                                node {
-                                    updatedAt
-                                }
-                            }
-                        }                           
+                        ${indexFragment}                  
                       }
                     }
                   }
