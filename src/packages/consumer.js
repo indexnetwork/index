@@ -27,7 +27,7 @@ const topics = {
 async function start() {
     await redis.connect()
     const rnd = Math.random().toString(36).slice(2, 7);
-    const consumer = kafka.consumer({ groupId: `index-consumer-dev-v6zei}` })
+    const consumer = kafka.consumer({ groupId: `index-consumer-dev-v6zei` })
     await consumer.connect()
     await consumer.subscribe({ topics: Object.keys(topics)})
     await consumer.run({
