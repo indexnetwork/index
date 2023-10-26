@@ -41,60 +41,62 @@ async function start() {
             }
             let docId = value.stream_id;
             const model = topics[topic];
-
-            switch (model) {
-                case 'index':
-                    switch (op) {
-                        case "c":
-                            await indexer.createIndex(docId)
-                            break
-                        case "u":
-                            await indexer.updateIndex(docId)
-                            break
-                    }
-                    break
-                case 'user_index':
-                    switch (op) {
-                        case "c":
-                            await indexer.createUserIndex(docId)
-                            break
-                        case "u":
-                            await indexer.updateUserIndex(docId)
-                            break
-                    }
-                    break
-                case 'index_link':
-                    switch (op) {
-                        case "c":
-                            await indexer.createIndexLink(docId)
-                            break
-                        case "u":
-                            await indexer.updateIndexLink(docId)
-                            break
-                    }
-                    break
-                case 'link':
-                    switch (op) {
-                        case "c":
-                            await indexer.createLink(docId)
-                            break
-                        case "u":
-                            await indexer.updateLink(docId)
-                            break
-                    }
-                    break
-                case 'profile':
-                    switch (op) {
-                        case "c":
-                            await indexer.createProfile(docId)
-                            break
-                        case "u":
-                            await indexer.updateProfile(docId)
-                            break
-                    }
-                    break
+            try{
+                switch (model) {
+                    case 'index':
+                        switch (op) {
+                            case "c":
+                                await indexer.createIndex(docId)
+                                break
+                            case "u":
+                                await indexer.updateIndex(docId)
+                                break
+                        }
+                        break
+                    case 'user_index':
+                        switch (op) {
+                            case "c":
+                                await indexer.createUserIndex(docId)
+                                break
+                            case "u":
+                                await indexer.updateUserIndex(docId)
+                                break
+                        }
+                        break
+                    case 'index_link':
+                        switch (op) {
+                            case "c":
+                                await indexer.createIndexLink(docId)
+                                break
+                            case "u":
+                                await indexer.updateIndexLink(docId)
+                                break
+                        }
+                        break
+                    case 'link':
+                        switch (op) {
+                            case "c":
+                                await indexer.createLink(docId)
+                                break
+                            case "u":
+                                await indexer.updateLink(docId)
+                                break
+                        }
+                        break
+                    case 'profile':
+                        switch (op) {
+                            case "c":
+                                await indexer.createProfile(docId)
+                                break
+                            case "u":
+                                await indexer.updateProfile(docId)
+                                break
+                        }
+                        break
+                }
+            } catch (e) {
+                console.log("Consumer error", e)
             }
-
         },
     })
 }
