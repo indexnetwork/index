@@ -1,110 +1,86 @@
 import dotenv from 'dotenv'
 dotenv.config()
 
-import _  from 'lodash';
+import pkg from 'pg';
+const { Pool } = pkg;
+import { Kafka } from 'kafkajs';
 
-import {getIndexById, getIndexLinkById, getLinkById, getProfileById, getUserIndexById} from "./../libs/composedb.js";
-
-
-import { Kafka } from 'kafkajs'
-
-
+// Kafka setup
 const kafka = new Kafka({
     clientId: 'api',
     brokers: [process.env.KAFKA_HOST],
-})
-
+});
 const producer = kafka.producer();
 
+// PostgreSQL setup
+const pool = new Pool({
+    host: process.env.POSTGRES_HOST,
+    database: process.env.POSTGRES_DB,
+    user: process.env.POSTGRES_USER,
+    password: process.env.POSTGRES_PASSWORD,
+    port: process.env.POSTGRES_PORT,
+});
 
-
-
-
-const queryModel = async (cursor, model) => {
-    const query = `
-    query {
-      ${model}(first: 100${cursor ? `, after: "${cursor}"` : ''}) {
-        edges {
-          node {
-            id
-          }
-        }
-        pageInfo {
-          hasNextPage
-          endCursor
-        }
-      }
-    }
-  `;
-
-    const response = await fetch(`${process.env.COMPOSEDB_HOST}/graphql`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            query,
-        }),
-    });
-
-
-    if (response.ok) {
-
-        const json = await response.json();
-        return json.data;
-    } else {
-        const error = await response.text();
-        throw new Error(`GraphQL query failed: ${error}`);
+const queryPostgres = async (query, values) => {
+    const client = await pool.connect();
+    try {
+        const res = await client.query(query, values);
+        return res.rows;
+    } finally {
+        client.release();
     }
 };
 
-
-const pushToKafka = async (data, model, topic) => {
-    await producer.connect();
-    console.log(data,model)
-    for (const edge of data[model].edges) {
+const pushToKafka = async (data, topic) => {
+    for (const row of data) {
         await producer.send({
             topic,
-            messages: [
-                {value: JSON.stringify({
-                        stream_id: edge.node.id,
-                        "__op":"c"
-                })}
-            ],
+            messages: [{ value: JSON.stringify({stream_id: row.stream_id, "__op": "c"}) }],
         });
     }
-
-    await producer.disconnect();
-};
-
-const paginateAndPush = async (model, topic) => {
-    let hasNextPage = true;
-    let cursor = null;
-
-    while (hasNextPage) {
-        const data = await queryModel(cursor, model);
-        await pushToKafka(data, model, topic);
-
-        hasNextPage = data[model].pageInfo.hasNextPage;
-        cursor = data[model].pageInfo.endCursor;
-    }
-};
-
-// Query and push data for each model
-// 'linkIndex': 'postgres.public.kjzl6hvfrbw6c92114fj79ii6shyl8cbnsz5ol3v62s0uu3m78gy76gzaovpaiu',
-
-const models = {
-    'indexIndex': 'postgres.public.kjzl6hvfrbw6caw09g11y7vy1qza903xne35pi30xvmelvnvlfxy9tadwwkzzd6',
-    'indexLinkIndex': 'postgres.public.kjzl6hvfrbw6c8a1u7qrk1xcz5oty0temwn2szbmhl8nfnw9tddljj4ue8wba68',
-    'userIndexIndex': 'postgres.public.kjzl6hvfrbw6c9aw0xd4vlhqc5mx57f0y2xmm8xiyxzzj1abrizfyppup22r9ac',
-    'profileIndex': 'postgres.public.kjzl6hvfrbw6ca52q3feusjpl2r49wv9x0odyd2zmaytyq8ddunud4243rvl3gm',
 };
 
 const go = async () => {
-    for (const key of Object.keys(models)) {
-        await paginateAndPush(key, models[key]);
+    await producer.connect();
+
+    const pageSize = 100;
+
+    const models = [
+        'kjzl6hvfrbw6caw09g11y7vy1qza903xne35pi30xvmelvnvlfxy9tadwwkzzd6',
+        'kjzl6hvfrbw6c8a1u7qrk1xcz5oty0temwn2szbmhl8nfnw9tddljj4ue8wba68',
+        'kjzl6hvfrbw6c9aw0xd4vlhqc5mx57f0y2xmm8xiyxzzj1abrizfyppup22r9ac',
+        'kjzl6hvfrbw6ca52q3feusjpl2r49wv9x0odyd2zmaytyq8ddunud4243rvl3gm'
+    ];
+
+
+    for (const model  of models) {
+
+        let offset = 0;
+        let hasMore = true;
+
+        while (hasMore) {
+            const query = `
+        SELECT * FROM ${model}
+        LIMIT $1 OFFSET $2
+      `;
+            const values = [pageSize, offset];
+            const data = await queryPostgres(query, values);
+
+            if (data.length > 0) {
+                console.log(data.length)
+                pushToKafka(data, 'postgres.public.' + model);
+                offset += pageSize;
+            } else {
+                hasMore = false;
+            }
+        }
     }
+
+    setTimeout(() => {
+        console.log('Finished, waiting...');
+    }, 10000);
+    //await producer.disconnect();
 };
 
+go();
 
-go()

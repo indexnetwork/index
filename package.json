@@ -43,6 +43,7 @@
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^3.3.0",
     "nodemon": "^3.0.1",
+    "pg": "^8.11.3",
     "puppeteer": "^19.7.2",
     "redis": "^4.6.5",
     "striptags": "^3.2.0",
