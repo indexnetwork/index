@@ -87,6 +87,7 @@ export const userIndexFragment = `
     controllerDID {
       id
     }
+    type
     createdAt
     updatedAt
     deletedAt
