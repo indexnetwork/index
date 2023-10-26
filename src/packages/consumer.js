@@ -29,7 +29,7 @@ async function start() {
     const rnd = Math.random().toString(36).slice(2, 7);
     const consumer = kafka.consumer({ groupId: `index-consumer-dev-v6zei}` })
     await consumer.connect()
-    await consumer.subscribe({ topics: Object.keys(topics), fromBeginning: true})
+    await consumer.subscribe({ topics: Object.keys(topics)})
     await consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
 
