@@ -35,7 +35,7 @@ async function start() {
         groupId: `index-consumer-dev-12`,
         sessionTimeout: 300000,
         heartbeatInterval: 10000,
-        rebalanceTimeout: 5000,
+        rebalanceTimeout: 3000,
     })
     await consumerItems.connect()
     await consumerItems.subscribe({ topics: Object.keys(topics.items), fromBeginning: true})
@@ -43,41 +43,32 @@ async function start() {
         eachMessage: async ({ topic, partition, message }) => {
 
             const value = JSON.parse(message.value.toString());
-            console.log(value)
             const op = value.__op;
             const model = topics.items[topic]
             if(!['c', 'u'].includes(op)){
                 return;
             }
 
-            if(value.stream_content){
-                value.stream_content = JSON.parse(value.stream_content)
-            }
-
-            let doc = {
-                id: value.stream_id,
-                controllerDID: value.controller_did,
-                ...value.stream_content
-            }
+            let docId = value.stream_id;
 
             switch (model) {
                 case 'index_link':
                     switch (op) {
                         case "c":
-                            indexer.createIndexLink(doc)
+                            indexer.createIndexLink(docId)
                             break
                         case "u":
-                            indexer.updateIndexLink(doc)
+                            indexer.updateIndexLink(docId)
                             break
                     }
                     break
                 case 'link':
                     switch (op) {
                         case "c":
-                            indexer.createLink(doc)
+                            indexer.createLink(docId)
                             break
                         case "u":
-                            indexer.updateLink(doc)
+                            indexer.updateLink(docId)
                             break
                     }
                     break
@@ -90,7 +81,7 @@ async function start() {
         groupId: `index-consumer-dev-12-generic`,
         sessionTimeout: 300000,
         heartbeatInterval: 10000,
-        rebalanceTimeout: 5000,
+        rebalanceTimeout: 3000,
     })
     await consumerGeneric.connect()
     await consumerGeneric.subscribe({ topics: Object.keys(topics.generic), fromBeginning: true})
@@ -101,48 +92,41 @@ async function start() {
             console.log(value)
             const op = value.__op;
             const model = topics.generic[topic]
+
             if(!['c', 'u'].includes(op)){
                 return;
             }
 
-            if(value.stream_content){
-                value.stream_content = JSON.parse(value.stream_content)
-            }
-
-            let doc = {
-                id: value.stream_id,
-                controllerDID: value.controller_did,
-                ...value.stream_content
-            }
+            let docId = value.stream_id;
 
             switch (model) {
                 case 'index':
                     switch (op) {
                         case "c":
-                            indexer.createIndex(doc)
+                            indexer.createIndex(docId)
                             break
                         case "u":
-                            indexer.updateIndex(doc)
+                            indexer.updateIndex(docId)
                             break
                     }
                     break
                 case 'user_index':
                     switch (op) {
                         case "c":
-                            indexer.createUserIndex(doc)
+                            indexer.createUserIndex(docId)
                             break
                         case "u":
-                            indexer.updateUserIndex(doc)
+                            indexer.updateUserIndex(docId)
                             break
                     }
                     break
                 case 'profile':
                     switch (op) {
                         case "c":
-                            indexer.createProfile(doc)
+                            indexer.createProfile(docId)
                             break
                         case "u":
-                            indexer.updateProfile(doc)
+                            indexer.updateProfile(docId)
                             break
                     }
                     break
