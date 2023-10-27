@@ -201,17 +201,28 @@ export const createUserIndex = async (userIndexId) => {
 
     const userIndex = await getUserIndexById(userIndexId)
     console.log("createUserIndex", userIndex)
+
+    if( !userIndex){
+        return;
+    }
+
     if(userIndex.type === "my_indexes"){
         userIndex.type = "owner";
     }
-    await redis.hSet(`user_indexes:by_did:${userIndex.controllerDID.id.toLowerCase()}`, `${userIndex.indexId}:${userIndex.type}`, JSON.stringify(userIndex))
+    console.log(`user_indexes:by_did:${userIndex.controllerDID.toLowerCase()}`, `${userIndex.indexId}:${userIndex.type}`, JSON.stringify(userIndex));
+    await redis.hSet(`user_indexes:by_did:${userIndex.controllerDID.toLowerCase()}`, `${userIndex.indexId}:${userIndex.type}`, JSON.stringify(userIndex))
 }
 export const updateUserIndex = async (userIndexId) => {
-    console.log("createUserIndex", userIndexId)
+    console.log("updateUserIndex", userIndexId)
     const userIndex = await getUserIndexById(userIndexId)
+    if(!userIndex){
+        return;
+    }
     if(userIndex.type === "my_indexes"){
         userIndex.type = "owner";
     }
+    console.log(`user_indexes:by_did:${userIndex.controllerDID.toLowerCase()}`, `${userIndex.indexId}:${userIndex.type}`, JSON.stringify(userIndex));
+
     if(userIndex.deletedAt){
         await redis.hDel(`user_indexes:by_did:${userIndex.controllerDID.id.toLowerCase()}`, `${userIndex.indexId}:${userIndex.type}`)
     }

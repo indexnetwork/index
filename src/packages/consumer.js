@@ -35,6 +35,7 @@ async function start() {
         groupId: `index-consumer-dev-12`,
         sessionTimeout: 300000,
         heartbeatInterval: 10000,
+        rebalanceTimeout: 5000,
     })
     await consumerItems.connect()
     await consumerItems.subscribe({ topics: Object.keys(topics.items), fromBeginning: true})
@@ -89,6 +90,7 @@ async function start() {
         groupId: `index-consumer-dev-12-generic`,
         sessionTimeout: 300000,
         heartbeatInterval: 10000,
+        rebalanceTimeout: 5000,
     })
     await consumerGeneric.connect()
     await consumerGeneric.subscribe({ topics: Object.keys(topics.generic), fromBeginning: true})
