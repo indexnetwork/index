@@ -60,9 +60,9 @@ const go = async () => {
 
         while (hasMore) {
             const query = `
-        SELECT * FROM ${model}
-        LIMIT $1 OFFSET $2
-      `;
+            SELECT * FROM ${model}
+            LIMIT $1 OFFSET $2
+          `;
             const values = [pageSize, offset];
             const data = await queryPostgres(query, values);
 
