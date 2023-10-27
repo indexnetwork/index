@@ -1,5 +1,5 @@
 import React, {
-	ReactElement, useEffect, useState,
+	ReactElement, useEffect, useMemo, useState,
 } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -85,9 +85,14 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			return;
 		}
 		!viewedProfile && setViewedProfile(doc.ownerDID);
-		const c = new CeramicService(getPKPSessionDID(doc));
+		const sessionResponse = await LitService.getPKPSession(doc.pkpPublicKey!, doc.collabAction!);
+		doc.isCreator = sessionResponse.isCreator;
+		doc.isPermittedAddress = sessionResponse.isPermittedAddress;
 		setIndex(doc);
-		setPKPCeramic(c);
+		if (sessionResponse.session) {
+			const c = new CeramicService(sessionResponse.session.did);
+			setPKPCeramic(c);
+		}
 		setLoading(false);
 	};
 	const loadUserIndex = async () => {
@@ -105,11 +110,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			setIndex(newIndex);
 		}
 	};
-	const getPKPSessionDID: (index: Indexes) => () => Promise<DID> = (i: Indexes) => async () => {
+	const getPKPSession: (index: Indexes) => () => Promise<DID> = (i: Indexes) => async () => {
 		try {
 			const sessionResponse = await LitService.getPKPSession(i.pkpPublicKey!, i.collabAction!);
 			if (sessionResponse && sessionResponse.session) {
-				return sessionResponse.session.did;
+				return sessionResponse;
 			}
 		} catch (error) {
 			throw new Error("Could not get PKP session DID");
@@ -234,11 +239,17 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		}
 	}, [progress]);
 
-	// @ts-ignore
+	const roles: any = useMemo(() => ({
+		owner: () => (index && index.ownerDID ? index.ownerDID.id === did : false),
+		creator: () => !!(index.isOwner || index.isCreator || index.isPermittedAddress),
+	}), [index, did]);
+	useEffect(() => {
+		console.log(roles.owner(), roles.creator(), "roles");
+	}, [roles]);
 	return (
 		<PageContainer key={indexId!.toString()} page={"index"}>
 			<IndexContext.Provider value={{
-				pkpCeramic, isOwner: index.isOwner!, isCreator: index.isCreator!, index,
+				pkpCeramic, index, roles,
 			}}>
 				<LinksContext.Provider value={{ links, setLinks }}>
 					<Flex className={"px-0 px-md-10 pt-6 scrollable-container"} flexDirection={"column"}>
@@ -265,7 +276,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<IndexTitleInput
 											defaultValue={index?.title || ""}
 											onChange={handleTitleChange}
-											disabled={!index.isOwner}
+											disabled={!roles.owner()}
 											loading={titleLoading}
 										/>
 									</Col>
@@ -286,7 +297,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											theme="clear"
 											borderless>
 											<IndexOperationsPopup
-												isOwner={profile && index && index.ownerDID && index.ownerDID.id === profile.id}
+												isOwner={roles.owner()}
 												index={index as Indexes}
 												userIndexToggle={handleUserIndexToggle}
 											></IndexOperationsPopup>
@@ -303,7 +314,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											<TabPane enabled={true} tabKey={"index"} title={"Index"} />
 											<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
 											<TabPane enabled={true} tabKey={"audience"} title={"Audience"} />
-											<TabPane hidden={!index?.isOwner} enabled={true} tabKey={"settings"} title={"Settings"} />
+											<TabPane hidden={!roles.creator()} enabled={true} tabKey={"settings"} title={"Settings"} />
 										</Tabs>
 									</Col>
 								</FlexRow>
@@ -320,7 +331,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 											placeholder={t("pages:home.searchLink")} />
 									</Col>
 								</FlexRow>
-								{index.isOwner && <FlexRow>
+								{roles.creator() && <FlexRow>
 									<Col className="idxflex-grow-1 pb-0 mt-6">
 										<LinkInput
 											loading={crawling}

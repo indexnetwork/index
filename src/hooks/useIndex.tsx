@@ -4,14 +4,12 @@ import { Indexes } from "../types/entity";
 
 export interface IndexContextValue {
 	pkpCeramic: CeramicService;
-	isOwner: boolean;
-	isCreator: boolean;
 	index: Partial<Indexes>;
+	roles: any;
 }
 export const IndexContext = React.createContext<IndexContextValue>({
-	isOwner: false,
-	isCreator: false,
 	index: {} as Indexes,
+	roles: { creator: false, owner: false },
 } as any);
 
 export const useIndex = () => useContext(IndexContext);

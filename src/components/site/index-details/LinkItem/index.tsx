@@ -34,7 +34,7 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
 	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
 	const { links, setLinks } = useLinks();
-	const { pkpCeramic, isOwner, isCreator } = useIndex();
+	const { pkpCeramic, roles } = useIndex();
 	const personalCeramic = useCeramic();
 
 	const { link } = index_link;
@@ -83,7 +83,7 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 							</a>
 						</Col>
 						{
-							!search && (isCreator || isOwner) && (
+							!search && roles.creator() && (
 								<Col className="idxflex-shrink-0 ml-3 index-detail-list-item-buttons">
 									<FlexRow>
 										<Col>
