@@ -27,11 +27,13 @@ const topics = {
 async function start() {
     await redis.connect()
     const rnd = Math.random().toString(36).slice(2, 7);
-    const consumer = kafka.consumer({ groupId: `index-consumer-dev-26oct` })
+    const consumer = kafka.consumer({ groupId: `index-consumer-dev-de` })
     await consumer.connect()
     await consumer.subscribe({ topics: Object.keys(topics), fromBeginning: true})
     await consumer.run({
         eachMessage: async ({ topic, partition, message }) => {
+
+            console.log("consumer topic: ", topic, " offset: ", message.offset);
 
             const value = JSON.parse(message.value.toString());
 
@@ -46,20 +48,20 @@ async function start() {
                     case 'index':
                         switch (op) {
                             case "c":
-                                await indexer.createIndex(docId)
+                                indexer.createIndex(docId)
                                 break
                             case "u":
-                                await indexer.updateIndex(docId)
+                                indexer.updateIndex(docId)
                                 break
                         }
                         break
                     case 'user_index':
                         switch (op) {
                             case "c":
-                                await indexer.createUserIndex(docId)
+                                indexer.createUserIndex(docId)
                                 break
                             case "u":
-                                await indexer.updateUserIndex(docId)
+                                indexer.updateUserIndex(docId)
                                 break
                         }
                         break
@@ -86,10 +88,10 @@ async function start() {
                     case 'profile':
                         switch (op) {
                             case "c":
-                                await indexer.createProfile(docId)
+                                indexer.createProfile(docId)
                                 break
                             case "u":
-                                await indexer.updateProfile(docId)
+                                indexer.updateProfile(docId)
                                 break
                         }
                         break
