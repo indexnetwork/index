@@ -44,7 +44,7 @@ async function start() {
             const value = JSON.parse(message.value.toString());
             console.log(value)
             const op = value.__op;
-            const model = topics[topic]
+            const model = topics.items[topic]
             if(!['c', 'u'].includes(op)){
                 return;
             }
@@ -98,7 +98,7 @@ async function start() {
             const value = JSON.parse(message.value.toString());
             console.log(value)
             const op = value.__op;
-            const model = topics[topic]
+            const model = topics.generic[topic]
             if(!['c', 'u'].includes(op)){
                 return;
             }
