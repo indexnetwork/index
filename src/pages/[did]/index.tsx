@@ -59,7 +59,7 @@ const IndexesPage: NextPageWithLayout = () => {
 	}, [router.asPath]);
 
 	return <>
-		<PageContainer key={chatId.toString()} page={"profile"}>
+		<PageContainer page={"profile"}>
 			<div className={"scrollable-container"}>
 				<AskIndexes id={chatId} did={did!.toString()} />
 			</div>
