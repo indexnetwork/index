@@ -1,6 +1,6 @@
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import React, { useEffect, useState } from "react";
+import React, {useCallback, useEffect, useState} from "react";
 import List from "components/base/List";
 import { useRouter } from "next/router";
 import api, { DidSearchRequestBody, IndexSearchResponse } from "services/api-service";
@@ -39,7 +39,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 		getData(1, true);
 	}, [didParam]);
 
-	const getData = async (page?: number, newSearch?: boolean) => {
+	const getData = useCallback(async (page?: number, newSearch?: boolean) => {
 		const queryParams = {
 			did: didParam,
 			take,
@@ -85,7 +85,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = ({
 				} as MultipleIndexListState);
 			}
 		}
-	};
+	}, [didParam]);
 	return <>
 		<FlexRow className={"mr-6 pb-4"}>
 			<Col className="idxflex-grow-1">

@@ -1,5 +1,5 @@
 import React, {
-	ReactElement, useEffect, useMemo, useState,
+	ReactElement, useCallback, useEffect, useMemo, useState,
 } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -85,14 +85,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			return;
 		}
 		!viewedProfile && setViewedProfile(doc.ownerDID);
-		const sessionResponse = await LitService.getPKPSession(doc.pkpPublicKey!, doc.collabAction!);
-		doc.isCreator = sessionResponse.isCreator;
-		doc.isPermittedAddress = sessionResponse.isPermittedAddress;
 		setIndex(doc);
-		if (sessionResponse.session) {
-			const c = new CeramicService(sessionResponse.session.did);
-			setPKPCeramic(c);
-		}
 		setLoading(false);
 	};
 	const loadUserIndex = async () => {
@@ -106,21 +99,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 				...index,
 				isOwner: userIndexes.owner && !userIndexes.owner.deletedAt,
 				isStarred: userIndexes.starred && !userIndexes.starred.deletedAt,
-			} as Indexes;
+			};
 			setIndex(newIndex);
 		}
 	};
-	const getPKPSession: (index: Indexes) => () => Promise<DID> = (i: Indexes) => async () => {
-		try {
-			const sessionResponse = await LitService.getPKPSession(i.pkpPublicKey!, i.collabAction!);
-			if (sessionResponse && sessionResponse.session) {
-				return sessionResponse;
-			}
-		} catch (error) {
-			throw new Error("Could not get PKP session DID");
-		}
-	};
-
 	const handleCollabActionChange = async (CID: string) => {
 		const litContracts = new LitContracts();
 		await litContracts.connect();
@@ -136,8 +118,16 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		});
 		setIndex(result);
 	};
+	const initPKPCeramic = useCallback(async () => {
+		const sessionResponse = await LitService.getPKPSession(index.pkpPublicKey!, index.collabAction!);
+		if (sessionResponse.session) {
+			const c = new CeramicService(sessionResponse.session.did);
+			setPKPCeramic(c);
+		}
+	}, [index.id]);
 	const handleTitleChange = async (title: string) => {
 		setTitleLoading(true);
+		await initPKPCeramic();
 		const result = await pkpCeramic.updateIndex(index, {
 			title,
 		});
@@ -163,7 +153,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const handleAddLink = async (urls: string[]) => {
 		setCrawling(true);
-
+		await initPKPCeramic();
 		setProgress({
 			current: 0,
 			total: urls.length,
@@ -185,6 +175,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	useEffect(() => {
+		tabKey === "settings" && initPKPCeramic();
+	}, [tabKey]);
+	useEffect(() => {
 		index.id && did && loadUserIndex();
 	}, [index.id, did]);
 
@@ -192,7 +185,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		if (viewedProfile && viewedProfile.id === profile.id) {
 			updateIndex(index as Indexes);
 		}
-	}, [index.isOwner, index.isStarred, index.title, index.ownerDID]);
+	}, [index.isOwner, index.isStarred, index.title, index.id]);
 	useEffect(() => {
 		if (!indexId) return;
 		const suffix = crypto.createHash("sha256").update(indexId as string).digest("hex");
