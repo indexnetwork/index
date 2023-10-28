@@ -149,7 +149,7 @@ export const AppContextProvider = ({ children } : any) => {
 
 	useEffect(() => {
 		if (!profile) return;
-		setViewedProfile(profile);
+		viewedProfile && profile.id === viewedProfile.id && setViewedProfile(profile);
 		spreadProfile(profile);
 	}, [profile]);
 

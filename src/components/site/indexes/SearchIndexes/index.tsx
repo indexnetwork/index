@@ -1,6 +1,6 @@
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import React, { useEffect, useState } from "react";
+import React, { useCallback } from "react";
 import List from "components/base/List";
 import { useRouter } from "next/router";
 import { Indexes } from "types/entity";
@@ -25,17 +25,22 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = () => {
 
 	const { did, indexId } = router.query;
 
-	const [tabClickValue, handleTabClick] = useState<string>();
-	useEffect(() => {
-		viewedProfile && tabClickValue && router.replace(`/[did]`, tabClickValue === "all" ? `/${viewedProfile.id}` : `/${viewedProfile.id}?section=${tabClickValue}`, { shallow: true });
-	}, [tabClickValue]);
+	const handleTabChange = useCallback((tabClickValue: string) => {
+		console.log("hello dear");
+		if (viewedProfile && tabClickValue) {
+			const url = tabClickValue === "all" ?
+				`/${viewedProfile.id}` :
+				`/${viewedProfile.id}?section=${tabClickValue}`;
+			router.replace(`/[did]`, url, { shallow: true });
+		}
+	}, [viewedProfile]);
 
 	const sortIndexes = (items: Indexes[]) => items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
 	return <>
 		<FlexRow className={"mr-6 pb-4"}>
 			<Col className="idxflex-grow-1">
-				<Tabs destroyInactiveTabPane={false} theme={"rounded"} activeKey={section} onTabChange={handleTabClick}>
+				<Tabs destroyInactiveTabPane={false} theme={"rounded"} activeKey={section} onTabChange={handleTabChange}>
 					<TabPane enabled={true} tabKey={"all"} title={`All Indexes`} />
 					<TabPane enabled={true} tabKey={"owner"} total={indexes.owner?.totalCount} title={`Owned`} />
 					<TabPane enabled={true} tabKey={"starred"} total={indexes.starred?.totalCount} title={`Starred`} />
