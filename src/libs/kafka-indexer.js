@@ -228,7 +228,7 @@ export const updateUserIndex = async (userIndexId) => {
 
 
 export const createProfile = async (id) => {
-    console.log("createUserIndex", id)
+    console.log("createProfile", id)
     const profile = await getProfileById(id)
     profile.id = profile.controllerDID.id;
     delete profile.controllerDID;
