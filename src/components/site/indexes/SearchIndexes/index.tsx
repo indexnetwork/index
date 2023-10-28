@@ -1,6 +1,6 @@
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import React, {useCallback, useEffect, useState} from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import List from "components/base/List";
 import { useRouter } from "next/router";
 import api, { DidSearchRequestBody, IndexSearchResponse } from "services/api-service";

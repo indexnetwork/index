@@ -44,7 +44,6 @@ import Link from "next/link";
 import { maskDID } from "utils/helper";
 import { useApp } from "hooks/useApp";
 import { selectProfile } from "store/slices/profileSlice";
-import { DID } from "dids";
 import crypto from "crypto";
 import Head from "next/head";
 import IndexSettings from "../../components/site/index-details/IndexSettings";
