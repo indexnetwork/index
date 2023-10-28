@@ -1,5 +1,4 @@
 import React, { useContext } from "react";
-import CeramicService from "../services/ceramic-service";
 import { Indexes } from "../types/entity";
 
 export interface IndexContextValue {

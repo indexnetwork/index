@@ -1,5 +1,5 @@
 import React, {
-	ReactElement, useCallback, useEffect, useMemo, useState,
+	ReactElement, useEffect, useMemo, useState,
 } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -45,6 +45,7 @@ import { useApp } from "hooks/useApp";
 import { selectProfile } from "store/slices/profileSlice";
 import crypto from "crypto";
 import Head from "next/head";
+import { DID } from "dids";
 import IndexSettings from "../../components/site/index-details/IndexSettings";
 
 const IndexDetailPage: NextPageWithLayout = () => {
@@ -54,6 +55,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [index, setIndex] = useState<Indexes>();
 	const [links, setLinks] = useState<IndexLink[]>([]);
 	const personalCeramic = useCeramic();
+	const [pkpCeramic, setPKPCeramic] = useState<any>();
 	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tabKey, setTabKey] = useState("chat");
 	const [notFound, setNotFound] = useState(false);
@@ -82,6 +84,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			return;
 		}
 		setIndex(doc);
+		const c = new CeramicService(getPKPSessionDID(doc));
+		setPKPCeramic(c);
 		setLoading(false);
 	};
 	const loadUserIndex = async () => {
@@ -110,34 +114,28 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const previousCollabAction = litContracts.utils.getBytesFromMultihash(index.collabAction!);
 		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenId, newCollabAction, []);
 		const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(tokenId, previousCollabAction, []);
-		const pkpCeramic = await getPKPCeramic();
-		if (pkpCeramic) {
-			const result = await pkpCeramic.updateIndex(index, {
-				collabAction: CID,
-			});
-			setIndex(result);
+		const result = await pkpCeramic.updateIndex(index, {
+			collabAction: CID,
+		});
+		setIndex(result);
+	};
+	const getPKPSessionDID: (index: Indexes) => () => Promise<DID> = (i: Indexes) => async () => {
+		try {
+			const sessionResponse = await LitService.getPKPSession(i.pkpPublicKey!, i.collabAction!);
+			if (sessionResponse && sessionResponse.session) {
+				return sessionResponse.session.did;
+			}
+		} catch (error) {
+			throw new Error("Could not get PKP session DID");
 		}
 	};
-	const getPKPCeramic = useCallback(async (): Promise<CeramicService | undefined> => {
-		if (!index) return;
-		const sessionResponse = await LitService.getPKPSession(index.pkpPublicKey!, index.collabAction!);
-		if (sessionResponse.session) {
-			// eslint-disable-next-line consistent-return
-			return new CeramicService(sessionResponse.session.did);
-		}
-	}, [index]);
-
 	const handleTitleChange = async (title: string) => {
 		if (!index) return;
 		setTitleLoading(true);
-		const pkpCeramic = await getPKPCeramic();
-		console.log("abc" , pkpCeramic);
-		if (pkpCeramic) {
-			const result = await pkpCeramic.updateIndex(index, {
-				title,
-			});
-			setIndex(result);
-		}
+		const result = await pkpCeramic.updateIndex(index, {
+			title,
+		});
+		setIndex({ ...index, title: result.title });
 		setTitleLoading(false);
 	};
 	const handleUserIndexToggle = (toggleIndex: Indexes, type: string, op: string) => {
@@ -159,10 +157,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const handleAddLink = async (urls: string[]) => {
 		if (!index) return;
 		setCrawling(true);
-		const pkpCeramic = await getPKPCeramic();
-		if (!pkpCeramic) {
-			return;
-		}
 		setProgress({
 			current: 0,
 			total: urls.length,
@@ -184,7 +178,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	useEffect(() => {
-		tabKey === "settings" && getPKPCeramic();
+		// tabKey === "settings" && getPKPCeramic();
 	}, [tabKey]);
 	const getProfile = async () => {
 		if (!index) return;
@@ -228,8 +222,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			});
 			setProgress({ ...progress, current: progress.current + 1 });
 			setLinks([addedLink, ...links]);
-			index.updatedAt = addedLink.updatedAt!;
-			setIndex(index);
+			setIndex({ ...index, updatedAt: addedLink.createdAt! });
 		}
 	}, [addedLink]);
 
@@ -248,7 +241,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	return (
 		<PageContainer page={"index"}>
 			<IndexContext.Provider key={indexId!.toString()} value={{
-				pkpCeramic: getPKPCeramic, index, roles,
+				pkpCeramic, index, roles,
 			}}>
 				<LinksContext.Provider value={{ links, setLinks }}>
 					<Flex className={"px-0 px-md-10 pt-6 scrollable-container"} flexDirection={"column"}>
