@@ -63,7 +63,7 @@ const LandingSection1 = () => {
 
 						}}
 					>
-						<source src="video/mainani-white.webm" type="video/mp4" />
+						<source src="/video/mainani-white.webm" type="video/mp4" />
 					</video>
 				</Flex>
 			</Col>

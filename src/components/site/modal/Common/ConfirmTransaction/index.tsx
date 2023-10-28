@@ -35,7 +35,7 @@ const ConfirmTransaction = ({
 							margin: "auto",
 						}}
 					>
-						<source src="video/loadingPerspective.mp4" type="video/mp4" />
+						<source src="/video/loadingPerspective.mp4" type="video/mp4" />
 					</video>
 
 				</Flex>
