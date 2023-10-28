@@ -1,4 +1,5 @@
 <h1 align="center">
+    <br />
     <a href="https://amplication.com/#gh-light-mode-only">
     <img style="width:400px" src="https://index.network/images/IndexNetworkLogo.png">
     </a>
