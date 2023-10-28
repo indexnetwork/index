@@ -205,7 +205,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 
 	const roles: any = useMemo(() => ({
 		owner: () => (index && index.ownerDID ? index.ownerDID.id === did : false),
-		creator: () => !index || !!(index.isOwner || index.isCreator || index.isPermittedAddress),
+		creator: () => !index || !!(roles.owner() || index.isCreator || index.isPermittedAddress),
 	}), [index, did]);
 
 	useEffect(() => {
