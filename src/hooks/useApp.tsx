@@ -128,6 +128,7 @@ export const AppContextProvider = ({ children } : any) => {
 	useEffect(() => {
 		viewedProfile && getIndexes(1, true);
 	}, [viewedProfile?.id]);
+
 	const activeKey = () => {
 		if (did) {
 			const url = new URL(`https://index.network${router.asPath}`);
@@ -147,7 +148,9 @@ export const AppContextProvider = ({ children } : any) => {
 	}, [router.asPath]);
 
 	useEffect(() => {
-		profile && spreadProfile(profile);
+		if (!profile) return;
+		setViewedProfile(profile);
+		spreadProfile(profile);
 	}, [profile]);
 
 	const handleCreate = async (title: string) => {

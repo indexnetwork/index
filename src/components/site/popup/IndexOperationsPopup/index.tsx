@@ -36,7 +36,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 				</DropdownMenuItem>
 				{
 					isOwner && (
-						index.isOwner ? (
+						index && index.isOwner ? (
 							<>
 								<DropdownMenuItem divider />
 								<DropdownMenuItem

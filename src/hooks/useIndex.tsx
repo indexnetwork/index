@@ -3,7 +3,7 @@ import CeramicService from "../services/ceramic-service";
 import { Indexes } from "../types/entity";
 
 export interface IndexContextValue {
-	pkpCeramic: CeramicService;
+	pkpCeramic: any;
 	index?: Indexes;
 	roles: any;
 }

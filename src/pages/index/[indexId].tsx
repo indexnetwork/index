@@ -54,7 +54,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const [index, setIndex] = useState<Indexes>();
 	const [links, setLinks] = useState<IndexLink[]>([]);
 	const personalCeramic = useCeramic();
-	const [pkpCeramic, setPKPCeramic] = useState<any>();
 	const [addedLink, setAddedLink] = useState<IndexLink>();
 	const [tabKey, setTabKey] = useState("chat");
 	const [notFound, setNotFound] = useState(false);
@@ -105,34 +104,40 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		if (!index) return;
 		const litContracts = new LitContracts();
 		await litContracts.connect();
-
 		const pubKeyHash = ethers.utils.keccak256(index.pkpPublicKey!);
 		const tokenId = ethers.BigNumber.from(pubKeyHash);
 		const newCollabAction = litContracts.utils.getBytesFromMultihash(CID);
 		const previousCollabAction = litContracts.utils.getBytesFromMultihash(index.collabAction!);
 		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenId, newCollabAction, []);
 		const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(tokenId, previousCollabAction, []);
-		const result = await pkpCeramic.updateIndex(index, {
-			collabAction: CID,
-		});
-		setIndex(result);
+		const pkpCeramic = await getPKPCeramic();
+		if (pkpCeramic) {
+			const result = await pkpCeramic.updateIndex(index, {
+				collabAction: CID,
+			});
+			setIndex(result);
+		}
 	};
-	const initPKPCeramic = useCallback(async () => {
+	const getPKPCeramic = useCallback(async (): Promise<CeramicService | undefined> => {
 		if (!index) return;
 		const sessionResponse = await LitService.getPKPSession(index.pkpPublicKey!, index.collabAction!);
 		if (sessionResponse.session) {
-			const c = new CeramicService(sessionResponse.session.did);
-			setPKPCeramic(c);
+			// eslint-disable-next-line consistent-return
+			return new CeramicService(sessionResponse.session.did);
 		}
 	}, [index]);
+
 	const handleTitleChange = async (title: string) => {
 		if (!index) return;
 		setTitleLoading(true);
-		await initPKPCeramic();
-		const result = await pkpCeramic.updateIndex(index, {
-			title,
-		});
-		setIndex(result);
+		const pkpCeramic = await getPKPCeramic();
+		console.log("abc" , pkpCeramic);
+		if (pkpCeramic) {
+			const result = await pkpCeramic.updateIndex(index, {
+				title,
+			});
+			setIndex(result);
+		}
 		setTitleLoading(false);
 	};
 	const handleUserIndexToggle = (toggleIndex: Indexes, type: string, op: string) => {
@@ -154,7 +159,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const handleAddLink = async (urls: string[]) => {
 		if (!index) return;
 		setCrawling(true);
-		await initPKPCeramic();
+		const pkpCeramic = await getPKPCeramic();
+		if (!pkpCeramic) {
+			return;
+		}
 		setProgress({
 			current: 0,
 			total: urls.length,
@@ -176,7 +184,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	};
 
 	useEffect(() => {
-		tabKey === "settings" && initPKPCeramic();
+		tabKey === "settings" && getPKPCeramic();
 	}, [tabKey]);
 	const getProfile = async () => {
 		if (!index) return;
@@ -197,7 +205,6 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setChatId(`${localStorage.getItem("chatterID")}-${suffix}`);
 		setLoading(true);
 		setNotFound(false);
-		setPKPCeramic(null);
 		setSearch("");
 		loadIndex(indexId as string);
 	}, [indexId]);
@@ -241,7 +248,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	return (
 		<PageContainer page={"index"}>
 			<IndexContext.Provider key={indexId!.toString()} value={{
-				pkpCeramic, index, roles,
+				pkpCeramic: getPKPCeramic, index, roles,
 			}}>
 				<LinksContext.Provider value={{ links, setLinks }}>
 					<Flex className={"px-0 px-md-10 pt-6 scrollable-container"} flexDirection={"column"}>
