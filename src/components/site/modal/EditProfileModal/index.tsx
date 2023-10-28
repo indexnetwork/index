@@ -41,7 +41,7 @@ const EditProfileModal = ({
 	const [image, setImage] = useState<CID>();
 	const dispatch = useAppDispatch();
 
-	const formik = useFormik<Users>({
+	const formik = useFormik<Partial<Users>>({
 		initialValues: {
 			...profile,
 		},
@@ -54,13 +54,12 @@ const EditProfileModal = ({
 					delete values.avatar;
 				}
 				const { available, ...rest } = values;
-				const newProfile = await personalCeramic.setProfile(rest);
+				const newProfile = await personalCeramic.setProfile(rest as Users);
 				dispatch(setProfile({
 					...newProfile,
 					available: true,
 				}));
 			} catch (err) {
-				console.log("heyyo", err, personalCeramic.isUserAuthenticated());
 				console.log(err);
 			} finally {
 				setLoading(false);

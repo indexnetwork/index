@@ -1,5 +1,5 @@
 import {
-	createContext, useState, useContext, useEffect,
+	createContext, useState, useContext, useEffect, useCallback,
 } from "react";
 import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
@@ -18,10 +18,12 @@ import { useRouter } from "next/router";
 import { v4 as uuidv4 } from "uuid";
 import { useAppSelector } from "./store";
 import { selectProfile } from "../store/slices/profileSlice";
+import api, { DidSearchRequestBody, IndexSearchResponse } from "../services/api-service";
 
 export interface AppContextValue {
 	indexes: MultipleIndexListState
 	setIndexes: (indexes: MultipleIndexListState) => void
+	getIndexes: (page?: number, newSearch?: boolean) => void
 	section: keyof MultipleIndexListState
 	setSection: (section: keyof MultipleIndexListState) => void
 	setCreateModalVisible: (visible: boolean) => void
@@ -40,6 +42,19 @@ export interface AppContextValue {
 export const AppContext = createContext({} as AppContextValue);
 
 export const AppContextProvider = ({ children } : any) => {
+	const [createModalVisible, setCreateModalVisible] = useState(false);
+	const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
+	const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+	const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
+	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
+	const [viewedProfile, setViewedProfile] = useState<Users>();
+	const [section, setSection] = useState <keyof MultipleIndexListState>("all" as keyof MultipleIndexListState);
+	const router = useRouter();
+	const ceramic = useCeramic();
+	const { did, indexId } = router.query;
+	const profile = useAppSelector(selectProfile);
+
+	const take = 100;
 	const [indexes, setIndexes] = useState<MultipleIndexListState>({
 		all: {
 			skip: 0,
@@ -60,18 +75,59 @@ export const AppContextProvider = ({ children } : any) => {
 			indexes: [] as Indexes[],
 		} as IndexListState,
 	});
-	const [createModalVisible, setCreateModalVisible] = useState(false);
-	const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
-	const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
-	const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
-	const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
-	const [viewedProfile, setViewedProfile] = useState<Users>();
-	const [section, setSection] = useState <keyof MultipleIndexListState>("all" as keyof MultipleIndexListState);
-	const router = useRouter();
-	const ceramic = useCeramic();
-	const { did, indexId } = router.query;
-	const profile = useAppSelector(selectProfile);
 
+	const getIndexes = useCallback(async (page?: number, newSearch?: boolean) => {
+		if (!viewedProfile) return;
+		const queryParams = {
+			did: viewedProfile.id,
+			take,
+		} as DidSearchRequestBody;
+
+		if (newSearch) {
+			queryParams.skip = 0;
+		} else {
+			queryParams.type = section;
+			// @ts-ignore
+			queryParams.skip = indexes[section]?.indexes.length;
+		}
+
+		const res = await api.searchIndex(queryParams) as IndexSearchResponse;
+		if (res) {
+			if (newSearch) {
+				setIndexes({
+					all: {
+						hasMore: res.all?.totalCount! > queryParams.skip + take,
+						indexes: res.all?.records || [],
+						totalCount: res.all?.totalCount || 0,
+					},
+					owner: {
+						hasMore: res.owner?.totalCount! > queryParams.skip + take,
+						indexes: res.owner?.records || [],
+						totalCount: res.owner?.totalCount || 0,
+					},
+					starred: {
+						hasMore: res.starred?.totalCount! > queryParams.skip + take,
+						indexes: res.starred?.records || [],
+						totalCount: res.starred?.totalCount || 0,
+					},
+				} as MultipleIndexListState);
+			} else {
+				setIndexes({
+					...indexes,
+					[section]: {
+						hasMore: res[section]?.totalCount! > queryParams.skip + take,
+						// eslint-disable-next-line no-unsafe-optional-chaining
+						indexes: newSearch ? res[section]?.records! : [...(indexes[section]?.indexes || []), ...res[section]?.records!],
+						totalCount: res[section]?.totalCount,
+					},
+				} as MultipleIndexListState);
+			}
+		}
+	}, [viewedProfile?.id]);
+
+	useEffect(() => {
+		viewedProfile && getIndexes(1, true);
+	}, [viewedProfile?.id]);
 	const activeKey = () => {
 		if (did) {
 			const url = new URL(`https://index.network${router.asPath}`);
@@ -91,9 +147,7 @@ export const AppContextProvider = ({ children } : any) => {
 	}, [router.asPath]);
 
 	useEffect(() => {
-		profile && (viewedProfile?.id === profile.id) && setViewedProfile(profile);
-		did && profile && !viewedProfile && setViewedProfile(profile);
-		updateProfile(profile);
+		profile && spreadProfile(profile);
 	}, [profile]);
 
 	const handleCreate = async (title: string) => {
@@ -145,7 +199,7 @@ export const AppContextProvider = ({ children } : any) => {
 		});
 		setIndexes(newState);
 	};
-	const updateProfile = (p: Users) => {
+	const spreadProfile = (p: Users) => {
 		const newState = { ...indexes };
 		Object.keys(indexes).forEach((key) => {
 			newState[key as keyof MultipleIndexListState].indexes = indexes[key as keyof MultipleIndexListState].indexes?.map(
@@ -176,6 +230,7 @@ export const AppContextProvider = ({ children } : any) => {
 		<AppContext.Provider value={{
 			indexes,
 			setIndexes,
+			getIndexes,
 			section,
 			setSection,
 			setCreateModalVisible,

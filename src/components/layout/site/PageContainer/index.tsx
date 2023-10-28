@@ -66,7 +66,7 @@ const PageContainer = (
 									</Flex>
 								</Col>
 							</FlexRow>
-							{ viewedProfile && viewedProfile.id && <SearchIndexes didParam={viewedProfile.id} />}
+							<SearchIndexes />
 						</Flex>
 					</Col>
 				</FlexRow>

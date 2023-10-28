@@ -16,6 +16,7 @@ const IndexSettings: React.VFC<IndexSettingsProps> = () => {
 	const { index } = useIndex();
 	const [key, setKey] = useState<string>();
 	const getIntegrationKey = async () => {
+		if (!index) return;
 		const indexSession = await LitService.getPKPSession(index.pkpPublicKey!, index.collabAction!);
 		const personalSession = localStorage.getItem("did");
 		if (!indexSession.session || !personalSession) return;
