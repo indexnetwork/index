@@ -75,6 +75,81 @@ export const AppContextProvider = ({ children } : any) => {
 			indexes: [] as Indexes[],
 		} as IndexListState,
 	});
+	const handleCreate = async (title: string) => {
+		if (title) {
+			// handleToggleCreateModal();
+			setCreateModalVisible(false);
+			setTransactionApprovalWaiting(true);
+			const { pkpPublicKey } = await LitService.mintPkp();
+			const sessionResponse = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
+			const c = new CeramicService();
+			c.authenticateUser(sessionResponse.session.did);
+			const doc = await c.createIndex(pkpPublicKey, { title } as Indexes);
+			await ceramic.addUserIndex(doc.id, "owner");
+			updateUserIndexState({ ...doc, ownerDID: profile } as Indexes, "owner", "add");
+			if (doc) {
+				setTransactionApprovalWaiting(false);
+				await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
+			}
+		}
+	};
+	const removeIndex = (group : IndexListState, index: Indexes) => {
+		const newIndexes = group.indexes?.filter((i: Indexes) => i.id !== index.id) || [];
+		if (newIndexes?.length < group.indexes!.length) {
+			group.totalCount -= 1;
+			group.skip -= 1;
+		}
+		group.indexes = newIndexes;
+		return group;
+	};
+	const addIndex = (group : IndexListState, index: Indexes) => {
+		const isExist = group.indexes?.filter((i: Indexes) => i.id === index.id) || [];
+		if (isExist.length > 0) {
+			return group;
+		}
+		if (group.indexes) {
+			group.indexes.push(index);
+			group.indexes.sort((a, b) => new Date(b.createdAt).getSeconds() - new Date(a.createdAt).getSeconds());
+		}
+		group.skip += 1;
+		group.totalCount += 1;
+		return group;
+	};
+	const updateIndex = (index: Indexes) => {
+		const newState = { ...indexes };
+		Object.keys(indexes).forEach((key) => {
+			newState[key as keyof MultipleIndexListState].indexes = indexes[key as keyof MultipleIndexListState].indexes?.map(
+				(i) => (i.id === index.id ? { ...i, ...index } : i),
+			);
+		});
+		setIndexes(newState);
+	};
+	const spreadProfileToIndexes = (p: Users) => {
+		const newState = { ...indexes };
+		Object.keys(indexes).forEach((key) => {
+			newState[key as keyof MultipleIndexListState].indexes = indexes[key as keyof MultipleIndexListState].indexes?.map(
+				(i) => (i.ownerDID.id === p.id ? { ...i, ownerDID: p } : i),
+			);
+		});
+		setIndexes(newState);
+	};
+	const updateUserIndexState = (index: Indexes, type: keyof MultipleIndexListState, op: string) => {
+		const newState = { ...indexes };
+		const allIndexes : keyof MultipleIndexListState = "all";
+		if (op === "add") {
+			newState[type]! = addIndex(newState[type]!, index);
+			newState[allIndexes]! = addIndex(newState[allIndexes]!, index);
+		} else {
+			newState[type]! = removeIndex(newState[type]!, index);
+			if (!index.isStarred && !index.isOwner) {
+				newState[allIndexes]! = removeIndex(newState[allIndexes]!, index);
+			}
+		}
+		setIndexes(newState);
+	};
+	const handleTransactionCancel = () => {
+		setTransactionApprovalWaiting(false);
+	};
 
 	const getIndexes = useCallback(async (page?: number, newSearch?: boolean) => {
 		if (!viewedProfile) return;
@@ -150,84 +225,8 @@ export const AppContextProvider = ({ children } : any) => {
 	useEffect(() => {
 		if (!profile) return;
 		viewedProfile && profile.id === viewedProfile.id && setViewedProfile(profile);
-		spreadProfile(profile);
+		spreadProfileToIndexes(profile);
 	}, [profile]);
-
-	const handleCreate = async (title: string) => {
-		if (title) {
-			// handleToggleCreateModal();
-			setCreateModalVisible(false);
-			setTransactionApprovalWaiting(true);
-			const { pkpPublicKey } = await LitService.mintPkp();
-			const sessionResponse = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
-			const c = new CeramicService();
-			c.authenticateUser(sessionResponse.session.did);
-			const doc = await c.createIndex(pkpPublicKey, { title } as Indexes);
-			await ceramic.addUserIndex(doc.id, "owner");
-			updateUserIndexState({ ...doc, ownerDID: profile } as Indexes, "owner", "add");
-			if (doc) {
-				setTransactionApprovalWaiting(false);
-				await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
-			}
-		}
-	};
-	const removeIndex = (group : IndexListState, index: Indexes) => {
-		const newIndexes = group.indexes?.filter((i: Indexes) => i.id !== index.id) || [];
-		if (newIndexes?.length < group.indexes!.length) {
-			group.totalCount -= 1;
-			group.skip -= 1;
-		}
-		group.indexes = newIndexes;
-		return group;
-	};
-	const addIndex = (group : IndexListState, index: Indexes) => {
-		const isExist = group.indexes?.filter((i: Indexes) => i.id === index.id) || [];
-		if (isExist.length > 0) {
-			return group;
-		}
-		if (group.indexes) {
-			group.indexes.push(index);
-			group.indexes.sort((a, b) => new Date(b.createdAt).getSeconds() - new Date(a.createdAt).getSeconds());
-		}
-		group.skip += 1;
-		group.totalCount += 1;
-		return group;
-	};
-	const updateIndex = (index: Indexes) => {
-		const newState = { ...indexes };
-		Object.keys(indexes).forEach((key) => {
-			newState[key as keyof MultipleIndexListState].indexes = indexes[key as keyof MultipleIndexListState].indexes?.map(
-				(i) => (i.id === index.id ? { ...i, ...index } : i),
-			);
-		});
-		setIndexes(newState);
-	};
-	const spreadProfile = (p: Users) => {
-		const newState = { ...indexes };
-		Object.keys(indexes).forEach((key) => {
-			newState[key as keyof MultipleIndexListState].indexes = indexes[key as keyof MultipleIndexListState].indexes?.map(
-				(i) => (i.ownerDID.id === p.id ? { ...i, ownerDID: p } : i),
-			);
-		});
-		setIndexes(newState);
-	};
-	const updateUserIndexState = (index: Indexes, type: keyof MultipleIndexListState, op: string) => {
-		const newState = { ...indexes };
-		const allIndexes : keyof MultipleIndexListState = "all";
-		if (op === "add") {
-			newState[type]! = addIndex(newState[type]!, index);
-			newState[allIndexes]! = addIndex(newState[allIndexes]!, index);
-		} else {
-			newState[type]! = removeIndex(newState[type]!, index);
-			if (!index.isStarred && !index.isOwner) {
-				newState[allIndexes]! = removeIndex(newState[allIndexes]!, index);
-			}
-		}
-		setIndexes(newState);
-	};
-	const handleTransactionCancel = () => {
-		setTransactionApprovalWaiting(false);
-	};
 
 	return (
 		<AppContext.Provider value={{

@@ -26,7 +26,6 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = () => {
 	const { did, indexId } = router.query;
 
 	const handleTabChange = useCallback((tabClickValue: string) => {
-		console.log("hello dear");
 		if (viewedProfile && tabClickValue) {
 			const url = tabClickValue === "all" ?
 				`/${viewedProfile.id}` :

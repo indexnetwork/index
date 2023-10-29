@@ -7,11 +7,11 @@ import LandingSection1v2 from "components/site/landing/LandingSection1v2";
 import LandingSection7 from "components/site/landing/LandingSection7";
 
 import Flex from "components/layout/base/Grid/Flex";
-import PageLayout from "components/layout/site/PageLayout";
 import { useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import React, { ReactElement } from "react";
 import { NextPageWithLayout } from "types";
+import LandingLayout from "../components/layout/site/LandingLayout";
 
 const Home: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
@@ -32,13 +32,9 @@ const Home: NextPageWithLayout = () => {
 
 Home.getLayout = function getLayout(page: ReactElement) {
 	return (
-		<PageLayout
-			hasFooter={true}
-			isLanding={true}
-			headerType="public"
-		>
+		<LandingLayout>
 			{page}
-		</PageLayout>
+		</LandingLayout>
 	);
 };
 

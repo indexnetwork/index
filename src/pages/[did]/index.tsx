@@ -1,4 +1,3 @@
-import PageContainer from "components/layout/site/PageContainer";
 import PageLayout from "components/layout/site/PageLayout";
 import AskIndexes from "components/site/indexes/AskIndexes";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -59,11 +58,9 @@ const IndexesPage: NextPageWithLayout = () => {
 	}, [router.asPath]);
 
 	return <>
-		<PageContainer page={"profile"}>
-			<div className={"scrollable-container"}>
-				<AskIndexes id={chatId} did={did!.toString()} />
-			</div>
-		</PageContainer>
+		<div className={"scrollable-container"}>
+			<AskIndexes id={chatId} did={did!.toString()} />
+		</div>
 		{ viewedProfile && viewedProfile.id && <Head>
 			<title>{viewedProfile.name || maskDID(viewedProfile.id!)} - Index Network</title>
 			<meta name="title" content={`${viewedProfile.name || maskDID(viewedProfile.id!)} - Index Network`} />
@@ -75,6 +72,7 @@ const IndexesPage: NextPageWithLayout = () => {
 IndexesPage.getLayout = function getLayout(page: ReactElement) {
 	return (
 		<PageLayout
+			page={"profile"}
 			hasFooter={false}
 			headerType="user"
 		>
