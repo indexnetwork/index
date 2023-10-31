@@ -299,7 +299,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 										<TabPane enabled={true} tabKey={"chat"} title={"Chat"} />
 										<TabPane enabled={true} tabKey={"index"} title={"Index"} />
 										<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
-										<TabPane enabled={true} tabKey={"audience"} title={"Audience"} />
+										<TabPane enabled={true} tabKey={"access_control"} title={"Access Control"} />
 										<TabPane hidden={!roles.creator()} enabled={true} tabKey={"settings"} title={"Settings"} />
 									</Tabs>
 								</Col>
@@ -338,7 +338,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 								<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
 							</Col>
 						</FlexRow>}
-						{ tabKey === "audience" && <FlexRow justify="center" align="center" fullHeight>
+						{ tabKey === "access_control" && <FlexRow justify="center" align="center" fullHeight>
 							<Col>
 								<Soon section={tabKey}></Soon>
 							</Col>

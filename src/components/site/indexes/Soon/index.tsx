@@ -12,8 +12,8 @@ let text: String;
 const Soon: React.VFC<SoonProps> = ({
 	section,
 }) => {
-	if (section === "audience") {
-		text = `This section will allow you to monetize your index through access rules based on NFTs.`;
+	if (section === "access_control") {
+		text = `This section will allow you to control access to your index using access rules based on NFTs.`;
 	} else if (section === "ask") {
 		text = `This section will soon allow you to interact with your index through the LLM algorithms you choose.`;
 	} else if (section === "chat_history") {

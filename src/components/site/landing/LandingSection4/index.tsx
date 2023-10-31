@@ -73,7 +73,7 @@ const LandingSection4: React.VFC = () => {
 							<FlexRow className={section === "brand" ? cm.usecaseActive : cm.usecase}>
 								<Header onClick={() => setSection("brand")} className={"pointer mb-4"}>Brand + Tastemaker</Header>
 								<div className={cm.usecaseDetail}>
-									<Text size={"lg"}>Redefine how taste-makers engage with brands and audiences, shifting
+									<Text size={"lg"}>Redefine how taste-makers engage with brands and humans, shifting
 										from specific brand curation to indexing personal taste for authentic recommendations.</Text>
 									<ul className={"pl-6 mb-0"}>
 										<li>Blend taste with products</li>
