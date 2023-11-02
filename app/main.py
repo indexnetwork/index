@@ -176,10 +176,21 @@ async def query(index_id, prompt: Prompt):
 def chat_stream(params: ChatStream):
 
     if params.did:
-        id_resp = redisClient.hkeys("user_indexes:by_did:" + params.did.lower())
+        id_resp = redisClient.hgetall("user_indexes:by_did:" + params.did.lower())
         if not id_resp:
             return "You have no indexes"
-        indexes = [item.decode('utf-8').split(':')[0] for item in id_resp]
+
+        # Decode the keys and values from bytes to UTF-8 strings
+        decoded_id_resp = {
+            key.decode('utf-8').split(':')[0]: value.decode('utf-8')
+            for key, value in id_resp.items()
+        }
+
+        indexes = [
+            key
+            for key, value in decoded_id_resp.items()
+            if 'deletedAt' not in value or 'null' in value or 'None' in value
+        ]
     elif params.indexes:
         indexes = params.indexes
 
