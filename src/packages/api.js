@@ -34,14 +34,13 @@ const multerUpload = multer({
 
 
 import { getQueue, getMetadata } from '../libs/crawl.js'
-import cors from 'cors';
 import express from 'express';
 import {getWalletByENSHandler} from "../libs/infura.js";
 import axios from "axios";
 
 const app = express()
 const port = process.env.PORT || 3001;
-app.use(cors())
+
 app.use(express.json())
 
 const validator = ejv.createValidator({
@@ -221,9 +220,9 @@ const start = async () => {
   await Moralis.start({
     apiKey: process.env.MORALIS_API_KEY,
   });
- /*  if(process.env.NODE_ENV !== 'development'){
+  if(process.env.NODE_ENV !== 'development'){
     await app.set('queue', await getQueue())
-  } */
+  }
   await app.listen(port, async () => {
     console.log(`Search service listening on port ${port}`)
   })
