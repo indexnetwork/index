@@ -21,9 +21,5 @@ export const API_ENDPOINTS = {
   ENS: "/ens",
   UPLOAD_AVATAR: "/upload_avatar",
   ZAPIER_TEST_LOGIN: "/zapier/test_login",
-};
-
-export const EXTERNAL_API_ENDPOINTS = {
-  MAILCHIMP_SUBSCRIBE:
-    "https://index.us8.list-manage.com/subscribe/post-json?u=3e6e05095f010c187c0ee4b37&amp;id=e0b00feb51&amp;f_id=006e79e0f0",
+  SUBSCRIBE_TO_NEWSLETTER: "/subscribe",
 };

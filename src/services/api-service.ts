@@ -202,6 +202,17 @@ class ApiService {
 			// throw new Error(err.message);
 		}
 	}
+	async subscribeToNewsletter(email: string) : Promise<any | undefined> {
+		try {
+		  const { data } = await apiAxios.post(`${API_ENDPOINTS.SUBSCRIBE_TO_NEWSLETTER}`, { email });
+		  return data;
+		} catch (err: any) {
+		  const errorMessage = err.response && err.response.data && err.response.data.message
+							   ? err.response.data.message
+							   : err.message;
+		  throw new Error(errorMessage);
+		}
+	  }
 }
 
 const api = new ApiService();

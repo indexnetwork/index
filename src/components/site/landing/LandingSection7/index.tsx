@@ -3,7 +3,7 @@ import Header from "components/base/Header";
 import Input from "components/base/Input";
 import Flex from "components/layout/base/Grid/Flex";
 import { useState } from "react";
-import externalApi from "services/external-api-service";
+import api from "services/api-service";
 import toast from "react-hot-toast";
 import LandingSection from "../LandingSection";
 
@@ -11,17 +11,18 @@ const LandingSection7 = () => {
   const [email, setEmail] = useState("");
 
   const handleSubscribe = async () => {
-    if (email) {
+    if (!email) {
       toast.error("Please enter a valid email address");
+      return;
     }
     try {
-      await toast.promise(externalApi.subscribeToNewsletter(email), {
+      await toast.promise(api.subscribeToNewsletter(email), {
         loading: "Subscribing...",
         success: "Subscribed!",
-        error: "Something went wrong",
+        error: (err) => `${err}`,
       });
     } catch (error) {
-      toast.error(JSON.stringify({ error }));
+      return;
     } finally {
       setEmail("");
     }
