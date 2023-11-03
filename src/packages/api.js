@@ -18,6 +18,7 @@ import * as ejv from 'express-joi-validation';
 import IPFSClient from '../clients/ipfs.js';
 
 import multer from 'multer';
+import mailchimp from '@mailchimp/mailchimp_marketing';
 
 const multerUpload = multer({
   fileFilter: function (req, file, cb) {
@@ -33,14 +34,14 @@ const multerUpload = multer({
 
 
 import { getQueue, getMetadata } from '../libs/crawl.js'
-
+import cors from 'cors';
 import express from 'express';
 import {getWalletByENSHandler} from "../libs/infura.js";
 import axios from "axios";
 
 const app = express()
 const port = process.env.PORT || 3001;
-
+app.use(cors())
 app.use(express.json())
 
 const validator = ejv.createValidator({
@@ -90,6 +91,10 @@ const zapierTestLoginSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().min(8).required(),
 })
+
+const subscribeSchema = Joi.object({
+  email: Joi.string().email().required(),
+});
 
 
 app.post('/search/did', validator.body(didSearchSchema), search.did)
@@ -171,6 +176,33 @@ app.post('/upload_avatar', multerUpload.single('file'), async (req, res) => {
   }
 });
 
+mailchimp.setConfig({
+  apiKey: process.env.MAILCHIMP_API_KEY,
+  server: "us8"
+});
+
+app.post("/subscribe", validator.body(subscribeSchema), async (req, res) => {
+  const { email } = req.body;
+  try {
+    const response = await mailchimp.lists.addListMember(process.env.MAILCHIMP_LIST_ID, {
+      email_address: email,
+      status: "subscribed"
+    });
+    res.json({ success: true, message: "Subscription successful", data: response });
+  } catch (error) {
+    console.error('Mailchimp subscription error:', error);
+    if (error.response && error.response.body.title === "Member Exists") {
+      res.status(400).json({ success: false, message: "This email is already subscribed." });
+    } else if (error.response && error.response.body.title === "Invalid Resource") {
+      res.status(400).json({ success: false, message: "Invalid email address." });
+    } else {
+      const status = error.response ? error.response.status : 500;
+      const message = error.response ? error.response.body.detail : "An error occurred while subscribing.";
+      res.status(status).json({ success: false, message });
+    }
+  }
+});
+
 
 app.use((err, req, res, next) => {
   if (err && err.error && err.error.isJoi) {
@@ -189,9 +221,9 @@ const start = async () => {
   await Moralis.start({
     apiKey: process.env.MORALIS_API_KEY,
   });
-  if(process.env.NODE_ENV !== 'development'){
+ /*  if(process.env.NODE_ENV !== 'development'){
     await app.set('queue', await getQueue())
-  }
+  } */
   await app.listen(port, async () => {
     console.log(`Search service listening on port ${port}`)
   })

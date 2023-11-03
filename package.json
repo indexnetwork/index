@@ -16,6 +16,7 @@
     "@ethersproject/keccak256": "^5.7.0",
     "@lit-protocol/contracts-sdk": "^2.2.11",
     "@lit-protocol/uint8arrays": "^2.2.11",
+    "@mailchimp/mailchimp_marketing": "^3.0.80",
     "@mozilla/readability": "^0.4.2",
     "apify": "^3.1.2",
     "aws-sdk": "^2.1327.0",
