@@ -72,7 +72,7 @@ hyde = HyDEQueryTransform(include_original=True)
 
 def get_service_context():
     embed_model = OpenAIEmbedding(model="text-embedding-ada-002", openai_api_key=os.environ["OPENAI_API_KEY"])
-    llm = ChatOpenAI(temperature=0, model_name="gpt-4", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
+    llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo-16k", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
     service_context = ServiceContext.from_defaults(llm=llm, embed_model=embed_model)
     return service_context
 
