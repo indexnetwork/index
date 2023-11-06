@@ -1,38 +1,54 @@
 import Button from "components/base/Button";
 import Header from "components/base/Header";
+import Input from "components/base/Input";
 import Flex from "components/layout/base/Grid/Flex";
-import React, { useContext } from "react";
-import { useAuth } from "hooks/useAuth";
-import { useRouter } from "next/router";
-import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
+import { useState } from "react";
+import api from "services/api-service";
+import toast from "react-hot-toast";
 import LandingSection from "../LandingSection";
 
 const LandingSection7 = () => {
-	const router = useRouter();
+  const [email, setEmail] = useState("");
 
-	const authenticated = useAuth();
+  const handleSubscribe = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!email) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+    try {
+      await toast.promise(api.subscribeToNewsletter(email), {
+        loading: "Subscribing...",
+        success: "Subscribed!",
+        error: (err) => `${err}`,
+      });
+    } catch (error) {
+      return;
+    } finally {
+      setEmail("");
+    }
+  };
 
-	const { connect, disconnect } = useContext(AuthHandlerContext);
-
-	const handleConnect = async () => {
-		try {
-			await connect();
-		} catch (err) {
-			console.log(err);
-		}
-	};
-
-	return <LandingSection noContainer >
-		<Flex
-			flexGrow={1}
-			alignItems={"center"}
-			flexDirection={"column"}
-			className={"py-10 pt-10 mt-10"}
-		>
-			<Header fontFamily="roquefort" className="lnd-7-title">The human bridge between context and content.</Header>
-			<Button onClick={handleConnect} className="px-8" >Create Your First Index</Button>
-		</Flex>
-	</LandingSection>;
+  return (
+    <LandingSection>
+      <div>
+        <Header className="lnd-5-title">
+          Stay up to date with our newsletter
+        </Header>
+        <form onSubmit={handleSubscribe}>
+          <Flex className="lnd-7-form mt-8">
+            <Input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              inputSize="lg"
+              placeholder="Email"
+            />
+            <Button size="lg">Subscribe</Button>
+          </Flex>
+        </form>
+      </div>
+    </LandingSection>
+  );
 };
 
 export default LandingSection7;

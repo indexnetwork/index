@@ -1,9 +1,5 @@
 {
-  "extends": [
-    "airbnb-base",
-    "airbnb-typescript/base",
-    "eslint-config-next"
-  ],
+  "extends": ["airbnb-base", "airbnb-typescript/base", "eslint-config-next"],
   "env": {
     "browser": true
   },
@@ -44,7 +40,6 @@
       }
     ],
     "quotes": ["error", "double", { "allowTemplateLiterals": true }],
-    "indent": [2, "tab", { "SwitchCase": 1 }],
     "no-tabs": "off",
     "max-classes-per-file": "off",
     "radix": 0,

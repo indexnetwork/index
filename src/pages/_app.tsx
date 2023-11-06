@@ -13,6 +13,7 @@ import { store } from "store";
 import { AuthHandlerProvider } from "components/site/context/AuthHandlerProvider";
 
 import { AppContextProvider } from "hooks/useApp";
+import { Toaster } from "react-hot-toast";
 
 type AppPropsWithLayout = AppProps & {
 	Component: NextPageWithLayout;
@@ -61,6 +62,7 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 							) : (
 								getLayout(<Component {...pageProps} />)
 							)}
+							<Toaster />
 						</AppContextProvider>
 					</AuthHandlerProvider>
 				</CeramicProvider>
