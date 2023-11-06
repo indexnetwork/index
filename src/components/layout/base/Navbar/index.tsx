@@ -110,12 +110,12 @@ const Navbar = ({
           bordered ? "navbar-bordered" : "",
         ])}
         style={
-          sticky || bgColor
-            ? {
+          sticky || bgColor ?
+           {
                 ...style,
                 backgroundColor: sticky && bgSticky ? stickyBgColor : bgColor,
-              }
-            : style
+              } :
+              style
         }
         {...menuProps}
       >

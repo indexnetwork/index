@@ -54,7 +54,7 @@
     ],
     "consistent-return": "warn",
     "no-restricted-properties": "off",
-    /* "operator-linebreak": ["error", "after"], */
+    "operator-linebreak": ["error", "after"],
     "no-use-before-define": "off",
     "no-mixed-spaces-and-tabs": "off",
     "no-param-reassign": "off",
