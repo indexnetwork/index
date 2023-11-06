@@ -83,7 +83,7 @@ const IndividualWallet: React.VFC<IndividualWalletOptionsProps> = ({ handleBack,
 								// eslint-disable-next-line react/jsx-key
 								Object.values(appConfig.chains).map((c) => (<Option value={c.value}>
 									<Flex alignItems={"center"}>
-										<img className={"mr-4"} src={`images/chainLogos/${c.logo}`} alt={c.label} width={14} height={14} />
+										<img className={"mr-4"} src={`/images/chainLogos/${c.logo}`} alt={c.label} width={14} height={14} />
 										<Text size="md">{c.label}</Text>
 									</Flex>
 								</Option>))
