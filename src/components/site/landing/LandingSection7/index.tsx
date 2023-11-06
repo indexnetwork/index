@@ -10,7 +10,8 @@ import LandingSection from "../LandingSection";
 const LandingSection7 = () => {
   const [email, setEmail] = useState("");
 
-  const handleSubscribe = async () => {
+  const handleSubscribe = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     if (!email) {
       toast.error("Please enter a valid email address");
       return;
@@ -34,17 +35,17 @@ const LandingSection7 = () => {
         <Header className="lnd-5-title">
           Stay up to date with our newsletter
         </Header>
-        <Flex className="lnd-7-form mt-8">
-          <Input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            inputSize="lg"
-            placeholder="Email"
-          />
-          <Button onClick={handleSubscribe} size="lg">
-            Subscribe
-          </Button>
-        </Flex>
+        <form onSubmit={handleSubscribe}>
+          <Flex className="lnd-7-form mt-8">
+            <Input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              inputSize="lg"
+              placeholder="Email"
+            />
+            <Button size="lg">Subscribe</Button>
+          </Flex>
+        </form>
       </div>
     </LandingSection>
   );
