@@ -6,7 +6,6 @@ import Head from "next/head";
 import { NextPageWithLayout } from "types";
 
 import { Web3Provider } from "@ethersproject/providers";
-import { Web3ReactProvider } from "@web3-react/core";
 import AuthGuard from "components/site/guard/AuthGuard";
 import { Provider } from "react-redux";
 import { store } from "store";
@@ -28,7 +27,6 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 	}
 
 	return (
-		<Web3ReactProvider getLibrary={getLibrary}>
 			<Provider store={store}>
 				<CeramicProvider>
 					<AuthHandlerProvider>
@@ -67,7 +65,6 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 					</AuthHandlerProvider>
 				</CeramicProvider>
 			</Provider>
-		</Web3ReactProvider>
 	);
 }
 
