@@ -1,4 +1,4 @@
-import { ethers} from "ethers";
+import { ethers } from "ethers";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { DID } from "dids";
 import * as LitJsSdk from "@lit-protocol/lit-node-client";

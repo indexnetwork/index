@@ -107,8 +107,8 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		if (!index) return;
 		const litContracts = new LitContracts();
 		await litContracts.connect();
-		const pubKeyHash = ethers.utils.keccak256(index.pkpPublicKey!);
-		const tokenId = ethers.BigNumber.from(pubKeyHash);
+		const pubKeyHash = ethers.keccak256(index.pkpPublicKey!);
+		const tokenId = BigInt(pubKeyHash);
 		const newCollabAction = litContracts.utils.getBytesFromMultihash(CID);
 		const previousCollabAction = litContracts.utils.getBytesFromMultihash(index.collabAction!);
 		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenId, newCollabAction, []);
