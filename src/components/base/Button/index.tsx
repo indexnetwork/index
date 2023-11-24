@@ -2,13 +2,11 @@ import cc from "classcat";
 import IconGoogle from "components/base/Icon/IconGoogle";
 import IconTwitter from "components/base/Icon/IconTwitter";
 import Flex from "components/layout/base/Grid/Flex";
-import Lottie from "lottie-react";
 import React from "react";
 import {
 	ButtonThemeType,
 	InputSizeType,
 } from "types";
-import animationData from "./loading.json";
 
 export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> {
 	customType?: "google" | "twitter" | "link";
