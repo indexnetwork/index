@@ -4,7 +4,7 @@ import CeramicProvider from "components/site/context/CeramicProvider";
 import { appWithTranslation } from "next-i18next";
 import Head from "next/head";
 import { NextPageWithLayout } from "types";
-
+import  PlausibleProvider  from "next-plausible";
 import { Web3Provider } from "@ethersproject/providers";
 import AuthGuard from "components/site/guard/AuthGuard";
 import { Provider } from "react-redux";
@@ -30,6 +30,7 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 			<Provider store={store}>
 				<CeramicProvider>
 					<AuthHandlerProvider>
+						<PlausibleProvider domain="index.network">
 						<AppContextProvider>
 							<Head>
 								<link rel="shortcut icon" href="/favicon-white.png" />
@@ -62,6 +63,7 @@ function MyApp({ Component, pageProps }: AppPropsWithLayout) {
 							)}
 							<Toaster />
 						</AppContextProvider>
+						</PlausibleProvider>
 					</AuthHandlerProvider>
 				</CeramicProvider>
 			</Provider>
