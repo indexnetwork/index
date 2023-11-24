@@ -4,7 +4,7 @@ import CeramicProvider from "components/site/context/CeramicProvider";
 import { appWithTranslation } from "next-i18next";
 import Head from "next/head";
 import { NextPageWithLayout } from "types";
-import  PlausibleProvider  from "next-plausible";
+import PlausibleProvider from "next-plausible";
 import { Web3Provider } from "@ethersproject/providers";
 import AuthGuard from "components/site/guard/AuthGuard";
 import { Provider } from "react-redux";
