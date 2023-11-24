@@ -123,7 +123,6 @@ const Button = (
 				>
 					  {loading ? (
 						<Flex className="btn-inner" inline alignItems="center">
-							<Lottie className="lottie-logo mr-3" animationData={animationData} />
 							{children}
 						</Flex>
 					  ) : (
