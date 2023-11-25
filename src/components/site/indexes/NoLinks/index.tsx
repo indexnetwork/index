@@ -1,7 +1,7 @@
 import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
-import Image from "next/image";
+import Image from "next/legacy/image";
 import React from "react";
 
 export interface NoLinksProps {
@@ -16,7 +16,7 @@ const NoLinks: React.VFC<NoLinksProps> = ({
 			<Col xs={12} centerBlock style={{
 				height: 166,
 			}}>
-				<Image src="/images/no_indexes.png" alt="No Indexes" layout="fill" objectFit='contain' />
+				<Image src="/images/no_indexes.png" alt="No Indexes" objectFit='contain' />
 			</Col>
 			<Col className="text-center" centerBlock>
 				{
