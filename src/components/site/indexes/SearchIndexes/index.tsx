@@ -9,8 +9,8 @@ import { Tabs } from "components/base/Tabs";
 import TabPane from "components/base/Tabs/TabPane";
 
 import IndexItem from "components/site/indexes/IndexItem";
-import NoIndexes from "components/site/indexes/NoIndexes";
 import { useApp } from "hooks/useApp";
+import Text from "components/base/Text";
 
 export interface SearchIndexesProps {}
 
@@ -66,7 +66,15 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = () => {
 						divided={false}
 					/>
 				</InfiniteScroll>
-			</> : <NoIndexes tabKey={section} />}
+			</> :
+			<Text fontWeight={500} style={{
+				 color: "var(--gray-4)",
+				 textAlign: "center",
+				 padding: "4rem 0",
+				 margin: "auto",
+				 }}>
+				There are no indexes yet
+				</Text>}
 		</FlexRow>
 	</>;
 };
