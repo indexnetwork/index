@@ -122,7 +122,7 @@ const Button = (
 				>
 					  {loading ? (
 						<Flex className="btn-inner" inline alignItems="center">
-							<IconLoading  className="icon"  />
+							<IconLoading className="icon"/>
 							{children}
 						</Flex>
 					  ) : (
