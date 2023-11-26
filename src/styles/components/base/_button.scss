@@ -94,6 +94,8 @@
 		line-height: 100%;
 		.icon {
 			display: flex;
+			margin-right: 10px;
+			animation: spinner 1.2s infinite;
 		}
 	}
 

@@ -7,6 +7,7 @@ import {
 	ButtonThemeType,
 	InputSizeType,
 } from "types";
+import IconLoading from "../Icon/IconLoading";
 
 export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> {
 	customType?: "google" | "twitter" | "link";
@@ -121,6 +122,7 @@ const Button = (
 				>
 					  {loading ? (
 						<Flex className="btn-inner" inline alignItems="center">
+							<IconLoading  className="icon"  />
 							{children}
 						</Flex>
 					  ) : (
