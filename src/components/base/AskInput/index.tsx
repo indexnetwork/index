@@ -1,7 +1,7 @@
 import React from "react";
 import { useEnterSubmit } from "hooks/useEnterSubmit";
-import Input from "../Input";
 import IconSend from "../Icon/IconSend";
+import TextArea from "../TextArea";
 
 export interface AskInputProps {
 	onSubmit: (value: string) => Promise<void>
@@ -15,7 +15,7 @@ const AskInput = ({
 	onSubmit, input, setInput, isLoading, contextMessage, ...inputProps
 }: AskInputProps) => {
 	const { formRef, onKeyDown } = useEnterSubmit();
-	const inputRef = React.useRef<HTMLInputElement>(null);
+	const inputRef = React.useRef<HTMLTextAreaElement>(null);
 	return (
 		<form
 			onSubmit={async (e) => {
@@ -28,9 +28,11 @@ const AskInput = ({
 			}}
 			ref={formRef}
 		>
-			<Input
+			<TextArea
 				ref={inputRef}
 				value={input}
+				rows={1}
+				maxRows={8}
 				onKeyDown={onKeyDown}
 				onChange={(e) => setInput(e.target.value)}
 				inputSize={"lg"}
