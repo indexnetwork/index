@@ -26,7 +26,7 @@ const Soon: React.VFC<SoonProps> = ({
 					height: 150,
 				}}>
 					{
-						section === "ask" ? <Image unoptimized src="/images/landing-5.webp" alt="tabsoon" layout="fill" objectFit='contain'/> : <Image unoptimized src="/images/tabsoon.webp" alt="tabsoon" layout="fill" objectFit='contain'/>
+						section === "ask" ? <Image src="/images/landing-5.webp" alt="tabsoon" layout="fill" objectFit='contain'/> : <Image src="/images/tabsoon.webp" alt="tabsoon" layout="fill" objectFit='contain'/>
 					}
 
 				</Col>
