@@ -2,10 +2,13 @@ import React, { useRef, useState } from "react";
 import cc from "classcat";
 import { InputSizeType, PropType } from "types";
 import Flex from "components/layout/base/Grid/Flex";
+import TextareaAutosize, {
+	TextareaAutosizeProps,
+  } from "react-textarea-autosize";
 import IconVisible from "../Icon/IconVisible";
 import IconInvisible from "../Icon/IconInvisible";
 
-export interface TextAreaProps extends React.DetailedHTMLProps<React.TextareaHTMLAttributes<HTMLTextAreaElement>, HTMLTextAreaElement> {
+export interface TextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement>, TextareaAutosizeProps {
 	error?: string;
 	inputSize?: InputSizeType;
 	block?: boolean;
@@ -51,7 +54,7 @@ const TextArea = (
 			],
 		)}>
 			{addOnBefore}
-			<textarea
+			<TextareaAutosize
 				ref={inputRef}
 				{...inputProps}
 				disabled={disabled}
