@@ -1,5 +1,5 @@
 import IconLightbulb from "components/base/Icon/IconLightbulb";
-import Image from "next/image";
+import Image from "next/legacy/image";
 import Flex from "components/layout/base/Grid/Flex";
 import Text from "../base/Text";
 
