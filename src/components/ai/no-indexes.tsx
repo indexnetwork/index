@@ -18,6 +18,7 @@ export default function NoIndexesChat() {
         height={202}
         width={202}
         alt="illustration"
+        unoptimized
       />
       <Flex flexDirection="column" alignItems="center">
         <Text fontFamily="freizeit" size="xl" fontWeight={700}>

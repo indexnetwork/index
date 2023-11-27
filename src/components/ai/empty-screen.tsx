@@ -39,6 +39,7 @@ export function EmptyScreen({
 			src="/images/index-chat-empty-screen.png"
 			width={202}
 			height={202}
+			unoptimized
 			alt="Illustration of trees"
 		  />
 		  <Text fontFamily="freizeit" size="xl" fontWeight={700}>
