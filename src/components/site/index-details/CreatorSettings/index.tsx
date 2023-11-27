@@ -7,7 +7,7 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import Button from "components/base/Button";
 import api from "services/api-service";
 import { AccessControlCondition } from "types/entity";
-import Image from "next/legacy/image";
+import Image from "next/image";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
 import { useApp } from "hooks/useApp";
 import IconAdd from "components/base/Icon/IconAdd";

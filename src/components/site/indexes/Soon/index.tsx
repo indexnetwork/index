@@ -1,7 +1,7 @@
 import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
-import Image from "next/legacy/image";
+import Image from "next/image";
 import React from "react";
 
 export interface SoonProps {

@@ -1,4 +1,4 @@
-import Image from "next/legacy/image";
+import Image from "next/image";
 import Flex from "components/layout/base/Grid/Flex";
 import Button from "components/base/Button";
 import { useApp } from "hooks/useApp";
