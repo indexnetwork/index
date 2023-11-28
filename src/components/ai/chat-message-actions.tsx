@@ -1,7 +1,7 @@
 import { type Message } from "ai";
 
 import Button from "components/base/Button";
-import { IconCheck, IconCopy } from "components/ai/ui/icons";
+import { IconCheck, IconCopy, IconEdit } from "components/ai/ui/icons";
 
 import { useCopyToClipboard } from "hooks/useCopyToClipboard";
 
@@ -25,6 +25,10 @@ export function ChatMessageActions({
 		<div
 			{...props}
 		>
+			<Button onClick={() => console.log(message.id)} theme="clear">
+				<IconEdit />
+				<span className="sr-only hidden">Edit message</span>
+			</Button>
 			<Button iconButton theme={"ghost"} onClick={onCopy}>
 				{isCopied ? <IconCheck /> : <IconCopy />}
 				<span className="sr-only hidden">Copy message</span>
