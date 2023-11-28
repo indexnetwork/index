@@ -51,7 +51,7 @@ class LitService {
 			return true;
 		}
 		const litNodeClient = new LitNodeClient({
-			litNetwork: "serrano",
+			litNetwork: "cayenne",
 		});
 		await litNodeClient.connect();
 		const authSig = await checkAndSignAuthMessage();
@@ -91,7 +91,7 @@ class LitService {
 		await didKey.authenticate();
 
 		const litNodeClient = new LitJsSdk.LitNodeClient({
-			litNetwork: "serrano",
+			litNetwork: "cayenne",
 		});
 		await litNodeClient.connect();
 		const authSig = await checkAndSignAuthMessage();
