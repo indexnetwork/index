@@ -112,7 +112,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		const newCollabAction = litContracts.utils.getBytesFromMultihash(CID);
 		const previousCollabAction = litContracts.utils.getBytesFromMultihash(index.collabAction!);
 		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenId, newCollabAction, []);
-		const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(tokenId, previousCollabAction, []);
+		const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(tokenId, previousCollabAction);
 		const result = await pkpCeramic.updateIndex(index, {
 			collabAction: CID,
 		});
