@@ -4,7 +4,7 @@ import Web3 from 'web3';
 const redis = RedisClient.getInstance();
 
 export const sendLit = async (address) => {
-
+    return true;
     const isMember = await redis.sIsMember(`faucet`, address)
     if(isMember){
         return true;
