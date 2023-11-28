@@ -331,7 +331,7 @@ export const did = async (req, res) => {
 
     const {did, type, search, skip, take, links_size} = req.body;
 
-    sendLit(did.split(":").pop());
+    //sendLit(did.split(":").pop());
 
     let user_indexes_res = await redis.hGetAll(`user_indexes:by_did:${did.toLowerCase()}`)
 
