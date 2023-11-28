@@ -10,7 +10,7 @@ export const sendLit = async (address) => {
         return true;
     }
     // Initialize Web3 with the provided RPC URL
-    const web3 = new Web3('https://chain-rpc.litprotocol.com/http');
+    const web3 = new Web3('https://lit-protocol.calderachain.xyz/http');
     // Check if connected to blockchain
     try {
         const isListening = await web3.eth.net.isListening();
@@ -27,7 +27,7 @@ export const sendLit = async (address) => {
     const privateKey = process.env.FAUCET_PRIVATE_KEY
 
     // Amount to send in LIT
-    const amount = web3.utils.toWei('0.01', 'ether'); // 0.2 LIT, adjusted for 18 decimals
+    const amount = web3.utils.toWei('0.01', 'ether'); // 0.1 LIT, adjusted for 18 decimals
 
     // Transaction details
     const transaction = {
