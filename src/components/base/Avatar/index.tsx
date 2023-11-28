@@ -73,7 +73,7 @@ const Avatar = (
 					creatorRule.image ? (
 						<img src={`${appConfig.ipfsProxy}/${creatorRule.image}`} alt="profile_img"/>
 					) : (
-						(creatorRule.symbol || creatorRule.ensName).substring(0, 4).toUpperCase()
+						(creatorRule.symbol || creatorRule.ensName)?.substring(0, 4).toUpperCase()
 					)
 				) : (
 					typeof children !== "string" ? children : null

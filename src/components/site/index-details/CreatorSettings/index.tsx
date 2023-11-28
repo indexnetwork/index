@@ -7,7 +7,6 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import Button from "components/base/Button";
 import api from "services/api-service";
 import { AccessControlCondition } from "types/entity";
-import Image from "next/image";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
 import { useApp } from "hooks/useApp";
 import IconAdd from "components/base/Icon/IconAdd";
@@ -91,8 +90,10 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 				{
 					conditions.length === 0 && <><Col className={"mt-4"} xs={12} centerBlock style={{
 						height: 166,
+						display: "grid",
+						placeItems: "center",
 					}}>
-						<Image src="/images/no_indexes.png" alt="No Indexes" objectFit='contain' />
+						<img src="/images/no_indexes.png" alt="No Indexes" />
 					</Col>
 					<Col className="text-center" centerBlock>
 						<Header level={4} style={{

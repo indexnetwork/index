@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Flex from "components/layout/base/Grid/Flex";
 import Button from "components/base/Button";
 import { useApp } from "hooks/useApp";
@@ -13,7 +12,7 @@ export default function NoIndexesChat() {
       gap="4rem"
       style={{ margin: "auto", padding: "4rem 0" }}
     >
-      <Image
+      <img
         src="/images/no-indexes-screen-new.png"
         height={202}
         width={202}

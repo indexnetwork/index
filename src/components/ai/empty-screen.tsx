@@ -1,5 +1,4 @@
 import IconLightbulb from "components/base/Icon/IconLightbulb";
-import Image from "next/image";
 import Flex from "components/layout/base/Grid/Flex";
 import Text from "../base/Text";
 
@@ -35,7 +34,7 @@ export function EmptyScreen({
 		className="container-empty-screen"
 	  >
 		<div className="inner-container-empty-screen">
-		  <Image
+		  <img
 			src="/images/index-chat-empty-screen.png"
 			width={202}
 			height={202}

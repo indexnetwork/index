@@ -2,7 +2,6 @@ import Button from "components/base/Button";
 import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
-import Image from "next/image";
 import React from "react";
 import { useOwner } from "hooks/useOwner";
 import { useApp } from "hooks/useApp";
@@ -23,7 +22,7 @@ const NoIndexes: React.VFC<NoIndexesProps> = ({
 				<Col xs={12} centerBlock style={{
 					height: 166,
 				}}>
-					<Image src="/images/no_indexes.png" alt="No Indexes" layout="fill" objectFit='contain' />
+					<img src="/images/no_indexes.png" alt="No Indexes" />
 				</Col>
 				<Col className="text-center" centerBlock>
 					{

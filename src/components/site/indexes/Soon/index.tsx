@@ -1,7 +1,6 @@
 import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
-import Image from "next/image";
 import React from "react";
 
 export interface SoonProps {
@@ -21,12 +20,14 @@ const Soon: React.VFC<SoonProps> = ({
 	}
 	return (
 		<>
-			<Row rowSpacing={5}>
+			<Row rowSpacing={0}>
 				<Col className="mb-7" xs={12} centerBlock style={{
 					height: 150,
+					display: "grid",
+					placeItems: "center",
 				}}>
 					{
-						section === "ask" ? <Image src="/images/landing-5.webp" alt="tabsoon" layout="fill" objectFit='contain'/> : <Image src="/images/tabsoon.webp" alt="tabsoon" layout="fill" objectFit='contain'/>
+						section === "ask" ? <img src="/images/landing-5.webp" width={175} height={175} alt="tabsoon"/> : <img src="/images/tabsoon.webp" width={175} height={175} alt="tabsoon" />
 					}
 
 				</Col>
