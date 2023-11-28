@@ -4,14 +4,13 @@ import Web3 from 'web3';
 const redis = RedisClient.getInstance();
 
 export const sendLit = async (address) => {
-    /*
-    return true;
+
     const isMember = await redis.sIsMember(`faucet`, address)
     if(isMember){
         return true;
     }
     // Initialize Web3 with the provided RPC URL
-    const web3 = new Web3('https://lit-protocol.calderachain.xyz/http');
+    const web3 = new Web3('https://chain-rpc.litprotocol.com/http');
     // Check if connected to blockchain
     try {
         const isListening = await web3.eth.net.isListening();
@@ -60,5 +59,4 @@ export const sendLit = async (address) => {
 
     await redis.sAdd(`faucet`, address)
     return true;
-     */
 };
