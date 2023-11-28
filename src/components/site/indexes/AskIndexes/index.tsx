@@ -15,6 +15,9 @@ import { useIndex } from "hooks/useIndex";
 import { useApp } from "hooks/useApp";
 import { useAppSelector } from "hooks/store";
 import { selectProfile } from "store/slices/profileSlice";
+import NoIndexesChat from "components/ai/no-indexes";
+import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
+
 
 export interface ChatProps extends React.ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -87,19 +90,20 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
       >
         <FlexRow wrap={true} align={"start"}>
             <Col className="idxflex-grow-1" style={{ width: "100%" }}>
-                {messages.length ? (
-                    <>
-                        <ChatList messages={messages} />
-                    </>
-                ) : (
-                    <Flex>
-                        <EmptyScreen
-                            contextMessage={getChatContextMessage()}
-                            setInput={setInput}
-                            indexes={indexes}
-                        />
-                    </Flex>
-                )}
+              {messages.length ? (
+                <>
+                  <ChatList messages={messages} />
+                  <ChatScrollAnchor trackVisibility={isLoading} />
+                </>
+              ) : (
+                <Flex>
+                  <EmptyScreen
+                    contextMessage={getChatContextMessage()}
+                    setInput={setInput}
+                     indexes={indexes}
+                  />
+                </Flex>
+              )}
             </Col>
         </FlexRow>
       </Flex>
