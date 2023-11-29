@@ -102,7 +102,7 @@ const PageLayout = (
 								<TabPane enabled={false} tabKey={"discover"} title={``} />
 							</Tabs>
 						</FlexRow>
-						{rightTabKey === "history" && <Flex className={"scrollable-area px-11 idxflex-grow-1"} >
+						{rightTabKey === "history" && <Flex className={"scrollable-area px-5 idxflex-grow-1"} >
 							<div className={"ml-3"}><Soon section={"chat_history"}></Soon></div>
 						</Flex>}
 					</Flex>
