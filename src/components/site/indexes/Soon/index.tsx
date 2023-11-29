@@ -27,7 +27,7 @@ const Soon: React.VFC<SoonProps> = ({
 					placeItems: "center",
 				}}>
 					{
-						section === "ask" ? <img src="/images/landing-5.webp" width={175} height={175} alt="tabsoon"/> : <img src="/images/tabsoon.webp" width={175} height={175} alt="tabsoon" />
+						section === "ask" ? <img src="/images/landing-5.webp" width={175} height={175} alt="tabsoon"/> : <img src="/images/tabsoon.webp" width={185} height={128} alt="tabsoon" />
 					}
 
 				</Col>

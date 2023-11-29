@@ -83,7 +83,7 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
       <Flex
         id={id}
         key={id}
-        className={"px-0 px-md-10 pt-8 scrollable-area"}
+        className={"px-0 px-md-4 pt-8 scrollable-area"}
         flexDirection={"column"}
       >
         <FlexRow wrap={true} align={"start"}>
