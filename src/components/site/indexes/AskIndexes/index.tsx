@@ -1,5 +1,5 @@
 import Col from "components/layout/base/Grid/Col";
-import React from "react";
+import React, { useState } from "react";
 import { useChat, type Message } from "ai/react";
 import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
@@ -29,10 +29,46 @@ export interface AskIndexesProps {
   indexes?: string[];
 }
 
+export interface MessageWithIndex extends Message {
+  index?: number;
+}
+
 const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
   const index = useIndex();
   const { viewedProfile, section, indexes: indexesFromApp } = useApp();
   const profile = useAppSelector(selectProfile);
+
+  const [editingMessage, setEditingMessage] = useState<Message | undefined>();
+  const [editingIndex, setEditingIndex] = useState<number | undefined>();
+  const [editInput, setEditInput] = useState<string>("");
+
+  const handleEditClick = (message: Message, indexOfMessage: number) => {
+    setEditingMessage(message);
+    setEditingIndex(indexOfMessage);
+    setEditInput(message.content);
+  };
+
+  const handleSaveEdit = async () => {
+    if (editingMessage) {
+      const messagesBeforeEdit = messages.slice(0, editingIndex);
+
+      const newMessage = {
+        ...editingMessage,
+        content: editInput,
+      };
+
+      setMessages(messagesBeforeEdit);
+
+      await append({
+        id,
+        content: newMessage.content,
+        role: "user",
+      });
+
+      setEditingMessage(undefined);
+      setEditInput("");
+    }
+  };
 
   const getChatContextMessage = (): string => {
     if (index.index && index.index.title) {
@@ -62,24 +98,31 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
   const apiUrl = `https://index.network/api${API_ENDPOINTS.CHAT_STREAM}`;
   const initialMessages: Message[] = [];
   const {
-	 messages, append, reload, stop, isLoading, input, setInput,
-	} =
-    useChat({
-      api: apiUrl,
-      initialMessages,
+    messages,
+    append,
+    reload,
+    stop,
+    isLoading,
+    input,
+    setInput,
+    setMessages,
+  } = useChat({
+    api: apiUrl,
+    initialMessages,
+    id,
+    body: {
       id,
-      body: {
-        id,
-        did,
-        indexes,
-      },
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-      onResponse(response) {
-        if (response.status === 401) {
-          toast.error(response.statusText);
-        }
-      },
-    });
+      did,
+      indexes,
+    },
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    onResponse(response) {
+      if (response.status === 401) {
+        toast.error(response.statusText);
+      }
+    },
+  });
+
   return (
     <>
       <Flex
@@ -92,7 +135,15 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
             <Col className="idxflex-grow-1" style={{ width: "100%" }}>
               {messages.length ? (
                 <>
-                  <ChatList messages={messages} />
+                  <ChatList
+                    messages={messages}
+                    handleEditClick={handleEditClick}
+                    editingMessage={editingMessage}
+                    setEditInput={setEditInput}
+                    editInput={editInput}
+                    handleSaveEdit={handleSaveEdit}
+                    editingIndex={editingIndex}
+                  />
                   <ChatScrollAnchor trackVisibility={isLoading} />
                 </>
               ) : (
