@@ -13,10 +13,13 @@ import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import Avatar from "components/base/Avatar";
 import LinkInput from "components/site/input/LinkInput";
 import IndexItemList from "components/site/index-details/IndexItemList";
+import api, {
+ LinkSearchResponse, LinkSearchRequestBody, GetUserIndexesRequestBody, UserIndexResponse,
+} from "services/api-service";
+
 import CreatorSettings from "components/site/index-details/CreatorSettings";
 import { useRouter } from "next/router";
 import { Indexes, IndexLink, MultipleIndexListState } from "types/entity";
-import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
 import IndexTitleInput from "components/site/input/IndexTitleInput";
 import { useCeramic } from "hooks/useCeramic";
 import moment from "moment";
@@ -53,7 +56,11 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	const router = useRouter();
 	const { indexId } = router.query;
 	const [index, setIndex] = useState<Indexes>();
+
 	const [links, setLinks] = useState<IndexLink[]>([]);
+	const [hasMore, setHasMore] = useState(true);
+	const take = 10;
+
 	const personalCeramic = useCeramic();
 	const [pkpCeramic, setPKPCeramic] = useState<any>();
 	const [addedLink, setAddedLink] = useState<IndexLink>();
@@ -89,6 +96,30 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setPKPCeramic(c);
 		setLoading(false);
 	};
+
+	const loadIndexLinks = async (page: number, init?: boolean) => {
+		if (loading && !init) {
+			return;
+		}
+		setLoading(true);
+
+		const queryParams = {
+			index_id: indexId,
+			skip: init ? 0 : links.length,
+			take,
+		} as LinkSearchRequestBody;
+		if (search && search.length > 0) {
+			queryParams.search = search;
+		}
+
+		const res = await api.searchLink(queryParams) as LinkSearchResponse;
+		if (res) {
+			setHasMore(res.totalCount > links.length + take);
+			setLinks(init ? res.records : [...links, ...res.records]);
+		}
+		setLoading(false);
+	};
+
 	const loadUserIndex = async () => {
 		if (!index) return;
 		const userIndexes = await api.getUserIndexes({
@@ -199,6 +230,10 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		loadIndex(indexId as string);
 	}, [indexId]);
 
+	useEffect(() => {
+		loadIndexLinks(0, true);
+	}, [indexId, search]);
+
 	const roles: any = useMemo(() => ({
 		owner: () => (index && index.ownerDID ? index.ownerDID.id === did : false),
 		creator: () => !index || !!(roles.owner() || index.isCreator || index.isPermittedAddress),
@@ -244,7 +279,9 @@ const IndexDetailPage: NextPageWithLayout = () => {
           roles,
         }}
       >
-        <LinksContext.Provider value={{ links, setLinks }}>
+        <LinksContext.Provider value={{
+		 links, setLinks, hasMore, loadMore: loadIndexLinks,
+		}}>
           <Flex
             className={"px-0 px-md-10 pt-6 scrollable-container"}
             flexDirection={"column"}
@@ -416,14 +453,13 @@ const IndexDetailPage: NextPageWithLayout = () => {
                 )}
                 {index &&
                   tabKey === "chat" &&
-                  chatId &&
-                  (index.links ? (
+                  (links.length > 0 ? (
                     <AskIndexes
                       id={indexId!.toString()}
                       indexes={[index.id!]}
                     />
                   ) : (
-					  <div className={"mt-8"}><NoLinks tabKey="chat" isOwner={roles.owner()} index={index} /></div>
+					  <div className={"mt-8"}><NoLinks tabKey="chat" isOwner={roles.owner()} /></div>
                   ))}
               </>
             )}
