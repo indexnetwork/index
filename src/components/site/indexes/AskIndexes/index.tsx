@@ -15,9 +15,7 @@ import { useIndex } from "hooks/useIndex";
 import { useApp } from "hooks/useApp";
 import { useAppSelector } from "hooks/store";
 import { selectProfile } from "store/slices/profileSlice";
-import NoIndexesChat from "components/ai/no-indexes";
 import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
-
 
 export interface ChatProps extends React.ComponentProps<"div"> {
   initialMessages?: Message[];
