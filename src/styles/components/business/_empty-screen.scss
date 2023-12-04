@@ -20,7 +20,6 @@
 
 .example-message-box-empty-screen {
   padding: 1.5rem;
-  max-width: 350px;
   width: 100%;
   background-color: #f8fafc;
   border: 1px solid var(--gray-2);
@@ -41,6 +40,6 @@
 
 @media (max-width: 768px) {
   .example-messages-empty-screen {
-    grid-template-columns: 1fr; 
+    grid-template-columns: 1fr;
   }
 }

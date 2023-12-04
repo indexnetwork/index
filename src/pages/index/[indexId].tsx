@@ -423,7 +423,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
                       indexes={[index.id!]}
                     />
                   ) : (
-                    <NoLinks isOwner={roles.owner()} index={index} />
+					  <div className={"mt-8"}><NoLinks tabKey="chat" isOwner={roles.owner()} index={index} /></div>
                   ))}
               </>
             )}

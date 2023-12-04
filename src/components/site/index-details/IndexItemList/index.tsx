@@ -48,7 +48,7 @@ const IndexItemList: React.VFC<LinkListProps> = ({ search, indexId }) => {
 		<>
 			{
 				links.length === 0 ? (
-					<NoLinks search={search}></NoLinks>
+					<NoLinks tabKey={"items"} search={search}></NoLinks>
 				) : (
 					<InfiniteScroll className={"scrollable-area idxflex-grow-1 pb-6"} useWindow={false} hasMore={hasMore} loadMore={getData} marginHeight={50}>
 						<List
