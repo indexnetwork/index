@@ -1,11 +1,14 @@
-import React, { useRef, useState } from "react";
+import React, { forwardRef, useRef, useState } from "react";
 import cc from "classcat";
 import { InputSizeType, PropType } from "types";
 import Flex from "components/layout/base/Grid/Flex";
+import TextareaAutosize, {
+	TextareaAutosizeProps,
+  } from "react-textarea-autosize";
 import IconVisible from "../Icon/IconVisible";
 import IconInvisible from "../Icon/IconInvisible";
 
-export interface TextAreaProps extends React.DetailedHTMLProps<React.TextareaHTMLAttributes<HTMLTextAreaElement>, HTMLTextAreaElement> {
+export interface TextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
 	error?: string;
 	inputSize?: InputSizeType;
 	block?: boolean;
@@ -15,8 +18,9 @@ export interface TextAreaProps extends React.DetailedHTMLProps<React.TextareaHTM
 	type?: PropType<React.InputHTMLAttributes<HTMLInputElement>, "type">;
 }
 
-const TextArea = (
-	{
+const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps & TextareaAutosizeProps>(
+	(
+	  {
 		className,
 		addOnBefore,
 		addOnAfter,
@@ -28,7 +32,7 @@ const TextArea = (
 		inputSize = "md",
 		rows = 6,
 		...inputProps
-	}: TextAreaProps,
+	}: TextAreaProps & TextareaAutosizeProps,
 ) => {
 	const inputRef = useRef<HTMLTextAreaElement>(null);
 	const [showPw, setShowPw] = useState(false);
@@ -51,7 +55,7 @@ const TextArea = (
 			],
 		)}>
 			{addOnBefore}
-			<textarea
+			<TextareaAutosize
 				ref={inputRef}
 				{...inputProps}
 				disabled={disabled}
@@ -61,5 +65,7 @@ const TextArea = (
 			{type === "password" ? renderVisible() : addOnAfter}
 		</Flex>
 	);
-};
+  },
+);
+TextArea.displayName = "TextArea";
 export default TextArea;
