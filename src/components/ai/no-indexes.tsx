@@ -5,6 +5,7 @@ import Text from "../base/Text";
 
 export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
   const { setCreateModalVisible } = useApp();
+
   return (
     <Flex
       flexDirection="column"
