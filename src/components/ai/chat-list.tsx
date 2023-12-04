@@ -26,10 +26,7 @@ export const ChatList = ({
     return null;
   }
   return (
-    <div style={{
-      maxWidth: "75%",
-      margin: "0 auto",
-    }}>
+    <div className="px-8" >
       {messages.map((message, index) => (
         <div key={index}>
           <ChatMessage
