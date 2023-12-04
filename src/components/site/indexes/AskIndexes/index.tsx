@@ -104,7 +104,7 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
               )}
             </Col>
           ) : (
-            <NoIndexesChat />
+            <NoIndexesChat isSelfDid={profile.id === did} />
           )}
         </FlexRow>
       </Flex>

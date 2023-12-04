@@ -45,6 +45,7 @@ import { selectProfile } from "store/slices/profileSlice";
 import crypto from "crypto";
 import Head from "next/head";
 import { DID } from "dids";
+import NoLinks from "components/site/indexes/NoLinks";
 import IndexSettings from "../../components/site/index-details/IndexSettings";
 
 const IndexDetailPage: NextPageWithLayout = () => {
@@ -233,130 +234,214 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		}
 	}, [progress]);
 
-	return (<>
-		<IndexContext.Provider key={indexId!.toString()} value={{
-			pkpCeramic, index, roles,
-		}}>
-			<LinksContext.Provider value={{ links, setLinks }}>
-				<Flex className={"px-0 px-md-10 pt-6 scrollable-container"} flexDirection={"column"}>
-					{ notFound && <FlexRow>
-						<Col className="idxflex-grow-1">
-							<NotFound active={true} />
-						</Col>
-					</FlexRow>
-					}
-					{ !notFound && <>
-						<Flex flexDirection={"column"}>
-							<FlexRow>
-								<Col centerBlock className="idxflex-grow-1">
-									{ index && <Link href="/[did]" as={`/${index.ownerDID?.id!}`} >
-										<Avatar size={20} user={index.ownerDID} />
-										<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">
-											{index.ownerDID?.name || (index.ownerDID && maskDID(index.ownerDID?.id!)) || ""}
-										</Text>
-									</Link>}
-								</Col>
-							</FlexRow>
-							<FlexRow className="pt-3">
-								<Col className="idxflex-grow-1 mr-5">
-									<IndexTitleInput
-										defaultValue={index?.title || ""}
-										onChange={handleTitleChange}
-										disabled={!roles.owner()}
-										loading={titleLoading}
-									/>
-								</Col>
-								<Col className="mr-2 mb-3">
-									<Tooltip content="Add to Starred Index">
-										<Button
-											iconHover
-											theme="clear"
-											onClick={() => handleUserIndexToggle(index as Indexes, "starred", index?.isStarred ? "remove" : "add") }
-											borderless>
-											<IconStar fill={index?.isStarred ? "var(--main)" : "var(--white)"} width={20} height={20} />
-										</Button>
-									</Tooltip>
-								</Col>
-								<Col className="ml-2 mb-3">
-									<Button
-										iconHover
-										theme="clear"
-										borderless>
-										<IndexOperationsPopup
-											isOwner={roles.owner()}
-											index={index as Indexes}
-											userIndexToggle={handleUserIndexToggle}
-										></IndexOperationsPopup>
-									</Button>
-								</Col>
-							</FlexRow>
-							<FlexRow>
-								<Text size="sm" theme="disabled">{index?.updatedAt ? `Updated ${moment(index.updatedAt).fromNow()}` : ""} </Text>
-							</FlexRow>
-							<FlexRow>
-								<Col className="idxflex-grow-1 mt-3">
-									<Tabs activeKey={tabKey} onTabChange={setTabKey}>
-										<TabPane enabled={true} tabKey={"chat"} title={"Chat"} />
-										<TabPane enabled={true} tabKey={"index"} title={"Index"} />
-										<TabPane enabled={true} tabKey={"creators"} title={"Creators"} />
-										<TabPane enabled={true} tabKey={"access_control"} title={"Access Control"} />
-										<TabPane hidden={!roles.creator()} enabled={true} tabKey={"settings"} title={"Settings"} />
-									</Tabs>
-								</Col>
-							</FlexRow>
-						</Flex>
-						{ tabKey === "index" && <>
-							<FlexRow className={"mt-6"}>
-								<Col className="idxflex-grow-1">
-									<SearchInput
-										loading={loading}
-										onSearch={setSearch}
-										debounceTime={300}
-										showClear
-										defaultValue={search}
-										placeholder={t("pages:home.searchLink")} />
-								</Col>
-							</FlexRow>
-							{roles.creator() && <FlexRow>
-								<Col className="idxflex-grow-1 pb-0 mt-6">
-									<LinkInput
-										loading={crawling}
-										onLinkAdd={handleAddLink}
-										progress={progress}
-									/>
-								</Col>
-							</FlexRow>}
-							<FlexRow key={indexId!.toString()} className={"scrollable-area mb-4 mt-6"} justify="center">
-								<IndexItemList
-									search={search}
-									indexId={router.query.indexId as any}
-								/>
-							</FlexRow>
-						</>}
-						{ index && tabKey === "creators" && <FlexRow className={"mt-6 scrollable-area"}>
-							<Col className="idxflex-grow-1">
-								<CreatorSettings onChange={handleCollabActionChange} collabAction={index.collabAction!}></CreatorSettings>
-							</Col>
-						</FlexRow>}
-						{ tabKey === "access_control" && <FlexRow justify="center" align="center" fullHeight>
-							<Col>
-								<Soon section={tabKey}></Soon>
-							</Col>
-						</FlexRow>}
-						{ index && tabKey === "settings" && <>
-							<IndexSettings></IndexSettings>
-						</>}
-						{ index && tabKey === "chat" && chatId && <AskIndexes id={indexId!.toString()} indexes={[index.id!]} />}
-					</>}
-				</Flex>
-				{ index && index.id && <Head>
-					<title>{index.title} - Index Network</title>
-					<meta name="title" content={`${index.title} - Index Network`} />
-					<meta name="description" content="The human bridge between context and content." />
-				</Head>}
-			</LinksContext.Provider>
-		</IndexContext.Provider>
-	</>);
+	return (
+    <>
+      <IndexContext.Provider
+        key={indexId!.toString()}
+        value={{
+          pkpCeramic,
+          index,
+          roles,
+        }}
+      >
+        <LinksContext.Provider value={{ links, setLinks }}>
+          <Flex
+            className={"px-0 px-md-10 pt-6 scrollable-container"}
+            flexDirection={"column"}
+          >
+            {notFound && (
+              <FlexRow>
+                <Col className="idxflex-grow-1">
+                  <NotFound active={true} />
+                </Col>
+              </FlexRow>
+            )}
+            {!notFound && (
+              <>
+                <Flex flexDirection={"column"}>
+                  <FlexRow>
+                    <Col centerBlock className="idxflex-grow-1">
+                      {index && (
+                        <Link href="/[did]" as={`/${index.ownerDID?.id!}`}>
+                          <Avatar size={20} user={index.ownerDID} />
+                          <Text
+                            className="ml-3"
+                            size="sm"
+                            verticalAlign="middle"
+                            fontWeight={500}
+                            element="span"
+                          >
+                            {index.ownerDID?.name ||
+                              (index.ownerDID &&
+                                maskDID(index.ownerDID?.id!)) ||
+                              ""}
+                          </Text>
+                        </Link>
+                      )}
+                    </Col>
+                  </FlexRow>
+                  <FlexRow className="pt-3">
+                    <Col className="idxflex-grow-1 mr-5">
+                      <IndexTitleInput
+                        defaultValue={index?.title || ""}
+                        onChange={handleTitleChange}
+                        disabled={!roles.owner()}
+                        loading={titleLoading}
+                      />
+                    </Col>
+                    <Col className="mr-2 mb-3">
+                      <Tooltip content="Add to Starred Index">
+                        <Button
+                          iconHover
+                          theme="clear"
+                          onClick={() => handleUserIndexToggle(index as Indexes, "starred", index?.isStarred ? "remove" : "add")}
+                          borderless
+                        >
+                          <IconStar
+                            fill={
+                              index?.isStarred ? "var(--main)" : "var(--white)"
+                            }
+                            width={20}
+                            height={20}
+                          />
+                        </Button>
+                      </Tooltip>
+                    </Col>
+                    <Col className="ml-2 mb-3">
+                      <Button iconHover theme="clear" borderless>
+                        <IndexOperationsPopup
+                          isOwner={roles.owner()}
+                          index={index as Indexes}
+                          userIndexToggle={handleUserIndexToggle}
+                        ></IndexOperationsPopup>
+                      </Button>
+                    </Col>
+                  </FlexRow>
+                  <FlexRow>
+                    <Text size="sm" theme="disabled">
+                      {index?.updatedAt ? `Updated ${moment(index.updatedAt).fromNow()}` : ""}{" "}
+                    </Text>
+                  </FlexRow>
+                  <FlexRow>
+                    <Col className="idxflex-grow-1 mt-3">
+                      <Tabs activeKey={tabKey} onTabChange={setTabKey}>
+                        <TabPane
+                          enabled={true}
+                          tabKey={"chat"}
+                          title={"Chat"}
+                        />
+                        <TabPane
+                          enabled={true}
+                          tabKey={"index"}
+                          title={"Index"}
+                        />
+                        <TabPane
+                          enabled={true}
+                          tabKey={"creators"}
+                          title={"Creators"}
+                        />
+                        <TabPane
+                          enabled={true}
+                          tabKey={"access_control"}
+                          title={"Access Control"}
+                        />
+                        <TabPane
+                          hidden={!roles.creator()}
+                          enabled={true}
+                          tabKey={"settings"}
+                          title={"Settings"}
+                        />
+                      </Tabs>
+                    </Col>
+                  </FlexRow>
+                </Flex>
+                {tabKey === "index" && (
+                  <>
+                    <FlexRow className={"mt-6"}>
+                      <Col className="idxflex-grow-1">
+                        <SearchInput
+                          loading={loading}
+                          onSearch={setSearch}
+                          debounceTime={300}
+                          showClear
+                          defaultValue={search}
+                          placeholder={t("pages:home.searchLink")}
+                        />
+                      </Col>
+                    </FlexRow>
+                    {roles.creator() && (
+                      <FlexRow>
+                        <Col className="idxflex-grow-1 pb-0 mt-6">
+                          <LinkInput
+                            loading={crawling}
+                            onLinkAdd={handleAddLink}
+                            progress={progress}
+                          />
+                        </Col>
+                      </FlexRow>
+                    )}
+                    <FlexRow
+                      key={indexId!.toString()}
+                      className={"scrollable-area mb-4 mt-6"}
+                      justify="center"
+                    >
+                      <IndexItemList
+                        search={search}
+                        indexId={router.query.indexId as any}
+                      />
+                    </FlexRow>
+                  </>
+                )}
+                {index && tabKey === "creators" && (
+                  <FlexRow className={"mt-6 scrollable-area"}>
+                    <Col className="idxflex-grow-1">
+                      <CreatorSettings
+                        onChange={handleCollabActionChange}
+                        collabAction={index.collabAction!}
+                      ></CreatorSettings>
+                    </Col>
+                  </FlexRow>
+                )}
+                {tabKey === "access_control" && (
+                  <FlexRow justify="center" align="center" fullHeight>
+                    <Col>
+                      <Soon section={tabKey}></Soon>
+                    </Col>
+                  </FlexRow>
+                )}
+                {index && tabKey === "settings" && (
+                  <>
+                    <IndexSettings></IndexSettings>
+                  </>
+                )}
+                {index &&
+                  tabKey === "chat" &&
+                  chatId &&
+                  (index.links ? (
+                    <AskIndexes
+                      id={indexId!.toString()}
+                      indexes={[index.id!]}
+                    />
+                  ) : (
+                    <NoLinks isOwner={roles.owner()} index={index} />
+                  ))}
+              </>
+            )}
+          </Flex>
+          {index && index.id && (
+            <Head>
+              <title>{index.title} - Index Network</title>
+              <meta name="title" content={`${index.title} - Index Network`} />
+              <meta
+                name="description"
+                content="The human bridge between context and content."
+              />
+            </Head>
+          )}
+        </LinksContext.Provider>
+      </IndexContext.Provider>
+    </>
+  );
 };
 
 IndexDetailPage.getLayout = function getLayout(page: ReactElement) {

@@ -3,7 +3,7 @@ import Button from "components/base/Button";
 import { useApp } from "hooks/useApp";
 import Text from "../base/Text";
 
-export default function NoIndexesChat() {
+export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
   const { setCreateModalVisible } = useApp();
   return (
     <Flex
@@ -20,22 +20,28 @@ export default function NoIndexesChat() {
       />
       <Flex flexDirection="column" alignItems="center">
         <Text fontFamily="freizeit" size="xl" fontWeight={700}>
-          You don&apos;t have any index yet.
+          {isSelfDid ?
+           "You don't have any index yet." :
+            "There are no indexes here, yet."}
         </Text>
-        <Text fontFamily="freizeit" size="xl" fontWeight={700}>
-          Please create or star an index to enable chat functionality.
-        </Text>
+        {isSelfDid && (
+          <Text fontFamily="freizeit" size="xl" fontWeight={700}>
+            Please create or star an index to enable chat functionality.
+          </Text>
+        )}
       </Flex>
-      <Button
-      style={{
-        borderRadius: "2px",
-      }}
-        onClick={() => {
-          setCreateModalVisible(true);
-        }}
-      >
-        Create your first index
-      </Button>
+      {isSelfDid && (
+        <Button
+          style={{
+            borderRadius: "2px",
+          }}
+          onClick={() => {
+            setCreateModalVisible(true);
+          }}
+        >
+          Create your first index
+        </Button>
+      )}
     </Flex>
   );
 }
