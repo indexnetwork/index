@@ -132,7 +132,7 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
       >
         <FlexRow wrap={true} align={"start"}>
         {indexesFromApp.all && indexesFromApp.all.totalCount !== 0 ? (
-            <Col className="idxflex-grow-1 px-10" style={{ width: "100%" }}>
+            <Col className="idxflex-grow-1" style={{ width: "100%" }}>
               {messages.length ? (
                 <>
                   <ChatList
@@ -173,7 +173,7 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
             messages={messages}
           />
         </FlexRow>
-        <FlexRow fullWidth className={"idxflex-grow-1 px-9"} colGap={0}>
+        <FlexRow fullWidth className={"idxflex-grow-1"} colGap={0}>
           <Col className="idxflex-grow-1 pb-8" style={{ background: "white" }}>
             <AskInput
               contextMessage={getChatContextMessage()}

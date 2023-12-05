@@ -26,7 +26,7 @@ export const ChatList = ({
     return null;
   }
   return (
-    <div className="px-8" >
+    <div>
       {messages.map((message, index) => (
         <div key={index}>
           <ChatMessage
