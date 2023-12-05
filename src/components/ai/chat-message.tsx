@@ -7,8 +7,6 @@ import { MemoizedReactMarkdown } from "components/ai/markdown";
 import {
   IconCheck,
   IconClose,
-  IconOpenAI,
-  IconUser,
 } from "components/ai/ui/icons";
 import { ChatMessageActions } from "components/ai/chat-message-actions";
 import Col from "components/layout/base/Grid/Col";
@@ -17,6 +15,9 @@ import Text from "components/base/Text";
 import Input from "components/base/Input";
 import Button from "components/base/Button";
 import Flex from "components/layout/base/Grid/Flex";
+import Avatar from "components/base/Avatar";
+import { selectProfile } from "store/slices/profileSlice";
+import { useAppSelector } from "hooks/store";
 
 export interface ChatMessageProps {
   message: Message;
@@ -39,13 +40,15 @@ export function ChatMessage({
   index,
   editingIndex,
 }: ChatMessageProps) {
+  const profile = useAppSelector(selectProfile);
+
   return (
-    <FlexRow wrap={false} align={"start"}>
+    <FlexRow wrap={false} align={"start"} className="py-5">
       <Col>
         {message.role === "user" ? (
-          <IconUser width={20} />
+          <Avatar user={profile} />
         ) : (
-          <IconOpenAI width={20} />
+          <img src="/images/huggingFaceLogo.png" width={40} height={40} />
         )}
       </Col>
       <Col className="idxflex-grow-1 mx-4" style={{ overflow: "auto" }}>
@@ -66,29 +69,38 @@ export function ChatMessage({
                   setEditInput(e.target.value);
                 }}
               />
-              <Button iconButton theme="ghost" onClick={handleSaveEdit}>
-                <IconCheck />
+              <Button
+                iconHover
+                theme="clear"
+                onClick={handleSaveEdit}
+                borderless
+              >
+                <IconCheck width={20} height={20} />
               </Button>
               <Button
-                iconButton
-                theme="ghost"
+                iconHover
+                theme="clear"
                 onClick={() => {
                   handleEditClick({} as Message, -1);
                 }}
-              >
-                <IconClose color="#1E293B" />
-              </Button>
+                borderless>
+                <IconClose width={20} height={20} />
+                </Button>
             </Flex>
           ) : (
             <MemoizedReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               components={{
                 p({ children }) {
-                  return <Text size="lg" lineHeight={1.3}>{children}</Text>;
+                  return (
+                    <Text size="lg" lineHeight={1.6}>
+                      {children}
+                    </Text>
+                  );
                 },
                 code({
-					 inline, className, children, ...props
-					}) {
+                   inline, className, children, ...props
+                  }) {
                   if (children.length) {
                     if (children[0] === "▍") {
                       return (

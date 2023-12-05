@@ -30,18 +30,18 @@ export function ChatMessageActions({
     <div {...props}>
       <Flex>
         {message.role === "user" && !editingMessage?.id && (
-          <Button
-            iconButton
-            onClick={() => handleEditClick(message, index)}
-            theme="ghost"
-          >
-            <IconEdit />
-            <span className="sr-only hidden">Edit message</span>
-          </Button>
+           <Button
+           iconHover
+           theme="clear"
+           onClick={() => handleEditClick(message, index)}
+           borderless>
+           <IconEdit width={20} height={20} />
+           <span className="sr-only hidden">Edit message</span>
+           </Button>
         )}
-        {!editingMessage?.id && (
-          <Button iconButton theme={"ghost"} onClick={onCopy}>
-            {isCopied ? <IconCheck /> : <IconCopy />}
+        {!editingMessage?.id && message.role !== "user" && (
+          <Button iconButton iconHover borderless theme="clear" onClick={onCopy}>
+            {isCopied ? <IconCheck width={20} height={20} /> : <IconCopy width={20} height={20} />}
             <span className="sr-only hidden">Copy message</span>
           </Button>
         )}

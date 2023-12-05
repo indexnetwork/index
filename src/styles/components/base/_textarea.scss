@@ -67,12 +67,12 @@
 }
 
 .textarea:focus-within {
-	border-color: $main-color;
+	border-color: var(--gray-3);
 }
 
 .add-on-after-icon {
 	fill: var(--gray-2);
 }
-.textarea:focus-within > .add-on-after-icon {
-	fill: $main-color;
-} 
+.typing {
+    fill: $main-color;
+}

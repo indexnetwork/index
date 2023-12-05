@@ -39,11 +39,6 @@ export const ChatList = ({
             index={index}
             editingIndex={editingIndex}
           />
-          {index < messages.length - 1 && (
-            <div className="pl-8">
-              <div className={"my-8"}></div>
-            </div>
-          )}
         </div>
       ))}
       <div style={{ width: "100%", height: "15rem" }}></div>
