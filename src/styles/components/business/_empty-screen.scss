@@ -29,6 +29,7 @@
   }
   transition: all;
   transition-duration: 0.2s;
+ 
 }
 
 .icon-empty-screen {
@@ -39,5 +40,15 @@
 @media (max-width: 768px) {
   .example-messages-empty-screen {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1440px) {
+  .truncate-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    text-overflow: hidden;
+    overflow: hidden;
   }
 }

@@ -21,6 +21,7 @@
 	& textarea:focus-visible {
 		outline: none;
 		outline-width: 0 !important;
+		color: var(--gray-5);
 	}
 
 	&.textarea-block {
@@ -64,3 +65,14 @@
 		}
 	}
 }
+
+.textarea:focus-within {
+	border-color: $main-color;
+}
+
+.add-on-after-icon {
+	fill: var(--gray-2);
+}
+.textarea:focus-within > .add-on-after-icon {
+	fill: $main-color;
+} 

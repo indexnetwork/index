@@ -53,7 +53,9 @@ const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps & TextareaAutosiz
 				readOnly ? "textarea-readonly" : "",
 				className,
 			],
-		)}>
+		)} style={{
+			height: 40,
+		}}>
 			{addOnBefore}
 			<TextareaAutosize
 				ref={inputRef}

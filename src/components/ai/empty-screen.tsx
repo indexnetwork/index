@@ -77,6 +77,6 @@ export function EmptyScreen({
 	  className="example-message-box-empty-screen"
 	>
 	  <IconLightbulb className="icon-empty-screen" />
-	  <Text fontWeight={500}>{message}</Text>
+	  <Text className="truncate-text" fontWeight={500}>{message}</Text>
 	</button>
   );

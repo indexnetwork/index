@@ -57,6 +57,8 @@ export function ChatMessage({
                 style={{
                   border: "none",
                   outline: "none",
+                  fontSize: "1.6rem",
+                  marginBottom: "1rem",
                 }}
                 ghost
                 value={editInput}
@@ -82,7 +84,7 @@ export function ChatMessage({
               remarkPlugins={[remarkGfm, remarkMath]}
               components={{
                 p({ children }) {
-                  return <Text>{children}</Text>;
+                  return <Text size="lg" lineHeight={1.3}>{children}</Text>;
                 },
                 code({
 					 inline, className, children, ...props

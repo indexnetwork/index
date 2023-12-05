@@ -35,8 +35,8 @@ const AskInput = ({
 				maxRows={8}
 				onKeyDown={onKeyDown}
 				onChange={(e) => setInput(e.target.value)}
-				inputSize={"lg"}
-				addOnAfter={<IconSend cursor="pointer" onClick={async () => {
+				inputSize={"md"}
+				addOnAfter={<IconSend className="add-on-after-icon" cursor="pointer" onClick={async () => {
 					if (!input?.trim()) {
 						return;
 					}
