@@ -31,7 +31,7 @@ export function EmptyScreen({
 		flexDirection="column"
 		justifyContent="center"
 		alignItems="center"
-		className="container-empty-screen pt-10"
+		className="container-empty-screen pt-2"
 	  >
 		<div className="inner-container-empty-screen">
 		  <img

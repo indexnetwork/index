@@ -340,8 +340,9 @@ function IconCopy({ className, ...props }: React.ComponentProps<"svg">) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width={20}
-      height={20}
+      width="24"
+      height="24"
+      viewBox="-2 -2 24 24"
       fill="none"
       {...props}
     >
@@ -368,8 +369,9 @@ function IconCheck({ className, ...props }: React.ComponentProps<"svg">) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width={20}
-      height={20}
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
       fill="none"
       {...props}
     >
@@ -421,27 +423,26 @@ function IconClose({ className, ...props }: React.ComponentProps<"svg">) {
 function IconEdit({ className, ...props }: React.ComponentProps<"svg">) {
   return (
     <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={20}
-    height={20}
-    fill="none"
-    {...props}
-  >
-    <g clipPath="url(#a)">
-      <path
-        stroke="#7F7F7F"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M14.166 2.5a2.357 2.357 0 0 1 3.333 3.333L6.25 17.083l-4.583 1.25 1.25-4.583L14.166 2.5Z"
-      />
-    </g>
-    <defs>
-      <clipPath id="a">
-        <path fill="#fff" d="M0 0h20v20H0z" />
-      </clipPath>
-    </defs>
-  </svg>
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="-2 -2 24 24"
+      fill="none"
+      {...props}
+    >
+      <g clipPath="url(#a)">
+        <path
+          stroke="#7F7F7F"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.5}
+          d="M14.166 2.5a2.357 2.357 0 0 1 3.333 3.333L6.25 17.083l-4.583 1.25 1.25-4.583L14.166 2.5Z"
+        />
+      </g>
+      <defs>
+        <clipPath id="a">
+          <path fill="#fff" d="M0 0h20v20H0z" />
+        </clipPath>
+      </defs>
+    </svg>
   );
 }
 

@@ -46,14 +46,14 @@ export function ChatMessage({
     <FlexRow wrap={false} align={"start"} className="py-5">
       <Col>
         {message.role === "user" ? (
-          <Avatar size={32} user={profile} />
+          <Avatar size={24} user={profile} />
         ) : (
           <div style={{
             border: "1px solid #E2E8F0",
-            padding: "0.3rem",
             borderRadius: "2px",
+            padding: "1px 3px",
           }}>
-            <img src="/images/huggingFaceLogo.png" width={24} height={24} />
+            <img src="/images/huggingFaceLogo.png" width={16} height={16} alt="hugging face logo"/>
           </div>
         )}
       </Col>

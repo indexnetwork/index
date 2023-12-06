@@ -42,14 +42,10 @@ export function ChatMessageActions({
         )}
         {!editingMessage?.id && message.role !== "user" && (
           <Button
-            iconButton
             iconHover
             borderless
             theme="clear"
             onClick={onCopy}
-            style={{
-              width: "24px",
-            }}
           >
             {isCopied ? (
               <IconCheck width={20} height={20} />
