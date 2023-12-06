@@ -3,7 +3,7 @@
 	@include responsive-sizes($font-size, "line-height");
 	display: inline-block;
 	border: $border-base;
-	border-radius: $border-radius-base;
+	border-radius: 0.4rem;
 	padding: map-deep-get($spacing, "xs", "4") map-deep-get($spacing, "xs", "4");
 	line-height: 0;
 	align-items: center;
@@ -75,4 +75,8 @@
 }
 .typing {
     fill: $main-color;
+}
+
+.textarea__textarea {
+line-height: 1.9rem;
 }

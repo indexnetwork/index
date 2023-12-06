@@ -122,6 +122,7 @@
 	&.btn-hovericon {
 		//@include responsive-sizes($input-height, "width");
 		max-height: 2.4rem;
+		max-width: 2.4rem;
 		display: flex;
 		align-items: center;
 		justify-content: center;

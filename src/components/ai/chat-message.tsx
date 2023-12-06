@@ -46,12 +46,18 @@ export function ChatMessage({
     <FlexRow wrap={false} align={"start"} className="py-5">
       <Col>
         {message.role === "user" ? (
-          <Avatar user={profile} />
+          <Avatar size={32} user={profile} />
         ) : (
-          <img src="/images/huggingFaceLogo.png" width={40} height={40} />
+          <div style={{
+            border: "1px solid #E2E8F0",
+            padding: "0.3rem",
+            borderRadius: "2px",
+          }}>
+            <img src="/images/huggingFaceLogo.png" width={24} height={24} />
+          </div>
         )}
       </Col>
-      <Col className="idxflex-grow-1 mx-4" style={{ overflow: "auto" }}>
+      <Col className="idxflex-grow-1 mx-5" style={{ overflow: "auto" }}>
         <div style={{ overflowWrap: "break-word" }}>
           {editingMessage?.id && index === editingIndex ? (
             <Flex>
