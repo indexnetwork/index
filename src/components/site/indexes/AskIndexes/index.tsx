@@ -57,15 +57,13 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
       };
 
       setMessages(messagesBeforeEdit);
-
+      setEditingMessage(undefined);
+      setEditInput("");
       await append({
         id,
         content: newMessage.content,
         role: "user",
       });
-
-      setEditingMessage(undefined);
-      setEditInput("");
     }
   };
 

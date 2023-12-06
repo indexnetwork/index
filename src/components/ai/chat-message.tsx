@@ -4,10 +4,7 @@ import remarkMath from "remark-math";
 
 import { CodeBlock } from "components/ai/ui/codeblock";
 import { MemoizedReactMarkdown } from "components/ai/markdown";
-import {
-  IconCheck,
-  IconClose,
-} from "components/ai/ui/icons";
+import { IconCheck, IconClose } from "components/ai/ui/icons";
 import { ChatMessageActions } from "components/ai/chat-message-actions";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
@@ -48,19 +45,26 @@ export function ChatMessage({
         {message.role === "user" ? (
           <Avatar size={24} user={profile} />
         ) : (
-          <div style={{
-            border: "1px solid #E2E8F0",
-            borderRadius: "2px",
-            padding: "1px 3px",
-          }}>
-            <img src="/images/huggingFaceLogo.png" width={16} height={16} alt="hugging face logo"/>
+          <div
+            style={{
+              border: "1px solid #E2E8F0",
+              borderRadius: "2px",
+              padding: "1px 3px",
+            }}
+          >
+            <img
+              src="/images/huggingFaceLogo.png"
+              width={16}
+              height={16}
+              alt="hugging face logo"
+            />
           </div>
         )}
       </Col>
       <Col className="idxflex-grow-1 mx-5" style={{ overflow: "auto" }}>
         <div style={{ overflowWrap: "break-word" }}>
           {editingMessage?.id && index === editingIndex ? (
-            <Flex>
+            <Flex alignItems="center">
               <Input
                 autoFocus
                 style={{
@@ -68,6 +72,7 @@ export function ChatMessage({
                   outline: "none",
                   fontSize: "1.6rem",
                   marginBottom: "1rem",
+                  marginRight: "1rem",
                 }}
                 ghost
                 value={editInput}
@@ -75,23 +80,6 @@ export function ChatMessage({
                   setEditInput(e.target.value);
                 }}
               />
-              <Button
-                iconHover
-                theme="clear"
-                onClick={handleSaveEdit}
-                borderless
-              >
-                <IconCheck width={20} height={20} />
-              </Button>
-              <Button
-                iconHover
-                theme="clear"
-                onClick={() => {
-                  handleEditClick({} as Message, -1);
-                }}
-                borderless>
-                <IconClose width={20} height={20} />
-                </Button>
             </Flex>
           ) : (
             <MemoizedReactMarkdown
@@ -146,12 +134,30 @@ export function ChatMessage({
         </div>
       </Col>
       <Col>
-        <ChatMessageActions
-          message={message}
-          handleEditClick={handleEditClick}
-          index={index}
-          editingMessage={editingMessage}
-        />
+        {editingMessage?.id && index === editingIndex ? (
+          <Flex>
+            <Button iconHover theme="clear" onClick={handleSaveEdit} borderless>
+              <IconCheck width={20} height={20} />
+            </Button>
+            <Button
+              iconHover
+              theme="clear"
+              onClick={() => {
+                handleEditClick({} as Message, -1);
+              }}
+              borderless
+            >
+              <IconClose width={20} height={20} />
+            </Button>
+          </Flex>
+        ) : (
+          <ChatMessageActions
+            message={message}
+            handleEditClick={handleEditClick}
+            index={index}
+            editingMessage={editingMessage}
+          />
+        )}
       </Col>
     </FlexRow>
   );
