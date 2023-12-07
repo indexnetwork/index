@@ -28,13 +28,13 @@ const LandingSection2: React.VFC = () => (
 						<div className={"mb-10"}>
 							<IconDescription
 								title={"For any kind of content"}
-								icon={<IconFeatureAddLink fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
+								icon={<IconFeatureAddLink fill="var(--gray-6)" className="lnd-icon-desc-icon" />}
 								description="Index products, articles, documents, NFTs, photos, videos, tweets and any other kind of content."
 							/>
 						</div>
 						<IconDescription
 							title={"From any source"}
-							icon={<IconFeatureExtension fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
+							icon={<IconFeatureExtension fill="var(--gray-6)" className="lnd-icon-desc-icon" />}
 							description="Update your indexes directly from the apps you use or stay up-to-date with the indexes you follow."
 							boldDescription="[soon]"
 						/>

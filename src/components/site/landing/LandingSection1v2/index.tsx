@@ -14,7 +14,7 @@ const LandingSection1v2: React.VFC = () => (
 			className="lnd-card lnd-reorder"
 		>
 			<Flex alignItems={"center"} flexDirection="column" className="lnd-title mb-2">
-				<Header className="lnd-section-title">Discovery as a Network</Header>
+				<Header className="lnd-section-title" theme="gray6">Discovery as a Network</Header>
 				<Text style={{
 					textAlign: "center", fontWeight: 300, fontSize: "1.8rem", lineHeight: 1.3,
 				}} className={"mt-5"}>Index is the discovery protocol in web3, which enables composable<br />queries across interoperable discovery engines. </Text>
