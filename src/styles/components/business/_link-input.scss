@@ -1,6 +1,6 @@
 .link-input {
 	height: 4.4rem;
-	background-color: $gray-1;
+	background-color: $gray-7;
 	display: flex;
 	align-items: center;
 	border-radius: 2px;
@@ -15,11 +15,11 @@
 		padding-right: map-deep-get($spacing, "xs", "6") !important;
 		
 		& > input {
-			background-color: $gray-1;
+			background-color: $gray-7;
 			color: $gray-5;
 		}
 		:focus::placeholder{
-			opacity: 0.37;
+			opacity: 0.50;
 		}
 	}
 	

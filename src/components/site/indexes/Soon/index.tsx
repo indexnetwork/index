@@ -32,7 +32,7 @@ const Soon: React.VFC<SoonProps> = ({
 
 				</Col>
 				<Col className="text-center" centerBlock>
-					<Header level={4} style={{
+					<Header level={4} theme="gray6" style={{
 						maxWidth: 525,
 					}}>{text}</Header>
 				</Col>

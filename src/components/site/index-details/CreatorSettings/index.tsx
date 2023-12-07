@@ -60,7 +60,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 		<>
 			<Row noGutters>
 				<Col pullLeft>
-					<Header className="mb-4">Creators</Header>
+					<Header className="mb-4" theme="gray6">Creators</Header>
 				</Col>
 				{roles.owner() && <Col pullRight>
 					<Button

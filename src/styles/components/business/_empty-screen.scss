@@ -19,13 +19,13 @@
 .example-message-box-empty-screen {
   padding: 1.5rem;
   width: 100%;
-  background-color: #f8fafc;
+  background-color: $gray-7;
   border: 1px solid var(--gray-2);
   display: flex;
   text-align: left;
   border-radius: 4px;
   &:hover {
-    background-color: #f0f4f8;
+    background-color:  $gray-1;
   }
   transition: all;
   transition-duration: 0.2s;

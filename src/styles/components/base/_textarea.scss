@@ -31,6 +31,9 @@
 	& textarea::placeholder {
 		color: $secondary-text-color;
 	}
+	:focus::placeholder{
+		opacity: 0.50;
+	}
 
 	&.textarea-disabled,
 	&.textarea-readonly {
@@ -67,7 +70,7 @@
 }
 
 .textarea:focus-within {
-	border-color: var(--gray-3);
+	border-color: var(--gray-4);
 }
 
 .add-on-after-icon {

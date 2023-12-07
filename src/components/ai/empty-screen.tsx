@@ -40,7 +40,7 @@ export function EmptyScreen({
 			height={202}
 			alt="Illustration of trees"
 		  />
-		  <Text fontFamily="freizeit" size="xl" fontWeight={700}>
+		  <Text fontFamily="freizeit" size="xl" className="text" fontWeight={700}>
 			Your responses will align with {contextMessage}
 		  </Text>
 		</div>

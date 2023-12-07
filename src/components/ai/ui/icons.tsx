@@ -347,7 +347,7 @@ function IconCopy({ className, ...props }: React.ComponentProps<"svg">) {
       {...props}
     >
       <g
-        stroke="#7F7F7F"
+        stroke="var(--gray-5)"
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={2}
@@ -376,7 +376,7 @@ function IconCheck({ className, ...props }: React.ComponentProps<"svg">) {
       {...props}
     >
       <path
-        stroke="#2A2A2A"
+        stroke="var(--gray-6)"
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={2}
@@ -409,7 +409,7 @@ function IconClose({ className, ...props }: React.ComponentProps<"svg">) {
       {...props}
     >
       <path
-        stroke="#2A2A2A"
+       stroke="var(--gray-6)"
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={2}
@@ -429,7 +429,7 @@ function IconEdit({ className, ...props }: React.ComponentProps<"svg">) {
     >
       <g clipPath="url(#a)">
         <path
-          stroke="#7F7F7F"
+          stroke="var(--gray-5)"
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth={1.5}
