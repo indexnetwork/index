@@ -121,7 +121,7 @@ const Button = (
 					  )}
 				>
 					  {loading ? (
-						<Flex className="btn-inner" inline alignItems="center">
+						<Flex className="btn-inner-loading" inline alignItems="center">
 							<IconLoading className="icon"/>
 							{children}
 						</Flex>
