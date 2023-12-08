@@ -28,7 +28,7 @@ export function ChatMessageActions({
   };
   return (
     <div {...props}>
-      <Flex>
+      <Flex className="chat-message-actions">
         {message.role === "user" && !editingMessage?.id && (
           <Button
             iconHover

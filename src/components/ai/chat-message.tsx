@@ -40,7 +40,7 @@ export function ChatMessage({
   const profile = useAppSelector(selectProfile);
 
   return (
-    <FlexRow wrap={false} align={"start"} className="py-5">
+    <FlexRow wrap={false} align={"start"} className="py-5 chat-message">
       <Col>
         {message.role === "user" ? (
           <Avatar size={24} user={profile} />
