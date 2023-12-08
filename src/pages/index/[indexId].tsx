@@ -430,12 +430,12 @@ const IndexDetailPage: NextPageWithLayout = () => {
                   </>
                 )}
                 {index && tabKey === "creators" && (
-                  <FlexRow className={"mt-6 scrollable-area"}>
+                  <FlexRow className={"mt-6 scrollable-container"}>
                     <Col className="idxflex-grow-1">
                       <CreatorSettings
                         onChange={handleCollabActionChange}
                         collabAction={index.collabAction!}
-                      ></CreatorSettings>
+                       />
                     </Col>
                   </FlexRow>
                 )}
