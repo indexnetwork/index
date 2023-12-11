@@ -29,7 +29,7 @@ export function ChatPanel({
 						addOnBefore={<IconStop width={20} />}
 						onClick={() => stop()}
 						size="lg"
-						theme="clear"
+						theme="panel"
 					>
 						<div className={"mx-2"}>Stop generating</div>
 					</Button>
@@ -39,7 +39,7 @@ export function ChatPanel({
 							addOnBefore={<IconRefresh width={20} />}
 							onClick={() => reload()}
 							size="lg"
-							theme="clear"
+							theme="panel"
 						>
 							<div className={"mx-2"}> Regenerate response</div>
 						</Button>
