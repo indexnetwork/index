@@ -1,7 +1,7 @@
 export const appConfig = {
 	baseUrl: "https://index.network/",
 	apiUrl: "https://index.network/api",
-	ipfsProxy: "https://ipfs.io/ipfs",
+	ipfsProxy: "https://indexas.infura-ipfs.io/ipfs",
 	ipfsInfura: "http://localhost:3001/avatar",
 	defaultCID: "QmWxCRESjmETX2PLXFSopsGT8dbRBUJM6PdFUXZZzb5Nv9", // Empty.
 	testNetwork: {
