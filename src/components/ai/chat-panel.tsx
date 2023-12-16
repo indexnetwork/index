@@ -26,22 +26,20 @@ export function ChatPanel({
 			<div>
 				{isLoading ? (
 					<Button
-						addOnBefore={<IconStop width={20} />}
+						addOnBefore={<IconStop width={12} />}
 						onClick={() => stop()}
-						size="lg"
 						theme="panel"
 					>
-						<div className={"mx-2"}>Stop generating</div>
+						<div className={"mx-2 text-sm"}>Stop generating</div>
 					</Button>
 				) : (
 					messages?.length > 0 && (
 						<Button
-							addOnBefore={<IconRefresh width={20} />}
+							addOnBefore={<IconRefresh width={12} />}
 							onClick={() => reload()}
-							size="lg"
 							theme="panel"
 						>
-							<div className={"mx-2"}> Regenerate response</div>
+							<div className={"mx-2 text-sm"}> Regenerate</div>
 						</Button>
 					)
 				)}
