@@ -1,20 +1,20 @@
 import { Message } from "ai";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
-import { CodeBlock } from "components/ai/ui/codeblock";
-import { MemoizedReactMarkdown } from "components/ai/markdown";
-import { IconCheck, IconClose } from "components/ai/ui/icons";
 import { ChatMessageActions } from "components/ai/chat-message-actions";
-import Col from "components/layout/base/Grid/Col";
-import FlexRow from "components/layout/base/Grid/FlexRow";
-import Text from "components/base/Text";
-import Input from "components/base/Input";
-import Button from "components/base/Button";
-import Flex from "components/layout/base/Grid/Flex";
+import { MemoizedReactMarkdown } from "components/ai/markdown";
+import { CodeBlock } from "components/ai/ui/codeblock";
+import { IconCheck, IconClose } from "components/ai/ui/icons";
 import Avatar from "components/base/Avatar";
-import { selectProfile } from "store/slices/profileSlice";
+import Button from "components/base/Button";
+import Input from "components/base/Input";
+import Col from "components/layout/base/Grid/Col";
+import Flex from "components/layout/base/Grid/Flex";
+import FlexRow from "components/layout/base/Grid/FlexRow";
 import { useAppSelector } from "hooks/store";
+import { selectProfile } from "store/slices/profileSlice";
 
 export interface ChatMessageProps {
   message: Message;
@@ -83,13 +83,15 @@ export function ChatMessage({
             </Flex>
           ) : (
             <MemoizedReactMarkdown
-              remarkPlugins={[remarkGfm, remarkMath]}
+              remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
               components={{
                 p({ children }) {
                   return (
-                    <Text size="lg" lineHeight={1.6}>
+                    <p style={{
+                      marginTop: 0,
+                    }}>
                       {children}
-                    </Text>
+                    </p>
                   );
                 },
                 code({
