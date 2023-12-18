@@ -269,14 +269,25 @@ function IconTrash({ className, ...props }: React.ComponentProps<"svg">) {
 function IconRefresh({ className, ...props }: React.ComponentProps<"svg">) {
   return (
     <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 256 256"
-      fill="currentColor"
-      className={cc("h-4 w-4")}
-      {...props}
-    >
-      <path d="M197.67 186.37a8 8 0 0 1 0 11.29C196.58 198.73 170.82 224 128 224c-37.39 0-64.53-22.4-80-39.85V208a8 8 0 0 1-16 0v-48a8 8 0 0 1 8-8h48a8 8 0 0 1 0 16H55.44C67.76 183.35 93 208 128 208c36 0 58.14-21.46 58.36-21.68a8 8 0 0 1 11.31.05ZM216 40a8 8 0 0 0-8 8v23.85C192.53 54.4 165.39 32 128 32c-42.82 0-68.58 25.27-69.66 26.34a8 8 0 0 0 11.3 11.34C69.86 69.46 92 48 128 48c35 0 60.24 24.65 72.56 40H168a8 8 0 0 0 0 16h48a8 8 0 0 0 8-8V48a8 8 0 0 0-8-8Z" />
-    </svg>
+    xmlns="http://www.w3.org/2000/svg"
+    width={12}
+    height={12}
+    fill="none"
+    {...props}
+  >
+    <path
+      stroke="#475569"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="m.75 5.064 1.296 1.93L3.537 5.21M11.25 7.065 9.955 5.134 8.463 6.92"
+    />
+    <path
+      stroke="#475569"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M9.936 5.151a4.01 4.01 0 0 1-3.028 4.526 3.95 3.95 0 0 1-3.69-1.034M2.048 6.984A4.118 4.118 0 0 1 5.09 1.982 3.95 3.95 0 0 1 8.962 3.21"
+    />
+  </svg>
   );
 }
 

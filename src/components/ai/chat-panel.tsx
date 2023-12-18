@@ -30,7 +30,7 @@ export function ChatPanel({
 						onClick={() => stop()}
 						theme="panel"
 					>
-						<div className={"mx-2 text-sm"}>Stop generating</div>
+						<div className={"ml-3 text-md"}>Stop generating</div>
 					</Button>
 				) : (
 					messages?.length > 0 && (
@@ -39,7 +39,7 @@ export function ChatPanel({
 							onClick={() => reload()}
 							theme="panel"
 						>
-							<div className={"mx-2 text-sm"}> Regenerate</div>
+							<div className={"ml-3 text-md"}> Regenerate</div>
 						</Button>
 					)
 				)}
