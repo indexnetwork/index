@@ -89,6 +89,7 @@ export function ChatMessage({
                   return (
                     <p style={{
                       marginTop: 0,
+                      fontSize: "1.4rem",
                     }}>
                       {children}
                     </p>
