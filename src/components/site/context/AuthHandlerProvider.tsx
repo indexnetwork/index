@@ -89,7 +89,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 		const didKey = await createDIDKey(keySeed);
 
 		const now = new Date();
-		const threeMonthsLater = new Date(now.getTime() + 25 * 24 * 60 * 60 * 1000);
+		const twentyFiveDaysLater = new Date(now.getTime() + 25 * 24 * 60 * 60 * 1000);
 
 		const siweMessage = new SiweMessage({
 			domain: window.location.host,
@@ -100,7 +100,7 @@ export const AuthHandlerProvider = ({ children }: any) => {
 			chainId: normAccount.chainId.reference,
 			nonce: randomString(10),
 			issuedAt: now.toISOString(),
-			expirationTime: threeMonthsLater.toISOString(),
+			expirationTime: twentyFiveDaysLater.toISOString(),
 			resources: ["ceramic://*"],
 		});
 		try {
