@@ -68,7 +68,7 @@
     if (isPermittedAddress || isCreator) {
       const now = /* @__PURE__ */ new Date();
       now.setUTCHours(0, 0, 0, 0);
-      const threeMonthsLater = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1e3);
+      const twentyFiveDaysLater = new Date(now.getTime() + 25 * 24 * 60 * 60 * 1e3);
       const siweMessage = {
         domain,
         address: pkpAddress,
@@ -78,7 +78,7 @@
         chainId: "175177",
         nonce,
         issuedAt: now.toISOString(),
-        expirationTime: threeMonthsLater.toISOString(),
+        expirationTime: twentyFiveDaysLater.toISOString(),
         resources: getResources(isPermittedAddress).map((m) => `ceramic://*?model=${m}`)
       };
       const sigShare = await LitActions.ethPersonalSignMessageEcdsa({
