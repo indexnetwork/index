@@ -3,7 +3,7 @@ export const appConfig = {
 	apiUrl: "https://index.network/api",
 	ipfsProxy: "https://indexas.infura-ipfs.io/ipfs",
 	ipfsInfura: "http://localhost:3001/avatar",
-	defaultCID: "QmWxCRESjmETX2PLXFSopsGT8dbRBUJM6PdFUXZZzb5Nv9", // Empty.
+	defaultCID: "QmRisjM1uZ18wUE22XsREDYEXYdsVuZ6P312XWcMj3Apys", // Empty.
 	testNetwork: {
 		chainId: "0x2ac49",
 		chainName: "Chronicle - Lit Protocol Testnet",
