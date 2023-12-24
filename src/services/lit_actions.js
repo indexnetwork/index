@@ -1,15 +1,24 @@
 import fs from 'fs/promises';
 
-import {NodeVM} from 'vm2';
+import { NodeVM } from 'vm2';
 import { TextEncoder, TextDecoder } from "util";
 
-
+import { LitContracts } from "@lit-protocol/contracts-sdk";
+import { DID } from "dids";
+import * as LitJsSdk from "@lit-protocol/lit-node-client";
+import { randomBytes, randomString } from "@stablelib/random";
+import { Cacao } from "@didtools/cacao";
+import { getResolver } from "key-did-resolver";
+import { createDIDCacao, DIDSession } from "did-session";
+import { Ed25519Provider } from "key-did-provider-ed25519";
 
 import RedisClient from '../clients/redis.js';
 import IPFSClient from '../clients/ipfs.js';
 const redis = RedisClient.getInstance();
 
-import {getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet} from '../libs/infura.js';
+import { Index } from '../protocol.ts';
+
+import { getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet } from '../libs/infura.js';
 
 const enrichConditions = async (conditions) => {
 
@@ -91,7 +100,6 @@ const enrichConditions = async (conditions) => {
     return conditions;
 }
 
-
 export const get_action = async (req, res, next) => {
 
     const { cid } = req.params;
@@ -132,7 +140,6 @@ export const get_action = async (req, res, next) => {
     }
 
 };
-
 export const post_action = async (req, res, next) => {
 
     let actionStr = await fs.readFile('lit_action.js', 'utf8');
@@ -142,3 +149,66 @@ export const post_action = async (req, res, next) => {
         return res.json(r.path)
     });
 };
+
+export const getPKPSession = async (index: Index) => {
+
+    const { accessControl } = index
+    const existingSessionStr = await redis.hGet(`sessions:${accessControl.signerPublicKey}`);
+
+    if (existingSessionStr) {
+        try {
+            const didSession = await DIDSession.fromSession(existingSessionStr);
+            await didSession.did.authenticate();
+            return didSession;
+        } catch (error) {
+            //Expired or invalid session, remove cache.
+            console.warn(error);
+            await redis.hDel(`sessions:${accessControl.signerPublicKey}`);
+        }
+    }
+
+    const keySeed = randomBytes(32);
+    const provider = new Ed25519Provider(keySeed);
+    // @ts-ignore
+    const didKey = new DID({ provider, resolver: getResolver() });
+    await didKey.authenticate();
+
+    const litNodeClient = new LitJsSdk.LitNodeClient({
+        litNetwork: config.litNetwork,
+    });
+    await litNodeClient.connect();
+
+    const resp = await litNodeClient.executeJs({
+        ipfsId: accessControl.signerFunction,
+        authSig: config.authSignature,
+        jsParams: {
+            authSig,
+            chain: "ethereum",
+            publicKey: accessControl.signerPublicKey,
+            didKey: didKey.id,
+            nonce: randomString(10),
+            domain: window.location.host,
+            sigName: "sig1",
+        },
+    });
+    // @ts-ignore
+    const { error } = resp.response; // TODO Handle.
+    if (error) {
+        console.log(error)
+        return null;
+    }
+    // @ts-ignore
+    const siweMessage = JSON.parse(resp.response.context);
+    const signature = resp.signatures.sig1; // TODO Handle.
+    siweMessage.signature = ethers.Signature.from({
+        r: `0x${signature.r}`,
+        s: `0x${signature.s}`,
+        v: signature.recid,
+    }).serialized;
+
+    const cacao = Cacao.fromSiweMessage(siweMessage);
+    const did = await createDIDCacao(didKey, cacao);
+    const session = new DIDSession({ cacao, keySeed, did });
+    await redis.hSet(`sessions:${accessControl.signerPublicKey}`, session.serialize());
+    return session;
+}
