@@ -5,6 +5,7 @@ info:
 paths:
   /index:
     post:
+      operationId: createIndex
       summary: Create a new Index
       description: Endpoint to create a new Index entity.
       security:
@@ -24,6 +25,7 @@ paths:
           description: Unauthorized. Authentication required to access this resource.
 
     get:
+      operationId: listIndexes
       summary: List all Indexes
       description: Retrieves a list of all Index entities.
       responses:
@@ -40,6 +42,7 @@ paths:
 
   /index/{indexId}:
     get:
+      operationId: getIndex
       summary: Get an Index by ID
       description: Retrieve an Index entity by its unique identifier.
       parameters:
@@ -61,6 +64,7 @@ paths:
           description: Index not found
 
     put:
+      operationId: updateIndex
       summary: Update an Index by ID
       description: Update an existing Index entity by its ID.
       parameters:
@@ -89,6 +93,7 @@ paths:
 
   /item:
     post:
+      operationId: createIndexItem
       summary: Create a new IndexItem
       description: Endpoint to create a new IndexItem entity.
       security:
@@ -108,6 +113,7 @@ paths:
           description: Unauthorized. Authentication required to access this resource.
 
     get:
+      operationId: listIndexItems
       summary: List all IndexItems
       description: Retrieves a list of all IndexItem entities.
       responses:
@@ -124,6 +130,7 @@ paths:
 
   /item/{itemId}:
     get:
+      operationId: getIndexItem
       summary: Get an IndexItem by ID
       description: Retrieve an IndexItem entity by its unique identifier.
       parameters:
@@ -145,6 +152,7 @@ paths:
           description: IndexItem not found
 
     put:
+      operationId: updateIndexItem
       summary: Update an IndexItem by ID
       description: Update an existing IndexItem entity by its ID.
       parameters:
@@ -173,6 +181,7 @@ paths:
 
   /embedding:
     post:
+      operationId: createEmbedding
       summary: Create a new Embedding
       description: Endpoint to create a new Embedding entity.
       security:
@@ -192,6 +201,7 @@ paths:
           description: Unauthorized. Authentication required to access this resource.
 
     get:
+      operationId: listEmbeddings
       summary: List all Embeddings
       description: Retrieves a list of all Embedding entities.
       responses:
@@ -208,6 +218,7 @@ paths:
 
   /embedding/{embeddingId}:
     get:
+      operationId: getEmbedding
       summary: Get an Embedding by ID
       description: Retrieve an Embedding entity by its unique identifier.
       parameters:
@@ -229,6 +240,7 @@ paths:
           description: Embedding not found
 
     put:
+      operationId: updateEmbedding
       summary: Update an Embedding by ID
       description: Update an existing Embedding entity by its ID.
       parameters:
@@ -257,6 +269,7 @@ paths:
 
   /query:
     post:
+      operationId: query
       summary: Query
       description: |
         This endpoint allows for a complex query against indexes, items, and embeddings, filtered by specific identifiers and categories. It supports querying based on Decentralized Identifiers (DIDs), item and index identifiers, and specific types of embeddings.
@@ -265,48 +278,10 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                indexes:
-                  type: array
-                  items:
-                    type: string
-                  description: Array of indexes to be queried.
-                dids:
-                  type: array
-                  items:
-                    type: string
-                  description: Array of DIDs for filtering or access control.
-                items:
-                  type: array
-                  items:
-                    type: string
-                  description: Array of items within the indexes to be queried.
-                embeddingCategories:
-                  type: array
-                  items:
-                    type: string
-                  description: Embeddings categories to be used in the query.
-                vectors:
-                  type: array
-                  items:
-                    type: number
-                  description: Embeddings vector to be utilized for similarty search in the query.
-                viewerDID:
-                  type: string
-                  description: Decentralized Identifier of the viewer or user making the query.
-                question:
-                  type: string
-                  description: The query string or question to be answered.
+              $ref: '#/components/schemas/Query'
       responses:
         '200':
           description: Query results
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                # Define the schema for your query results here
         '400':
           description: Bad request, such as invalid input
         '401':
@@ -392,7 +367,6 @@ components:
           type: string
         version:
           type: string
-
     EmbeddingContext:
       type: object
       properties:
@@ -402,6 +376,40 @@ components:
           type: string
         category:
           type: string
+    Query:
+      type: object
+      properties:
+        indexes:
+          type: array
+          items:
+            type: string
+          description: Array of indexes to be queried.
+        dids:
+          type: array
+          items:
+            type: string
+          description: Array of DIDs for filtering or access control.
+        items:
+          type: array
+          items:
+            type: string
+          description: Array of items within the indexes to be queried.
+        embeddingCategories:
+          type: array
+          items:
+            type: string
+          description: Embeddings categories to be used in the query.
+        vectors:
+          type: array
+          items:
+            type: number
+          description: Embeddings vector to be utilized for similarty search in the query.
+        viewerDID:
+          type: string
+          description: Decentralized Identifier of the viewer or user making the query.
+        question:
+          type: string
+          description: The query string or question to be answered.
   securitySchemes:
     bearerAuth:
       type: http

@@ -47,61 +47,101 @@ const validator = ejv.createValidator({
   passError: true
 })
 
-const didSearchSchema = Joi.object({
-  did: Joi.string().required(),
-  type: Joi.string().min(1).default(false),
-  search: Joi.string().min(1).default(false),
+// DIDs
+app.post('/dids/:id/indexes', validator.body(Joi.object({
+  type: Joi.string().min(1).optional(), //TODO Enumize
   skip: Joi.number().default(0),
   take: Joi.number().default(10),
-  links_size: Joi.number().max(100)
-})
+})), didService.getIndexes)
 
+// Indexes
+app.get('/indexes/:id', validator.params(Joi.object({
+  id: Joi.string().required()
+})), indexService.getIndexById)
 
-const indexSearchSchema = Joi.object({
-  index_ids: Joi.array().items(Joi.string()).min(1).required(),
-  search: Joi.string().min(1).default(false),
+app.post('/indexes', validator.body(Joi.object({
+  name: Joi.string().required(),
+  description: Joi.string().required()
+})), indexService.createIndex)
+
+app.put('/indexes/:id', validator.body(Joi.object({
+  name: Joi.string(),
+  description: Joi.string()
+})), validator.params(Joi.object({
+  id: Joi.string().required()
+})), indexService.updateIndex)
+
+app.delete('/indexes/:id', validator.params(Joi.object({
+  id: Joi.string().required()
+})), indexService.deleteIndex)
+
+// Items
+app.get('/items', validator.query(Joi.object({
+  query: Joi.string().min(1).optional(),
+  indexId: Joi.string().required(),
   skip: Joi.number().default(0),
   take: Joi.number().default(10),
-  links_size: Joi.number().max(100)
-})
+})), indexService.listItems)
+
+app.post('/items', validator.params(Joi.object({
+  indexId: Joi.string().required(),
+  itemId: Joi.string().required()
+})), indexService.createItem)
+
+app.delete('/items', validator.params(Joi.object({
+  indexId: Joi.string().required(),
+  itemId: Joi.string().required(),
+})), indexService.deleteItem)
 
 
-const linkSearchSchema = Joi.object({
-  index_id: Joi.string().required(),
-  search: Joi.string().min(1).default(false),
-  skip: Joi.number().default(0),
-  take: Joi.number().default(10),
-})
+app.get('/embeddings', validator.query(Joi.object({
+  indexId: Joi.string().required(),
+  itemId: Joi.string().required(),
+  modelName: Joi.string().optional(),
+  category: Joi.string().optional(),
+  skip: Joi.number().integer().min(0).optional(),
+  take: Joi.number().integer().min(1).optional()
+})), embeddingService.listEmbeddings);
 
-const userIndexSchema = Joi.object({
+app.post('/embeddings', validator.body(Joi.object({
+  indexId: Joi.string().required(),
+  itemId: Joi.string().required(),
+  vector: Joi.array().items(Joi.number()).required(),
+  modelName: Joi.string().required(),
+  contextDescription: Joi.string().optional(),
+  category: Joi.string().optional()
+})), embeddingService.createEmbedding);
+
+app.put('/embeddings', validator.body(Joi.object({
+  indexId: Joi.string().required(),
+  itemId: Joi.string().required(),
+  vector: Joi.array().items(Joi.number()).required(),
+  modelName: Joi.string().required(),
+  contextDescription: Joi.string().optional(),
+  category: Joi.string().optional()
+})), embeddingService.updateEmbedding);
+
+app.delete('/embeddings', validator.params(Joi.object({
+  indexId: Joi.string().required(),
+  itemId: Joi.string().required(),
+  category: Joi.string().required()
+})), embeddingService.deleteEmbedding);
+
+
+app.get('/indexes/:id', composedb.get_index)
+app.get('/index_link/:id', composedb.get_index_link)
+
+app.post('/search/user_indexes', validator.body(Joi.object({
   did: Joi.string().required(),
   index_id: Joi.string().min(40).required(),
-})
+})), search.user_index) // TODO Remove
 
-
-const chatStreamSchema = Joi.object({
-    id: Joi.string().required(),
-    did: Joi.string().optional(),
-    indexes: Joi.array().items(Joi.string()).optional(),
-    messages: Joi.array().required(),
-})
-
-const zapierTestLoginSchema = Joi.object({
-  email: Joi.string().email().required(),
-  password: Joi.string().min(8).required(),
-})
-
-const subscribeSchema = Joi.object({
-  email: Joi.string().email().required(),
-});
-
-
-app.post('/search/did', validator.body(didSearchSchema), search.did)
-app.post('/search/indexes', validator.body(indexSearchSchema), search.index)
-app.post('/search/links', validator.body(linkSearchSchema), search.link)
-app.post('/search/user_indexes', validator.body(userIndexSchema), search.user_index)
-
-app.post('/chat_stream', validator.body(chatStreamSchema), async (req, res) => {
+app.post('/chat_stream', validator.body(Joi.object({
+  id: Joi.string().required(),
+  did: Joi.string().optional(),
+  indexes: Joi.array().items(Joi.string()).optional(),
+  messages: Joi.array().required(),
+})), async (req, res) => {
   try{
     let resp = await axios.post(`${process.env.LLM_INDEXER_HOST}/chat_stream`, req.body, {
         responseType: 'stream'
@@ -117,19 +157,7 @@ app.post('/chat_stream', validator.body(chatStreamSchema), async (req, res) => {
 })
 app.post('/zapier/index_link', composedb.zapier_index_link);
 app.get('/zapier/auth', composedb.zapier_auth);
-app.post('/zapier/test_login', validator.body(zapierTestLoginSchema), async (req, res) => {
 
-  let { email, password } = req.body;
-  if(email === process.env.ZAPIER_TEST_EMAIL && password === process.env.ZAPIER_TEST_PASSWORD){
-    return res.json({success: true, sessionData: process.env.ZAPIER_TEST_SESSION})
-  }else{
-    return res.json({error: 'Invalid credentials'})
-  }
-
-});
-
-app.get('/indexes/:id', composedb.get_index)
-app.get('/index_link/:id', composedb.get_index_link)
 
 app.post('/webhook/moralis/pkp', moralis.indexPKP) //Unavailable for chronicle. TODO Before mainnet.
 
@@ -180,7 +208,10 @@ mailchimp.setConfig({
   server: "us8"
 });
 
-app.post("/subscribe", validator.body(subscribeSchema), async (req, res) => {
+
+app.post("/subscribe", validator.body(Joi.object({
+  email: Joi.string().email().required(),
+})), async (req, res) => {
   const { email } = req.body;
   try {
     const response = await mailchimp.lists.addListMember(process.env.MAILCHIMP_LIST_ID, {
