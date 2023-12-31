@@ -349,7 +349,11 @@ components:
           items:
             type: number
         context:
-          $ref: '#/components/schemas/EmbeddingContext'
+          type: string
+        description:
+          type: string
+        category:
+          type: string
         indexId:
           type: string
         itemId:
@@ -366,15 +370,6 @@ components:
         controllerDID:
           type: string
         version:
-          type: string
-    EmbeddingContext:
-      type: object
-      properties:
-        context:
-          type: string
-        contextDescription:
-          type: string
-        category:
           type: string
     Query:
       type: object

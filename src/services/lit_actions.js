@@ -16,7 +16,7 @@ import RedisClient from '../clients/redis.js';
 import IPFSClient from '../clients/ipfs.js';
 const redis = RedisClient.getInstance();
 
-import { Index } from '../protocol.ts';
+//import { Index } from '../protocol.ts';
 
 import { getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet } from '../libs/infura.js';
 
@@ -150,7 +150,7 @@ export const post_action = async (req, res, next) => {
     });
 };
 
-export const getPKPSession = async (index: Index) => {
+export const getPKPSession = async (index) => {
 
     const { accessControl } = index
     const existingSessionStr = await redis.hGet(`sessions:${accessControl.signerPublicKey}`);

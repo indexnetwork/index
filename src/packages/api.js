@@ -3,10 +3,15 @@ if(process.env.NODE_ENV !== 'production'){
   dotenv.config()
 }
 import Moralis from 'moralis';
-import RedisClient  from '../clients/redis.js';
-const redis = RedisClient.getInstance();
+//import RedisClient  from '../clients/redis.js';
+//const redis = RedisClient.getInstance();
 
 import * as search from '../services/elasticsearch.js';
+
+import * as indexController from '../controllers/index.js';
+import * as didController from '../controllers/did.js';
+import * as helperService from '../services/helper.js';
+
 import * as composedb from '../services/composedb.js';
 import * as litActions from '../services/lit_actions.js';
 import * as moralis from '../libs/moralis.js';
@@ -14,6 +19,50 @@ import * as infura from '../libs/infura.js';
 
 import Joi from 'joi';
 import * as ejv from 'express-joi-validation';
+
+import { DIDSession } from 'did-session'
+import { StreamID } from '@ceramicnetwork/streamid';
+import { CID } from 'multiformats/cid'
+import { ethers } from "ethers";
+
+import { DID } from 'dids'
+import KeyResolver from 'key-did-resolver'
+
+
+const isStreamID = (value, helpers) => {
+  try {
+    return StreamID.fromString(value).toString();
+  } catch (e) {
+    return helpers.message('Invalid Stream ID');
+  }
+};
+
+const isDID = (value, helpers) => {
+  try {
+    const did = new DID({ resolver: KeyResolver.getResolver() })
+    return value
+  } catch (e) {
+    return helpers.message('Invalid Stream ID');
+  }
+};
+
+const isCID = (value, helpers) => {
+  try {
+    return CID.parse(value).toString();
+  } catch (e) {
+    return helpers.message('Invalid CID');
+  }
+};
+
+const isPKPPublicKey = (value, helpers) => {
+  try {
+    ethers.computeAddress(value);
+    return value;
+  } catch (e) {
+    return helpers.message('Invalid Pkp Public Key');
+  }
+};
+
 
 import IPFSClient from '../clients/ipfs.js';
 
@@ -37,6 +86,7 @@ import { getQueue, getMetadata } from '../libs/crawl.js'
 import express from 'express';
 import {getWalletByENSHandler} from "../libs/infura.js";
 import axios from "axios";
+import {index} from "../services/elasticsearch.js";
 
 const app = express()
 const port = process.env.PORT || 3001;
@@ -47,101 +97,147 @@ const validator = ejv.createValidator({
   passError: true
 })
 
+// Authenticate
+app.use( async (req, res, next) => {
+  try{
+
+    const authHeader = req.headers.authorization;
+    if(authHeader){
+      const session = await DIDSession.fromSession(authHeader.split(' ')[1]);
+      await session.did.authenticate()
+      req.user = session.did;
+
+      console.log("Authenticated", req.user)
+    }
+
+  } catch (e){
+    console.log("Public");
+  }
+
+  next();
+});
+const privateRoute = (req, res, next) => {
+  if(!req.user){
+    return res.status(401).send('Unauthorized');
+  }
+  next();
+}
+
 // DIDs
-app.post('/dids/:id/indexes', validator.body(Joi.object({
-  type: Joi.string().min(1).optional(), //TODO Enumize
+app.get('/dids/:id/indexes',validator.body(Joi.object({
+  type: Joi.string().valid('starred', 'owner').optional(),
   skip: Joi.number().default(0),
   take: Joi.number().default(10),
-})), didService.getIndexes)
+})), validator.params(Joi.object({
+  id: Joi.custom(isDID, "DID").required(),
+})), didController.getIndexes)
+
+app.put('/dids/:id/indexes', privateRoute, validator.body(Joi.object({
+  type: Joi.string().valid('starred', 'owner').required(),
+  indexId: Joi.custom(isStreamID, "Index ID").required(),
+})), validator.params(Joi.object({
+  id: Joi.custom(isDID, "DID").required(),
+})), didController.addIndex)
+
+app.delete('/dids/:id/indexes',privateRoute, validator.body(Joi.object({
+  type: Joi.string().valid('starred', 'owner').required(),
+  indexId: Joi.custom(isStreamID, "Index ID").required(),
+})), validator.params(Joi.object({
+  id: Joi.custom(isDID, "DID").required(),
+})), didController.removeIndex)
 
 // Indexes
 app.get('/indexes/:id', validator.params(Joi.object({
-  id: Joi.string().required()
-})), indexService.getIndexById)
+  id: Joi.custom(isStreamID, "Index ID").required(),
+})), indexController.getIndexById)
 
-app.post('/indexes', validator.body(Joi.object({
-  name: Joi.string().required(),
-  description: Joi.string().required()
-})), indexService.createIndex)
+app.post('/indexes', privateRoute, validator.body(Joi.object({
+  title: Joi.string().required(),
+  signerPublicKey: Joi.custom(isPKPPublicKey, "LIT PKP Public Key").optional(),
+  signerFunction: Joi.custom(isCID, "IPFS CID").optional()
+})), indexController.createIndex)
 
-app.put('/indexes/:id', validator.body(Joi.object({
-  name: Joi.string(),
-  description: Joi.string()
-})), validator.params(Joi.object({
-  id: Joi.string().required()
-})), indexService.updateIndex)
+app.patch('/indexes/:id', privateRoute, validator.body(Joi.object({
+  title: Joi.string().optional(),
+  signerFunction: Joi.custom(isCID, "IPFS CID").optional()
+}).or('title', 'signerFunction')), validator.params(Joi.object({
+  id: Joi.custom(isStreamID, "Index ID").required(),
+})), indexController.updateIndex)
 
-app.delete('/indexes/:id', validator.params(Joi.object({
-  id: Joi.string().required()
-})), indexService.deleteIndex)
+app.delete('/indexes/:id', privateRoute, validator.params(Joi.object({
+  id: Joi.custom(isStreamID, "Index ID").required(),
+})), indexController.deleteIndex)
 
 // Items
 app.get('/items', validator.query(Joi.object({
   query: Joi.string().min(1).optional(),
-  indexId: Joi.string().required(),
+  indexId: Joi.custom(isStreamID, "Index ID").required(),
   skip: Joi.number().default(0),
   take: Joi.number().default(10),
-})), indexService.listItems)
+})), indexController.listItems)
 
-app.post('/items', validator.params(Joi.object({
-  indexId: Joi.string().required(),
-  itemId: Joi.string().required()
-})), indexService.createItem)
+app.post('/items', privateRoute, validator.body(Joi.object({
+  indexId: Joi.custom(isStreamID, "Index ID").required(),
+  itemId: Joi.custom(isStreamID, "Stream ID").required(),
+})), indexController.addItem)
 
-app.delete('/items', validator.params(Joi.object({
-  indexId: Joi.string().required(),
-  itemId: Joi.string().required(),
-})), indexService.deleteItem)
-
+app.delete('/items', privateRoute, validator.body(Joi.object({
+  indexId: Joi.custom(isStreamID, "Index ID").required(),
+  itemId: Joi.custom(isStreamID, "Stream ID").required(),
+})), indexController.removeItem)
 
 app.get('/embeddings', validator.query(Joi.object({
-  indexId: Joi.string().required(),
-  itemId: Joi.string().required(),
+  indexId: Joi.custom(isStreamID, "Index ID").required(),
+  itemId: Joi.custom(isStreamID, "Stream ID").required(),
   modelName: Joi.string().optional(),
-  category: Joi.string().optional(),
+  categories: Joi.array().items(Joi.string()).optional(),
   skip: Joi.number().integer().min(0).optional(),
   take: Joi.number().integer().min(1).optional()
-})), embeddingService.listEmbeddings);
+})), indexController.listEmbeddings);
 
-app.post('/embeddings', validator.body(Joi.object({
-  indexId: Joi.string().required(),
-  itemId: Joi.string().required(),
-  vector: Joi.array().items(Joi.number()).required(),
+app.post('/embeddings', privateRoute, validator.body(Joi.object({
+  indexId: Joi.custom(isStreamID, "Index ID").required(),
+  itemId: Joi.custom(isStreamID, "Stream ID").required(),
   modelName: Joi.string().required(),
-  contextDescription: Joi.string().optional(),
-  category: Joi.string().optional()
-})), embeddingService.createEmbedding);
-
-app.put('/embeddings', validator.body(Joi.object({
-  indexId: Joi.string().required(),
-  itemId: Joi.string().required(),
   vector: Joi.array().items(Joi.number()).required(),
-  modelName: Joi.string().required(),
-  contextDescription: Joi.string().optional(),
+  context: Joi.string().optional(),
+  description: Joi.string().required(),
   category: Joi.string().optional()
-})), embeddingService.updateEmbedding);
+})), indexController.createEmbedding);
 
-app.delete('/embeddings', validator.params(Joi.object({
-  indexId: Joi.string().required(),
-  itemId: Joi.string().required(),
+app.patch('/embeddings', privateRoute, validator.body(Joi.object({
+  indexId: Joi.custom(isStreamID, "Index ID").required(),
+  itemId: Joi.custom(isStreamID, "Stream ID").required(),
+  vector: Joi.array().items(Joi.number()).optional(),
+  modelName: Joi.string().required().optional(),
+  description: Joi.string().optional(),
+  category: Joi.string().optional()
+})), indexController.updateEmbedding);
+
+app.delete('/embeddings', privateRoute, validator.body(Joi.object({
+  indexId: Joi.custom(isStreamID, "Index ID").required(),
+  itemId: Joi.custom(isStreamID, "Stream ID").required(),
   category: Joi.string().required()
-})), embeddingService.deleteEmbedding);
+})), indexController.deleteEmbedding);
 
+app.post('/web2-migrate', privateRoute, validator.body(Joi.object({
+  url: Joi.string().required(),
+  modelId: Joi.string().required(),
+  context: Joi.string().optional()
+})), helperService.migrateWeb2);
 
-app.get('/indexes/:id', composedb.get_index)
-app.get('/index_link/:id', composedb.get_index_link)
-
-app.post('/search/user_indexes', validator.body(Joi.object({
-  did: Joi.string().required(),
-  index_id: Joi.string().min(40).required(),
-})), search.user_index) // TODO Remove
 
 app.post('/chat_stream', validator.body(Joi.object({
   id: Joi.string().required(),
-  did: Joi.string().optional(),
-  indexes: Joi.array().items(Joi.string()).optional(),
   messages: Joi.array().required(),
-})), async (req, res) => {
+  did: Joi.string().optional(),
+  type: Joi.when('did', {
+    is: Joi.exist(),
+    then: Joi.string().valid('starred', 'owner').optional(),
+    otherwise: Joi.forbidden()
+  }),
+  indexes: Joi.array().items(Joi.string()).optional(),
+}).or('did', 'indexes')), async (req, res) => {
   try{
     let resp = await axios.post(`${process.env.LLM_INDEXER_HOST}/chat_stream`, req.body, {
         responseType: 'stream'
@@ -155,6 +251,9 @@ app.post('/chat_stream', validator.body(Joi.object({
   }
 
 })
+
+
+//Todo refactor later.
 app.post('/zapier/index_link', composedb.zapier_index_link);
 app.get('/zapier/auth', composedb.zapier_auth);
 
@@ -184,8 +283,6 @@ app.get('/crawl/metadata', validator.query(crawlSchema), async (req, res) => {
     res.json(response)
 
 })
-
-
 
 app.post('/upload_avatar', multerUpload.single('file'), async (req, res) => {
   try {
@@ -247,12 +344,13 @@ app.use((err, req, res, next) => {
 
 const start = async () => {
 
-  await redis.connect()
-  await Moralis.start({
+  //await redis.connect()
+  /*await Moralis.start({
     apiKey: process.env.MORALIS_API_KEY,
   });
+   */
   if(process.env.NODE_ENV !== 'development'){
-    await app.set('queue', await getQueue())
+    // await app.set('queue', await getQueue())
   }
   await app.listen(port, async () => {
     console.log(`Search service listening on port ${port}`)
