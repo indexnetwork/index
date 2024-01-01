@@ -39,16 +39,13 @@ import {
 } from "../middlewares/index.js";
 
 
-import {isImage, isPKPPublicKey, isCID, isDID, isStreamID} from "../utils/validators.js";
+import { isImage, isPKPPublicKey, isCID, isDID, isStreamID } from "../types/validators.js";
 
 app.use(express.json())
 
 const validator = ejv.createValidator({
   passError: true
 })
-
-// Validators
-app.use(errorMiddleware);
 
 // Authenticate
 app.use(authenticateMiddleware);
@@ -127,24 +124,26 @@ app.post('/embeddings', privateRouteMiddleware, validator.body(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
   modelName: Joi.string().required(),
-  vector: Joi.array().items(Joi.number()).required(),
+  category: Joi.string().required(),
   context: Joi.string().optional(),
-  description: Joi.string().required(),
-  category: Joi.string().optional()
+  vector: Joi.array().items(Joi.number()).required(),
+  description: Joi.string().required()
 })), embeddingController.createEmbedding);
 
 app.patch('/embeddings', privateRouteMiddleware, validator.body(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
-  vector: Joi.array().items(Joi.number()).optional(),
-  modelName: Joi.string().required().optional(),
-  description: Joi.string().optional(),
-  category: Joi.string().optional()
+  modelName: Joi.string().required(),
+  category: Joi.string().required(),
+  context: Joi.string().optional(),
+  vector: Joi.array().items(Joi.number()).required(),
+  description: Joi.string().optional()
 })), embeddingController.updateEmbedding);
 
 app.delete('/embeddings', privateRouteMiddleware, validator.body(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
+  modelName: Joi.string().required(),
   category: Joi.string().required()
 })), embeddingController.deleteEmbedding);
 
@@ -215,7 +214,8 @@ app.post("/subscribe", validator.body(Joi.object({
   email: Joi.string().email().required(),
 })), siteController.subscribe);
 
-
+// Validators
+app.use(errorMiddleware);
 
 const start = async () => {
 

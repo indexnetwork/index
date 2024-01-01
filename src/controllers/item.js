@@ -8,8 +8,8 @@ export const addItem = async (req, res, next) => {
     const {indexId, itemId} = req.body;
     try {
         const itemService = new ItemService().setDID(req.user);
-        const newItem = await itemService.addItem(indexId, itemId);
-        res.status(201).json(newItem);
+        const item = await itemService.addItem(indexId, itemId);
+        res.status(201).json(item);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -19,8 +19,8 @@ export const removeItem = async (req, res, next) => {
     const {indexId, itemId} = req.body;
     try {
         const itemService = new ItemService().setDID(req.user);
-        const newItem = await itemService.removeItem(indexId, itemId);
-        res.status(200).json(newItem);
+        const item = await itemService.removeItem(indexId, itemId);
+        res.status(200).json(item);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

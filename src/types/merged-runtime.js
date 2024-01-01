@@ -87,7 +87,7 @@ export const definition = {
             }
         },
         "Embedding": {
-            "itemId": {"type": "streamid", "required": true},
+            "itemId": {"type": "streamid", "required": true, "indexed": true},
             "vector": {"type": "list", "required": true, "item": {"type": "float", "required": true}},
             "context": {"type": "string", "required": false},
             "indexId": {"type": "streamid", "required": true, "indexed": true},

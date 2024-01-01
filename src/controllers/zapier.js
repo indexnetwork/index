@@ -1,6 +1,6 @@
 import * as composedb from '../libs/composedb.js';
 import { getQueue, getMetadata } from '../libs/crawl.js'
-import { isValidURL } from "../utils/validators.js";
+import { isValidURL } from "../types/validators.js";
 
 
 
