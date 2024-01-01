@@ -100,16 +100,7 @@ async function start() {
             let docId = value.stream_id;
 
             switch (model) {
-                case 'index':
-                    switch (op) {
-                        case "c":
-                            indexer.createIndex(docId)
-                            break
-                        case "u":
-                            indexer.updateIndex(docId)
-                            break
-                    }
-                    break
+
                 case 'user_index':
                     switch (op) {
                         case "c":

@@ -42,3 +42,27 @@ export const removeIndex = async (req, res, next) => {
         res.status(500).json({ error: error.message });
     }
 };
+
+
+export const createProfile = async (req, res, next) => {
+    if(req.params.id !== req.user.parent) {
+        return res.status(500).json({ error: "Authorization error" });
+    }
+    try {
+        const didService = new DIDService().setDID(req.user);
+        const profile = await didService.createProfile(req.body)
+        res.status(201).json(profile);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+export const getProfile = async (req, res, next) => {
+    try {
+        const didService = new DIDService()
+        const profile = await didService.getProfile(req.params.id)
+        res.status(200).json(profile);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};

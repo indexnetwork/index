@@ -126,3 +126,8 @@ https://lit-share-modal-v3-playground.netlify.app/
 
 - [] Lit actions UI
 
+
+
+
+- [x] IndexItem should write to kafka to save default embeddings
+- 

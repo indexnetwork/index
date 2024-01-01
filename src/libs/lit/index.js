@@ -6,6 +6,7 @@ import elliptic from "elliptic";
 const ec = new elliptic.ec("secp256k1");
 
 import RedisClient from '../../clients/redis.js';
+import {DIDService} from "../../services/did.js";
 const redis = RedisClient.getInstance();
 
 
@@ -38,9 +39,12 @@ export const getOwner = async (pkpPubKey) => {
 export const getOwnerProfile = async (pkpPubKey) => {
 
 	const owner = await getOwner(pkpPubKey);
-	const profile = await redis.hGet(`profiles`, `did:pkh:eip155:175177:${owner}`)
+
+	const didService = new DIDService()
+	const profile = await didService.getProfile(`did:pkh:eip155:175177:${owner}`)
+
 	if(profile){
-		return JSON.parse(profile);
+		return profile;
 	}else{
 		return { id: `did:pkh:eip155:175177:${owner}` }
 	}

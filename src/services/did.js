@@ -4,7 +4,7 @@ import moment from "moment";
 const getCurrentDateTime = () => moment.utc().toISOString();
 
 import { definition }  from "../types/merged-runtime.js";
-import { getOwnerProfile } from "../utils/lit/index.js";
+import { getOwnerProfile } from "../libs/lit/index.js";
 
 export class DIDService {
     constructor() {
@@ -261,6 +261,99 @@ export class DIDService {
         }
     }
 
+
+    async createProfile(params) {
+        if (!this.did) {
+            throw new Error("DID not set. Use setDID() to set the did.");
+        }
+
+        try {
+            const content = {
+                ...params,
+                createdAt: getCurrentDateTime(),
+                updatedAt: getCurrentDateTime(),
+            };
+            this.client.setDID(this.did);
+            const {data, errors} = await this.client.executeQuery(`
+                mutation CreateProfile($input: CreateProfileInput!) {
+                    createProfile(input: $input) {
+                        document {
+                            id
+                            bio
+                            avatar
+                            name
+                            createdAt
+                            updatedAt
+                            deletedAt
+                            controllerDID{
+                                id
+                            }
+                        }
+                    }
+                }`, {input: {content}});
+
+            // Handle GraphQL errors
+            if (errors) {
+                throw new Error(`Error creating profile: ${JSON.stringify(errors)}`);
+            }
+
+            // Validate the data response
+            if (!data || !data.createProfile || !data.createProfile.document) {
+                throw new Error('Invalid response data');
+            }
+
+            // Return the created profile document
+            return data.createProfile.document;
+
+        } catch (error) {
+            // Log the error and rethrow it for external handling
+            console.error('Exception occurred in createProfile:', error);
+            throw error;
+        }
+    }
+
+
+    async getProfile(did) {
+
+        try {
+
+            const {data, errors} = await this.client.executeQuery(`{
+                node(id: "${did}") {
+                ... on CeramicAccount {
+                        profile {
+                            id
+                            name
+                            bio
+                            avatar
+                            createdAt
+                            updatedAt
+                            deletedAt
+                        }
+                    }
+                }
+            }`);
+
+            // Handle GraphQL errors
+            if (errors) {
+                throw new Error(`Error getting profile: ${JSON.stringify(errors)}`);
+            }
+
+            // Validate the data response
+            if (!data || !data.node || !data.node.profile) {
+                throw new Error('Invalid response data');
+            }
+
+            // Return the created profile document
+            return data.node.profile;
+
+        } catch (error) {
+            // Log the error and rethrow it for external handling
+            console.error('Exception occurred in getProfile:', error);
+            throw error;
+        }
+    }
+
 }
+
 
 

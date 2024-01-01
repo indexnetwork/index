@@ -71,6 +71,19 @@ app.delete('/dids/:id/indexes',privateRouteMiddleware, validator.body(Joi.object
   id: Joi.custom(isDID, "DID").required(),
 })), didController.removeIndex)
 
+
+app.patch('/dids/:id/profile', privateRouteMiddleware, validator.body(Joi.object({
+  name: Joi.string().optional(),
+  bio: Joi.string().optional(),
+  avatar: Joi.custom(isCID, "Avatar").optional().allow(null),
+}).or('name', 'bio', 'avatar')), validator.params(Joi.object({
+  id: Joi.custom(isDID, "DID").required(),
+})), didController.createProfile)
+
+app.get('/dids/:id/profile', validator.params(Joi.object({
+  id: Joi.custom(isDID, "DID").required(),
+})), didController.getProfile)
+
 // Indexes
 app.get('/indexes/:id', validator.params(Joi.object({
   id: Joi.custom(isStreamID, "Index ID").required(),

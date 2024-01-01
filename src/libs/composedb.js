@@ -1,5 +1,5 @@
 import moment from "moment";
-import { getOwnerProfile } from "../utils/lit/index.js";
+import { getOwnerProfile } from "../libs/lit/index.js";
 import { DIDSession } from "did-session"
 
 import { profileFragment, indexLinkFragment, userIndexFragment, linkFragment, indexFragment } from '../types/fragments.js';
