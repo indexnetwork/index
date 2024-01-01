@@ -1,16 +1,12 @@
 import { DIDService } from "../services/did.js";
-import {IndexService} from "../services/index.js";
 
 export const getIndexes = async (req, res, next) => {
 
     try {
         const didService = new DIDService()
-        const {type} = req.body;
-        const newIndex = await didService.getIndexes(req.params.id, type)
-        res.status(201).json({
-            message: "Index found successfully",
-            document: newIndex
-        });
+        const { type } = req.query;
+        const indexes = await didService.getIndexes(req.params.id, type)
+        res.status(200).json(indexes);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -25,10 +21,7 @@ export const addIndex = async (req, res, next) => {
     try {
         const didService = new DIDService().setDID(req.user);
         const newIndex = await didService.addIndex(indexId, type)
-        res.status(201).json({
-            message: "Index DID created successfully",
-            document: newIndex
-        });
+        res.status(201).json(newIndex);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -44,10 +37,7 @@ export const removeIndex = async (req, res, next) => {
     try {
         const didService = new DIDService().setDID(req.user);
         const newIndex = await didService.removeIndex(indexId, type)
-        res.status(201).json({
-            message: "Index DID created successfully",
-            document: newIndex
-        });
+        res.status(200).json(newIndex);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

@@ -36,6 +36,7 @@ export const getOwner = async (pkpPubKey) => {
 }
 
 export const getOwnerProfile = async (pkpPubKey) => {
+
 	const owner = await getOwner(pkpPubKey);
 	const profile = await redis.hGet(`profiles`, `did:pkh:eip155:175177:${owner}`)
 	if(profile){

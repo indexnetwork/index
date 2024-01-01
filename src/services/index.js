@@ -1,9 +1,10 @@
-import { ComposeClient } from "@composedb/client";
+import {ComposeClient} from "@composedb/client";
 
 import moment from "moment";
+
 const getCurrentDateTime = () => moment.utc().toISOString();
 
-import { definition }  from "../types/merged-runtime.js";
+import {definition} from "../types/merged-runtime.js";
 
 export class IndexService {
     constructor() {
@@ -24,7 +25,7 @@ export class IndexService {
 
         try {
             let didPayload = "";
-            if(this.did){
+            if (this.did) {
                 didPayload = `did(first:10, account: "${this.did.id}") {
                         edges {
                             node {
@@ -62,7 +63,7 @@ export class IndexService {
             if (errors) {
                 throw new Error(`Error getting index by id: ${JSON.stringify(errors)}`);
             }
-            console.log(data)
+
             // Validate the data response
             if (!data || !data.node) {
                 throw new Error('Invalid response data');

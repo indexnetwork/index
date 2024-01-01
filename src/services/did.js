@@ -4,6 +4,7 @@ import moment from "moment";
 const getCurrentDateTime = () => moment.utc().toISOString();
 
 import { definition }  from "../types/merged-runtime.js";
+import { getOwnerProfile } from "../utils/lit/index.js";
 
 export class DIDService {
     constructor() {
@@ -17,65 +18,6 @@ export class DIDService {
     setDID(did) {
         this.did = did;
         return this;
-    }
-
-    async getIndexes(did, skip, take, type) {
-
-        try {
-            const {data, errors} = await this.client.executeQuery(`
-            query{
-                node(id:"${did}") {
-                ... on CeramicAccount{
-                        didIndexList (take: 100000, filters: {
-                            where: {
-                                type: {equalTo: "${type}"}
-                                deletedAt: {equalTo: null}
-                            }
-                        }) {
-                            edges {
-                                node {
-                                    id
-                                    type
-                                    createdAt
-                                    updatedAt
-                                    deletedAt
-                                    index {
-                                        id
-                                        title
-                                        signerPublicKey
-                                        signerFunction
-                                        createdAt
-                                        updatedAt
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }`);
-
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error getting DIDIndex index: ${JSON.stringify(errors)}`);
-            }
-
-            // Validate the data response
-            if (!data || !data.node || !data.node.didIndexList) {
-                throw new Error('Invalid response data');
-            }
-
-            if (data.node.didIndexList.edges.length === 0) {
-                return null;
-            }
-
-            return data.node.didIndexList.edges.map((edge) => edge.node);
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in createDIDIndex:', error);
-            throw error;
-        }
-
     }
 
     async getDIDIndex(indexId, type) {
@@ -126,6 +68,81 @@ export class DIDService {
             console.error('Exception occurred in createDIDIndex:', error);
             throw error;
         }
+    }
+
+    async getIndexes(did, type) {
+
+        try {
+
+            let filtersPart = type ? `filters: {
+                where: {
+                    type: {equalTo: "${type}"}
+                }
+            }` : "";
+
+            // Include the comma only when filtersPart is not empty
+            let didIndexListArguments = `first: 1000${filtersPart ? `, ${filtersPart}` : ""}`;
+            console.log(did,type, didIndexListArguments);
+            const {data, errors} = await this.client.executeQuery(`
+            query{
+                node(id:"${did}") {
+                ... on CeramicAccount{
+                        didIndexList (${didIndexListArguments}, sorting: {createdAt: DESC}) {
+                            edges {
+                                node {
+                                    id
+                                    type
+                                    createdAt
+                                    updatedAt
+                                    deletedAt
+                                    index {
+                                        id
+                                        title
+                                        signerPublicKey
+                                        signerFunction
+                                        createdAt
+                                        updatedAt
+                                        deletedAt
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }`);
+
+            // Handle GraphQL errors
+            if (errors) {
+                throw new Error(`Error getting DIDIndex index: ${JSON.stringify(errors)}`);
+            }
+
+            // Validate the data response
+            if (!data || !data.node || !data.node.didIndexList) {
+                throw new Error('Invalid response data');
+            }
+
+            if (data.node.didIndexList.edges.length === 0) {
+                return null;
+            }
+
+            let promises = data.node.didIndexList.edges.map(async (edge) => {
+                // Get the ownerDID asynchronously
+
+                const ownerDID = await getOwnerProfile(edge.node.index.signerPublicKey);
+                // Return the modified edge with the ownerDID
+                return { ...edge.node.index, ownerDID };
+            });
+
+            const results = await Promise.all(promises);
+            return results;
+
+
+        } catch (error) {
+            // Log the error and rethrow it for external handling
+            console.error('Exception occurred in createDIDIndex:', error);
+            throw error;
+        }
+
     }
 
     async addIndex(indexId, type) {
@@ -243,8 +260,6 @@ export class DIDService {
             throw error;
         }
     }
-
-
 
 }
 
