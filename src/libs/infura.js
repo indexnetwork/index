@@ -4,7 +4,7 @@ if(process.env.NODE_ENV !== 'production'){
 }
 import axios from 'axios';
 const BASE_URL = 'https://nft.api.infura.io';
-import { chains } from '../config/chains.js';
+import { chains } from '../types/chains.js';
 
 import { ethers } from 'ethers'
 

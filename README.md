@@ -94,7 +94,7 @@ The [API](https://github.com/indexas/web3-api) repository also hosts the code fo
 
 ### Ceramic Network Node
 ComposeDB on Ceramic is a composable graph database built for Web3.  Here you can find the steps to deploy along with an IPFS Node:
-[https://composedb.js.org/docs/0.5.x/guides/composedb-server](https://composedb.js.org/docs/0.5.x/guides/composedb-server)
+[https://zapier.js.org/docs/0.5.x/guides/composedb-server](https://composedb.js.org/docs/0.5.x/guides/composedb-server)
 
 We built four different schemas to store information on Ceramic:
 - Index _[(view model)](https://s3.xyz/models/modelview/kjzl6hvfrbw6c8e8rlhx3guuoc1o6i4vni5emzh2c48aa5pn0u71jggun7rtu2a?network=TESTNET)_
@@ -104,7 +104,7 @@ We built four different schemas to store information on Ceramic:
 
 ### IPFS Node
 ComposeDB on Ceramic is a composable graph database built for Web3.  Here you can find the steps to deploy along with an IPFS Node:
-[https://composedb.js.org/docs/0.5.x/guides/composedb-server](https://composedb.js.org/docs/0.5.x/guides/composedb-server)
+[https://zapier.js.org/docs/0.5.x/guides/composedb-server](https://composedb.js.org/docs/0.5.x/guides/composedb-server)
 
 ### Others
 We use [PostgreSQL](https://www.postgresql.org/) indexing feature of [Ceramic Network](https://ceramic.network/) and use [KafkaConnect CDC](https://docs.confluent.io/cloud/current/connectors/cc-postgresql-source.html) to produce db changes to [Apache Kafka](https://kafka.apache.org/) and finally write data to [Elasticsearch](https://www.elastic.co/) via the consumer service.

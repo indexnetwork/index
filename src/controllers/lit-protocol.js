@@ -100,7 +100,7 @@ const enrichConditions = async (conditions) => {
     return conditions;
 }
 
-export const get_action = async (req, res, next) => {
+export const getAction = async (req, res, next) => {
 
     const { cid } = req.params;
 
@@ -140,7 +140,7 @@ export const get_action = async (req, res, next) => {
     }
 
 };
-export const post_action = async (req, res, next) => {
+export const postAction = async (req, res, next) => {
 
     let actionStr = await fs.readFile('lit_action.js', 'utf8');
     actionStr = actionStr.replace('__REPLACE_THIS_AS_CONDITIONS_ARRAY__', JSON.stringify(req.body));

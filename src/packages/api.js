@@ -20,13 +20,14 @@ import * as itemController from '../controllers/item.js';
 import * as embeddingController from '../controllers/embedding.js';
 import * as didController from '../controllers/did.js';
 
+import * as litProtocol from '../controllers/lit-protocol.js';
+
 import * as fileController from '../controllers/file.js';
 import * as web2Controller from '../controllers/web2.js';
+import * as zapierController from '../controllers/zapier.js';
 
 import * as siteController from '../controllers/site.js';
 
-import * as composedb from '../services/composedb.js';
-import * as litActions from '../services/lit_actions.js';
 import * as infura from '../libs/infura.js';
 
 import { getQueue, getMetadata } from '../libs/crawl.js'
@@ -147,12 +148,11 @@ app.delete('/embeddings', privateRouteMiddleware, validator.body(Joi.object({
   category: Joi.string().required()
 })), embeddingController.deleteEmbedding);
 
-app.post('/web2-migrate', privateRouteMiddleware, validator.body(Joi.object({
+app.post('/web2/migrate-url', privateRouteMiddleware, validator.body(Joi.object({
   url: Joi.string().required(),
   modelId: Joi.string().required(),
   context: Joi.string().optional()
-})), web2Controller.);
-
+})), web2Controller.migrateURL);
 
 app.post('/chat_stream', validator.body(Joi.object({
   id: Joi.string().required(),
@@ -181,12 +181,12 @@ app.post('/chat_stream', validator.body(Joi.object({
 
 
 //Todo refactor later.
-app.post('/zapier/index_link', composedb.zapier_index_link);
-app.get('/zapier/auth', composedb.zapier_auth);
+app.post('/zapier/index_link', zapierController.indexLink);
+app.get('/zapier/auth', zapierController.authenticate);
 
-
-app.get('/lit_actions/:cid', litActions.get_action);
-app.post('/lit_actions', litActions.post_action);
+//Todo refactor later.
+app.get('/lit_actions/:cid', litProtocol.getAction);
+app.post('/lit_actions', litProtocol.postAction);
 
 app.get('/nft/:chainName/:tokenAddress', infura.getCollectionMetadataHandler);
 app.get('/nft/:chainName/:tokenAddress/:tokenId', infura.getNftMetadataHandler);
@@ -209,8 +209,6 @@ app.get('/crawl/metadata', validator.query(Joi.object({
 })
 
 app.post('/upload_avatar', isImage.single('file'), fileController.uploadAvatar);
-
-
 
 
 app.post("/subscribe", validator.body(Joi.object({

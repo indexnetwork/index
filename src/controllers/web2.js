@@ -1,5 +1,5 @@
 
-export const migrateWeb2 = async (req, res, next) => {
+export const migrateURL = async (req, res, next) => {
     if(req.did){
 
     }

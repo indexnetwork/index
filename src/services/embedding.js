@@ -20,7 +20,7 @@ export class EmbeddingService {
         return this;
     }
 
-    async getIndexItem(indexId, itemId) {
+    async getEmbeddingByCategory(indexId, itemId, category) {
 
         try {
             const {data, errors} = await this.client.executeQuery(`
@@ -29,6 +29,7 @@ export class EmbeddingService {
                 where: {
                   itemId: { equalTo: "${itemId}"},
                   indexId: { equalTo: "${indexId}"}
+                  category: { equalTo: "${category}"}
                   deletedAt: {isNull: true}
                 }
               }, sorting: { createdAt: DESC}) {

@@ -1,5 +1,3 @@
-
-
 import { StreamID } from '@ceramicnetwork/streamid';
 import { CID } from 'multiformats/cid'
 import { ethers } from "ethers";
@@ -43,6 +41,15 @@ export const isPKPPublicKey = (value, helpers) => {
     }
 };
 
+
+export const isValidURL = (url) => {
+    try {
+        new URL(url);
+        return true;
+    } catch (error) {
+        return false;
+    }
+};
 
 export const isImage = multer({
     fileFilter: function (req, file, cb) {
