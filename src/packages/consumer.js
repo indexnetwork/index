@@ -3,6 +3,7 @@ if(process.env.NODE_ENV !== 'production'){
     dotenv.config()
 }
 
+import { definition } from "../types/merged-runtime.js";
 
 import { Kafka } from 'kafkajs'
 import * as indexer from '../libs/kafka-indexer.js';
@@ -13,15 +14,12 @@ const kafka = new Kafka({
     brokers: [process.env.KAFKA_HOST],
 })
 
-
 const redis = RedisClient.getInstance();
 
-const topics = {
-    items: {
-        'postgres.public.kjzl6hvfrbw6c92114fj79ii6shyl8cbnsz5ol3v62s0uu3m78gy76gzaovpaiu': 'link',
-        'postgres.public.kjzl6hvfrbw6c8a1u7qrk1xcz5oty0temwn2szbmhl8nfnw9tddljj4ue8wba68': 'index_link',
-    }
-}
+const topics = [
+    definition.models.IndexItem,
+    definition.models.WebPage
+]
 
 async function start() {
 
@@ -33,7 +31,7 @@ async function start() {
         rebalanceTimeout: 3000,
     })
     await consumerItems.connect()
-    await consumerItems.subscribe({ topics: Object.keys(topics.items), fromBeginning: true})
+    await consumerItems.subscribe({ topics: topics.map(t => `postgres.public.${t.id}`), fromBeginning: true})
     await consumerItems.run({
         eachMessage: async ({ topic, partition, message }) => {
 
@@ -46,8 +44,13 @@ async function start() {
 
             let docId = value.stream_id;
 
+            // For each updated graph object
+                // find it's associated indexItems
+                    // reindex item according to rules of index.
+            // Index item:
+                Index this mutherfucker.
             switch (model) {
-                case 'index_link':
+                case `${definition.models.IndexItem.id}`:
                     switch (op) {
                         case "c":
                             indexer.createIndexLink(docId)
@@ -57,13 +60,15 @@ async function start() {
                             break
                     }
                     break
-                case 'link':
+                case 'WebPage':
                     switch (op) {
                         case "c":
-                            indexer.createLink(docId)
+                            // We are not interested in this case.
+                            // We'll index objects only if they belong to an index.
                             break
                         case "u":
-                            indexer.updateLink(docId)
+                            // Find
+                            indexer.updateWebPage(docId)
                             break
                     }
                     break

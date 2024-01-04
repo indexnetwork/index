@@ -9,7 +9,7 @@ import {definition} from "../types/merged-runtime.js";
 export class ItemService {
     constructor() {
         this.client = new ComposeClient({
-            ceramic: "http://localhost:7007",
+            ceramic: process.env.CERAMIC_HOST,
             definition: definition,
         });
         this.did = null;

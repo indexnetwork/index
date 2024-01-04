@@ -30,11 +30,12 @@ export const subscribe = async (req, res, next) => {
     }
 }
 
-export const sendLit = async (address) => {
+export const faucet = async (req, res, next) => {
+    const { address } = req.query;
 
     const isMember = await redis.sIsMember(`faucet`, address)
     if(isMember){
-        return true;
+        return res.status(200).json({ success: false, message: "Already sent!" });
     }
     // Initialize Web3 with the provided RPC URL
     const web3 = new Web3('https://chain-rpc.litprotocol.com/http');
@@ -45,8 +46,7 @@ export const sendLit = async (address) => {
             console.log('Connected to LitProtocol');
         }
     } catch (error) {
-        console.log('Not connected');
-        return;
+        return res.status(400).json({ success: false, message: "Faucet failed" });
     }
 
     // Your account address and private key
@@ -85,5 +85,5 @@ export const sendLit = async (address) => {
     console.log(`Transaction Receipt: ${serializedReceipt}`);
 
     await redis.sAdd(`faucet`, address)
-    return true;
-};
+    res.json({ success: true, message: "Faucet successful"});
+}

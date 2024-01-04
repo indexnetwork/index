@@ -1,5 +1,4 @@
 import { DIDService } from "../services/did.js";
-import { sendLit } from '../controllers/site.js';
 export const getIndexes = async (req, res, next) => {
     // sendLit(req.params.id) //TODO Fix later.
     try {
