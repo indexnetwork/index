@@ -19,7 +19,7 @@ from chromadb.config import Settings
 from langchain.schema import ChatMessage
 from langchain.vectorstores import Chroma
 from langchain.memory import ConversationBufferMemory, ChatMessageHistory
-from langchain.schema import HumanMessage, AIMessage
+from langchain.schema import HumanMessage, AIMessage, Document
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
@@ -32,11 +32,6 @@ from langchain.agents.output_parsers import ReActSingleInputOutputParser
 from langchain.agents.format_scratchpad import format_log_to_str
 from langchain import hub
 
-
-from unstructured.partition.auto import partition
-
-
-
 load_dotenv()
 
 redisClient = redis.Redis.from_url(os.environ["REDIS_CONNECTION_STRING"])
@@ -46,6 +41,9 @@ origins = [
     "http://localhost:3000",
     "http://localhost:8000",
 ]
+
+model_embeddings = "text-embedding-ada-002"
+model_chat = "gpt-3.5-turbo"
 
 app = FastAPI()
 app.add_middleware(
@@ -68,20 +66,20 @@ openai.log = "error"
 local_directory = "chroma-indexes"
 persist_directory = os.path.join(os.getcwd(), local_directory)
 chroma_client = chromadb.PersistentClient(path=persist_directory)
-llm = ChatOpenAI(temperature=0, model_name="gpt-3.5-turbo", openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
-embedding_function = OpenAIEmbeddings(model="text-embedding-ada-002", openai_api_key=os.environ["OPENAI_API_KEY"])
+llm = ChatOpenAI(temperature=0, model_name=model_chat, openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
+embedding_function = OpenAIEmbeddings(model=model_embeddings, openai_api_key=os.environ["OPENAI_API_KEY"])
 collection = Chroma(
-        client=chroma_client,
-        collection_name="indexes",
-        embedding_function=embedding_function,
-    )
+    client=chroma_client,
+    collection_name="indexes",
+    embedding_function=embedding_function,
+)
+
 
 def get_query_engine(indexes):
-
     if len(indexes) > 1:
-        index_filters =  {"$or": [{"index_id": {"$eq": i}} for i in indexes]}
+        index_filters = {"$or": [{"index_id": {"$eq": i}} for i in indexes]}
     else:
-        index_filters =  {"index_id": {"$eq": indexes[0]}}
+        index_filters = {"index_id": {"$eq": indexes[0]}}
 
 
 class ChatStream(BaseModel):
@@ -90,15 +88,39 @@ class ChatStream(BaseModel):
     indexes: Optional[List[str]]
     messages: List[ChatMessage]
 
+
 class Prompt(BaseModel):
     prompt: str
 
-class Link(BaseModel):
+
+class CrawlRequest(BaseModel):
     url: str
+
+class EmbeddingRequest(BaseModel):
+    text: str
+
+
+class IndexRequest(BaseModel):
+    indexId: str
+    indexTitle: str
+    indexCreatedAt: str
+    indexUpdatedAt: str
+    indexOwnerDID: str
+    indexOwnerName: Optional[str]  # Assuming this field can be optional
+    indexOwnerBio: Optional[str]  # Assuming this field can be optional
+    webPageId: str
+    webPageTitle: str
+    webPageUrl: str
+    webPageContent: str
+    webPageCreatedAt: str
+    webPageUpdatedAt: str
+    vector: List[float]  # Assuming it's a list of floats based on your example
+
 
 class Composition(BaseModel):
     did: str
     prompt: str
+
 
 def response_generator(response):
     yield json.dumps({
@@ -108,32 +130,48 @@ def response_generator(response):
     for text in response.response_gen:
         yield text
 
+
 @app.get("/")
 def home():
     return JSONResponse(content="ia")
 
-@app.post("/index/{index_id}/links")
-def add(index_id, link: Link):
 
-    documents = get_document(link.url)
+@app.post("/crawl")
+def crawl(crawl: CrawlRequest):
+    documents = get_document(crawl.url)
+    texts = [d.page_content for d in documents]
+    return JSONResponse(content={'url': crawl.url,  'content': texts[0]})
 
-    for node in documents:
 
-        node.metadata = {"source": link.url,"index_id": index_id}
-        collection.add_documents(documents)
+@app.post("/embeddings")
+def embeddings(embed: EmbeddingRequest):
+    embedding = embedding_function.embed_documents([embed.text])
+    return JSONResponse(content={ 'model': model_embeddings, 'vector': embedding[0]})
+
+
+@app.post("/index")
+def add(request: IndexRequest):
+
+    page_content = request.webPageTitle + "\n" + request.webPageContent
+
+    metadata_keys = [
+        "indexId", "indexTitle", "indexCreatedAt", "indexUpdatedAt",
+        "indexOwnerDID", "indexOwnerName", "indexOwnerBio",
+        "webPageId", "webPageTitle", "webPageUrl",
+        "webPageCreatedAt", "webPageUpdatedAt"
+    ]
+
+    metadata = {key: getattr(request, key) for key in metadata_keys if getattr(request, key) is not None}
+
+    doc = Document(vector=request.vector, page_content=page_content, metadata=metadata)
+
+    collection.add_documents([doc])
 
     return JSONResponse(content={'message': 'Document added successfully'})
 
 
-@app.delete("/index/{index_id}/links")
-def remove(index_id: str, link: Link):
-    return JSONResponse(content={"message": "Documents deleted successfully"})
-
-
-
 @app.post("/chat_stream")
 def chat_stream(params: ChatStream):
-
     if params.did:
         id_resp = redisClient.hkeys("user_indexes:by_did:" + params.did.lower())
         if not id_resp:
@@ -145,7 +183,8 @@ def chat_stream(params: ChatStream):
     messages = params.messages
     last_message = messages[-1]
     message_instances = list(
-        map(lambda msg: HumanMessage(content=msg.content) if msg.role == "user" else AIMessage(content=msg.content), messages))
+        map(lambda msg: HumanMessage(content=msg.content) if msg.role == "user" else AIMessage(content=msg.content),
+            messages))
 
     history = ChatMessageHistory()
     history.messages = message_instances
@@ -179,13 +218,12 @@ def chat_stream(params: ChatStream):
                 "chat_history": lambda x: x["chat_history"]
             } | prompt | llm_with_stop | ReActSingleInputOutputParser()
 
-    #agent_chain = AgentExecutor.from_agent_and_tools(agent, tools=tools, memory=memory, verbose=True )
+    # agent_chain = AgentExecutor.from_agent_and_tools(agent, tools=tools, memory=memory, verbose=True )
 
     agent_chain = initialize_agent(tools, llm, agent=AgentType.CHAT_CONVERSATIONAL_REACT_DESCRIPTION, verbose=True,
                                    memory=memory)
 
     return agent_chain.invoke({"input": last_message.content})
-
 
 
 if __name__ == "__main__":
