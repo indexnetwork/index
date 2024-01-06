@@ -158,12 +158,6 @@ app.delete('/embeddings', privateRouteMiddleware, validator.body(Joi.object({
   category: Joi.string().required()
 })), embeddingController.deleteEmbedding);
 
-app.post('/web2/migrate-url', privateRouteMiddleware, validator.body(Joi.object({
-  url: Joi.string().required(),
-  modelId: Joi.string().required(),
-  context: Joi.string().optional()
-})), web2Controller.migrateURL);
-
 app.post('/chat_stream', validator.body(Joi.object({
   id: Joi.string().required(),
   messages: Joi.array().required(),
