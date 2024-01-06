@@ -40,7 +40,7 @@ export class WebPageService {
                             title
                             favicon
                             url
-                            content
+                            content 
                             createdAt
                             updatedAt
                             deletedAt

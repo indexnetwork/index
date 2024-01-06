@@ -6,8 +6,9 @@ if(process.env.NODE_ENV !== 'production'){
 import { definition } from "../types/merged-runtime.js";
 
 import { Kafka } from 'kafkajs'
-import * as indexer from '../libs/kafka-indexer.js';
 import RedisClient from '../clients/redis.js';
+
+import * as indexer from '../libs/kafka-indexer.js';
 
 const kafka = new Kafka({
     clientId: 'api',
@@ -31,13 +32,12 @@ async function start() {
         rebalanceTimeout: 3000,
     })
     await consumerItems.connect()
-    await consumerItems.subscribe({ topics: topics.map(t => `postgres.public.${t.id}`), fromBeginning: true})
+    await consumerItems.subscribe({ topics: topics.map(t => t.id), fromBeginning: true})
     await consumerItems.run({
         eachMessage: async ({ topic, partition, message }) => {
 
             const value = JSON.parse(message.value.toString());
             const op = value.__op;
-            const model = topics.items[topic]
             if(!['c', 'u'].includes(op)){
                 return;
             }
@@ -48,19 +48,22 @@ async function start() {
                 // find it's associated indexItems
                     // reindex item according to rules of index.
             // Index item:
-                Index this mutherfucker.
-            switch (model) {
-                case `${definition.models.IndexItem.id}`:
+                //Index this motherfucker.
+
+            switch (topic) {
+                case definition.models.IndexItem.id:
                     switch (op) {
                         case "c":
-                            indexer.createIndexLink(docId)
+                            console.log("IndexItem created", docId)
+                            await indexer.createIndexItem(docId)
                             break
                         case "u":
-                            indexer.updateIndexLink(docId)
+                            console.log("IndexItem updated", docId)
+                            await indexer.updateIndexItem(docId)
                             break
                     }
                     break
-                case 'WebPage':
+                case definition.models.WebPage.id:
                     switch (op) {
                         case "c":
                             // We are not interested in this case.
@@ -68,7 +71,6 @@ async function start() {
                             break
                         case "u":
                             // Find
-                            indexer.updateWebPage(docId)
                             break
                     }
                     break

@@ -30,7 +30,7 @@ import * as siteController from '../controllers/site.js';
 
 import * as infura from '../libs/infura.js';
 
-import { getQueue, getMetadata } from '../libs/crawl.js'
+// import { getQueue, getMetadata } from '../libs/crawl.js'
 
 import {
   authenticateMiddleware,

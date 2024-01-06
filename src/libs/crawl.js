@@ -1,7 +1,7 @@
 import { Actor} from 'apify';
 import { PuppeteerCrawler, RequestList, sleep } from "crawlee";
 import {Readability} from "@mozilla/readability";
-import * as indexer from './kafka-indexer.js';
+//import * as indexer from './kafka-indexer.js';
 import fs from "fs";
 import striptags from "striptags";
 
@@ -19,14 +19,6 @@ export const getQueue = async () => {
 
 	const queue = await Actor.openRequestQueue();
 
-	const readabilityJsStr = fs.readFileSync("./node_modules/@mozilla/readability/Readability.js", {
-	  encoding: "utf-8",
-	});
-
-
-	function executor() {
-	  return new Readability({}, document).parse();
-	}
 
 	const crawler = new PuppeteerCrawler({
 		requestList,
@@ -46,19 +38,7 @@ export const getQueue = async () => {
 	        await sleep(3_000);
 
 
-	        const resultArticle = await page.evaluate(`
-	            (function(){
-	                ${readabilityJsStr}
-	                ${executor}
-	                return executor();
-	            }())
-	        `);
-
-	        const content = striptags(resultArticle.textContent)
-	        .replace(/(?:\r\n|\r|\n)/g, '...')
-	        .replaceAll('.......','...');
-
-	        await indexer.updateLinkContent(request.url, content)
+	        page.content()
 
 	        queue.markRequestHandled(request)
 

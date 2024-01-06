@@ -51,7 +51,6 @@ export class DIDService {
             if (errors) {
                 throw new Error(`Error getting DIDIndex index: ${JSON.stringify(errors)}`);
             }
-            console.log(data)
             // Validate the data response
             if (!data || !data.viewer || !data.viewer.didIndexList) {
                 throw new Error('Invalid response data');

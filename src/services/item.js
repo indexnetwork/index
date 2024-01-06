@@ -66,6 +66,60 @@ export class ItemService {
             throw error;
         }
     }
+    // Todo make it multimodel later.
+    async getIndexItemById(indexItemId) {
+
+        try {
+            const {data, errors} = await this.client.executeQuery(`
+            {
+              node(id: "${indexItemId}") {
+                ... on IndexItem {
+                  id
+                  createdAt
+                  updatedAt
+                  deletedAt
+                  item {
+                    id
+                    __typename
+                    ... on WebPage {
+                      title
+                      favicon
+                      url
+                      content
+                      createdAt
+                      updatedAt
+                      deletedAt
+                    }
+                  }
+                  index {
+                    id
+                    title
+                    createdAt
+                    updatedAt
+                    deletedAt
+                  }
+                }
+              }
+            }`);
+
+            // Handle GraphQL errors
+            if (errors) {
+                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+            }
+            // Validate the data response
+            if (!data || !data.node) {
+                throw new Error('Invalid response data');
+            }
+
+
+            return data.node;
+
+        } catch (error) {
+            // Log the error and rethrow it for external handling
+            console.error('Exception occurred in getIndexItemById:', error);
+            throw error;
+        }
+    }
 
     async addItem(indexId, itemId) {
 
@@ -78,7 +132,6 @@ export class ItemService {
             if (indexItem) {
                 return indexItem;
             }
-            console.log(indexItem, "haha")
 
             const content = {
                 indexId,
