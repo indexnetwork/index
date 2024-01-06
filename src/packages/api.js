@@ -14,7 +14,6 @@ const port = process.env.PORT || 3001;
 import RedisClient  from '../clients/redis.js';
 const redis = RedisClient.getInstance();
 
-
 import * as indexController from '../controllers/index.js';
 import * as itemController from '../controllers/item.js';
 import * as embeddingController from '../controllers/embedding.js';
@@ -28,7 +27,7 @@ import * as zapierController from '../controllers/zapier.js';
 
 import * as siteController from '../controllers/site.js';
 
-import * as infura from '../libs/infura.js';
+import * as infuraController from '../controllers/infura.js';
 
 import {
   authenticateMiddleware,
@@ -204,9 +203,9 @@ app.get('/lit_actions/:cid', litProtocol.getAction);
 app.post('/lit_actions', litProtocol.postAction);
 
 //Todo refactor later.
-app.get('/nft/:chainName/:tokenAddress', infura.getCollectionMetadataHandler);
-app.get('/nft/:chainName/:tokenAddress/:tokenId', infura.getNftMetadataHandler);
-app.get('/ens/:ensName', infura.getWalletByENSHandler);
+app.get('/nft/:chainName/:tokenAddress', infuraController.getCollectionMetadataHandler);
+app.get('/nft/:chainName/:tokenAddress/:tokenId', infuraController.getNftMetadataHandler);
+app.get('/ens/:ensName', infuraController.getWalletByENSHandler);
 
 app.post('/site/upload_avatar', isImage.single('file'), fileController.uploadAvatar);
 
@@ -219,7 +218,6 @@ app.get("/site/faucet", validator.query(Joi.object({
 })), siteController.faucet);
 
 
-
 // Validators
 app.use(errorMiddleware);
 
@@ -227,14 +225,10 @@ const start = async () => {
 
   await redis.connect()
 
-  if(process.env.NODE_ENV !== 'development'){
-    // await app.set('queue', await getQueue())
-  }
   await app.listen(port, async () => {
     console.log(`Search service listening on port ${port}`)
   })
 
 }
-
 
 start()
