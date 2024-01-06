@@ -30,8 +30,6 @@ import * as siteController from '../controllers/site.js';
 
 import * as infura from '../libs/infura.js';
 
-// import { getQueue, getMetadata } from '../libs/crawl.js'
-
 import {
   authenticateMiddleware,
   errorMiddleware,
@@ -198,6 +196,11 @@ app.post('/web2/webpage', privateRouteMiddleware, validator.body(Joi.object({
   content: Joi.string().required(),
 })), web2Controller.createWebPage)
 
+app.get('/web2/webpage/metadata', validator.query(Joi.object({
+  url: Joi.string().uri().required(),
+})), web2Controller.crawlMetadata)
+
+
 //Todo refactor later.
 app.post('/zapier/index_link', zapierController.indexLink);
 app.get('/zapier/auth', zapierController.authenticate);
@@ -211,24 +214,7 @@ app.get('/nft/:chainName/:tokenAddress', infura.getCollectionMetadataHandler);
 app.get('/nft/:chainName/:tokenAddress/:tokenId', infura.getNftMetadataHandler);
 app.get('/ens/:ensName', infura.getWalletByENSHandler);
 
-
-app.get('/crawl/metadata', validator.query(Joi.object({
-  url: Joi.string().uri().required(),
-})), async (req, res) => {
-
-    let { url } = req.query;
-
-    let response = await getMetadata(url)
-
-    // TODO Move this to link listener.
-    req.app.get('queue').addRequests([{url, uniqueKey: Math.random().toString()}])
-
-    res.json(response)
-
-})
-
-app.post('/upload_avatar', isImage.single('file'), fileController.uploadAvatar);
-
+app.post('/site/upload_avatar', isImage.single('file'), fileController.uploadAvatar);
 
 app.post("/site/subscribe", validator.body(Joi.object({
   email: Joi.string().email().required(),

@@ -1,11 +1,8 @@
-import { Actor} from 'apify';
+import { Actor } from 'apify';
 import { PuppeteerCrawler, RequestList, sleep } from "crawlee";
-import {Readability} from "@mozilla/readability";
-//import * as indexer from './kafka-indexer.js';
-import fs from "fs";
-import striptags from "striptags";
-
-
+/*
+req.app.get('queue').addRequests([{url, uniqueKey: Math.random().toString()}])
+await app.set('queue', await getQueue())
 export const getQueue = async () => {
 
 	console.log("getQUEUEUE")
@@ -50,7 +47,7 @@ export const getQueue = async () => {
 	return crawler
 
 }
-
+*/
 
 export const getMetadata = async (url) => {
 

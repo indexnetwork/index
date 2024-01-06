@@ -1,9 +1,11 @@
 import {WebPageService} from "../services/webpage.js";
 
-export const migrateURL = async (req, res, next) => {
-    if(req.did){
+export const crawlMetadata = async (req, res, next) => {
+    let { url } = req.query;
 
-    }
+    let response = await getMetadata(url)
+
+    res.json(response)
 };
 
 export const createWebPage = async (req, res, next) => {
