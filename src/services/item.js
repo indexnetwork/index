@@ -75,6 +75,8 @@ export class ItemService {
               node(id: "${indexItemId}") {
                 ... on IndexItem {
                   id
+                  indexId
+                  itemId
                   createdAt
                   updatedAt
                   deletedAt
@@ -94,6 +96,8 @@ export class ItemService {
                   index {
                     id
                     title
+                    signerPublicKey
+                    signerFunction                    
                     createdAt
                     updatedAt
                     deletedAt

@@ -17,6 +17,8 @@
     "@elastic/elasticsearch": "^8.6.0",
     "@ethersproject/keccak256": "^5.7.0",
     "@lit-protocol/contracts-sdk": "3.0.24",
+    "@lit-protocol/lit-node-client": "3.0.27",
+    "@lit-protocol/lit-node-client-nodejs": "3.0.27",
     "@lit-protocol/uint8arrays": "3.0.24",
     "@mailchimp/mailchimp_marketing": "^3.0.80",
     "@mozilla/readability": "^0.4.2",

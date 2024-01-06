@@ -19,7 +19,8 @@ const redis = RedisClient.getInstance();
 
 const topics = [
     definition.models.IndexItem,
-    definition.models.WebPage
+    definition.models.WebPage,
+    definition.models.Embedding
 ]
 
 async function start() {
@@ -44,22 +45,14 @@ async function start() {
 
             let docId = value.stream_id;
 
-            // For each updated graph object
-                // find it's associated indexItems
-                    // reindex item according to rules of index.
-            // Index item:
-                //Index this motherfucker.
-
             switch (topic) {
                 case definition.models.IndexItem.id:
                     switch (op) {
                         case "c":
-                            console.log("IndexItem created", docId)
-                            await indexer.createIndexItem(docId)
+                            await indexer.createIndexItemEvent(docId)
                             break
                         case "u":
-                            console.log("IndexItem updated", docId)
-                            await indexer.updateIndexItem(docId)
+                            await indexer.updateIndexItemEvent(docId)
                             break
                     }
                     break
@@ -70,7 +63,17 @@ async function start() {
                             // We'll index objects only if they belong to an index.
                             break
                         case "u":
-                            // Find
+                            await indexer.updateWebPageEvent(docId)
+                            break
+                    }
+                    break
+                case definition.models.Embedding.id:
+                    switch (op) {
+                        case "c":
+                            await indexer.createEmbeddingEvent(docId)
+                            break
+                        case "u":
+                            await indexer.updateEmbeddingEvent(docId)
                             break
                     }
                     break
