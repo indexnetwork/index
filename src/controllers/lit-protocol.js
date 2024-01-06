@@ -18,7 +18,7 @@ const redis = RedisClient.getInstance();
 
 //import { Index } from '../protocol.ts';
 
-import { getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet } from '../libs/infura.js';
+import { getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet } from '../controllers/infura.js';
 
 const enrichConditions = async (conditions) => {
 
