@@ -5,16 +5,24 @@ import { TextEncoder, TextDecoder } from "util";
 
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { DID } from "dids";
-import * as LitJsSdk from "@lit-protocol/lit-node-client";
+import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
 import { randomBytes, randomString } from "@stablelib/random";
 import { Cacao } from "@didtools/cacao";
 import { getResolver } from "key-did-resolver";
 import { createDIDCacao, DIDSession } from "did-session";
 import { Ed25519Provider } from "key-did-provider-ed25519";
+import { ethers } from "ethers";
+import { CID } from 'multiformats/cid';
 
 import RedisClient from '../clients/redis.js';
 import IPFSClient from '../clients/ipfs.js';
 const redis = RedisClient.getInstance();
+
+const config = {
+    litNetwork: "cayenne",
+    domain: "index.network",
+    authSig: ""
+};
 
 //import { Index } from '../protocol.ts';
 
@@ -152,20 +160,22 @@ export const postAction = async (req, res, next) => {
 
 export const getPKPSession = async (index) => {
 
-    const { accessControl } = index
-    const existingSessionStr = await redis.hGet(`sessions:${accessControl.signerPublicKey}`);
+    const existingSessionStr = await redis.hGet("sessions", index.signerFunction);
 
     if (existingSessionStr) {
         try {
             const didSession = await DIDSession.fromSession(existingSessionStr);
-            await didSession.did.authenticate();
-            return didSession;
+            await didSession.did.authenticate()
+            return didSession
+
         } catch (error) {
             //Expired or invalid session, remove cache.
             console.warn(error);
-            await redis.hDel(`sessions:${accessControl.signerPublicKey}`);
+            await redis.hDel("sessions", index.signerFunction);
         }
     }
+
+
 
     const keySeed = randomBytes(32);
     const provider = new Ed25519Provider(keySeed);
@@ -173,42 +183,52 @@ export const getPKPSession = async (index) => {
     const didKey = new DID({ provider, resolver: getResolver() });
     await didKey.authenticate();
 
-    const litNodeClient = new LitJsSdk.LitNodeClient({
-        litNetwork: config.litNetwork,
-    });
-    await litNodeClient.connect();
+    try{
+        const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
+            litNetwork: 'cayenne',
+        });
+        await litNodeClient.connect();
+        const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
+        const resp = await litNodeClient.executeJs({
+            ipfsId: signerFunctionV0,
+            authSig: config.authSig,
+            jsParams: {
+                authSig: config.authSig,
+                chain: "ethereum",
+                publicKey: index.signerPublicKey,
+                didKey: didKey.id,
+                nonce: randomString(10),
+                domain: config.domain,
+                sigName: "sig1",
+            },
+        });
 
-    const resp = await litNodeClient.executeJs({
-        ipfsId: accessControl.signerFunction,
-        authSig: config.authSignature,
-        jsParams: {
-            authSig,
-            chain: "ethereum",
-            publicKey: accessControl.signerPublicKey,
-            didKey: didKey.id,
-            nonce: randomString(10),
-            domain: window.location.host,
-            sigName: "sig1",
-        },
-    });
-    // @ts-ignore
-    const { error } = resp.response; // TODO Handle.
-    if (error) {
-        console.log(error)
-        return null;
+        const { error } = resp.response; // TODO Handle.
+        if (error) {
+            console.log(error)
+            return null;
+        }
+
+        const { siweMessage } = JSON.parse(resp.response.context);
+        const signature = resp.signatures.sig1; // TODO Handle.
+        siweMessage.signature = ethers.Signature.from({
+            r: `0x${signature.r}`,
+            s: `0x${signature.s}`,
+            v: signature.recid,
+        }).serialized;
+
+        const cacao = Cacao.fromSiweMessage(siweMessage);
+
+        const did = await createDIDCacao(didKey, cacao);
+        const session = new DIDSession({ cacao, keySeed, did });
+        await redis.hSet("sessions", index.signerFunction, session.serialize());
+
+        await session.did.authenticate()
+        return session
+
+
+    }catch (e){
+        console.log("Error", e)
     }
-    // @ts-ignore
-    const siweMessage = JSON.parse(resp.response.context);
-    const signature = resp.signatures.sig1; // TODO Handle.
-    siweMessage.signature = ethers.Signature.from({
-        r: `0x${signature.r}`,
-        s: `0x${signature.s}`,
-        v: signature.recid,
-    }).serialized;
 
-    const cacao = Cacao.fromSiweMessage(siweMessage);
-    const did = await createDIDCacao(didKey, cacao);
-    const session = new DIDSession({ cacao, keySeed, did });
-    await redis.hSet(`sessions:${accessControl.signerPublicKey}`, session.serialize());
-    return session;
 }
