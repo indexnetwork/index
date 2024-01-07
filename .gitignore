@@ -5,3 +5,4 @@ app/__pycache__/*
 .DS_Store
 .env
 files
+/env/lib/*
