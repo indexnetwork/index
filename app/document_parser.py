@@ -2,11 +2,9 @@ import mimetypes
 import os
 import requests
 import uuid
-from unstructured.partition.auto import partition
-from langchain.document_loaders import JSONLoader, UnstructuredFileLoader
 
+from langchain_community.document_loaders import JSONLoader, UnstructuredFileLoader
 
-from fastapi.responses import JSONResponse
 
 
 class Transformers:

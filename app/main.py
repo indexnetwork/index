@@ -16,21 +16,25 @@ import openai
 import redis
 from chromadb.config import Settings
 
+
+from langchain import hub
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_community.tools.tavily_search import TavilySearchResults
+
+from langchain_core.messages.base import BaseMessage
 from langchain.schema import ChatMessage
-from langchain.vectorstores import Chroma
 from langchain.memory import ConversationBufferMemory, ChatMessageHistory
 from langchain.schema import HumanMessage, AIMessage, Document
-from langchain.embeddings import OpenAIEmbeddings
-from langchain.chat_models import ChatOpenAI
-from langchain.chains import RetrievalQA
-from langchain.agents import Tool, AgentType, initialize_agent
-from langchain.agents import AgentExecutor
-from langchain.utilities import SerpAPIWrapper
 
-from langchain.tools.render import render_text_description
-from langchain.agents.output_parsers import ReActSingleInputOutputParser
-from langchain.agents.format_scratchpad import format_log_to_str
+from langchain_community.vectorstores import Chroma
+
+from langchain_openai import OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
+
+from langchain.chains import RetrievalQA
+from langchain.agents import Tool
 from langchain import hub
+from langchain.agents import AgentExecutor, create_self_ask_with_search_agent
 
 load_dotenv()
 
@@ -43,7 +47,7 @@ origins = [
 ]
 
 model_embeddings = "text-embedding-ada-002"
-model_chat = "gpt-3.5-turbo"
+model_chat = "gpt-3.5-turbo-16k"
 
 app = FastAPI()
 app.add_middleware(
@@ -81,12 +85,10 @@ def get_query_engine(indexes):
     else:
         index_filters = {"index_id": {"$eq": indexes[0]}}
 
-
+from typing import Any
 class ChatStream(BaseModel):
     id: str
-    did: Optional[str]
-    indexes: Optional[List[str]]
-    messages: List[ChatMessage]
+    messages: List[Any]
 
 
 class Prompt(BaseModel):
@@ -95,6 +97,7 @@ class Prompt(BaseModel):
 
 class CrawlRequest(BaseModel):
     url: str
+
 
 class EmbeddingRequest(BaseModel):
     text: str
@@ -131,6 +134,8 @@ def response_generator(response):
         yield text
 
 
+
+
 @app.get("/")
 def home():
     return JSONResponse(content="ia")
@@ -140,18 +145,17 @@ def home():
 def crawl(crawl: CrawlRequest):
     documents = get_document(crawl.url)
     texts = [d.page_content for d in documents]
-    return JSONResponse(content={'url': crawl.url,  'content': texts[0]})
+    return JSONResponse(content={'url': crawl.url, 'content': texts[0]})
 
 
 @app.post("/embeddings")
 def embeddings(embed: EmbeddingRequest):
     embedding = embedding_function.embed_documents([embed.text])
-    return JSONResponse(content={ 'model': model_embeddings, 'vector': embedding[0]})
+    return JSONResponse(content={'model': model_embeddings, 'vector': embedding[0]})
 
 
 @app.post("/index")
 def add(request: IndexRequest):
-
     page_content = request.webPageTitle + "\n" + request.webPageContent
 
     metadata_keys = [
@@ -172,58 +176,43 @@ def add(request: IndexRequest):
 
 @app.post("/chat_stream")
 def chat_stream(params: ChatStream):
-    if params.did:
-        id_resp = redisClient.hkeys("user_indexes:by_did:" + params.did.lower())
-        if not id_resp:
-            return "You have no indexes"
-        indexes = [item.decode('utf-8').split(':')[0] for item in id_resp]
-    elif params.indexes:
-        indexes = params.indexes
 
-    messages = params.messages
-    last_message = messages[-1]
-    message_instances = list(
-        map(lambda msg: HumanMessage(content=msg.content) if msg.role == "user" else AIMessage(content=msg.content),
-            messages))
+    # indexes = params.indexes
 
-    history = ChatMessageHistory()
-    history.messages = message_instances
+    # messages = params.messages
+    # last_message = messages[-1]
+    # message_instances = list(
+    #     map(lambda msg: HumanMessage(content=msg.content) if msg.role == "user" else AIMessage(content=msg.content),
+    #         messages))
 
-    memory = ConversationBufferMemory(memory_key="chat_history", chat_memory=history, return_messages=True)
+    # history = ChatMessageHistory()
+    # history.messages = message_instances
+
+    # memory = ConversationBufferMemory(memory_key="chat_history", chat_memory=history, max_return_messages=True)
 
     indexChain = RetrievalQA.from_chain_type(
-        llm=llm, chain_type="stuff", retriever=collection.as_retriever()
+        llm=llm, chain_type="stuff", retriever=collection.as_retriever(),
     )
-
-    search = SerpAPIWrapper()
 
     tools = [
         Tool(
-            name="Vector Database",
-            func=indexChain.run,
+            name="Intermediate Answer",
             description="Useful for getting information about anything",
-        )
+            func=indexChain.invoke
+            ,
+        ),
     ]
 
-    prompt = hub.pull("hwchase17/react-chat")
-    prompt = prompt.partial(
-        tools=render_text_description(tools),
-        tool_names=", ".join([t.name for t in tools]),
+    prompt = hub.pull("hwchase17/self-ask-with-search")
+    agent = create_self_ask_with_search_agent(llm, tools, prompt)
+    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
+
+    responses = agent_executor.invoke(
+        {
+            "input": "Tell me a joke",
+        }
     )
-
-    llm_with_stop = llm.bind(stop=["\nObservation"])
-    agent = {
-                "input": lambda x: x["input"],
-                "agent_scratchpad": lambda x: format_log_to_str(x['intermediate_steps']),
-                "chat_history": lambda x: x["chat_history"]
-            } | prompt | llm_with_stop | ReActSingleInputOutputParser()
-
-    # agent_chain = AgentExecutor.from_agent_and_tools(agent, tools=tools, memory=memory, verbose=True )
-
-    agent_chain = initialize_agent(tools, llm, agent=AgentType.CHAT_CONVERSATIONAL_REACT_DESCRIPTION, verbose=True,
-                                   memory=memory)
-
-    return agent_chain.invoke({"input": last_message.content})
+    return responses["output"]
 
 
 if __name__ == "__main__":

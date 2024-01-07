@@ -6,3 +6,5 @@ app/__pycache__/*
 .env
 files
 /env/lib/*
+/env/bin/*
+/env/*
