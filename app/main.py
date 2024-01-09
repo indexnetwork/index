@@ -3,38 +3,34 @@ import json
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 
 from fastapi.responses import JSONResponse
-from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 import chromadb
 import openai
 import redis
-from chromadb.config import Settings
 
-
-from langchain import hub
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain_community.tools.tavily_search import TavilySearchResults
-
-from langchain_core.messages.base import BaseMessage
 from langchain.schema import ChatMessage
-from langchain.memory import ConversationBufferMemory, ChatMessageHistory
-from langchain.schema import HumanMessage, AIMessage, Document
-
+from langchain.schema import Document
 from langchain_community.vectorstores import Chroma
 
 from langchain_openai import OpenAIEmbeddings
-from langchain_openai import ChatOpenAI
+from operator import itemgetter
 
-from langchain.chains import RetrievalQA
-from langchain.agents import Tool
-from langchain import hub
-from langchain.agents import AgentExecutor, create_self_ask_with_search_agent
+from langchain_core.runnables import RunnableLambda
+from langchain_core.messages import get_buffer_string
+from langchain.memory import ConversationBufferMemory
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.prompts.prompt import PromptTemplate
+from langchain.schema import format_document
+from langchain.schema.output_parser import StrOutputParser
+from langchain.schema.runnable import RunnablePassthrough
+from langserve import add_routes
+from langserve.pydantic_v1 import BaseModel, Field
 
 load_dotenv()
 
@@ -70,7 +66,7 @@ openai.log = "error"
 local_directory = "chroma-indexes"
 persist_directory = os.path.join(os.getcwd(), local_directory)
 chroma_client = chromadb.PersistentClient(path=persist_directory)
-llm = ChatOpenAI(temperature=0, model_name=model_chat, openai_api_key=os.environ["OPENAI_API_KEY"], streaming=True)
+
 embedding_function = OpenAIEmbeddings(model=model_embeddings, openai_api_key=os.environ["OPENAI_API_KEY"])
 collection = Chroma(
     client=chroma_client,
@@ -85,10 +81,13 @@ def get_query_engine(indexes):
     else:
         index_filters = {"index_id": {"$eq": indexes[0]}}
 
+
 from typing import Any
+
+
 class ChatStream(BaseModel):
     id: str
-    messages: List[Any]
+    messages: List[ChatMessage]
 
 
 class Prompt(BaseModel):
@@ -134,8 +133,6 @@ def response_generator(response):
         yield text
 
 
-
-
 @app.get("/")
 def home():
     return JSONResponse(content="ia")
@@ -166,7 +163,7 @@ def add(request: IndexRequest):
     ]
 
     metadata = {key: getattr(request, key) for key in metadata_keys if getattr(request, key) is not None}
-
+    metadata["source"] = request.webPageId
     doc = Document(vector=request.vector, page_content=page_content, metadata=metadata)
 
     collection.add_documents([doc])
@@ -174,46 +171,96 @@ def add(request: IndexRequest):
     return JSONResponse(content={'message': 'Document added successfully'})
 
 
-@app.post("/chat_stream")
-def chat_stream(params: ChatStream):
+retriever = collection.as_retriever()
+llm = ChatOpenAI(temperature=0, model_name=model_chat, openai_api_key=os.environ["OPENAI_API_KEY"])
 
-    # indexes = params.indexes
+_TEMPLATE = """Given the following conversation and a follow up question, rephrase the 
+follow up question to be a standalone question, in its original language.
 
-    # messages = params.messages
-    # last_message = messages[-1]
-    # message_instances = list(
-    #     map(lambda msg: HumanMessage(content=msg.content) if msg.role == "user" else AIMessage(content=msg.content),
-    #         messages))
+Chat History:
+{chat_history}
+Follow Up Input: {question}
+Standalone question:"""
+CONDENSE_QUESTION_PROMPT = PromptTemplate.from_template(_TEMPLATE)
 
-    # history = ChatMessageHistory()
-    # history.messages = message_instances
+ANSWER_TEMPLATE = """Answer the question based only on the following context:
+{context}
 
-    # memory = ConversationBufferMemory(memory_key="chat_history", chat_memory=history, max_return_messages=True)
+Question: {question}
+"""
+ANSWER_PROMPT = ChatPromptTemplate.from_template(ANSWER_TEMPLATE)
 
-    indexChain = RetrievalQA.from_chain_type(
-        llm=llm, chain_type="stuff", retriever=collection.as_retriever(),
+DEFAULT_DOCUMENT_PROMPT = PromptTemplate.from_template(template="{page_content}")
+
+
+
+def _combine_documents(
+        docs, document_prompt=DEFAULT_DOCUMENT_PROMPT, document_separator="\n\n"
+):
+    """Combine documents into a single string."""
+    doc_strings = [format_document(doc, document_prompt) for doc in docs]
+    return document_separator.join(doc_strings)
+
+
+def _format_chat_history(chat_history: List[Tuple]) -> str:
+    """Format chat history into a string."""
+    buffer = ""
+    for dialogue_turn in chat_history:
+        human = "Human: " + dialogue_turn[0]
+        ai = "Assistant: " + dialogue_turn[1]
+        buffer += "\n" + "\n".join([human, ai])
+    return buffer
+
+
+memory = ConversationBufferMemory(
+    return_messages=True, output_key="answer", input_key="question"
+)
+loaded_memory = RunnablePassthrough.assign(
+    chat_history=RunnableLambda(memory.load_memory_variables) | itemgetter("history"),
+)
+# Now we calculate the standalone question
+standalone_question = {
+    "standalone_question": {
+                               "question": lambda x: x["question"],
+                               "chat_history": lambda x: get_buffer_string(x["chat_history"]),
+                           }
+                           | CONDENSE_QUESTION_PROMPT
+                           | llm
+                           | StrOutputParser(),
+}
+# Now we retrieve the documents
+retrieved_documents = {
+    "docs": itemgetter("standalone_question") | retriever,
+    "question": lambda x: x["standalone_question"],
+}
+# Now we construct the inputs for the final prompt
+final_inputs = {
+    "context": lambda x: _combine_documents(x["docs"]),
+    "question": itemgetter("question"),
+}
+# And finally, we do the part that returns the answers
+answer = {
+    "answer": final_inputs | ANSWER_PROMPT | ChatOpenAI(),
+    "docs": itemgetter("docs"),
+}
+# And now we put it all together!
+final_chain = loaded_memory | standalone_question | retrieved_documents | answer
+
+
+# User input
+class ChatHistory(BaseModel):
+    """Chat history with the bot."""
+
+    chat_history: List[Tuple[str, str]] = Field(
+        ...,
+        extra={"widget": {"type": "chat", "input": "question"}},
     )
+    question: str
 
-    tools = [
-        Tool(
-            name="Intermediate Answer",
-            description="Useful for getting information about anything",
-            func=indexChain.invoke
-            ,
-        ),
-    ]
 
-    prompt = hub.pull("hwchase17/self-ask-with-search")
-    agent = create_self_ask_with_search_agent(llm, tools, prompt)
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
+print(final_chain)
 
-    responses = agent_executor.invoke(
-        {
-            "input": "Tell me a joke",
-        }
-    )
-    return responses["output"]
-
+add_routes(app, final_chain.with_types(input_type=ChatHistory), enable_feedback_endpoint=True)
 
 if __name__ == "__main__":
     import uvicorn
