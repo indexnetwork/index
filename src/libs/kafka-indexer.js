@@ -95,7 +95,7 @@ export const createIndexLink = async (indexLinkId) => {
     let indexLink = await getIndexLinkById(indexLinkId)
 
     try {
-        await axios.post(`http://llm-indexer.testnet/index/${indexLink.indexId}/links`, {url: indexLink.link.url})
+        await axios.post(`http://llm-indexer/index/${indexLink.indexId}/links`, {url: indexLink.link.url})
     } catch (e) {
         console.log("Indexer error:", e.message);
     }
