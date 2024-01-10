@@ -5,6 +5,7 @@ import moment from "moment";
 const getCurrentDateTime = () => moment.utc().toISOString();
 
 import {definition} from "../types/merged-runtime.js";
+import {getOwnerProfile} from "../libs/lit/index.js";
 
 export class EmbeddingService {
     constructor() {
@@ -18,6 +19,72 @@ export class EmbeddingService {
     setDID(did) {
         this.did = did;
         return this;
+    }
+
+    async getEmbeddingById(id) {
+
+        try {
+            const {data, errors} = await this.client.executeQuery(`
+            {
+              node(id: "${id}") {
+                ... on Embedding {
+                  id
+                  indexId
+                  itemId
+                  modelName
+                  category
+                  context
+                  vector
+                  description
+                  createdAt
+                  updatedAt
+                  deletedAt
+                  item {
+                    id
+                    __typename
+                    ... on WebPage {
+                      title
+                      favicon
+                      url
+                      content
+                      createdAt
+                      updatedAt
+                      deletedAt
+                    }
+                  }
+                  index {
+                    id
+                    title
+                    signerPublicKey
+                    signerFunction      
+                    createdAt
+                    updatedAt
+                    deletedAt
+                  }
+                }
+              }
+            }`);
+
+            // Handle GraphQL errors
+            if (errors) {
+                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+            }
+            // Validate the data response
+            if (!data || !data.node) {
+                throw new Error('Invalid response data');
+            }
+            try{
+                data.node.index.ownerDID = await getOwnerProfile(data.node.index.signerPublicKey);
+            } catch(e) {
+                console.log("Error fetching profile", e)
+            }
+            return data.node;
+
+        } catch (error) {
+            // Log the error and rethrow it for external handling
+            console.error('Exception occurred in getEmbeddingById:', error);
+            throw error;
+        }
     }
 
     async getEmbedding(indexId, itemId, modelName, category) {

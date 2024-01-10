@@ -19,7 +19,9 @@ export const createIndexItemEvent = async (id) => {
         const indexSession = await getPKPSession(indexItem.index);
         await indexSession.did.authenticate();
 
-        const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/embeddings`, {url: indexItem.item.url})
+        const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/embeddings`, {
+            text: indexItem.item.content
+        })
         const embeddingService = new EmbeddingService().setDID(indexSession.did)
         const embedding = await embeddingService.createEmbedding({
             "indexId": indexItem.indexId,
@@ -47,6 +49,45 @@ export const updateWebPageEvent = async (id) => {
 
 export const createEmbeddingEvent = async (id) => {
     console.log("createEmbeddingEvent", id)
+
+    const embeddingService = new EmbeddingService()
+    const embedding = await embeddingService.getEmbeddingById(id);
+
+    const payload = {
+
+        indexId: embedding.index.id,
+        indexTitle: embedding.index.title,
+        indexCreatedAt: embedding.index.createdAt,
+        indexUpdatedAt: embedding.index.updatedAt,
+        indexDeletedAt: embedding.index.deletedAt,
+        indexOwnerDID: embedding.index.ownerDID.id,
+
+        webPageId: embedding.item.id,
+        webPageTitle: embedding.item.title,
+        webPageUrl: embedding.item.url,
+        webPageContent: embedding.item.content,
+        webPageCreatedAt: embedding.item.createdAt,
+        webPageUpdatedAt: embedding.item.updatedAt,
+        webPageDeletedAt: embedding.item.deletedAt,
+
+        vector: embedding.vector,
+    };
+
+    if(embedding.index.ownerDID.name){
+        payload.indexOwnerName = embedding.index.ownerDID.name
+    }
+    if(embedding.index.ownerDID.bio){
+        payload.indexOwnerBio = embedding.index.ownerDID.bio
+    }
+
+    try {
+        const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/index`, payload)
+    } catch (e) {
+        console.log(e)
+    }
+
+    console.log("IndexItem Indexed with it's content and embeddings.")
+
 }
 
 export const updateEmbeddingEvent = async (id) => {

@@ -68,7 +68,6 @@ app.delete('/dids/:id/indexes',privateRouteMiddleware, validator.body(Joi.object
   id: Joi.custom(isDID, "DID").required(),
 })), didController.removeIndex)
 
-
 app.patch('/dids/:id/profile', privateRouteMiddleware, validator.body(Joi.object({
   name: Joi.string().optional(),
   bio: Joi.string().optional(),
@@ -188,6 +187,12 @@ app.post('/web2/webpage', privateRouteMiddleware, validator.body(Joi.object({
   url: Joi.string().uri().required(),
   content: Joi.string().required(),
 })), web2Controller.createWebPage)
+
+app.post('/web2/webpage/crawl', privateRouteMiddleware, validator.body(Joi.object({
+  title: Joi.string().required(),
+  favicon: Joi.string().optional(),
+  url: Joi.string().uri().required(),
+})), web2Controller.crawlWebPage)
 
 app.get('/web2/webpage/metadata', validator.query(Joi.object({
   url: Joi.string().uri().required(),

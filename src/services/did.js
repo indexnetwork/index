@@ -338,8 +338,12 @@ export class DIDService {
             }
 
             // Validate the data response
-            if (!data || !data.node || !data.node.profile) {
+            if (!data || !data.node) {
                 throw new Error('Invalid response data');
+            }
+
+            if(!data.node.profile){
+                return null
             }
 
             // Return the created profile document

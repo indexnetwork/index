@@ -33,8 +33,9 @@ async function start() {
         rebalanceTimeout: 3000,
     })
     await consumerItems.connect()
-    await consumerItems.subscribe({ topics: topics.map(t => t.id), fromBeginning: true})
+    await consumerItems.subscribe({ topics: topics.map(t => t.id), fromBeginning: false})
     await consumerItems.run({
+        eachBatchAutoResolve: true,
         eachMessage: async ({ topic, partition, message }) => {
 
             const value = JSON.parse(message.value.toString());
@@ -44,39 +45,42 @@ async function start() {
             }
 
             let docId = value.stream_id;
-
-            switch (topic) {
-                case definition.models.IndexItem.id:
-                    switch (op) {
-                        case "c":
-                            await indexer.createIndexItemEvent(docId)
-                            break
-                        case "u":
-                            await indexer.updateIndexItemEvent(docId)
-                            break
-                    }
-                    break
-                case definition.models.WebPage.id:
-                    switch (op) {
-                        case "c":
-                            // We are not interested in this case.
-                            // We'll index objects only if they belong to an index.
-                            break
-                        case "u":
-                            await indexer.updateWebPageEvent(docId)
-                            break
-                    }
-                    break
-                case definition.models.Embedding.id:
-                    switch (op) {
-                        case "c":
-                            await indexer.createEmbeddingEvent(docId)
-                            break
-                        case "u":
-                            await indexer.updateEmbeddingEvent(docId)
-                            break
-                    }
-                    break
+            try {
+                switch (topic) {
+                    case definition.models.IndexItem.id:
+                        switch (op) {
+                            case "c":
+                                await indexer.createIndexItemEvent(docId)
+                                break
+                            case "u":
+                                await indexer.updateIndexItemEvent(docId)
+                                break
+                        }
+                        break
+                    case definition.models.WebPage.id:
+                        switch (op) {
+                            case "c":
+                                // We are not interested in this case.
+                                // We'll index objects only if they belong to an index.
+                                break
+                            case "u":
+                                await indexer.updateWebPageEvent(docId)
+                                break
+                        }
+                        break
+                    case definition.models.Embedding.id:
+                        switch (op) {
+                            case "c":
+                                await indexer.createEmbeddingEvent(docId)
+                                break
+                            case "u":
+                                await indexer.updateEmbeddingEvent(docId)
+                                break
+                        }
+                        break
+                }
+            } catch (e) {
+                console.log(e)
             }
 
         },
