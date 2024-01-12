@@ -56,15 +56,15 @@ jobs:
 
       - name: Build, tag, and push image to Amazon ECR
         env:
-          DOCKER_TAG: indexas/web3-web-app:${{ steps.build-time.outputs.time }}
-          DOCKER_REGISTRY: 534970752686.dkr.ecr.us-east-1.amazonaws.com
+          DOCKER_TAG: indexnetwork/web3-web-app:${{ steps.build-time.outputs.time }}
+          DOCKER_REGISTRY: 236785930124.dkr.ecr.us-east-1.amazonaws.com
         run: |
           docker build -t $DOCKER_TAG .
           docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
           docker push $DOCKER_REGISTRY/$DOCKER_TAG
-          docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexas/web3-web-app:latest-${GITHUB_REF#refs/heads/}
-          docker push $DOCKER_REGISTRY/indexas/web3-web-app:latest-${GITHUB_REF#refs/heads/}
+          docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexnetwork/web3-web-app:latest-${GITHUB_REF#refs/heads/}
+          docker push $DOCKER_REGISTRY/indexnetwork/web3-web-app:latest-${GITHUB_REF#refs/heads/}
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/frontend frontend=534970752686.dkr.ecr.us-east-1.amazonaws.com/indexas/web3-web-app:${{ steps.build-time.outputs.time }} --namespace ${GITHUB_REF#refs/heads/}
+          kubectl set image deployment/frontend frontend=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/web3-web-app:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
