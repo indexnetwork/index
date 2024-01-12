@@ -70,8 +70,11 @@ export class IndexService {
                 throw new Error('Invalid response data');
             }
 
-            // Return the index document
-            return data.node;
+
+            const index =  data.node;
+            index.ownerDID = await getOwnerProfile(index.signerPublicKey);
+
+            return index;
 
         } catch (error) {
             // Log the error and rethrow it for external handling
