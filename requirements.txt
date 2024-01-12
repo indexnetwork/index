@@ -45,4 +45,4 @@ chromadb~=0.4.14
 redis~=5.0.1
 uvicorn~=0.23.2
 python-dotenv~=1.0.0
-fastapi~=0.104.0
+fastapi~=0.109.0
