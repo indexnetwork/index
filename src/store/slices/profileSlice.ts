@@ -2,7 +2,7 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import type { Users } from "types/entity";
 import type { RootState } from "..";
 
-export type ProfileState = Users & {
+export type ProfileState = Partial<Users> & {
 	available: boolean;
 };
 

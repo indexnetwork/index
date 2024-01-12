@@ -2,50 +2,83 @@
 	@include no-select;
 	display: flex;
 	flex-direction: column;
-	.tabs-list {
-		display: flex;
-		gap: map-deep-get($spacing, "xs", "6");
-		flex-shrink: 0;
-		border-bottom: $border-base;
-		margin-bottom: map-deep-get($spacing, "xs", "3");
-		.tabs-list-item {
-			position: relative;
-			cursor: pointer;
-			padding: map-deep-get($spacing, "xs", "3") 0;
-			margin-right: map-deep-get($spacing, "xs", "7");
-			
-			&.tabs-list-item-active {
-				font-weight: 700;
-				padding-left: 4px;
-				padding-right: 4px;
+	flex-grow: 1;
+
+	&.classic{
+		.tabs-list {
+			display: flex;
+			gap: map-deep-get($spacing, "xs", "6");
+			flex-shrink: 0;
+
+			border-bottom: $border-base;
+			.tabs-list-item {
+				position: relative;
+				cursor: pointer;
+				padding: map-deep-get($spacing, "xs", "3") 0;
+				margin-right: map-deep-get($spacing, "xs", "7");
+
+				&.tabs-list-item-active {
+					font-weight: 700;
+					padding-left: 4px;
+					padding-right: 4px;
+					.tabs-list-item-bottom {
+						visibility: visible;
+						position: absolute;
+
+						height: 3px;
+						background-color: $main-color;
+						border-radius: 3px;
+						bottom: -2px;
+						left: 0;
+						right: 0;
+					}
+				}
+
+				&.tabs-list-item-disabled {
+					cursor: not-allowed;
+
+				}
+
 				.tabs-list-item-bottom {
-					visibility: visible;
-					position: absolute;
-					
-					height: 3px;
-					background-color: $main-color;
-					border-radius: 3px;
-					bottom: -2px;
-					left: 0;
-					right: 0;
+					visibility: hidden;
 				}
 			}
+		}
+	}
+	&.rounded{
+		.tabs-list {
+			justify-content: space-between;
+			display: flex;
+			gap: map-deep-get($spacing, "xs", "1");
+			flex-shrink: 0;
 
-			&.tabs-list-item-disabled {
-				cursor: not-allowed;
-				
-			}
+			.tabs-list-item {
+				position: relative;
+				cursor: pointer;
+				padding: map-deep-get($spacing, "xs", "3") map-deep-get($spacing, "xs", "4");
+				font-weight: 500;
+				color: $black;
+				&.tabs-list-item-active {
+					background-color: $gray-1;
+					border-radius: 36px;
+				}
 
-			.tabs-list-item-bottom {
-				visibility: hidden;
+				&.tabs-list-item-disabled {
+					cursor: not-allowed;
+				}
+
+				.tabs-list-item-bottom {
+					visibility: hidden;
+				}
 			}
 		}
 	}
 
+
 	.tabs-contents {
 		flex-grow: 1;
 		.tabs-contents-item {
-			
+
 		}
 	}
 }

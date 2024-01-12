@@ -2,13 +2,12 @@ import cc from "classcat";
 import IconGoogle from "components/base/Icon/IconGoogle";
 import IconTwitter from "components/base/Icon/IconTwitter";
 import Flex from "components/layout/base/Grid/Flex";
-import Lottie from "lottie-react";
 import React from "react";
 import {
 	ButtonThemeType,
 	InputSizeType,
 } from "types";
-import animationData from "./loading.json";
+import IconLoading from "../Icon/IconLoading";
 
 export interface ButtonProps extends React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement> {
 	customType?: "google" | "twitter" | "link";
@@ -122,8 +121,8 @@ const Button = (
 					  )}
 				>
 					  {loading ? (
-						<Flex className="btn-inner" inline alignItems="center">
-							<Lottie className="lottie-logo mr-3" animationData={animationData} />
+						<Flex className="btn-inner-loading" inline alignItems="center">
+							<IconLoading className="icon"/>
 							{children}
 						</Flex>
 					  ) : (

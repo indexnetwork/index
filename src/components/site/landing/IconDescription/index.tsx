@@ -27,14 +27,14 @@ const IconDescription: React.VFC<IconDescriptionProps> = ({
 				<>
 					{icon}
 					<Flex className="lnd-icon-desc-text">
-						<Header>{title}</Header>
-						<Text size="xl" theme="gray5">{description}</Text>
+						<Header theme="gray6" className={"mb-5"}>{title}</Header>
+						<Text size="xl" theme="gray6">{description} <div className={cm.italic}>{boldDescription}</div></Text>
 					</Flex>
 				</>
 			) : (
 				<>
 					{icon}
-					< Text size="xl" theme="gray5">{description} <div className={cm.italic}>{boldDescription}</div></Text>
+					< Text size="xl" theme="gray6">{description} <div className={cm.italic}>{boldDescription}</div></Text>
 				</>
 			)
 		}

@@ -1,11 +1,20 @@
 export const appConfig = {
-	baseUrl: "https://dev.index.as/",
-	apiUrl: "https://dev.index.as/api",
-	devCeramicNetworkName: "dev-clay",
-	ceramicNetworkName: "testnet-clay",
-	ipfsProxy: "https://ipfs.io/ipfs/",
-	ipfsInfura: "https://ipfs.infura.io:5001/api/v0",
-	defaultCID: "QmSBSz4GFaEskvbcRdbJVMzwbe9K2yxWsDHPn8Yh29WLRG", // Empty.
+	baseUrl: "https://index.network/",
+	apiUrl: "https://index.network/api",
+	ipfsProxy: "https://indexas.infura-ipfs.io/ipfs",
+	ipfsInfura: "http://localhost:3001/avatar",
+	defaultCID: "QmRisjM1uZ18wUE22XsREDYEXYdsVuZ6P312XWcMj3Apys", // Empty.
+	testNetwork: {
+		chainId: "0x2ac49",
+		chainName: "Chronicle - Lit Protocol Testnet",
+		nativeCurrency: {
+			name: "LIT",
+			symbol: "LIT",
+			decimals: 18,
+		},
+		rpcUrls: ["https://chain-rpc.litprotocol.com/http"],
+		blockExplorerUrls: ["https://chain.litprotocol.com"],
+	},
 	chains: {
 		ethereum: {
 			value: "ethereum",

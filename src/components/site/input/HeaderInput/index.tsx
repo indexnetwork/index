@@ -14,6 +14,7 @@ const HeaderInput: React.VFC<HeaderInputProps> = ({ size = 3, loading, ...inputP
 	addOnAfter={loading && (<Spin active={true} thickness="light" theme="secondary" />)}
 	className={cc([
 		"header-input",
+		"nonstyled",
 		`header-input-${size}`,
 	])}
 	{...inputProps} />;

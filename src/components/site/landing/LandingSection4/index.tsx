@@ -1,43 +1,96 @@
 import Header from "components/base/Header";
 import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
-import IconFeaturePublicPrivate from "components/base/Icon/IconFeaturePublicPrivate";
-import IconFeatureCollab from "components/base/Icon/IconFeatureCollab";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Col from "components/layout/base/Grid/Col";
+import Text from "components/base/Text";
 import cm from "./style.module.scss";
 import LandingSection from "../LandingSection";
-import IconDescription from "../IconDescription";
 
-const LandingSection4: React.VFC = () => (
-	<LandingSection>
-		<Flex
-			alignItems="center"
-			style={{
-				position: "relative",
-			}}
-			className="lnd-card lnd-reorder"
-		>
-			<Flex flexDirection="column" className="lnd-title mb-lg-8 mb-xs-6">
-				<Header className="lnd-section-title">Collaborate on two-person projects up to DAO-scale. Monetize independently.</Header>
-			</Flex>
-			<Flex className="lnd-img">
-				<img className={cm.img} alt="landing-4-img" src="/images/landing-4.webp" />
-			</Flex>
+const LandingSection4: React.VFC = () => {
+	const [section, setSection] = React.useState("brand");
+	return (
+		<LandingSection dark>
 			<Flex
-				className="lnd-features"
+				style={{
+					position: "relative",
+				}}
+				className="lnd-card"
 			>
-				<IconDescription
-					icon={<IconFeaturePublicPrivate fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
-					description='Specify on-chain criteria like "user must hold an NFT" and the network will provide permission to those who meet those criteria.'
-					boldDescription="Soon"
-				/>
-				<IconDescription
-					icon={<IconFeatureCollab fill="var(--gray-5)" className="lnd-icon-desc-icon" />}
-					description="Monetize your index with your own terms by composing access control conditions."
-					boldDescription="Soon"
-				/>
+				<Flex flexDirection="column" className={"mb-5"}>
+					<Header className="lnd-section-title">Use cases</Header>
+				</Flex>
+				<FlexRow align={"center"}>
+					<Col sm={12} lg={6} >
+						<Flex flexDirection={"column"} className="lnd-features pr-lg-10 mr-lg-10">
+							<FlexRow className={section === "documentation" ? cm.usecaseActive : cm.usecase}>
+								<Header onClick={() => setSection("documentation")} className={"pointer mb-4"}>Documentation</Header>
+								<div className={cm.usecaseDetail}>
+									<Text size={"lg"}>Enable builders to interact with technologies using composable
+										discovery engines.</Text>
+									<ul className={"pl-6 mb-0"}>
+										<li>Ask how to integrate multiple technologies</li>
+										<li>Build with real-time, verified knowledge</li>
+									</ul>
+								</div>
+							</FlexRow>
+							<FlexRow className={section === "journalism" ? cm.usecaseActive : cm.usecase}>
+								<Header onClick={() => setSection("journalism")} className={"pointer mb-4"}>Journalism</Header>
+								<div className={cm.usecaseDetail}>
+									<Text size={"lg"}>Use composable indexes to provide readers navigate diverse narratives
+										and viewpoints in news media, promoting a well-rounded understanding.</Text>
+									<ul className={"pl-6 mb-0"}>
+										<li>Compare different perspectives, understand biases</li>
+										<li>Explore historical context from verified sources</li>
+										<li>Ask for facts by using fact-check indexes</li>
+									</ul>
+								</div>
+							</FlexRow>
+							<FlexRow className={section === "science" ? cm.usecaseActive : cm.usecase}>
+								<Header onClick={() => setSection("science")} className={"pointer mb-4"}>Science</Header>
+								<div className={cm.usecaseDetail}>
+									<Text size={"lg"}>Facilitate collaboration and data sharing among researchers for decentralized
+										scientific discovery.</Text>
+									<ul className={"pl-6 mb-0"}>
+										<li>Bridge gaps between different research fields</li>
+										<li>Connect academia with industry partners</li>
+										<li>Engage in scientific debate</li>
+									</ul>
+								</div>
+							</FlexRow>
+							<FlexRow className={section === "consultancy" ? cm.usecaseActive : cm.usecase}>
+								<Header onClick={() => setSection("consultancy")} className={"pointer mb-4"}>Consultancy</Header>
+								<div className={cm.usecaseDetail}>
+									<Text size={"lg"}>Access and compare insights from various consulting firms. Evaluate strategies,
+										market analyses, and industry trends for informed decisions.</Text>
+									<ul className={"pl-6 mb-0"}>
+										<li>Expose perspectives to multiple contexts</li>
+										<li>Evaluate the business impacts of new technologies</li>
+										<li>Review diverse perspectives on trends</li>
+									</ul>
+								</div>
+							</FlexRow>
+							<FlexRow className={section === "brand" ? cm.usecaseActive : cm.usecase}>
+								<Header onClick={() => setSection("brand")} className={"pointer mb-4"}>Brand + Tastemaker</Header>
+								<div className={cm.usecaseDetail}>
+									<Text size={"lg"}>Redefine how taste-makers engage with brands and humans, shifting
+										from specific brand curation to indexing personal taste for authentic recommendations.</Text>
+									<ul className={"pl-6 mb-0"}>
+										<li>Blend taste with products</li>
+										<li>Compose a style symphony that is uniquely yours</li>
+										<li>Uncover hidden brand synergies</li>
+									</ul>
+								</div>
+							</FlexRow>
+						</Flex>
+					</Col>
+					<Col sm={12} lg={6}>
+						<img className={cm.img} alt="landing-4-img" src={`/images/usecase-${section}.png`} />
+					</Col>
+				</FlexRow>
 			</Flex>
-		</Flex>
-	</LandingSection>
-);
+		</LandingSection>
+	);
+};
 
 export default LandingSection4;

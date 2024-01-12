@@ -3,8 +3,8 @@
 	@include responsive-sizes($font-size, "line-height");
 	display: inline-block;
 	border: $border-base;
-	border-radius: $border-radius-base;
-	padding: map-deep-get($spacing, "xs", "3") map-deep-get($spacing, "xs", "6");
+	border-radius: 0.4rem;
+	padding: map-deep-get($spacing, "xs", "3") map-deep-get($spacing, "xs", "4");
 	line-height: 0;
 	align-items: center;
 
@@ -21,6 +21,7 @@
 	& textarea:focus-visible {
 		outline: none;
 		outline-width: 0 !important;
+		color: var(--gray-5);
 	}
 
 	&.textarea-block {
@@ -29,6 +30,9 @@
 
 	& textarea::placeholder {
 		color: $secondary-text-color;
+	}
+	:focus::placeholder{
+		opacity: 0.50;
 	}
 
 	&.textarea-disabled,
@@ -63,4 +67,19 @@
 			background-color: transparent;
 		}
 	}
+}
+
+.textarea:focus-within {
+	border-color: var(--gray-4);
+}
+
+.add-on-after-icon {
+	fill: var(--gray-2);
+}
+.typing {
+    fill: $main-color;
+}
+
+.textarea__textarea {
+line-height: 1.9rem;
 }

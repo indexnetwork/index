@@ -1,4 +1,5 @@
 import moment from "moment";
+import { appConfig } from "config";
 
 export function copyToClipboard(str?: string) {
 	if (navigator && navigator.clipboard) navigator.clipboard.writeText(str || "");
@@ -36,7 +37,11 @@ export function isSSR() {
 }
 
 export function maskAddress(address: string) {
-	return `${address.slice(0, 6)}...${address.slice(-4)}`;
+	return `${address.slice(0, 5)}...${address.slice(-4)}`;
+}
+export function maskDID(did: string) {
+	const address = did.split(":").pop();
+	return maskAddress(address!);
 }
 
 export function isMobile() {
@@ -56,4 +61,26 @@ export const setDates = <T extends { updatedAt?: string, createdAt?: string, [ke
 	return obj;
 };
 
+export const addTestNetwork = async () => {
+	const params = [appConfig.testNetwork];
+	try {
+		await window.ethereum.request({ method: "wallet_addEthereumChain", params });
+		return true;
+	} catch (e) {
+		return false; // Reject to add
+	}
+};
+
+export const switchTestNetwork = async () => {
+	try {
+		await window.ethereum.request({
+			method: "wallet_switchEthereumChain",
+			params: [{ chainId: appConfig.testNetwork.chainId }],
+		});
+		return true;
+	} catch (e: any) {
+		if (e.code === 4001) return false; // Reject to switch
+		return await addTestNetwork(); // Network not found
+	}
+};
 export const getCurrentDateTime = () => moment.utc().toISOString();

@@ -53,7 +53,7 @@ export type TextElementType = "span" | "strong" | "div" | "p" | "label";
 /**
  * Button Types
  */
-export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "secondary-outlined" | "success-outlined" | "error-outlined" | "warning-outlined" | "ghost" | "card" | "link" | "clear" | "blue" | "blue-outlined" | "tag";
+export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "secondary-outlined" | "success-outlined" | "error-outlined" | "warning-outlined" | "ghost" | "card" | "link" | "clear" | "blue" | "blue-outlined" | "tag" | "panel";
 
 /**
  * Input Types

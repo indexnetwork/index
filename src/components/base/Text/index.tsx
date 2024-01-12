@@ -24,7 +24,7 @@ const Text = (
 		lineHeight,
 		verticalAlign,
 		element = "span",
-		theme = "gray5",
+		theme = "gray6",
 		size = "md",
 		hidden = false,
 		...moreProps

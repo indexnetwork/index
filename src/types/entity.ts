@@ -3,6 +3,8 @@
  *
  */
 
+import { CID } from "multiformats";
+
 export type Indexes = {
   id: string
   title: string | null
@@ -11,15 +13,15 @@ export type Indexes = {
   controllerDID: { // This is PKP DID
     id: string
   };
-  ownerDID: { // This is PKP Owner DID
-    id: string
-  };
+  ownerDID: Users;
   createdAt: string;
   updatedAt: string;
   deletedAt: string;
   links: IndexLink[];
-  is_in_my_indexes?: boolean;
-  is_starred?: boolean;
+  isOwner?: boolean;
+  isCreator: boolean;
+  isStarred?: boolean;
+  isPermittedAddress?: boolean;
 };
 
 export type IndexLink = {
@@ -89,12 +91,13 @@ export type Link = {
  *
  */
 export interface Users {
+  id?: string;
   name?: string;
-  description?: string;
-  pfp?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
+  bio?: string;
+  avatar?: CID;
   available?: boolean; // TODO debug
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface LinkContentResult {
@@ -118,4 +121,16 @@ export interface AccessControlCondition {
   conditionType: string;
   parameters: string[];
   returnValueTest: object;
+}
+
+export interface IndexListState {
+  skip: number,
+  totalCount: number,
+  hasMore: boolean,
+  indexes?: Indexes[],
+}
+export interface MultipleIndexListState {
+  all: IndexListState,
+  owner: IndexListState,
+  starred: IndexListState,
 }

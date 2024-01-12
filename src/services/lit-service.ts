@@ -1,10 +1,9 @@
 import { ethers } from "ethers";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { DID } from "dids";
-import { LitNodeClient } from "@lit-protocol/lit-node-client";
+import * as LitJsSdk from "@lit-protocol/lit-node-client";
 import { randomBytes, randomString } from "@stablelib/random";
 import { Cacao } from "@didtools/cacao";
-import { joinSignature } from "ethers/lib/utils";
 import { getResolver } from "key-did-resolver";
 import { createDIDCacao, DIDSession } from "did-session";
 import { Ed25519Provider } from "key-did-provider-ed25519";
@@ -22,7 +21,7 @@ class LitService {
 		const mint = await litContracts.pkpNftContract.write.mintNext(2, { value: mintCost });
 		const wait = await mint.wait();
 
-		const pkpMintedEventTopic = ethers.utils.id("PKPMinted(uint256,bytes)");
+		const pkpMintedEventTopic = ethers.id("PKPMinted(uint256,bytes)");
 		const eventLog = wait.logs.find(
 			(log: { topics: string[]; }) => log.topics[0] === pkpMintedEventTopic,
 		);
@@ -31,7 +30,7 @@ class LitService {
 		}
 
 		const tokenIdFromEvent = eventLog.topics[1];
-		const tokenIdNumber = ethers.BigNumber.from(tokenIdFromEvent).toString();
+		const tokenIdNumber = BigInt(tokenIdFromEvent).toString();
 		const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
 		console.log(
 			`superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
@@ -52,7 +51,7 @@ class LitService {
 			return true;
 		}
 		const litNodeClient = new LitNodeClient({
-			litNetwork: "serrano",
+			litNetwork: "cayenne",
 		});
 		await litNodeClient.connect();
 		const authSig = await checkAndSignAuthMessage();
@@ -91,8 +90,8 @@ class LitService {
 		const didKey = new DID({ provider, resolver: getResolver() });
 		await didKey.authenticate();
 
-		const litNodeClient = new LitNodeClient({
-			litNetwork: "serrano",
+		const litNodeClient = new LitJsSdk.LitNodeClient({
+			litNetwork: "cayenne",
 		});
 		await litNodeClient.connect();
 		const authSig = await checkAndSignAuthMessage();
@@ -121,24 +120,28 @@ class LitService {
 		// @ts-ignore
 		const { isCreator, isPermittedAddress, siweMessage } = JSON.parse(resp.response.context);
 
-		const signature = resp.signatures.sig1;
-		siweMessage.signature = joinSignature({
-			r: `0x${signature.r}`,
-			s: `0x${signature.s}`,
-			v: signature.recid,
-		});
-		const cacao = Cacao.fromSiweMessage(siweMessage);
-		const did = await createDIDCacao(didKey, cacao);
-		const session = new DIDSession({ cacao, keySeed, did });
-
-		localStorage.setItem(`pkp_${pkpPublicKey}`, JSON.stringify({
-			isCreator,
-			isPermittedAddress,
-			collabAction,
-			session: session.serialize(),
-		}));
+		if (isCreator || isPermittedAddress) {
+			const signature = resp.signatures.sig1;
+			siweMessage.signature = ethers.Signature.from({
+				r: `0x${signature.r}`,
+				s: `0x${signature.s}`,
+				v: signature.recid,
+			}).serialized;
+			const cacao = Cacao.fromSiweMessage(siweMessage);
+			const did = await createDIDCacao(didKey, cacao);
+			const session = new DIDSession({ cacao, keySeed, did });
+			localStorage.setItem(`pkp_${pkpPublicKey}`, JSON.stringify({
+				isCreator,
+				isPermittedAddress,
+				collabAction,
+				session: session.serialize(),
+			}));
+			return {
+				session, isCreator, isPermittedAddress, collabAction,
+			};
+		}
 		return {
-			session, isCreator, isPermittedAddress, collabAction,
+			isCreator, isPermittedAddress,
 		};
 	}
 }

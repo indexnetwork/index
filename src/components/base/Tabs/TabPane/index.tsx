@@ -3,7 +3,9 @@ import React from "react";
 export interface TabPaneProps {
 	tabKey: string;
 	title: string;
+	total?: number;
 	enabled?: boolean;
+	hidden?: boolean;
 	children?: React.ReactNode;
 }
 

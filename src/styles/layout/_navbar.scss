@@ -1,5 +1,5 @@
 .navbar-container {
-	@include responsive-sizes-flat($navbar-height, "height");
+	height: 63px;
 	width: 100%;
 	transition: $transition-bg;
 
@@ -30,15 +30,21 @@
 			align-items: center;
 		}
 		.navbar-logo {
-			height: 2.6rem;
+			height: 3.2rem;
 			cursor: pointer;
 		}
 
-		@media (min-width: map-get($breakpoints, "sm")) {
-			.navbar-logo {
-				height: 3.2rem;
-			}
+	}
+
+	@media (max-width: map-get($breakpoints, "lg")) {
+		.navbar-logo{
+			display: none;
 		}
+	}
+}
+@media (min-width: map-get($breakpoints, "lg")) {
+	.navbar-sidebar-handlers{
+		display: none !important;
 	}
 }
 .lottie-logo{
@@ -46,5 +52,5 @@
 }
 .lottie-text{
 	border-color: $gray-4 !important;
-	background: $gray-4 !important;
+	background: $main-color !important;
 }

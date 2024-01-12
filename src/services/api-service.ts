@@ -4,6 +4,7 @@ import {
 	Indexes, IndexLink, Link, UserIndex,
 } from "types/entity";
 import { API_ENDPOINTS } from "utils/constants";
+import { CID } from "multiformats";
 
 export type HighlightType<T = {}> = T & {
 	highlight?: { [key: string]: string[] }
@@ -12,14 +13,18 @@ export interface IndexResponse extends Indexes {
   highlight?: HighlightType;
 }
 export interface IndexSearchResponse {
+	all: {
+		totalCount: number;
+		records: Indexes[];
+	},
+	owner?: {
+		totalCount: number;
+		records: Indexes[];
+	}
 	starred?: {
 		totalCount: number;
 		records: Indexes[];
 	},
-	my_indexes?: {
-		totalCount: number;
-		records: Indexes[];
-	}
 }
 
 export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
@@ -56,7 +61,7 @@ export interface LinkSearchResponse {
 	records: IndexLink[];
 }
 export interface UserIndexResponse {
-	my_indexes?: UserIndex;
+	owner?: UserIndex;
 	starred?: UserIndex;
 }
 
@@ -142,9 +147,9 @@ class ApiService {
 			return null;
 		}
 	}
-	async getLITAction(CID: string): Promise<LitActionConditions | null > {
+	async getLITAction(cid: string): Promise<LitActionConditions | null > {
 		try {
-			const { data } = await apiAxios.get<LitActionConditions>(`${API_ENDPOINTS.LIT_ACTIONS}/${CID}`);
+			const { data } = await apiAxios.get<LitActionConditions>(`${API_ENDPOINTS.LIT_ACTIONS}/${cid}`);
 			return data;
 		} catch (err) {
 			return null;
@@ -175,6 +180,39 @@ class ApiService {
 			return null;
 		}
 	}
+	async uploadAvatar(file: File): Promise<{ cid: CID } | null> {
+		try {
+			const formData = new FormData();
+			formData.append("file", file);
+			const { data } = await apiAxios.post<{ cid: CID }>(API_ENDPOINTS.UPLOAD_AVATAR, formData, {
+				headers: {
+					"Content-Type": "multipart/form-data",
+				},
+			});
+			return data;
+		} catch (err) {
+			return null;
+		}
+	}
+	async zapierTestLogin(email: string, password: string) : Promise<any | undefined> {
+		try {
+			const { data } = await apiAxios.post(`${API_ENDPOINTS.ZAPIER_TEST_LOGIN}`, { email, password });
+			return data as any;
+		} catch (err: any) {
+			// throw new Error(err.message);
+		}
+	}
+	async subscribeToNewsletter(email: string) : Promise<any | undefined> {
+		try {
+		  const { data } = await apiAxios.post(`${API_ENDPOINTS.SUBSCRIBE_TO_NEWSLETTER}`, { email });
+		  return data;
+		} catch (err: any) {
+		  const errorMessage = err.response && err.response.data && err.response.data.message ?
+		   err.response.data.message :
+		   err.message;
+		  throw new Error(errorMessage);
+		}
+	  }
 }
 
 const api = new ApiService();

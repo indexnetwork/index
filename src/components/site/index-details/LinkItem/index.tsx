@@ -5,9 +5,6 @@ import React, { useState } from "react";
 import Button from "components/base/Button";
 import IconTag from "components/base/Icon/IconTag";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
-import { DraggableProvided, DraggableStateSnapshot } from "react-beautiful-dnd";
-import IconDrag from "components/base/Icon/IconDrag";
-import Flex from "components/layout/base/Grid/Flex";
 import { useBreakpoint } from "hooks/useBreakpoint";
 import { BREAKPOINTS } from "utils/constants";
 import TagIndexDetailItem from "components/site/tag/TagIndexDetailItem";
@@ -19,30 +16,25 @@ import { useRouter } from "next/router";
 import { useCeramic } from "hooks/useCeramic";
 import { useLinks } from "hooks/useLinks";
 import sanitize from "sanitize-html";
-import LogoLink from "components/base/Logo/LogoLink";
 import { useIndex } from "hooks/useIndex";
 import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
 export interface LinkItemProps {
 	index_link: IndexLink;
-	provided?: DraggableProvided;
-	snapshot?: DraggableStateSnapshot;
 	onChange?(val: IndexLink[]): void;
 	search?: boolean;
 }
 
 const LinkItem: React.VFC<LinkItemProps> = ({
 	index_link,
-	provided,
-	snapshot,
 	search = false,
 	onChange,
 }) => {
 	const breakpoint = useBreakpoint(BREAKPOINTS, true);
 	const [toggleNewTag, setToggleNewTag] = useState<boolean>(false);
 	const { links, setLinks } = useLinks();
-	const { pkpCeramic, isOwner, isCreator } = useIndex();
+	const { pkpCeramic, roles } = useIndex();
 	const personalCeramic = useCeramic();
 
 	const { link } = index_link;
@@ -69,11 +61,6 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 	const handleCloseTag = () => {
 		setToggleNewTag(false);
 	};
-
-	const handleSetFavorite = async () => {
-
-	};
-
 	const handleRemove = async () => {
 		setLinks(links?.filter((l) => l.id !== index_link.id!));
 		const currentLink = await pkpCeramic.removeIndexLink(index_link);
@@ -86,35 +73,17 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 		setLinks(newState);
 	};
 	return (
-		<div
-			className="index-detail-list-item-wrapper"
-			{...(breakpoint === "xs" || breakpoint === "sm" ? (provided && provided.dragHandleProps) : undefined)}
-		>
-			<FlexRow className="py-6 index-detail-list-item">
-				{
-					!search && isOwner && !(breakpoint === "xs" || breakpoint === "sm") && (
-						<div {...(provided ? provided.dragHandleProps : undefined)}>
-							<Flex className="index-detail-list-item-drag-handle">
-								<IconDrag
-									stroke="#000" fill="#000" />
-							</Flex>
-						</div>
-					)
-				}
-
+		<div className="index-detail-list-item-wrapper">
+			<FlexRow className="py-3 index-detail-list-item">
 				<Col xs={12}>
-					<FlexRow
-						wrap={false}
-					>
-						<Col
-							className="idxflex-grow-1"
-						>
+					<FlexRow wrap={false}>
+						<Col className="idxflex-grow-1" >
 							<a target="_blank" rel="noreferrer" href={link?.url}>
 								<Text className={cm.title} fontWeight={700} dangerouslySetInnerHTML={{ __html: sanitize((index_link.highlight && index_link.highlight["link.title"]) ? index_link.highlight["link.title"] : link?.title as string) }}></Text>
 							</a>
 						</Col>
 						{
-							!search && isCreator && (
+							!search && roles.creator() && (
 								<Col className="idxflex-shrink-0 ml-3 index-detail-list-item-buttons">
 									<FlexRow>
 										<Col>
@@ -130,19 +99,6 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 												</Button>
 											</Tooltip>
 										</Col>
-										{/* <Col>
-											<Tooltip content="Favorite">
-												<Button
-													size="xs"
-													iconButton
-													theme="clear"
-													borderless
-													onClick={handleSetFavorite}
-												>
-													<IconStar fill={favorite ? "var(--blue)" : "none"} stroke={favorite ? "var(--blue)" : undefined}/>
-												</Button>
-											</Tooltip>
-										</Col> */}
 										<Col>
 											<IndexDetailItemPopup onDelete={handleRemove}>
 												<Button
@@ -160,23 +116,21 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 				</Col>
 				<Col xs={12} className="mt-2">
 					<a target="_blank" rel="noreferrer" href={link?.url}>
-						{link?.favicon ?
-							<img
-								className="mr-3"
-								src={link?.favicon}
-								alt="favicon"
-								width={16}
-								height={16}
-								style={{
-									verticalAlign: "middle",
-								}} /> :
-							<LogoLink
-								className="mr-3"
-								width={16}
-								height={16}
-								style={{
-									verticalAlign: "middle",
-								}} />}<Text size="sm" theme="disabled">{link?.url?.substring(0, 80)} • {link?.updatedAt ? moment(link?.updatedAt).format("MMM D") : ""}</Text>
+						<img
+							className="mr-3"
+							src={link?.favicon || "/images/globe.svg"}
+							alt="favicon"
+							width={16}
+							height={16}
+							onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+								const target = e.target as HTMLImageElement;
+								target.onerror = null; // Prevents infinite loop in case fallback image also fails
+								target.src = "/images/globe.svg";
+							}}
+							style={{
+								verticalAlign: "middle",
+							}} />
+						<Text size="sm" theme="disabled">{link?.url?.substring(0, 80)} • {link?.updatedAt ? moment(link?.updatedAt).format("MMM D") : ""}</Text>
 					</ a>
 				</Col>
 				{
@@ -186,8 +140,6 @@ const LinkItem: React.VFC<LinkItemProps> = ({
 						</Col>
 					)
 				}
-				<Col>
-				</Col>
 				{
 					!search && <Col xs={12} className="mt-3 idxflex idxflex-gap-3 idxflex-wrap">
 						{

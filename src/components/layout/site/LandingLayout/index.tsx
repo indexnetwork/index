@@ -4,25 +4,17 @@ import React from "react";
 import SiteFooter from "../SiteFooter";
 
 export interface LandingLayoutProps {
-	title: string;
-	className?: string;
-	collapsed?: boolean;
-	onChange?(collapsed: boolean): void;
 	children: React.ReactNode;
 }
 
 const LandingLayout = ({
-	title,
-	className,
-	collapsed = false,
-	onChange,
 	children,
 }: LandingLayoutProps) => (
 	<>
 		<Head>
 			<script async src="scripts/drag-drop-touch.js"></script>
 		</Head>
-		<SiteNavbar headerType="public" />
+		<SiteNavbar isLanding={true} headerType="public" />
 		{children}
 		<SiteFooter />
 	</>

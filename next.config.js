@@ -4,18 +4,6 @@ const { i18n } = require('./next-i18next.config');
 const nextConfig = {
   reactStrictMode: false,
   i18n,
-  async rewrites() {
-    return [
-      {
-        source: '/:did(did:.*)',
-        destination: '/did/:did',
-      },
-      {
-        source: '/:indexId',
-        destination: '/index/:indexId',
-      }
-    ]
-  },
   async headers() {
     return [
       {
@@ -46,6 +34,9 @@ const nextConfig = {
         ],
       }
     ];
+  },
+  compiler:{
+   styledComponents : true
   },
 }
 

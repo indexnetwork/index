@@ -2,33 +2,34 @@ import { ComposeClient } from "@composedb/client";
 import {
 	Indexes, IndexLink, Link, UserIndex, Users,
 } from "types/entity";
-import { getCurrentDateTime, isSSR, setDates } from "utils/helper";
-import { create, IPFSHTTPClient } from "ipfs-http-client";
+import {
+	getCurrentDateTime, isSSR, setDates,
+} from "utils/helper";
+
 import { RuntimeCompositeDefinition } from "@composedb/types";
 import api, { GetUserIndexesRequestBody, UserIndexResponse } from "services/api-service";
-
-import { DID } from "dids";
-
 import { appConfig } from "config";
+import { DID } from "dids";
+// eslint-disable-next-line import/no-extraneous-dependencies
+import { ExecutionResult, Source } from "graphql/index";
 import { definition } from "../types/merged-runtime";
 
 class CeramicService {
-	private ipfs: IPFSHTTPClient = create({
-		url: appConfig.ipfsInfura,
-	});
 	private client = new ComposeClient({
-		ceramic: "https://ceramic-dev.index.as",
+		ceramic: "https://composedb.index.network",
 		definition: definition as RuntimeCompositeDefinition,
 	});
 
-	constructor(did?: DID) {
-		this.client.setDID(did!);
+	private authenticateCallback: (() => Promise<DID>) | undefined;
+
+	constructor(callback?: () => Promise<DID>) {
+		this.authenticateCallback = callback;
 	}
 
-	async authenticateUser(did: any) {
+	authenticateUser(did: DID) {
 		if (!isSSR()) {
 			try {
-				await this.client.setDID(did);
+				this.client.setDID(did);
 				return true;
 			} catch (err) {
 				return false;
@@ -41,7 +42,21 @@ class CeramicService {
 	isUserAuthenticated() {
 		return !!(this.client?.did?.authenticated);
 	}
-
+	// eslint-disable-next-line max-len
+	async executeQuery <Data = Record<string, unknown>>(source: string | Source, variableValues?: Record<string, unknown>): Promise<ExecutionResult<Data>> {
+		if (!this.isUserAuthenticated()) {
+			if (!this.authenticateCallback) {
+				throw new Error("User not authenticated");
+			}
+			const callback = await this.authenticateCallback();
+			if (callback) {
+				this.authenticateUser(callback);
+			} else {
+				throw new Error("User not authenticated");
+			}
+		}
+		return await this.client.executeQuery(source, variableValues);
+	}
 	async createIndex(pkpPublicKey: string, content: Partial<Indexes>): Promise<Indexes> {
 		setDates(content, true);
 		if (!content.title) {
@@ -56,7 +71,7 @@ class CeramicService {
 			content,
 		};
 
-		const { data, errors } = await this.client.executeQuery<{ createIndex: { document: Indexes } }>(`
+		const { data, errors } = await this.executeQuery<{ createIndex: { document: Indexes } }>(`
 			mutation CreateIndex($input: CreateIndexInput!) {
 				createIndex(input: $input) {
 					document {
@@ -84,7 +99,7 @@ class CeramicService {
 			content,
 		};
 
-		const { data, errors } = await this.client.executeQuery<{ updateIndex: { document: Indexes } }>(`
+		const { data, errors } = await this.executeQuery<{ updateIndex: { document: Indexes } }>(`
 			mutation UpdateIndex($input: UpdateIndexInput!) {
 				updateIndex(input: $input) {
 					document {
@@ -105,7 +120,7 @@ class CeramicService {
 	}
 
 	async getLinkById(link_id: string) {
-		const { data, errors } = await this.client.executeQuery(`{
+		const { data, errors } = await this.executeQuery(`{
 			node(id:"${link_id}"){
 			  id
 			  ... on Link{
@@ -127,7 +142,7 @@ class CeramicService {
 	}
 
 	async createLink(link: Partial<Link>): Promise<Link> {
-		setDates(link); // TODO Conditional updatedAt
+		setDates(link);
 		link.updatedAt = getCurrentDateTime();
 		if (!link.tags) {
 			link.tags = [];
@@ -135,7 +150,7 @@ class CeramicService {
 		const payload = {
 			content: link,
 		};
-		const { data, errors } = await this.client.executeQuery<{ createLink: { document: Link } }>(`
+		const { data, errors } = await this.executeQuery<{ createLink: { document: Link } }>(`
 			mutation CreateLink($input: CreateLinkInput!) {
 				createLink(input: $input) {
 					document {
@@ -167,7 +182,7 @@ class CeramicService {
 			id: link_id,
 			content: link,
 		};
-		const { data, errors } = await this.client.executeQuery<{ updateLink: { document: Link } }>(`
+		const { data, errors } = await this.executeQuery<{ updateLink: { document: Link } }>(`
 			mutation UpdateLink($input: UpdateLinkInput!) {
 				updateLink(input: $input) {
 					document {
@@ -190,6 +205,15 @@ class CeramicService {
 	}
 
 	async addIndexLink(index: Indexes, link_id: string) : Promise <IndexLink> {
+		if (!this.authenticateCallback) {
+			throw new Error("User not authenticated");
+		}
+		const callback = await this.authenticateCallback();
+		if (callback) {
+			this.authenticateUser(callback);
+		} else {
+			throw new Error("User not authenticated");
+		}
 		const indexLink: IndexLink = {
 			indexId: index.id,
 			linkId: link_id,
@@ -205,7 +229,7 @@ class CeramicService {
 		if (!this.client.did?.authenticated) {
 			// handle error
 		}
-		const { data, errors } = await this.client.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
+		const { data, errors } = await this.executeQuery<{ createIndexLink: { document: IndexLink } }>(`
 			mutation CreateIndexLink($input: CreateIndexLinkInput!) {
 				createIndexLink(input: $input) {
 					document {
@@ -255,7 +279,7 @@ class CeramicService {
 				deletedAt: getCurrentDateTime(),
 			},
 		};
-		const { data, errors } = await this.client.executeQuery<{ updateIndexLink: { document: IndexLink } }>(`
+		const { data, errors } = await this.executeQuery<{ updateIndexLink: { document: IndexLink } }>(`
 			mutation UpdateIndexLink($input: UpdateIndexLinkInput!) {
 				updateIndexLink(input: $input) {
 					document {
@@ -303,20 +327,7 @@ class CeramicService {
 		}
 		// TODO handle.
 	}
-	async setLinkFavorite(streamId: string, linkId: string, favorite: boolean) {
-		/*
-		const oldDoc = await this.getIndexById(streamId);
-		const newContent = { ...oldDoc.content };
-		const link = newContent.links?.find((l) => l.id === linkId);
-		if (link) {
-			link.favorite = favorite;
-			await oldDoc.update(newContent, undefined, {
-				publish: true,
-			});
-			return oldDoc;
-		}
-		 */
-	}
+
 	async setUserIndex(indexId: string, type: string, status: boolean): Promise <UserIndex | undefined> {
 		const userIndexes = await api.getUserIndexes({
 			index_id: indexId,
@@ -382,52 +393,76 @@ class CeramicService {
 		}
 		return data?.updateUserIndex.document!;
 	}
-	async getProfile(): Promise<Users> {
-		const { data, errors } = await this.client.executeQuery<{ viewer: { indexasProfile: Users } }>(`
-			query {
-				viewer {
-					indexasProfile {
-						name
-						description
-						pfp
-					}
-				}
+	async getProfile(): Promise<Users | undefined> {
+		const p = await this.getProfileByDID(this.client.did?.parent!);
+		if (p) {
+			return p;
+		}
+	}
+	async getProfileByDID(did: string): Promise<Users | undefined> {
+		const { data, errors } = await this.client.executeQuery<{ node: { id: string, profile: Users } }>(`
+			{
+			  node(id: "${did}") {
+				...on CeramicAccount{
+				 id
+				  profile {
+					name
+					bio
+					avatar
+					createdAt
+					updatedAt	
+				  }
+			    }
+			  }
 			}
 		`);
-		if (errors) {
-			// TODO Handle
+		if (errors || !data?.node) {
+			return { id: did };
 		}
-		return <Users>data?.viewer?.indexasProfile!;
+		if (data && data.node) {
+			if (data.node.profile) {
+				data.node.profile = { ...data.node.profile, id: data.node.id };
+			} else {
+				data.node.profile = { id: data.node.id } as Users;
+			}
+		}
+		return <Users>data?.node?.profile;
 	}
 	async setProfile(profile: Users) {
-		if (!profile.pfp) {
-			delete profile.pfp;
-		}
+		const cdt = getCurrentDateTime();
+		delete profile.id;
+		if (!profile.createdAt) profile.createdAt = cdt;
+		profile.updatedAt = cdt;
 		const payload = {
 			content: profile,
 		};
-		const { data, errors } = await this.client.executeQuery<{ createIndexasProfile: { document: Users } }>(`	
-			mutation CreateIndexasProfile($input: CreateIndexasProfileInput!) {
-				createIndexasProfile(input: $input) {
+		const { data, errors } = await this.executeQuery<{ createProfile: { document: Users } }>(`	
+			mutation CreateProfile($input: CreateProfileInput!) {
+				createProfile(input: $input) {
 					document {
+					  controllerDID {
+					  	id
+					  }
 					  name
-					  description
-					  pfp					
+					  bio
+					  avatar
+					  createdAt
+					  updatedAt				
 					}
 				}
 			}`, { input: payload });
 		if (errors) {
+			console.log(errors);
 			// TODO Handle
 		}
-		return data?.createIndexasProfile.document!;
-	}
-	async uploadImage(file: File) {
-		try {
-			const { cid, path } = await this.ipfs.add(file);
-			return { cid, path };
-		} catch (err) {
-			//
-		}
+		// @ts-ignore
+		let p = data.createProfile.document;
+		// @ts-ignore
+		p = { ...p, id: p.controllerDID.id };
+		// @ts-ignore
+		delete p.controllerDID;
+		// @ts-ignore
+		return p;
 	}
 }
 

@@ -7,7 +7,6 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import Button from "components/base/Button";
 import api from "services/api-service";
 import { AccessControlCondition } from "types/entity";
-import Image from "next/image";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
 import { useApp } from "hooks/useApp";
 import IconAdd from "components/base/Icon/IconAdd";
@@ -23,20 +22,20 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 	const [loading, setLoading] = useState(false);
 	const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
 	const { setTransactionApprovalWaiting } = useApp();
-	const { isOwner } = useIndex();
+	const { index, roles } = useIndex();
 	const [conditions, setConditions] = useState<any>([]);
-	const addOrStatements = (c: AccessControlCondition[]) => c.flatMap((el, index) => (index === c.length - 1 ? el : [el, { operator: "or" }]));
+	const addOrStatements = (c: AccessControlCondition[]) => c.flatMap((el, i) => (i === c.length - 1 ? el : [el, { operator: "or" }]));
 	const loadAction = async (action: string) => {
 		const litAction = await api.getLITAction(action) as [any];
 		if (litAction) {
-			setConditions(litAction.filter((item: any, index: number) => index % 2 === 0));
+			setConditions(litAction.filter((item: any, i: number) => i % 2 === 0));
 		}
 	};
 
-	const handleRemove = async (index: number) => {
+	const handleRemove = async (i: number) => {
 		setNewCreatorModalVisible(false);
 		setTransactionApprovalWaiting(true);
-		const newConditions = [...conditions.slice(0, index), ...conditions.slice(index + 1)];
+		const newConditions = [...conditions.slice(0, i), ...conditions.slice(i + 1)];
 		const newAction = await api.postLITAction(addOrStatements(newConditions));
 		await onChange(newAction!);
 		setTransactionApprovalWaiting(false);
@@ -61,9 +60,9 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 		<>
 			<Row noGutters>
 				<Col pullLeft>
-					<Header className="mb-4">Creators</Header>
+					<Header className="mb-4" theme="gray6">Creators</Header>
 				</Col>
-				{isOwner && <Col pullRight>
+				{roles.owner() && <Col pullRight>
 					<Button
 						addOnBefore
 						className={"mr-0"}
@@ -77,22 +76,24 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
 			<Row className={"mt-0"}>
 				<Col xs={10}>
 					<Text fontFamily="freizeit" size={"lg"} fontWeight={500}>
-						{isOwner && <>Control write access to your index through NFTs.<br /></>}
+						{roles.owner() && <>Control write access to your index through NFTs.<br /></>}
 						Creators can add items, add tags to theirs and delete them.</Text>
 				</Col>
 			</Row>
-			<FlexRow className={"mt-6"} rowGutter={2} rowSpacing={2} colSpacing={2}>
+			<FlexRow className={"mt-6"} rowGutter={0} rowSpacing={2} colSpacing={2}>
 				{
 					conditions && conditions
-						.map((c: any, index: any) => <Col key={index} lg={6} xs={12}>
-							<CreatorRule handleRemove={() => handleRemove(index)} rule={c.metadata}></CreatorRule>
+						.map((c: any, i: any) => <Col key={i} lg={6} xs={12}>
+							<CreatorRule handleRemove={() => handleRemove(i)} rule={c.metadata}></CreatorRule>
 						</Col>)
 				}
 				{
 					conditions.length === 0 && <><Col className={"mt-4"} xs={12} centerBlock style={{
 						height: 166,
+						display: "grid",
+						placeItems: "center",
 					}}>
-						<Image src="/images/no_indexes.png" alt="No Indexes" layout="fill" objectFit='contain' />
+						<img src="/images/no_indexes.png" alt="No Indexes" />
 					</Col>
 					<Col className="text-center" centerBlock>
 						<Header level={4} style={{

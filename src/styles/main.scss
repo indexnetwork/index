@@ -15,7 +15,8 @@
 @import "./layout/flex",
 				"./layout/grid",
 				"./layout/navbar",
-				"./layout/footer";
+				"./layout/footer",
+				"./layout/app";
 
 @import "./components/base/text",
 				"./components/base/avatar",
@@ -47,7 +48,9 @@
 				"./components/business/header-input",
 				"./components/business/link-input",
 				"./components/business/site-navbar",
-				"./components/business/landing";
+				"./components/business/landing",
+				"./components/business/_empty-screen.scss",
+				"./components/business/_ai-chat.scss";
 
 @import "./pages/index-details-page.scss";
 

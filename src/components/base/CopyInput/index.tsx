@@ -42,15 +42,16 @@ const CopyInput = (
 			onClick={handleCopy}
 			justifyContent="flex-end"
 		>
-			<IconCopy strokeWidth={"1.8"} className="copy-input__icon" />
-			<Text className="copy-input__text" size="sm" fontWeight={600}>Copied</Text>
+			<IconCopy strokeWidth={"1"} className="copy-input__icon" />
+			<Text className="copy-input__text" size="sm" fontWeight={400}>Copied</Text>
 		</Flex>
 	);
 
 	return (
 		<Input
-			className="copy-input"
+			className="copy-input nonstyled"
 			type="text"
+			inputSize={"lg"}
 			readOnly
 			value={value}
 			addOnAfter={addOnAfter}

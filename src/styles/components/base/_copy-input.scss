@@ -4,6 +4,7 @@
 
 	&.input {
 		@extend .pr-6;
+		@extend .pl-3;
 		overflow: hidden;
 	}
 
@@ -24,14 +25,13 @@
 	&__button {
 		@include no-select;
 		height: 100%;
+		background: white;
 		align-items: center;
-		background: transparent;
 		position: absolute;
 		right: 0;
 
 		&:hover {
 			cursor: pointer;
-			background: $copy-input-icon-bg;
 		}
 
 		.copy-input__icon {
@@ -49,13 +49,13 @@
 		}
 
 		&.copied {
-			background: $copy-input-icon-bg;
 
+			@extend .px-3;
 			.copy-input__text {
 				@extend .mx-2;
 				overflow: hidden;
-				-webkit-animation: flexSlideIn 0.2s forwards;
-				animation: flexSlideIn 0.2s forwards;
+				flex-basis: 100%;
+				max-width: 100%;
 			}
 		}
 	}

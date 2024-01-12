@@ -12,7 +12,7 @@ const Header = (
 	{
 		level = 3,
 		fontFamily = "default",
-		theme,
+		theme = "gray6",
 		children,
 		...headerProps
 	}: HeaderProps,

@@ -5,78 +5,42 @@ import Flex from "components/layout/base/Grid/Flex";
 import React from "react";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
 import IconCopy from "components/base/Icon/IconCopy";
-import Button from "components/base/Button";
 import { copyToClipboard } from "utils/helper";
 import IconRemove from "components/base/Icon/IconRemove";
 import IconAddCircle from "components/base/Icon/IconAddCircle";
+import { Indexes } from "types/entity";
 
 export interface IndexOperationsPopupProps {
-	is_in_my_indexes: boolean,
-	streamId: string;
-	mode?: "indexes-page" | "index-detail-page";
+	index: Indexes;
 	isOwner?: boolean;
-	userIndexToggle(index_id: string, type: string, op: string): void;
+	userIndexToggle(index: Indexes, type: string, op: string): void;
 }
 
 const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
-	streamId,
-	is_in_my_indexes = false,
-	mode = "indexes-page",
-	userIndexToggle,
+	index,
 	isOwner = false,
+	userIndexToggle,
 }) => (
 	<Dropdown
 		menuClass="index-list-item-menu ml-6"
 		position="bottom-right"
 		menuItems={
 			<>
-				{/* {
-					mode === "indexes-page" && (
-						<DropdownMenuItem>
-							<Flex alignItems="center">
-								<IconPeople width={12} height="100%" />
-								<Text className="ml-3" element="span" size="sm" theme="secondary"> Share</Text>
-							</Flex>
-						</DropdownMenuItem>
-					)
-				} */}
-				{/* <DropdownMenuItem>
-					<Flex alignItems="center">
-						<IconIntegration width={12} height="100%" />
-						<Text className="ml-3" element="span" size="sm" theme="secondary"> Integrations</Text>
-					</Flex>
-				</DropdownMenuItem> */}
-				{/* <DropdownMenuItem>
-						<Flex alignItems="center">
-							<IconEmbed width={16} height="100%" />
-							<Text className="ml-3" element="span" size="md" theme="primary"> Embed</Text>
-						</Flex>
-					</DropdownMenuItem>
-
-					<DropdownMenuItem
-						onClick={handleClone}
-					>
-						<Flex alignItems="center">
-							<IconCopy width={16} height="100%" />
-							<Text className="ml-3" element="span" size="md" theme="primary"> Clone</Text>
-						</Flex>
-					</DropdownMenuItem>
-					*/}
 				<DropdownMenuItem onClick={() => {
 					copyToClipboard(`${window.location.href}`);
 				}}>
 					<Flex alignItems="center">
 						<IconCopy />
-						<Text className="ml-3" element="span" size="md" > Copy Link</Text>
+						<Text className="ml-3" element="span" size="md" >Copy Link</Text>
 					</Flex>
 				</DropdownMenuItem>
 				{
 					isOwner && (
-						is_in_my_indexes ? (
+						index && index.isOwner ? (
 							<>
 								<DropdownMenuItem divider />
 								<DropdownMenuItem
-									onClick={() => userIndexToggle(streamId, "my_indexes", "remove")}
+									onClick={() => userIndexToggle(index, "owner", "remove")}
 								>
 									<Flex alignItems="center">
 										<IconRemove />
@@ -88,7 +52,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 							<>
 								<DropdownMenuItem divider />
 								<DropdownMenuItem
-									onClick={() => userIndexToggle(streamId, "my_indexes", "add")}
+									onClick={() => userIndexToggle(index, "owner", "add")}
 								>
 									<Flex alignItems="center">
 										<IconAddCircle />
@@ -102,18 +66,7 @@ const IndexOperationsPopup: React.VFC<IndexOperationsPopupProps> = ({
 			</>
 		}
 	>
-		{
-			mode === "indexes-page" ? (
-				<IconContextMenu width={20} height={20} className="index-list-item-menu-btn" />
-			) : (
-				<Button iconButton theme="clear" size="sm">
-					<IconContextMenu
-						width={16}
-						height={16}
-					/>
-				</Button>
-			)
-		}
+		<IconContextMenu width={20} height={20} className="index-list-item-menu-btn" />
 	</Dropdown>
 );
 

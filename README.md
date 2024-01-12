@@ -1,9 +1,9 @@
 <h1 align="center">
     <a href="https://amplication.com/#gh-light-mode-only">
-    <img style="width:400px" src="https://dev.index.as/images/indexasLogo.png">
+    <img style="width:400px" src="https://index.network/images/IndexNetworkLogo.png">
     </a>
     <a href="https://amplication.com/#gh-dark-mode-only">
-    <img style="width:400px" src="https://dev.index.as/images/indexasLogo-white.png">
+    <img style="width:400px" src="https://index.network/images/IndexNetworkLogo-white.png">
     </a>
 </h1>
 
@@ -31,10 +31,10 @@
 </h4>
 
 
-## About index.network
-index.network allows creators to make contextual discovery engines from their information. It enables data-ownership, collaboration, and monetization to form discovery ecosystem as a network.  It cultivates greater participation in decentralized discovery and creates diverse and inclusive ecosystem.
+## About Index Network
+Index Network allows creators to make contextual discovery engines from their information. It enables data-ownership, collaboration, and monetization to form discovery ecosystem as a network.  It cultivates greater participation in decentralized discovery and creates diverse and inclusive ecosystem.
 
-We use NFTs as creator roles for broader contexts with large groups. index.as is useful for creators​, communities, DAOs, brands, curators, researchers, enthusiasts.
+We use NFTs as creator roles for broader contexts with large groups. Index is useful for creators​, communities, DAOs, brands, curators, researchers, enthusiasts.
 
 ## Table of contents
 1. [Features](#features)
@@ -55,7 +55,9 @@ We use NFTs as creator roles for broader contexts with large groups. index.as is
 - [x] Creator Monetization: Utilize membership NFTs to earn revenue with complete autonomy.
 - [ ] Launch Mainnet
 - [ ] Enable 3rd-party Algorithms: Integrate with the LLMs, search algorithms.
+- [ ] Integrations (eg. zapier)
 - [ ] Token curated indexes
+- [ ] Creator Monetization (private indexes)
 - [x] New Schemas: Expand the supported schemas:
 	- [x] Links
 	- [ ] Videos
@@ -69,9 +71,15 @@ We use NFTs as creator roles for broader contexts with large groups. index.as is
 
 ## Examples
 !TODO
-## Architecture Overview
-![enter image description here](https://forum.ceramic.network/uploads/default/original/1X/d7bbbdc792bfe63680f2e0ddac43928af27b6292.png)
 
+
+## Architecture Overview
+
+<picture>
+	<source media="(prefers-color-scheme: dark)" srcset="https://index.network/images/dataflow-black.png">
+	<source media="(prefers-color-scheme: light)" srcset="https://index.network/images/dataflow-white.png">
+	<img alt="Dataflow" src="https://index.network/images/dataflow-white.png">
+</picture>
 
 ## Components
 
@@ -86,7 +94,7 @@ The [API](https://github.com/indexas/web3-api) repository also hosts the code fo
 
 ### Ceramic Network Node
 ComposeDB on Ceramic is a composable graph database built for Web3.  Here you can find the steps to deploy along with an IPFS Node:
-https://composedb.js.org/docs/0.4.x/guides/composedb-server
+[https://composedb.js.org/docs/0.5.x/guides/composedb-server](https://composedb.js.org/docs/0.5.x/guides/composedb-server)
 
 We built four different schemas to store information on Ceramic:
 - Index _[(view model)](https://s3.xyz/models/modelview/kjzl6hvfrbw6c8e8rlhx3guuoc1o6i4vni5emzh2c48aa5pn0u71jggun7rtu2a?network=TESTNET)_
@@ -96,7 +104,7 @@ We built four different schemas to store information on Ceramic:
 
 ### IPFS Node
 ComposeDB on Ceramic is a composable graph database built for Web3.  Here you can find the steps to deploy along with an IPFS Node:
-https://composedb.js.org/docs/0.4.x/guides/composedb-server
+[https://composedb.js.org/docs/0.5.x/guides/composedb-server](https://composedb.js.org/docs/0.5.x/guides/composedb-server)
 
 ### Others
 We use [PostgreSQL](https://www.postgresql.org/) indexing feature of [Ceramic Network](https://ceramic.network/) and use [KafkaConnect CDC](https://docs.confluent.io/cloud/current/connectors/cc-postgresql-source.html) to produce db changes to [Apache Kafka](https://kafka.apache.org/) and finally write data to [Elasticsearch](https://www.elastic.co/) via the consumer service.
@@ -270,4 +278,4 @@ Index.as leverages the power of several open protocols to enhance its capabiliti
 -   **[Twitter](https://twitter.com/indexas)**  for the latest updates on the product and published blogs.
 
 ## License
-index.as is under the MIT license. See the  [LICENSE](https://github.com/indexas/indexas/blob/main/LICENSE.md)  for more information.
+index.as is under the MIT license. See the  [LICENSE](https://github.com/indexas/indexas/blob/main/LICENSE)  for more information.

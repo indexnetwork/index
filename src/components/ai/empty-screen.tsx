@@ -1,52 +1,82 @@
-import { UseChatHelpers } from "ai/react";
-
-import Button from "components/base/Button";
-
-import { IconArrowRight } from "components/ai/ui/icons";
+import IconLightbulb from "components/base/Icon/IconLightbulb";
+import Flex from "components/layout/base/Grid/Flex";
 import Text from "../base/Text";
 
 const exampleMessages = [
 	{
-		heading: "What's new today?",
-		message: `Summarize today's content.`,
+		message: `Highlight any paradigm shifts in my indexes that might challenge previous knowledge.`,
 	},
 	{
-		heading: "Summarize my indexes",
-		message: "Summarize all my sources",
+		message: "Collate any overlaps between X index and practices in Y company.",
 	},
 	{
-		heading: "Draft an email",
-		message: `Draft an email to my boss.`,
+		message: `Based on recent developments, predict the next major changes for the discovery ecosystem`,
+	},
+	{
+		message: `List all updates from my discovery network`,
 	},
 ];
 
-export function EmptyScreen({ setInput }: Pick<UseChatHelpers, "setInput">) {
+export function EmptyScreen({
+	setInput,
+	contextMessage,
+	indexes,
+  }: {
+	setInput: (input: string) => void;
+	contextMessage: string;
+	indexes?: string[];
+  }) {
 	return (
-		<div className="card-item mx-auto ">
-			<div className="rounded-lg border bg-background p-8">
-
-				<Text fontFamily="freizeit" size={"xl"} fontWeight={700} className={"mb-2"}>
-					Chat with your indexes
-				</Text>
-				<br /><br />
-				<Text fontFamily="freizeit" size={"md"} fontWeight={500}>
-					Your responses will align with all your indexes.
-					<br />
-          			You can start a conversation here or try the following examples:
-				</Text>
-				<div className="mt-4">
-					{exampleMessages.map((message, index) => (<div key={index}>
-						<Button
-							key={index}
-							theme={"ghost"}
-							addOnBefore={<IconArrowRight width={20} />}
-							onClick={() => setInput(message.message)}
-						>
-							<div className={"ml-2"}>{message.heading}</div>
-						</Button>
-					</div>))}
-				</div>
-			</div>
+	  <Flex
+		flexDirection="column"
+		justifyContent="center"
+		alignItems="center"
+		className="container-empty-screen pt-2"
+	  >
+		<div className="inner-container-empty-screen">
+		  <img
+			src="/images/index-chat-empty-screen.png"
+			width={202}
+			height={202}
+			alt="Illustration of trees"
+		  />
+		  <Text fontFamily="freizeit" size="xl" className="text" fontWeight={700}>
+			Your responses will align with {contextMessage}
+		  </Text>
 		</div>
+		<div className="example-messages-empty-screen">
+		  {indexes && indexes.length > 0 ? exampleMessages
+				.slice(0, 2)
+				.map((message, i) => (
+				  <ExampleMessageBox
+					key={i}
+					message={message.message}
+					setInput={setInput}
+				  />
+				)) : exampleMessages.map((message, i) => (
+				<ExampleMessageBox
+				  key={i}
+				  message={message.message}
+				  setInput={setInput}
+				/>
+			  ))}
+		</div>
+	  </Flex>
 	);
-}
+  }
+
+  const ExampleMessageBox = ({
+	message,
+	setInput,
+  }: {
+	message: string;
+	setInput: (input: string) => void;
+  }) => (
+	<button
+	  onClick={() => setInput(message)}
+	  className="example-message-box-empty-screen"
+	>
+	  <IconLightbulb className="icon-empty-screen" />
+	  <Text className="truncate-text" fontWeight={500}>{message}</Text>
+	</button>
+  );

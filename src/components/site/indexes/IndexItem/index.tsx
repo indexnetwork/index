@@ -1,101 +1,47 @@
 import Avatar from "components/base/Avatar";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
-import LinkItem from "components/site/index-details/LinkItem";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
-import Row from "components/layout/base/Grid/Row";
-import moment from "moment";
+import FlexRow from "components/layout/base/Grid/FlexRow";
 import React from "react";
-import { Indexes, IndexLink } from "types/entity";
+import { Indexes } from "types/entity";
 import sanitize from "sanitize-html";
-import List from "components/base/List";
-import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
-import Tooltip from "components/base/Tooltip";
-import Button from "components/base/Button";
-import IconStar from "components/base/Icon/IconStar";
+import cc from "classcat";
+import { maskDID } from "utils/helper";
+import Link from "next/link";
+import { useRouter } from "next/router";
 import cm from "./style.module.scss";
 
 export interface IndexItemProps {
 	index: Indexes,
-	hasSearch: boolean;
-	isOwner: boolean;
+	selected: boolean,
 	onClick?(): Promise<void>;
-	userIndexToggle(index_id: string, type: string, op: string): void;
 }
 
 const IndexItem: React.VFC<IndexItemProps> = ({
 	index,
-	hasSearch = false,
-	isOwner = false,
-	userIndexToggle,
+	selected,
 	onClick,
-}) => <Row
-	className="index-list-item my-6"
->
-	<Col
-		xs={12}
-		className="mb-3"
-	>
-		<Avatar size={20}>{index.controllerDID.id}</Avatar>
-		<Text className="ml-3" size="sm" verticalAlign="middle" fontWeight={500} element="span">{index.controllerDID.id || ""}</Text>
-	</Col>
-	<Col
-		xs={12}
-		className="mb-2"
-	>
-		<Flex
-			justifyContent="space-between"
-			alignItems="center"
-		>
-			<Col
-				className="idxflex-grow-1 mr-5"
-			>
-				<Header onClick={onClick} className={cm.title} dangerouslySetInnerHTML={{ __html: sanitize(index.title || "") }}></Header>
+}) => {
+	const router = useRouter();
+	const { did } = router.query;
+	return <Link href="/index/[indexId]" as={`/index/${index.id}`} shallow={true}>
+		<FlexRow onClick={onClick} className={cc([
+			selected ? "index-list-item-selected" : "index-list-item",
+			"p-6",
+		])} wrap={false} align={"center"}>
+			<Col>
+				<Avatar size={40} user={index.ownerDID} />
 			</Col>
-			<Col className="mr-2 mt-2">
-				<Tooltip content="Add to Starred Index">
-					<Button
-						iconHover
-						theme="clear"
-						borderless
-						onClick={() => userIndexToggle(index.id, "starred", index.is_starred ? "remove" : "add") }>
-						<IconStar fill={index.is_starred ? "var(--main)" : "var(--white)"} width={20} height={20} />
-					</Button>
-				</Tooltip>
+			<Col className="px-3">
+				<Flex flexDirection={"column"} >
+					<Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{index.ownerDID.name || maskDID(index.ownerDID.id!) || ""}</Text>
+					<Header level={4} className={cm.title} dangerouslySetInnerHTML={{ __html: sanitize(index.title || "") }}></Header>
+				</Flex>
 			</Col>
-			<Col className="ml-1">
-				<Button
-					className="pt-2"
-					iconHover
-					theme="clear"
-					borderless>
-					<IndexOperationsPopup
-						streamId={index.id}
-						is_in_my_indexes={index.is_in_my_indexes!}
-						isOwner={isOwner}
-						userIndexToggle={userIndexToggle}
-					/>
-				</Button>
-			</Col>
-		</Flex>
-	</Col>
-	<Col xs={12}>
-		<Text size="sm" theme="disabled">Updated {index.updatedAt ? moment(index.updatedAt).fromNow() : ""}</Text>
-	</Col>
-	{
-
-		hasSearch && index.links && <Col xs={12} style={{
-			paddingLeft: 16,
-		}}>
-			<List
-				data={index.links || []}
-				listClass="index-list"
-				render={(l: IndexLink) => <LinkItem search index_link={l} />}
-				divided
-			/>
-		</Col>
-	}
-</Row>;
+		</FlexRow>
+	</Link>;
+};
 
 export default IndexItem;

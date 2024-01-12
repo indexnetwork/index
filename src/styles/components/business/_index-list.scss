@@ -19,3 +19,18 @@
 		}
 	}
 }
+
+.index-list {
+	a {
+		color: $black;
+	}
+	.list-item{
+		cursor: pointer;
+	}
+	.index-list-item:hover{
+		background: #F8FAFC;
+	}
+	.index-list-item-selected{
+		background: #F1F5F9;
+	}
+}

@@ -21,7 +21,7 @@ const CreatorRulePopup = (
 	}: CreatorRulePopupPopupProps,
 ) => {
 	const { t } = useTranslation("common");
-	const { isOwner } = useIndex();
+	const { roles } = useIndex();
 	const handleRemove = () => {
 		onRemove && onRemove();
 	};
@@ -42,7 +42,7 @@ const CreatorRulePopup = (
 							<Text className="ml-3" element="span" >View on Etherscan</Text>
 						</Flex>
 					</DropdownMenuItem>
-					{isOwner && <DropdownMenuItem onClick={handleRemove}>
+					{roles.owner() && <DropdownMenuItem onClick={handleRemove}>
 						<Flex alignItems="center">
 							<IconRemove height="auto" className="icon-error" />
 							<Text className="ml-3" element="span" theme="error" > {t("remove")}</Text>

@@ -4,7 +4,6 @@ import Text from "components/base/Text";
 import Dropdown from "components/base/Dropdown";
 import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
 
-import IconPeople from "components/base/Icon/IconPeople";
 import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
 import React, {
@@ -16,11 +15,11 @@ import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { useAuth } from "hooks/useAuth";
 import { selectProfile } from "store/slices/profileSlice";
-import { appConfig } from "config";
 import IconSettings from "components/base/Icon/IconSettings";
 import Navbar, { NavbarProps, NavbarMenu } from "components/layout/base/Navbar";
 import { useApp } from "hooks/useApp";
 import { useRouter } from "next/router";
+import IconHistory from "components/base/Icon/IconHistory";
 
 export interface LandingHeaderProps extends NavbarProps {
 	headerType: "public" | "user";
@@ -37,15 +36,14 @@ const SiteNavbar = (
 	const { t } = useTranslation(["common", "components"]);
 	const router = useRouter();
 	const {
+		setCreateModalVisible, rightSidebarOpen, setRightSidebarOpen, setEditProfileModalVisible,
+	} = useApp();
+	const {
 		did,
 		loading,
 	} = useAppSelector(selectConnection);
 
-	const {
-		available,
-		name,
-		pfp,
-	} = useAppSelector(selectProfile);
+	const profile = useAppSelector(selectProfile);
 
 	const authenticated = useAuth();
 	const { connect, disconnect } = useContext(AuthHandlerContext);
@@ -57,15 +55,14 @@ const SiteNavbar = (
 		}
 	};
 
-	const { setCreateModalVisible } = useApp();
-
 	const renderHeader = useCallback(() => (headerType === "public" ? (
 		<Navbar
 			className="site-navbar"
 			logoSize="full"
 			sticky
-			bgColor={isLanding ? "#f4fbf6" : undefined}
+			bgColor={isLanding ? "#fff" : undefined}
 			bordered={false}
+			isLanding
 			{...baseProps}
 		>
 			<NavbarMenu placement="right">
@@ -93,23 +90,18 @@ const SiteNavbar = (
 		>
 			{
 				authenticated ? (
+
 					<NavbarMenu>
-						<Button className="pr-5 pl-5" onClick={() => { setCreateModalVisible(true); }} theme="primary">{t("components:header.newIndexBtn")}</Button>
+						<div className={"navbar-sidebar-handlers mr-3"}> <Button onClick={() => setRightSidebarOpen(!rightSidebarOpen)} iconButton theme="clear"><IconHistory width={32} /></Button></div>
+						<Button style={{ height: "32px" }} className="pr-5 pl-5" onClick={() => { setCreateModalVisible(true); }} theme="primary">{t("components:header.newIndexBtn")}</Button>
 						<Dropdown
-							dropdownClass="ml-6"
+							dropdownClass="ml-3"
 							position="bottom-right"
 							menuItems={
 								<>
+
 									<DropdownMenuItem onClick={() => {
-										router.push("/profile/view");
-									}}>
-										<Flex alignItems="center">
-											<IconPeople width={16} height="100%"/>
-											<Text className="ml-3" element="span" size="md" >{t("common:profile")}</Text>
-										</Flex>
-									</DropdownMenuItem>
-									<DropdownMenuItem onClick={() => {
-										router.push("/profile");
+										setEditProfileModalVisible(true);
 									}}>
 										<Flex alignItems="center">
 											<IconSettings width={16} height="100%"/>
@@ -132,11 +124,7 @@ const SiteNavbar = (
 								</>
 							}
 						>
-							<Avatar className="site-navbar__avatar" hoverable size={32}>{
-								pfp ?
-									<img src={pfp.replace("ipfs://", appConfig.ipfsProxy)} alt="profile_img"/> : (
-										available && name ? name : "Y"
-									)}</Avatar>
+							<Avatar size={32} user={profile} className="site-navbar__avatar" hoverable />
 						</Dropdown>
 					</NavbarMenu>
 				) :
