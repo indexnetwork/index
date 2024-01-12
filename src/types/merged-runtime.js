@@ -1,39 +1,40 @@
+// This is an auto-generated file, do not edit manually
 export const definition = {
     "models": {
         "Index": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6cagi7g34abu6z5577q72fydc9rkvb42x6qazazynllq8g8g5l4l",
+            "id": "kjzl6hvfrbw6c9jkqpil5x6m14kobigaatfx35th0u3rdcd8tqfpz4eeuja04nm",
             "accountRelation": {"type": "list"}
         },
         "IndexItem": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6cbcg7dk1bsmnmdubsk3yj15ht07zf7wbn3ps4peto28nt2n5hy1",
+            "id": "kjzl6hvfrbw6c8z4qq7wy7p1xhemzoq2lnhvq04xcs5re7c6j1kip9vwgt4usl2",
             "accountRelation": {"type": "list"}
         },
         "Embedding": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c7g0ue98mvzvfh3sfzvzqr7zby0wil22x34u464q1vhzrlrcdco",
+            "id": "kjzl6hvfrbw6c71l0b0p93bprl050xe9lanat8403a3z1zha1t4sys9u098arm8",
             "accountRelation": {"type": "list"}
         },
         "WebPage": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6calh2ht019q87xfuoi7xecn3otnxi7l3pm6t4mfyhznqml2ipg2",
+            "id": "kjzl6hvfrbw6c63kez9uo8joei35x0oy00c4obvoqo2lrevtkm74bragdg3ajpl",
             "accountRelation": {"type": "list"}
         },
         "DIDIndex": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c7actchexmj9clt1tga2kt5qhatdljfr0kfb30f1kkljnvjklll",
+            "id": "kjzl6hvfrbw6c7lebz1agxo8eph302gdow757f3wpttkut485o4xrd8jtednsvg",
             "accountRelation": {"type": "list"}
         },
         "Profile": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c5zkvtgtv9m3a51v9pd4eg6or18y5qigjhn60grulgy9fulfruf",
+            "id": "kjzl6hvfrbw6c7b0ucpni3cbslclej6aphfrnyqdv8awj0iwnqlx6xjbzrgc6nd",
             "accountRelation": {"type": "single"}
         }
     },
@@ -50,7 +51,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "queryConnection",
-                    "model": "kjzl6hvfrbw6cbcg7dk1bsmnmdubsk3yj15ht07zf7wbn3ps4peto28nt2n5hy1",
+                    "model": "kjzl6hvfrbw6c8z4qq7wy7p1xhemzoq2lnhvq04xcs5re7c6j1kip9vwgt4usl2",
                     "property": "indexId"
                 }
             },
@@ -59,7 +60,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "queryConnection",
-                    "model": "kjzl6hvfrbw6c7actchexmj9clt1tga2kt5qhatdljfr0kfb30f1kkljnvjklll",
+                    "model": "kjzl6hvfrbw6c7lebz1agxo8eph302gdow757f3wpttkut485o4xrd8jtednsvg",
                     "property": "indexId"
                 }
             }
@@ -80,7 +81,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "document",
-                    "model": "kjzl6hvfrbw6cagi7g34abu6z5577q72fydc9rkvb42x6qazazynllq8g8g5l4l",
+                    "model": "kjzl6hvfrbw6c9jkqpil5x6m14kobigaatfx35th0u3rdcd8tqfpz4eeuja04nm",
                     "property": "indexId"
                 }
             }
@@ -106,7 +107,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "document",
-                    "model": "kjzl6hvfrbw6cagi7g34abu6z5577q72fydc9rkvb42x6qazazynllq8g8g5l4l",
+                    "model": "kjzl6hvfrbw6c9jkqpil5x6m14kobigaatfx35th0u3rdcd8tqfpz4eeuja04nm",
                     "property": "indexId"
                 }
             }
@@ -131,7 +132,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "document",
-                    "model": "kjzl6hvfrbw6cagi7g34abu6z5577q72fydc9rkvb42x6qazazynllq8g8g5l4l",
+                    "model": "kjzl6hvfrbw6c9jkqpil5x6m14kobigaatfx35th0u3rdcd8tqfpz4eeuja04nm",
                     "property": "indexId"
                 }
             },
