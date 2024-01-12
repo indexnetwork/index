@@ -1,6 +1,7 @@
+/*
 import { Actor } from 'apify';
 import { PuppeteerCrawler, RequestList, sleep } from "crawlee";
-/*
+
 req.app.get('queue').addRequests([{url, uniqueKey: Math.random().toString()}])
 await app.set('queue', await getQueue())
 export const getQueue = async () => {
