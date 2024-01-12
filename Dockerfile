@@ -1,4 +1,4 @@
-FROM apify/actor-node-puppeteer-chrome:latest
+FROM node:20-alpine
 COPY package*.json ./
 COPY yarn.lock ./
 RUN yarn install
