@@ -5,6 +5,7 @@ import moment from "moment";
 const getCurrentDateTime = () => moment.utc().toISOString();
 
 import {definition} from "../types/merged-runtime.js";
+import {getOwnerProfile} from "../libs/lit/index.js";
 
 export class IndexService {
     constructor() {
@@ -116,7 +117,10 @@ export class IndexService {
             }
 
             // Return the created index document
-            return data.createIndex.document;
+            const createdIndex =  data.createIndex.document;
+            createdIndex.ownerDID = await getOwnerProfile(createdIndex.signerPublicKey);
+
+            return createdIndex;
 
         } catch (error) {
             // Log the error and rethrow it for external handling
