@@ -121,19 +121,28 @@ export class DIDService {
             }
 
             if (data.node.didIndexList.edges.length === 0) {
-                return null;
+                return [];
             }
 
-            let promises = data.node.didIndexList.edges.map(async (edge) => {
-                // Get the ownerDID asynchronously
 
-                const ownerDID = await getOwnerProfile(edge.node.index.signerPublicKey);
-                // Return the modified edge with the ownerDID
-                return { ...edge.node.index, ownerDID };
-            });
+            const indexes = data.node.didIndexList.edges.reduce((acc, edge) => {
+                const indexId = edge.node.index.id;
+                if (!acc[indexId]) {
+                    acc[indexId] = { isOwner: false, isStarred: false, ...edge.node.index };
+                }
 
-            const results = await Promise.all(promises);
-            return results;
+                if (edge.node.type === "owner") {
+                    acc[indexId].isOwner = true;
+                } else if (edge.node.type === "starred") {
+                    acc[indexId].isStarred = true;
+                }
+                return acc;
+            }, {});
+
+            return Promise.all(Object.values(indexes).map(async (i) => {
+                const ownerDID = await getOwnerProfile(i.signerPublicKey);
+                return { ...i, ownerDID };
+            }));
 
 
         } catch (error) {
