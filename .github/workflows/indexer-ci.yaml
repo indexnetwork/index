@@ -4,6 +4,11 @@ on:
     branches:
     - testnet
     - dev
+    paths:
+    - 'indexer/**'    
+defaults:
+ run:
+  working-directory: ./indexer    
 jobs:
   main:
     runs-on: ubuntu-latest

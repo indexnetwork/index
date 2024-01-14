@@ -4,6 +4,11 @@ on:
     branches:
       - testnet
       - dev
+    paths:
+    - 'api/**'
+defaults:
+ run:
+  working-directory: ./api    
 jobs:
   main:
     runs-on: ubuntu-latest
