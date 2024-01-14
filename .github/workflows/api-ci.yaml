@@ -1,9 +1,9 @@
-name: deploy
+name: API Build & Deploy
 on:
   push:
     branches:
-      - testnet
-      - dev
+    - testnet
+    - dev
     paths:
     - 'api/**'    
 jobs:
