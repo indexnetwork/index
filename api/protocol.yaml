@@ -1,0 +1,412 @@
+openapi: 3.0.0
+info:
+  title: Index and Embedding API
+  version: 1.0.0
+paths:
+  /index:
+    post:
+      operationId: createIndex
+      summary: Create a new Index
+      description: Endpoint to create a new Index entity.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Index'
+      responses:
+        '201':
+          description: Index created successfully
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+
+    get:
+      operationId: listIndexes
+      summary: List all Indexes
+      description: Retrieves a list of all Index entities.
+      responses:
+        '200':
+          description: A list of Indexes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Index'
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+
+  /index/{indexId}:
+    get:
+      operationId: getIndex
+      summary: Get an Index by ID
+      description: Retrieve an Index entity by its unique identifier.
+      parameters:
+        - name: indexId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Index'
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+        '404':
+          description: Index not found
+
+    put:
+      operationId: updateIndex
+      summary: Update an Index by ID
+      description: Update an existing Index entity by its ID.
+      parameters:
+        - name: indexId
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Index'
+      responses:
+        '200':
+          description: Index updated successfully
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+        '404':
+          description: Index not found
+
+  /item:
+    post:
+      operationId: createIndexItem
+      summary: Create a new IndexItem
+      description: Endpoint to create a new IndexItem entity.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexItem'
+      responses:
+        '201':
+          description: IndexItem created successfully
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+
+    get:
+      operationId: listIndexItems
+      summary: List all IndexItems
+      description: Retrieves a list of all IndexItem entities.
+      responses:
+        '200':
+          description: A list of IndexItems
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IndexItem'
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+
+  /item/{itemId}:
+    get:
+      operationId: getIndexItem
+      summary: Get an IndexItem by ID
+      description: Retrieve an IndexItem entity by its unique identifier.
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexItem'
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+        '404':
+          description: IndexItem not found
+
+    put:
+      operationId: updateIndexItem
+      summary: Update an IndexItem by ID
+      description: Update an existing IndexItem entity by its ID.
+      parameters:
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IndexItem'
+      responses:
+        '200':
+          description: IndexItem updated successfully
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+        '404':
+          description: IndexItem not found
+
+  /embedding:
+    post:
+      operationId: createEmbedding
+      summary: Create a new Embedding
+      description: Endpoint to create a new Embedding entity.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Embedding'
+      responses:
+        '201':
+          description: Embedding created successfully
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+
+    get:
+      operationId: listEmbeddings
+      summary: List all Embeddings
+      description: Retrieves a list of all Embedding entities.
+      responses:
+        '200':
+          description: A list of Embeddings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Embedding'
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+
+  /embedding/{embeddingId}:
+    get:
+      operationId: getEmbedding
+      summary: Get an Embedding by ID
+      description: Retrieve an Embedding entity by its unique identifier.
+      parameters:
+        - name: embeddingId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Embedding'
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+        '404':
+          description: Embedding not found
+
+    put:
+      operationId: updateEmbedding
+      summary: Update an Embedding by ID
+      description: Update an existing Embedding entity by its ID.
+      parameters:
+        - name: embeddingId
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Embedding'
+      responses:
+        '200':
+          description: Embedding updated successfully
+        '400':
+          description: Invalid input
+        '401':
+          description: Unauthorized. Authentication required to access this resource.
+        '404':
+          description: Embedding not found
+
+  /query:
+    post:
+      operationId: query
+      summary: Query
+      description: |
+        This endpoint allows for a complex query against indexes, items, and embeddings, filtered by specific identifiers and categories. It supports querying based on Decentralized Identifiers (DIDs), item and index identifiers, and specific types of embeddings.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Query'
+      responses:
+        '200':
+          description: Query results
+        '400':
+          description: Bad request, such as invalid input
+        '401':
+          description: Unauthorized, especially relevant if viewerDID is used for access control
+        '500':
+          description: Internal server error
+
+components:
+  schemas:
+    Index:
+      type: object
+      properties:
+        title:
+          type: string
+        accessControl:
+          $ref: '#/components/schemas/LITAccessControl'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+        controllerDID:
+          type: string
+        version:
+          type: string
+
+    LITAccessControl:
+      type: object
+      properties:
+        signerPublicKey:
+          type: string
+        signerFunction:
+          type: string
+
+    IndexItem:
+      type: object
+      properties:
+        indexId:
+          type: string
+        itemId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+        version:
+          type: string
+
+    Embedding:
+      type: object
+      properties:
+        modelName:
+          type: string
+        vector:
+          type: array
+          items:
+            type: number
+        context:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        indexId:
+          type: string
+        itemId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+        controllerDID:
+          type: string
+        version:
+          type: string
+    Query:
+      type: object
+      properties:
+        indexes:
+          type: array
+          items:
+            type: string
+          description: Array of indexes to be queried.
+        dids:
+          type: array
+          items:
+            type: string
+          description: Array of DIDs for filtering or access control.
+        items:
+          type: array
+          items:
+            type: string
+          description: Array of items within the indexes to be queried.
+        embeddingCategories:
+          type: array
+          items:
+            type: string
+          description: Embeddings categories to be used in the query.
+        vectors:
+          type: array
+          items:
+            type: number
+          description: Embeddings vector to be utilized for similarty search in the query.
+        viewerDID:
+          type: string
+          description: Decentralized Identifier of the viewer or user making the query.
+        question:
+          type: string
+          description: The query string or question to be answered.
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: EIP-4361 Signature

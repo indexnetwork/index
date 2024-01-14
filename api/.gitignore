@@ -1,0 +1,9 @@
+.idea
+node_modules
+.DS_Store
+secret.yaml
+.env
+ceramic/
+conf/
+helpers/
+storage/
