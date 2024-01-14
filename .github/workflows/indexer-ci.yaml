@@ -60,6 +60,7 @@ jobs:
         uses: docker/setup-buildx-action@v1
 
       - name: Build, tag, and push image to Amazon ECR
+        working-directory: ./api
         env:
           DOCKER_TAG: indexnetwork/llm-indexer:${{ steps.build-time.outputs.time }}
           DOCKER_REGISTRY: 236785930124.dkr.ecr.us-east-1.amazonaws.com
