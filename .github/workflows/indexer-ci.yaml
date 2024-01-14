@@ -1,9 +1,11 @@
-name: deploy
+name: Indexer Build & Deploy
 on:
   push:
     branches:
     - testnet
     - dev
+    paths:
+    - 'indexer/**'      
 jobs:
   main:
     runs-on: ubuntu-latest
@@ -55,16 +57,17 @@ jobs:
         uses: docker/setup-buildx-action@v1
 
       - name: Build, tag, and push image to Amazon ECR
+        working-directory: ./indexer  
         env:
           DOCKER_TAG: indexnetwork/llm-indexer:${{ steps.build-time.outputs.time }}
           DOCKER_REGISTRY: 236785930124.dkr.ecr.us-east-1.amazonaws.com
         run: |
           docker build -t $DOCKER_TAG .
-          docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
-          docker push $DOCKER_REGISTRY/$DOCKER_TAG
-          docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexnetwork/llm-indexer:latest-${GITHUB_REF#refs/heads/}
-          docker push $DOCKER_REGISTRY/indexnetwork/llm-indexer:latest-${GITHUB_REF#refs/heads/}
+          # docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
+          # docker push $DOCKER_REGISTRY/$DOCKER_TAG
+          # docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexnetwork/llm-indexer:latest-${GITHUB_REF#refs/heads/}
+          # docker push $DOCKER_REGISTRY/indexnetwork/llm-indexer:latest-${GITHUB_REF#refs/heads/}
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/llm-indexer llm-indexer=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/llm-indexer:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
+          # kubectl set image deployment/llm-indexer llm-indexer=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/llm-indexer:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}

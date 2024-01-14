@@ -1,9 +1,14 @@
-name: deploy
+name: Web App Build & Deploy
 on:
   push:
     branches:
     - testnet
     - dev
+    paths:
+    - 'web-app/**'      
+defaults:
+ run:
+  working-directory: ./web-app    
 jobs:
   main:
     runs-on: ubuntu-latest
@@ -13,7 +18,7 @@ jobs:
         uses: azure/setup-kubectl@v2.0
         with:
           version: 'v1.23.6' # default is latest stable
-        id: install
+        id: install       
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
@@ -55,17 +60,17 @@ jobs:
         uses: docker/setup-buildx-action@v1
 
       - name: Build, tag, and push image to Amazon ECR
+        working-directory: ./web-app
         env:
-          DOCKER_TAG: indexnetwork/web3-api:${{ steps.build-time.outputs.time }}
+          DOCKER_TAG: indexnetwork/web3-web-app:${{ steps.build-time.outputs.time }}
           DOCKER_REGISTRY: 236785930124.dkr.ecr.us-east-1.amazonaws.com
         run: |
           docker build -t $DOCKER_TAG .
-          docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
-          docker push $DOCKER_REGISTRY/$DOCKER_TAG
-          docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexnetwork/web3-api:latest-${GITHUB_REF#refs/heads/}
-          docker push $DOCKER_REGISTRY/indexnetwork/web3-api:latest-${GITHUB_REF#refs/heads/}
+          # docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
+          # docker push $DOCKER_REGISTRY/$DOCKER_TAG
+          # docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexnetwork/web3-web-app:latest-${GITHUB_REF#refs/heads/}
+          # docker push $DOCKER_REGISTRY/indexnetwork/web3-web-app:latest-${GITHUB_REF#refs/heads/}
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/api api=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/web3-api:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
-          kubectl set image deployment/consumer consumer=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/web3-api:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
+          # kubectl set image deployment/frontend frontend=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/web3-web-app:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
