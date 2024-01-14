@@ -5,10 +5,7 @@ on:
     - testnet
     - dev
     paths:
-    - 'web-app/**'      
-defaults:
- run:
-  working-directory: ./web-app    
+    - 'web-app/**'
 jobs:
   main:
     runs-on: ubuntu-latest
