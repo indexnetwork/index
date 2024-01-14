@@ -60,12 +60,12 @@ jobs:
           DOCKER_REGISTRY: 236785930124.dkr.ecr.us-east-1.amazonaws.com
         run: |
           docker build -t $DOCKER_TAG .
-          docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
-          docker push $DOCKER_REGISTRY/$DOCKER_TAG
-          docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexnetwork/web3-api:latest-${GITHUB_REF#refs/heads/}
-          docker push $DOCKER_REGISTRY/indexnetwork/web3-api:latest-${GITHUB_REF#refs/heads/}
+          # docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
+          # docker push $DOCKER_REGISTRY/$DOCKER_TAG
+          # docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexnetwork/web3-api:latest-${GITHUB_REF#refs/heads/}
+          # docker push $DOCKER_REGISTRY/indexnetwork/web3-api:latest-${GITHUB_REF#refs/heads/}
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/api api=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/web3-api:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
-          kubectl set image deployment/consumer consumer=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/web3-api:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
+          # kubectl set image deployment/api api=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/web3-api:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
+          # kubectl set image deployment/consumer consumer=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/web3-api:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
