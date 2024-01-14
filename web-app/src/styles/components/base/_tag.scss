@@ -1,0 +1,138 @@
+.tag {
+	@extend .text-xs;
+	@include no-select;
+
+	position: relative;
+	width: fit-content;
+	padding: (map-deep-get($spacing, "xs", "2") - 0.1rem) map-deep-get($spacing, "xs", "3");
+	border-radius: $border-radius-base;
+	vertical-align: middle;
+	font-weight: 600;
+	overflow: hidden;
+	word-break: normal;
+	text-overflow: ellipsis;
+
+	&.tag-circle {
+		border-radius: 1.8rem;
+	}
+
+	&.tag-tag {
+		background-color: map-get($button-bg, "tag");
+		color: $main-color;
+		border: 1px solid map-get($button-bg, "tag");
+		.tag-remove {
+			background: linear-gradient(
+				90deg,
+				rgba(0, 0, 0, 0) 0%,
+				map-get($button-bg, "tag") 50%,
+				map-get($button-bg, "tag") 100%
+			);
+		}
+	}
+	&.tag-soon {
+		background-color: $gray-5;
+		color: $white;
+	}
+
+	&.tag-editable {
+		cursor: text;
+		min-width: 3rem;
+	}
+
+	&.tag-clickable {
+		cursor: pointer;
+		pointer-events: auto;
+	}
+
+	.input.input-ghost {
+		height: 1.2rem;
+		input {
+			width: 8rem;
+		}
+	}
+
+	.tag-remove {
+		@extend .ml-2;
+		pointer-events: none;
+		position: static;
+		display: inline-block;
+		vertical-align: middle;
+		pointer-events: none;
+		height: 100%;
+		line-height: 100%;
+		right: 0;
+		top: 0;
+		border-radius: 1.8rem;
+		transition: opacity 0.2s ease-in-out;
+		height: auto;
+
+		.tag-remove-icon {
+			width: 1rem;
+			height: 1rem;
+		}
+	}
+
+	&.tag-removable {
+		.tag-remove {
+			pointer-events: all;
+		}
+	}
+
+	@media (min-width: map-get($breakpoints, "lg")) {
+		.tag-remove {
+			height: 100%;
+			margin-left: 0;
+			position: absolute;
+			width: 2.8rem;
+			display: flex;
+			align-items: center;
+			justify-content: flex-end;
+			transition: opacity 0.2s ease-in-out;
+			opacity: 0;
+
+			.tag-remove-icon {
+				margin-right: 0.6rem;
+			}
+		}
+		&.tag-removable {
+			.tag-remove {
+				pointer-events: all;
+				&:hover {
+					opacity: 1;
+					pointer-events: all;
+					cursor: pointer;
+				}
+			}
+		}
+	}
+
+	@each $key, $value in $button-bg {
+		&.tag-#{$key} {
+			@if str-index($key, "outlined") != null {
+				@include theme-color(map-get($button-color, $key), $white, $outlined: true);
+				.tag-remove {
+					.tag-remove-icon {
+						stroke: map-get($button-color, $key);
+					}
+				}
+			} @else {
+				@if $key != "tag" {
+					@include theme-color($white, $value, $outlined: false);
+
+					.tag-remove {
+						background: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, $value 50%, $value 100%);
+						.tag-remove-icon {
+							stroke: $white;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	&.tag-clear {
+		background-color: $white;
+		color: $gray-4;
+		border-color: $border-color;
+	}
+}

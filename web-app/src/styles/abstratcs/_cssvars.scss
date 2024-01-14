@@ -1,0 +1,26 @@
+@import "./variables";
+
+:root {
+	--main: #{$main-color};
+	--white: #{$white};
+	--gray-1: #{$gray-1};
+	--gray-2: #{$gray-2};
+	--gray-3: #{$gray-3};
+	--gray-4: #{$gray-4};
+	--gray-5: #{$gray-5};
+	--gray-6: #{$gray-6};
+	--gray-7: #{$gray-7};
+	--twitter-blue: #{$twitter-blue};
+	--blue: #{$blue};
+	--landing: #{$landing-color};
+
+	--spacing-1: .5rem;
+	--spacing-2: .8rem;
+	--spacing-3: 1rem;
+	--spacing-4: 1.2rem;
+	--spacing-5: 1.6rem;
+	--spacing-6: 2.4rem;
+	--spacing-7: 3.2rem;
+	--spacing-8: 3.6rem;
+
+}

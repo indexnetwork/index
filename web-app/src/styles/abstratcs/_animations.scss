@@ -1,0 +1,15 @@
+@keyframes flexSlideIn {
+	100% {
+		flex-basis: 100%;
+		max-width: 100%;
+	}
+}
+
+@keyframes spinner {
+	0% {
+		transform: rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
+	}
+}

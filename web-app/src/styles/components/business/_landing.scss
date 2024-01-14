@@ -1,0 +1,138 @@
+.lnd-container {
+  .lnd-card {
+    display: flex;
+
+    flex-direction: column;
+    flex-wrap: wrap;
+
+    .lnd-desc {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .lnd-title {
+      flex-basis: 100%;
+    }
+
+    .lnd-section-title {
+      font-size: 3.2rem;
+      line-height: 4rem;
+    }
+  }
+
+  .lnd-desc-link {
+    width: 100%;
+  }
+
+  .lnd-features {
+    flex-direction: column;
+    .lnd-icon-desc {
+      &-icon {
+        flex-shrink: 0;
+      }
+      &-text {
+        flex-direction: column;
+      }
+    }
+  }
+
+  .lnd-2-container {
+    align-items: flex-start !important;
+  }
+
+  .lnd-5-title {
+    font-size: 4rem;
+    line-height: 6rem;
+  }
+
+  .lnd-5-img {
+    width: auto;
+    object-fit: contain;
+    height: 60px;
+    margin-bottom: 1.6rem;
+  }
+
+  .lnd-5-text {
+    font-size: 1.4rem;
+    line-height: 1.6rem;
+  }
+
+  .lnd-5-list {
+    row-gap: map-deep-get($spacing, "xs", "6");
+  }
+
+  .lnd-steps {
+    align-items: flex-start;
+  }
+
+  .lnd-7-title {
+    font-family: Roquefort;
+    color: var(--gray-5);
+    font-size: 3.2rem;
+    line-height: 3.8rem;
+    margin-bottom: 3.2rem;
+    text-align: center;
+    font-weight: normal;
+  }
+  .lnd-7-form {
+    max-width: 389px;
+    margin: auto;
+  }
+
+  @media (max-width: map-get($breakpoints, "md")) {
+    .lnd-5-title {
+      text-align: left;
+    }
+    .lnd-5-logos {
+      width: 100%;
+      margin-bottom: 2rem;
+    }
+  }
+  @media (min-width: map-get($breakpoints, "md")) {
+    .lnd-5-title {
+      text-align: center;
+      margin: auto;
+    }
+    .lnd-5-logos-container {
+      padding: 0px 80px;
+      justify-content: space-around;
+    }
+  }
+  @media (min-width: map-get($breakpoints, "sm")) {
+    .lnd-2-container {
+      align-items: center !important;
+    }
+
+    .lnd-img {
+      flex-basis: 50%;
+    }
+    .lnd-steps {
+      margin-left: calc((100vw - 964px) / 2);
+    }
+    .lnd-card {
+      flex-direction: row;
+
+      .lnd-section-title {
+        font-size: 4.5rem;
+        line-height: 4.9rem;
+      }
+    }
+
+    .lnd-5-title {
+      font-size: 4rem;
+      line-height: 6rem;
+    }
+
+    .lnd-5-list {
+      row-gap: map-deep-get($spacing, "xs", 4);
+    }
+
+    .lnd-7-title {
+      font-size: 4rem;
+      line-height: 5.2rem;
+      margin-bottom: 3.8rem;
+    }
+  }
+}

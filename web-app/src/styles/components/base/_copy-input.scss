@@ -1,0 +1,62 @@
+.copy-input {
+	cursor: pointer;
+	position: relative;
+
+	&.input {
+		@extend .pr-6;
+		@extend .pl-3;
+		overflow: hidden;
+	}
+
+	input {
+		cursor: pointer !important;
+		margin-right: 0 !important;
+		user-select: none;
+		-webkit-touch-callout: none;
+		overflow: hidden;
+		word-break: normal;
+		text-overflow: ellipsis;
+
+		&::selection {
+			color: inherit;
+		}
+	}
+
+	&__button {
+		@include no-select;
+		height: 100%;
+		background: white;
+		align-items: center;
+		position: absolute;
+		right: 0;
+
+		&:hover {
+			cursor: pointer;
+		}
+
+		.copy-input__icon {
+			@extend .ml-2;
+			@extend .mr-2;
+			flex-shrink: 0;
+		}
+
+		.copy-input__text {
+			@extend .mr-4;
+			overflow: hidden;
+			margin: 0;
+			flex-basis: 0;
+			max-width: 0;
+		}
+
+		&.copied {
+
+			@extend .px-3;
+			.copy-input__text {
+				@extend .mx-2;
+				overflow: hidden;
+				flex-basis: 100%;
+				max-width: 100%;
+			}
+		}
+	}
+}

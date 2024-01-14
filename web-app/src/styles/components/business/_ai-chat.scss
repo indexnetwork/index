@@ -1,0 +1,8 @@
+.chat-message:hover .chat-message-actions {
+  opacity: 1;
+}
+
+.chat-message-actions {
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}

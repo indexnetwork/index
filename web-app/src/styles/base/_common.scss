@@ -1,0 +1,12 @@
+.hoverable {
+	&:hover {
+		background-color: $hover-color;
+		cursor: pointer;
+	}
+}
+
+.pointer {
+	&:hover {
+		cursor: pointer;
+	}
+}

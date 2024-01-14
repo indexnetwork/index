@@ -1,0 +1,85 @@
+.textarea {
+	@include responsive-sizes($input-height, "min-height");
+	@include responsive-sizes($font-size, "line-height");
+	display: inline-block;
+	border: $border-base;
+	border-radius: 0.4rem;
+	padding: map-deep-get($spacing, "xs", "3") map-deep-get($spacing, "xs", "4");
+	line-height: 0;
+	align-items: center;
+
+	& textarea {
+		border: none;
+		flex-grow: 1;
+		height: 100%;
+		outline: none;
+		color: $main-color;
+		resize: none;
+	}
+
+	& textarea:focus,
+	& textarea:focus-visible {
+		outline: none;
+		outline-width: 0 !important;
+		color: var(--gray-5);
+	}
+
+	&.textarea-block {
+		width: 100%;
+	}
+
+	& textarea::placeholder {
+		color: $secondary-text-color;
+	}
+	:focus::placeholder{
+		opacity: 0.50;
+	}
+
+	&.textarea-disabled,
+	&.textarea-readonly {
+		background-color: $input-disabled-bg !important;
+		color: $secondary-text-color;
+
+		textarea {
+			background-color: $input-disabled-bg !important;
+			color: $secondary-text-color;
+		}
+	}
+
+	&.textarea-add-on-before {
+		textarea {
+			margin-left: map-deep-get($spacing, "xs", "6");
+		}
+	}
+
+	&.textarea-add-on-after {
+		textarea {
+			margin-right: map-deep-get($spacing, "xs", "6");
+		}
+	}
+
+	&.textarea-ghost {
+		border: none;
+		height: auto;
+		padding-left: 0;
+		padding-right: 0;
+		textarea {
+			background-color: transparent;
+		}
+	}
+}
+
+.textarea:focus-within {
+	border-color: var(--gray-4);
+}
+
+.add-on-after-icon {
+	fill: var(--gray-2);
+}
+.typing {
+    fill: $main-color;
+}
+
+.textarea__textarea {
+line-height: 1.9rem;
+}

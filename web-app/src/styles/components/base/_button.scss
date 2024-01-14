@@ -1,0 +1,214 @@
+.btn {
+  @include no-select;
+  @include responsive-sizes($input-height, "height");
+  @include responsive-sizes($font-size, "font-size");
+  @include responsive-sizes($font-line-height, "line-height");
+  border: 1px solid;
+  border-radius: $border-radius-base;
+  padding: 0 map-deep-get($spacing, "xs", "3");
+  line-height: 0;
+  font-weight: 500;
+  background-color: $main-color;
+  color: $white;
+  width: fit-content;
+
+  &:hover {
+    transition: $transition-bg;
+    background-color: darken($main-color, $hover-darken);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+
+  &:active,
+  &:visited {
+    transition: none;
+    background-color: lighten($main-color, $visited-lighten);
+  }
+
+  &[disabled] {
+    background-color: map-get($button-bg, "disabled") !important;
+    border: 1px solid map-get($button-bg, "disabled") !important;
+  }
+
+  @each $key, $value in $button-bg {
+    &.btn-#{$key} {
+      @if str-index($key, "outlined") != null {
+        @include button-color(
+          map-get($button-color, $key),
+          $white,
+          $hover-darken,
+          $visited-lighten,
+          $transition-bg,
+          $outlined: true
+        );
+      } @else {
+        @include button-color(
+          $white,
+          $value,
+          $hover-darken,
+          $visited-lighten,
+          $transition-bg,
+          $outlined: false
+        );
+      }
+    }
+  }
+
+  &.btn-ghost {
+    @include button-color(
+      $main-color,
+      transparent,
+      $hover-darken,
+      $visited-lighten,
+      $transition-bg,
+      $outlined: true
+    );
+    border: none;
+  }
+
+  &.btn-link {
+    @include button-color(
+      $blue,
+      $white,
+      $hover-darken,
+      $visited-lighten,
+      $transition-bg,
+      $outlined: true
+    );
+    border: none;
+  }
+
+  &.btn-clear {
+    background-color: $white;
+    color: $gray-4;
+    border-color: $border-color;
+  }
+  &.btn-panel {
+    background-color: $gray-7;
+    color: $gray-5;
+    border-color: $border-color;
+  }
+
+  &.btn-card {
+    @include button-color(
+      $gray-6,
+      $gray-1,
+      $hover-darken,
+      $visited-lighten,
+      $transition-bg,
+      $outlined: false
+    );
+    height: 100%;
+    border: none;
+  }
+
+  &.btn-block {
+    display: block;
+    width: 100%;
+  }
+
+  &.btn-borderless {
+    border: none;
+  }
+
+  & + .btn {
+    margin-left: map-deep-get($spacing, "xs", "3");
+  }
+
+  .icon {
+    height: 2rem;
+    width: auto;
+  }
+
+  .btn-inner {
+    height: 100%;
+    line-height: 100%;
+    .icon {
+      display: flex;
+      margin-right: 10px;
+    }
+  }
+
+  .btn-inner-loading {
+    height: 100%;
+    line-height: 100%;
+    .icon {
+      display: flex;
+      margin-right: 10px;
+      animation: spinner 1.2s infinite;
+    }
+  }
+
+  &.btn-addon-b {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 0.5rem;
+    .icon {
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 1rem;
+    }
+  }
+
+  &.btn-addon-a {
+    display: inline-block;
+    vertical-align: middle;
+    .icon {
+      display: inline-block;
+      vertical-align: middle;
+      margin-left: 1rem;
+    }
+  }
+  &.btn-hovericon {
+    //@include responsive-sizes($input-height, "width");
+    max-height: 2.4rem;
+    max-width: 2.4rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.2rem;
+    svg {
+      flex-shrink: 0;
+      width: 2rem;
+      height: 2rem;
+    }
+  }
+
+  &.btn-icon {
+    @include responsive-sizes($input-height, "width");
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.2rem;
+    svg {
+      flex-shrink: 0;
+      width: 1.6rem;
+      height: 1.6rem;
+    }
+  }
+  &.btn-icon.btn-md {
+    padding: 0rem;
+    svg {
+      width: 2rem;
+      height: 2rem;
+    }
+  }
+
+  &.btn-icon.btn-sm {
+    padding: 0.6rem;
+    svg {
+      width: 1.4rem;
+      height: 1.4rem;
+    }
+  }
+
+  &.btn-icon.btn-xs {
+    padding: 0.4rem;
+    svg {
+      width: 1.2rem;
+      height: 1.2rem;
+    }
+  }
+}

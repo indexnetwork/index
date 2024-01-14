@@ -1,0 +1,90 @@
+.app-container {
+  .sidebar-open-backdrop{
+    background: rgba(0,0,0,0.10);
+    z-index: 2;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+  }
+  .chat-input{
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    margin: auto;
+  }
+  .scrollable-container{
+    @include height-without-navbar();
+    min-height: 0;
+    width: auto;
+    overflow: auto;
+    word-break: break-word;
+  }
+  .scrollable-area{
+    overflow: auto;
+  }
+  .sidebar-left {
+    border-right: 1px solid $gray-2;
+  }
+  .sidebar-right {
+    border-left: 1px solid $gray-2;
+  }
+
+  @media (max-width: map-get($breakpoints, "lg")) {
+    .sidebar-right, .sidebar-left{
+      position: absolute;
+      top: 0;
+      background: white;
+      height: 100%;
+      z-index: 2;
+      width: calc(32rem + 1.6rem);
+      .scrollable-container{
+        height: 100vh;
+        min-height: 0;
+      }
+    }
+    .sidebar-left  {
+      left: 0;
+      padding-left: 1.6rem;
+    }
+    .sidebar-right {
+      right: 0;
+      padding-right: 1.6rem;
+    }
+    .main-panel, .chat-input{
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .sidebar-closed {
+      display: none;
+    }
+    .sidebar-open {
+      display: block;
+    }
+  }
+  @media (min-width: map-get($breakpoints, "lg")) {
+    .sidebar-open-backdrop{
+      display: none;
+    }
+    .sidebar-right, .sidebar-left{
+      .scrollable-container{
+        @include height-without-navbar();
+        min-height: 0;
+      }
+    }
+    .sidebar-left  {
+      width: 32rem;
+    }
+    .sidebar-right {
+      width: 32rem;
+    }
+    .main-panel, .chat-input{
+      width: calc(100% - 64rem);
+      max-width: calc(100% - 64rem);
+    }
+  }
+
+}

@@ -1,0 +1,98 @@
+.idxflex {
+	display: flex;
+
+	&.idxrow {
+		&::before, &::after {
+			content: none;
+		}
+	}
+	.idxcol-auto{
+		width: fit-content;
+	}
+	
+	&-col {
+		display: flex;
+		flex-direction: column;
+	}
+
+	&-wrap {
+		flex-wrap: wrap !important;
+	}
+
+	&-nowrap {
+		flex-wrap: nowrap !important;;
+	}
+
+	&-a-end {
+		align-items: flex-end !important;
+	}
+
+	&-a-start {
+		align-items: flex-start !important;;
+	}
+
+	&-a-center {
+		align-items: center !important;;
+	}
+
+	&-j-start {
+		justify-content: flex-start !important;;
+	}
+
+	&-j-end {
+		justify-content: flex-end !important;;
+	}
+
+	&-j-center {
+		justify-content: center !important;;
+	}
+
+	&-j-between {
+		justify-content: space-between !important;;
+	}
+
+	&-j-around {
+		justify-content: space-around !important;;
+	}
+
+	&-j-evenly {
+		justify-content: space-evenly !important;;
+	}
+
+	@for $i from 0 to 12 {
+		&-grow-#{$i} {
+			flex-grow: $i !important;;
+		}
+
+		&-shrink-#{$i} {
+			flex-shrink: $i !important;;
+		}
+
+		&-flex-#{$i} {
+			flex-grow: $i !important;;
+		}
+
+		&-order-#{$i} {
+			order: $i !important;;
+		}
+	}
+
+	@each $breakpoint, $values in $spacing {
+		@for $i from 0 through 12 {
+			&-gap-#{$i} {
+				gap: map-get($values, #{$i}) !important;
+			}
+			&-row-gap-#{$i} {
+				row-gap: map-get($values, #{$i}) !important;
+			}
+			&-col-gap-#{$i} {
+				column-gap: map-get($values, #{$i}) !important;
+			}
+
+			&.idxflex-row-gutter-#{$i} {
+				margin-left: - map-get($values, #{$i}) !important;
+				margin-right: - map-get($values, #{$i}) !important;
+			}
+		}
+	}
+}

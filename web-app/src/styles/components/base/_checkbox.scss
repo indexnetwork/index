@@ -1,0 +1,62 @@
+.cbx {
+	@include no-select;
+	@include responsive-sizes($input-height, "height");
+
+	.cbx-container {
+		display: block;
+		cursor: pointer;
+		.cbx-input {
+			position: absolute;
+			opacity: 0;
+			cursor: pointer;
+			height: 0;
+			width: 0;
+		}
+
+		.cbx-checkmark {
+			height: map-deep-get($spacing, "xs", "6");
+			width: map-deep-get($spacing, "xs", "6");
+			display: inline-block;
+			border: $border-base;
+			border-radius: $border-radius-base;
+			vertical-align: bottom;
+			margin-right: map-deep-get($spacing, "xs", "1") * 3;
+			transition: $transition-bg;
+			&::after {
+				content: "";
+				position: absolute;
+				display: none;
+			}
+
+			.cbx-tick {
+				stroke: $white;
+				fill: "transparent";
+				stroke-width: 1.5;
+				padding: 1px;
+				width: 100%;
+				height: 100%;
+			}
+		}
+	}
+
+	&.cbx-checked {
+		.cbx-checkmark {
+			background-color: $main-color;
+		}
+	}
+
+	&.cbx-disabled {
+		.cbx-container {
+			cursor: not-allowed;
+
+			.cbx-checkmark {
+				background-color: $gray-1;
+			}
+		}
+		&.cbx-checked {
+			.cbx-checkmark {
+				background-color: lighten($main-color, 30%);
+			}
+		}
+	}
+}

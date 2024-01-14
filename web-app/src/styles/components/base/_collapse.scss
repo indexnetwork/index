@@ -1,0 +1,38 @@
+.collapse {
+	// @extend .px-6, .py-6;
+	.collapse-header {
+		cursor: pointer;
+
+		.collapse-arrow {
+			@extend .mr-3;
+			stroke: $gray-5;
+			vertical-align: middle;
+			transition: transform 0.2s;
+		}
+		.collapse-title {
+			vertical-align: middle;
+		}
+	}
+
+	.collapse-body {
+		@extend .mt-5;
+		box-sizing: content-box;
+		overflow: hidden;
+		transition: all 0.2s;
+		max-height: 30rem;
+	}
+
+	&.collapse-collapsed {
+		.collapse-header {
+			.collapse-arrow {
+				transform: rotate(90deg);
+			}
+		}
+
+		.collapse-body {
+			@extend .mt-0;
+			height: 0 !important;
+			max-height: 0;
+		}
+	}
+}

@@ -1,0 +1,36 @@
+.index-list-item {
+	.index-list-item-menu {
+		.index-list-item-menu-btn {
+			vertical-align: middle;
+			cursor: pointer;
+		}
+	}
+
+	@media (min-width: map-get($breakpoints, "lg")) {
+		.index-list-item-menu-btn {
+			opacity: 0;
+			cursor: pointer;
+		}
+
+		&:hover {
+			.index-list-item-menu-btn {
+				opacity: 1;
+			}
+		}
+	}
+}
+
+.index-list {
+	a {
+		color: $black;
+	}
+	.list-item{
+		cursor: pointer;
+	}
+	.index-list-item:hover{
+		background: #F8FAFC;
+	}
+	.index-list-item-selected{
+		background: #F1F5F9;
+	}
+}

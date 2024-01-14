@@ -1,0 +1,40 @@
+.img-upload {
+	width: 8rem;
+	height: 8rem;
+	border-radius: $border-radius-base;
+	overflow: hidden;
+	position: relative;
+	background-color: var(--main);
+	cursor: pointer;
+
+	&__banner {
+		position: absolute;
+		text-align: center;
+		width: 8rem;
+		top: 50%;
+		transform: translateY(-50%);
+	}
+
+	.img-upload-img {
+		position: absolute;
+		width: 8rem;
+		height: 8rem;
+		&__img {
+			height: 100%;
+			width: 100%;
+			object-fit: cover;
+		}
+	}
+
+	.img-upload-btns {
+		position: absolute;
+		z-index: 2123;
+
+		right: 0;
+		top: 60%;
+		display: flex;
+		justify-content: center;
+		translate: transformY(-30%);
+
+	}
+}

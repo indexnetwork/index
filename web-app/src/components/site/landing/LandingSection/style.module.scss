@@ -1,0 +1,12 @@
+.container {
+	align-items: center;
+	display: flex;
+}
+
+.dark {
+	background-color: var(--landing);
+}
+
+.light {
+	background-color: white;
+}

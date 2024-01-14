@@ -1,0 +1,118 @@
+.btn-group {
+	display: flex;
+	align-items: center;
+	padding: 0;
+
+	.btn-group-btn {
+		border-left: none !important;
+		margin: 0;
+		border-radius: 0;
+	}
+
+	.btn-group-first {
+		border-left: $border-base !important;
+		border-top-left-radius: $border-radius-base;
+		border-bottom-left-radius: $border-radius-base;
+	}
+
+	.btn-group-last {
+		border-top-right-radius: $border-radius-base;
+		border-bottom-right-radius: $border-radius-base;
+	}
+
+	> .btn-group-item {
+		width: max-content;
+
+		.popup > .btn {
+			@extend .btn-group-btn;
+		}
+		> .btn {
+			@extend .btn-group-btn;
+		}
+
+		&:first-child {
+			> .btn {
+				@extend .btn-group-first;
+			}
+			.popup > .btn {
+				@extend .btn-group-first;
+			}
+		}
+
+		&:last-child {
+			> .btn {
+				@extend .btn-group-last;
+			}
+			.popup > .btn {
+				@extend .btn-group-last;
+			}
+		}
+	}
+
+	@each $key, $value in $button-bg {
+		&.btn-group-#{$key} {
+			.btn-group-item {
+				> .btn {
+					@if str-index($key, "outlined") != null {
+						@include button-color(
+							map-get($button-color, $key),
+							$white,
+							$hover-darken,
+							$visited-lighten,
+							$transition-bg,
+							$outlined: true
+						);
+					} @else {
+						@include button-color($white, $value, $hover-darken, $visited-lighten, $transition-bg, $outlined: false);
+					}
+				}
+			}
+		}
+	}
+
+	&.btn-group-ghost {
+		.btn-group-item {
+			.btn {
+				@include button-color(
+					$main-color,
+					transparent,
+					$hover-darken,
+					$visited-lighten,
+					$transition-bg,
+					$outlined: true
+				);
+				border: none;
+			}
+		}
+	}
+
+	&.btn-group-link {
+		.btn-group-item {
+			.btn {
+				@include button-color($blue, $white, $hover-darken, $visited-lighten, $transition-bg, $outlined: true);
+				border: none;
+			}
+		}
+	}
+
+	&.btn-group-clear {
+		.btn-group-item > .btn {
+			background-color: $white;
+			color: $gray-4;
+			border-color: $border-color;
+		}
+	}
+
+	&.btn-group-clear {
+		.btn-group-item > div {
+			background-color: $white;
+			color: $gray-4;
+			border-color: $border-color;
+			& > .btn {
+				background-color: $white;
+				color: $gray-4;
+				border-color: $border-color;
+			}
+		}
+	}
+}
