@@ -1,0 +1,111 @@
+.modal {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	mix-blend-mode: normal;
+	backdrop-filter: blur(1px);
+	background-color: $modal-backdrop-color;
+	z-index: 2147483647;
+	transition: $transition-bg;
+
+	.modal-container-inner {
+		width: 100%;
+		height: 100%;
+		background-color: transparent;
+		position: relative;
+	}
+
+	.modal-wrapper {
+
+		background-color: $white;
+		position: absolute;
+		bottom: 0;
+		width: 100%;
+		border-top-left-radius: 4px;
+		border-top-right-radius: 4px;
+		box-shadow: $box-shadow-base-thin;
+		display: flex;
+		flex-direction: column;
+
+		padding: map-deep-get($spacing, "xs", "7");
+
+		.modal-header {
+			padding: 0 0 map-deep-get($spacing, "xs", "7") 0;
+			flex-shrink: 0;
+			//border-bottom: $border-base;
+		}
+
+		.modal-body {
+			padding: 0px 4px;
+			flex-grow: 1;
+			overflow-y: auto;
+			overflow-x: hidden;
+
+		}
+
+		.modal-footer {
+			padding: map-deep-get($spacing, "xs", "7") 0 0 0;
+			flex-shrink: 0;
+		}
+	}
+
+	&.modal-mobile {
+		.modal-wrapper {
+			transition: $transition-swipe-modal;
+			height: auto;
+
+			.modal-mobile-swiper {
+				position:absolute;
+				width: 100%;
+				height: 5.3rem;
+				display: flex;
+				justify-content: center;
+				flex-shrink: 0;
+				padding-top: 1rem;
+				.modal-mobile-swiper-button {
+					width: 3.2rem;
+					height: .4rem;
+					border-radius: calc($border-radius-base / 2);
+					background-color: $gray-2,
+				}
+			}
+		}
+	}
+
+	&.modal-invisible {
+		pointer-events: none;
+		backdrop-filter: none;
+		background-color: transparent;
+		.modal-wrapper {
+			max-height: 0 !important;
+			overflow: hidden;
+		}
+	}
+
+	&.modal-size-fit {
+	}
+
+	@media (min-width: map-get($breakpoints, "xs")) {
+		.modal-container-inner {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			.modal-wrapper {
+				position: static;
+				width: 46rem;
+				max-height: 90vh;
+				border-radius: $border-radius-base;
+			}
+		}
+	}
+
+	@media (min-width: map-get($breakpoints, "sm")) {
+		.modal-container-inner {
+			.modal-wrapper {
+				width: 500px;
+			}
+		}
+	}
+}

@@ -1,0 +1,79 @@
+body.modal-open {
+	overflow: hidden;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	text-align: inherit;
+	font-family: Freizeit;
+	margin-bottom: 0;
+	margin-top: 0;
+
+	&.roquefort {
+		font-family: Roquefort;
+	}
+}
+
+em {
+  background-color: $highlight-color;
+  font-style: normal;
+}
+
+a {
+	text-decoration: none !important;
+}
+
+@each $breakpoint, $values in $header-font-size {
+	@if ($breakpoint == "xs") {
+		@for $i from 1 through 6 {
+			h#{$i} {
+				font-size: map-get($values, #{$i});
+				line-height: map-get(map-get($header-line-height, $breakpoint), #{$i});
+			}
+		}
+	} @else {
+		@media (min-width: map-get($breakpoints, $breakpoint)) {
+			@for $i from 1 through 6 {
+				h#{$i} {
+					font-size: map-get($values, #{$i});
+					line-height: map-get(map-get($header-line-height, $breakpoint), #{$i});
+				}
+			}
+		}
+	}
+}
+
+
+@each $key, $value in $common-colors {
+	.color-#{$key} {
+		color: $value;
+	}
+
+	.icon-#{$key} {
+		stroke: $value;
+	}
+}
+@media (min-width: map-get($breakpoints, "lg")) {
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: $gray-3 $white;
+	}
+	
+	*::-webkit-scrollbar {
+		width: 6px;
+	}
+	
+	*::-webkit-scrollbar-track {
+		background: $white;
+	}
+	
+	*::-webkit-scrollbar-thumb {
+		background-color: $gray-2;
+		border-radius: 3px;
+		border: 1px solid $white;
+	}
+}

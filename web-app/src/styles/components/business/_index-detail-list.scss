@@ -1,0 +1,40 @@
+.index-detail-list {
+	.index-detail-list-item {
+		position: relative;
+		// transition: transform .4s ease-in-out !important;
+
+		.index-detail-list-item-drag-handle {
+			position: absolute;
+			top: 0;
+			left: 0;
+			bottom: 0;
+			opacity: 0;
+			display: none;
+		}
+
+		@media (min-width: map-get($breakpoints, "md")) {
+			.index-detail-list-item-buttons {
+				opacity: 0;
+			}
+
+			.index-detail-list-item-drag-handle {
+				left: -3rem;
+				width: 3rem;
+				align-items: center;
+				display: flex;
+				&:hover {
+					opacity: 1;
+				}
+			}
+			&:hover {
+				.index-detail-list-item-drag-handle {
+					visibility: visible;
+					opacity: 1;
+				}
+				.index-detail-list-item-buttons {
+					opacity: 1;
+				}
+			}
+		}
+	}
+}

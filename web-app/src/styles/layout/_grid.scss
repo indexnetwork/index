@@ -1,0 +1,33 @@
+.idxrow {
+
+	@each $breakpoint, $values in $spacing {
+		@for $i from 0 through 12 {
+			&-spacing-v#{$i} {
+				> .idxcol {
+					padding-top: map-get($values, #{$i});
+					padding-bottom: map-get($values, #{$i});
+				}
+			}
+			&-spacing-h#{$i} {
+				> .idxcol {
+					padding-left: map-get($values, #{$i});
+					padding-right: map-get($values, #{$i});
+				}
+			}
+		}
+	}
+
+	.idxcol-no-gutters {
+		padding: 0;
+	}
+
+	.idxcol-no-x-gutters {
+		padding-left: 0;
+		padding-right: 0;
+	}
+
+	.idxcol-no-y-gutters {
+		padding-top: 0;
+		padding-bottom: 0;
+	}
+}

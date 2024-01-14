@@ -1,0 +1,91 @@
+{
+  "extends": ["airbnb-base", "airbnb-typescript/base", "eslint-config-next"],
+  "env": {
+    "browser": true
+  },
+  "parserOptions": {
+    "project": "./tsconfig.json",
+    "createDefaultProgram": true
+  },
+  "plugins": [
+    "prettier",
+    "react",
+    "jest",
+    "jest-dom",
+    "@typescript-eslint",
+    "react-hooks",
+    "eslint-plugin-jsx-a11y",
+    "unused-imports"
+  ],
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
+  "rules": {
+    // EsLint Rules
+    "no-plusplus": "off",
+    "no-unused-vars": "off",
+    "prefer-destructuring": "warn",
+    "import/no-useless-path-segments": "off",
+    "unused-imports/no-unused-imports": "error",
+    "class-methods-use-this": "off",
+    "unused-imports/no-unused-vars": [
+      "warn",
+      {
+        "vars": "all",
+        "varsIgnorePattern": "^_",
+        "args": "after-used",
+        "argsIgnorePattern": "^_"
+      }
+    ],
+    "quotes": ["error", "double", { "allowTemplateLiterals": true }],
+    "no-tabs": "off",
+    "max-classes-per-file": "off",
+    "radix": 0,
+    "max-len": [
+      "error",
+      {
+        "code": 150,
+        "comments": 250,
+        "ignoreStrings": true,
+        "ignoreTrailingComments": true
+      }
+    ],
+    "consistent-return": "warn",
+    "no-restricted-properties": "off",
+    "operator-linebreak": ["error", "after"],
+    "no-use-before-define": "off",
+    "no-mixed-spaces-and-tabs": "off",
+    "no-param-reassign": "off",
+    "no-nested-ternary": "warn",
+    "import/prefer-default-export": "off",
+    // Jsx a11y Rules
+    "jsx-a11y/no-noninteractive-element-interactions": "off",
+    "jsx-a11y/click-events-have-key-events": "off",
+    "jsx-a11y/no-static-element-interactions": "off",
+    "jsx-a11y/control-has-associated-label": "off",
+    // Typescript Rules
+    "@typescript-eslint/no-unused-vars": [
+      "off",
+      { "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }
+    ],
+    "@typescript-eslint/quotes": "off",
+    "@typescript-eslint/return-await": "off",
+    "@typescript-eslint/indent": "off",
+    "@typescript-eslint/no-use-before-define": "off",
+    "@typescript-eslint/no-unused-expressions": "off",
+    "@typescript-eslint/lines-between-class-members": "off",
+    // React Rules
+    "react/prop-types": "off",
+    "react/jsx-props-no-spreading": "off",
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+    "react/destructuring-assignment": "off",
+    "react/jsx-no-bind": "off",
+    "react/jsx-indent": 0,
+    "react/jsx-indent-props": 0,
+    "react/no-array-index-key": 0,
+    "react/require-default-props": 0
+  }
+}

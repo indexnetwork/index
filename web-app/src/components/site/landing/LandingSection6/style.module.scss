@@ -1,0 +1,28 @@
+.img {
+  width: 100%;
+}
+
+.imgH {
+  height: 73.5rem;
+  width: auto;
+}
+
+.list {
+  padding-left: 1.2rem;
+  color: var(--gray-4);
+
+  li {
+    max-width: 20rem;
+    margin-bottom: .8rem;
+  }
+}
+
+.list2 {
+  padding-left: 1.2rem;
+  color: var(--gray-4);
+  li {
+    margin-left: 1rem;
+    max-width: 22rem;
+  }
+}
+

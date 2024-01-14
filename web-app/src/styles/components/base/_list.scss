@@ -1,0 +1,18 @@
+.list {
+	display: grid;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+
+	.list-item {
+		background-color: rgba($white, .8);
+		cursor: default;
+		opacity: 1;
+
+		.list-divider {
+			height: 1px;
+			width: 100%;
+			background-color: $border-color;
+		}
+	}
+}

@@ -1,0 +1,72 @@
+.dropdown {
+	display: inline-block;
+	position: relative;
+	letter-spacing: 0;
+
+	.dropdown-menu {
+		@include no-select;
+		list-style: none;
+		padding: 0;
+		border-radius: $border-radius-base;
+		background-color: $white;
+		box-shadow: $box-shadow-base;
+		color: $gray-5;
+		font-weight: bold;
+		font-size: map-deep-get($font-size, "xs", "xs");
+		line-height: map-deep-get($font-line-height, "xs", "xs");
+		z-index: map-get($z-index, "dropdown");
+		width: max-content;
+		word-break: break-all;
+		max-width: 20rem;
+		margin: 0;
+
+		&.dropdown-menu-bottom-center {
+			left: 50%;
+			transform: translateX(-50%);
+			margin-top: $dropdown-spacing;
+		}
+
+		&.dropdown-menu-bottom-left {
+			left: 0;
+			margin-top: $dropdown-spacing;
+		}
+
+		&.dropdown-menu-bottom-right {
+			right: 0;
+			margin-top: $dropdown-spacing;
+		}
+
+		&.dropdown-menu-top-center {
+			bottom: 100%;
+			left: 50%;
+			transform: translateX(-50%);
+			margin-bottom: $dropdown-spacing;
+		}
+
+		&.dropdown-menu-top-left {
+			bottom: 100%;
+			left: 0;
+			margin-bottom: $dropdown-spacing;
+		}
+
+		&.dropdown-menu-top-right {
+			bottom: 100%;
+			right: 0;
+			margin-bottom: $dropdown-spacing;
+		}
+
+		.dropdown-menu-divider {
+			width: 100%;
+			background-color: $gray-2;
+			height: 1px;
+		}
+
+		.dropdown-menu-item {
+			padding: 3 * map-deep-get($spacing, "xs", "2") map-deep-get($spacing, "xs", "5");
+			cursor: pointer;
+			&:hover {
+				background-color: $hover-color;
+			}
+		}
+	}
+}

@@ -1,0 +1,56 @@
+.tooltip {
+	display: inline-block;
+	position: relative;
+
+	.tooltip-tip {
+		@include no-select;
+		font-family: 'Inter';
+		position: absolute;
+		padding: $tooltip-spacing;
+		border-radius: 4px;
+		background-color: $gray-4;
+		color: $white;
+		font-weight: 600;
+		font-size: map-deep-get($font-size, "xs", "md");
+		line-height: map-deep-get($font-line-height, "xs", "xs");
+		z-index: map-get($z-index, "tooltip");
+		width: max-content;
+		word-break: break-all;
+		max-width: 20rem;
+
+		&.tooltip-bottom-center {
+			left: 50%;
+			transform: translateX(-50%);
+			margin-top: $tooltip-spacing;
+		}
+
+		&.tooltip-bottom-left {
+			left: 0;
+			margin-top: $tooltip-spacing;
+		}
+
+		&.tooltip-bottom-right {
+			right: 0;
+			margin-top: $tooltip-spacing;
+		}
+
+		&.tooltip-top-center {
+			bottom: 100%;
+			left: 50%;
+			transform: translateX(-50%);
+			margin-bottom: $tooltip-spacing;
+		}
+
+		&.tooltip-top-left {
+			bottom: 100%;
+			left: 0;
+			margin-bottom: $tooltip-spacing;
+		}
+
+		&.tooltip-top-right {
+			bottom: 100%;
+			right: 0;
+			margin-bottom: $tooltip-spacing;
+		}
+	}
+}

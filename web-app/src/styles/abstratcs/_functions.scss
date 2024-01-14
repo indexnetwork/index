@@ -1,0 +1,37 @@
+@use 'sass:math';
+
+@function toRem($base, $value) {
+	$remValue: ($value / $base) + rem; 
+	@return $remValue;
+}
+
+@function toPx($base, $value) {
+	$pxValue: ($value * $base) + px; 
+	@return $pxValue;
+}
+
+@function strip-units($number) {
+  @return math.div($number, ($number * 0 + 1));
+}
+
+@function variable-lookup($variable, $suffix: "") {
+  $value: null;
+  @if ($suffix != "" and global-variable-exists($variable+"-"+$suffix)) {
+    $value: #{$variable+"-"+$suffix};
+  }
+  @else if (global-variable-exists($variable)) {
+    $value: #{$variable};
+  }
+  @return $value;
+}
+
+@function map-deep-get($map, $keys...) {
+	@each $key in $keys {
+			$map: map-get($map, $key);
+	}
+	@return $map;
+}
+
+@function if-important($important){
+  @return #{if($important, '!important', '')};
+}

@@ -1,0 +1,114 @@
+.input {
+	@include responsive-sizes($input-height, "height");
+	@include responsive-sizes($font-size, "font-size");
+	display: inline-block;
+	border: $border-base;
+	border-radius: $border-radius-base;
+	padding-left: map-deep-get($spacing, "xs", "5");
+	padding-right: map-deep-get($spacing, "xs", "6");
+	line-height: 0;
+	align-items: center;
+
+	& input {
+		border: none;
+		flex-grow: 1;
+		height: 100%;
+		outline: none;
+		color: $main-color;
+	}
+
+	& input:focus,
+	& input:focus-visible {
+		outline: none;
+		outline-width: 0 !important;
+	}
+	:focus::placeholder{
+		opacity: 0.37;
+	}
+
+	&.input-block {
+		width: 100%;
+	}
+
+
+	& input::placeholder {
+		color: $secondary-text-color;
+	}
+	&.input-disabled.nonstyled{
+		background-color: transparent;
+		color: $primary-text-color;
+		input {
+			background-color: transparent;
+			color: $primary-text-color;
+		}
+	}
+	&.input-disabled:not(.nonstyled) , &.input-readonly:not(.nonstyled) {
+		background-color: $input-disabled-bg !important;
+		color: $secondary-text-color;
+
+		input {
+			background-color: $input-disabled-bg !important;
+			color: $secondary-text-color;
+		}
+	}
+
+	&.input-add-on-before {
+		input {
+			margin-left: map-deep-get($spacing, "xs", "3");
+
+		}
+	}
+
+	&.input-add-on-after {
+		input {
+			margin-right: map-deep-get($spacing, "xs", "6");
+		}
+	}
+
+	&.input-ghost {
+		border: none;
+		height: auto;
+		padding-left: 0;
+		padding-right: 0;
+		input {
+			background-color: transparent;
+		}
+
+	}
+
+	&.input-xs {
+		padding-left: map-deep-get($spacing, "xs", "2");
+		padding-right: map-deep-get($spacing, "xs", "2");
+		&.input-add-on-before {
+			input {
+				margin-left: map-deep-get($spacing, "xs", "2");
+			}
+		}
+		&.input-add-on-after {
+			input {
+				margin-right: map-deep-get($spacing, "xs", "2");
+			}
+		}
+
+		svg {
+			width: 1rem;
+			height: 1rem;
+		}
+	}
+
+	&.input-sm {
+		padding-left: map-deep-get($spacing, "xs", "4");
+		padding-right: map-deep-get($spacing, "xs", "4");
+		&.input-add-on-before {
+			input {
+				margin-left: map-deep-get($spacing, "xs", "4");
+			}
+		}
+		&.input-add-on-after {
+			input {
+				margin-right: map-deep-get($spacing, "xs", "4");
+			}
+		}
+	}
+
+}

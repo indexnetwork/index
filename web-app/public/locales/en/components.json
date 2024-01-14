@@ -1,0 +1,27 @@
+{
+	"loginForm": {
+		"title": "Sign In",
+		"subtitle": "or",
+		"create": "create a new account",
+		"googleBtn": "Sign in with Google",
+		"twitterBtn": "Sign in with Twitter",
+		"signIn": "or sign in with email and password",
+		"emailInput": "Email or username"
+	},
+	"select": {
+		"collapseMessage": "{{count}} selected"
+	},
+	"header": {
+		"newIndexBtn": "New Index"
+	},
+	"filterMenu": {
+		"menuTypeTtl": "TYPE",
+		"menuPublishTtl": "PUBLISH DATE",
+		"menuUploadTtl": "UPLOAD DATE",
+		"menuTagTtl": "TAG",
+		"optArticle": "Article",
+		"optVideo": "Video",
+		"optImage": "Image",
+		"optCustom": "Custom"
+	}
+}

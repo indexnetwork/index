@@ -1,0 +1,21 @@
+.descLine {
+  font-family: "Freizeit";
+  color: var(--main);
+}
+
+.video {
+  border: none;
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
+  -webkit-backface-visibility: hidden;
+  -moz-backface-visibility: hidden;
+}
+
+.lndBlueTtl {
+  font-family: "Roquefort";
+  font-weight: 400;
+  color: var(--blue);
+  margin-top: 4rem;
+  font-size: 4rem;
+  line-height: 4.9rem;
+  margin-bottom: 2.4rem;
+}

@@ -1,0 +1,56 @@
+.navbar-container {
+	height: 63px;
+	width: 100%;
+	transition: $transition-bg;
+
+	&.navbar-bordered {
+		border-bottom: $border-base;
+	}
+
+	&.navbar-sticky {
+		position: sticky;
+		top: 0;
+		z-index: map-get($z-index, "navbar");
+	}
+
+	.navbar {
+		height: 100%;
+		flex: 1;
+
+		.idxflex-container {
+			height: 100%;
+			width: 100%;
+		}
+
+		& .navbar-menu-right {
+			margin-left: auto;
+		}
+		& .navbar-menu-left {
+			display: inline-flex;
+			align-items: center;
+		}
+		.navbar-logo {
+			height: 3.2rem;
+			cursor: pointer;
+		}
+
+	}
+
+	@media (max-width: map-get($breakpoints, "lg")) {
+		.navbar-logo{
+			display: none;
+		}
+	}
+}
+@media (min-width: map-get($breakpoints, "lg")) {
+	.navbar-sidebar-handlers{
+		display: none !important;
+	}
+}
+.lottie-logo{
+	height: 20px;
+}
+.lottie-text{
+	border-color: $gray-4 !important;
+	background: $main-color !important;
+}

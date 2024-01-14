@@ -1,0 +1,194 @@
+.select {
+	@include no-select;
+	@extend .text, .text-secondary, .text-md;
+	position: relative;
+	box-shadow: 0;
+	transition: box-shadow;
+	transition-duration: 0;
+	transition-timing-function: ease-in-out;
+
+	.select-input {
+		@include responsive-sizes($input-height, "height");
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		min-width: 7rem;
+		padding: map-deep-get($spacing, "xs", "6") map-deep-get($spacing, "xs", "5");
+		border-radius: $border-radius-base;
+		padding-right: map-deep-get($spacing, "xs", "7");
+		cursor: pointer;
+
+		.select-input-arrow {
+			transform: rotate(180deg);
+			margin-left: map-deep-get($spacing, "xs", "3");
+			position: absolute;
+			right: map-deep-get($spacing, "xs", "3");
+			margin-top: .2rem;
+		}
+
+		.select-selections {
+			display: flex;
+			align-items: center;
+			gap: map-deep-get($spacing, "xs", "3");
+		}
+
+		.select-placeholder {
+			color: lighten($gray-3, 10%);
+			font-weight: 300;
+		}
+	}
+
+	&.select-w-auto {
+		.select-input {
+			min-width: auto;
+		}
+	}
+
+	&.select-disabled {
+		.select-input {
+			background-color: $input-disabled-bg;
+			cursor: not-allowed;
+		}
+
+		&.select-multiple {
+			.select-input {
+				.select-input-item {
+					background-color: lighten($main-color, 30%);
+				}
+			}
+		}
+	}
+
+	&.select-multiple {
+		.select-input {
+			overflow: hidden;
+			word-break: normal;
+			text-overflow: ellipsis;
+			.select-input-item {
+				display: flex;
+				align-items: center;
+				background-color: $main-color;
+				color: $white;
+				border-radius: $border-radius-base;
+				padding: map-deep-get($spacing, "xs", "1") map-deep-get($spacing, "xs", "3");
+				word-break: normal;
+				text-overflow: ellipsis;
+				font-weight: 300;
+				font-size: map-deep-get($font-size, "xs", "xs");
+				white-space: pre;
+				&:hover {
+					background-color: lighten($main-color, 30%);
+				}
+				.select-multiple-close-icon {
+					stroke: $white;
+					height: 1rem;
+					width: 1rem;
+					line-height: 1.3rem;
+					margin-left: map-deep-get($spacing, "xs", "2");
+				}
+			}
+		}
+	}
+
+	&.select-bordered {
+		.select-input {
+			border: $border-base;
+		}
+	}
+
+	.select-menu {
+		overflow: hidden;
+		height: 0;
+		opacity: 0;
+		box-shadow: $box-shadow-base;
+		pointer-events: none;
+		position: absolute;
+		left: 0;
+		right: 0;
+		background-color: $white;
+		z-index: map-get($z-index, "select");
+		border-bottom-left-radius: $border-radius-base;
+		border-bottom-right-radius: $border-radius-base;
+
+		max-height: 14.5rem;
+		overflow: auto;
+		// padding-top: map-deep-get($spacing, "xs", "2");
+
+		.option {
+			@include responsive-sizes($input-height, "height");
+			padding: map-deep-get($spacing, "xs", "2") map-deep-get($spacing, "xs", "3");
+			display: flex;
+			align-items: center;
+			&:hover {
+				background-color: $hover-color;
+				cursor: pointer;
+			}
+			&.option-selected {
+				color: $main-color;
+				font-weight: 600;
+			}
+
+			&.option-divider {
+				border-bottom: $border-base;
+				border-top: $border-base;
+			}
+
+			&.option-divider:first-child {
+				border-bottom: $border-base;
+				border-top: none;
+			}
+
+			&.option-divider:last-child {
+				border-top: $border-base;
+				border-bottom: none;
+			}
+		}
+	}
+
+	&.select-open {
+		.select-menu {
+			height: auto;
+			opacity: 1;
+			pointer-events: auto;
+		}
+		box-shadow: $box-shadow-base;
+
+		&.select-bordered {
+			.select-input {
+				border-bottom-left-radius: 0;
+				border-bottom-right-radius: 0;
+			}
+
+			.select-menu {
+				border: $border-base;
+				border-top: 0;
+			}
+		}
+	}
+
+	&.select-ghost {
+		box-shadow: none;
+
+		.select-input {
+			background-color: transparent;
+			box-shadow: none;
+			justify-content: end;
+			padding-right: 1.6rem;
+			.select-input-arrow {
+				margin-right: 0;
+				right: 0;
+			}
+		}
+
+		.select-menu {
+			box-shadow: $box-shadow-base;
+			margin-top: -1px;
+		}
+	}
+
+	@media (min-width: map-get($breakpoints, "sm")) {
+		.select-menu {
+			max-height: 17rem;
+		}
+	}
+}

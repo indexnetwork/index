@@ -1,0 +1,129 @@
+.h-100 {
+	height: 100%;
+}
+
+.w-100 {
+	width: 100%;
+}
+
+@each $breakpoint, $value in $breakpoints {
+	$bp: "";
+	@if $breakpoint != "xs" {
+		$bp: "-" + $breakpoint;
+	}
+	@if ($breakpoint == "xs") {
+		.m {
+			@include responsive-sizes($spacing, "margin", $important: true);
+		}
+		
+		.mt {
+			@include responsive-sizes($spacing, "margin-top", $important: true);
+		}
+
+		.mb {
+			@include responsive-sizes($spacing, "margin-bottom", $important: true);
+		}
+
+		.ml {
+			@include responsive-sizes($spacing, "margin-left", $important: true);
+		}
+
+		.mr {
+			@include responsive-sizes($spacing, "margin-right", $important: true);
+		}
+
+		.mx {
+			@include responsive-sizes($spacing, "margin-left", $important: true);
+			@include responsive-sizes($spacing, "margin-right", $important: true);
+		}
+
+		.my {
+			@include responsive-sizes($spacing, "margin-top", $important: true);
+			@include responsive-sizes($spacing, "margin-bottom", $important: true);
+		}
+
+		.p {
+			@include responsive-sizes($spacing, "padding", $important: true);
+		}
+
+		.pt {
+			@include responsive-sizes($spacing, "padding-top", $important: true);
+		}
+
+		.pb {
+			@include responsive-sizes($spacing, "padding-bottom", $important: true);
+		}
+
+		.pl {
+			@include responsive-sizes($spacing, "padding-left", $important: true);
+		}
+
+		.pr {
+			@include responsive-sizes($spacing, "padding-right", $important: true);
+		}
+
+		.px {
+			@include responsive-sizes($spacing, "padding-left", $important: true);
+			@include responsive-sizes($spacing, "padding-right", $important: true);
+		}
+
+		.py {
+			@include responsive-sizes($spacing, "padding-top", $important: true);
+			@include responsive-sizes($spacing, "padding-bottom", $important: true);
+		}
+	} @else {
+		@media (min-width: map-get($breakpoints, $breakpoint)) {
+			.mt#{$bp} {
+				@include responsive-sizes($spacing, "margin-top", $important: true);
+			}
+
+			.mb#{$bp} {
+				@include responsive-sizes($spacing, "margin-bottom", $important: true);
+			}
+
+			.ml#{$bp} {
+				@include responsive-sizes($spacing, "margin-left", $important: true);
+			}
+
+			.mr#{$bp} {
+				@include responsive-sizes($spacing, "margin-right", $important: true);
+			}
+
+			.mx#{$bp} {
+				@include responsive-sizes($spacing, "margin-left", $important: true);
+				@include responsive-sizes($spacing, "margin-right", $important: true);
+			}
+
+			.my#{$bp} {
+				@include responsive-sizes($spacing, "margin-top", $important: true);
+				@include responsive-sizes($spacing, "margin-bottom", $important: true);
+			}
+
+			.pt#{$bp} {
+				@include responsive-sizes($spacing, "padding-top", $important: true);
+			}
+
+			.pb#{$bp} {
+				@include responsive-sizes($spacing, "padding-bottom", $important: true);
+			}
+
+			.pl#{$bp} {
+				@include responsive-sizes($spacing, "padding-left", $important: true);
+			}
+
+			.pr#{$bp} {
+				@include responsive-sizes($spacing, "padding-right", $important: true);
+			}
+
+			.px#{$bp} {
+				@include responsive-sizes($spacing, "padding-left", $important: true);
+				@include responsive-sizes($spacing, "padding-right", $important: true);
+			}
+
+			.py#{$bp} {
+				@include responsive-sizes($spacing, "padding-top", $important: true);
+				@include responsive-sizes($spacing, "padding-bottom", $important: true);
+			}
+		}
+	}
+}

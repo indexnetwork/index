@@ -1,0 +1,28 @@
+.link-input {
+	height: 4.4rem;
+	background-color: $gray-7;
+	display: flex;
+	align-items: center;
+	border-radius: 2px;
+	
+	.link-input__input {
+		font-size: 1.4rem !important;
+		color: $gray-5;
+		border-radius: 2px;
+		border: none;
+		
+		padding-left: map-deep-get($spacing, "xs", "6") !important;
+		padding-right: map-deep-get($spacing, "xs", "6") !important;
+		
+		& > input {
+			background-color: $gray-7;
+			color: $gray-5;
+		}
+		:focus::placeholder{
+			opacity: 0.50;
+		}
+	}
+	
+
+}
+

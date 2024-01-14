@@ -1,0 +1,18 @@
+.text {
+	color: $main-color;
+	@include responsive-sizes($font-size, "font-size");
+	@include responsive-sizes($font-line-height, "line-height");
+	@each $key, $value in $common-colors {
+		&-#{$key} {
+			color: $value;
+		}
+	}
+
+	&-center {
+		text-align: center !important;
+	}
+
+	&-left {
+		text-align: left !important;
+	}
+}

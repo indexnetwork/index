@@ -1,0 +1,113 @@
+.spin {
+	position: relative;
+
+	&.spin-solo {
+		.spin-spinner {
+			position: static;
+			left: auto;
+			top: auto;
+			transform: none;
+		}
+	}
+
+	&.spin-hidden {
+		visibility: hidden;
+	}
+	.spin-bg,
+	.spin-spinner {
+		display: none;
+	}
+
+	&.spin-active {
+		.spin-bg {
+			display: block;
+			position: absolute;
+			left: 0;
+			top: 0;
+			right: 0;
+			bottom: 0;
+			background-color: transparent;
+			backdrop-filter: blur(0.06rem);
+		}
+
+		.spin-spinner {
+			display: inline-block;
+		}
+	}
+
+	.spin-spinner {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
+		width: map-get($spinner-size, "sm");
+		height: map-get($spinner-size, "sm");
+
+		div {
+			box-sizing: border-box;
+			display: block;
+			position: absolute;
+			width: map-get($spinner-size, "sm");
+			height: map-get($spinner-size, "sm");
+			border-width: 3px;
+			border-style: solid;
+			border-radius: 100%;
+			animation: spinner 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+			border-color: $main-color transparent transparent transparent;
+		}
+
+		div:nth-child(1) {
+			animation-delay: -0.45s;
+		}
+
+		div:nth-child(2) {
+			animation-delay: -0.3s;
+		}
+
+		div:nth-child(3) {
+			animation-delay: -0.15s;
+		}
+	}
+
+	@each $key, $value in $common-colors {
+		&.spin-#{$key} {
+			.spin-spinner {
+				div {
+					border-color: $value transparent transparent transparent;
+				}
+			}
+		}
+	}
+
+	&.spin-light {
+		.spin-spinner {
+			div {
+				border-width: 1px;
+			}
+		}
+	}
+
+	&.spin-strong {
+		.spin-spinner {
+			div {
+				border-width: 4px;
+			}
+		}
+	}
+	
+	@each $key, $size in $spinner-size {
+		&-size-#{$key} {
+			height: $size;
+			width: $size;
+			.spin-spinner {
+				height: $size;
+				width: $size;
+
+				div {
+					height: $size;
+					width: $size;
+				}
+			}
+		}
+	}
+}

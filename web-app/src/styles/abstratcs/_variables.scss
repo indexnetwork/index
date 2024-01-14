@@ -1,0 +1,326 @@
+/**************
+		COLORS
+***************/
+
+$white: #ffffff;
+$black: #000000;
+$main-color: #0f172a;
+$landing-color: #f4f7f6;
+$highlight-color: #dcfae2;
+$gray-1: #f1f5f9;
+$gray-2: #e2e8f0;
+$gray-3: #cbd5e1;
+$gray-4: #94a3b8;
+$gray-5: #475569;
+$gray-6: #1e293b;
+$gray-7: #f8fafc;
+$blue: #0054e6;
+$twitter-blue: #4a99e9;
+$success: #040702;
+$warning: #ef9b0d;
+$error: #ff233e;
+
+$primary-text-color: $gray-6;
+$secondary-text-color: $gray-5;
+$hover-color: $gray-7;
+
+$common-colors: (
+	"primary": $main-color,
+	"secondary": $gray-4,
+	"error": $error,
+	"success": $success,
+	"warning": $warning,
+	"blue": $blue,
+	"disabled": $gray-5,
+	"gray4": $gray-4,
+	"gray5": $gray-5,
+	"gray6": $gray-6,
+	"white": $white,
+);
+
+/**************
+		TYPOGRAPHY
+***************/
+
+// In Pixels
+$font-size-base: 10;
+
+$font-size: (
+	"xs": (
+		"xs": .8rem,
+		"sm": 1rem,
+		"md": 1.2rem,
+		"lg": 1.6rem,
+		"xl": 1.6rem,
+	),
+	"sm": (
+		"xs": 1rem,
+		"sm": 1.2rem,
+		"md": 1.4rem,
+		"lg": 1.6rem,
+		"xl": 2rem,
+	),
+);
+
+$font-line-height: (
+	"xs": (
+		"xs": 1rem,
+		"sm": 1.3rem,
+		"md": 1.5rem,
+		"lg": 1.7rem,
+		"xl": 2.5rem,
+	),
+	"sm": (
+		"xs": 1.2rem,
+		"sm": 1.5rem,
+		"md": 1.7rem,
+		"lg": 1.9rem,
+		"xl": 2.7rem,
+	),
+);
+
+$header-font-size: (
+	"xs": (
+		"1": 2.8rem,
+		"2": 2rem,
+		"3": 1.6rem,
+		"4": 1.4rem,
+		"5": 1.2rem,
+		"6": 1rem,
+	),
+	"sm": (
+		"1": 3.2rem,
+		"2": 2.4rem,
+		"3": 22px,
+		"4": 1.8rem,
+		"5": 1.4rem,
+		"6": 1.2rem,
+	),
+);
+
+$header-line-height: (
+	"xs": (
+		"1": 3.2rem,
+		"2": 2.4rem,
+		"3": 2rem,
+		"4": 1.8rem,
+		"5": 1.6rem,
+		"6": 1.4rem,
+	),
+	"sm": (
+		"1": 3.6rem,
+		"2": 2.8rem,
+		"3": 2.5rem,
+		"4": 2.2rem,
+		"5": 1.7rem,
+		"6": 1.4rem,
+	),
+);
+
+$h1-size-huge: 5rem;
+$h2-size-huge: 4rem;
+$h3-size-huge: 3.2rem;
+$h4-size-huge: 3rem;
+$h5-size-huge: 2.4rem;
+$h6-size-huge: 1.8rem;
+
+$h1-line-height-huge: 5.2rem;
+$h2-line-height-huge: 4.8rem;
+$h3-line-height-huge: 3.9rem;
+$h4-line-height-huge: 3.7rem;
+$h5-line-height-huge: 2.88rem;
+$h6-line-height-huge: 2.2rem;
+
+/**************
+		SPACING
+***************/
+
+$spacing: (
+	"xs": (
+		"0": 0,
+		"1": 0.2rem,
+		"2": 0.4rem,
+		"3": 0.8rem,
+		"4": 1rem,
+		"5": 1.2rem,
+		"6": 1.6rem,
+		"7": 2.4rem,
+		"8": 3.2rem,
+		"9": 3.6rem,
+		"10": 4rem,
+		"11": 6rem,
+		"12": 12rem,
+	),
+);
+
+/**************
+		BORDERS
+***************/
+
+$border-radius-base: 2px;
+$border-color: $gray-2;
+$border-base: 1px solid $border-color;
+
+/**************
+		BREAKPOINTS
+***************/
+
+$breakpoints: (
+	"xs": 480px,
+	"sm": 768px,
+	"md": 992px,
+	"lg": 1200px,
+);
+
+/**************
+		BOX SHADOW
+***************/
+
+$box-shadow-base: 0 0.5rem 1.5rem $gray-3;
+$box-shadow-base-half: 1.5rem 1.2rem 1.5rem rgba(240, 240, 240, 0.5);
+$box-shadow-base-thin: 0px 1px 0px $gray-2;
+$avatar-box-shadow: 0px 4px 8px 2px rgba(0, 0, 0, 0.2);
+/**************
+		SCROLL BAR
+***************/
+
+$scroll-bar-size: 8px;
+
+/**************
+		INPUT
+***************/
+
+$input-height: (
+	"xs": (
+		"xs": 2rem,
+		"sm": 2.4rem,
+		"md": 2.8rem,
+		"lg": 4.2rem,
+	),
+	"sm": (
+		"xs": 2.4rem,
+		"sm": 2.8rem,
+		"md": 3.2rem,
+		"lg": 4.2rem,
+	),
+);
+
+$input-disabled-bg: $gray-1;
+
+/**************
+		BUTTON
+***************/
+
+$button-bg: (
+	"primary": $main-color,
+	"secondary": $gray-4,
+	"error": $error,
+	"success": $success,
+	"warning": $warning,
+	"blue": $blue,
+	"primary-outlined": $main-color,
+	"secondary-outlined": $white,
+	"error-outlined": $error,
+	"success-outlined": $success,
+	"warning-outlined": $warning,
+	"blue-outlined": $blue,
+	"disabled": $gray-3,
+	"clear": $white,
+	"tag": $gray-6,
+);
+
+$button-color: (
+	"primary": $white,
+	"secondary": $white,
+	"error": $white,
+	"success": $white,
+	"warning": $white,
+	"blue": $white,
+	"primary-outlined": $main-color,
+	"secondary-outlined": $gray-4,
+	"error-outlined": $error,
+	"success-outlined": $success,
+	"warning-outlined": $warning,
+	"blue-outlined": $blue,
+	"disabled": $white,
+	"clear": $gray-4,
+	"tag": $main-color,
+);
+
+$hover-darken: 5%;
+$visited-lighten: 12%;
+
+/**************
+		transition
+***************/
+
+$transition-duration-base: 0.05s;
+$transition-bg: background $transition-duration-base ease-in-out;
+$transition-swipe-modal: max-height 0.2s cubic-bezier(0, 0.6, 0.75, 1);
+
+/**************
+		TOOLTIP
+***************/
+$tooltip-spacing: map-deep-get($spacing, "xs", "3");
+
+/**************
+		Z INDEX
+***************/
+$z-index: (
+	"navbar": 2,
+	"footer": 2,
+	"tooltip": 5,
+	"dropdown": 3,
+	"select": 4
+);
+
+/**************
+		Navbar
+***************/
+$navbar-height: (
+	"xs": 6.4rem,
+	"sm": 6.4rem,
+	"md": 6.4rem,
+	"lg": 6.4rem,
+
+);
+
+/**************
+		Footer
+***************/
+$footer-height: (
+	"xs": 6rem,
+	"sm": 6.4rem,
+);
+
+/**************
+		DROPDOWN
+***************/
+$dropdown-spacing: map-deep-get($spacing, "xs", "2");
+
+/**************
+		Modal
+***************/
+$modal-backdrop-color: rgba($black, 0.5);
+
+/**************
+		Spinner
+***************/
+$spinner-size: (
+	"xs": 1.2rem,
+	"sm": 1.6rem,
+	"md": 2rem,
+	"lg": 2.4rem,
+);
+$spinner-bg: rgba(255, 255, 255, 0.2);
+
+/**************
+		Copy Input
+***************/
+$copy-input-icon-bg: linear-gradient(90deg, rgba(0, 0, 0, 0) 0%, $gray-6 5%, $gray-6 100%);
+
+/**************
+		Switch
+***************/
+$switch-height-md: 1.6rem;
+$switch-width-md: 3rem;
