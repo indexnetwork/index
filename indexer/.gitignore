@@ -1,0 +1,7 @@
+.chroma/*
+chroma-indexes/*
+.idea/*
+app/__pycache__/*
+.DS_Store
+.env
+files
