@@ -13,12 +13,12 @@ export const getIndexes = async (req, res, next) => {
 
 export const addIndex = async (req, res, next) => {
 
-    if(req.params.id !== req.user.parent) {
+    if(req.params.id !== req.personalDID.parent) {
         return res.status(500).json({ error: "Authorization error" });
     }
     const {indexId, type} = req.body;
     try {
-        const didService = new DIDService().setDID(req.user);
+        const didService = new DIDService().setDID(req.personalDID);
         const newIndex = await didService.addIndex(indexId, type)
         res.status(201).json(newIndex);
     } catch (error) {
@@ -28,13 +28,13 @@ export const addIndex = async (req, res, next) => {
 
 export const removeIndex = async (req, res, next) => {
 
-    if(req.params.id !== req.user.parent) {
+    if(req.params.id !== req.personalDID.parent) {
         return res.status(500).json({ error: "Authorization error" });
     }
 
     const {indexId, type} = req.body;
     try {
-        const didService = new DIDService().setDID(req.user);
+        const didService = new DIDService().setDID(req.personalDID);
         const newIndex = await didService.removeIndex(indexId, type)
         res.status(200).json(newIndex);
     } catch (error) {
@@ -44,11 +44,11 @@ export const removeIndex = async (req, res, next) => {
 
 
 export const createProfile = async (req, res, next) => {
-    if(req.params.id !== req.user.parent) {
+    if(req.params.id !== req.personalDID.parent) {
         return res.status(500).json({ error: "Authorization error" });
     }
     try {
-        const didService = new DIDService().setDID(req.user);
+        const didService = new DIDService().setDID(req.personalDID);
         const profile = await didService.createProfile(req.body)
         res.status(201).json(profile);
     } catch (error) {

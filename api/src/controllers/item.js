@@ -7,7 +7,7 @@ export const listItems = async (req, res, next) => {
 export const addItem = async (req, res, next) => {
     const {indexId, itemId} = req.body;
     try {
-        const itemService = new ItemService().setDID(req.user);
+        const itemService = new ItemService().setDID(req.pkpDID);
         const item = await itemService.addItem(indexId, itemId);
         res.status(201).json(item);
     } catch (error) {
@@ -18,7 +18,7 @@ export const addItem = async (req, res, next) => {
 export const removeItem = async (req, res, next) => {
     const {indexId, itemId} = req.body;
     try {
-        const itemService = new ItemService().setDID(req.user);
+        const itemService = new ItemService().setDID(req.pkpDID);
         const item = await itemService.removeItem(indexId, itemId);
         res.status(200).json(item);
     } catch (error) {

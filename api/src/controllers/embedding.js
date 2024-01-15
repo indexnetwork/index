@@ -3,7 +3,7 @@ import {EmbeddingService} from "../services/embedding.js";
 export const listEmbeddings = async (req, res, next) => {};
 export const createEmbedding = async (req, res, next) => {
     try {
-        const embeddingService = new EmbeddingService().setDID(req.user);
+        const embeddingService = new EmbeddingService().setDID(req.pkpDID);
         const embedding = await embeddingService.createEmbedding(req.body);
         res.status(201).json(embedding);
     } catch (error) {
@@ -15,7 +15,7 @@ export const createEmbedding = async (req, res, next) => {
 };
 export const updateEmbedding = async (req, res, next) => {
     try {
-        const embeddingService = new EmbeddingService().setDID(req.user);
+        const embeddingService = new EmbeddingService().setDID(req.pkpDID);
         const embedding = await embeddingService.updateEmbedding(req.body);
         res.status(200).json(embedding);
     } catch (error) {
@@ -27,7 +27,7 @@ export const updateEmbedding = async (req, res, next) => {
 export const deleteEmbedding = async (req, res, next) => {
 
     try {
-        const embeddingService = new EmbeddingService().setDID(req.user);
+        const embeddingService = new EmbeddingService().setDID(req.pkpDID);
         const embedding = await embeddingService.deleteEmbedding(req.body);
         res.status(200).json(embedding);
     } catch (error) {

@@ -9,7 +9,7 @@ export const crawlMetadata = async (req, res, next) => {
 
 export const createWebPage = async (req, res, next) => {
     try {
-        const webPageService = new WebPageService().setDID(req.user);
+        const webPageService = new WebPageService().setDID(req.personalDID);
         const webPage = await webPageService.createWebPage(req.body);
         res.status(201).json(webPage);
     } catch (error) {
@@ -19,7 +19,7 @@ export const createWebPage = async (req, res, next) => {
 
 export const crawlWebPage = async (req, res, next) => {
     try {
-        const webPageService = new WebPageService().setDID(req.user);
+        const webPageService = new WebPageService().setDID(req.personalDID);
         let params = req.body;
         try{
             const crawlResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/crawl`, {
