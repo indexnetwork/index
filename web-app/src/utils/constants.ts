@@ -23,3 +23,6 @@ export const API_ENDPOINTS = {
   ZAPIER_TEST_LOGIN: "/zapier/test_login",
   SUBSCRIBE_TO_NEWSLETTER: "/subscribe",
 };
+
+
+export const DEFAULT_CREATE_INDEX_TITLE = "Untitled Index";

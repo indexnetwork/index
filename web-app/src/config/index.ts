@@ -1,9 +1,9 @@
 export const appConfig = {
 	baseUrl: "https://index.network/",
-	apiUrl: "https://index.network/api",
+	apiUrl: "https://dev.index.network/api", // TODO: handle better
 	ipfsProxy: "https://indexas.infura-ipfs.io/ipfs",
 	ipfsInfura: "http://localhost:3001/avatar",
-	defaultCID: "QmRisjM1uZ18wUE22XsREDYEXYdsVuZ6P312XWcMj3Apys", // Empty.
+	defaultCID: "QmZQ42inuRBMLh65UfUCGhMBWhHCsZtGVEKttV16mbrKrj", // Empty.
 	testNetwork: {
 		chainId: "0x2ac49",
 		chainName: "Chronicle - Lit Protocol Testnet",

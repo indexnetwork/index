@@ -97,11 +97,29 @@ export interface LinksCrawlContentRequest {
 	links: Link[];
 }
 
+const buildHeaders = (personalSession?: string, pkpSession?: string): any => {
+  return {
+    "X-Index-Personal-DID-Session": personalSession,
+    "X-Index-PKP-DID-Session": pkpSession,
+  }
+}
+
 const apiAxios = axios.create({
 	baseURL: appConfig.apiUrl,
 });
 
 class ApiService {
+  async createIndex({
+    params, pkpSession, personalSession
+  }: {
+    params: Partial<Indexes>, pkpSession: string, personalSession: string
+  }): Promise<Indexes> {
+    const { data } = await apiAxios.post<any>('/indexes', params, {
+      headers: buildHeaders(personalSession, pkpSession)
+    });
+    return data;
+  }
+
 	async searchIndex(body: DidSearchRequestBody): Promise<IndexSearchResponse | null> {
 		try {
 			const { data } = await apiAxios.post<IndexSearchResponse>(API_ENDPOINTS.SEARCH_DID, body);

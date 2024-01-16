@@ -6,7 +6,7 @@ import CreateModal from "components/site/modal/CreateModal";
 import EditProfileModal from "components/site/modal/EditProfileModal";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import LitService from "services/lit-service";
-import CeramicService from "services/ceramic-service";
+import apiService from "services/api-service";
 import {
 	Indexes,
 	Users,
@@ -19,6 +19,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useAppSelector } from "./store";
 import { selectProfile } from "../store/slices/profileSlice";
 import api, { DidSearchRequestBody, IndexSearchResponse } from "../services/api-service";
+import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 
 export interface AppContextValue {
 	indexes: MultipleIndexListState
@@ -75,24 +76,48 @@ export const AppContextProvider = ({ children } : any) => {
 			indexes: [] as Indexes[],
 		} as IndexListState,
 	});
-	const handleCreate = async (title: string) => {
-		if (title) {
-			// handleToggleCreateModal();
-			setCreateModalVisible(false);
-			setTransactionApprovalWaiting(true);
-			const { pkpPublicKey } = await LitService.mintPkp();
-			const sessionResponse = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
-			const c = new CeramicService();
-			c.authenticateUser(sessionResponse.session.did);
-			const doc = await c.createIndex(pkpPublicKey, { title } as Indexes);
-			await ceramic.addUserIndex(doc.id, "owner");
-			updateUserIndexState({ ...doc, ownerDID: profile } as Indexes, "owner", "add");
-			if (doc) {
-				setTransactionApprovalWaiting(false);
-				await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
-			}
+	
+	const handleCreate = async (title: string = DEFAULT_CREATE_INDEX_TITLE) => {
+		setCreateModalVisible(false);
+		setTransactionApprovalWaiting(true);
+		try {
+		const { pkpPublicKey } = await LitService.mintPkp();
+		const sessionResponse = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
+
+		let personalSession = localStorage.getItem("did");
+		if (!personalSession) {
+			throw Error('No personal session provided')
+		}
+
+		let pkpSession = sessionResponse.session.serialize();
+		if (!pkpSession) {
+			throw Error('No PKP session provided')
+		}
+
+		const doc = await apiService.createIndex({
+			params: {
+			title,
+			signerFunction: appConfig.defaultCID,
+			signerPublicKey: pkpPublicKey,
+			},
+			pkpSession,
+			personalSession
+		});
+
+		// ASK: why no doc check here, but below instead?
+		updateUserIndexState({ ...doc, ownerDID: profile } as Indexes, "owner", "add");
+
+		if (doc) {
+			setTransactionApprovalWaiting(false);
+			await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
+		}
+		} catch (err) {
+		console.error("Couldn't create index", err)
+		alert("Couldn't create index :/") // TODO: handle better
 		}
 	};
+
+
 	const removeIndex = (group : IndexListState, index: Indexes) => {
 		const newIndexes = group.indexes?.filter((i: Indexes) => i.id !== index.id) || [];
 		if (newIndexes?.length < group.indexes!.length) {

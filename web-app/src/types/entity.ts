@@ -10,6 +10,8 @@ export type Indexes = {
   title: string | null
   collabAction: string
   pkpPublicKey: string
+  signerFunction: string
+  signerPublicKey: string
   controllerDID: { // This is PKP DID
     id: string
   };
