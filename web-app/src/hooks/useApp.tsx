@@ -1,11 +1,9 @@
 import {
 	createContext, useState, useContext, useEffect, useCallback,
 } from "react";
-import { appConfig } from "config";
 import CreateModal from "components/site/modal/CreateModal";
 import EditProfileModal from "components/site/modal/EditProfileModal";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
-import LitService from "services/lit-service";
 import apiService from "services/api-service";
 import {
 	Indexes,
@@ -58,39 +56,18 @@ export const AppContextProvider = ({ children } : any) => {
 		setCreateModalVisible(false);
 		setTransactionApprovalWaiting(true);
 		try {
-		const { pkpPublicKey } = await LitService.mintPkp();
-		const sessionResponse = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
+      const doc = await apiService.createIndex(title);
 
-		let personalSession = localStorage.getItem("did");
-		if (!personalSession) {
-			throw Error('No personal session provided')
-		}
+      // ASK: why no doc check here, but below instead?
+      updateUserIndexState({ ...doc, ownerDID: profile } as Indexes, "add");
 
-		let pkpSession = sessionResponse.session.serialize();
-		if (!pkpSession) {
-			throw Error('No PKP session provided')
-		}
-
-		const doc = await apiService.createIndex({
-			params: {
-			title,
-			signerFunction: appConfig.defaultCID,
-			signerPublicKey: pkpPublicKey,
-			},
-			pkpSession,
-			personalSession
-		});
-
-		// ASK: why no doc check here, but below instead?
-		updateUserIndexState({ ...doc, ownerDID: profile } as Indexes, "add");
-
-		if (doc) {
-			setTransactionApprovalWaiting(false);
-			await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
-		}
+      if (doc) {
+        setTransactionApprovalWaiting(false);
+        await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
+      }
 		} catch (err) {
-		console.error("Couldn't create index", err)
-		alert("Couldn't create index :/") // TODO: handle better
+      console.error("Couldn't create index", err)
+      alert("Couldn't create index :/") // TODO: handle better
 		}
 	};
 
