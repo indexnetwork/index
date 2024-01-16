@@ -93,7 +93,7 @@ export type Link = {
  *
  */
 export interface Users {
-  id?: string;
+  id?: string; // TODO: why is this optional?
   name?: string;
   bio?: string;
   avatar?: CID;

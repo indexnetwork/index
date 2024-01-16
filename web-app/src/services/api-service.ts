@@ -39,14 +39,6 @@ export interface GetUserIndexesRequestBody {
 	index_id: string;
 }
 
-export interface DidSearchRequestBody extends ApiSearchRequestBody<{}> {
-	did: string;
-	skip: number;
-	take: number;
-	search?: string;
-	links_size?: number;
-	type?: string;
-}
 export interface DidSearchResponse {
 	totalCount: number;
 	records: Indexes[];
@@ -120,13 +112,10 @@ class ApiService {
     return data;
   }
 
-	async searchIndex(body: DidSearchRequestBody): Promise<IndexSearchResponse | null> {
-		try {
-			const { data } = await apiAxios.post<IndexSearchResponse>(API_ENDPOINTS.SEARCH_DID, body);
-			return data;
-		} catch (err) {
-			return null;
-		}
+	async getAllIndexes(id: string): Promise<Indexes[]> {
+		const url = API_ENDPOINTS.GET_ALL_INDEXES.replace(':id', id);
+		const { data } = await apiAxios.get<Indexes[]>(url);
+		return data;
 	}
 
 	async getUserIndexes(body: GetUserIndexesRequestBody): Promise<UserIndexResponse | undefined> {

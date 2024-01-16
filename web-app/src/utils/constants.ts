@@ -9,7 +9,7 @@ export const BREAKPOINTS = {
 export const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",
   INDEXES: "/indexes",
-  SEARCH_DID: "/search/did",
+  GET_ALL_INDEXES: "/dids/:id/indexes",
   SEARCH_LINKS: "/search/links",
   GET_USER_INDEXES: "/search/user_indexes",
   LIT_ACTIONS: "/lit_actions",
