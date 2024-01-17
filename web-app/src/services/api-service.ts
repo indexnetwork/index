@@ -14,20 +14,6 @@ export type HighlightType<T = {}> = T & {
 export interface IndexResponse extends Indexes {
   highlight?: HighlightType;
 }
-export interface IndexSearchResponse {
-  all: {
-    totalCount: number;
-    records: Indexes[];
-  },
-  owner?: {
-    totalCount: number;
-    records: Indexes[];
-  }
-  starred?: {
-    totalCount: number;
-    records: Indexes[];
-  },
-}
 
 export interface LinkSearchRequestBody extends ApiSearchRequestBody<{}> {
   index_id: string;
@@ -94,8 +80,8 @@ export interface LinksCrawlContentRequest {
 class ApiService {
   private static instance: ApiService;
   private apiAxios: AxiosInstance;
-  private signerPublicKey: string = '';
-  private signerFunction: string = appConfig.defaultCID;
+  private signerPublicKey: Indexes["signerPublicKey"] = "";
+  private signerFunction: Indexes["signerFunction"] = appConfig.defaultCID;
 
   private constructor() {
     this.apiAxios = axios.create({ baseURL: appConfig.apiUrl });
@@ -107,13 +93,6 @@ class ApiService {
       ApiService.instance = new ApiService();
     }
     return ApiService.instance;
-  }
-
-  buildHeaders = (personalSession?: string, pkpSession?: string): any => {
-    return {
-      "X-Index-Personal-DID-Session": personalSession,
-      "X-Index-PKP-DID-Session": pkpSession,
-    }
   }
 
   async init(): Promise<void> {
@@ -131,7 +110,10 @@ class ApiService {
       throw new Error("Couldn't get PKP session");
     }
 
-    this.apiAxios.defaults.headers = this.buildHeaders(personalSession, pkpSession);
+    this.apiAxios.defaults.headers = {
+      "X-Index-Personal-DID-Session": personalSession,
+      "X-Index-PKP-DID-Session": pkpSession,
+    } as any;
   }
 
   async createIndex(title: string = DEFAULT_CREATE_INDEX_TITLE): Promise<Indexes> {

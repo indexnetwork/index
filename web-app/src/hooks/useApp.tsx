@@ -58,13 +58,13 @@ export const AppContextProvider = ({ children }: any) => {
     try {
       const doc = await apiService.createIndex(title);
 
-      // ASK: why no doc check here, but below instead?
-      updateUserIndexState({ ...doc, ownerDID: profile } as Indexes, "add");
-
-      if (doc) {
-        setTransactionApprovalWaiting(false);
-        await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
+      if (!doc) {
+        throw new Error("API didn't return a doc");
       }
+
+      updateUserIndexState({ ...doc, ownerDID: profile } as Indexes, "add");
+      setTransactionApprovalWaiting(false);
+      await router.push(`/index/[indexId]`, `/index/${doc.id}`, { shallow: true });
     } catch (err) {
       console.error("Couldn't create index", err)
       alert("Couldn't create index :/") // TODO: handle better
