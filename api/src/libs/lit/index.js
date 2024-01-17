@@ -196,7 +196,7 @@ export const getPKPSession = async (session, index) => {
 		const did = await createDIDCacao(didKey, cacao);
 		const pkpSession = new DIDSession({ cacao, keySeed, did });
 
-		await redis.hSet("sessions", sessionCacheKey, session.serialize());
+		await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
 
 		await pkpSession.did.authenticate()
 		return pkpSession
