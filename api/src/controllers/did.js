@@ -1,8 +1,9 @@
 import { DIDService } from "../services/did.js";
 export const getIndexes = async (req, res, next) => {
     // sendLit(req.params.id) //TODO Fix later.
+
     try {
-        const didService = new DIDService()
+        const didService = new DIDService().setSession(req.session)
         const { type } = req.query;
         const indexes = await didService.getIndexes(req.params.id, type)
         res.status(200).json(indexes);
@@ -13,12 +14,12 @@ export const getIndexes = async (req, res, next) => {
 
 export const addIndex = async (req, res, next) => {
 
-    if(req.params.id !== req.personalDID.parent) {
+    if(req.params.id !== req.session.did.parent) {
         return res.status(500).json({ error: "Authorization error" });
     }
     const {indexId, type} = req.body;
     try {
-        const didService = new DIDService().setDID(req.personalDID);
+        const didService = new DIDService().setSession(req.session);
         const newIndex = await didService.addIndex(indexId, type)
         res.status(201).json(newIndex);
     } catch (error) {
@@ -28,13 +29,13 @@ export const addIndex = async (req, res, next) => {
 
 export const removeIndex = async (req, res, next) => {
 
-    if(req.params.id !== req.personalDID.parent) {
+    if(req.params.id !== req.session.did.parent) {
         return res.status(500).json({ error: "Authorization error" });
     }
 
     const {indexId, type} = req.body;
     try {
-        const didService = new DIDService().setDID(req.personalDID);
+        const didService = new DIDService().setSession(req.session)
         const newIndex = await didService.removeIndex(indexId, type)
         res.status(200).json(newIndex);
     } catch (error) {
@@ -44,11 +45,11 @@ export const removeIndex = async (req, res, next) => {
 
 
 export const createProfile = async (req, res, next) => {
-    if(req.params.id !== req.personalDID.parent) {
+    if(req.params.id !== req.session.did.parent) {
         return res.status(500).json({ error: "Authorization error" });
     }
     try {
-        const didService = new DIDService().setDID(req.personalDID);
+        const didService = new DIDService().setSession(req.session);
         const profile = await didService.createProfile(req.body)
         res.status(201).json(profile);
     } catch (error) {
