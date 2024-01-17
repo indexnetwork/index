@@ -51,7 +51,7 @@ export const authenticateMiddleware = async (req, res, next) => {
 }
 
 export const authCheckMiddleware = (req, res, next) => {
-    if(!req.session || !req.session.did.authenticated){
+    if(!req.session || req.session.isExpired || !req.session.did.authenticated){
         return res.status(401).send({
             error: "Authorization error"
         });
