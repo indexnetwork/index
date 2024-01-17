@@ -186,7 +186,6 @@ export class IndexService {
 
         try {
             const content = {
-                ...params,
                 updatedAt: getCurrentDateTime(),
                 deletedAt: getCurrentDateTime(),
             };
