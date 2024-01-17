@@ -12,11 +12,10 @@ export const getIndexById = async (req, res, next) => {
     }
 }
 export const createIndex = async (req, res, next) =>  {
-
-
     try {
 
-        const pkpSession = getPKPSession(req.session, req.body);
+        const pkpSession = await getPKPSession(req.session, req.body);
+
         const indexService = new IndexService().setSession(pkpSession); //PKP
         const newIndex = await indexService.createIndex(req.body);
 

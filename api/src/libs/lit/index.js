@@ -159,6 +159,7 @@ export const getPKPSession = async (session, index) => {
 	try{
 		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 			litNetwork: 'cayenne',
+			debug: false,
 		});
 		await litNodeClient.connect();
 		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
@@ -178,7 +179,7 @@ export const getPKPSession = async (session, index) => {
 
 		const { error } = resp.response; // TODO Handle.
 		if (error) {
-			console.log(error)
+			console.log("LIT Node Client Error", error);
 			return null;
 		}
 
@@ -195,7 +196,7 @@ export const getPKPSession = async (session, index) => {
 		const did = await createDIDCacao(didKey, cacao);
 		const pkpSession = new DIDSession({ cacao, keySeed, did });
 
-		await redis.hSet("sessions", sessionCacheKey, session.serialize());
+		await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
 
 		await pkpSession.did.authenticate()
 		return pkpSession
