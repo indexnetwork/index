@@ -7,6 +7,24 @@ const ec = new elliptic.ec("secp256k1");
 
 import RedisClient from '../../clients/redis.js';
 import {DIDService} from "../../services/did.js";
+
+
+import { DID } from "dids";
+import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
+import { randomBytes, randomString } from "@stablelib/random";
+import { Cacao } from "@didtools/cacao";
+import { getResolver } from "key-did-resolver";
+import { createDIDCacao, DIDSession } from "did-session";
+import { Ed25519Provider } from "key-did-provider-ed25519";
+import { CID } from 'multiformats/cid';
+import { SiweMessage } from "@didtools/cacao";
+import { getAddress } from "@ethersproject/address";
+
+const config = {
+	litNetwork: "cayenne",
+	domain: "index.network",
+};
+
 const redis = RedisClient.getInstance();
 
 
@@ -99,3 +117,91 @@ export const decodeDIDWithLit = (encodedDID) => {
 }
 
 export const walletToDID = (chain, wallet) => `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`
+
+export const getPKPSession = async (session, index) => {
+
+	if(!session.did.authenticated){
+		throw new Error("Unauthenticated DID");
+	}
+
+	const sessionCacheKey = `${session.did.parent}:${index.signerFunction}`
+
+	const existingSessionStr = await redis.hGet("sessions", sessionCacheKey);
+
+	if (existingSessionStr) {
+		try {
+			const didSession = await DIDSession.fromSession(existingSessionStr);
+			await didSession.did.authenticate()
+			return didSession;
+
+		} catch (error) {
+			//Expired or invalid session, remove cache.
+			console.warn(error);
+			await redis.hDel("sessions", sessionCacheKey);
+		}
+	}
+
+
+
+	const authSig = {
+		signedMessage: SiweMessage.fromCacao(session.cacao).toMessage(),
+		address: getAddress(session.did.parent.split(":").pop()),
+		derivedVia: "web3.eth.personal.sign",
+		sig: session.cacao.s.s,
+	};
+
+	const keySeed = randomBytes(32);
+	const provider = new Ed25519Provider(keySeed);
+	// @ts-ignore
+	const didKey = new DID({ provider, resolver: getResolver() });
+	await didKey.authenticate();
+
+	try{
+		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
+			litNetwork: 'cayenne',
+		});
+		await litNodeClient.connect();
+		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
+		const resp = await litNodeClient.executeJs({
+			ipfsId: signerFunctionV0,
+			authSig,
+			jsParams: {
+				authSig,
+				chain: "ethereum",
+				publicKey: index.signerPublicKey,
+				didKey: didKey.id,
+				nonce: randomString(10),
+				domain: config.domain,
+				sigName: "sig1",
+			},
+		});
+
+		const { error } = resp.response; // TODO Handle.
+		if (error) {
+			console.log(error)
+			return null;
+		}
+
+		const { siweMessage } = JSON.parse(resp.response.context);
+		const signature = resp.signatures.sig1; // TODO Handle.
+		siweMessage.signature = ethers.Signature.from({
+			r: `0x${signature.r}`,
+			s: `0x${signature.s}`,
+			v: signature.recid,
+		}).serialized;
+
+		const cacao = Cacao.fromSiweMessage(siweMessage);
+
+		const did = await createDIDCacao(didKey, cacao);
+		const pkpSession = new DIDSession({ cacao, keySeed, did });
+
+		await redis.hSet("sessions", sessionCacheKey, session.serialize());
+
+		await pkpSession.did.authenticate()
+		return pkpSession
+
+	} catch (e){
+		console.log("Error", e)
+	}
+
+}

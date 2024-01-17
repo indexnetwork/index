@@ -1,9 +1,10 @@
 import { IndexService } from "../services/index.js";
 import { DIDService } from "../services/did.js";
+import {getPKPSession} from "../libs/lit/index.js";
 
 export const getIndexById = async (req, res, next) => {
     try {
-        const indexService = new IndexService().setDID(req.pkpDID);
+        const indexService = new IndexService().setSession(req.session);
         const newIndex = await indexService.getIndexById(req.params.id);
         res.status(200).json(newIndex);
     } catch (error) {
@@ -11,11 +12,15 @@ export const getIndexById = async (req, res, next) => {
     }
 }
 export const createIndex = async (req, res, next) =>  {
+
+
     try {
-        const indexService = new IndexService().setDID(req.pkpDID); //PKP
+
+        const pkpSession = getPKPSession(req.session, req.body);
+        const indexService = new IndexService().setSession(pkpSession); //PKP
         const newIndex = await indexService.createIndex(req.body);
 
-        const didService = new DIDService().setDID(req.personalDID); //Personal
+        const didService = new DIDService().setSession(req.session); //Personal
         const newIndexDID = await didService.addIndex(newIndex.id, "owner");
 
         res.status(201).json(newIndex);
@@ -25,8 +30,15 @@ export const createIndex = async (req, res, next) =>  {
 }
 export const updateIndex = async (req, res, next) => {
     try {
-        const indexService = new IndexService().setDID(req.pkpDID);
-        const newIndex = await indexService.updateIndex(req.params.id, req.body);
+
+        const indexService = new IndexService();
+        const index = await indexService.getIndexById(req.params.id);
+        const pkpSession = await getPKPSession(req.session, index);
+
+        const newIndex = await indexService
+            .setSession(pkpSession)
+            .updateIndex(req.params.id, req.body);
+
         res.status(200).json(newIndex);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -34,9 +46,16 @@ export const updateIndex = async (req, res, next) => {
 };
 export const deleteIndex = async (req, res, next) => {
     try {
-        const indexService = new IndexService().setDID(req.pkpDID);
-        const newIndex = await indexService.deleteIndex(req.params.id);
-        res.status(200).json(newIndex);
+
+        const indexService = new IndexService();
+        const index = await indexService.getIndexById(req.params.id);
+        const pkpSession = await getPKPSession(req.session, index);
+
+        const deletedIndex = await indexService
+            .setSession(pkpSession)
+            .deleteIndex(req.params.id);
+
+        res.status(200).json(deletedIndex);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

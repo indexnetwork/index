@@ -16,31 +16,32 @@ export class IndexService {
         this.did = null;
     }
 
-    setDID(did) {
-        this.did = did;
+    setSession(session) {
+        if(session && session.did.authenticated) {
+            this.did = session.did
+        }
         return this;
     }
 
     async getIndexById(id) {
 
-
         try {
             let didPayload = "";
             if (this.did) {
                 didPayload = `did(first:10, account: "${this.did.id}") {
-                        edges {
-                            node {
+                    edges {
+                        node {
+                            id
+                            type
+                            controllerDID {
                                 id
-                                type
-                                controllerDID {
-                                    id
-                                }
-                                createdAt
-                                updatedAt
-                                deletedAt
                             }
+                            createdAt
+                            updatedAt
+                            deletedAt
                         }
-                    }`
+                    }
+                }`
             }
 
             const {data, errors} = await this.client.executeQuery(`

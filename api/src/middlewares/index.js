@@ -15,44 +15,44 @@ export const errorMiddleware = (err, req, res, next) => {
 export const authenticateMiddleware = async (req, res, next) => {
     try{
 
-        const pkpHeader = req.headers["x-index-pkp-did-session"]
-        if(pkpHeader){
-            const pkpSession = await DIDSession.fromSession(pkpHeader);
-            await pkpSession.did.authenticate()
-            req.pkpDID = pkpSession.did;
+        const authHeader = req.headers.authorization;
 
-            console.log("PKP DID Authenticated", req.pkpDID)
+        // Check if the Authorization header is present
+        if (!authHeader) {
+            // Authorization header is missing
+            return next()
         }
 
-        const personalHeader = req.headers["x-index-personal-did-session"]
-        if(personalHeader){
-            const personalSession = await DIDSession.fromSession(personalHeader);
-            await personalSession.did.authenticate()
-            req.personalDID = personalSession.did;
+        // Split the Authorization header to extract the token
+        const parts = authHeader.split(' ');
 
-            console.log("Personal DID Authenticated", req.personalDID)
+        // Check if the header has the correct format ('Bearer TOKEN')
+        if (parts.length !== 2 || parts[0] !== 'Bearer') {
+            return next()
+        }
+
+        // Extract the token
+        const token = parts[1];
+
+        if(token){
+            const session = await DIDSession.fromSession(token);
+            await session.did.authenticate()
+
+            req.session = session;
+
+            console.log("Session Authenticated", req.session.did.parent);
         }
 
     } catch (e){
-        console.log("Authorization error");
+        console.log("Authorization error", e);
     }
 
     next();
 }
 
-
-export const pkpMiddleware = (req, res, next) => {
-    console.log(req.personalDID, req.pkpDID)
-    if(!req.pkpDID){
-        return res.status(401).send('Unauthorized');
-    }
-    next();
-}
-
-export const personalMiddleware = (req, res, next) => {
-    console.log(req.personalDID, req.pkpDID)
-    if(!req.personalDID){
-        return res.status(401).send('Unauthorized');
+export const authCheckMiddleware = (req, res, next) => {
+    if(!req.session.did.authenticated){
+        return res.status(401).send('Authentication error', req.session.did.parent);
     }
     next();
 }

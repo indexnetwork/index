@@ -15,8 +15,10 @@ export class DIDService {
         this.did = null;
     }
 
-    setDID(did) {
-        this.did = did;
+    setSession(session) {
+        if(session && session.did.authenticated) {
+            this.did = session.did
+        }
         return this;
     }
 
