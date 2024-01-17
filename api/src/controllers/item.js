@@ -12,7 +12,6 @@ export const addItem = async (req, res, next) => {
 
         const indexService = new IndexService();
         const index = await indexService.getIndexById(indexId);
-
         const pkpSession = await getPKPSession(req.session, index);
 
         const itemService = new ItemService().setSession(pkpSession);
