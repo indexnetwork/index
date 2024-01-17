@@ -10,6 +10,8 @@ export type Indexes = {
   title: string | null
   collabAction: string
   pkpPublicKey: string
+  signerFunction: string
+  signerPublicKey: string
   controllerDID: { // This is PKP DID
     id: string
   };
@@ -91,7 +93,7 @@ export type Link = {
  *
  */
 export interface Users {
-  id?: string;
+  id?: string; // TODO: why is this optional?
   name?: string;
   bio?: string;
   avatar?: CID;
