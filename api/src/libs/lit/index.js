@@ -7,6 +7,7 @@ const ec = new elliptic.ec("secp256k1");
 
 import RedisClient from '../../clients/redis.js';
 import {DIDService} from "../../services/did.js";
+import { definition } from "../../types/merged-runtime.js";
 
 
 import { DID } from "dids";
@@ -183,8 +184,13 @@ export const getPKPSession = async (session, index) => {
 			return null;
 		}
 
+		if(! resp.signatures.sig1 ){
+			throw new Error("No signature returned")
+		}
+
 		const { siweMessage } = JSON.parse(resp.response.context);
 		const signature = resp.signatures.sig1; // TODO Handle.
+
 		siweMessage.signature = ethers.Signature.from({
 			r: `0x${signature.r}`,
 			s: `0x${signature.s}`,
@@ -206,3 +212,19 @@ export const getPKPSession = async (session, index) => {
 	}
 
 }
+
+export const getRolesFromSession = (session) => {
+	const authorizedModels = new Set(session.cacao.p.resources.map(r => r.replace("ceramic://*?model=", "")));
+
+	const isOwner = authorizedModels.has(definition.models.Index.id);
+
+	const isCreator = authorizedModels.has(definition.models.Index.id)
+		&& authorizedModels.has(definition.models.IndexItem.id)
+		&& authorizedModels.has(definition.models.Embedding.id);
+
+	return {
+		isOwner,
+		isCreator,
+	};
+}
+

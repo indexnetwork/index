@@ -1,12 +1,21 @@
 import { IndexService } from "../services/index.js";
 import { DIDService } from "../services/did.js";
-import {getPKPSession} from "../libs/lit/index.js";
+import {getPKPSession, getRolesFromSession} from "../libs/lit/index.js";
 
 export const getIndexById = async (req, res, next) => {
     try {
         const indexService = new IndexService().setSession(req.session);
-        const newIndex = await indexService.getIndexById(req.params.id);
-        res.status(200).json(newIndex);
+        const index = await indexService.getIndexById(req.params.id);
+
+        if(req.session){
+            const pkpSession = await getPKPSession(req.session, index);
+            if(pkpSession){
+                const roles = getRolesFromSession(pkpSession);
+                Object.assign(index, roles);
+            }
+        }
+
+        res.status(200).json(index);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
