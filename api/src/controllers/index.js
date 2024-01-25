@@ -11,7 +11,7 @@ export const getIndexById = async (req, res, next) => {
             const pkpSession = await getPKPSession(req.session, index);
             if(pkpSession){
                 const roles = getRolesFromSession(pkpSession);
-                Object.assign(index, roles);
+                Object.assign(index, {roles});
             }
         }
 

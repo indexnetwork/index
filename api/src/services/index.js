@@ -27,8 +27,9 @@ export class IndexService {
 
         try {
             let didPayload = "";
+
             if (this.did) {
-                didPayload = `did(first:10, account: "${this.did.id}") {
+                didPayload = `did(first:10, account: "${this.did.parent}") {
                     edges {
                         node {
                             id
@@ -73,7 +74,23 @@ export class IndexService {
 
 
             const index =  data.node;
+
+            if(index.did && index.did.edges && index.did.edges.length > 0){
+                const did = {};
+                index.did.edges.forEach((edge) => {
+                    if(edge.node.type === "owner"){
+                        did.isOwnerVisible = edge.node.deletedAt === null;
+                    }
+                    if(edge.node.type === "starred"){
+                        did.isStarred = edge.node.deletedAt === null;
+                    }
+                });
+                index.did = did;
+            }
+
             index.ownerDID = await getOwnerProfile(index.signerPublicKey);
+
+
 
             return index;
 
