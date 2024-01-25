@@ -1,5 +1,5 @@
 import React, {
-	ReactElement, useEffect, useMemo, useState,
+	ReactElement, useCallback, useEffect, useMemo, useState,
 } from "react";
 import { NextPageWithLayout } from "types";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
@@ -13,9 +13,9 @@ import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import Avatar from "components/base/Avatar";
 import LinkInput from "components/site/input/LinkInput";
 import IndexItemList from "components/site/index-details/IndexItemList";
-import api, {
- LinkSearchResponse, LinkSearchRequestBody, GetUserIndexesRequestBody, UserIndexResponse,
-} from "services/api-service";
+// import api, {
+//  LinkSearchResponse, LinkSearchRequestBody, GetUserIndexesRequestBody, UserIndexResponse,
+// } from "services/api-service";
 
 import CreatorSettings from "components/site/index-details/CreatorSettings";
 import { useRouter } from "next/router";
@@ -50,12 +50,15 @@ import Head from "next/head";
 import { DID } from "dids";
 import NoLinks from "components/site/indexes/NoLinks";
 import IndexSettings from "../../components/site/index-details/IndexSettings";
+import { useApi } from "components/site/context/APIContext";
 
 const IndexDetailPage: NextPageWithLayout = () => {
 	const { t } = useTranslation(["pages"]);
 	const router = useRouter();
 	const { indexId } = router.query;
 	const [index, setIndex] = useState<Indexes>();
+
+  const { apiService: api } = useApi(); // Consume ApiContext
 
 	const [links, setLinks] = useState<IndexLink[]>([]);
 	const [hasMore, setHasMore] = useState(true);
@@ -85,7 +88,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	} = useApp();
 
 	const loadIndex = async (indexIdParam: string) => {
-		const doc = await api.getIndexById(indexIdParam);
+		const doc = await api.getIndex(indexIdParam);
 		if (!doc) {
 			setNotFound(true);
 			return;
@@ -97,44 +100,44 @@ const IndexDetailPage: NextPageWithLayout = () => {
 		setLoading(false);
 	};
 
-	const loadIndexLinks = async (page: number, init?: boolean) => {
-		if (loading && !init) {
-			return;
-		}
-		setLoading(true);
+	// const loadIndexLinks = async (page: number, init?: boolean) => {
+	// 	if (loading && !init) {
+	// 		return;
+	// 	}
+	// 	setLoading(true);
 
-		const queryParams = {
-			index_id: indexId,
-			skip: init ? 0 : links.length,
-			take,
-		} as LinkSearchRequestBody;
-		if (search && search.length > 0) {
-			queryParams.search = search;
-		}
+	// 	const queryParams = {
+	// 		index_id: indexId,
+	// 		skip: init ? 0 : links.length,
+	// 		take,
+	// 	} as LinkSearchRequestBody;
+	// 	if (search && search.length > 0) {
+	// 		queryParams.search = search;
+	// 	}
 
-		const res = await api.searchLink(queryParams) as LinkSearchResponse;
-		if (res) {
-			setHasMore(res.totalCount > links.length + take);
-			setLinks(init ? res.records : [...links, ...res.records]);
-		}
-		setLoading(false);
-	};
+	// 	const res = await api.searchLink(queryParams) as LinkSearchResponse;
+	// 	if (res) {
+	// 		setHasMore(res.totalCount > links.length + take);
+	// 		setLinks(init ? res.records : [...links, ...res.records]);
+	// 	}
+	// 	setLoading(false);
+	// };
 
-	const loadUserIndex = async () => {
-		if (!index) return;
-		const userIndexes = await api.getUserIndexes({
-			index_id: index.id, // TODO Shame
-			did,
-		} as GetUserIndexesRequestBody) as UserIndexResponse;
+	// const loadUserIndex = async () => {
+	// 	if (!index) return;
+	// 	const userIndexes = await api.getUserIndexes({
+	// 		index_id: index.id, // TODO Shame
+	// 		did,
+	// 	} as GetUserIndexesRequestBody) as UserIndexResponse;
 
-		if (userIndexes && index.id === indexId) {
-			setIndex({
-				...index,
-				isOwner: userIndexes.owner && !userIndexes.owner.deletedAt,
-				isStarred: userIndexes.starred && !userIndexes.starred.deletedAt,
-			});
-		}
-	};
+	// 	if (userIndexes && index.id === indexId) {
+	// 		setIndex({
+	// 			...index,
+	// 			isOwner: userIndexes.owner && !userIndexes.owner.deletedAt,
+	// 			isStarred: userIndexes.starred && !userIndexes.starred.deletedAt,
+	// 		});
+	// 	}
+	// };
 	const handleCollabActionChange = async (CID: string) => {
 		if (!index) return;
 		const litContracts = new LitContracts();
@@ -178,48 +181,63 @@ const IndexDetailPage: NextPageWithLayout = () => {
 			updatedIndex = { ...toggleIndex, isStarred: op === "add" };
 		}
 		setIndex(updatedIndex);
-		(viewedProfile && viewedProfile.id === profile.id) && updateUserIndexState(updatedIndex, type as keyof MultipleIndexListState, op);
+		(viewedProfile && viewedProfile.id === profile.id) && updateUserIndexState(updatedIndex, type, op);
 		if (op === "add") {
 			personalCeramic.addUserIndex(updatedIndex.id, type);
 		} else {
 			personalCeramic.removeUserIndex(updatedIndex.id, type);
 		}
 	};
-	const handleAddLink = async (urls: string[]) => {
-		if (!index) return;
-		setCrawling(true);
-		setProgress({
-			current: 0,
-			total: urls.length,
-		});
-		setSearch("");
-		// TODO Allow for syntax
-		// eslint-disable-next-line no-restricted-syntax
-		for await (const url of urls) {
-			const payload = await api.crawlLink(url);
-			if (payload) {
-				const createdLink = await personalCeramic.createLink(payload);
-				// TODO Fix that.
-				const createdIndexLink = await pkpCeramic.addIndexLink(index as Indexes, createdLink?.id!);
-				if (createdIndexLink) {
-					setAddedLink(createdIndexLink); // TODO Fix
-				}
-			}
-		}
-	};
-	const getProfile = async () => {
-		if (!index) return;
-		const p = await personalCeramic.getProfileByDID(index.ownerDID.id!);
-		if (p) {
-			setViewedProfile(p);
-		}
-	};
-	useEffect(() => {
-		if (!index) return;
-		updateIndex(index as Indexes);
-		did && loadUserIndex();
-		!viewedProfile && getProfile();
-	}, [index?.id]);
+	// const handleAddLink = async (urls: string[]) => {
+	// 	if (!index) return;
+	// 	setCrawling(true);
+	// 	setProgress({
+	// 		current: 0,
+	// 		total: urls.length,
+	// 	});
+	// 	setSearch("");
+	// 	// TODO Allow for syntax
+	// 	// eslint-disable-next-line no-restricted-syntax
+	// 	for await (const url of urls) {
+	// 		const payload = await api.crawlLink(url);
+	// 		if (payload) {
+	// 			const createdLink = await personalCeramic.createLink(payload);
+	// 			// TODO Fix that.
+	// 			const createdIndexLink = await pkpCeramic.addIndexLink(index as Indexes, createdLink?.id!);
+	// 			if (createdIndexLink) {
+	// 				setAddedLink(createdIndexLink); // TODO Fix
+	// 			}
+	// 		}
+	// 	}
+	// };
+
+	// const getProfile = async () => {
+	// 	if (!index) return;
+	// 	const p = await personalCeramic.getProfileByDID(index.ownerDID.id!);
+	// 	if (p) {
+	// 		setViewedProfile(p);
+	// 	}
+	// };
+
+  const fetchProfile = useCallback(async (id: string) => {
+    try {
+      const profile = await api!.getProfile(id);
+      setViewedProfile(profile);
+    } catch (error) {
+      console.error("Error fetching profile", error);
+      // Handle error appropriately
+    }
+  }, [api]); // Include api as a dependency
+
+
+	// useEffect(() => {
+	// 	if (!index) return;
+	// 	updateIndex(index as Indexes);
+	// 	did && loadUserIndex();
+	// 	!viewedProfile && fetchProfile();
+	// }, [index?.id]);
+
+  
 	useEffect(() => {
 		if (!indexId) return;
 		const suffix = crypto.createHash("sha256").update(indexId as string).digest("hex");
@@ -231,7 +249,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
 	}, [indexId]);
 
 	useEffect(() => {
-		loadIndexLinks(0, true);
+		// loadIndexLinks(0, true);
 	}, [indexId, search]);
 
 	const roles: any = useMemo(() => ({
@@ -280,7 +298,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
         }}
       >
         <LinksContext.Provider value={{
-		 links, setLinks, hasMore, loadMore: loadIndexLinks,
+		 links, setLinks, hasMore,
 		}}>
           <Flex
             className={"px-0 px-md-10 pt-6 scrollable-container"}
@@ -411,7 +429,7 @@ const IndexDetailPage: NextPageWithLayout = () => {
                         <Col className="idxflex-grow-1 pb-0 mt-6">
                           <LinkInput
                             loading={crawling}
-                            onLinkAdd={handleAddLink}
+                            // onLinkAdd={handleAddLink}
                             progress={progress}
                           />
                         </Col>

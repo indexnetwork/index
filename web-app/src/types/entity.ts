@@ -7,7 +7,7 @@ import { CID } from "multiformats";
 
 export type Indexes = {
   id: string
-  title: string | null
+  title: string
   collabAction: string
   pkpPublicKey: string
   signerFunction: string
@@ -15,14 +15,22 @@ export type Indexes = {
   controllerDID: { // This is PKP DID
     id: string
   };
+  did: {
+    isOwnerVisible: boolean
+    isStarred: false
+  };
+  roles: {
+    isOwner: boolean
+    isCreator: boolean
+  };
   ownerDID: Users;
   createdAt: string;
   updatedAt: string;
   deletedAt: string;
   links: IndexLink[];
-  isOwner?: boolean;
+  isOwner: boolean;
   isCreator: boolean;
-  isStarred?: boolean;
+  isStarred: boolean;
   isPermittedAddress?: boolean;
 };
 
@@ -71,7 +79,7 @@ export type UserIndex = {
  *
  */
 export type Link = {
-  id?: string;
+  id: string;
   indexId?: string;
   indexerDID?: string;
   content?: string
@@ -93,7 +101,7 @@ export type Link = {
  *
  */
 export interface Users {
-  id?: string; // TODO: why is this optional?
+  id: string; // TODO: why is this optional?
   name?: string;
   bio?: string;
   avatar?: CID;

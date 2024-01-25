@@ -1,12 +1,9 @@
 import LogoFull from "components/base/Logo/LogoFull";
 import LogoMini from "components/base/Logo/LogoMini";
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import cc from "classcat";
 import { useYOffSet } from "hooks/useYOffset";
-import { useRouter } from "next/router";
-import { useAppSelector } from "hooks/store";
-import { selectConnection } from "store/slices/connectionSlice";
-import { useAuth } from "hooks/useAuth";
+import { usePathname, useRouter } from "next/navigation";
 import IconMenu from "components/base/Icon/IconMenu";
 import Button from "components/base/Button";
 import { useApp } from "hooks/useApp";
@@ -15,6 +12,7 @@ import Col from "../Grid/Col";
 import FlexRow from "../Grid/FlexRow";
 import Flex from "../Grid/Flex";
 import Text from "../../../base/Text";
+import { AuthContext, AuthStatus } from "components/site/context/AuthContext";
 
 export interface NavbarProps
   extends React.DetailedHTMLProps<
@@ -48,27 +46,30 @@ const Navbar = ({
   bordered = true,
   style,
   className,
-  isLanding,
   ...menuProps
 }: NavbarProps) => {
   const yOffSet = useYOffSet(sticky);
   const [bgSticky, setBgSticky] = useState(false);
 
-  const { did } = useAppSelector(selectConnection);
-  const authenticated = useAuth();
+  // const { did } = useAppSelector(selectConnection);
+  const { session, status } = useContext(AuthContext);
+  const path = usePathname();
+
 
   const router = useRouter();
   const { leftSidebarOpen, setLeftSidebarOpen } = useApp();
 
+  const isLanding = path === "/";
+
   /*
-	const [showTestnetWarning, setShowTestnetWarning] = useState(false);
-	useEffect(() => {
-		const handleChainChanged = (newChainId: string) => setShowTestnetWarning(newChainId !== appConfig.testNetwork.chainId);
-		handleChainChanged(window.ethereum?.chainId);
-		window.ethereum?.on("chainChanged", handleChainChanged);
-		return () => window.ethereum?.removeListener("chainChanged", handleChainChanged);
-	}, []);
-	 */
+  const [showTestnetWarning, setShowTestnetWarning] = useState(false);
+  useEffect(() => {
+    const handleChainChanged = (newChainId: string) => setShowTestnetWarning(newChainId !== appConfig.testNetwork.chainId);
+    handleChainChanged(window.ethereum?.chainId);
+    window.ethereum?.on("chainChanged", handleChainChanged);
+    return () => window.ethereum?.removeListener("chainChanged", handleChainChanged);
+  }, []);
+   */
 
   useEffect(() => {
     if (sticky) {
@@ -83,8 +84,8 @@ const Navbar = ({
   }, [bgSticky, sticky, stickyBgChangeAfter, stickyBgColor, yOffSet]);
 
   const handleLogoClick = () => {
-    if (authenticated) {
-      router.push(`/[did]`, `/${did}`, { shallow: true });
+    if (status === AuthStatus.CONNECTED) {
+      router.push(`/discovery/${session?.did.parent}`);
     } else {
       router.push(`/`);
     }
@@ -111,11 +112,11 @@ const Navbar = ({
         ])}
         style={
           sticky || bgColor ?
-           {
-                ...style,
-                backgroundColor: sticky && bgSticky ? stickyBgColor : bgColor,
-              } :
-              style
+            {
+              ...style,
+              backgroundColor: sticky && bgSticky ? stickyBgColor : bgColor,
+            } :
+            style
         }
         {...menuProps}
       >

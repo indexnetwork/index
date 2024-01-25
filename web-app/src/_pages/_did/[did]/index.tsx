@@ -5,52 +5,56 @@ import React, {
 	ReactElement, useEffect, useState,
 } from "react";
 import { NextPageWithLayout } from "types";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { useCeramic } from "hooks/useCeramic";
 import { useApp } from "hooks/useApp";
 import crypto from "crypto";
-import apiService from "services/api-service";
+// import apiService from "services/api-service";
 import { Indexes } from "types/entity";
 import Head from "next/head";
-import { maskDID } from "../../utils/helper";
+import { maskDID } from "../../../utils/helper";
+import { useApi } from "components/site/context/APIContext";
 
 const IndexesPage: NextPageWithLayout = () => {
 	const router = useRouter();
 
 	const { did } = router.query;
 	const [chatId, setChatId] = useState<string>(uuidv4());
-	const personalCeramic = useCeramic();
-	const {
-		setViewedProfile,
-		viewedProfile,
-		updateUserIndexState,
-	} = useApp();
+	// const personalCeramic = useCeramic();
+	// const {
+	// 	setViewedProfile,
+	// 	viewedProfile,
+	// 	updateUserIndexState,
+	// } = useApp();
 
-	const getProfile = async (viewedDid: string) => {
+
+	const getUserProfile = async (viewedDid: string) => {
 		try {
-			const profile = await personalCeramic.getProfileByDID(viewedDid);
+      const { apiService } = useApi();
+
+			const profile = await apiService!.getProfile();
 			if (profile) {
 				setViewedProfile(profile);
 			}
 			const suggested = localStorage.getItem("suggestIndex");
-			if (!suggested) {
-				setTimeout(async () => {
-					const suggestedIndex = await apiService.getIndexById("kjzl6kcym7w8y7zvi7lvn12vioylmcbv0awup1xj9in1qb4kxp94569hjhx93s5");
-					if (suggestedIndex) {
-						localStorage.setItem("suggestIndex", "true");
-						suggestedIndex.isStarred = true;
-						personalCeramic.addUserIndex(suggestedIndex.id, "starred");
-						updateUserIndexState({ ...suggestedIndex } as Indexes, "starred", "add");
-					}
-				}, 500);
-			}
+			// if (!suggested) {
+			// 	setTimeout(async () => {
+			// 		// const suggestedIndex = await apiService!.getIndexById("kjzl6kcym7w8y7zvi7lvn12vioylmcbv0awup1xj9in1qb4kxp94569hjhx93s5");
+			// 		if (suggestedIndex) {
+			// 			localStorage.setItem("suggestIndex", "true");
+			// 			suggestedIndex.isStarred = true;
+			// 			// personalCeramic.addUserIndex(suggestedIndex.id, "starred");
+			// 			updateUserIndexState({ ...suggestedIndex } as Indexes, "starred", "add");
+			// 		}
+			// 	}, 500);
+			// }
 		} catch (err) {
 			// profile error
 		}
 	};
 	useEffect(() => {
-		did && getProfile(did.toString());
+		did && getUserProfile(did.toString());
 	}, [did]);
 	useEffect(() => {
 		const suffix = crypto.createHash("sha256").update(router.asPath).digest("hex");
@@ -77,7 +81,8 @@ IndexesPage.getLayout = function getLayout(page: ReactElement) {
 			headerType="user"
 		>
 			{page}
-		</PageLayout>
+		</PageLayout>Property 'query' does not exist on type 'AppRouterInstance'.ts(2339)
+
 	);
 };
 

@@ -6,10 +6,17 @@ export const BREAKPOINTS = {
   xl: 1201,
 };
 
+
+
+export const DEFAULT_CREATE_INDEX_TITLE = "Untitled Index";
+export const DEFAULT_CREATE_LINK_TITLE = "Untitled Link";
+
+
 export const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",
   INDEXES: "/indexes",
   GET_ALL_INDEXES: "/dids/:id/indexes",
+  GET_PROFILE: "/dids/:id/profile",
   SEARCH_LINKS: "/search/links",
   GET_USER_INDEXES: "/search/user_indexes",
   LIT_ACTIONS: "/lit_actions",
@@ -23,6 +30,3 @@ export const API_ENDPOINTS = {
   ZAPIER_TEST_LOGIN: "/zapier/test_login",
   SUBSCRIBE_TO_NEWSLETTER: "/subscribe",
 };
-
-
-export const DEFAULT_CREATE_INDEX_TITLE = "Untitled Index";

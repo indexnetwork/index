@@ -1,11 +1,15 @@
 import axios, { AxiosInstance } from 'axios';
 import { appConfig } from "config";
 import {
-  Indexes, IndexLink, Link, UserIndex,
+  Indexes, IndexLink, Link, UserIndex, Users,
 } from "types/entity";
-import { API_ENDPOINTS, DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
+import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { CID } from "multiformats";
 import LitService from "services/lit-service";
+import { useContext } from 'react';
+import { AuthContext } from 'components/site/context/AuthContext';
+import { DIDSession } from 'did-session';
+
 
 
 export type HighlightType<T = {}> = T & {
@@ -77,15 +81,35 @@ export interface LinksCrawlContentRequest {
   links: Link[];
 }
 
+const API_ENDPOINTS = {
+  CHAT_STREAM: "/chat_stream",
+  INDEXES: "/indexes",
+  GET_ALL_INDEXES: "/dids/:id/indexes",
+  GET_PROFILE: "/dids/:id/profile",
+  SEARCH_LINKS: "/search/links",
+  GET_USER_INDEXES: "/search/user_indexes",
+  LIT_ACTIONS: "/lit_actions",
+  CRAWL: "/crawl/metadata",
+  CRAWL_CONTENT: "/links/crawl-content",
+  FIND_CONTENT: "/links/find-content",
+  SYNC_CONTENT: "/links/sync-content",
+  NFT_METADATA: "/nft",
+  ENS: "/ens",
+  UPLOAD_AVATAR: "/upload_avatar",
+  ZAPIER_TEST_LOGIN: "/zapier/test_login",
+  SUBSCRIBE_TO_NEWSLETTER: "/subscribe",
+};
+
+
 class ApiService {
   private static instance: ApiService;
   private apiAxios: AxiosInstance;
   private signerPublicKey: Indexes["signerPublicKey"] = "";
   private signerFunction: Indexes["signerFunction"] = appConfig.defaultCID;
+  private session: DIDSession| null = null;
 
   private constructor() {
     this.apiAxios = axios.create({ baseURL: appConfig.apiUrl });
-    this.init();
   }
 
   public static getInstance(): ApiService {
@@ -95,25 +119,49 @@ class ApiService {
     return ApiService.instance;
   }
 
+  public setSession(session: DIDSession) {
+    this.session = session;
+  }
+
   async init(): Promise<void> {
     const { pkpPublicKey } = await LitService.mintPkp();
     this.signerPublicKey = pkpPublicKey;
+    console.log("pkpPublicKey:", pkpPublicKey)
 
-    const sessionResponse = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
-    const personalSession = localStorage.getItem("did");
-    if (!personalSession) {
-      throw new Error("No personal session found");
-    }
+    // const sessionResponse = await LitService.getPKPSession(pkpPublicKey, appConfig.defaultCID);
+    // const personalSession = localStorage.getItem("did");
+    // if (!personalSession) {
+    //   throw new Error("No personal session found");
+    // }
 
-    const pkpSession = sessionResponse.session.serialize();
-    if (!pkpSession) {
-      throw new Error("Couldn't get PKP session");
-    }
+    // const pkpSession = sessionResponse.session.serialize();
+    // if (!pkpSession) {
+    //   throw new Error("Couldn't get PKP session");
+    // }
+
+    // this.apiAxios.defaults.headers = {
+    //   "X-Index-Personal-DID-Session": personalSession,
+    //   "X-Index-PKP-DID-Session": pkpSession,
+    // } as any;
 
     this.apiAxios.defaults.headers = {
-      "X-Index-Personal-DID-Session": personalSession,
-      "X-Index-PKP-DID-Session": pkpSession,
+      "Authorization": `Bearer ${this.session}`,
     } as any;
+  }
+
+  async getProfile(id: string): Promise<Users> {
+    const profile: Users = {
+      "id": "k2t6wzhkhabz0l2fmm0auqvgfx6gmkvj9dz7nqz1h5cbmc7wf8lafucqply4yg",
+      "bio": "hey",
+      "avatar": undefined,
+      "name": "serhat",
+      "createdAt": "2024-01-18T12:13:05.493Z",
+      "updatedAt": "2024-01-18T12:13:05.493Z",
+    }
+
+    const url = API_ENDPOINTS.GET_PROFILE.replace(':id', id);
+    const { data } = await this.apiAxios.get<Users>(url);
+    return data;
   }
 
   async createIndex(title: string = DEFAULT_CREATE_INDEX_TITLE): Promise<Indexes> {
@@ -127,11 +175,11 @@ class ApiService {
     return data;
   }
 
-  async getAllIndexes(id: string): Promise<Indexes[]> {
-    const url = API_ENDPOINTS.GET_ALL_INDEXES.replace(':id', id);
-    const { data } = await this.apiAxios.get<Indexes[]>(url);
-    return data;
-  }
+  // async getAllIndexes(): Promise<Indexes[]> {
+  //   const url = API_ENDPOINTS.GET_ALL_INDEXES.replace(':id', session.did.parent);
+  //   const { data } = await this.apiAxios.get<Indexes[]>(url);
+  //   return data;
+  // }
 
   async getUserIndexes(body: GetUserIndexesRequestBody): Promise<UserIndexResponse | undefined> {
     try {
@@ -141,6 +189,7 @@ class ApiService {
       // TODO handle;
     }
   }
+
   async getIndexById(indexId: string): Promise<Indexes | undefined> {
     try {
       const { data } = await this.apiAxios.get(`${API_ENDPOINTS.INDEXES}/${indexId}`);
@@ -238,4 +287,4 @@ class ApiService {
 }
 
 
-export default ApiService.getInstance();
+export default ApiService;

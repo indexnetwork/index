@@ -1,8 +1,8 @@
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import List from "components/base/List";
-import { useRouter } from "next/router";
+import { useParams } from "next/navigation";
 import { Indexes } from "types/entity";
 import { Tabs } from "components/base/Tabs";
 import TabPane from "components/base/Tabs/TabPane";
@@ -10,42 +10,68 @@ import TabPane from "components/base/Tabs/TabPane";
 import IndexItem from "components/site/indexes/IndexItem";
 import { useApp } from "hooks/useApp";
 import Text from "components/base/Text";
+import { useApi } from "components/site/context/APIContext";
 
-export interface SearchIndexesProps {}
+export interface IndexListSectionProps {}
 
-const SearchIndexes: React.VFC<SearchIndexesProps> = () => {
-	const router = useRouter();
+const IndexListSection: React.FC<IndexListSectionProps> = () => {
+  const params = useParams();
+  const did = decodeURIComponent(params.did as string);
+
 	const {
 		viewedProfile,
-		section,
+		// section,
 		indexes,
+    setIndexes,
+    setLeftTabKey,
+    leftTabKey,
 	} = useApp();
 
-	const { indexId } = router.query;
+  const {apiService: api} = useApi();
+
+  const fetchIndexes = useMemo(() => {
+    return async () => {
+      try {
+        const fetchedIndexes = await api.getAllIndexes(did);
+        console.log("fetchedIndexes", fetchedIndexes);
+        setIndexes(fetchedIndexes);
+      } catch (error) {
+        console.error("Error fetching indexes", error);
+        // TODO: Handle error appropriately
+      }
+    };
+  }, [api, did]);
+
+  useEffect(() => {
+    fetchIndexes();
+  }, [fetchIndexes]);
 
 	const handleTabChange = useCallback((tabClickValue: string) => {
-		if (viewedProfile && tabClickValue) {
-			const url = tabClickValue === "all" ?
-				`/${viewedProfile.id}` :
-				`/${viewedProfile.id}?section=${tabClickValue}`;
-			router.replace(`/[did]`, url, { shallow: true });
-		}
+    // console.log("tabClickValue", tabClickValue, params);
+		// if (viewedProfile && tabClickValue) {
+		// 	const url = tabClickValue === "all" ?
+		// 		`/${viewedProfile.id}` :
+		// 		`/${viewedProfile.id}?section=${tabClickValue}`;
+		// 	router.push(`/discovery/${did}`);
+		// }
+    console.log("tabClickValue", tabClickValue, params);
+    setLeftTabKey(tabClickValue);
 	}, [viewedProfile]);
 
   const sectionIndexes = useMemo(() => {
-		if (section === 'all') {
+		if (leftTabKey === 'all') {
 			return indexes;
 		} else {
 			return indexes.filter(
-				section === 'owner' ? i => i.isOwner === true : i => i.isStarred === true
+				leftTabKey === 'owner' ? i => i.isOwner === true : i => i.isStarred === true
 			);
 		}
-	}, [indexes, section]);
+	}, [indexes, leftTabKey]);
 
 	return <>
 		<FlexRow className={"mr-6 pb-4"}>
 			<Col className="idxflex-grow-1">
-				<Tabs destroyInactiveTabPane={false} theme={"rounded"} activeKey={section} onTabChange={handleTabChange}>
+				<Tabs destroyInactiveTabPane={false} theme={"rounded"} activeKey={leftTabKey} onTabChange={handleTabChange}>
 					<TabPane enabled={true} tabKey={"all"} title={`All Indexes`} />
 					<TabPane enabled={true} tabKey={"owner"} total={indexes.filter(i => i.isOwner === true)?.length} title={`Owned`} />
 					<TabPane enabled={true} tabKey={"starred"} total={indexes.filter(i => i.isStarred === true)?.length} title={`Starred`} />
@@ -58,7 +84,7 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = () => {
 					data={sectionIndexes}
 					render={(itm: Indexes) => <IndexItem
 						index={itm}
-						selected={itm.id === indexId}
+						selected={itm.id === params.id}
 					/>}
 					divided={false}
 				/>
@@ -75,4 +101,4 @@ const SearchIndexes: React.VFC<SearchIndexesProps> = () => {
 	</>;
 };
 
-export default SearchIndexes;
+export default IndexListSection;

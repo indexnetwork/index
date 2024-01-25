@@ -1,8 +1,9 @@
 import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
+import { useApp } from "hooks/useApp";
 import React from "react";
-import { useIndex } from "hooks/useIndex";
+import { Indexes } from "types/entity";
 
 export interface NoLinksProps {
   search?: string;
@@ -10,8 +11,9 @@ export interface NoLinksProps {
   tabKey: string;
 }
 
-const NoLinks: React.VFC<NoLinksProps> = ({ search, tabKey }) => {
-  const { index, roles } = useIndex();
+const NoLinks: React.FC<NoLinksProps> = ({ search, isOwner=false, tabKey }) => {
+  console.log("NoLinks", search, isOwner, tabKey)
+  const {viewedIndex} = useApp();
   return (
     <>
       <Row rowSpacing={5} fullWidth>
@@ -27,30 +29,30 @@ const NoLinks: React.VFC<NoLinksProps> = ({ search, tabKey }) => {
         >
           <img src="/images/no_indexes.png" alt="No Indexes" />
         </Col>
-          <Col className="text-center" centerBlock>
-              {search ? (
-                  <Header level={4}>
-                      {`Your search "${search}" did not match any links.`}
-                  </Header>
+        <Col className="text-center" centerBlock>
+          {search ? (
+            <Header level={4}>
+              {`Your search "${search}" did not match any links.`}
+            </Header>
+          ) : (
+            <Header level={4}>
+              {tabKey === "chat" ? (
+                isOwner ? (
+                  <>
+                    <div>You don&apos;t have any items in {viewedIndex?.title} yet.</div>
+                    <div>Add an item to the index to chat.</div>
+                  </>
+                ) : (
+                  <div>{viewedIndex?.title} doesn&apos;t have any items to chat with.</div>
+                )
               ) : (
-                  <Header level={4}>
-                      {tabKey === "chat" ? (
-                          index?.isOwner ? (
-                              <>
-                                  <div>You don&apos;t have any items in {index?.title} yet.</div>
-                                  <div>Add an item to the index to chat.</div>
-                              </>
-                          ) : (
-                              <div>{index?.title} doesn&apos;t have any items to chat with.</div>
-                          )
-                      ) : (
-                          index?.isOwner ?
-                              `You don't have any items in ${index?.title} yet.` :
-                              `${index?.title} index doesn't have any items yet.`
-                      )}
-                  </Header>
+                isOwner ?
+                  `You don't have any items in ${viewedIndex?.title} yet.` :
+                  `${viewedIndex?.title} index doesn't have any items yet.`
               )}
-          </Col>
+            </Header>
+          )}
+        </Col>
       </Row>
     </>
   );

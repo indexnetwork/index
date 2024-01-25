@@ -1,5 +1,5 @@
 import Col from "components/layout/base/Grid/Col";
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import { useChat, type Message } from "ai/react";
 import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
@@ -12,11 +12,12 @@ import { API_ENDPOINTS } from "utils/constants";
 import Flex from "components/layout/base/Grid/Flex";
 import { maskDID } from "utils/helper";
 import { useIndex } from "hooks/useIndex";
-import { useApp } from "hooks/useApp";
+import { DiscoveryType, useApp } from "hooks/useApp";
 import { useAppSelector } from "hooks/store";
 import { selectProfile } from "store/slices/profileSlice";
 import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
 import NoIndexesChat from "components/ai/no-indexes";
+import { AuthContext } from "components/site/context/AuthContext";
 
 export interface ChatProps extends React.ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -32,10 +33,14 @@ export interface MessageWithIndex extends Message {
   index?: number;
 }
 
-const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
-  const index = useIndex();
-  const { viewedProfile, section, indexes: indexesFromApp } = useApp();
-  const profile = useAppSelector(selectProfile);
+const AskIndexes: React.FC<AskIndexesProps> = ({ id, did, indexes }) => {
+  // const index = useIndex();
+  const { viewedProfile, indexes: indexesFromApp, discoveryType } = useApp();
+
+  const { session, status } = useContext(AuthContext);
+  const { viewedIndex } = useApp();
+
+  const { leftTabKey } = useApp();
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
@@ -68,27 +73,29 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
   };
 
   const getChatContextMessage = (): string => {
-    if (index.index && index.index.title) {
-      return index.index.title;
+    if (viewedIndex) {
+      return viewedIndex.title;
     }
-    if (viewedProfile && profile && viewedProfile.id === profile.id) {
+
+    if (session && viewedProfile?.id === session.did.parent) {
       const sections = {
         owner: "indexes owned by you",
         starred: "indexes starred by you",
         all: "all your indexes",
-      };
-      return sections[section];
+      } as any;
+      return sections[leftTabKey];
     }
-    if (viewedProfile && viewedProfile?.id) {
+
+    if (viewedProfile?.id) {
       const sections = {
         owner: "indexes owned by",
         starred: "indexes starred by",
         all: "all indexes of",
-      };
-      return `${sections[section]} ${
-        viewedProfile.name || maskDID(viewedProfile.id)
-      }`;
+      } as any;
+
+      return `${sections[leftTabKey]} ${viewedProfile.name || maskDID(viewedProfile.id)}`;
     }
+
     return `indexes`;
   };
 
@@ -120,6 +127,16 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
     },
   });
 
+  if (indexesFromApp.length === 0) {
+    return (
+      <NoIndexesChat isSelfDid={did === viewedProfile?.id} />
+    )
+  }
+
+  if (discoveryType === DiscoveryType.index) {
+
+  }
+
   return (
     <>
       <Flex
@@ -129,8 +146,8 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
         flexDirection={"column"}
       >
         <FlexRow wrap={true} align={"start"}>
-        {indexesFromApp.all && indexesFromApp.all.totalCount !== 0 ? (
-            <Col className="idxflex-grow-1" style={{ width: "100%" }}>
+          {/* {indexesFromApp.map((index) => (
+            <Col key={index.id} className="idxflex-grow-1" style={{ width: "100%" }}>
               {messages.length ? (
                 <>
                   <ChatList
@@ -154,9 +171,33 @@ const AskIndexes: React.VFC<AskIndexesProps> = ({ id, did, indexes }) => {
                 </Flex>
               )}
             </Col>
-          ) : (
-            <NoIndexesChat isSelfDid={did === profile.id} />
-          )}
+          ))} */}
+
+          <Col className="idxflex-grow-1" style={{ width: "100%" }}>
+            {messages.length ? (
+              <>
+                <ChatList
+                  messages={messages}
+                  handleEditClick={handleEditClick}
+                  editingMessage={editingMessage}
+                  setEditInput={setEditInput}
+                  editInput={editInput}
+                  handleSaveEdit={handleSaveEdit}
+                  editingIndex={editingIndex}
+                />
+                <ChatScrollAnchor trackVisibility={isLoading} />
+              </>
+            ) : (
+              <Flex className="px-8">
+                <EmptyScreen
+                  contextMessage={getChatContextMessage()}
+                  setInput={setInput}
+                  indexes={indexes}
+                />
+              </Flex>
+            )}
+          </Col>
+
         </FlexRow>
       </Flex>
       <Flex

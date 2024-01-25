@@ -10,7 +10,7 @@ import React, {
 	useCallback, useContext,
 } from "react";
 import IconDisconnect from "components/base/Icon/IconDisconnect";
-import { AuthHandlerContext } from "components/site/context/AuthHandlerProvider";
+import { AuthContext, AuthStatus } from "components/site/context/AuthContext";
 import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { useAuth } from "hooks/useAuth";
@@ -38,18 +38,19 @@ const SiteNavbar = (
 	const {
 		setCreateModalVisible, rightSidebarOpen, setRightSidebarOpen, setEditProfileModalVisible,
 	} = useApp();
-	const {
-		did,
-		loading,
-	} = useAppSelector(selectConnection);
+	// const {
+	// 	did,
+	// 	// loading,
+	// } = useAppSelector(selectConnection);
 
 	const profile = useAppSelector(selectProfile);
+  const { status } = useContext(AuthContext); // Consume AuthContext
 
 	const authenticated = useAuth();
-	const { connect, disconnect } = useContext(AuthHandlerContext);
+	const { connect, disconnect } = useContext(AuthContext);
 	const handleConnect = async () => {
 		try {
-			await connect();
+			// await connect();
 		} catch (err) {
 			console.log(err);
 		}
@@ -66,7 +67,7 @@ const SiteNavbar = (
 			{...baseProps}
 		>
 			<NavbarMenu placement="right">
-				{(loading && isLanding) ? (
+				{(status === AuthStatus.LOADING && isLanding) ? (
 					<Button
 						theme="primary"
 						className="lottie-text"
@@ -89,8 +90,7 @@ const SiteNavbar = (
 			{...baseProps}
 		>
 			{
-				authenticated ? (
-
+				AuthStatus.CONNECTED ? (
 					<NavbarMenu>
 						<div className={"navbar-sidebar-handlers mr-3"}> <Button onClick={() => setRightSidebarOpen(!rightSidebarOpen)} iconButton theme="clear"><IconHistory width={32} /></Button></div>
 						<Button style={{ height: "32px" }} className="pr-5 pl-5" onClick={() => { setCreateModalVisible(true); }} theme="primary">{t("components:header.newIndexBtn")}</Button>
@@ -144,3 +144,5 @@ const SiteNavbar = (
 };
 
 export default SiteNavbar;
+
+
