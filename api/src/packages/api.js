@@ -31,7 +31,7 @@ import * as infuraController from '../controllers/infura.js';
 
 import {
   authenticateMiddleware,
-  errorMiddleware, personalMiddleware, pkpMiddleware,
+  errorMiddleware, authCheckMiddleware
 } from "../middlewares/index.js";
 
 
@@ -54,21 +54,21 @@ app.get('/dids/:id/indexes',validator.query(Joi.object({
   id: Joi.custom(isDID, "DID").required(),
 })), didController.getIndexes)
 
-app.put('/dids/:id/indexes', personalMiddleware, validator.body(Joi.object({
+app.put('/dids/:id/indexes', authCheckMiddleware, validator.body(Joi.object({
   type: Joi.string().valid('starred', 'owner').required(),
   indexId: Joi.custom(isStreamID, "Index ID").required(),
 })), validator.params(Joi.object({
   id: Joi.custom(isDID, "DID").required(),
 })), didController.addIndex)
 
-app.delete('/dids/:id/indexes',personalMiddleware, validator.body(Joi.object({
+app.delete('/dids/:id/indexes',authCheckMiddleware, validator.body(Joi.object({
   type: Joi.string().valid('starred', 'owner').required(),
   indexId: Joi.custom(isStreamID, "Index ID").required(),
 })), validator.params(Joi.object({
   id: Joi.custom(isDID, "DID").required(),
 })), didController.removeIndex)
 
-app.patch('/dids/:id/profile', personalMiddleware, validator.body(Joi.object({
+app.patch('/dids/:id/profile', authCheckMiddleware, validator.body(Joi.object({
   name: Joi.string().optional(),
   bio: Joi.string().optional(),
   avatar: Joi.custom(isCID, "Avatar").optional().allow(null),
@@ -85,37 +85,38 @@ app.get('/indexes/:id', validator.params(Joi.object({
   id: Joi.custom(isStreamID, "Index ID").required(),
 })), indexController.getIndexById)
 
-app.post('/indexes', pkpMiddleware, personalMiddleware, validator.body(Joi.object({
+app.post('/indexes', authCheckMiddleware, validator.body(Joi.object({
   title: Joi.string().required(),
   signerPublicKey: Joi.custom(isPKPPublicKey, "LIT PKP Public Key").optional(),
   signerFunction: Joi.custom(isCID, "IPFS CID").optional()
 })), indexController.createIndex)
 
-app.patch('/indexes/:id', pkpMiddleware, validator.body(Joi.object({
+app.patch('/indexes/:id', authCheckMiddleware, validator.body(Joi.object({
   title: Joi.string().optional(),
   signerFunction: Joi.custom(isCID, "IPFS CID").optional()
 }).or('title', 'signerFunction')), validator.params(Joi.object({
   id: Joi.custom(isStreamID, "Index ID").required(),
 })), indexController.updateIndex)
 
-app.delete('/indexes/:id', pkpMiddleware, personalMiddleware, validator.params(Joi.object({
+app.delete('/indexes/:id', authCheckMiddleware, validator.params(Joi.object({
   id: Joi.custom(isStreamID, "Index ID").required(),
 })), indexController.deleteIndex)
 
 // Items
-app.get('/items', validator.query(Joi.object({
+app.get('/indexes/:indexId/items', validator.query(Joi.object({
   query: Joi.string().min(1).optional(),
+  cursor: Joi.string().optional(),
+  limit: Joi.number().default(24),
+})), validator.params(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
-  skip: Joi.number().default(0),
-  take: Joi.number().default(10),
 })), itemController.listItems)
 
-app.post('/items', pkpMiddleware, validator.body(Joi.object({
+app.post('/indexes/:indexId/items/:itemId', authCheckMiddleware, validator.params(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
 })), itemController.addItem)
 
-app.delete('/items', pkpMiddleware, validator.body(Joi.object({
+app.delete('/indexes/:indexId/items/:itemId', authCheckMiddleware, validator.params(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
 })), itemController.removeItem)
@@ -129,7 +130,7 @@ app.get('/embeddings', validator.query(Joi.object({
   take: Joi.number().integer().min(1).optional()
 })), embeddingController.listEmbeddings);
 
-app.post('/embeddings', pkpMiddleware, validator.body(Joi.object({
+app.post('/embeddings', authCheckMiddleware, validator.body(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
   modelName: Joi.string().required(),
@@ -139,7 +140,7 @@ app.post('/embeddings', pkpMiddleware, validator.body(Joi.object({
   description: Joi.string().required()
 })), embeddingController.createEmbedding);
 
-app.patch('/embeddings', pkpMiddleware, validator.body(Joi.object({
+app.patch('/embeddings', authCheckMiddleware, validator.body(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
   modelName: Joi.string().required(),
@@ -149,7 +150,7 @@ app.patch('/embeddings', pkpMiddleware, validator.body(Joi.object({
   description: Joi.string().optional()
 })), embeddingController.updateEmbedding);
 
-app.delete('/embeddings', pkpMiddleware, validator.body(Joi.object({
+app.delete('/embeddings', authCheckMiddleware, validator.body(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
   modelName: Joi.string().required(),
@@ -181,14 +182,14 @@ app.post('/chat_stream', validator.body(Joi.object({
 
 })
 
-app.post('/web2/webpage', personalMiddleware,  validator.body(Joi.object({
+app.post('/web2/webpage', authCheckMiddleware,  validator.body(Joi.object({
   title: Joi.string().required(),
   favicon: Joi.string().optional(),
   url: Joi.string().uri().required(),
   content: Joi.string().required(),
 })), web2Controller.createWebPage)
 
-app.post('/web2/webpage/crawl', personalMiddleware, validator.body(Joi.object({
+app.post('/web2/webpage/crawl', authCheckMiddleware, validator.body(Joi.object({
   title: Joi.string().required(),
   favicon: Joi.string().optional(),
   url: Joi.string().uri().required(),
