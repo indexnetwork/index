@@ -48,24 +48,21 @@ const validator = ejv.createValidator({
 app.use(authenticateMiddleware);
 
 // DIDs
-app.get('/dids/:id/indexes',validator.query(Joi.object({
-  type: Joi.string().valid('starred', 'owner').optional(),
-})), validator.params(Joi.object({
-  id: Joi.custom(isDID, "DID").required(),
+app.get('/dids/:did/indexes/:type?', validator.params(Joi.object({
+  did: Joi.custom(isDID, "DID").required(),
+  type: Joi.string().valid('own', 'star').optional(),
 })), didController.getIndexes)
 
-app.put('/dids/:id/indexes', authCheckMiddleware, validator.body(Joi.object({
-  type: Joi.string().valid('starred', 'owner').required(),
+app.put('/dids/:did/indexes/:indexId/:type', authCheckMiddleware, validator.params(Joi.object({
+  did: Joi.custom(isDID, "DID").required(),
   indexId: Joi.custom(isStreamID, "Index ID").required(),
-})), validator.params(Joi.object({
-  id: Joi.custom(isDID, "DID").required(),
+  type: Joi.string().valid('own', 'star').required(),
 })), didController.addIndex)
 
-app.delete('/dids/:id/indexes',authCheckMiddleware, validator.body(Joi.object({
-  type: Joi.string().valid('starred', 'owner').required(),
+app.delete('/dids/:did/indexes/:indexId/:type', authCheckMiddleware, validator.params(Joi.object({
+  did: Joi.custom(isDID, "DID").required(),
   indexId: Joi.custom(isStreamID, "Index ID").required(),
-})), validator.params(Joi.object({
-  id: Joi.custom(isDID, "DID").required(),
+  type: Joi.string().valid('own', 'star').required(),
 })), didController.removeIndex)
 
 app.patch('/dids/:id/profile', authCheckMiddleware, validator.body(Joi.object({
@@ -163,7 +160,7 @@ app.post('/chat_stream', validator.body(Joi.object({
   did: Joi.string().optional(),
   type: Joi.when('did', {
     is: Joi.exist(),
-    then: Joi.string().valid('starred', 'owner').optional(),
+    then: Joi.string().valid('owned', 'starred').optional(),
     otherwise: Joi.forbidden()
   }),
   indexes: Joi.array().items(Joi.string()).optional(),
