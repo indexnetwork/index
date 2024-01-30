@@ -17,19 +17,19 @@ export const indexLink = async (req, res, next) => {
     let linkData = await getMetadata(payload.url);
     if (payload.content) linkData.content = payload.content;
     if (payload.title) linkData.title = payload.title;
-
+    //TODO Refactor new client
     //Create user owned webpage object.
     const personalSesssion = await DIDSession.fromSession(auth.session.personal);
     await personalSesssion.did.authenticate();
 
-    const webPageService = new WebPageService().setDID(personalSesssion.did);
+    const webPageService = new WebPageService().setSession(personalSesssion);
     const webPage = await webPageService.createWebPage(payload);
 
     //Index webpage object.
     const indexSession = await DIDSession.fromSession(auth.session.index);
     await indexSession.did.authenticate();
 
-    const itemService = new ItemService().setDID(indexSession.did);
+    const itemService = new ItemService().setSession(indexSession);
     const item = await itemService.addItem(auth.indexId, webPage.id);
 
     return res.json(item);
