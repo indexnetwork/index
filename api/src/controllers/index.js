@@ -13,7 +13,7 @@ export const getIndexById = async (req, res, next) => {
                 const roles = getRolesFromSession(pkpSession);
                 Object.assign(index, {roles});
             }else{
-                Object.assign(index, {isOwner: false, isStarred: false});
+                Object.assign(index, {owner: false, creator: false});
             }
         }
 

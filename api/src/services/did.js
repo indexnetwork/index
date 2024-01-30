@@ -83,7 +83,6 @@ export class DIDService {
 
             // Include the comma only when filtersPart is not empty
             let didIndexListArguments = `first: 1000${filtersPart ? `, ${filtersPart}` : ""}`;
-            console.log(did,type, didIndexListArguments);
             const {data, errors} = await this.client.executeQuery(`
             query{
                 node(id:"${did}") {
@@ -130,13 +129,13 @@ export class DIDService {
             const indexes = data.node.didIndexList.edges.reduce((acc, edge) => {
                 const indexId = edge.node.index.id;
                 if (!acc[indexId]) {
-                    acc[indexId] = { isOwner: false, isStarred: false, ...edge.node.index };
+                    acc[indexId] = { did: {owned: false, starred: false}, ...edge.node.index };
                 }
 
-                if (edge.node.type === "owner") {
-                    acc[indexId].isOwner = true;
+                if (edge.node.type === "owned") {
+                    acc[indexId].did.owned = true;
                 } else if (edge.node.type === "starred") {
-                    acc[indexId].isStarred = true;
+                    acc[indexId].did.starred = true;
                 }
                 return acc;
             }, {});
@@ -226,7 +225,7 @@ export class DIDService {
             }
 
             if (existingIndex.deletedAt) {
-                throw new Error('Index is already deleted.');
+                throw new Error('Index is already removed from did.');
             }
 
             const content = {

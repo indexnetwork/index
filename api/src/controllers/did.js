@@ -4,8 +4,8 @@ export const getIndexes = async (req, res, next) => {
 
     try {
         const didService = new DIDService().setSession(req.session)
-        const { type } = req.query;
-        const indexes = await didService.getIndexes(req.params.id, type)
+        const { type, did } = req.params;
+        const indexes = await didService.getIndexes(did, type)
         res.status(200).json(indexes);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -14,10 +14,11 @@ export const getIndexes = async (req, res, next) => {
 
 export const addIndex = async (req, res, next) => {
 
-    if(req.params.id !== req.session.did.parent) {
+    if(req.params.did !== req.session.did.parent) {
         return res.status(500).json({ error: "Authorization error" });
     }
-    const {indexId, type} = req.body;
+    const type = req.params.type === 'own' ? 'owned' : 'starred';
+    const { indexId } = req.params;
     try {
         const didService = new DIDService().setSession(req.session);
         const newIndex = await didService.addIndex(indexId, type)
@@ -29,11 +30,12 @@ export const addIndex = async (req, res, next) => {
 
 export const removeIndex = async (req, res, next) => {
 
-    if(req.params.id !== req.session.did.parent) {
+    if(req.params.did !== req.session.did.parent) {
         return res.status(500).json({ error: "Authorization error" });
     }
 
-    const {indexId, type} = req.body;
+    const type = req.params.type === 'own' ? 'owned' : 'starred';
+    const {indexId } = req.params;
     try {
         const didService = new DIDService().setSession(req.session)
         const newIndex = await didService.removeIndex(indexId, type)

@@ -76,13 +76,13 @@ export class IndexService {
             const index =  data.node;
 
             if(index.did && index.did.edges && index.did.edges.length > 0){
-                const did = { isStarred: false, isOwnerVisible: false };
+                const did = { starred: false, owned: false };
                 index.did.edges.forEach((edge) => {
-                    if(edge.node.type === "owner"){
-                        did.isOwnerVisible = edge.node.deletedAt === null;
+                    if(edge.node.type === "owned"){
+                        did.owned = edge.node.deletedAt === null;
                     }
                     if(edge.node.type === "starred"){
-                        did.isStarred = edge.node.deletedAt === null;
+                        did.starred = edge.node.deletedAt === null;
                     }
                 });
                 index.did = did;

@@ -216,15 +216,15 @@ export const getPKPSession = async (session, index) => {
 export const getRolesFromSession = (session) => {
 	const authorizedModels = new Set(session.cacao.p.resources.map(r => r.replace("ceramic://*?model=", "")));
 
-	const isOwner = authorizedModels.has(definition.models.Index.id);
+	const owner = authorizedModels.has(definition.models.Index.id);
 
-	const isCreator = authorizedModels.has(definition.models.Index.id)
+	const creator = authorizedModels.has(definition.models.Index.id)
 		&& authorizedModels.has(definition.models.IndexItem.id)
 		&& authorizedModels.has(definition.models.Embedding.id);
 
 	return {
-		isOwner,
-		isCreator,
+		owner,
+		creator,
 	};
 }
 
