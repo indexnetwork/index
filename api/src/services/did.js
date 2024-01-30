@@ -332,6 +332,9 @@ export class DIDService {
                 ... on CeramicAccount {
                         profile {
                             id
+                            controllerDID {
+                                id
+                            }
                             name
                             bio
                             avatar
@@ -356,6 +359,9 @@ export class DIDService {
             if(!data.node.profile){
                 return null
             }
+
+            data.node.profile.id = data.node.profile.controllerDID.id
+            delete data.node.profile.controllerDID;
 
             // Return the created profile document
             return data.node.profile;

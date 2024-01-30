@@ -103,19 +103,20 @@ app.delete('/indexes/:id', authCheckMiddleware, validator.params(Joi.object({
 })), indexController.deleteIndex)
 
 // Items
-app.get('/items', validator.query(Joi.object({
+app.get('/indexes/:indexId/items', validator.query(Joi.object({
   query: Joi.string().min(1).optional(),
+  cursor: Joi.string().optional(),
+  limit: Joi.number().default(24),
+})), validator.params(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
-  skip: Joi.number().default(0),
-  take: Joi.number().default(10),
 })), itemController.listItems)
 
-app.post('/items', authCheckMiddleware, validator.body(Joi.object({
+app.post('/indexes/:indexId/items/:itemId', authCheckMiddleware, validator.params(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
 })), itemController.addItem)
 
-app.delete('/items', authCheckMiddleware, validator.body(Joi.object({
+app.delete('/indexes/:indexId/items/:itemId', authCheckMiddleware, validator.params(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
 })), itemController.removeItem)
