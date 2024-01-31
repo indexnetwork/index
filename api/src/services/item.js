@@ -193,7 +193,10 @@ export class ItemService {
 
             return {
                 endCursor: data.indexItemIndex.pageInfo.endCursor,
-                items: data.indexItemIndex.edges.map(e => e.node.item),
+                items: data.indexItemIndex.edges.map(({ node: { item: { __typename: type, ...rest } } }) => ({
+                    type,
+                    node: rest
+                })),
             }
 
         } catch (error) {
