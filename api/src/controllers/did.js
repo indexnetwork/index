@@ -62,7 +62,14 @@ export const createProfile = async (req, res, next) => {
 export const getProfile = async (req, res, next) => {
     try {
         const didService = new DIDService()
-        const profile = await didService.getProfile(req.params.id)
+        let profile = await didService.getProfile(req.params.id)
+
+        if(!profile){
+            profile = {
+                id: req.params.id,
+            }
+        }
+
         res.status(200).json(profile);
     } catch (error) {
         res.status(500).json({ error: error.message });
