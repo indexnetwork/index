@@ -1,0 +1,143 @@
+[33mWARNING[0m:  [18-01-2024 15:51:50] chroma_server_nofile is set to 65535, but this is less than current soft limit of 1048576. chroma_server_nofile will not be set.
+[32mINFO[0m:     [18-01-2024 15:51:50] Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+[36mDEBUG[0m:    [18-01-2024 15:51:50] Starting component System
+[36mDEBUG[0m:    [18-01-2024 15:51:50] Starting component OpenTelemetryClient
+[36mDEBUG[0m:    [18-01-2024 15:51:50] Starting component SimpleAssignmentPolicy
+[36mDEBUG[0m:    [18-01-2024 15:51:50] Starting component SqliteDB
+[36mDEBUG[0m:    [18-01-2024 15:51:50] Starting component Posthog
+[36mDEBUG[0m:    [18-01-2024 15:51:50] Starting component LocalSegmentManager
+[36mDEBUG[0m:    [18-01-2024 15:51:50] Starting component SegmentAPI
+[32mINFO[0m:     [18-01-2024 15:51:50] Started server process [[36m567092[0m]
+[32mINFO[0m:     [18-01-2024 15:51:50] Waiting for application startup.
+[32mINFO[0m:     [18-01-2024 15:51:50] Application startup complete.
+[32mINFO[0m:     [18-01-2024 15:51:50] Uvicorn running on [1mhttp://localhost:8000[0m (Press CTRL+C to quit)
+[32mINFO[0m:     [18-01-2024 16:06:26] 127.0.0.1:56998 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:08:07] 127.0.0.1:53506 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:08:07] 127.0.0.1:53508 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:08:30] 127.0.0.1:59862 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:08:30] 127.0.0.1:59864 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:09:20] 127.0.0.1:46086 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:09:20] 127.0.0.1:46094 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:10:00] 127.0.0.1:39316 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:10:00] 127.0.0.1:39330 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:10:21] 127.0.0.1:34242 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:10:21] 127.0.0.1:34246 - "GET /api/v1/collections/9f8f9629-a25d-41a8-824d-395336bf22aa/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:11:10] 127.0.0.1:51870 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:11:10] 127.0.0.1:51876 - "GET /api/v1/collections/9f8f9629-a25d-41a8-824d-395336bf22aa/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:11:50] 127.0.0.1:41324 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:11:50] 127.0.0.1:41338 - "GET /api/v1/collections/9f8f9629-a25d-41a8-824d-395336bf22aa/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:14:05] 127.0.0.1:47652 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:14:05] 127.0.0.1:47664 - "GET /api/v1/collections/f7fdd309-f9dd-4100-b352-cf1d53832a4a/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:19:40] 127.0.0.1:46586 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:19:40] 127.0.0.1:46600 - "GET /api/v1/collections/f7fdd309-f9dd-4100-b352-cf1d53832a4a/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:19:54] 127.0.0.1:54564 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:19:54] 127.0.0.1:54574 - "GET /api/v1/collections/f7fdd309-f9dd-4100-b352-cf1d53832a4a/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:20:26] 127.0.0.1:42132 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:20:26] 127.0.0.1:42146 - "GET /api/v1/collections/f7fdd309-f9dd-4100-b352-cf1d53832a4a/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:21:41] 127.0.0.1:35714 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:21:41] 127.0.0.1:35716 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:38:12] 127.0.0.1:38734 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:38:12] 127.0.0.1:38748 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:48:22] 127.0.0.1:48364 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 16:48:22] 127.0.0.1:48374 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:39:10] 127.0.0.1:40614 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:39:10] 127.0.0.1:40628 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:41:25] 127.0.0.1:41530 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:41:25] 127.0.0.1:41534 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:50:05] 127.0.0.1:41326 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:50:05] 127.0.0.1:41334 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:50:50] 127.0.0.1:53326 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:50:50] 127.0.0.1:53338 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:52:08] 127.0.0.1:33460 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:52:08] 127.0.0.1:33468 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:54:35] 127.0.0.1:33132 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:54:35] 127.0.0.1:33146 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[36mDEBUG[0m:    [18-01-2024 17:54:36] Starting component PersistentLocalHnswSegment
+[32mINFO[0m:     [18-01-2024 17:54:36] 127.0.0.1:33132 - "POST /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/upsert HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:55:17] 127.0.0.1:41706 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 17:55:17] 127.0.0.1:41720 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:05:13] 127.0.0.1:54286 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:05:13] 127.0.0.1:54292 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:05:43] 127.0.0.1:47990 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:05:43] 127.0.0.1:47998 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:10:47] Shutting down
+[32mINFO[0m:     [18-01-2024 18:10:47] Finished server process [[36m567092[0m]
+[31mERROR[0m:    [18-01-2024 18:10:47] Traceback (most recent call last):
+  File "/home/karahan/anaconda3/lib/python3.9/site-packages/starlette/routing.py", line 747, in lifespan
+    await receive()
+  File "/home/karahan/anaconda3/lib/python3.9/site-packages/uvicorn/lifespan/on.py", line 137, in receive
+    return await self.receive_queue.get()
+  File "/home/karahan/anaconda3/lib/python3.9/asyncio/queues.py", line 166, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+[33mWARNING[0m:  [18-01-2024 18:10:57] chroma_server_nofile is set to 65535, but this is less than current soft limit of 1048576. chroma_server_nofile will not be set.
+[32mINFO[0m:     [18-01-2024 18:10:57] Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+[36mDEBUG[0m:    [18-01-2024 18:10:57] Starting component System
+[36mDEBUG[0m:    [18-01-2024 18:10:57] Starting component OpenTelemetryClient
+[36mDEBUG[0m:    [18-01-2024 18:10:57] Starting component SimpleAssignmentPolicy
+[36mDEBUG[0m:    [18-01-2024 18:10:57] Starting component SqliteDB
+[36mDEBUG[0m:    [18-01-2024 18:10:57] Starting component Posthog
+[36mDEBUG[0m:    [18-01-2024 18:10:57] Starting component LocalSegmentManager
+[36mDEBUG[0m:    [18-01-2024 18:10:57] Starting component SegmentAPI
+[32mINFO[0m:     [18-01-2024 18:10:57] Started server process [[36m604769[0m]
+[32mINFO[0m:     [18-01-2024 18:10:57] Waiting for application startup.
+[32mINFO[0m:     [18-01-2024 18:10:57] Application startup complete.
+[32mINFO[0m:     [18-01-2024 18:10:57] Uvicorn running on [1mhttp://localhost:8001[0m (Press CTRL+C to quit)
+[32mINFO[0m:     [18-01-2024 18:19:17] 127.0.0.1:47066 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:19:17] 127.0.0.1:47078 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:22:48] 127.0.0.1:59212 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:22:48] 127.0.0.1:59216 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:25:30] 127.0.0.1:37468 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:25:30] 127.0.0.1:37482 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:26:08] 127.0.0.1:58992 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:26:08] 127.0.0.1:59006 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:27:01] 127.0.0.1:39226 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:27:01] 127.0.0.1:39228 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:27:12] 127.0.0.1:42992 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:27:12] 127.0.0.1:43000 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:30:05] 127.0.0.1:56620 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:30:05] 127.0.0.1:56634 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:31:10] 127.0.0.1:35714 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:31:10] 127.0.0.1:35720 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:31:33] 127.0.0.1:44752 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:31:33] 127.0.0.1:44754 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:31:58] 127.0.0.1:49538 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:31:58] 127.0.0.1:49552 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:32:18] 127.0.0.1:58990 - "POST /api/v1/collections?tenant=default_tenant&database=default_database HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:32:18] 127.0.0.1:58998 - "GET /api/v1/collections/033d1147-9e6f-4a98-acb8-e623ff1d5708/count HTTP/1.1" 200
+[32mINFO[0m:     [18-01-2024 18:33:03] Shutting down
+[32mINFO[0m:     [18-01-2024 18:33:03] Finished server process [[36m604769[0m]
+[31mERROR[0m:    [18-01-2024 18:33:03] Traceback (most recent call last):
+  File "/home/karahan/anaconda3/lib/python3.9/site-packages/starlette/routing.py", line 747, in lifespan
+    await receive()
+  File "/home/karahan/anaconda3/lib/python3.9/site-packages/uvicorn/lifespan/on.py", line 137, in receive
+    return await self.receive_queue.get()
+  File "/home/karahan/anaconda3/lib/python3.9/asyncio/queues.py", line 166, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+[33mWARNING[0m:  [29-01-2024 15:50:15] chroma_server_nofile is set to 65535, but this is less than current soft limit of 1048576. chroma_server_nofile will not be set.
+[32mINFO[0m:     [29-01-2024 15:50:15] Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+[36mDEBUG[0m:    [29-01-2024 15:50:15] Starting component System
+[36mDEBUG[0m:    [29-01-2024 15:50:15] Starting component OpenTelemetryClient
+[36mDEBUG[0m:    [29-01-2024 15:50:15] Starting component SimpleAssignmentPolicy
+[36mDEBUG[0m:    [29-01-2024 15:50:15] Starting component SqliteDB
+[36mDEBUG[0m:    [29-01-2024 15:50:15] Starting component Posthog
+[36mDEBUG[0m:    [29-01-2024 15:50:15] Starting component LocalSegmentManager
+[36mDEBUG[0m:    [29-01-2024 15:50:15] Starting component SegmentAPI
+[32mINFO[0m:     [29-01-2024 15:50:15] Started server process [[36m20775[0m]
+[32mINFO[0m:     [29-01-2024 15:50:15] Waiting for application startup.
+[32mINFO[0m:     [29-01-2024 15:50:15] Application startup complete.
+[32mINFO[0m:     [29-01-2024 15:50:15] Uvicorn running on [1mhttp://localhost:8001[0m (Press CTRL+C to quit)
+[32mINFO[0m:     [29-01-2024 15:50:23] Shutting down
+[32mINFO[0m:     [29-01-2024 15:50:23] Finished server process [[36m20775[0m]
+[31mERROR[0m:    [29-01-2024 15:50:23] Traceback (most recent call last):
+  File "/home/karahan/anaconda3/lib/python3.9/site-packages/starlette/routing.py", line 747, in lifespan
+    await receive()
+  File "/home/karahan/anaconda3/lib/python3.9/site-packages/uvicorn/lifespan/on.py", line 137, in receive
+    return await self.receive_queue.get()
+  File "/home/karahan/anaconda3/lib/python3.9/asyncio/queues.py", line 166, in get
+    await getter
+asyncio.exceptions.CancelledError
+
