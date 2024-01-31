@@ -77,9 +77,14 @@ export class DIDService {
 
             let filtersPart = type ? `filters: {
                 where: {
-                    type: {equalTo: "${type}"}
+                    type: {equalTo: "${type}"},
+                    deletedAt: {isNull: true}
                 }
-            }` : "";
+            }` : `filters: {
+                where: {
+                    deletedAt: {isNull: true}
+                }
+            }`;
 
             // Include the comma only when filtersPart is not empty
             let didIndexListArguments = `first: 1000${filtersPart ? `, ${filtersPart}` : ""}`;
@@ -138,12 +143,16 @@ export class DIDService {
                     acc[indexId].did.starred = true;
                 }
                 return acc;
-            }, {});
+            }, {})
 
-            return Promise.all(Object.values(indexes).map(async (i) => {
-                const ownerDID = await getOwnerProfile(i.signerPublicKey);
-                return { ...i, ownerDID };
-            }));
+            return await Promise.all(
+                Object.values(indexes)
+                    .filter(i => i.did.owned || i.did.starred)
+                    .map(async (i) => {
+                        const ownerDID = await getOwnerProfile(i.signerPublicKey);
+                        return { ...i, ownerDID };
+                    })
+            );
 
 
         } catch (error) {
