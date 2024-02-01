@@ -6,6 +6,50 @@ const getCurrentDateTime = () => moment.utc().toISOString();
 
 import {definition} from "../types/merged-runtime.js";
 
+const indexItemFragment = `
+    ... on IndexItem {
+      id
+      indexId
+      itemId
+      createdAt
+      updatedAt
+      deletedAt
+      item {
+        id
+        __typename
+        ... on WebPage {
+          title
+          favicon
+          url
+          content
+          createdAt
+          updatedAt
+          deletedAt
+        }
+      }
+      index {
+        id
+        title
+        signerPublicKey
+        signerFunction
+        createdAt
+        updatedAt
+        deletedAt
+      }
+    }`
+
+const transformIndexItem = (indexItem) => {
+    console.log(indexItem)
+    const { __typename: type, indexedAt: _, ...rest } = indexItem.item;
+    return {
+        type,
+        node: {
+            ...rest,
+            indexedAt: indexItem.updatedAt
+        }
+    };
+};
+
 export class ItemService {
     constructor() {
         this.client = new ComposeClient({
@@ -36,12 +80,7 @@ export class ItemService {
               }, sorting: { createdAt: DESC}) {
                 edges {
                   node {
-                    id
-                    indexId
-                    itemId
-                    createdAt
-                    updatedAt
-                    deletedAt
+                    ${indexItemFragment}
                   }
                 }
               }
@@ -60,7 +99,7 @@ export class ItemService {
                 return null;
             }
 
-            return data.indexItemIndex.edges[0].node;
+            return transformIndexItem(data.indexItemIndex.edges[0].node);
 
         } catch (error) {
             // Log the error and rethrow it for external handling
@@ -75,36 +114,7 @@ export class ItemService {
             const {data, errors} = await this.client.executeQuery(`
             {
               node(id: "${indexItemId}") {
-                ... on IndexItem {
-                  id
-                  indexId
-                  itemId
-                  createdAt
-                  updatedAt
-                  deletedAt
-                  item {
-                    id
-                    __typename
-                    ... on WebPage {
-                      title
-                      favicon
-                      url
-                      content
-                      createdAt
-                      updatedAt
-                      deletedAt
-                    }
-                  }
-                  index {
-                    id
-                    title
-                    signerPublicKey
-                    signerFunction                    
-                    createdAt
-                    updatedAt
-                    deletedAt
-                  }
-                }
+                ${indexItemFragment}
               }
             }`);
 
@@ -117,8 +127,7 @@ export class ItemService {
                 throw new Error('Invalid response data');
             }
 
-
-            return data.node;
+            return transformIndexItem(data.node);
 
         } catch (error) {
             // Log the error and rethrow it for external handling
@@ -144,36 +153,7 @@ export class ItemService {
                 }
                 edges {
                   node {
-                    ... on IndexItem {
-                      id
-                      indexId
-                      itemId
-                      createdAt
-                      updatedAt
-                      deletedAt
-                      item {
-                        id
-                        __typename
-                        ... on WebPage {
-                          title
-                          favicon
-                          url
-                          content
-                          createdAt
-                          updatedAt
-                          deletedAt
-                        }
-                      }
-                      index {
-                        id
-                        title
-                        signerPublicKey
-                        signerFunction
-                        createdAt
-                        updatedAt
-                        deletedAt
-                      }
-                    }
+                    ${indexItemFragment}
                   }
                 }
               }
@@ -197,10 +177,7 @@ export class ItemService {
 
             return { //Todo fix itemId to id
                 endCursor: data.indexItemIndex.pageInfo.endCursor,
-                items: data.indexItemIndex.edges.map(({ node: { item: { __typename: type, ...rest } } }) => ({
-                    type,
-                    node: rest
-                })),
+                items: data.indexItemIndex.edges.map(e => transformIndexItem(e.node)),
             }
 
         } catch (error) {
@@ -234,12 +211,7 @@ export class ItemService {
                 mutation CreateIndexItem($input: CreateIndexItemInput!) {
                     createIndexItem(input: $input) {
                         document {
-                            id
-                            indexId
-                            itemId
-                            createdAt
-                            updatedAt
-                            deletedAt
+                            ${indexItemFragment}
                         }
                     }
                 }`, {input: {content}});
@@ -249,12 +221,13 @@ export class ItemService {
             }
 
             // Validate the data response
-            if (!data || !data.createIndexItem || !data.createIndexItem.document) {
+
+            if (!data || !data.createIndexItem || !data.createIndexItem.document || !data.createIndexItem.document.item) {
                 throw new Error('Invalid response data');
             }
 
-            // Return the created index document
-            return data.createIndexItem.document;
+            return transformIndexItem(data.createIndexItem.document);
+
 
         } catch (error) {
             // Log the error and rethrow it for external handling
@@ -287,12 +260,7 @@ export class ItemService {
                 mutation UpdateIndexItem($input: UpdateIndexItemInput!) {
                     updateIndexItem(input: $input) {
                         document {
-                            id
-                            indexId
-                            itemId
-                            createdAt
-                            updatedAt
-                            deletedAt
+                            ${indexItemFragment}
                         }
                     }
                 }`, {input: {id: indexItem.id, content}});
@@ -306,8 +274,7 @@ export class ItemService {
                 throw new Error('Invalid response data');
             }
 
-            // Return the created index document
-            return data.updateIndexItem.document;
+            return true; //transformIndexItem(data.updateIndexItem.document);;
 
         } catch (error) {
             // Log the error and rethrow it for external handling
