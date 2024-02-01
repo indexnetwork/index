@@ -47,7 +47,7 @@ export const removeIndex = async (req, res, next) => {
 
 
 export const createProfile = async (req, res, next) => {
-    if(req.params.id !== req.session.did.parent) {
+    if(req.params.did !== req.session.did.parent) {
         return res.status(500).json({ error: "Authorization error" });
     }
     try {
@@ -62,11 +62,11 @@ export const createProfile = async (req, res, next) => {
 export const getProfile = async (req, res, next) => {
     try {
         const didService = new DIDService()
-        let profile = await didService.getProfile(req.params.id)
+        let profile = await didService.getProfile(req.params.did)
 
         if(!profile){
             profile = {
-                id: req.params.id,
+                id: req.params.did,
             }
         }
 
