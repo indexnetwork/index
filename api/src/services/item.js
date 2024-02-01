@@ -135,7 +135,8 @@ export class ItemService {
             const {data, errors} = await this.client.executeQuery(`{
               indexItemIndex(first: ${limit}, ${cursorFilter} filters: {
                 where: {
-                  indexId: { equalTo: "${indexId}"}
+                  indexId: { equalTo: "${indexId}"},
+                  deletedAt: {isNull: true}
                 }
               }, sorting: { createdAt: DESC}) {
                 pageInfo {
@@ -188,10 +189,13 @@ export class ItemService {
             }
 
             if (data.indexItemIndex.edges.length === 0) {
-                return null;
+                return {
+                    endCursor: null,
+                    items: [],
+                };
             }
 
-            return {
+            return { //Todo fix itemId to id
                 endCursor: data.indexItemIndex.pageInfo.endCursor,
                 items: data.indexItemIndex.edges.map(({ node: { item: { __typename: type, ...rest } } }) => ({
                     type,
