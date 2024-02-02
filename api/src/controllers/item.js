@@ -42,8 +42,8 @@ export const removeItem = async (req, res, next) => {
         const pkpSession = await getPKPSession(req.session, index);
 
         const itemService = new ItemService().setSession(pkpSession);
-        const item = await itemService.removeItem(indexId, itemId);
-        res.status(204);
+        await itemService.removeItem(indexId, itemId);
+        res.sendStatus(204);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
