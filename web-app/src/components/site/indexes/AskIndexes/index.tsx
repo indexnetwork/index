@@ -21,7 +21,7 @@ export interface ChatProps extends React.ComponentProps<"div"> {
   id?: string;
 }
 export interface AskIndexesProps {
-  id: string;
+  chatID: string;
   did?: string;
   indexes?: string[];
 }
@@ -30,7 +30,7 @@ export interface MessageWithIndex extends Message {
   index?: number;
 }
 
-const AskIndexes: React.FC<AskIndexesProps> = ({ id, did, indexes }) => {
+const AskIndexes: React.FC<AskIndexesProps> = ({ chatID, did, indexes }) => {
   // const index = useIndex();
   const { viewedProfile, indexes: indexesFromApp, discoveryType } = useApp();
 
@@ -62,7 +62,7 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ id, did, indexes }) => {
       setEditingMessage(undefined);
       setEditInput("");
       await append({
-        id,
+        id: chatID,
         content: newMessage.content,
         role: "user",
       });
@@ -110,9 +110,9 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ id, did, indexes }) => {
   } = useChat({
     api: apiUrl,
     initialMessages,
-    id,
+    id: chatID,
     body: {
-      id,
+      id: chatID,
       did,
       indexes,
     },
@@ -137,8 +137,8 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ id, did, indexes }) => {
   return (
     <>
       <Flex
-        id={id}
-        key={id}
+        id={chatID}
+        key={chatID}
         className={
           indexes
             ? "scrollable-area px-0 pt-7"
@@ -218,7 +218,7 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ id, did, indexes }) => {
               contextMessage={getChatContextMessage()}
               onSubmit={async (value) => {
                 await append({
-                  id,
+                  id: chatID,
                   content: value,
                   role: "user",
                 });

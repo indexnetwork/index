@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react";
+import { useCallback, useState } from "react";
 import SearchInput from "@/components/base/SearchInput";
 import Col from "@/components/layout/base/Grid/Col";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
@@ -16,7 +16,7 @@ export default function IndexTabSection() {
     useIndexConversation();
   const { isCreator } = useRole();
   const { apiService: api } = useApi();
-  const [search, setSearch] = React.useState("");
+  const [search, setSearch] = useState("");
 
   const { viewedIndex } = useApp();
 
@@ -65,11 +65,6 @@ export default function IndexTabSection() {
     },
     [api, viewedIndex, setItemsState, setLoading],
   );
-
-  // useEffect(() => {
-  //   // Assuming there's a fetch function to initially load items or based on search
-  //   // loadItems(); // Load initial items or based on search criteria
-  // }, [search, viewedIndex, loadMoreItems]);
 
   return (
     <Flex flexdirection="column" className="idxflex-grow-1">
