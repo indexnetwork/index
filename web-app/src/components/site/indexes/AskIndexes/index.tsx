@@ -11,10 +11,7 @@ import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { API_ENDPOINTS } from "utils/constants";
 import Flex from "components/layout/base/Grid/Flex";
 import { maskDID } from "utils/helper";
-import { useIndex } from "hooks/useIndex";
-import { DiscoveryType, useApp } from "hooks/useApp";
-import { useAppSelector } from "hooks/store";
-import { selectProfile } from "store/slices/profileSlice";
+import { DiscoveryType, useApp } from "@/components/site/context/AppContext";
 import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
 import NoIndexesChat from "components/ai/no-indexes";
 import { AuthContext } from "components/site/context/AuthContext";
@@ -99,7 +96,7 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ id, did, indexes }) => {
     return `indexes`;
   };
 
-  const apiUrl = `https://index.network/api${API_ENDPOINTS.CHAT_STREAM}`;
+  const apiUrl = `https://dev.index.network/api${API_ENDPOINTS.CHAT_STREAM}`;
   const initialMessages: Message[] = [];
   const {
     messages,
@@ -119,7 +116,10 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ id, did, indexes }) => {
       did,
       indexes,
     },
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      Authorization: `Bearer ${session?.serialize()}`,
+    },
     onResponse(response) {
       if (response.status === 401) {
         toast.error(response.statusText);
@@ -128,22 +128,23 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ id, did, indexes }) => {
   });
 
   if (indexesFromApp.length === 0) {
-    return (
-      <NoIndexesChat isSelfDid={did === viewedProfile?.id} />
-    )
+    return <NoIndexesChat isSelfDid={did === viewedProfile?.id} />;
   }
 
-  if (discoveryType === DiscoveryType.index) {
-
-  }
+  // if (discoveryType === DiscoveryType.index) {
+  // }
 
   return (
     <>
       <Flex
         id={id}
         key={id}
-        className={indexes ? "px-0 pt-7 scrollable-area" : "px-0 px-md-10 px-4 pt-7 scrollable-area"}
-        flexDirection={"column"}
+        className={
+          indexes
+            ? "scrollable-area px-0 pt-7"
+            : "px-md-10 scrollable-area px-0 px-4 pt-7"
+        }
+        flexdirection={"column"}
       >
         <FlexRow wrap={true} align={"start"}>
           {/* {indexesFromApp.map((index) => (
@@ -197,12 +198,11 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ id, did, indexes }) => {
               </Flex>
             )}
           </Col>
-
         </FlexRow>
       </Flex>
       <Flex
         className={"chat-input idxflex-grow-1 px-md-10"}
-        flexDirection={"column"}
+        flexdirection={"column"}
       >
         <FlexRow className={"mb-5"} justify={"center"} align={"center"}>
           <ChatPanel

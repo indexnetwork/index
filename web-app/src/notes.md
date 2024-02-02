@@ -38,3 +38,22 @@ manipulate creators
 
 not found did:
 redirects to session user page
+
+
+needed:
+endpoint for: owner.DID of indexID: get from response
+
+endpoint for: modify index: star: 
+- edit title: role owner : updateIndex()
+- add/remove star: public : createDIDIndex({
+    "indexId": "{{indexId}}",
+    "type": "starred"
+}) /dids/:did_id/indexes/:index_id/star
+- add/remove to my profile: owner: createDIDIndex({
+    "indexId": "{{indexId}}",
+    "type": "owner"
+}) /dids/:did_id/indexes/:index_id/own
+
+endpoint for: modify index item
+- add/remove from index
+- search

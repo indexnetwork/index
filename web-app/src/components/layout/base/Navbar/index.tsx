@@ -6,13 +6,13 @@ import { useYOffSet } from "hooks/useYOffset";
 import { usePathname, useRouter } from "next/navigation";
 import IconMenu from "components/base/Icon/IconMenu";
 import Button from "components/base/Button";
-import { useApp } from "hooks/useApp";
 import Container from "../Grid/Container";
 import Col from "../Grid/Col";
 import FlexRow from "../Grid/FlexRow";
 import Flex from "../Grid/Flex";
 import Text from "../../../base/Text";
 import { AuthContext, AuthStatus } from "components/site/context/AuthContext";
+import { useApp } from "components/site/context/AppContext";
 
 export interface NavbarProps
   extends React.DetailedHTMLProps<
@@ -55,7 +55,6 @@ const Navbar = ({
   const { session, status } = useContext(AuthContext);
   const path = usePathname();
 
-
   const router = useRouter();
   const { leftSidebarOpen, setLeftSidebarOpen } = useApp();
 
@@ -94,8 +93,8 @@ const Navbar = ({
     <>
       {isLanding && (
         <Flex
-          alignItems={"center"}
-          justifyContent={"space-around"}
+          alignitems={"center"}
+          // alignitems={"space-around"}
           style={{ background: "var(--landing)" }}
         >
           <Text className={"p-5"} size={"md"}>
@@ -111,12 +110,12 @@ const Navbar = ({
           bordered ? "navbar-bordered" : "",
         ])}
         style={
-          sticky || bgColor ?
-            {
-              ...style,
-              backgroundColor: sticky && bgSticky ? stickyBgColor : bgColor,
-            } :
-            style
+          sticky || bgColor
+            ? {
+                ...style,
+                backgroundColor: sticky && bgSticky ? stickyBgColor : bgColor,
+              }
+            : style
         }
         {...menuProps}
       >
@@ -125,7 +124,7 @@ const Navbar = ({
             <Col xs={isLanding ? 10 : 12} centerBlock>
               <FlexRow justify="between" wrap={false}>
                 <Col className={"navbar-logo"}>
-                  <Flex alignItems={"center"}>
+                  <Flex alignitems={"center"}>
                     {logoSize === "mini" ? (
                       <LogoMini
                         className="navbar-logo"

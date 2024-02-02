@@ -4,9 +4,9 @@ import { useParams } from "next/navigation"
 
 export const useRouteParams = () => {
   const params = useParams();
-  const did = decodeURIComponent(params.did as string);
+  const id = decodeURIComponent(params.id as string);
 
-  return { did };
+  return { id };
 };
 
 

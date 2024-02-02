@@ -1,111 +1,99 @@
-import Col from "components/layout/base/Grid/Col";
-import FlexRow from "components/layout/base/Grid/FlexRow";
-import React, { useCallback, useContext, useEffect, useMemo } from "react";
 import List from "components/base/List";
-import { useParams } from "next/navigation";
-import { Indexes } from "types/entity";
 import { Tabs } from "components/base/Tabs";
 import TabPane from "components/base/Tabs/TabPane";
-
-import IndexItem from "components/site/indexes/IndexItem";
-import { useApp } from "hooks/useApp";
 import Text from "components/base/Text";
-import { useApi } from "components/site/context/APIContext";
+import Col from "components/layout/base/Grid/Col";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import { IndexListTabKey, useApp } from "components/site/context/AppContext";
+import IndexItem from "components/site/indexes/IndexItem";
 import { useRouteParams } from "hooks/useRouteParams";
-import { isDIDPath } from "app/discovery/[did]/page";
-import { AuthContext } from "components/site/context/AuthContext";
-
+import React, { useCallback, useMemo } from "react";
+import { Indexes } from "types/entity";
 
 const IndexListSection: React.FC = () => {
-  const { did } = useRouteParams();
+  const { id } = useRouteParams();
 
-  const {
-    viewedProfile,
-    indexes,
-    setIndexes,
-    setLeftTabKey,
-    leftTabKey,
-  } = useApp();
+  const { indexes, setLeftTabKey, leftTabKey } = useApp();
 
-  const {session} = useContext(AuthContext);
-
-  const { apiService: api } = useApi();
-
-  const fetchIndexes = useCallback(() => {
-    return async () => {
-      try {
-        const fetchedIndexes = await api.getAllIndexes(did);
-        console.log("fetchedIndexes", fetchedIndexes);
-        setIndexes(fetchedIndexes);
-      } catch (error) {
-        console.error("Error fetching indexes", error);
-        // TODO: Handle error appropriately
-      }
-    };
-  }, [api, did]);
-
-  useEffect(() => {
-    if (isDIDPath(did)) {
-      fetchIndexes();
-    }
-  }, [fetchIndexes]);
-
-  const handleTabChange = useCallback((tabClickValue: string) => {
-    // console.log("tabClickValue", tabClickValue, params);
-    // if (viewedProfile && tabClickValue) {
-    // 	const url = tabClickValue === "all" ?
-    // 		`/${viewedProfile.id}` :
-    // 		`/${viewedProfile.id}?section=${tabClickValue}`;
-    // 	router.push(`/discovery/${did}`);
-    // }
-    setLeftTabKey(tabClickValue);
-  }, [viewedProfile]);
+  const handleTabChange = useCallback(
+    (tabKey: IndexListTabKey) => {
+      setLeftTabKey(tabKey);
+    },
+    [setLeftTabKey],
+  );
 
   const sectionIndexes = useMemo(() => {
-    if (leftTabKey === 'all') {
+    if (leftTabKey === IndexListTabKey.ALL) {
       return indexes;
-    } else {
-      return indexes.filter(
-        leftTabKey === 'owner' ? i => i.id === session?.did.parent : i => i.isStarred === true
-      );
     }
+    if (leftTabKey === IndexListTabKey.OWNER) {
+      return indexes.filter((i) => i.did.owned);
+    }
+    if (leftTabKey === IndexListTabKey.STARRED) {
+      return indexes.filter((i) => i.did.starred);
+    }
+    return [];
   }, [indexes, leftTabKey]);
 
-  return <>
-    <FlexRow className={"mr-6 pb-4"}>
-      <Col className="idxflex-grow-1">
-        <Tabs destroyInactiveTabPane={false} theme={"rounded"} activeKey={leftTabKey} onTabChange={handleTabChange}>
-          <TabPane enabled={true} tabKey={"all"} title={`All Indexes`} />
-          <TabPane enabled={true} tabKey={"owner"} total={indexes.filter(i => i.id === session?.did.parent)?.length} title={`Owned`} />
-          <TabPane enabled={true} tabKey={"starred"} total={indexes.filter(i => i.isStarred === true)?.length} title={`Starred`} />
-        </Tabs>
-      </Col>
-    </FlexRow>
-    <FlexRow className={"scrollable-area index-list pr-6 idxflex-grow-1"}>
-      {(sectionIndexes.length > 0) ? <div className={"idxflex-grow-1"}>
-        
-        <List
-          data={sectionIndexes}
-          render={(itm: Indexes) =><>
-          <p>{itm.id + " "+  did}</p>
-          {console.log("itm, did, ",itm, did)}
-           <IndexItem
-            index={itm}
-            selected={itm.id === did}
-          /></>}
-          divided={false}
-        />
-      </div> :
-        <Text fontWeight={500} style={{
-          color: "var(--gray-4)",
-          textAlign: "center",
-          padding: "4rem 0",
-          margin: "auto",
-        }}>
-          There are no indexes yet
-        </Text>}
-    </FlexRow>
-  </>;
+  return (
+    <>
+      <FlexRow className={"mr-6 pb-4"}>
+        <Col className="idxflex-grow-1">
+          <Tabs
+            destroyInactiveTabPane={false}
+            theme={"rounded"}
+            activeKey={leftTabKey}
+            onTabChange={handleTabChange}
+          >
+            <TabPane
+              enabled={true}
+              tabKey={IndexListTabKey.ALL}
+              title={`All Indexes`}
+            />
+            <TabPane
+              enabled={true}
+              tabKey={IndexListTabKey.OWNER}
+              total={indexes.filter((i) => i.did.owned).length}
+              title={`Owned`}
+            />
+            <TabPane
+              enabled={true}
+              tabKey={IndexListTabKey.STARRED}
+              total={indexes.filter((i) => i.did.starred).length}
+              title={`Starred`}
+            />
+          </Tabs>
+        </Col>
+      </FlexRow>
+      <FlexRow className={"scrollable-area index-list idxflex-grow-1 pr-6"}>
+        {sectionIndexes.length > 0 ? (
+          <div className={"idxflex-grow-1"}>
+            <List
+              data={sectionIndexes}
+              render={(itm: Indexes) => (
+                <>
+                  <IndexItem index={itm} selected={itm.id === id} />
+                </>
+              )}
+              divided={false}
+            />
+          </div>
+        ) : (
+          <Text
+            fontWeight={500}
+            style={{
+              color: "var(--gray-4)",
+              textAlign: "center",
+              padding: "4rem 0",
+              margin: "auto",
+            }}
+          >
+            There are no indexes yet
+          </Text>
+        )}
+      </FlexRow>
+    </>
+  );
 };
 
 export default IndexListSection;

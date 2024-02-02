@@ -6,11 +6,8 @@ export const BREAKPOINTS = {
   xl: 1201,
 };
 
-
-
 export const DEFAULT_CREATE_INDEX_TITLE = "Untitled Index";
 export const DEFAULT_CREATE_LINK_TITLE = "Untitled Link";
-
 
 export const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",

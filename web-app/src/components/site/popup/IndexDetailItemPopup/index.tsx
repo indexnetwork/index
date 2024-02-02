@@ -7,35 +7,36 @@ import { useTranslation } from "next-i18next";
 import React from "react";
 
 export interface IndexDetailItemPopupProps {
-	onDelete?(): void;
-	children: React.ReactNode;
+  onDelete?(): void;
+  children: React.ReactNode;
 }
-const IndexDetailItemPopup = (
-	{
-		children,
-		onDelete,
-	}: IndexDetailItemPopupProps,
-) => {
-	const { t } = useTranslation("common");
-	const handleDelete = () => {
-		onDelete && onDelete();
-	};
+const IndexDetailItemPopup = ({
+  children,
+  onDelete,
+}: IndexDetailItemPopupProps) => {
+  const { t } = useTranslation("common");
+  const handleDelete = () => {
+    onDelete && onDelete();
+  };
 
-	return (
-		<Dropdown
-			position="bottom-right"
-			menuItems={
-				<DropdownMenuItem onClick={handleDelete}>
-					<Flex alignItems="center">
-						<IconTrash width={12} height="auto" className="icon-error" />
-						<Text className="ml-3" element="span" size="sm" theme="error" > {t("delete")}</Text>
-					</Flex>
-				</DropdownMenuItem>
-			}
-		>
-			{children}
-		</Dropdown>
-	);
+  return (
+    <Dropdown
+      position="bottom-right"
+      menuItems={
+        <DropdownMenuItem onClick={handleDelete}>
+          <Flex alignitems="center">
+            <IconTrash width={12} height="auto" className="icon-error" />
+            <Text className="ml-3" element="span" size="sm" theme="error">
+              {" "}
+              {t("delete")}
+            </Text>
+          </Flex>
+        </DropdownMenuItem>
+      }
+    >
+      {children}
+    </Dropdown>
+  );
 };
 
 export default IndexDetailItemPopup;

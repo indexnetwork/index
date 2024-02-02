@@ -1,7 +1,7 @@
 import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
-import { useApp } from "hooks/useApp";
+import { useApp } from "components/site/context/AppContext";
 import React from "react";
 import { Indexes } from "types/entity";
 

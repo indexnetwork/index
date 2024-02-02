@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import Header from "components/base/Header";
 import Text from "components/base/Text";
@@ -23,7 +23,7 @@ const LandingSection1 = () => {
 
   useEffect(() => {
     if (status === AuthStatus.CONNECTED) {
-      router.push(`/${session?.did.parent}`);
+      router.push(`/discovery/${session?.did.parent}`);
     }
   }, [status]);
 
@@ -35,37 +35,47 @@ const LandingSection1 = () => {
     }
   };
 
-  return <LandingSection first>
-    <FlexRow align={"center"} fullWidth justify={"between"} >
-      <Col sm={12} md={6} >
-        <Flex flexDirection={"column"} justifyContent={"left"} className={cc([" lnd-card lnd-first", cm.container])}>
-          <Header className={cm.lndBlueTtl}> The human bridge between context and content</Header>
-          <Text style={{ fontSize: "2.4rem", lineHeight: "1.50" }} className={cc([cm.descLine, "mr-lg-10 pr-lg-10 mb-6", "mb-sm-7"])}>
-            Index Network helps you to create composable discovery engines.</Text>
-          <Button
-            theme="primary"
-            onClick={handleConnect}
-          >Connect Wallet</Button>
-        </Flex>
-      </Col>
-      <Col sm={12} md={6}>
-        <Flex justifyContent={"right"}>
-          <video
-            autoPlay
-            loop
-            muted
-            playsInline
-            className={cm.video}
-            style={{
-
-            }}
+  return (
+    <LandingSection first>
+      <FlexRow align={"center"} fullWidth justify={"between"}>
+        <Col sm={12} md={6}>
+          <Flex
+            flexdirection={"column"}
+            alignitems={"left"}
+            className={cc([" lnd-card lnd-first", cm.container])}
           >
-            <source src="/video/mainani-white.webm" type="video/mp4" />
-          </video>
-        </Flex>
-      </Col>
-    </FlexRow>
-  </LandingSection>;
+            <Header className={cm.lndBlueTtl}>
+              {" "}
+              The human bridge between context and content
+            </Header>
+            <Text
+              style={{ fontSize: "2.4rem", lineHeight: "1.50" }}
+              className={cc([cm.descLine, "mr-lg-10 pr-lg-10 mb-6", "mb-sm-7"])}
+            >
+              Index Network helps you to create composable discovery engines.
+            </Text>
+            <Button theme="primary" onClick={handleConnect}>
+              Connect Wallet
+            </Button>
+          </Flex>
+        </Col>
+        <Col sm={12} md={6}>
+          <Flex alignitems={"right"}>
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              className={cm.video}
+              style={{}}
+            >
+              <source src="/video/mainani-white.webm" type="video/mp4" />
+            </video>
+          </Flex>
+        </Col>
+      </FlexRow>
+    </LandingSection>
+  );
 };
 
 export default LandingSection1;

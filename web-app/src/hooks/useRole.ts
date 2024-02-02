@@ -1,6 +1,6 @@
-import { useMemo, useContext } from 'react';
-import { AuthContext, AuthStatus } from 'components/site/context/AuthContext';
-import { useApp } from './useApp';
+import { useMemo } from 'react';
+import { AuthStatus, useAuth } from 'components/site/context/AuthContext';
+import { useApp } from 'components/site/context/AppContext';
 
 export enum UserRole {
   VIEWER = "viewer",
@@ -9,23 +9,25 @@ export enum UserRole {
 }
 
 export const useRole = () => {
-  const { status } = useContext(AuthContext);
+  const { status } = useAuth();
   const { viewedIndex } = useApp();
 
   const role = useMemo(() => {
-    if (status !== AuthStatus.CONNECTED) {
+    if (status === AuthStatus.IDLE || status === AuthStatus.LOADING) {
       return UserRole.VIEWER;
     }
+
+    // console.log('role viewedIndex', viewedIndex);
 
     if (!viewedIndex) {
       return UserRole.VIEWER;
     }
 
-    if (viewedIndex.roles?.isOwner) {
+    if (viewedIndex.roles?.owner) {
       return UserRole.OWNER;
     }
 
-    if (viewedIndex.roles?.isCreator) {
+    if (viewedIndex.roles?.creator) {
       return UserRole.CREATOR;
     }
 

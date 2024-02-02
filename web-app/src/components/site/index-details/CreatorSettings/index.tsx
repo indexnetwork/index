@@ -8,22 +8,20 @@ import Button from "components/base/Button";
 // import api from "services/api-service";
 import { AccessControlCondition } from "types/entity";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
-import { useApp } from "hooks/useApp";
 import IconAdd from "components/base/Icon/IconAdd";
-import { useIndex } from "hooks/useIndex";
 import CreatorRule from "./CreatorRule";
 import { useApi } from "components/site/context/APIContext";
 import { UserRole, useRole } from "hooks/useRole";
+import { useApp } from "components/site/context/AppContext";
 
 export interface CreatorSettingsProps {
   collabAction: string;
   onChange: (value: string) => void;
-  role: UserRole;
 }
 
 const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabAction }) => {
 
-  const role = useRole();
+  const { role } = useRole();
 
   const { apiService: api } = useApi();
   const [loading, setLoading] = useState(false);
@@ -31,18 +29,18 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
   const { setTransactionApprovalWaiting } = useApp();
   const [conditions, setConditions] = useState<any>([]);
   const addOrStatements = (c: AccessControlCondition[]) => c.flatMap((el, i) => (i === c.length - 1 ? el : [el, { operator: "or" }]));
-  const loadAction = async (action: string) => {
-    const litAction = await api.getLITAction(action) as [any];
-    if (litAction && litAction.length > 0) {
-      setConditions(litAction.filter((item: any, i: number) => i % 2 === 0));
-    }
-  };
+  // const loadAction = async (action: string) => {
+  //   const litAction = await api?.getLITAction(action) as [any];
+  //   if (litAction && litAction.length > 0) {
+  //     setConditions(litAction.filter((item: any, i: number) => i % 2 === 0));
+  //   }
+  // };
 
   const handleRemove = async (i: number) => {
     setNewCreatorModalVisible(false);
     setTransactionApprovalWaiting(true);
     const newConditions = [...conditions.slice(0, i), ...conditions.slice(i + 1)];
-    const newAction = await api.postLITAction(addOrStatements(newConditions));
+    const newAction = await api?.postLITAction(addOrStatements(newConditions));
     await onChange(newAction!);
     setTransactionApprovalWaiting(false);
   };
@@ -51,16 +49,16 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({ onChange, collabActi
     setNewCreatorModalVisible(false);
     setTransactionApprovalWaiting(true);
     const newConditions = [condition, ...conditions];
-    const newAction = await api.postLITAction(addOrStatements(newConditions));
+    const newAction = await api?.postLITAction(addOrStatements(newConditions));
     await onChange(newAction!);
     setTransactionApprovalWaiting(false);
   };
   const handleToggleNewCreatorModal = () => {
     setNewCreatorModalVisible(!newCreatorModalVisible);
   };
-  useEffect(() => {
-    loadAction(collabAction);
-  }, [collabAction]);
+  // useEffect(() => {
+  //   loadAction(collabAction);
+  // }, [collabAction]);
 
   return (
     <>

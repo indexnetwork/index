@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import Avatar from "components/base/Avatar";
 import Header from "components/base/Header";
@@ -16,34 +16,48 @@ import { useRouter } from "next/navigation";
 import cm from "./style.module.scss";
 
 export interface IndexItemProps {
-  index: Indexes,
-  selected: boolean,
+  index: Indexes;
+  selected: boolean;
   onClick?(): Promise<void>;
 }
 
-const IndexItem: React.VFC<IndexItemProps> = ({
-  index,
-  selected,
-  onClick,
-}) => {
+const IndexItem: React.VFC<IndexItemProps> = ({ index, selected, onClick }) => {
   // const router = useRouter();
   // const { did } = router.query;
-  return <Link href={`/discovery/${index.id}`}>
-    <FlexRow className={cc([
-      selected ? "index-list-item-selected" : "index-list-item",
-      "p-6",
-    ])} wrap={false} align={"center"}>
-      <Col>
-        <Avatar size={40} user={index.ownerDID} />
-      </Col>
-      <Col className="px-3">
-        <Flex flexDirection={"column"} >
-          <Text className={"my-0"} size="sm" verticalAlign="middle" fontWeight={500} element="p">{index.ownerDID.name || maskDID(index.ownerDID.id!) || ""}</Text>
-          <Header level={4} className={cm.title} dangerouslySetInnerHTML={{ __html: sanitize(index.title || "") }}></Header>
-        </Flex>
-      </Col>
-    </FlexRow>
-  </Link>;
+  return (
+    <Link href={`/discovery/${index.id}`}>
+      <FlexRow
+        className={cc([
+          selected ? "index-list-item-selected" : "index-list-item",
+          "p-6",
+        ])}
+        wrap={false}
+        align={"center"}
+      >
+        <Col>
+          <Avatar size={40} user={index.ownerDID} />
+        </Col>
+        <Col className="px-3">
+          <Flex flexdirection={"column"}>
+            <Text
+              className={"my-0"}
+              size="sm"
+              verticalAlign="middle"
+              fontWeight={500}
+              element="p"
+            >
+              {index.ownerDID.name || maskDID(index.ownerDID.id!) || ""}
+            </Text>
+            <Header
+              level={4}
+              className={cm.title}
+              dangerouslySetInnerHTML={{ __html: sanitize(index.title || "") }}
+            ></Header>
+          </Flex>
+        </Col>
+      </FlexRow>
+    </Link>
+  );
 };
 
 export default IndexItem;

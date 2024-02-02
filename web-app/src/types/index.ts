@@ -1,15 +1,13 @@
 import { NextPage } from "next/types";
-import React, {
-	ReactElement, ReactNode,
-} from "react";
+import React, { ReactElement, ReactNode } from "react";
 
 /**
  * Common Types
  */
 
 export type NextPageWithLayout<P = {}, IP = P> = NextPage<P, IP> & {
-	getLayout?: (page: ReactElement) => ReactNode
-	requireAuth?: boolean;
+  getLayout?: (page: ReactElement) => ReactNode;
+  requireAuth?: boolean;
 };
 
 export type GridFractionType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
@@ -18,42 +16,71 @@ export type SpacingBaseType = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export type HeaderSizeType = 1 | 2 | 3 | 4 | 5 | 6;
 
-export type ComponentThemeType = "primary" | "secondary" | "success" | "error" | "warning" | "disabled" | "blue";
+export type ComponentThemeType =
+  | "primary"
+  | "secondary"
+  | "success"
+  | "error"
+  | "warning"
+  | "disabled"
+  | "blue";
 
 export type SizeType = "xs" | "sm" | "md" | "lg" | "xl";
 
 export type PropType<TObj, TProp extends keyof TObj> = TObj[TProp];
 
 export type CSSFlexPropsNamesType =
-  "flex" |
-  "flexBasis" |
-  "flexDirection" |
-  "flexFlow" |
-  "flexGrow" |
-  "flexShrink" |
-  "flexWrap" |
-  "order" |
-  "alignContent" |
-  "alignSelf" |
-  "alignItems" |
-  "justifyContent" |
-  "justifySelf" |
-  "justifyItems" |
-  "gap";
+  | "flex"
+  | "flexBasis"
+  | "flexDirection"
+  | "flexFlow"
+  | "flexGrow"
+  | "flexShrink"
+  | "flexWrap"
+  | "order"
+  | "alignContent"
+  | "alignSelf"
+  | "alignItems"
+  | "justifySelf"
+  | "justifyItems"
+  | "gap";
 
-export type FlexPropsType = Pick<React.CSSProperties, CSSFlexPropsNamesType>;
+export type FlexPropsType = Pick<React.CSSProperties, CSSFlexPropsNamesType> & {
+  flexdirection?: React.CSSProperties["flexDirection"];
+  alignitems?: React.CSSProperties["alignItems"];
+};
 
 /**
  * Text Types
  */
-export type TextThemeType = ComponentThemeType | "gray4" | "gray5" | "gray6" | "white" | "gray9";
+export type TextThemeType =
+  | ComponentThemeType
+  | "gray4"
+  | "gray5"
+  | "gray6"
+  | "white"
+  | "gray9";
 
 export type TextElementType = "span" | "strong" | "div" | "p" | "label";
 
 /**
  * Button Types
  */
-export type ButtonThemeType = ComponentThemeType | "primary-outlined" | "secondary-outlined" | "success-outlined" | "error-outlined" | "warning-outlined" | "ghost" | "card" | "link" | "clear" | "blue" | "blue-outlined" | "tag" | "panel";
+export type ButtonThemeType =
+  | ComponentThemeType
+  | "primary-outlined"
+  | "secondary-outlined"
+  | "success-outlined"
+  | "error-outlined"
+  | "warning-outlined"
+  | "ghost"
+  | "card"
+  | "link"
+  | "clear"
+  | "blue"
+  | "blue-outlined"
+  | "tag"
+  | "panel";
 
 /**
  * Input Types
@@ -75,10 +102,10 @@ export type ShapeType = "square" | "circle";
  */
 export type SelectValueType = string | string[] | undefined;
 export interface SelectSelectionType {
-	[key: string]: {
-		title: string;
-		selected: boolean;
-	}
+  [key: string]: {
+    title: string;
+    selected: boolean;
+  };
 }
 /**
  * Flex Types
@@ -89,7 +116,7 @@ export type FlexJustifyType = FlexAlignType | "between" | "around" | "evenly";
 export type UserRightType = "view" | "edit" | "off";
 
 export interface IndexesRouteParams {
-	did?: string;
+  did?: string;
 }
 
 export interface IndexDetailsRouteParams extends IndexesRouteParams {

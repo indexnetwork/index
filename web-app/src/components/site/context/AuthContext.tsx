@@ -1,4 +1,5 @@
-'use client';
+"use client";
+
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAccountId } from "@didtools/pkh-ethereum";
@@ -12,10 +13,9 @@ import { DIDSession, createDIDKey, createDIDCacao } from "did-session";
 //   disconnectApp, selectConnection, setAuthLoading,
 // } from "store/slices/connectionSlice";
 import { switchTestNetwork } from "utils/helper";
-import OriginWarningModal from "../modal/OriginWarningModal";
+// import OriginWarningModal from "../modal/OriginWarningModal";
 import { appConfig } from "../../../config";
-import litService from "services/lit-service";
-
+// import litService from "services/lit-service";
 
 declare global {
   interface Window {
@@ -38,22 +38,25 @@ export interface AuthContextType {
   session?: DIDSession;
   pkpPublicKey?: string;
   userDID?: string;
+  isLoading?: boolean;
 }
 
 const defaultAuthContext = {
-  connect: async () => { },
-  disconnect: () => { },
+  connect: async () => {},
+  disconnect: () => {},
   status: AuthStatus.IDLE,
   session: undefined,
   pkpPublicKey: undefined,
   userDID: undefined,
+  isLoading: false,
 };
 
 // type SessionResponse = {
 //   session: DIDSession,
 // };
 
-export const AuthContext = React.createContext<AuthContextType>(defaultAuthContext);
+export const AuthContext =
+  React.createContext<AuthContextType>(defaultAuthContext);
 
 export const AuthProvider = ({ children }: any) => {
   const SESSION_KEY = "did";
@@ -72,8 +75,10 @@ export const AuthProvider = ({ children }: any) => {
   useEffect(() => {
     // TODO: no force connect
     authenticate();
+    // checkSession();
   }, [status]);
 
+  const isLoading = status === AuthStatus.LOADING;
 
   // DEBUG
   useEffect(() => {
@@ -129,7 +134,9 @@ export const AuthProvider = ({ children }: any) => {
     const didKey = await createDIDKey(keySeed);
 
     const now = new Date();
-    const twentyFiveDaysLater = new Date(now.getTime() + 25 * 24 * 60 * 60 * 1000);
+    const twentyFiveDaysLater = new Date(
+      now.getTime() + 25 * 24 * 60 * 60 * 1000,
+    );
 
     const siweMessage = new SiweMessage({
       domain: window.location.host,
@@ -157,14 +164,11 @@ export const AuthProvider = ({ children }: any) => {
     setSession(newSession);
   };
 
-  const mintPkp = async () => {
-    const { pkpPublicKey } = await litService.mintPkp();
-    setPkpPublicKey(pkpPublicKey);
-  };
-
   const authenticate = async () => {
     if (!window.ethereum) {
-      console.warn("Skipping wallet connection: No injected Ethereum provider found.");
+      console.warn(
+        "Skipping wallet connection: No injected Ethereum provider found.",
+      );
       return;
     }
 
@@ -178,9 +182,12 @@ export const AuthProvider = ({ children }: any) => {
       const sessionIsValid = await checkSession();
 
       if (!sessionIsValid) {
+        console.log("No valid session found, starting new session...");
         await startSession();
         // await mintPkp();
       }
+
+      console.log("Session is valid, connecting...");
 
       setStatus(AuthStatus.CONNECTED);
     } catch (err) {
@@ -189,17 +196,30 @@ export const AuthProvider = ({ children }: any) => {
     }
   };
 
-  
-
-  return <AuthContext.Provider value={{
-    connect: authenticate,
-    disconnect,
-    status,
-    session,
-    pkpPublicKey,
-    userDID,
-  }}>
-    {/* {status === AuthStatus.FAILED
+  return (
+    <AuthContext.Provider
+      value={{
+        connect: authenticate,
+        disconnect,
+        status,
+        session,
+        pkpPublicKey,
+        userDID,
+        isLoading,
+      }}
+    >
+      {/* {status === AuthStatus.FAILED
       && originNFTModalVisible ? <OriginWarningModal visible={originNFTModalVisible}></OriginWarningModal> : <></>} */}
-    {children}</AuthContext.Provider>;
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+//useauth hook
+export const useAuth = () => {
+  const context = React.useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
 };
