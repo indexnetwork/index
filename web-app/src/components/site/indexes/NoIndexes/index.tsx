@@ -4,7 +4,7 @@ import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import React from "react";
 import { useOwner } from "hooks/useOwner";
-import { useApp } from "hooks/useApp";
+import { useApp } from "components/site/context/AppContext";
 
 export interface NoIndexesProps {
 	tabKey?: string;

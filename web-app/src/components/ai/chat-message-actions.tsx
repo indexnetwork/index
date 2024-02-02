@@ -28,7 +28,11 @@ export function ChatMessageActions({
   };
   return (
     <div {...props}>
-      <Flex className="chat-message-actions">
+      <Flex
+        className="chat-message-actions"
+        alignitems="center"
+        flexdirection="row"
+      >
         {message.role === "user" && !editingMessage?.id && (
           <Button
             iconHover
@@ -41,12 +45,7 @@ export function ChatMessageActions({
           </Button>
         )}
         {!editingMessage?.id && message.role !== "user" && (
-          <Button
-            iconHover
-            borderless
-            theme="clear"
-            onClick={onCopy}
-          >
+          <Button iconHover borderless theme="clear" onClick={onCopy}>
             {isCopied ? (
               <IconCheck width={20} height={20} />
             ) : (

@@ -1,20 +1,18 @@
 import LogoFull from "components/base/Logo/LogoFull";
 import LogoMini from "components/base/Logo/LogoMini";
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import cc from "classcat";
 import { useYOffSet } from "hooks/useYOffset";
-import { useRouter } from "next/router";
-import { useAppSelector } from "hooks/store";
-import { selectConnection } from "store/slices/connectionSlice";
-import { useAuth } from "hooks/useAuth";
+import { usePathname, useRouter } from "next/navigation";
 import IconMenu from "components/base/Icon/IconMenu";
 import Button from "components/base/Button";
-import { useApp } from "hooks/useApp";
 import Container from "../Grid/Container";
 import Col from "../Grid/Col";
 import FlexRow from "../Grid/FlexRow";
 import Flex from "../Grid/Flex";
 import Text from "../../../base/Text";
+import { AuthContext, AuthStatus } from "components/site/context/AuthContext";
+import { useApp } from "components/site/context/AppContext";
 
 export interface NavbarProps
   extends React.DetailedHTMLProps<
@@ -48,27 +46,29 @@ const Navbar = ({
   bordered = true,
   style,
   className,
-  isLanding,
   ...menuProps
 }: NavbarProps) => {
   const yOffSet = useYOffSet(sticky);
   const [bgSticky, setBgSticky] = useState(false);
 
-  const { did } = useAppSelector(selectConnection);
-  const authenticated = useAuth();
+  // const { did } = useAppSelector(selectConnection);
+  const { session, status } = useContext(AuthContext);
+  const path = usePathname();
 
   const router = useRouter();
   const { leftSidebarOpen, setLeftSidebarOpen } = useApp();
 
+  const isLanding = path === "/";
+
   /*
-	const [showTestnetWarning, setShowTestnetWarning] = useState(false);
-	useEffect(() => {
-		const handleChainChanged = (newChainId: string) => setShowTestnetWarning(newChainId !== appConfig.testNetwork.chainId);
-		handleChainChanged(window.ethereum?.chainId);
-		window.ethereum?.on("chainChanged", handleChainChanged);
-		return () => window.ethereum?.removeListener("chainChanged", handleChainChanged);
-	}, []);
-	 */
+  const [showTestnetWarning, setShowTestnetWarning] = useState(false);
+  useEffect(() => {
+    const handleChainChanged = (newChainId: string) => setShowTestnetWarning(newChainId !== appConfig.testNetwork.chainId);
+    handleChainChanged(window.ethereum?.chainId);
+    window.ethereum?.on("chainChanged", handleChainChanged);
+    return () => window.ethereum?.removeListener("chainChanged", handleChainChanged);
+  }, []);
+   */
 
   useEffect(() => {
     if (sticky) {
@@ -83,8 +83,8 @@ const Navbar = ({
   }, [bgSticky, sticky, stickyBgChangeAfter, stickyBgColor, yOffSet]);
 
   const handleLogoClick = () => {
-    if (authenticated) {
-      router.push(`/[did]`, `/${did}`, { shallow: true });
+    if (status === AuthStatus.CONNECTED) {
+      router.push(`/discovery/${session?.did.parent}`);
     } else {
       router.push(`/`);
     }
@@ -93,8 +93,8 @@ const Navbar = ({
     <>
       {isLanding && (
         <Flex
-          alignItems={"center"}
-          justifyContent={"space-around"}
+          alignitems={"center"}
+          // alignitems={"space-around"}
           style={{ background: "var(--landing)" }}
         >
           <Text className={"p-5"} size={"md"}>
@@ -110,12 +110,12 @@ const Navbar = ({
           bordered ? "navbar-bordered" : "",
         ])}
         style={
-          sticky || bgColor ?
-           {
+          sticky || bgColor
+            ? {
                 ...style,
                 backgroundColor: sticky && bgSticky ? stickyBgColor : bgColor,
-              } :
-              style
+              }
+            : style
         }
         {...menuProps}
       >
@@ -124,7 +124,7 @@ const Navbar = ({
             <Col xs={isLanding ? 10 : 12} centerBlock>
               <FlexRow justify="between" wrap={false}>
                 <Col className={"navbar-logo"}>
-                  <Flex alignItems={"center"}>
+                  <Flex alignitems={"center"}>
                     {logoSize === "mini" ? (
                       <LogoMini
                         className="navbar-logo"

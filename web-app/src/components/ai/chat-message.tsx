@@ -40,7 +40,7 @@ export function ChatMessage({
   const profile = useAppSelector(selectProfile);
 
   return (
-    <FlexRow wrap={false} align={"start"} className="py-5 chat-message">
+    <FlexRow wrap={false} align={"start"} className="chat-message py-5">
       <Col>
         {message.role === "user" ? (
           <Avatar size={24} user={profile} />
@@ -64,7 +64,7 @@ export function ChatMessage({
       <Col className="idxflex-grow-1 mx-5" style={{ overflow: "auto" }}>
         <div style={{ overflowWrap: "break-word" }}>
           {editingMessage?.id && index === editingIndex ? (
-            <Flex alignItems="center">
+            <Flex alignitems="center" flexdirection="row">
               <Input
                 autoFocus
                 style={{
@@ -87,21 +87,21 @@ export function ChatMessage({
               components={{
                 p({ children }) {
                   return (
-                    <p style={{
-                      marginTop: 0,
-                      fontSize: "1.4rem",
-                    }}>
+                    <p
+                      style={{
+                        marginTop: 0,
+                        fontSize: "1.4rem",
+                      }}
+                    >
                       {children}
                     </p>
                   );
                 },
-                code({
-                   inline, className, children, ...props
-                  }) {
+                code({ inline, className, children, ...props }) {
                   if (children.length) {
                     if (children[0] === "▍") {
                       return (
-                        <span className="mt-1 cursor-default animate-pulse">
+                        <span className="mt-1 animate-pulse cursor-default">
                           ▍
                         </span>
                       );

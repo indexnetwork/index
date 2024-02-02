@@ -7,29 +7,63 @@ import { CID } from "multiformats";
 
 export type Indexes = {
   id: string
-  title: string | null
+  title: string
   collabAction: string
   pkpPublicKey: string
   signerFunction: string
   signerPublicKey: string
-  controllerDID: { // This is PKP DID
-    id: string
+  did: {
+    owned: boolean
+    starred: boolean
+  };
+  roles: {
+    owner: boolean
+    creator: boolean
   };
   ownerDID: Users;
   createdAt: string;
   updatedAt: string;
   deletedAt: string;
   links: IndexLink[];
-  isOwner?: boolean;
-  isCreator: boolean;
-  isStarred?: boolean;
   isPermittedAddress?: boolean;
+};
+
+// {
+//   "type": "WebPage",
+//   "node": {
+//       "id": "kjzl6kcym7w8y7fjc89gmnkne7qpdz5ws5ryfji3i8dndjh2wxuii7z1anybovo",
+//       "title": "Post medium publishing",
+//       "favicon": null,
+//       "url": "https://www.paulgraham.com/publishing.html",
+//       "content": null,
+//       "createdAt": "2024-01-17T23:58:51.204Z",
+//       "updatedAt": "2024-01-17T23:58:51.204Z",
+//       "deletedAt": null
+//   }
+// },
+
+export type Node = {
+  id: string
+  title: string
+  favicon?: string
+  url: string
+  content?: string
+  createdAt?: string
+  updatedAt?: string
+  deletedAt?: string
+};
+
+export type IndexItem = {
+  type: string
+  node: Node
 };
 
 export type IndexLink = {
   id?: string
   indexId?: string;
   linkId?: string;
+  content?: string;
+  url?: string;
   indexerDID?: { // This is PKP DID
     id: string
   } | string;
@@ -71,7 +105,7 @@ export type UserIndex = {
  *
  */
 export type Link = {
-  id?: string;
+  id: string;
   indexId?: string;
   indexerDID?: string;
   content?: string
@@ -93,7 +127,7 @@ export type Link = {
  *
  */
 export interface Users {
-  id?: string; // TODO: why is this optional?
+  id: string;
   name?: string;
   bio?: string;
   avatar?: CID;

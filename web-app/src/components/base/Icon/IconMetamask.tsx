@@ -16,7 +16,7 @@ const IconMetamask: React.VFC<React.SVGProps<SVGSVGElement>> = ({ className, ...
 	>
 		<style>
 			{
-				".st1,.st2,.st3,.st4,.st5,.st6,.st9{fill:#e4761b;stroke:#e4761b;stroke-linecap:round;stroke-linejoin:round}.st2,.st3,.st4,.st5,.st6,.st9{fill:#d7c1b3;stroke:#d7c1b3}.st3,.st4,.st5,.st6,.st9{fill:#233447;stroke:#233447}.st4,.st5,.st6,.st9{fill:#cd6116;stroke:#cd6116}.st5,.st6,.st9{fill:#e4751f;stroke:#e4751f}.st6,.st9{fill:#f6851b;stroke:#f6851b}.st9{fill:#763d16;stroke:#763d16}"
+				".st1,.st2,.st3,.st4,.st5,.st6,.st9{fill:#e4761b;stroke:#e4761b;strokeLinecap:round;stroke-linejoin:round}.st2,.st3,.st4,.st5,.st6,.st9{fill:#d7c1b3;stroke:#d7c1b3}.st3,.st4,.st5,.st6,.st9{fill:#233447;stroke:#233447}.st4,.st5,.st6,.st9{fill:#cd6116;stroke:#cd6116}.st5,.st6,.st9{fill:#e4751f;stroke:#e4751f}.st6,.st9{fill:#f6851b;stroke:#f6851b}.st9{fill:#763d16;stroke:#763d16}"
 			}
 		</style>
 		<path

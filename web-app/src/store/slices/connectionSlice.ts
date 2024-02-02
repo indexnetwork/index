@@ -4,7 +4,7 @@ import type { RootState } from "..";
 // Define a type for the slice state
 interface ConnectionState {
 	metaMaskConnected: boolean;
-	ceramicConnected: boolean;
+	connected: boolean;
 	originNFTModalVisible: boolean;
 	loading: boolean
 	did?: string;
@@ -13,7 +13,7 @@ interface ConnectionState {
 // Define the initial state using that type
 const initialState: ConnectionState = {
 	metaMaskConnected: false,
-	ceramicConnected: false,
+	connected: false,
 	originNFTModalVisible: false,
 	loading: true,
 };
@@ -43,16 +43,16 @@ export const connectionSlice = createSlice({
 				did,
 			};
 		},
-		setCeramicConnected: (state, action: PayloadAction<boolean>) => ({
-			...state,
-			ceramicConnected: action.payload,
-		}),
+		// setConnected: (state, action: PayloadAction<boolean>) => ({
+		// 	...state,
+		// 	connected: action.payload,
+		// }),
 
 		disconnectApp: () => initialState,
 		resetAuth: (state) => ({
 			...state,
 			metaMaskConnected: false,
-			ceramicConnected: false,
+			connected: false,
 			originNFTModalVisible: false,
 			did: undefined,
 		}),
@@ -63,7 +63,7 @@ export const {
 	setAuthLoading,
 	setOriginNFTModalVisible,
 	setMetaMaskConnected,
-	setCeramicConnected,
+	// setConnected,
 	disconnectApp,
 	resetAuth,
 } = connectionSlice.actions;
