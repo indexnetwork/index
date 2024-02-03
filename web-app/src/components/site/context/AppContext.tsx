@@ -61,6 +61,7 @@ export interface AppContextValue {
   fetchIndex: () => void;
   handleCreate: (title: string) => Promise<void>;
   handleTransactionCancel: () => void;
+  chatID: string | undefined;
 }
 
 export const AppContext = createContext<AppContextValue>({} as AppContextValue);
@@ -84,6 +85,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [rightTabKey, setRightTabKey] = useState<TabKey>("history");
   const [leftTabKey, setLeftTabKey] = useState<TabKey>("all");
   const [loading, setLoading] = useState(false);
+  const [chatID, setChatID] = useState<string | undefined>(undefined);
 
   const discoveryType = useMemo(
     () => (id.includes("did:") ? DiscoveryType.did : DiscoveryType.index),
@@ -182,10 +184,15 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   );
 
   useEffect(() => {
-    if (!localStorage.getItem("chatterID")) {
-      localStorage.setItem("chatterID", uuidv4());
-    }
-  }, [id]);
+    setChatID((prevChatID) => {
+      if (!prevChatID) {
+        const newChatID = uuidv4();
+        localStorage.setItem("chatterID", newChatID);
+        return newChatID;
+      }
+      return prevChatID;
+    });
+  }, []);
 
   useEffect(() => {
     // const determineDiscoveryType = () => {
@@ -256,6 +263,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     handleCreate,
     loading,
     handleTransactionCancel,
+    chatID,
   };
 
   return (

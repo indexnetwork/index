@@ -9,13 +9,15 @@ import { IndexLink } from "@/types/entity";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import Col from "@/components/layout/base/Grid/Col";
 import Soon from "@/components/site/indexes/Soon";
+import { useIndexConversation } from "../IndexConversationContext";
 
-export default function AccessControlTabSection({ noLinks }: { noLinks?: boolean }) {
+export default function AccessControlTabSection() {
   const { id: indexID } = useRouteParams();
   // const [links, setLinks] = useState<IndexLink[]>([]);
   const { isOwner } = useRole();
   const { apiService: api } = useApi();
   const { viewedIndex } = useApp();
+  const { itemsState } = useIndexConversation();
 
   // const loadLinks = useCallback(async () => {
   //   // Logic to load chat links and update state
