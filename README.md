@@ -76,40 +76,6 @@ ComposeDB on Ceramic is a composable graph database built for Web3.  Here you ca
 We use [PostgreSQL](https://www.postgresql.org/) indexing feature of [Ceramic Network](https://ceramic.network/) and use [KafkaConnect CDC](https://docs.confluent.io/cloud/current/connectors/cc-postgresql-source.html) to produce db changes to [Apache Kafka](https://kafka.apache.org/) and finally write data to [ChromaDB](https://www.trychroma.com/) via the consumer service.
 
 
-## Data Models
-Index Network uses 6 different schemas to store information on Ceramic Network:
-
-| Model      | ID                                                                                   |
-|------------|---------------------------------------------------------------------------------------|
-| Index      | kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo                      |
-| IndexItem  | kjzl6hvfrbw6c66p7dxhk35uass66v2q42b2sdbaw7smitphfv60y9tux4obxu4                      |
-| Embedding  | kjzl6hvfrbw6c5wx4eb9mmw2su1q7y4m65wd8m887ulubbfn5iawpy6ukprq4va                      |
-| WebPage    | kjzl6hvfrbw6c5ehmhlme25mhizo670ro6jeu6h50m9fqnie4phkqy9vip8w8t0                      |
-| DIDIndex   | kjzl6hvfrbw6c7wlj08gruhq6gkatb8heg07btxzzeotumzpkftsnmxrf51l0b0                      |
-| Profile    | kjzl6hvfrbw6c6a1qzykoqwu191lnpci1z6kp7ww18dycm9ono1r37un63my1hd                      |
-
-### Index 
-Rrepresents a collection of items around a specific context, acting as a structured way to organize and access related information. `Index` includes fields for a title, a signer's public key, and timestamps for creation, updates, and deletion. The inclusion of `signerPublicKey` and  `signerFunction` specifies  the use of decentralized access control mechanism through Lit Protocol, which enables secure access based on cryptographic conditions. 
-
-### IndexItem
-Establishes a relationship between an index and its nodes within a graph, essentially linking the metadata or content stored in an index to individual data points or nodes. Each `IndexItem` is associated with a specific `Index` and a `Node` on ComposeDB, tracked by their respective IDs, and it includes timestamps for creation, updates, and deletion. This model facilitates navigating from an abstract index to concrete items or nodes, making it a crucial component for organizing and retrieving data in a structured manner within a decentralized context.
-
-### Embedding 
-
-The `Embedding` model is focused on storing vector embeddings for items within an index, where each embedding represents high-dimensional data reduced to vectors for efficient similarity searches or machine learning applications. It includes a model name, the vector itself, optional context, description, category, and links to the related `Index` and `Node`.  Very soon, the embedding model will facilitate the interoperability of vector embeddings to enable exchange of semantic information across various AI models.
-
-### WebPage Model
-
-While Index supports any node on the ComposeDB graph, the `WebPage` model is an example for developers to explore and interact with the Index Network. It provides a simple structure for storing information about web pages, including title, favicon, URL, and content, along with timestamps for creation, updates, and deletion. This model is aimed at archiving web content in a decentralized manner, allowing for the retrieval and display of web page information within the Index Network. It facilitates the indexing and searching of web content, contributing to a decentralized web archive or search engine capability.
-
-### DIDIndex Model
-
-The `DIDIndex` model is specifically designed for indexing decentralized identifiers (DIDs), providing a way to associate DIDs with specific indexes and categorizing them by type. Each DID can own or star in an index, with the `controllerDID` field indicating the DID that controls or owns the index.
-
-### Profile Model
-
-The `Profile` model represents user profiles within the Index Network, containing personal information such as a controller DID, name, bio, and an optional avatar. This model allows for the creation of user-centric data within a decentralized framework, where the `controllerDID` serves as a unique identifier and access controller for the profile, emphasizing privacy and user control over personal information.
-
 ## Getting started
 
 This code snippet demonstrates how to interact with the protocol using the Index client. It begins by initializing the client for and authenticating with a DID session. Then, it creates an index titled "Future of publishing" and a web page titled "Post medium publishing" with a specified URL. The code adds the web page to the index and performs a natural language query using the keyword "summarize," retrieving and displaying the natural language query response.
@@ -144,6 +110,18 @@ const queryResponse = await indexClient.query({
 });
 
 console.log("Query response:", queryResponse);
+
+{
+  "response": "This article discusses the intricacies and challenges of publishing in the modern digital era, emphasizing the importance of content quality and audience engagement. The author shares insights from personal experiences and outlines strategies for successful online publishing."
+  "sources": [
+    {
+      "itemId": "kjzl6kcym7w8y7fjc89gmnkne7qpdz5ws5ryfji3i8dndjh2wxuii7z1anybovo",
+      "indexId": "indexIdValue",
+    }  
+  ]
+}
+
+
 ```
 
 ## Contributing

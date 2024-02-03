@@ -1,3 +1,15 @@
+<h1 align="center">
+    <a href="https://index.network/#gh-light-mode-only">
+    <img style="width:400px" src="https://index.network/images/IndexNetworkLogo.png">
+    </a>
+    <a href="https://index.network/#gh-dark-mode-only">
+    <img style="width:400px" src="https://index.network/images/IndexNetworkLogo-white.png">
+    </a>
+</h1>
+<p align="center">
+  <i align="center">Indexer</i>
+</p>
+
 # Indexer
 
 This documentation outlines the usage of the API endpoints for a NestJS application featuring two main controllers: Indexer Controller and Chat Controller. Each controller is responsible for handling specific operations within the application, with a total of 8 endpoints described below.
