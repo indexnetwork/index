@@ -38,6 +38,12 @@ Index is a composable discovery protocol that allows to create truly personalize
 
 To achieve this, Index provides a decentralized semantic index that eliminates data fragmentation, a composable discovery protocol that allows data to be queried from multiple sources, in a user-centric manner. On top of this, it provides a real-time environment for agents that facilitates integration with algorithms and services and ensures that information acquires a fluid, social, and autonomous structure.
 
+
+
+> [!NOTE] 
+> The complete documentation and additional resources are available on the  [Index Network documentation site →](https://docs.index.network)
+
+
 ## Table of contents
 1. [Example](#examples)
 3. [Components](#components)
@@ -52,6 +58,7 @@ To achieve this, Index provides a decentralized semantic index that eliminates d
 To illustrate, here is an example of an agent message that’s possible using Index Network:
 
 <img style="width:100%" src="https://1670961284-files.gitbook.io/~/files/v0/b/gitbook-x-prod.appspot.com/o/spaces%2FLKYflEcLR5OkgHvFjnCP%2Fuploads%2FTAvgnyFgl4QfDP91yxXo%2Fusecase.png?alt=media&token=d1c012f8-7956-4eb6-8400-e57693fa3aed">
+
 
 
 
