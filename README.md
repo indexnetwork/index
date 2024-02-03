@@ -51,7 +51,7 @@ To achieve this, Index provides a decentralized semantic index that eliminates d
 ## Example
 To illustrate, here is an example of an agent message that’s possible using Index Network:
 
-<img style="width:100%" src="https://1670961284-files.gitbook.io/~/files/v0/b/gitbook-x-prod.appspot.com/o/spaces%2FLKYflEcLR5OkgHvFjnCP%2Fuploads%2FuGXufEq7mtvAF34NdGpN%2Fxx.png?alt=media&token=5c06a914-8ffa-4c54-bca9-9499def821e9">
+<img style="width:100%" src="https://1670961284-files.gitbook.io/~/files/v0/b/gitbook-x-prod.appspot.com/o/spaces%2FLKYflEcLR5OkgHvFjnCP%2Fuploads%2FTAvgnyFgl4QfDP91yxXo%2Fusecase.png?alt=media&token=d1c012f8-7956-4eb6-8400-e57693fa3aed">
 
 
 
