@@ -1,4 +1,5 @@
 
+
 <h1 align="center">
     <a href="https://amplication.com/#gh-light-mode-only">
     <img style="width:400px" src="https://index.network/images/IndexNetworkLogo.png">
@@ -49,7 +50,9 @@ To achieve this, Index provides a decentralized semantic index that eliminates d
 
 ## Example
 To illustrate, here is an example of an agent message that’s possible using Index Network:
+
 <img style="width:100%" src="https://1670961284-files.gitbook.io/~/files/v0/b/gitbook-x-prod.appspot.com/o/spaces%2FLKYflEcLR5OkgHvFjnCP%2Fuploads%2FuGXufEq7mtvAF34NdGpN%2Fxx.png?alt=media&token=5c06a914-8ffa-4c54-bca9-9499def821e9">
+
 
 
 ## Components
