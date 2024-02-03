@@ -34,7 +34,7 @@
 
 
 ## About Index Network
-Index is a composable discovery protocol that allows to create truly personalized and autonomous discovery experiences across the web. 
+Index is a composable discovery protocol that allows to create truly personalized and autonomous discovery experiences across the web.
 
 To achieve this, Index provides a decentralized semantic index that eliminates data fragmentation, a composable discovery protocol that allows data to be queried from multiple sources, in a user-centric manner. On top of this, it provides a real-time environment for agents that facilitates integration with algorithms and services and ensures that information acquires a fluid, social, and autonomous structure.
 
@@ -61,12 +61,12 @@ To illustrate, here is an example of an agent message that’s possible using In
 The [Web App](web-app) component is where you can find the code for the  web application. The web app provides a user-friendly interface that allows creators to explore indexes, manage their data, and configure them.
 
 ### Indexer
-The [Indexer](indexer) component hosts the code for the indexer. It acts as the backbone of the natural language operations, providing the necessary methods to consume data from Ceramic, interact with large language models.  It listenes Apache Kafka to consume Ceramic Network events consumes to ChromaDB by running `yarn kafka-consumer`  
+The [Indexer](indexer) component hosts the code for the indexer. It acts as the backbone of the natural language operations, providing the necessary methods to consume data from Ceramic, interact with large language models.  It listenes Apache Kafka to consume Ceramic Network events consumes to ChromaDB by running `yarn kafka-consumer`
 
-### API 
-The [API](api) repository also hosts the code for all the API operations To start, you can simply run `yarn api`  
+### API
+The [API](api) repository also hosts the code for all the API operations To start, you can simply run `yarn api`
 
-Full protocol documentation can be found on the  [Index Network documentation site →](https://index-network.gitbook.io/
+Full protocol documentation can be found on the [Index Network documentation site →](https://docs.index.network)
 
 ### Ceramic Network Node
 ComposeDB on Ceramic is a composable graph database built for Web3.  Here you can find the steps to deploy along with an IPFS Node:
@@ -125,7 +125,7 @@ console.log("Query response:", queryResponse);
     {
       "itemId": "kjzl6kcym7w8y7fjc89gmnkne7qpdz5ws5ryfji3i8dndjh2wxuii7z1anybovo",
       "indexId": "indexIdValue",
-    }  
+    }
   ]
 }
 ```
