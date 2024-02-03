@@ -111,17 +111,19 @@ const queryResponse = await indexClient.query({
 
 console.log("Query response:", queryResponse);
 
+```
+
+
+```json
 {
-  "response": "This article discusses the intricacies and challenges of publishing in the modern digital era, emphasizing the importance of content quality and audience engagement. The author shares insights from personal experiences and outlines strategies for successful online publishing."
-  "sources": [
+  "response": "This article discusses the intricacies and challenges of publishing in the modern digital era, emphasizing the importance of content quality and audience engagement. The author shares insights from personal experiences and outlines strategies for successful online publishing.",
+    "sources": [
     {
       "itemId": "kjzl6kcym7w8y7fjc89gmnkne7qpdz5ws5ryfji3i8dndjh2wxuii7z1anybovo",
       "indexId": "indexIdValue",
     }  
   ]
 }
-
-
 ```
 
 ## Contributing
