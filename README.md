@@ -41,7 +41,7 @@ To achieve this, Index provides a decentralized semantic index that eliminates d
 
 
 > [!NOTE] 
-> The complete documentation and additional resources are available on the  [Index Network documentation site →](https://docs.index.network)
+> Full documentation and additional resources are available on the  [Index Network documentation site →](https://docs.index.network)
 
 
 ## Table of contents
