@@ -39,25 +39,28 @@ export class RetrievalQuestionInput {
     @ApiPropertyOptional({
         description: 'Type of model in use',
         example: 'OpenAI',
+        default: 'OpenAI',
     })
     @IsString()
     @IsEnum(ModelType)
-    model_type: string;
+    model_type: string = 'OpenAI';
 
     @ApiProperty({
         description: 'Index to use',
-        example: 'chroma-indexer',
+        example: ['id_1']
     })
-    @IsString()
-    index_id: string | null;
+    @IsString({each: true})
+    indexIds: string[];
 
-    @ApiProperty({
+    @ApiPropertyOptional({
         description: 'Chain type to be used',
         example: 'rag-v0',
+        default: 'rag-v0',
+        required: false,
     })
     @IsString()
     @IsEnum(RetrievalChainType)
-    chain_type: string;
+    chain_type: string = 'rag-v0';
 
     @ApiProperty({
         description: 'Chain input',
@@ -68,52 +71,6 @@ export class RetrievalQuestionInput {
     })
     input: { question: string, chat_history: [] };
     
-}   
-
-
-export class QueryQuestionInput {
-
-    @ApiPropertyOptional({
-        description: 'Type of model in use',
-        example: 'OpenAI',
-    })
-    @IsString()
-    @IsEnum(ModelType)
-    model_type: string;
-
-    @ApiProperty({
-        description: 'Index to use',
-        example: 'chroma-indexer',
-    })
-    @IsString()
-    index_id: string | null;
-
-    @ApiProperty({
-        description: 'Chain type to be used',
-        example: 'query-v0',
-    })
-    @IsString()
-    @IsEnum(QueryChainType)
-    chain_type: string;
-
-    @ApiProperty({
-        description: 'Query input for search in index',
-        example: 'Documents about language modelling'
-    })
-    question: string;
-
-    @ApiProperty({
-        description: 'Number of documents to return',
-        example: 10
-    })
-    k: number;
-
-    @ApiProperty({
-        description: 'The page of results to return',
-        example: 0
-    })
-    page: number;
-
 }   
 
 

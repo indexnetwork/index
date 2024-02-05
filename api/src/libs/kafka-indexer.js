@@ -19,7 +19,7 @@ export const createIndexItemEvent = async (id) => {
         const indexSession = await getPKPSession(indexItem.index);
         await indexSession.did.authenticate();
 
-        const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/embeddings`, {
+        const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embedding`, {
             text: indexItem.item.content
         })
         const embeddingService = new EmbeddingService().setSession(indexSession)
@@ -45,6 +45,43 @@ export const updateIndexItemEvent = async (id) => {
 
 export const updateWebPageEvent = async (id) => {
     console.log("updateWebPageEvent", id)
+
+    const itemService = new ItemService()
+    const webPage = await itemService.getIndexItemById(id);
+
+    try {
+
+        const indexSession = await getPKPSession(webPage.index);
+        await indexSession.did.authenticate();
+
+        if (webPage.item.deletedAt) { 
+            const deleteResponse = await axios.delete(`${process.env.LLM_INDEXER_HOST}/indexer/item:${webPage.item.id}`);
+            
+            if (deleteResponse.status === 200) {
+                console.log("IndexItem Deleted.")
+            } else {
+                console.log("IndexItem Deletion Failed.")
+            }
+        }
+
+        console.log(`${JSON.stringify(webPage.item)} `)
+
+        const updateResponse = await axios.put(
+            `${process.env.LLM_INDEXER_HOST}/indexer/index`, 
+            {
+                ...webPage.item
+            });
+
+        if (updateResponse.status === 200) {
+            console.log("IndexItem Update.")
+        } else {
+            console.log("IndexItem Update Failed.")
+        }
+        
+    } catch (e) {
+        console.log(e)
+    }
+
 }
 
 export const createEmbeddingEvent = async (id) => {
@@ -81,7 +118,7 @@ export const createEmbeddingEvent = async (id) => {
     }
 
     try {
-        const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/index`, payload)
+        const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/index`, payload)
     } catch (e) {
         console.log(e)
     }
@@ -93,4 +130,3 @@ export const createEmbeddingEvent = async (id) => {
 export const updateEmbeddingEvent = async (id) => {
     console.log("updateEmbeddingEvent", id)
 }
-

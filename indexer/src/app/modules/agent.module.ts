@@ -24,6 +24,12 @@ export class Agent {
         // TODO: Can we also add context type by intent find?
         // TODO: Research on low-computation models for subtasks
 
+
+    // IMPLEMENTATION TODOS:
+        // TODO: Add initial filtering according to the index (rag)
+        // TODO: Add initial filtering according to the index (retriever)
+        // TODO: Add standalone question pipeline
+
 	constructor (
     ) {
         const apiKey = process.env.OPENAI_API_KEY;
@@ -33,24 +39,24 @@ export class Agent {
 		this.apiKey = apiKey;
 	}
 
-    public async createAgentChain(chain_type: string, index_id: string, model_type: string) {
+    public async createAgentChain(chain_type: string = 'rag-v0', indexIds: string[], model_type: string = 'OpenAI'): Promise<any> {
 
         switch (chain_type) {
 
             case 'rag-v0':
-                return this.createRAGChain(index_id, model_type);
+                return this.createRAGChain(indexIds, model_type);
 
             default:
                 throw new Error('Chain type not supported');   
         }
     }
 
-    public async createRetrieverChain(chain_type: string, index_id: string, model_type: string, k: number) {
+    public async createRetrieverChain(chain_type: string = 'query-v0', index_ids: string[], model_type: string = 'OpenAI', page: number, skip: number, limit: number): Promise<any> {
 
         switch (chain_type) {
 
             case 'query-v0':
-                return this.createQueryRetriever(index_id, model_type, k);
+                return this.createQueryRetriever(index_ids, model_type, page, skip, limit);
 
             default:
                 throw new Error('Chain type not supported');   
@@ -58,16 +64,21 @@ export class Agent {
     }
 
 
-    private async createRAGChain (chroma_index: string, model_type: string): Promise<any>{
+    private async createRAGChain (chroma_indices: string[], model_type: string): Promise<any>{
 
         let model: any;
         if (model_type == 'OpenAI') { model = new ChatOpenAI({ modelName:  process.env.MODEL_CHAT }) }
         else if (model_type == 'MistralAI') { model = new ChatMistralAI({ modelName: process.env.MISTRAL_MODEL_CHAT, apiKey: process.env.MISTRAL_API_KEY }) }
 
         const vectorStore = await Chroma.fromExistingCollection( 
-            new OpenAIEmbeddings({ openAIApiKey: process.env.OPENAI_API_KEY, modelName: process.env.MODEL_EMBEDDING}),
-            { url: process.env.CHROMA_URL, collectionName: chroma_index }
-        );
+            new OpenAIEmbeddings({ modelName: process.env.MODEL_EMBEDDING}),
+            { 
+                url: process.env.CHROMA_URL, 
+                collectionName: process.env.CHROMA_COLLECTION_NAME, 
+                filter: {
+                    indexId: chroma_indices
+            }
+        });
         
         const retriever = vectorStore.asRetriever();
 
@@ -104,8 +115,8 @@ export class Agent {
             if (Array.isArray(chatHistory)) {
                 const updatedChat =  chatHistory.map(
                     (dialogTurn: any) => {
-                        if (dialogTurn.hasOwnProperty('human')) { return `Human: ${dialogTurn['human']}` }
-                        if (dialogTurn.hasOwnProperty('ai')) { return `AI: ${dialogTurn['ai']}` }
+                        if (dialogTurn['speaker'] == 'human') { return `Human: ${dialogTurn['text']}` }
+                        if (dialogTurn['speaker'] == 'ai') { return `AI: ${dialogTurn['text']}` }
                     }
                 ).join("\n");
                 Logger.log(updatedChat, "ChatService:formatChatHistory");
@@ -181,7 +192,7 @@ export class Agent {
 
     }
 
-    private async createQueryRetriever (chroma_index: string, model_type: string, k: number) {
+    private async createQueryRetriever (chroma_indices: string[], model_type: string, page: number, skip: number, limit: number) {
 
         // Not implemented yet
         // https://js.langchain.com/docs/modules/data_connection/retrievers/self_query/chroma-self-query
@@ -244,56 +255,65 @@ export class Agent {
             },
             
         ];
-
+        const documentContents = 'Document metadata'
 
         let model: any;
         if (model_type == 'OpenAI' ) { model = new ChatOpenAI({ modelName:  process.env.MODEL_CHAT }) }
         else if (model_type == 'MistralAI') { model = new ChatMistralAI({ modelName: process.env.MISTRAL_MODEL_CHAT, apiKey: process.env.MISTRAL_API_KEY }) }
 
+        const embeddings = new OpenAIEmbeddings({
+            verbose: true,
+            openAIApiKey: process.env.OPENAI_API_KEY, 
+            modelName: process.env.MODEL_EMBEDDING
+        })
+
+        Logger.log(`Creating vector store with ${process.env.MODEL_EMBEDDING} embeddings`, "Agent:createQueryRetriever");
+
         const vectorStore = await Chroma.fromExistingCollection( 
-            new OpenAIEmbeddings({openAIApiKey: process.env.OPENAI_API_KEY, modelName: process.env.MODEL_EMBEDDING}),
-            { url: process.env.CHROMA_URL, collectionName: chroma_index }
-        );
-        
-        // Maybe we can generate doc contents as well?
-        const documentContents = 'Document metadata'
-
-        Logger.log("Creating retriever", "Agent:createQueryRetriever");
-        Logger.log(JSON.stringify(model), "Agent:createQueryRetriever:model");
-
-        const selfQueryRetriever = SelfQueryRetriever.fromLLM({
-            llm: model,
-            vectorStore,
-            documentContents,
-            attributeInfo,
-            structuredQueryTranslator: new ChromaTranslator(),
-            searchParams: {
-                k: k,
-                mergeFiltersOperator: 'and',
+            embeddings,
+            { 
+                url: process.env.CHROMA_URL, 
+                collectionName: process.env.CHROMA_COLLECTION_NAME, 
+                filter: { 
+                    indexId: chroma_indices
             }
-          });
+        });
 
-        return selfQueryRetriever;
+        const final_chain = RunnableSequence.from([
+            {
+                documents: async (input) => {
+                    const queryEmbedding = await embeddings.embedQuery(input.query)
+                    const docs = await vectorStore.collection.query({
+                        queryEmbeddings: [queryEmbedding],
+                        nResults: (page * limit),
+                    })
+                    return docs
+                }
+            },
+            {
+                documents: (input) => {
+                    const ids = input.documents?.ids[0]
+                    const similarities = input.documents?.distances[0]
+
+                    return ids.map(function(id, i) {
+                        return {
+                            id: id,
+                            similarity: similarities[i],
+                        };
+                    });
+                }
+            },
+            RunnableLambda.from((input) => {
+                return input.documents.slice((page-1)*limit, page*limit)
+            })
+        ]);
+        
+        return final_chain;
     }
-
 
 
     //* Helper functions
 
-    private async serializeChatHistory(chatHistory: string | string[]) {
-        if (Array.isArray(chatHistory)) {
-            return chatHistory.join("\n");
-        }
-        
-        return chatHistory;
-    };
-
-    private async combineDocuments(documents: any[], document_prompt: PromptTemplate, document_separator: string) {
-
-        const combinedDocument = formatDocumentsAsString(documents);
-
-        return combinedDocument;
-    }
 }
 
 

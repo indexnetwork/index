@@ -53,7 +53,7 @@ export class CrawlRequestBody {
     url: string;
 }
 
-export class IndexUpdateBody {
+export class IndexUpdateQuery {
 
     @ApiProperty({
         description: 'ChromaDB ids of the update document',
@@ -70,6 +70,10 @@ export class IndexUpdateBody {
     @Type(() => String)
     // @Matches(/^[a-zA-Z0-9]+$/) // TODO: Write appropriate regex
     indexItemId: string;
+
+}
+
+export class IndexUpdateBody {
 
     @ApiPropertyOptional({
         description: '',
@@ -92,7 +96,7 @@ export class IndexUpdateBody {
 
 }
 
-export class IndexDeleteBody {
+export class IndexDeleteQuery {
 
     @ApiProperty({
         description: 'ChromaDB ids of the update document',
@@ -101,6 +105,11 @@ export class IndexDeleteBody {
     @Type(() => String)
     // @Matches(/^[a-zA-Z0-9]+$/) // TODO: Write appropriate regex
     indexId: string;
+
+}
+
+
+export class IndexItemDeleteQuery extends IndexDeleteQuery {
 
     @ApiPropertyOptional({
         description: 'ChromaDB ids of the update document',
@@ -113,16 +122,6 @@ export class IndexDeleteBody {
 }
 
 export class IndexRequestBody {
-
-    @ApiProperty({
-        description: 'Index ID',
-        example: 'test',
-    })
-    @Type(() => String)
-    // @Matches(/^[a-zA-Z0-9]+$/) // TODO: Write appropriate regex
-    @MinLength(1)
-    @MaxLength(100)
-    indexId: string;
 
     @ApiProperty({
         description: 'Index title',
@@ -231,6 +230,6 @@ export class EmbeddingRequestBody {
     })
     @Type(() => String)
     @MinLength(1)
-    @MaxLength(10000)
+    @MaxLength(1_000_000)
     content: string;
 }
