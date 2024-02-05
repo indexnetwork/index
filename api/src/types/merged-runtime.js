@@ -4,37 +4,37 @@ export const definition = {
         "Index": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c9jkqpil5x6m14kobigaatfx35th0u3rdcd8tqfpz4eeuja04nm",
+            "id": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
             "accountRelation": {"type": "list"}
         },
         "IndexItem": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c8z4qq7wy7p1xhemzoq2lnhvq04xcs5re7c6j1kip9vwgt4usl2",
+            "id": "kjzl6hvfrbw6c66p7dxhk35uass66v2q42b2sdbaw7smitphfv60y9tux4obxu4",
             "accountRelation": {"type": "list"}
         },
         "Embedding": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c71l0b0p93bprl050xe9lanat8403a3z1zha1t4sys9u098arm8",
+            "id": "kjzl6hvfrbw6c5wx4eb9mmw2su1q7y4m65wd8m887ulubbfn5iawpy6ukprq4va",
             "accountRelation": {"type": "list"}
         },
         "WebPage": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c63kez9uo8joei35x0oy00c4obvoqo2lrevtkm74bragdg3ajpl",
+            "id": "kjzl6hvfrbw6c5ehmhlme25mhizo670ro6jeu6h50m9fqnie4phkqy9vip8w8t0",
             "accountRelation": {"type": "list"}
         },
         "DIDIndex": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c7lebz1agxo8eph302gdow757f3wpttkut485o4xrd8jtednsvg",
+            "id": "kjzl6hvfrbw6c7wlj08gruhq6gkatb8heg07btxzzeotumzpkftsnmxrf51l0b0",
             "accountRelation": {"type": "list"}
         },
         "Profile": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c7b0ucpni3cbslclej6aphfrnyqdv8awj0iwnqlx6xjbzrgc6nd",
+            "id": "kjzl6hvfrbw6c6a1qzykoqwu191lnpci1z6kp7ww18dycm9ono1r37un63my1hd",
             "accountRelation": {"type": "single"}
         }
     },
@@ -51,7 +51,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "queryConnection",
-                    "model": "kjzl6hvfrbw6c8z4qq7wy7p1xhemzoq2lnhvq04xcs5re7c6j1kip9vwgt4usl2",
+                    "model": "kjzl6hvfrbw6c66p7dxhk35uass66v2q42b2sdbaw7smitphfv60y9tux4obxu4",
                     "property": "indexId"
                 }
             },
@@ -60,7 +60,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "queryConnection",
-                    "model": "kjzl6hvfrbw6c7lebz1agxo8eph302gdow757f3wpttkut485o4xrd8jtednsvg",
+                    "model": "kjzl6hvfrbw6c7wlj08gruhq6gkatb8heg07btxzzeotumzpkftsnmxrf51l0b0",
                     "property": "indexId"
                 }
             }
@@ -81,7 +81,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "document",
-                    "model": "kjzl6hvfrbw6c9jkqpil5x6m14kobigaatfx35th0u3rdcd8tqfpz4eeuja04nm",
+                    "model": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
                     "property": "indexId"
                 }
             }
@@ -107,7 +107,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "document",
-                    "model": "kjzl6hvfrbw6c9jkqpil5x6m14kobigaatfx35th0u3rdcd8tqfpz4eeuja04nm",
+                    "model": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
                     "property": "indexId"
                 }
             }
@@ -132,7 +132,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "document",
-                    "model": "kjzl6hvfrbw6c9jkqpil5x6m14kobigaatfx35th0u3rdcd8tqfpz4eeuja04nm",
+                    "model": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
                     "property": "indexId"
                 }
             },

@@ -16,31 +16,37 @@ export class IndexService {
         this.did = null;
     }
 
-    setDID(did) {
-        this.did = did;
+    setSession(session) {
+        if(session && session.did.authenticated) {
+            this.did = session.did
+        }
         return this;
     }
 
     async getIndexById(id) {
 
-
         try {
             let didPayload = "";
+
             if (this.did) {
-                didPayload = `did(first:10, account: "${this.did.id}") {
-                        edges {
-                            node {
+                didPayload = `did(first:10, account: "${this.did.parent}", filters: {
+                    where: {
+                        deletedAt: {isNull: true}
+                    }
+                }) {
+                    edges {
+                        node {
+                            id
+                            type
+                            controllerDID {
                                 id
-                                type
-                                controllerDID {
-                                    id
-                                }
-                                createdAt
-                                updatedAt
-                                deletedAt
                             }
+                            createdAt
+                            updatedAt
+                            deletedAt
                         }
-                    }`
+                    }
+                }`
             }
 
             const {data, errors} = await this.client.executeQuery(`
@@ -72,7 +78,23 @@ export class IndexService {
 
 
             const index =  data.node;
+
+            if(index.did && index.did.edges && index.did.edges.length > 0){
+                const did = { starred: false, owned: false };
+                index.did.edges.forEach((edge) => {
+                    if(edge.node.type === "owned"){
+                        did.owned = edge.node.deletedAt === null;
+                    }
+                    if(edge.node.type === "starred"){
+                        did.starred = edge.node.deletedAt === null;
+                    }
+                });
+                index.did = did;
+            }
+
             index.ownerDID = await getOwnerProfile(index.signerPublicKey);
+
+
 
             return index;
 
@@ -185,7 +207,6 @@ export class IndexService {
 
         try {
             const content = {
-                ...params,
                 updatedAt: getCurrentDateTime(),
                 deletedAt: getCurrentDateTime(),
             };

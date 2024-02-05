@@ -15,8 +15,10 @@ export class DIDService {
         this.did = null;
     }
 
-    setDID(did) {
-        this.did = did;
+    setSession(session) {
+        if(session && session.did.authenticated) {
+            this.did = session.did
+        }
         return this;
     }
 
@@ -75,13 +77,17 @@ export class DIDService {
 
             let filtersPart = type ? `filters: {
                 where: {
-                    type: {equalTo: "${type}"}
+                    type: {equalTo: "${type}"},
+                    deletedAt: {isNull: true}
                 }
-            }` : "";
+            }` : `filters: {
+                where: {
+                    deletedAt: {isNull: true}
+                }
+            }`;
 
             // Include the comma only when filtersPart is not empty
             let didIndexListArguments = `first: 1000${filtersPart ? `, ${filtersPart}` : ""}`;
-            console.log(did,type, didIndexListArguments);
             const {data, errors} = await this.client.executeQuery(`
             query{
                 node(id:"${did}") {
@@ -128,21 +134,25 @@ export class DIDService {
             const indexes = data.node.didIndexList.edges.reduce((acc, edge) => {
                 const indexId = edge.node.index.id;
                 if (!acc[indexId]) {
-                    acc[indexId] = { isOwner: false, isStarred: false, ...edge.node.index };
+                    acc[indexId] = { did: {owned: false, starred: false}, ...edge.node.index };
                 }
 
-                if (edge.node.type === "owner") {
-                    acc[indexId].isOwner = true;
+                if (edge.node.type === "owned") {
+                    acc[indexId].did.owned = true;
                 } else if (edge.node.type === "starred") {
-                    acc[indexId].isStarred = true;
+                    acc[indexId].did.starred = true;
                 }
                 return acc;
-            }, {});
+            }, {})
 
-            return Promise.all(Object.values(indexes).map(async (i) => {
-                const ownerDID = await getOwnerProfile(i.signerPublicKey);
-                return { ...i, ownerDID };
-            }));
+            return await Promise.all(
+                Object.values(indexes)
+                    .filter(i => i.did.owned || i.did.starred)
+                    .map(async (i) => {
+                        const ownerDID = await getOwnerProfile(i.signerPublicKey);
+                        return { ...i, ownerDID };
+                    })
+            );
 
 
         } catch (error) {
@@ -224,7 +234,7 @@ export class DIDService {
             }
 
             if (existingIndex.deletedAt) {
-                throw new Error('Index is already deleted.');
+                throw new Error('Index is already removed from did.');
             }
 
             const content = {
@@ -330,6 +340,9 @@ export class DIDService {
                 ... on CeramicAccount {
                         profile {
                             id
+                            controllerDID {
+                                id
+                            }
                             name
                             bio
                             avatar
@@ -354,6 +367,9 @@ export class DIDService {
             if(!data.node.profile){
                 return null
             }
+
+            data.node.profile.id = data.node.profile.controllerDID.id
+            delete data.node.profile.controllerDID;
 
             // Return the created profile document
             return data.node.profile;

@@ -1,4 +1,4 @@
-import { ethers } from "ethers";
+import { ContractTransactionResponse, ethers} from "ethers";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { DID } from "dids";
 import * as LitJsSdk from "@lit-protocol/lit-node-client";
@@ -13,30 +13,33 @@ const checkAndSignAuthMessage = async () => JSON.parse(localStorage.getItem("aut
 
 class LitService {
 	async mintPkp() {
+
 		const litContracts = new LitContracts();
 		await litContracts.connect();
 
 		const mintCost = await litContracts.pkpNftContract.read.mintCost();
+		const acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
 
-		const mint = await litContracts.pkpNftContract.write.mintNext(2, { value: mintCost });
+		const mint = await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
+			2,
+			[2],
+			[acid],
+			["0x"],
+			[[BigInt(0)]],
+			false,
+			false,
+			{
+				value: mintCost,
+			},
+		) as ContractTransactionResponse;
 		const wait = await mint.wait();
 
-		const pkpMintedEventTopic = ethers.id("PKPMinted(uint256,bytes)");
-		const eventLog = wait.logs.find(
-			(log: { topics: string[]; }) => log.topics[0] === pkpMintedEventTopic,
-		);
-		if (!eventLog) {
-			throw new Error("PKP minted event not found");
-		}
-
-		const tokenIdFromEvent = eventLog.topics[1];
+		const tokenIdFromEvent = wait?.logs ? wait.logs[0].topics[1] : wait?.logs[0].topics[1];
 		const tokenIdNumber = BigInt(tokenIdFromEvent).toString();
 		const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
 		console.log(
 			`superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
 		);
-		const acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
-		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenIdNumber, acid, []);
 
 		return {
 			tokenIdFromEvent,

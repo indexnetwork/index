@@ -7,7 +7,7 @@
     </a>
 </h1>
 <p align="center">
-  <i align="center">Create and monetize interoperable discovery engines. 🚀</i>
+  <i align="center">IndexChat</i>
 </p>
 
 <div align="center">
@@ -54,6 +54,7 @@ Let's start building! ⛓️
 - Real-time chat capabilities powered by modern practices
 - Responsive design and built-in dark mode
 - Fully customizable themes
+
 
 
 ## Installation

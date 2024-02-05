@@ -6,6 +6,50 @@ const getCurrentDateTime = () => moment.utc().toISOString();
 
 import {definition} from "../types/merged-runtime.js";
 
+const indexItemFragment = `
+    ... on IndexItem {
+      id
+      indexId
+      itemId
+      createdAt
+      updatedAt
+      deletedAt
+      item {
+        id
+        __typename
+        ... on WebPage {
+          title
+          favicon
+          url
+          content
+          createdAt
+          updatedAt
+          deletedAt
+        }
+      }
+      index {
+        id
+        title
+        signerPublicKey
+        signerFunction
+        createdAt
+        updatedAt
+        deletedAt
+      }
+    }`
+
+const transformIndexItem = (indexItem) => {
+
+    const { __typename: type, indexedAt: _, ...rest } = indexItem.item;
+    return {
+        type,
+        node: {
+            ...rest,
+            indexedAt: indexItem.updatedAt
+        }
+    };
+};
+
 export class ItemService {
     constructor() {
         this.client = new ComposeClient({
@@ -15,12 +59,14 @@ export class ItemService {
         this.did = null;
     }
 
-    setDID(did) {
-        this.did = did;
+    setSession(session) {
+        if(session && session.did.authenticated) {
+            this.did = session.did
+        }
         return this;
     }
 
-    async getIndexItem(indexId, itemId) {
+    async getIndexItem(indexId, itemId, transformation=true) {
 
         try {
             const {data, errors} = await this.client.executeQuery(`
@@ -34,12 +80,7 @@ export class ItemService {
               }, sorting: { createdAt: DESC}) {
                 edges {
                   node {
-                    id
-                    indexId
-                    itemId
-                    createdAt
-                    updatedAt
-                    deletedAt
+                    ${indexItemFragment}
                   }
                 }
               }
@@ -58,7 +99,7 @@ export class ItemService {
                 return null;
             }
 
-            return data.indexItemIndex.edges[0].node;
+            return transformation ? transformIndexItem(data.indexItemIndex.edges[0].node) : data.indexItemIndex.edges[0].node;
 
         } catch (error) {
             // Log the error and rethrow it for external handling
@@ -73,36 +114,7 @@ export class ItemService {
             const {data, errors} = await this.client.executeQuery(`
             {
               node(id: "${indexItemId}") {
-                ... on IndexItem {
-                  id
-                  indexId
-                  itemId
-                  createdAt
-                  updatedAt
-                  deletedAt
-                  item {
-                    id
-                    __typename
-                    ... on WebPage {
-                      title
-                      favicon
-                      url
-                      content
-                      createdAt
-                      updatedAt
-                      deletedAt
-                    }
-                  }
-                  index {
-                    id
-                    title
-                    signerPublicKey
-                    signerFunction                    
-                    createdAt
-                    updatedAt
-                    deletedAt
-                  }
-                }
+                ${indexItemFragment}
               }
             }`);
 
@@ -115,12 +127,62 @@ export class ItemService {
                 throw new Error('Invalid response data');
             }
 
-
-            return data.node;
+            return transformIndexItem(data.node);
 
         } catch (error) {
             // Log the error and rethrow it for external handling
             console.error('Exception occurred in getIndexItemById:', error);
+            throw error;
+        }
+    }
+
+    async getIndexItems(indexId, cursor=null, limit= 24) {
+        try {
+
+            let cursorFilter = cursor ? `after: "${cursor}",` : "";
+
+            const {data, errors} = await this.client.executeQuery(`{
+              indexItemIndex(first: ${limit}, ${cursorFilter} filters: {
+                where: {
+                  indexId: { equalTo: "${indexId}"},
+                  deletedAt: {isNull: true}
+                }
+              }, sorting: { createdAt: DESC}) {
+                pageInfo {
+                  endCursor
+                }
+                edges {
+                  node {
+                    ${indexItemFragment}
+                  }
+                }
+              }
+            }`);
+
+            // Handle GraphQL errors
+            if (errors) {
+                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+            }
+            // Validate the data response
+            if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
+                throw new Error('Invalid response data');
+            }
+
+            if (data.indexItemIndex.edges.length === 0) {
+                return {
+                    endCursor: null,
+                    items: [],
+                };
+            }
+
+            return { //Todo fix itemId to id
+                endCursor: data.indexItemIndex.pageInfo.endCursor,
+                items: data.indexItemIndex.edges.map(e => transformIndexItem(e.node)),
+            }
+
+        } catch (error) {
+            // Log the error and rethrow it for external handling
+            console.error('Exception occurred in getIndexItem:', error);
             throw error;
         }
     }
@@ -149,12 +211,7 @@ export class ItemService {
                 mutation CreateIndexItem($input: CreateIndexItemInput!) {
                     createIndexItem(input: $input) {
                         document {
-                            id
-                            indexId
-                            itemId
-                            createdAt
-                            updatedAt
-                            deletedAt
+                            ${indexItemFragment}
                         }
                     }
                 }`, {input: {content}});
@@ -164,12 +221,13 @@ export class ItemService {
             }
 
             // Validate the data response
-            if (!data || !data.createIndexItem || !data.createIndexItem.document) {
+
+            if (!data || !data.createIndexItem || !data.createIndexItem.document || !data.createIndexItem.document.item) {
                 throw new Error('Invalid response data');
             }
 
-            // Return the created index document
-            return data.createIndexItem.document;
+            return transformIndexItem(data.createIndexItem.document);
+
 
         } catch (error) {
             // Log the error and rethrow it for external handling
@@ -184,7 +242,8 @@ export class ItemService {
         }
         try {
 
-            const indexItem = await this.getIndexItem(indexId, itemId);
+            const indexItem = await this.getIndexItem(indexId, itemId, false);
+
             if (!indexItem) {
                 throw new Error('Index item does not exist.');
             }
@@ -202,12 +261,7 @@ export class ItemService {
                 mutation UpdateIndexItem($input: UpdateIndexItemInput!) {
                     updateIndexItem(input: $input) {
                         document {
-                            id
-                            indexId
-                            itemId
-                            createdAt
-                            updatedAt
-                            deletedAt
+                            ${indexItemFragment}
                         }
                     }
                 }`, {input: {id: indexItem.id, content}});
@@ -221,8 +275,7 @@ export class ItemService {
                 throw new Error('Invalid response data');
             }
 
-            // Return the created index document
-            return data.updateIndexItem.document;
+            return true; //transformIndexItem(data.updateIndexItem.document);;
 
         } catch (error) {
             // Log the error and rethrow it for external handling
