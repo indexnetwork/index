@@ -1,15 +1,15 @@
-import { useCallback, useState } from "react";
 import SearchInput from "@/components/base/SearchInput";
 import Col from "@/components/layout/base/Grid/Col";
-import FlexRow from "@/components/layout/base/Grid/FlexRow";
-import { useApi } from "@/components/site/context/APIContext";
-import LinkInput from "@/components/site/input/LinkInput";
-import IndexItemList from "@/components/site/index-details/IndexItemList";
-import { useRole } from "@/hooks/useRole";
-import { useIndexConversation } from "../IndexConversationContext";
 import Flex from "@/components/layout/base/Grid/Flex";
-import { useApp } from "@/components/site/context/AppContext";
+import FlexRow from "@/components/layout/base/Grid/FlexRow";
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
+import IndexItemList from "@/components/site/index-details/IndexItemList";
+import LinkInput from "@/components/site/input/LinkInput";
+import { useRole } from "@/hooks/useRole";
 import { IndexItem } from "@/types/entity";
+import { useCallback, useState } from "react";
+import { useIndexConversation } from "../IndexConversationContext";
 
 export default function IndexTabSection() {
   const { itemsState, setItemsState, loading, setLoading } =

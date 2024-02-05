@@ -14,7 +14,7 @@ import { DIDSession, createDIDKey, createDIDCacao } from "did-session";
 // } from "store/slices/connectionSlice";
 import { switchTestNetwork } from "utils/helper";
 // import OriginWarningModal from "../modal/OriginWarningModal";
-import { appConfig } from "../../../config";
+import { appConfig } from "@/config";
 // import litService from "services/lit-service";
 
 declare global {

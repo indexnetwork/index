@@ -1,4 +1,4 @@
-import { useApp } from "@/components/site/context/AppContext";
+import { useApp } from "@/context/AppContext";
 import Text from "components/base/Text";
 import Modal, { ModalProps } from "components/base/Modal";
 import React, { useEffect, useState } from "react";

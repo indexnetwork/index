@@ -1,7 +1,7 @@
 import React from "react";
 import AppLeft from "components/sections/AppLeft";
 import AppRight from "components/sections/AppRight";
-import { useApp } from "components/site/context/AppContext";
+import { useApp } from "@/context/AppContext";
 import cc from "classcat";
 import FlexRow from "../../base/Grid/FlexRow";
 import Col from "../../base/Grid/Col";

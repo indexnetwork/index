@@ -1,8 +1,8 @@
 "use client";
 
-import { APIProvider } from "components/site/context/APIContext";
-import { AppContextProvider } from "components/site/context/AppContext";
-import { AuthProvider } from "components/site/context/AuthContext";
+import { APIProvider } from "@/context/APIContext";
+import { AppContextProvider } from "@/context/AppContext";
+import { AuthProvider } from "@/context/AuthContext";
 import PlausibleProvider from "next-plausible";
 import { ReactNode } from "react";
 import { Toaster } from "react-hot-toast";

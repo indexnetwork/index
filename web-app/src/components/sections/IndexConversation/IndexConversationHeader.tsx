@@ -1,6 +1,6 @@
-import { useApi } from "@/components/site/context/APIContext";
-import { useApp } from "@/components/site/context/AppContext";
-import { useAuth } from "@/components/site/context/AuthContext";
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import { useRole } from "@/hooks/useRole";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";

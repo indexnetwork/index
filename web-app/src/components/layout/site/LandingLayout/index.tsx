@@ -1,8 +1,7 @@
-// components/layout/LandingLayout.tsx
-import React from 'react';
-import Head from 'next/head';
-import SiteNavbar from '../SiteNavbar';
-import SiteFooter from '../SiteFooter';
+import React from "react";
+import Head from "next/head";
+import SiteNavbar from "../SiteNavbar";
+import SiteFooter from "../SiteFooter";
 
 export interface LandingLayoutProps {
   children: React.ReactNode;
