@@ -6,6 +6,7 @@ import { DIDSession } from "did-session";
 import { Indexes, Link, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import litService from "./lit-service";
+import { CID } from "multiformats";
 
 const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",
@@ -16,11 +17,12 @@ const API_ENDPOINTS = {
   STAR_INDEX: "/dids/:did/indexes/:indexId/star",
   OWN_INDEX: "/dids/:did/indexes/:indexId/own",
   GET_PROFILE: "/dids/:did/profile",
+  UPDATE_PROFILE: "/profile",
+  UPLOAD_AVATAR: "/profile/upload_avatar",
   GET_ITEMS: "/indexes/:indexId/items",
   GET_ITEM: "/indexes/:indexId/items/:itemId",
   CREATE_ITEM: "/indexes/:indexId/items/:itemId",
   DELETE_ITEM: "/indexes/:indexId/items/:itemId",
-  GET_USER_INDEXES: "/search/user_indexes",
   LIT_ACTIONS: "/lit_actions",
   CRAWL: "/web2/webpage/crawl",
   ADD_INDEX_ITEM: "/items",
@@ -29,12 +31,23 @@ const API_ENDPOINTS = {
   SYNC_CONTENT: "/links/sync-content",
   NFT_METADATA: "/nft",
   ENS: "/ens",
-  UPLOAD_AVATAR: "/upload_avatar",
   ZAPIER_TEST_LOGIN: "/zapier/test_login",
   SUBSCRIBE_TO_NEWSLETTER: "/subscribe",
 };
 
 export interface LitActionConditions {}
+
+export type GetItemQueryParams = {
+  limit?: number;
+  cursor?: string;
+  query?: string;
+};
+
+export type UserProfileUpdateParams = {
+  name?: string;
+  bio?: string;
+  avatar?: CID;
+};
 
 class ApiService {
   private static instance: ApiService;
@@ -83,6 +96,31 @@ class ApiService {
     const url = API_ENDPOINTS.GET_PROFILE.replace(":did", did);
     const { data } = await this.apiAxios.get<Users>(url);
     return data;
+  }
+
+  async updateProfile(params: UserProfileUpdateParams): Promise<Users> {
+    const url = API_ENDPOINTS.UPDATE_PROFILE;
+    const { data } = await this.apiAxios.patch<Users>(url, params);
+    return data;
+  }
+
+  async uploadAvatar(file: File): Promise<{ cid: CID } | null> {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const { data } = await this.apiAxios.post<{ cid: CID }>(
+        API_ENDPOINTS.UPLOAD_AVATAR,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        },
+      );
+      return data;
+    } catch (err) {
+      return null;
+    }
   }
 
   async getIndex(indexId: string): Promise<Indexes | undefined> {
@@ -150,7 +188,6 @@ class ApiService {
       return data;
     }
   }
-
   async ownIndex(did: string, indexId: string, add: boolean) {
     const url = API_ENDPOINTS.OWN_INDEX.replace(":did", did).replace(
       ":indexId",
@@ -166,16 +203,13 @@ class ApiService {
     }
   }
 
-  async getItems(
-    indexId: string,
-    query: { limit?: number; cursor?: string; query?: string } = {},
-  ) {
+  async getItems(indexId: string, queryParams: GetItemQueryParams = {}) {
     let url = API_ENDPOINTS.GET_ITEMS.replace(":indexId", indexId);
-    // query = {
+    // queryParams = {
     //   cursor: "eyJ0eXBlIjoiY29udGVudCIsImlkIjoia2p6bDZrY3ltN3c4eWE1dGZ4dTk3djEweHNoMWQwNmh6a2h5MGl0ZzQ0ajBrcGxhbWNzMGNjbm51cGE2MGhzIiwidmFsdWUiOnsiY3JlYXRlZEF0IjoiMjAyNC0wMi0wMVQxMjo0NDoyMi40NThaIn19",
     // };
-    if (query) {
-      let formattedQuery = Object.entries(query)
+    if (queryParams) {
+      let formattedQuery = Object.entries(queryParams)
         .map(([key, value]) => `${key}=${value}`)
         .join("&");
       url = `${url}?${new URLSearchParams(formattedQuery)}`;
@@ -225,7 +259,7 @@ class ApiService {
   async createIndex(
     title: string = DEFAULT_CREATE_INDEX_TITLE,
   ): Promise<Indexes> {
-    const { pkpPublicKey } = await litService.mintPkp();
+    const { pkpPublicKey } = await litService.mintPKP();
 
     const body = {
       title,

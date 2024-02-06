@@ -31,84 +31,50 @@ const LinkItem: React.FC<LinkItemProps> = ({
 
   const { isCreator } = useRole();
 
-  // const handleToggleNewTag = () => {
-  //   setToggleNewTag((oldVal) => !oldVal);
-  // };
-
-  // const handleNewTagEdit = async (val?: string | null) => {
-  //   if (val) {
-  //     const currentLink = await personalCeramic.addTag(link?.id!, val) as Link;
-  //     const newState = links.map((l) => (l.id === item.id ? { ...l, link: currentLink } : l));
-  //     setItems(newState);
-  //   }
-  //   setToggleNewTag(false);
-  //   setTimeout(() => {
-  //     handleToggleNewTag();
-  //   }, 0);
-  // };
-
-  // const handleCloseTag = () => {
-  //   setToggleNewTag(false);
-  // };
-
-  // const handleRemove = async () => {
-  //   try {
-  //     const resp = await api?.deleteItem(indexId, item.node.id);
-  //     setItems(items?.filter((l: IndexItem) => l.node.id !== item.node.id));
-  //   } catch (error) {
-  //     console.error("Error deleting item", error);
-  //   }
-  //   // const currentLink = await pkpCeramic.removeIndexLink(item);
-  //   // onChange && onChange(doc?.content?.links || []);
-  // };
-
-  // const handleRemoveTag = async (val: string) => {
-  //   const currentLink = await personalCeramic.removeTag(item.linkId!, val) as Link;
-  //   const newState = links.map((l) => (l.linkId === item.linkId ? { ...l, link: currentLink } : l));
-  //   setItems(newState);
-  // };
   return (
     <div className="index-detail-list-item-wrapper">
-      <FlexRow className="py-3 index-detail-list-item">
+      <FlexRow className="index-detail-list-item py-3">
         <Col xs={12}>
           <FlexRow wrap={false}>
-            <Col className="idxflex-grow-1" >
+            <Col className="idxflex-grow-1">
               <a target="_blank" rel="noreferrer" href={node?.url}>
-                <Text className={cm.title} fontWeight={700}
-                  dangerouslySetInnerHTML={{ __html: sanitize(node?.title as string) }}></Text>
+                <Text
+                  className={cm.title}
+                  fontWeight={700}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitize(node?.title as string),
+                  }}
+                ></Text>
                 {/* dangerouslySetInnerHTML={{ __html: sanitize((node.highlight && item.highlight["link.title"]) ? item.highlight["link.title"] : node?.title as string) }}></Text> */}
               </a>
             </Col>
-            {
-              !search && isCreator && (
-                <Col className="idxflex-shrink-0 ml-3 index-detail-list-item-buttons">
-                  <FlexRow>
-                    <Col>
-                      {/* <Tooltip content="Add Tag">
-                        <Button
-                          size="xs"
-                          iconButton
-                          theme="clear"
-                          borderless
-                        // onClick={handleToggleNewTag}
-                        >
-                          <IconTag />
-                        </Button>
-                      </Tooltip> */}
-                    </Col>
-                    <Col>
-                      <IndexDetailItemPopup onDelete={handleRemove}>
-                        <Button
-                          size="xs"
-                          iconButton
-                          theme="clear"
-                          borderless><IconContextMenu /></Button>
-                      </IndexDetailItemPopup>
-                    </Col>
-                  </FlexRow>
-                </Col>
-              )
-            }
+            {!search && isCreator ? (
+              <Col className="idxflex-shrink-0 index-detail-list-item-buttons ml-3">
+                <FlexRow>
+                  <Col></Col>
+                  <Col>
+                    <IndexDetailItemPopup onDelete={handleRemove}>
+                      <Button size="xs" iconButton theme="clear" borderless>
+                        <IconContextMenu />
+                      </Button>
+                    </IndexDetailItemPopup>
+                  </Col>
+                </FlexRow>
+              </Col>
+            ) : (
+              <Col className="idxflex-shrink-0 index-detail-list-item-buttons ml-3">
+                <FlexRow>
+                  <Col></Col>
+                  <Col>
+                    <IndexDetailItemPopup onDelete={handleRemove}>
+                      {/* <Button size="xs" iconButton theme="clear" borderless>
+                        <IconContextMenu />
+                      </Button> */}
+                    </IndexDetailItemPopup>
+                  </Col>
+                </FlexRow>
+              </Col>
+            )}
           </FlexRow>
         </Col>
         <Col xs={12} className="mt-2">
@@ -126,9 +92,13 @@ const LinkItem: React.FC<LinkItemProps> = ({
               }}
               style={{
                 verticalAlign: "middle",
-              }} />
-            <Text size="sm" theme="disabled">{node?.url?.substring(0, 80)} • {node?.updatedAt ? moment(node?.updatedAt).format("MMM D") : ""}</Text>
-          </ a>
+              }}
+            />
+            <Text size="sm" theme="disabled">
+              {node?.url?.substring(0, 80)} •{" "}
+              {node?.updatedAt ? moment(node?.updatedAt).format("MMM D") : ""}
+            </Text>
+          </a>
         </Col>
         {/* {
           search && node.highlight && node.highlight["link.content"] && (
@@ -138,7 +108,7 @@ const LinkItem: React.FC<LinkItemProps> = ({
           )
         } */}
         {
-          !search && <Col xs={12} className="mt-3 idxflex idxflex-gap-3 idxflex-wrap">
+          <Col xs={12} className="idxflex idxflex-gap-3 idxflex-wrap mt-3">
             {/* {
               node?.tags?.map((t, ind) => (
                 <TagIndexDetailItem
@@ -159,7 +129,6 @@ const LinkItem: React.FC<LinkItemProps> = ({
                 // onBlur={handleToggleNewTag}
               />
             } */}
-
           </Col>
         }
       </FlexRow>

@@ -1,7 +1,7 @@
-import Flex from "components/layout/base/Grid/Flex";
+import { useApp } from "@/context/AppContext";
 import Button from "components/base/Button";
+import Flex from "components/layout/base/Grid/Flex";
 import Text from "../base/Text";
-import { useApp } from "components/site/context/AppContext";
 
 export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
   const { setCreateModalVisible } = useApp();

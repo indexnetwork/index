@@ -1,4 +1,6 @@
 import Spin from "@/components/base/Spin";
+import { AuthStatus, useAuth } from "@/context/AuthContext";
+import { useApp } from "@/context/AppContext";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
 import Dropdown from "components/base/Dropdown";
@@ -9,12 +11,11 @@ import IconSettings from "components/base/Icon/IconSettings";
 import Text from "components/base/Text";
 import Flex from "components/layout/base/Grid/Flex";
 import Navbar, { NavbarMenu } from "components/layout/base/Navbar";
-import { useApp } from "components/site/context/AppContext";
-import { AuthStatus, useAuth } from "components/site/context/AuthContext";
 import { usePathname } from "next/navigation";
 import React, { useCallback, useMemo } from "react";
 
 const AppHeader = () => {
+  const { connect, disconnect, status } = useAuth();
   const {
     setCreateModalVisible,
     rightSidebarOpen,
@@ -22,16 +23,9 @@ const AppHeader = () => {
     setEditProfileModalVisible,
     viewedProfile,
   } = useApp();
-  // const {
-  // 	did,
-  // 	// loading,
-  // } = useAppSelector(selectConnection);
+
   const path = usePathname();
   const isLanding = useMemo(() => path === "/", [path]);
-
-  const { status } = useAuth();
-
-  const { connect, disconnect } = useAuth();
 
   const handleConnect = useCallback(async () => {
     try {
@@ -136,7 +130,7 @@ const AppHeader = () => {
                   </Text>
                 </Flex>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              {/* <DropdownMenuItem>
                 <Flex alignitems="center">
                   <IconSettings width={12} height="100%" />
                   <Text
@@ -148,7 +142,7 @@ const AppHeader = () => {
                     Settings
                   </Text>
                 </Flex>
-              </DropdownMenuItem>
+              </DropdownMenuItem> */}
               <DropdownMenuItem divider />
               <DropdownMenuItem onClick={disconnect}>
                 <Flex alignitems="center">

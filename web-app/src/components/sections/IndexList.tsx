@@ -4,7 +4,7 @@ import TabPane from "components/base/Tabs/TabPane";
 import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { IndexListTabKey, useApp } from "components/site/context/AppContext";
+import { IndexListTabKey, useApp } from "@/context/AppContext";
 import IndexItem from "components/site/indexes/IndexItem";
 import { useRouteParams } from "hooks/useRouteParams";
 import React, { useCallback, useMemo } from "react";

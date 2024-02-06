@@ -1,9 +1,11 @@
-import { useApi } from "@/components/site/context/APIContext";
-import { useAuth } from "@/components/site/context/AuthContext";
+import { useApi } from "@/context/APIContext";
+import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import litService from "@/services/lit-service";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import CreateModal from "components/site/modal/CreateModal";
 import EditProfileModal from "components/site/modal/EditProfileModal";
+import { useRouter } from "next/navigation";
 import {
   ReactNode,
   createContext,
@@ -55,6 +57,8 @@ export interface AppContextValue {
   updateUserIndexState: (index: Indexes, value: boolean) => void;
   viewedProfile: Users | undefined;
   setViewedProfile: (profile: Users | undefined) => void;
+  userProfile: Users | undefined;
+  setUserProfile: (profile: Users | undefined) => void;
   viewedIndex: Indexes | undefined;
   setViewedIndex: (index: Indexes | undefined) => void;
   fetchProfile: (did: string) => void;
@@ -70,12 +74,14 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const { id } = useRouteParams();
   const { apiService: api } = useApi();
   const { session } = useAuth();
+  const router = useRouter();
   // const [discoveryType, setDiscoveryType] = useState<DiscoveryType | undefined>(
   //   undefined,
   // );
   const [indexes, setIndexes] = useState<Indexes[]>([]);
   const [viewedIndex, setViewedIndex] = useState<Indexes | undefined>();
   const [viewedProfile, setViewedProfile] = useState<Users | undefined>();
+  const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
   const [transactionApprovalWaiting, setTransactionApprovalWaiting] =
@@ -107,7 +113,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   const fetchIndex = useCallback(async () => {
     try {
-      if (!api) return;
+      console.log("fetching index", id, api);
+      if (!api || !id) return;
       if (discoveryType !== DiscoveryType.index) return;
 
       const index = await api.getIndex(id);
@@ -124,23 +131,23 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   const handleCreate = useCallback(
     async (title: string = DEFAULT_CREATE_INDEX_TITLE) => {
-      // setCreateModalVisible(false);
-      // setTransactionApprovalWaiting(true);
-      // try {
-      //   if (!api) return;
-      //   const doc = await api.createIndex(title);
-      //   if (!doc) {
-      //     throw new Error("API didn't return a doc");
-      //   }
-      //   setTransactionApprovalWaiting(false);
-      //   router.push(`/discovery/${doc.id}`);
-      // } catch (err) {
-      //   console.error("Couldn't create index", err);
-      //   setTransactionApprovalWaiting(false);
-      //   // Better error handling needed here, consider using toast notifications or modals
-      // }
+      setCreateModalVisible(false);
+      setTransactionApprovalWaiting(true);
+      try {
+        debugger;
+        if (!api) return;
+        const doc = await api.createIndex(title);
+        if (!doc) {
+          throw new Error("API didn't return a doc");
+        }
+        router.push(`/discovery/${doc.id}`);
+      } catch (err) {
+        console.error("Couldn't create index", err);
+      } finally {
+        setTransactionApprovalWaiting(false);
+      }
     },
-    [],
+    [api, router],
   );
 
   const updateIndex = useCallback(
@@ -254,6 +261,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     setLeftTabKey,
     viewedProfile,
     setViewedProfile,
+    userProfile,
+    setUserProfile,
     viewedIndex,
     setViewedIndex,
     updateUserIndexState,

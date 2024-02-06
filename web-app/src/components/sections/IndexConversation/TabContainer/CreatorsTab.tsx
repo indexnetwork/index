@@ -1,17 +1,17 @@
-import React, { useState, useEffect, useCallback } from "react";
+import Col from "@/components/layout/base/Grid/Col";
+import Flex from "@/components/layout/base/Grid/Flex";
+import FlexRow from "@/components/layout/base/Grid/FlexRow";
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
+import CreatorSettings from "@/components/site/index-details/CreatorSettings";
 import AskIndexes from "@/components/site/indexes/AskIndexes";
 import NoLinks from "@/components/site/indexes/NoLinks";
-import { useApi } from "@/components/site/context/APIContext";
-import { useApp } from "@/components/site/context/AppContext";
-import { useRouteParams } from "@/hooks/useRouteParams";
 import { useRole } from "@/hooks/useRole";
+import { useRouteParams } from "@/hooks/useRouteParams";
 import { IndexLink } from "@/types/entity";
-import FlexRow from "@/components/layout/base/Grid/FlexRow";
-import Col from "@/components/layout/base/Grid/Col";
-import CreatorSettings from "@/components/site/index-details/CreatorSettings";
-import { ethers } from "ethers";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
-import Flex from "@/components/layout/base/Grid/Flex";
+import { ethers } from "ethers";
+import React, { useCallback, useEffect, useState } from "react";
 
 export default function CreatorsTabSection({ noLinks }: { noLinks?: boolean }) {
   const { id: indexID } = useRouteParams();

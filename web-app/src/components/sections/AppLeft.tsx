@@ -7,7 +7,7 @@ import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { useApp } from "components/site/context/AppContext";
+import { useApp } from "@/context/AppContext";
 import { maskDID } from "utils/helper";
 import IndexListSection from "./IndexList";
 

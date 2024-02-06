@@ -11,10 +11,10 @@ import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { API_ENDPOINTS } from "utils/constants";
 import Flex from "components/layout/base/Grid/Flex";
 import { maskDID } from "utils/helper";
-import { DiscoveryType, useApp } from "@/components/site/context/AppContext";
+import { DiscoveryType, useApp } from "@/context/AppContext";
 import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
 import NoIndexesChat from "components/ai/no-indexes";
-import { AuthContext } from "components/site/context/AuthContext";
+import { AuthContext } from "@/context/AuthContext";
 
 export interface ChatProps extends React.ComponentProps<"div"> {
   initialMessages?: Message[];

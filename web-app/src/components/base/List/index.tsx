@@ -1,6 +1,4 @@
-import React, {
-  ReactElement, useRef,
-} from "react";
+import { FC, ReactElement, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 import cc from "classcat";
 import ListItem from "./ListItem";
@@ -13,7 +11,7 @@ export interface ListProps<T = {}> {
   divided?: boolean;
 }
 
-const List: React.VFC<ListProps> = ({
+const List: FC<ListProps> = ({
   listClass,
   itemContainerClass,
   render,
@@ -23,26 +21,19 @@ const List: React.VFC<ListProps> = ({
   const containerId = useRef<string>(uuidv4());
 
   return (
-    <ul
-      className={
-        cc([
-          "list",
-          listClass || "",
-        ])
-      }>
-      {
-        data && data.map((item, index) => (
+    <ul className={cc(["list", listClass || ""])}>
+      {data &&
+        data.map((item, index) => (
           <ListItem
             key={`listItem${index}-${containerId}`}
-            className={cc([
-              itemContainerClass || "",
-            ])}
+            className={cc([itemContainerClass || ""])}
           >
             {render(item, index)}
-            {divided && index !== data.length - 1 && <div className="list-divider"></div>}
+            {divided && index !== data.length - 1 && (
+              <div className="list-divider"></div>
+            )}
           </ListItem>
-        ))
-      }
+        ))}
     </ul>
   );
 };

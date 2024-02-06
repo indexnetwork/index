@@ -8,11 +8,7 @@ import Flex from "components/layout/base/Grid/Flex";
 import { useTranslation } from "next-i18next";
 import React, { useCallback, useContext } from "react";
 import IconDisconnect from "components/base/Icon/IconDisconnect";
-import {
-  AuthContext,
-  AuthStatus,
-  useAuth,
-} from "components/site/context/AuthContext";
+import { AuthContext, AuthStatus, useAuth } from "@/context/AuthContext";
 import { useAppSelector } from "hooks/store";
 import { selectConnection } from "store/slices/connectionSlice";
 import { selectProfile } from "store/slices/profileSlice";
@@ -20,7 +16,7 @@ import IconSettings from "components/base/Icon/IconSettings";
 import Navbar, { NavbarProps, NavbarMenu } from "components/layout/base/Navbar";
 import { useRouter } from "next/router";
 import IconHistory from "components/base/Icon/IconHistory";
-import { useApp } from "components/site/context/AppContext";
+import { useApp } from "@/context/AppContext";
 
 export interface LandingHeaderProps extends NavbarProps {
   headerType: "public" | "user";

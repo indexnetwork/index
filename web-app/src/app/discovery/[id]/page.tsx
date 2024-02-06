@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
-import { DiscoveryType, useApp } from "@/components/site/context/AppContext";
+// import LoadingSection from "@/components/sections/Loading";
+import { DiscoveryType, useApp } from "@/context/AppContext";
 import DiscoveryLayout from "components/layout/site/DiscoveryLayout";
-import { useRouteParams } from "hooks/useRouteParams";
 import IndexConversationSection from "components/sections/IndexConversation";
 import UserConversationSection from "components/sections/UserConversation";
-import LoadingSection from "@/components/sections/Loading";
+import { useRouteParams } from "hooks/useRouteParams";
+import { useEffect } from "react";
 
 const Discovery = () => {
-  const { discoveryType, indexes, loading } = useApp();
+  const { discoveryType, indexes } = useApp();
   const { id } = useRouteParams();
 
   useEffect(() => {

@@ -6,7 +6,7 @@ import React, { useContext, useEffect } from "react";
 import cc from "classcat";
 import Button from "components/base/Button";
 import { useRouter } from "next/navigation";
-import { AuthContext, AuthStatus } from "components/site/context/AuthContext";
+import { AuthContext, AuthStatus } from "@/context/AuthContext";
 
 import { useTranslation } from "next-i18next";
 import Flex from "components/layout/base/Grid/Flex";

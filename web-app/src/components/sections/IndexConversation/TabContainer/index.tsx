@@ -1,15 +1,15 @@
-import React, { useCallback } from "react";
-import IndexTab from "./IndexTab";
-import ChatTab from "./ChatTab";
-import CreatorsTab from "./CreatorsTab";
-import AccessControlTab from "./AccessControlTab";
-import IndexSettingsTab from "./SettingsTab";
-import FlexRow from "@/components/layout/base/Grid/FlexRow";
-import Col from "@/components/layout/base/Grid/Col";
 import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
+import Col from "@/components/layout/base/Grid/Col";
 import Flex from "@/components/layout/base/Grid/Flex";
+import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import { useRole } from "@/hooks/useRole";
+import React, { useCallback } from "react";
+import AccessControlTab from "./AccessControlTab";
+import ChatTab from "./ChatTab";
+import CreatorsTab from "./CreatorsTab";
+import IndexItemsTab from "./IndexItemsTab";
+import IndexSettingsTab from "./SettingsTab";
 
 enum TabKey {
   Chat = "chat",
@@ -36,7 +36,7 @@ export default function TabContainer() {
       case TabKey.Chat:
         return <ChatTab />;
       case TabKey.Index:
-        return <IndexTab />;
+        return <IndexItemsTab />;
       case TabKey.Creators:
         return <CreatorsTab />;
       case TabKey.AccessControl:
