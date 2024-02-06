@@ -31,7 +31,7 @@ export const createIndex = async (req, res, next) =>  {
         const newIndex = await indexService.createIndex(req.body);
 
         const didService = new DIDService().setSession(req.session); //Personal
-        const newIndexDID = await didService.addIndex(newIndex.id, "owner");
+        const newIndexDID = await didService.addIndex(newIndex.id, "owned");
         newIndex.did = {
             owned: true,
             starred: false
