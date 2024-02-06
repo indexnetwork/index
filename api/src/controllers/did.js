@@ -44,9 +44,7 @@ export const removeIndex = async (req, res, next) => {
 };
 
 export const createProfile = async (req, res, next) => {
-  if (req.params.did !== req.session.did.parent) {
-    return res.status(500).json({ error: "Authorization error" });
-  }
+
   try {
     const didService = new DIDService().setSession(req.session);
     const profile = await didService.createProfile(req.body);

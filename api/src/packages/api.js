@@ -69,9 +69,7 @@ app.patch('/profile', authCheckMiddleware, validator.body(Joi.object({
   name: Joi.string().optional(),
   bio: Joi.string().optional(),
   avatar: Joi.custom(isCID, "Avatar").optional().allow(null),
-}).or('name', 'bio', 'avatar')), validator.params(Joi.object({
-  did: Joi.custom(isDID, "DID").required(),
-})), didController.createProfile)
+}).or('name', 'bio', 'avatar')), didController.createProfile)
 
 app.get('/profile', authCheckMiddleware, didController.getProfileFromSession)
 
