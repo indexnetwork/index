@@ -212,7 +212,7 @@ app.get('/nft/:chainName/:tokenAddress', infuraController.getCollectionMetadataH
 app.get('/nft/:chainName/:tokenAddress/:tokenId', infuraController.getNftMetadataHandler);
 app.get('/ens/:ensName', infuraController.getWalletByENSHandler);
 
-app.post('/site/upload_avatar', isImage.single('file'), fileController.uploadAvatar);
+app.post('/profile/upload_avatar', isImage.single('file'), fileController.uploadAvatar);
 
 app.post("/site/subscribe", validator.body(Joi.object({
   email: Joi.string().email().required(),
