@@ -8,7 +8,7 @@ import React, { useCallback } from "react";
 import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
 import CreatorsTab from "./CreatorsTab";
-import IndexTab from "./IndexTab";
+import IndexItemsTab from "./IndexItemsTab";
 import IndexSettingsTab from "./SettingsTab";
 
 enum TabKey {
@@ -36,7 +36,7 @@ export default function TabContainer() {
       case TabKey.Chat:
         return <ChatTab />;
       case TabKey.Index:
-        return <IndexTab />;
+        return <IndexItemsTab />;
       case TabKey.Creators:
         return <CreatorsTab />;
       case TabKey.AccessControl:

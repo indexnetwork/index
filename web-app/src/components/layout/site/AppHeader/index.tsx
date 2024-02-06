@@ -130,7 +130,7 @@ const AppHeader = () => {
                   </Text>
                 </Flex>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              {/* <DropdownMenuItem>
                 <Flex alignitems="center">
                   <IconSettings width={12} height="100%" />
                   <Text
@@ -142,7 +142,7 @@ const AppHeader = () => {
                     Settings
                   </Text>
                 </Flex>
-              </DropdownMenuItem>
+              </DropdownMenuItem> */}
               <DropdownMenuItem divider />
               <DropdownMenuItem onClick={disconnect}>
                 <Flex alignitems="center">

@@ -23,9 +23,10 @@ const IndexConversationSection = () => {
   // };
   //
 
-  useEffect(() => {
-    fetchIndex();
-  }, [fetchIndex]);
+  // useEffect(() => {
+  //   fetchIndex();
+  //   console.log("fetching index", viewedIndex);
+  // }, [fetchIndex]);
 
   return (
     <IndexConversationProvider>

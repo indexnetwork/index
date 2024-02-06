@@ -5,7 +5,7 @@ import Col from "components/layout/base/Grid/Col";
 import Header from "components/base/Header";
 
 import Button from "components/base/Button";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 import { useMergedState } from "hooks/useMergedState";
 import { useTranslation } from "next-i18next";
 import { AccessControlCondition, Indexes } from "types/entity";

@@ -1,6 +1,6 @@
 "use client";
 
-import LoadingSection from "@/components/sections/Loading";
+// import LoadingSection from "@/components/sections/Loading";
 import { DiscoveryType, useApp } from "@/context/AppContext";
 import DiscoveryLayout from "components/layout/site/DiscoveryLayout";
 import IndexConversationSection from "components/sections/IndexConversation";
@@ -9,7 +9,7 @@ import { useRouteParams } from "hooks/useRouteParams";
 import { useEffect } from "react";
 
 const Discovery = () => {
-  const { discoveryType, indexes, loading } = useApp();
+  const { discoveryType, indexes } = useApp();
   const { id } = useRouteParams();
 
   useEffect(() => {

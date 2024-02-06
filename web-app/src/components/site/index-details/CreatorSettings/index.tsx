@@ -1,18 +1,18 @@
-import React, { useEffect, useState } from "react";
+import Button from "components/base/Button";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
-import Row from "components/layout/base/Grid/Row";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import Button from "components/base/Button";
+import Row from "components/layout/base/Grid/Row";
+import React, { useEffect, useState } from "react";
 // import api from "services/api-service";
-import { AccessControlCondition } from "types/entity";
-import NewCreatorModal from "components/site/modal/NewCreatorModal";
-import IconAdd from "components/base/Icon/IconAdd";
-import CreatorRule from "./CreatorRule";
 import { useApi } from "@/context/APIContext";
-import { UserRole, useRole } from "hooks/useRole";
 import { useApp } from "@/context/AppContext";
+import IconAdd from "components/base/Icon/IconAdd";
+import NewCreatorModal from "components/site/modal/NewCreatorModal";
+import { UserRole, useRole } from "hooks/useRole";
+import { AccessControlCondition } from "types/entity";
+import CreatorRule from "./CreatorRule";
 
 export interface CreatorSettingsProps {
   collabAction: string;

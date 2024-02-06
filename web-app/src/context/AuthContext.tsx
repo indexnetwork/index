@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAccountId } from "@didtools/pkh-ethereum";
 import { Cacao, SiweMessage } from "@didtools/cacao";
@@ -164,7 +164,7 @@ export const AuthProvider = ({ children }: any) => {
     setSession(newSession);
   };
 
-  const authenticate = async () => {
+  const authenticate = useCallback(async () => {
     if (!window.ethereum) {
       console.warn(
         "Skipping wallet connection: No injected Ethereum provider found.",
@@ -184,7 +184,6 @@ export const AuthProvider = ({ children }: any) => {
       if (!sessionIsValid) {
         console.log("No valid session found, starting new session...");
         await startSession();
-        // await mintPkp();
       }
 
       console.log("Session is valid, connecting...");
@@ -194,7 +193,7 @@ export const AuthProvider = ({ children }: any) => {
       console.error("Error during authentication process:", err);
       setStatus(AuthStatus.FAILED);
     }
-  };
+  }, [status]);
 
   return (
     <AuthContext.Provider

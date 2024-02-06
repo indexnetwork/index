@@ -1,35 +1,34 @@
+import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
-import Text from "components/base/Text";
-import Modal, { ModalProps } from "components/base/Modal";
-import React, { useEffect, useState } from "react";
-import Col from "components/layout/base/Grid/Col";
-import Header from "components/base/Header";
-import Flex from "components/layout/base/Grid/Flex";
-import Input from "components/base/Input";
-import Button from "components/base/Button";
-import { useTranslation } from "next-i18next";
-import FlexRow from "components/layout/base/Grid/FlexRow";
-import ImageUploading from "react-images-uploading";
-import { appConfig } from "config";
 import Avatar from "components/base/Avatar";
-import IconTrash from "components/base/Icon/IconTrash";
+import Button from "components/base/Button";
+import Header from "components/base/Header";
 import IconEdit from "components/base/Icon/IconEdit";
-import Row from "components/layout/base/Grid/Row";
+import IconTrash from "components/base/Icon/IconTrash";
+import Input from "components/base/Input";
+import Modal, { ModalProps } from "components/base/Modal";
+import Text from "components/base/Text";
 import TextArea from "components/base/TextArea";
-import { CID } from "multiformats";
+import Col from "components/layout/base/Grid/Col";
+import Flex from "components/layout/base/Grid/Flex";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import Row from "components/layout/base/Grid/Row";
+import { appConfig } from "config";
 import { useFormik } from "formik";
+import { CID } from "multiformats";
+import React, { useEffect, useState } from "react";
+import ImageUploading from "react-images-uploading";
 import { Users } from "types/entity";
 
 export interface EditProfileModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {}
 
 const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
-  const { viewedProfile } = useApp();
+  const { viewedProfile, setUserProfile } = useApp();
+  const { apiService: api } = useApi();
   const handleClose = () => {
     modalProps.onClose?.();
   };
-
-  const { t } = useTranslation(["pages"]);
 
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState<CID>();
@@ -41,19 +40,15 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
     onSubmit: async (values) => {
       try {
         setLoading(true);
+        const params: Partial<Users> = {
+          name: values.name,
+          bio: values.bio,
+        };
         if (image) {
-          values.avatar = image;
-        } else {
-          delete values.avatar;
+          params.avatar = image;
         }
-        const { available, ...rest } = values;
-        // const newProfile = await personalCeramic.setProfile(rest as Users);
-        // dispatch(
-        //   setProfile({
-        //     ...newProfile,
-        //     available: true,
-        //   }),
-        // );
+        const newProfile = await api.updateProfile(params);
+        setUserProfile(newProfile);
       } catch (err) {
         console.log(err);
       } finally {
@@ -64,12 +59,12 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
   });
 
   const onChange = async (imageList: any) => {
-    // if (imageList.length > 0) {
-    //   const res = await apiService.uploadAvatar(imageList[0].file);
-    //   res && setImage(res.cid);
-    // } else {
-    //   setImage(undefined);
-    // }
+    if (imageList.length > 0) {
+      const res = await api.uploadAvatar(imageList[0].file);
+      res && setImage(res.cid);
+    } else {
+      setImage(undefined);
+    }
   };
 
   useEffect(() => {

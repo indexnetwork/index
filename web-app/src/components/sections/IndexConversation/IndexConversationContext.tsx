@@ -1,12 +1,13 @@
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
+import { useRouteParams } from "@/hooks/useRouteParams";
+import { GetItemQueryParams } from "@/services/api-service-new";
 import { IndexItem } from "@/types/entity";
 import React, {
   createContext,
   useCallback,
   useContext,
   useEffect,
-  useRef,
   useState,
 } from "react";
 
@@ -18,12 +19,13 @@ export type IndexItemsState = {
 type IndexConversationContextType = {
   itemsState: IndexItemsState;
   setItemsState: (state: IndexItemsState) => void;
+  fetchIndexItems: (resetCursor?: boolean, params?: GetItemQueryParams) => void;
   loading: boolean;
   setLoading: (loading: boolean) => void;
   error: any;
   addItem: (item: IndexItem) => void;
   removeItem: (itemId: string) => void;
-  loadMoreItems: () => void; // Function to load more items
+  loadMoreItems: () => void;
 };
 
 const IndexConversationContext = createContext<
@@ -40,53 +42,66 @@ export const useIndexConversation = () => {
   return context;
 };
 
-export const IndexConversationProvider = ({
-  children,
-}: {
-  children: React.ReactNode;
-}) => {
+export const IndexConversationProvider = ({ children }: { children: any }) => {
   const [itemsState, setItemsState] = useState<IndexItemsState>({
     items: [],
     cursor: undefined,
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
-  const lastFetchedIndexId = useRef<string | undefined>(undefined);
 
   const { apiService: api } = useApi();
-  const { viewedIndex } = useApp();
+  const { viewedIndex, fetchIndex } = useApp();
+  const { id } = useRouteParams();
 
-  const fetchIndexItems = useCallback(async () => {
-    if (
-      !api ||
-      !viewedIndex ||
-      loading ||
-      viewedIndex.id === lastFetchedIndexId.current
-    )
-      return;
+  const fetchIndexItems = useCallback(
+    async (resetCursor = false, params: GetItemQueryParams = {}) => {
+      if (!api || !viewedIndex) return;
 
-    setLoading(true);
-    lastFetchedIndexId.current = viewedIndex.id; // Update the last fetched ID
-    try {
-      const body = itemsState.cursor ? { cursor: itemsState.cursor } : {};
-      const response = await api.getItems(viewedIndex.id, body);
+      // setLoading(true);
+      try {
+        const itemParams: GetItemQueryParams = {};
 
-      if (response) {
-        setItemsState((prevState) => ({
-          items:
-            lastFetchedIndexId.current === viewedIndex.id
-              ? [...prevState.items, ...response.items]
-              : response.items,
-          cursor: response.endCursor,
-        }));
+        if (!resetCursor && itemsState?.cursor) {
+          itemParams.cursor = itemsState.cursor;
+        }
+
+        if (params?.query) {
+          itemParams.query = params.query;
+        }
+
+        // DEBUG
+        let response = await api.getItems(viewedIndex.id, itemParams);
+        // if (itemParams.query) {
+        //   response = {
+        //     items: [],
+        //     cursor: null,
+        //   };
+        // }
+
+        if (response) {
+          setItemsState((prevState) => ({
+            items:
+              resetCursor || itemParams.query
+                ? response.items
+                : [...prevState.items, ...response.items],
+            cursor: response.endCursor,
+          }));
+        }
+      } catch (error) {
+        console.error("Error fetching index links", error);
+        setError(error);
+      } finally {
+        // setLoading(false);
       }
-    } catch (error) {
-      console.error("Error fetching index links", error);
-      setError(error);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, viewedIndex, loading]);
+    },
+    [api, id, viewedIndex, itemsState.cursor],
+  );
+
+  useEffect(() => {
+    fetchIndex();
+    fetchIndexItems(true);
+  }, [viewedIndex?.id]);
 
   const addItem = useCallback((item: IndexItem) => {
     setItemsState((prevState) => ({
@@ -106,11 +121,6 @@ export const IndexConversationProvider = ({
     fetchIndexItems();
   }, [fetchIndexItems]);
 
-  // Effect for initial fetch and re-fetch on viewedIndex.id change
-  useEffect(() => {
-    fetchIndexItems();
-  }, [fetchIndexItems]);
-
   return (
     <IndexConversationContext.Provider
       value={{
@@ -122,6 +132,7 @@ export const IndexConversationProvider = ({
         loadMoreItems,
         setItemsState,
         setLoading,
+        fetchIndexItems,
       }}
     >
       {children}

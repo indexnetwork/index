@@ -76,15 +76,15 @@ export const IndexConversationHeader: React.FC = () => {
     [viewedIndex, viewedProfile, api, setViewedIndex, indexes, setIndexes],
   );
 
-  if (!viewedIndex) return null;
+  // if (!viewedIndex) return null;
 
   return (
     <>
       <FlexRow>
         <Col centerBlock className="idxflex-grow-1">
-          {viewedIndex && (
-            <Link href={`/discovery/${viewedIndex.ownerDID?.id!}`}>
-              <Avatar size={20} user={viewedIndex.ownerDID} />
+          {
+            <Link href={`/discovery/${viewedIndex?.ownerDID?.id!}`}>
+              <Avatar size={20} user={viewedIndex?.ownerDID} />
               <Text
                 className="ml-3"
                 size="sm"
@@ -92,13 +92,13 @@ export const IndexConversationHeader: React.FC = () => {
                 fontWeight={500}
                 element="span"
               >
-                {viewedIndex.ownerDID?.name ||
-                  (viewedIndex.ownerDID &&
-                    maskDID(viewedIndex.ownerDID?.id!)) ||
+                {viewedIndex?.ownerDID?.name ||
+                  (viewedIndex?.ownerDID &&
+                    maskDID(viewedIndex?.ownerDID?.id!)) ||
                   ""}
               </Text>
             </Link>
-          )}
+          }
         </Col>
       </FlexRow>
 
