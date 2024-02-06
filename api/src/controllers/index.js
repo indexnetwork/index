@@ -13,7 +13,7 @@ export const getIndexById = async (req, res, next) => {
                 const roles = getRolesFromSession(pkpSession);
                 Object.assign(index, {roles});
             }else{
-                Object.assign(index, {owner: false, creator: false});
+                Object.assign(index, {roles: {owner: false, creator: false}});
             }
         }
 
@@ -31,11 +31,15 @@ export const createIndex = async (req, res, next) =>  {
         const newIndex = await indexService.createIndex(req.body);
 
         const didService = new DIDService().setSession(req.session); //Personal
-        const newIndexDID = await didService.addIndex(newIndex.id, "owner");
+        const newIndexDID = await didService.addIndex(newIndex.id, "owned");
         newIndex.did = {
             owned: true,
             starred: false
         };
+        newIndex.roles = {
+          owner: true,
+          creator: true
+        }
 
         res.status(201).json(newIndex);
     } catch (error) {

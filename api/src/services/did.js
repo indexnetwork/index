@@ -152,6 +152,9 @@ export class DIDService {
                         const ownerDID = await getOwnerProfile(i.signerPublicKey);
                         return { ...i, ownerDID };
                     })
+                    .sort((a, b) => {
+                      return new Date(b.createdAt) - new Date(a.createdAt);
+                    })
             );
 
 
@@ -382,6 +385,3 @@ export class DIDService {
     }
 
 }
-
-
-

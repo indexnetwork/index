@@ -125,7 +125,7 @@ export const getPKPSession = async (session, index) => {
 		throw new Error("Unauthenticated DID");
 	}
 
-	const sessionCacheKey = `${session.did.parent}:${index.signerFunction}`
+	const sessionCacheKey = `${session.did.parent}:${index.id}:${index.signerFunction}`
 
 	const existingSessionStr = await redis.hGet("sessions", sessionCacheKey);
 
@@ -184,7 +184,7 @@ export const getPKPSession = async (session, index) => {
 			return null;
 		}
 
-		if(! resp.signatures.sig1 ){
+		if(!resp.signatures || !resp.signatures.sig1 ){
 			throw new Error("No signature returned")
 		}
 
