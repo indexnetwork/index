@@ -65,7 +65,7 @@ app.delete('/dids/:did/indexes/:indexId/:type', authCheckMiddleware, validator.p
   type: Joi.string().valid('own', 'star').required(),
 })), didController.removeIndex)
 
-app.patch('/dids/:did/profile', authCheckMiddleware, validator.body(Joi.object({
+app.patch('/profile', authCheckMiddleware, validator.body(Joi.object({
   name: Joi.string().optional(),
   bio: Joi.string().optional(),
   avatar: Joi.custom(isCID, "Avatar").optional().allow(null),
@@ -73,9 +73,11 @@ app.patch('/dids/:did/profile', authCheckMiddleware, validator.body(Joi.object({
   did: Joi.custom(isDID, "DID").required(),
 })), didController.createProfile)
 
+app.get('/profile', authCheckMiddleware, didController.getProfileFromSession)
+
 app.get('/dids/:did/profile', validator.params(Joi.object({
   did: Joi.custom(isDID, "DID").required(),
-})), didController.getProfile)
+})), didController.getProfileByDID)
 
 // Indexes
 app.get('/indexes/:id', validator.params(Joi.object({
