@@ -8,8 +8,8 @@ import {
   useState,
 } from "react";
 import ApiService from "services/api-service-new";
-import { AuthContext, AuthStatus } from "./AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import { AuthContext } from "./AuthContext";
 
 export const defaultAPIContext = {
   apiService: ApiService.getInstance(),

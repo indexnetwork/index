@@ -1,10 +1,10 @@
 import React from "react";
 import List from "components/base/List";
 import InfiniteScroll from "react-infinite-scroller";
-import LinkItem from "../LinkItem";
-import NoLinks from "../../indexes/NoLinks";
 import { IndexItem } from "types/entity";
 import { useRole } from "hooks/useRole";
+import LinkItem from "../LinkItem";
+import NoLinks from "../../indexes/NoLinks";
 
 export interface IndexItemListProps {
   search: string;

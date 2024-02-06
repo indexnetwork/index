@@ -10,8 +10,8 @@ import IndexDetailItemPopup from "components/site/popup/IndexDetailItemPopup";
 import { IndexItem } from "types/entity";
 import moment from "moment";
 import sanitize from "sanitize-html";
-import cm from "./style.module.scss";
 import { useRole } from "hooks/useRole";
+import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
 export interface LinkItemProps {

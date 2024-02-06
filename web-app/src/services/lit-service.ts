@@ -1,4 +1,4 @@
-import { ContractTransactionResponse, ethers } from "ethers";
+import { ethers } from "ethers";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { DID } from "dids";
 import * as LitJsSdk from "@lit-protocol/lit-node-client";
@@ -20,8 +20,7 @@ class LitService {
     const mintCost = await litContracts.pkpNftContract.read.mintCost();
     const acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
 
-    const mint =
-      (await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
+    const mint = (await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
         2,
         [2],
         [acid],
@@ -32,9 +31,10 @@ class LitService {
         {
           value: mintCost,
         },
-      )) as ContractTransactionResponse;
+      )) as any;
     const wait = await mint.wait();
 
+    /* eslint-disable */
     const tokenIdFromEvent = wait?.logs
       ? wait.logs[0].topics[1]
       : wait?.logs[0].topics[1];
@@ -109,7 +109,7 @@ class LitService {
       return false;
     }
 
-    const resp = await litNodeClient.executeJs({
+    const resp = (await litNodeClient.executeJs({
       ipfsId: collabAction,
       authSig,
       jsParams: {
@@ -121,7 +121,7 @@ class LitService {
         domain: window.location.host,
         sigName: "sig1",
       },
-    });
+    })) as any;
     // @ts-ignore
     const { error } = resp.response; // TODO Handle.
     if (error) {

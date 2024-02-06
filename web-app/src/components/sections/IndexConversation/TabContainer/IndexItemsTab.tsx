@@ -39,29 +39,27 @@ export default function IndexItemsTabSection() {
       if (!api || !viewedIndex) return;
 
       setLoading(true);
-      for (const url of urls) {
-        try {
-          const createdLink = await api.crawlLink(url);
-          if (!createdLink) {
-            throw new Error("Error creating link");
-          }
-          const createdItem = await api.createItem(
-            viewedIndex.id,
-            createdLink.id,
-          );
-          console.log("create item", createdItem);
-          if (!createdItem) {
-            throw new Error("Error creating item");
-          }
-          setItemsState({
-            items: [createdItem, ...itemsState.items],
-            cursor: itemsState.cursor,
-          });
-        } catch (error) {
-          console.error("Error adding link", error);
-        } finally {
-          setLoading(false);
+      try {
+        const createdLink = await api.crawlLink(urls[0]);
+        if (!createdLink) {
+          throw new Error("Error creating link");
         }
+        const createdItem = await api.createItem(
+          viewedIndex.id,
+          createdLink.id,
+        );
+        console.log("create item", createdItem);
+        if (!createdItem) {
+          throw new Error("Error creating item");
+        }
+        setItemsState({
+          items: [createdItem, ...itemsState.items],
+          cursor: itemsState.cursor,
+        });
+      } catch (error) {
+        console.error("Error adding link", error);
+      } finally {
+        setLoading(false);
       }
     },
     [api, viewedIndex, setItemsState, setLoading],

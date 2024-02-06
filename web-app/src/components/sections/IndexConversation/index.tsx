@@ -1,5 +1,3 @@
-import { useEffect } from "react";
-
 import Flex from "components/layout/base/Grid/Flex";
 import { useApp } from "@/context/AppContext";
 import Head from "next/head";

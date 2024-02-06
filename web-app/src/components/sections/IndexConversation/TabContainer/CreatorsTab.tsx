@@ -4,14 +4,11 @@ import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import CreatorSettings from "@/components/site/index-details/CreatorSettings";
-import AskIndexes from "@/components/site/indexes/AskIndexes";
-import NoLinks from "@/components/site/indexes/NoLinks";
 import { useRole } from "@/hooks/useRole";
 import { useRouteParams } from "@/hooks/useRouteParams";
-import { IndexLink } from "@/types/entity";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
-import React, { useCallback, useEffect, useState } from "react";
+import React from "react";
 
 export default function CreatorsTabSection({ noLinks }: { noLinks?: boolean }) {
   const { id: indexID } = useRouteParams();
@@ -30,14 +27,12 @@ export default function CreatorsTabSection({ noLinks }: { noLinks?: boolean }) {
     const previousCollabAction = litContracts.utils.getBytesFromMultihash(
       viewedIndex.collabAction!,
     );
-    const addPermissionTx =
-      await litContracts.pkpPermissionsContract.write.addPermittedAction(
+    const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(
         tokenId,
         newCollabAction,
         [],
       );
-    const removePermissionTx =
-      await litContracts.pkpPermissionsContract.write.removePermittedAction(
+    const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(
         tokenId,
         previousCollabAction,
       );

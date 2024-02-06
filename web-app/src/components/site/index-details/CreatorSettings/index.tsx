@@ -4,7 +4,7 @@ import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Row from "components/layout/base/Grid/Row";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 // import api from "services/api-service";
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
@@ -101,8 +101,8 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({
         </Col>
       </Row>
       <FlexRow className={"mt-6"} rowGutter={0} rowSpacing={2} colSpacing={2}>
-        {conditions &&
-          conditions.map((c: any, i: any) => (
+        {conditions
+          && conditions.map((c: any, i: any) => (
             <Col key={i} lg={6} xs={12}>
               <CreatorRule
                 handleRemove={() => handleRemove(i)}

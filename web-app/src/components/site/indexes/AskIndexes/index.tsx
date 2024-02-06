@@ -11,7 +11,7 @@ import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { API_ENDPOINTS } from "utils/constants";
 import Flex from "components/layout/base/Grid/Flex";
 import { maskDID } from "utils/helper";
-import { DiscoveryType, useApp } from "@/context/AppContext";
+import { useApp } from "@/context/AppContext";
 import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
 import NoIndexesChat from "components/ai/no-indexes";
 import { AuthContext } from "@/context/AuthContext";

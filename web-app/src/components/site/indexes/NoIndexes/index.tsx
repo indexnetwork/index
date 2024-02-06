@@ -3,15 +3,15 @@ import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import React from "react";
-import { useOwner } from "hooks/useOwner";
 import { useApp } from "@/context/AppContext";
+import { useRole } from "@/hooks/useRole";
 
 export interface NoIndexesProps {
   tabKey?: string;
 }
 
 const NoIndexes: React.VFC<NoIndexesProps> = ({ tabKey }) => {
-  const { isOwner } = useOwner();
+  const { isOwner } = useRole();
   const { setCreateModalVisible } = useApp();
 
   return (

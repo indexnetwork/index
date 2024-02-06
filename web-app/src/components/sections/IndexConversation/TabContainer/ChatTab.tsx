@@ -29,7 +29,6 @@ export default function ChatTabSection() {
     return chatID ? (
       <AskIndexes chatID={chatID} indexes={[viewedIndex?.id!]} />
     ) : null;
-  } else {
-    return <EmptyScreen setInput={() => {}} contextMessage="your responses" />;
   }
+    return <EmptyScreen setInput={() => {}} contextMessage="your responses" />;
 }

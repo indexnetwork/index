@@ -71,7 +71,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         }
 
         // DEBUG
-        let response = await api.getItems(viewedIndex.id, itemParams);
+        const response = await api.getItems(viewedIndex.id, itemParams);
         // if (itemParams.query) {
         //   response = {
         //     items: [],
@@ -88,8 +88,8 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
             cursor: response.endCursor,
           }));
         }
-      } catch (error) {
-        console.error("Error fetching index links", error);
+      } catch (err: any) {
+        console.error("Error fetching index links", err);
         setError(error);
       } finally {
         // setLoading(false);

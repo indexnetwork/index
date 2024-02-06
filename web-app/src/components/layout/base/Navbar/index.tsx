@@ -92,15 +92,18 @@ const Navbar = ({
   return (
     <>
       {isLanding && (
-        <Flex
-          alignitems={"center"}
-          // alignitems={"space-around"}
-          style={{ background: "var(--landing)" }}
+        <div
+          style={{
+            backgroundColor: "#f8f8f8",
+            textAlign: "center",
+            width: "100%",
+            padding: "1em",
+          }}
         >
           <Text className={"p-5"} size={"md"}>
             Index Network is live on testnet.
           </Text>
-        </Flex>
+        </div>
       )}
       <div
         className={cc([

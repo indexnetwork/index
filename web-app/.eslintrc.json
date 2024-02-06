@@ -24,7 +24,7 @@
   },
   "rules": {
     "no-console": "off",
-    "implicit-arrow-linebreak": ["beside"],
+    "implicit-arrow-linebreak": "off",
     "linebreak-style": "off",
     "no-plusplus": "off",
     "no-unused-vars": "off",
@@ -41,7 +41,13 @@
         "argsIgnorePattern": "^_"
       }
     ],
-    "quotes": ["error", "double", { "allowTemplateLiterals": true }],
+    "quotes": [
+      "error",
+      "double",
+      {
+        "allowTemplateLiterals": true
+      }
+    ],
     "no-tabs": "off",
     "max-classes-per-file": "off",
     "radix": 0,
@@ -56,7 +62,6 @@
     ],
     "consistent-return": "warn",
     "no-restricted-properties": "off",
-    "operator-linebreak": ["error", "after"],
     "no-use-before-define": "off",
     "no-mixed-spaces-and-tabs": "off",
     "no-param-reassign": "off",
@@ -70,7 +75,10 @@
     // Typescript Rules
     "@typescript-eslint/no-unused-vars": [
       "off",
-      { "varsIgnorePattern": "^_", "argsIgnorePattern": "^_" }
+      {
+        "varsIgnorePattern": "^_",
+        "argsIgnorePattern": "^_"
+      }
     ],
     "@typescript-eslint/quotes": "off",
     "@typescript-eslint/return-await": "off",
