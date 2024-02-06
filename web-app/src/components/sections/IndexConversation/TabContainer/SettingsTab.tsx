@@ -4,8 +4,7 @@ import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import React, { useEffect, useState } from "react";
-import LitService from "../../../../services/lit-service";
+import React, { useState } from "react";
 
 export interface IndexSettingsTabSectionProps {}
 

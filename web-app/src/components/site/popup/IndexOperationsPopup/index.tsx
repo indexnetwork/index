@@ -36,8 +36,8 @@ const IndexOperationsPopup: React.FC<IndexOperationsPopupProps> = ({
             </Text>
           </Flex>
         </DropdownMenuItem>
-        {index?.roles?.owner &&
-          (index?.did?.owned ? (
+        {index?.roles?.owner
+          && (index?.did?.owned ? (
             <>
               <DropdownMenuItem divider />
               <DropdownMenuItem onClick={userIndexToggle}>

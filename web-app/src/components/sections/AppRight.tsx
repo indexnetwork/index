@@ -10,8 +10,9 @@ import { useApp } from "@/context/AppContext";
 import Soon from "components/site/indexes/Soon";
 
 const AppRight = () => {
-  const { setRightSidebarOpen, rightSidebarOpen, rightTabKey, setRightTabKey } =
-    useApp();
+  const {
+ setRightSidebarOpen, rightSidebarOpen, rightTabKey, setRightTabKey,
+} = useApp();
 
   return (
     <Col

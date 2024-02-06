@@ -22,8 +22,8 @@ const List: FC<ListProps> = ({
 
   return (
     <ul className={cc(["list", listClass || ""])}>
-      {data &&
-        data.map((item, index) => (
+      {data
+        && data.map((item, index) => (
           <ListItem
             key={`listItem${index}-${containerId}`}
             className={cc([itemContainerClass || ""])}

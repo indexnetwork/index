@@ -29,8 +29,8 @@ const ButtonGroup = (
 			className || "",
 		])
 	}>{
-		children &&
-			React.Children.map(children, (child: React.ReactElement<any>) => <div className="btn-group-item">{
+		children
+			&& React.Children.map(children, (child: React.ReactElement<any>) => <div className="btn-group-item">{
 				child
 			}
 			</div>)

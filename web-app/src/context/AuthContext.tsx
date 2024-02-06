@@ -1,21 +1,15 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { getAccountId } from "@didtools/pkh-ethereum";
-import { Cacao, SiweMessage } from "@didtools/cacao";
+import { appConfig } from "@/config";
 import { normalizeAccountId } from "@ceramicnetwork/common";
-// import { useAppDispatch, useAppSelector } from "hooks/store";
+import { Cacao, SiweMessage } from "@didtools/cacao";
+import { getAccountId } from "@didtools/pkh-ethereum";
 import { getAddress } from "@ethersproject/address";
 import { randomBytes, randomString } from "@stablelib/random";
-import { DIDSession, createDIDKey, createDIDCacao } from "did-session";
-// import {
-//   disconnectApp, selectConnection, setAuthLoading,
-// } from "store/slices/connectionSlice";
+import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
+import { useRouter } from "next/navigation";
+import React, { useCallback, useEffect, useState } from "react";
 import { switchTestNetwork } from "utils/helper";
-// import OriginWarningModal from "../modal/OriginWarningModal";
-import { appConfig } from "@/config";
-// import litService from "services/lit-service";
 
 declare global {
   interface Window {
@@ -55,8 +49,7 @@ const defaultAuthContext = {
 //   session: DIDSession,
 // };
 
-export const AuthContext =
-  React.createContext<AuthContextType>(defaultAuthContext);
+export const AuthContext = React.createContext<AuthContextType>(defaultAuthContext);
 
 export const AuthProvider = ({ children }: any) => {
   const SESSION_KEY = "did";
@@ -74,7 +67,7 @@ export const AuthProvider = ({ children }: any) => {
 
   useEffect(() => {
     // TODO: no force connect
-    authenticate();
+    // authenticate();
     // checkSession();
   }, [status]);
 
@@ -87,10 +80,10 @@ export const AuthProvider = ({ children }: any) => {
   }, [session]);
 
   const disconnect = () => {
-    localStorage.removeItem("provider");
     localStorage.removeItem(SESSION_KEY);
     setSession(undefined);
     // dispatch(disconnectApp());
+    // router.push("/");
     router.push("/");
   };
 
@@ -207,14 +200,11 @@ export const AuthProvider = ({ children }: any) => {
         isLoading,
       }}
     >
-      {/* {status === AuthStatus.FAILED
-      && originNFTModalVisible ? <OriginWarningModal visible={originNFTModalVisible}></OriginWarningModal> : <></>} */}
       {children}
     </AuthContext.Provider>
   );
 };
 
-//useauth hook
 export const useAuth = () => {
   const context = React.useContext(AuthContext);
   if (!context) {

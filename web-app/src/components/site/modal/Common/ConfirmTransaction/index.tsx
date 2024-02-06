@@ -7,7 +7,6 @@ import Row from "components/layout/base/Grid/Row";
 import Header from "components/base/Header";
 import Flex from "components/layout/base/Grid/Flex";
 
-
 const ConfirmTransaction = ({ handleCancel, ...modalProps }: any) => {
   const handleClose = () => {
     modalProps.onClose?.();

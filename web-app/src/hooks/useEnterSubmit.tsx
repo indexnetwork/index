@@ -10,9 +10,9 @@ export function useEnterSubmit(): {
 		event: React.KeyboardEvent<HTMLTextAreaElement>,
 	): void => {
 		if (
-			event.key === "Enter" &&
-			!event.shiftKey &&
-			!event.nativeEvent.isComposing
+			event.key === "Enter"
+			&& !event.shiftKey
+			&& !event.nativeEvent.isComposing
 		) {
 			formRef.current?.requestSubmit();
 			event.preventDefault();

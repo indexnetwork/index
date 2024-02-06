@@ -113,8 +113,8 @@ const Tag = (
 				onKeyDown={handleEnter}
 				onBlur={handleClose}
 			/> : value}
-			{removable && !editActive &&
-				<div
+			{removable && !editActive
+				&& <div
 					className="tag-remove"
 					onClick={removable ? handleRemove : undefined}
 				>

@@ -5,8 +5,8 @@ import { appConfig } from "config";
 import { DIDSession } from "did-session";
 import { Indexes, Link, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
-import litService from "./lit-service";
 import { CID } from "multiformats";
+import litService from "./lit-service";
 
 const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",
@@ -183,10 +183,9 @@ class ApiService {
     if (add) {
       const { data } = await this.apiAxios.put(url);
       return data;
-    } else {
+    }
       const { data } = await this.apiAxios.delete(url);
       return data;
-    }
   }
   async ownIndex(did: string, indexId: string, add: boolean) {
     const url = API_ENDPOINTS.OWN_INDEX.replace(":did", did).replace(
@@ -197,10 +196,9 @@ class ApiService {
     if (add) {
       const { data } = await this.apiAxios.put(url);
       return data;
-    } else {
+    }
       const { data } = await this.apiAxios.delete(url);
       return data;
-    }
   }
 
   async getItems(indexId: string, queryParams: GetItemQueryParams = {}) {
@@ -209,7 +207,7 @@ class ApiService {
     //   cursor: "eyJ0eXBlIjoiY29udGVudCIsImlkIjoia2p6bDZrY3ltN3c4eWE1dGZ4dTk3djEweHNoMWQwNmh6a2h5MGl0ZzQ0ajBrcGxhbWNzMGNjbm51cGE2MGhzIiwidmFsdWUiOnsiY3JlYXRlZEF0IjoiMjAyNC0wMi0wMVQxMjo0NDoyMi40NThaIn19",
     // };
     if (queryParams) {
-      let formattedQuery = Object.entries(queryParams)
+      const formattedQuery = Object.entries(queryParams)
         .map(([key, value]) => `${key}=${value}`)
         .join("&");
       url = `${url}?${new URLSearchParams(formattedQuery)}`;

@@ -3,7 +3,6 @@ import Header from "components/base/Header";
 import Input from "components/base/Input";
 import Flex from "components/layout/base/Grid/Flex";
 import { useState } from "react";
-import toast from "react-hot-toast";
 import LandingSection from "../LandingSection";
 
 const LandingSection7 = () => {

@@ -1,10 +1,8 @@
 import { useApi } from "@/context/APIContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
-import litService from "@/services/lit-service";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import CreateModal from "components/site/modal/CreateModal";
-import EditProfileModal from "components/site/modal/EditProfileModal";
 import { useRouter } from "next/navigation";
 import {
   ReactNode,
@@ -52,6 +50,7 @@ export interface AppContextValue {
   setLeftSidebarOpen: (visible: boolean) => void;
   rightSidebarOpen: boolean;
   setRightSidebarOpen: (visible: boolean) => void;
+  editProfileModalVisible: boolean;
   setEditProfileModalVisible: (visible: boolean) => void;
   updateIndex: (index: Indexes) => void;
   updateUserIndexState: (index: Indexes, value: boolean) => void;
@@ -84,8 +83,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
-  const [transactionApprovalWaiting, setTransactionApprovalWaiting] =
-    useState(false);
+  const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [rightTabKey, setRightTabKey] = useState<TabKey>("history");
@@ -134,7 +132,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       setCreateModalVisible(false);
       setTransactionApprovalWaiting(true);
       try {
-        debugger;
         if (!api) return;
         const doc = await api.createIndex(title);
         if (!doc) {
@@ -272,6 +269,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     handleCreate,
     loading,
     handleTransactionCancel,
+    editProfileModalVisible,
     chatID,
   };
 
@@ -289,12 +287,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
           visible={createModalVisible}
           onClose={() => setCreateModalVisible(false)}
           onCreate={handleCreate}
-        />
-      )}
-      {editProfileModalVisible && (
-        <EditProfileModal
-          visible={editProfileModalVisible}
-          onClose={() => setEditProfileModalVisible(false)}
         />
       )}
     </AppContext.Provider>

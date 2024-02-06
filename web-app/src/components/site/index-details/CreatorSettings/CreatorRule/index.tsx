@@ -47,10 +47,10 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) => (
               </Col>
               <Col>
                 <Header level={4} className="mb-1">
-                  {rule.name ||
-                    rule.ensName ||
-                    (rule.walletAddress && maskAddress(rule.walletAddress)) ||
-                    (rule.contractAddress && maskAddress(rule.contractAddress))}
+                  {rule.name
+                    || rule.ensName
+                    || (rule.walletAddress && maskAddress(rule.walletAddress))
+                    || (rule.contractAddress && maskAddress(rule.contractAddress))}
                 </Header>
                 <Flex alignitems={"center"}>
                   <Text

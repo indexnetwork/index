@@ -78,8 +78,8 @@ const AppLeft = () => {
                   ) : (
                     <>
                       <Header level={4} className={"mb-1"}>
-                        {viewedProfile?.name ||
-                          (viewedProfile?.id
+                        {viewedProfile?.name
+                          || (viewedProfile?.id
                             ? maskDID(viewedProfile?.id!)
                             : "")}
                       </Header>

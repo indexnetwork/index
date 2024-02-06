@@ -22,8 +22,9 @@ export const IndexConversationHeader: React.FC = () => {
   const { session } = useAuth();
   const { apiService: api } = useApi();
   const [titleLoading, setTitleLoading] = useState(false);
-  const { viewedIndex, viewedProfile, setViewedIndex, indexes, setIndexes } =
-    useApp();
+  const {
+ viewedIndex, viewedProfile, setViewedIndex, indexes, setIndexes,
+} = useApp();
 
   // if (!viewedIndex || !viewedProfile) return null;
 
@@ -69,8 +70,7 @@ export const IndexConversationHeader: React.FC = () => {
       setViewedIndex(updatedIndex);
       setIndexes(
         indexes.map((index) =>
-          index.id === updatedIndex.id ? updatedIndex : index,
-        ),
+          (index.id === updatedIndex.id ? updatedIndex : index)),
       );
     },
     [viewedIndex, viewedProfile, api, setViewedIndex, indexes, setIndexes],
@@ -92,10 +92,10 @@ export const IndexConversationHeader: React.FC = () => {
                 fontWeight={500}
                 element="span"
               >
-                {viewedIndex?.ownerDID?.name ||
-                  (viewedIndex?.ownerDID &&
-                    maskDID(viewedIndex?.ownerDID?.id!)) ||
-                  ""}
+                {viewedIndex?.ownerDID?.name
+                  || (viewedIndex?.ownerDID
+                    && maskDID(viewedIndex?.ownerDID?.id!))
+                  || ""}
               </Text>
             </Link>
           }
