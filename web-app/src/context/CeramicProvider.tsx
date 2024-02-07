@@ -85,7 +85,7 @@
 // 		}
 // 		return client.setUserIndex(index_id, type, true);
 // 	};
-  
+
 // 	const removeUserIndex = async (index_id: string, type: string) => {
 // 		if (!client.isUserAuthenticated()) {
 // 			throw new Error("Invalid client");

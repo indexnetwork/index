@@ -6,8 +6,8 @@ export function useAtBottom(offset = 0) {
 	React.useEffect(() => {
 		const handleScroll = () => {
 			setIsAtBottom(
-				window.innerHeight + window.scrollY >=
-				document.body.offsetHeight - offset,
+				window.innerHeight + window.scrollY
+				>= document.body.offsetHeight - offset,
 			);
 		};
 

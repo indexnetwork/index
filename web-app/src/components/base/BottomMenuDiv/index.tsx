@@ -98,8 +98,8 @@ const BottomMenuDiv = (
 	const handleMouseUp = useCallback((e: any) => {
 		if (typeof e !== "boolean" && e) {
 			setState((currentState) => {
-				const collapsed = currentState.maxHeight! <
-					currentState.originalHeight! * collapseThresholdForMinSize;
+				const collapsed = currentState.maxHeight!
+					< currentState.originalHeight! * collapseThresholdForMinSize;
 				return {
 					maxHeight: collapsed ? 0 : currentState.originalHeight!,
 					transition,
@@ -224,8 +224,8 @@ const BottomMenuDiv = (
 							className="modal-mobile-swiper-button"></div>
 					</div>
 					{children}
-				</DynamicDiv> :
-					<div
+				</DynamicDiv>
+					: <div
 						{...divProps}
 					>
 						{children}

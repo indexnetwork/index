@@ -1,18 +1,18 @@
+import { useApp } from "@/context/AppContext";
+import cc from "classcat";
+import Button from "components/base/Button";
+import IconMenu from "components/base/Icon/IconMenu";
 import LogoFull from "components/base/Logo/LogoFull";
 import LogoMini from "components/base/Logo/LogoMini";
-import React, { useContext, useEffect, useState } from "react";
-import cc from "classcat";
+import { AuthContext, AuthStatus } from "@/context/AuthContext";
 import { useYOffSet } from "hooks/useYOffset";
 import { usePathname, useRouter } from "next/navigation";
-import IconMenu from "components/base/Icon/IconMenu";
-import Button from "components/base/Button";
-import Container from "../Grid/Container";
-import Col from "../Grid/Col";
-import FlexRow from "../Grid/FlexRow";
-import Flex from "../Grid/Flex";
+import React, { useContext, useEffect, useState } from "react";
 import Text from "../../../base/Text";
-import { AuthContext, AuthStatus } from "components/site/context/AuthContext";
-import { useApp } from "components/site/context/AppContext";
+import Col from "../Grid/Col";
+import Container from "../Grid/Container";
+import Flex from "../Grid/Flex";
+import FlexRow from "../Grid/FlexRow";
 
 export interface NavbarProps
   extends React.DetailedHTMLProps<
@@ -92,15 +92,18 @@ const Navbar = ({
   return (
     <>
       {isLanding && (
-        <Flex
-          alignitems={"center"}
-          // alignitems={"space-around"}
-          style={{ background: "var(--landing)" }}
+        <div
+          style={{
+            backgroundColor: "#f8f8f8",
+            textAlign: "center",
+            width: "100%",
+            padding: "1em",
+          }}
         >
           <Text className={"p-5"} size={"md"}>
             Index Network is live on testnet.
           </Text>
-        </Flex>
+        </div>
       )}
       <div
         className={cc([

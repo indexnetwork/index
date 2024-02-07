@@ -6,19 +6,19 @@
 import { CID } from "multiformats";
 
 export type Indexes = {
-  id: string
-  title: string
-  collabAction: string
-  pkpPublicKey: string
-  signerFunction: string
-  signerPublicKey: string
+  id: string;
+  title: string;
+  collabAction: string;
+  pkpPublicKey: string;
+  signerFunction: string;
+  signerPublicKey: string;
   did: {
-    owned: boolean
-    starred: boolean
+    owned: boolean;
+    starred: boolean;
   };
   roles: {
-    owner: boolean
-    creator: boolean
+    owner: boolean;
+    creator: boolean;
   };
   ownerDID: Users;
   createdAt: string;
@@ -42,33 +42,39 @@ export type Indexes = {
 //   }
 // },
 
-export type Node = {
-  id: string
-  title: string
-  favicon?: string
-  url: string
-  content?: string
-  createdAt?: string
-  updatedAt?: string
-  deletedAt?: string
+export type WebNode = {
+  id: string;
+  title: string;
+  favicon?: string;
+  url: string;
+  content?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string;
 };
 
-export type IndexItem = {
-  type: string
-  node: Node
+export type IndexWebPageItem = {
+  type: string;
+  node: WebNode;
 };
+
+export type IndexItem = IndexWebPageItem;
 
 export type IndexLink = {
-  id?: string
+  id?: string;
   indexId?: string;
   linkId?: string;
   content?: string;
   url?: string;
-  indexerDID?: { // This is PKP DID
-    id: string
-  } | string;
-  controllerDID?: { // This is PKP DID
-    id: string
+  indexerDID?:
+    | {
+        // This is PKP DID
+        id: string;
+      }
+    | string;
+  controllerDID?: {
+    // This is PKP DID
+    id: string;
   };
   link?: Link;
   index?: Indexes;
@@ -81,7 +87,7 @@ export type IndexLink = {
     "link.tags"?: string;
     "link.url"?: string;
     "link.title"?: string;
-  }
+  };
 };
 
 /**
@@ -91,8 +97,9 @@ export type IndexLink = {
 export type UserIndex = {
   id: string;
   indexId: string;
-  controllerDID?: { // This is PKP DID
-    id: string
+  controllerDID?: {
+    // This is PKP DID
+    id: string;
   };
   type: string;
   createdAt: string;
@@ -108,16 +115,16 @@ export type Link = {
   id: string;
   indexId?: string;
   indexerDID?: string;
-  content?: string
-  title?: string
-  url?: string
-  description?: string
-  language?: string
-  favicon?: string
+  content?: string;
+  title?: string;
+  url?: string;
+  description?: string;
+  language?: string;
+  favicon?: string;
   createdAt?: string;
   updatedAt?: string;
   deletedAt?: string;
-  images?: string[]
+  images?: string[];
   favorite?: boolean;
   tags?: string[];
 };
@@ -131,7 +138,6 @@ export interface Users {
   name?: string;
   bio?: string;
   avatar?: CID;
-  available?: boolean; // TODO debug
   createdAt?: string;
   updatedAt?: string;
 }
@@ -143,7 +149,7 @@ export interface LinkContentResult {
 }
 
 export interface SyncCompleteResult {
-  deletedCount: number,
+  deletedCount: number;
 }
 /**
  * Enums
@@ -160,13 +166,13 @@ export interface AccessControlCondition {
 }
 
 export interface IndexListState {
-  skip: number,
-  totalCount: number,
-  hasMore: boolean,
-  indexes?: Indexes[],
+  skip: number;
+  totalCount: number;
+  hasMore: boolean;
+  indexes?: Indexes[];
 }
 export interface MultipleIndexListState {
-  all: IndexListState,
-  owner: IndexListState,
-  starred: IndexListState,
+  all: IndexListState;
+  owner: IndexListState;
+  starred: IndexListState;
 }

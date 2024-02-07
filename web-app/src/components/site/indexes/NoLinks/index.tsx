@@ -1,9 +1,8 @@
 import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
-import { useApp } from "components/site/context/AppContext";
+import { useApp } from "@/context/AppContext";
 import React from "react";
-import { Indexes } from "types/entity";
 
 export interface NoLinksProps {
   search?: string;
@@ -11,9 +10,13 @@ export interface NoLinksProps {
   tabKey: string;
 }
 
-const NoLinks: React.FC<NoLinksProps> = ({ search, isOwner=false, tabKey }) => {
-  console.log("NoLinks", search, isOwner, tabKey)
-  const {viewedIndex} = useApp();
+const NoLinks: React.FC<NoLinksProps> = ({
+  search,
+  isOwner = false,
+  tabKey,
+}) => {
+  console.log("NoLinks", search, isOwner, tabKey);
+  const { viewedIndex } = useApp();
   return (
     <>
       <Row rowSpacing={5} fullWidth>
@@ -39,16 +42,21 @@ const NoLinks: React.FC<NoLinksProps> = ({ search, isOwner=false, tabKey }) => {
               {tabKey === "chat" ? (
                 isOwner ? (
                   <>
-                    <div>You don&apos;t have any items in {viewedIndex?.title} yet.</div>
+                    <div>
+                      You don&apos;t have any items in {viewedIndex?.title} yet.
+                    </div>
                     <div>Add an item to the index to chat.</div>
                   </>
                 ) : (
-                  <div>{viewedIndex?.title} doesn&apos;t have any items to chat with.</div>
+                  <div>
+                    {viewedIndex?.title} doesn&apos;t have any items to chat
+                    with.
+                  </div>
                 )
+              ) : isOwner ? (
+                `You don't have any items in ${viewedIndex?.title} yet.`
               ) : (
-                isOwner ?
-                  `You don't have any items in ${viewedIndex?.title} yet.` :
-                  `${viewedIndex?.title} index doesn't have any items yet.`
+                `${viewedIndex?.title} index doesn't have any items yet.`
               )}
             </Header>
           )}

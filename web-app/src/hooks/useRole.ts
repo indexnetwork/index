@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
-import { AuthStatus, useAuth } from 'components/site/context/AuthContext';
-import { useApp } from 'components/site/context/AppContext';
+import { useMemo } from "react";
+import { AuthStatus, useAuth } from "@/context/AuthContext";
+import { useApp } from "@/context/AppContext";
 
 export enum UserRole {
   VIEWER = "viewer",
@@ -38,5 +38,5 @@ export const useRole = () => {
     role,
     isOwner: role === UserRole.OWNER,
     isCreator: role === UserRole.OWNER || role === UserRole.CREATOR,
-  }
+  };
 };

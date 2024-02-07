@@ -1,6 +1,6 @@
-import { useApi } from "@/components/site/context/APIContext";
-import { useApp } from "@/components/site/context/AppContext";
-import { useAuth } from "@/components/site/context/AuthContext";
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import { useRole } from "@/hooks/useRole";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
@@ -22,8 +22,9 @@ export const IndexConversationHeader: React.FC = () => {
   const { session } = useAuth();
   const { apiService: api } = useApi();
   const [titleLoading, setTitleLoading] = useState(false);
-  const { viewedIndex, viewedProfile, setViewedIndex, indexes, setIndexes } =
-    useApp();
+  const {
+ viewedIndex, viewedProfile, setViewedIndex, indexes, setIndexes,
+} = useApp();
 
   // if (!viewedIndex || !viewedProfile) return null;
 
@@ -69,22 +70,21 @@ export const IndexConversationHeader: React.FC = () => {
       setViewedIndex(updatedIndex);
       setIndexes(
         indexes.map((index) =>
-          index.id === updatedIndex.id ? updatedIndex : index,
-        ),
+          (index.id === updatedIndex.id ? updatedIndex : index)),
       );
     },
     [viewedIndex, viewedProfile, api, setViewedIndex, indexes, setIndexes],
   );
 
-  if (!viewedIndex) return null;
+  // if (!viewedIndex) return null;
 
   return (
     <>
       <FlexRow>
         <Col centerBlock className="idxflex-grow-1">
-          {viewedIndex && (
-            <Link href={`/discovery/${viewedIndex.ownerDID?.id!}`}>
-              <Avatar size={20} user={viewedIndex.ownerDID} />
+          {
+            <Link href={`/discovery/${viewedIndex?.ownerDID?.id!}`}>
+              <Avatar size={20} user={viewedIndex?.ownerDID} />
               <Text
                 className="ml-3"
                 size="sm"
@@ -92,13 +92,13 @@ export const IndexConversationHeader: React.FC = () => {
                 fontWeight={500}
                 element="span"
               >
-                {viewedIndex.ownerDID?.name ||
-                  (viewedIndex.ownerDID &&
-                    maskDID(viewedIndex.ownerDID?.id!)) ||
-                  ""}
+                {viewedIndex?.ownerDID?.name
+                  || (viewedIndex?.ownerDID
+                    && maskDID(viewedIndex?.ownerDID?.id!))
+                  || ""}
               </Text>
             </Link>
-          )}
+          }
         </Col>
       </FlexRow>
 

@@ -11,7 +11,7 @@ import IconAddCircle from "components/base/Icon/IconAddCircle";
 import { Indexes } from "types/entity";
 
 export interface IndexOperationsPopupProps {
-  index: Indexes;
+  index?: Indexes;
   userIndexToggle(): void;
 }
 
@@ -36,31 +36,32 @@ const IndexOperationsPopup: React.FC<IndexOperationsPopupProps> = ({
             </Text>
           </Flex>
         </DropdownMenuItem>
-        {index?.did?.owned ? (
-          <>
-            <DropdownMenuItem divider />
-            <DropdownMenuItem onClick={userIndexToggle}>
-              <Flex alignitems="center">
-                <IconRemove />
-                <Text className="ml-3" theme="error" element="span" size="md">
-                  Remove
-                </Text>
-              </Flex>
-            </DropdownMenuItem>
-          </>
-        ) : (
-          <>
-            <DropdownMenuItem divider />
-            <DropdownMenuItem onClick={userIndexToggle}>
-              <Flex alignitems="center">
-                <IconAddCircle />
-                <Text className="ml-3" element="span" size="md">
-                  Add to my indexes
-                </Text>
-              </Flex>
-            </DropdownMenuItem>
-          </>
-        )}
+        {index?.roles?.owner
+          && (index?.did?.owned ? (
+            <>
+              <DropdownMenuItem divider />
+              <DropdownMenuItem onClick={userIndexToggle}>
+                <Flex alignitems="center">
+                  <IconRemove />
+                  <Text className="ml-3" theme="error" element="span" size="md">
+                    Remove
+                  </Text>
+                </Flex>
+              </DropdownMenuItem>
+            </>
+          ) : (
+            <>
+              <DropdownMenuItem divider />
+              <DropdownMenuItem onClick={userIndexToggle}>
+                <Flex alignitems="center">
+                  <IconAddCircle />
+                  <Text className="ml-3" element="span" size="md">
+                    Add to my indexes
+                  </Text>
+                </Flex>
+              </DropdownMenuItem>
+            </>
+          ))}
       </>
     }
   >

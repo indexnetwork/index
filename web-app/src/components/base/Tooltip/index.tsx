@@ -45,8 +45,8 @@ const Tooltip = (
 		>
 			{children}
 			{
-				visible &&
-				<div className={cc(["tooltip-tip", `tooltip-${position}`, wrapperClass || ""])}>
+				visible
+				&& <div className={cc(["tooltip-tip", `tooltip-${position}`, wrapperClass || ""])}>
 					{content}
 				</div>
 			}

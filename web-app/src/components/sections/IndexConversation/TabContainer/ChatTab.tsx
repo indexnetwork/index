@@ -1,9 +1,9 @@
-import React from "react";
-import AskIndexes from "@/components/site/indexes/AskIndexes";
-import { useApp } from "@/components/site/context/AppContext";
-import { useIndexConversation } from "../IndexConversationContext";
-import LoadingSection from "../../Loading";
 import { EmptyScreen } from "@/components/ai/empty-screen";
+import { useApp } from "@/context/AppContext";
+import AskIndexes from "@/components/site/indexes/AskIndexes";
+import React from "react";
+import LoadingSection from "../../Loading";
+import { useIndexConversation } from "../IndexConversationContext";
 
 export default function ChatTabSection() {
   const { viewedIndex, chatID } = useApp();
@@ -29,7 +29,6 @@ export default function ChatTabSection() {
     return chatID ? (
       <AskIndexes chatID={chatID} indexes={[viewedIndex?.id!]} />
     ) : null;
-  } else {
-    return <EmptyScreen setInput={() => {}} contextMessage="your responses" />;
   }
+    return <EmptyScreen setInput={() => {}} contextMessage="your responses" />;
 }

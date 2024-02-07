@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from "react";
+import CopyInput from "components/base/CopyInput";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
-import FlexRow from "components/layout/base/Grid/FlexRow";
 import Flex from "components/layout/base/Grid/Flex";
-import CopyInput from "components/base/CopyInput";
-import LitService from "../../../../services/lit-service";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import React, { useState } from "react";
 
 export interface IndexSettingsTabSectionProps {}
 

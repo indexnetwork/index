@@ -3,6 +3,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
+import { useApp } from "@/context/AppContext";
 import { ChatMessageActions } from "components/ai/chat-message-actions";
 import { MemoizedReactMarkdown } from "components/ai/markdown";
 import { CodeBlock } from "components/ai/ui/codeblock";
@@ -13,8 +14,6 @@ import Input from "components/base/Input";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { useAppSelector } from "hooks/store";
-import { selectProfile } from "store/slices/profileSlice";
 
 export interface ChatMessageProps {
   message: Message;
@@ -37,13 +36,13 @@ export function ChatMessage({
   index,
   editingIndex,
 }: ChatMessageProps) {
-  const profile = useAppSelector(selectProfile);
+  const { viewedProfile } = useApp();
 
   return (
     <FlexRow wrap={false} align={"start"} className="chat-message py-5">
       <Col>
         {message.role === "user" ? (
-          <Avatar size={24} user={profile} />
+          <Avatar size={24} user={viewedProfile} />
         ) : (
           <div
             style={{
@@ -97,7 +96,9 @@ export function ChatMessage({
                     </p>
                   );
                 },
-                code({ inline, className, children, ...props }) {
+                code({
+ inline, className, children, ...props
+}) {
                   if (children.length) {
                     if (children[0] === "▍") {
                       return (

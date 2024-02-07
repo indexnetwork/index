@@ -64,8 +64,8 @@ const SearchInput = (
 			{...inputProps}
 			inputSize={"lg"}
 			addOnBefore={<IconSearch width={20} height={20} />}
-			addOnAfter={loading ? (<Spin active={true} thickness="light" theme="secondary" />) :
-				(!disabled && showClear && query && <IconClose onClick={handleClear} style={{ cursor: "pointer" }} />)
+			addOnAfter={loading ? (<Spin active={true} thickness="light" theme="secondary" />)
+				: (!disabled && showClear && query && <IconClose onClick={handleClear} style={{ cursor: "pointer" }} />)
 			}
 			onChange={handleChange}
 			value={query}

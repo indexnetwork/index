@@ -16,8 +16,8 @@ function useScrollRestoration() {
 
 	function loadScroll() {
 		const isWindowExist = typeof window !== "undefined";
-		const record = isWindowExist &&
-			window.sessionStorage ? JSON.parse(window.sessionStorage.getItem("scrollPosition") || "undefined") : null;
+		const record = isWindowExist
+			&& window.sessionStorage ? JSON.parse(window.sessionStorage.getItem("scrollPosition") || "undefined") : null;
 		if (isWindowExist && router.pathname === record.pathname) {
 			window.scrollTo(0, parseInt(record.position));
 		}

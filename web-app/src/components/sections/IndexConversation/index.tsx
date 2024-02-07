@@ -1,11 +1,9 @@
-import { useEffect } from "react";
-
 import Flex from "components/layout/base/Grid/Flex";
+import { useApp } from "@/context/AppContext";
 import Head from "next/head";
-import { useApp } from "components/site/context/AppContext";
-import TabContainer from "./TabContainer";
-import { IndexConversationHeader } from "./IndexConversationHeader";
 import { IndexConversationProvider } from "./IndexConversationContext";
+import { IndexConversationHeader } from "./IndexConversationHeader";
+import TabContainer from "./TabContainer";
 
 const IndexConversationSection = () => {
   const { viewedIndex, fetchIndex } = useApp();
@@ -23,9 +21,10 @@ const IndexConversationSection = () => {
   // };
   //
 
-  useEffect(() => {
-    fetchIndex();
-  }, [fetchIndex]);
+  // useEffect(() => {
+  //   fetchIndex();
+  //   console.log("fetching index", viewedIndex);
+  // }, [fetchIndex]);
 
   return (
     <IndexConversationProvider>

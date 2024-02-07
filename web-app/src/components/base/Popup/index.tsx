@@ -76,9 +76,9 @@ const Popup: React.ForwardRefRenderFunction<
   const handleClick = (e: any) => {
     cancelHover.current = true;
     if (
-      !closeOnMenuClick &&
-      menuRef.current &&
-      menuRef.current.contains(e.target)
+      !closeOnMenuClick
+      && menuRef.current
+      && menuRef.current.contains(e.target)
     ) {
       return;
     }

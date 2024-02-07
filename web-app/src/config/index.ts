@@ -29,7 +29,6 @@ export const appConfig = {
       abbreviation: "matic",
       logo: "polygonLogo.svg",
       chainId: 137,
-
     },
     arbitrum: {
       value: "arbitrum",
@@ -88,5 +87,4 @@ export const appConfig = {
       chainId: 1313161554,
     },
   },
-
 };

@@ -1,47 +1,66 @@
-import { useCallback, useState } from "react";
 import SearchInput from "@/components/base/SearchInput";
 import Col from "@/components/layout/base/Grid/Col";
-import FlexRow from "@/components/layout/base/Grid/FlexRow";
-import { useApi } from "@/components/site/context/APIContext";
-import LinkInput from "@/components/site/input/LinkInput";
-import IndexItemList from "@/components/site/index-details/IndexItemList";
-import { useRole } from "@/hooks/useRole";
-import { useIndexConversation } from "../IndexConversationContext";
 import Flex from "@/components/layout/base/Grid/Flex";
-import { useApp } from "@/components/site/context/AppContext";
+import FlexRow from "@/components/layout/base/Grid/FlexRow";
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
+import IndexItemList from "@/components/site/index-details/IndexItemList";
+import LinkInput from "@/components/site/input/LinkInput";
+import { useRole } from "@/hooks/useRole";
 import { IndexItem } from "@/types/entity";
+import { useCallback, useState } from "react";
+import { useIndexConversation } from "../IndexConversationContext";
 
-export default function IndexTabSection() {
-  const { itemsState, setItemsState, loading, setLoading } =
-    useIndexConversation();
+export default function IndexItemsTabSection() {
+  const {
+    itemsState,
+    setItemsState,
+    loading,
+    setLoading,
+    fetchIndexItems,
+    // loadMoreItems,
+  } = useIndexConversation();
   const { isCreator } = useRole();
   const { apiService: api } = useApi();
   const [search, setSearch] = useState("");
 
   const { viewedIndex } = useApp();
 
+  const handleSearch = useCallback(
+    (searchQuery: string) => {
+      setSearch(searchQuery);
+      fetchIndexItems(true, { query: searchQuery }); // Reset cursor and pass query
+    },
+    [fetchIndexItems],
+  );
+
   const handleAddLink = useCallback(
     async (urls: string[]) => {
       if (!api || !viewedIndex) return;
+
       setLoading(true);
-      for (const url of urls) {
-        try {
-          const createdLink = await api.crawlLink(url);
-          if (createdLink) {
-            const resp = await api.createItem(viewedIndex.id, createdLink.id);
-            if (resp && resp.id) {
-              const createdItem = await api.getItem(viewedIndex.id, resp.id);
-              setItemsState({
-                items: [createdItem, ...itemsState.items],
-                cursor: itemsState.cursor,
-              });
-            }
-          }
-        } catch (error) {
-          console.error("Error adding link", error);
+      try {
+        const createdLink = await api.crawlLink(urls[0]);
+        if (!createdLink) {
+          throw new Error("Error creating link");
         }
+        const createdItem = await api.createItem(
+          viewedIndex.id,
+          createdLink.id,
+        );
+        console.log("create item", createdItem);
+        if (!createdItem) {
+          throw new Error("Error creating item");
+        }
+        setItemsState({
+          items: [createdItem, ...itemsState.items],
+          cursor: itemsState.cursor,
+        });
+      } catch (error) {
+        console.error("Error adding link", error);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     },
     [api, viewedIndex, setItemsState, setLoading],
   );
@@ -72,7 +91,7 @@ export default function IndexTabSection() {
         <Col className="idxflex-grow-1">
           <SearchInput
             loading={loading}
-            onSearch={setSearch}
+            onSearch={handleSearch}
             debounceTime={300}
             showClear
             defaultValue={search}

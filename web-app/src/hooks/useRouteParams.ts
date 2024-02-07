@@ -1,6 +1,6 @@
 // import { useParams } from 'next/navigation';
 
-import { useParams } from "next/navigation"
+import { useParams } from "next/navigation";
 
 export const useRouteParams = () => {
   const params = useParams();
@@ -9,7 +9,6 @@ export const useRouteParams = () => {
   return { id };
 };
 
-
 // index.network/discovery/:did
 // export const useRouteParams = () => {
 //   const path = usePathname();
@@ -17,4 +16,3 @@ export const useRouteParams = () => {
 
 //   return { did };
 // }
-
