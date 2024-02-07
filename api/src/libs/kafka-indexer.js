@@ -2,7 +2,7 @@ import dotenv from 'dotenv'
 import axios from 'axios'
 import { ItemService } from "../services/item.js";
 import { EmbeddingService } from "../services/embedding.js";
-import { getPKPSession } from "../libs/lit/index.js";
+import { getPKPSession, getPKPSessionForIndexer } from "../libs/lit/index.js";
 
 if(process.env.NODE_ENV !== 'production'){
     dotenv.config()
@@ -12,11 +12,11 @@ export const createIndexItemEvent = async (id) => {
     console.log("createIndexItemEvent", id)
 
     const itemService = new ItemService()
-    const indexItem = await itemService.getIndexItemById(id);
+    const indexItem = await itemService.getIndexItemById(id, false);
 
     try {
 
-        const indexSession = await getPKPSession(indexItem.index);
+        const indexSession = await getPKPSessionForIndexer(indexItem.index);
         await indexSession.did.authenticate();
 
         const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/embeddings`, {
