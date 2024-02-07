@@ -119,6 +119,14 @@ export const decodeDIDWithLit = (encodedDID) => {
 
 export const walletToDID = (chain, wallet) => `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`
 
+
+export const getPKPSessionForIndexer = async(index) => {
+  const session = await DIDSession.fromSession(process.env.INDEXER_DID_SESSION);
+  await session.did.authenticate()
+
+  const pkpSession =  await getPKPSession(session, index);
+  return pkpSession;
+}
 export const getPKPSession = async (session, index) => {
 
 	if(!session.did.authenticated){
