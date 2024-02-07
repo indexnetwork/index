@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-const { i18n } = require('./next-i18next.config');
+const { i18n } = require("./next-i18next.config");
 
 const nextConfig = {
   reactStrictMode: false,
@@ -32,12 +32,12 @@ const nextConfig = {
             value: "public, max-age=31536000, immutable",
           },
         ],
-      }
+      },
     ];
   },
-  compiler:{
-   styledComponents : true
+  compiler: {
+    styledComponents: true,
   },
-}
+};
 
-module.exports = nextConfig
+module.exports = nextConfig;

@@ -39,7 +39,7 @@ const indexItemFragment = `
     }`
 
 const transformIndexItem = (indexItem) => {
-    console.log(indexItem)
+
     const { __typename: type, indexedAt: _, ...rest } = indexItem.item;
     return {
         type,
@@ -66,7 +66,7 @@ export class ItemService {
         return this;
     }
 
-    async getIndexItem(indexId, itemId) {
+    async getIndexItem(indexId, itemId, transformation=true) {
 
         try {
             const {data, errors} = await this.client.executeQuery(`
@@ -99,7 +99,7 @@ export class ItemService {
                 return null;
             }
 
-            return transformIndexItem(data.indexItemIndex.edges[0].node);
+            return transformation ? transformIndexItem(data.indexItemIndex.edges[0].node) : data.indexItemIndex.edges[0].node;
 
         } catch (error) {
             // Log the error and rethrow it for external handling
@@ -108,7 +108,7 @@ export class ItemService {
         }
     }
     // Todo make it multimodel later.
-    async getIndexItemById(indexItemId) {
+    async getIndexItemById(indexItemId, transformation=true) {
 
         try {
             const {data, errors} = await this.client.executeQuery(`
@@ -127,7 +127,7 @@ export class ItemService {
                 throw new Error('Invalid response data');
             }
 
-            return transformIndexItem(data.node);
+            return transformation ?transformIndexItem(data.node) : data.node;
 
         } catch (error) {
             // Log the error and rethrow it for external handling
@@ -242,7 +242,8 @@ export class ItemService {
         }
         try {
 
-            const indexItem = await this.getIndexItem(indexId, itemId);
+            const indexItem = await this.getIndexItem(indexId, itemId, false);
+
             if (!indexItem) {
                 throw new Error('Index item does not exist.');
             }

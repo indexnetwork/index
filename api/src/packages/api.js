@@ -65,17 +65,17 @@ app.delete('/dids/:did/indexes/:indexId/:type', authCheckMiddleware, validator.p
   type: Joi.string().valid('own', 'star').required(),
 })), didController.removeIndex)
 
-app.patch('/dids/:did/profile', authCheckMiddleware, validator.body(Joi.object({
+app.patch('/profile', authCheckMiddleware, validator.body(Joi.object({
   name: Joi.string().optional(),
   bio: Joi.string().optional(),
   avatar: Joi.custom(isCID, "Avatar").optional().allow(null),
-}).or('name', 'bio', 'avatar')), validator.params(Joi.object({
-  did: Joi.custom(isDID, "DID").required(),
-})), didController.createProfile)
+}).or('name', 'bio', 'avatar')), didController.createProfile)
+
+app.get('/profile', authCheckMiddleware, didController.getProfileFromSession)
 
 app.get('/dids/:did/profile', validator.params(Joi.object({
   did: Joi.custom(isDID, "DID").required(),
-})), didController.getProfile)
+})), didController.getProfileByDID)
 
 // Indexes
 app.get('/indexes/:id', validator.params(Joi.object({
@@ -210,7 +210,7 @@ app.get('/nft/:chainName/:tokenAddress', infuraController.getCollectionMetadataH
 app.get('/nft/:chainName/:tokenAddress/:tokenId', infuraController.getNftMetadataHandler);
 app.get('/ens/:ensName', infuraController.getWalletByENSHandler);
 
-app.post('/site/upload_avatar', isImage.single('file'), fileController.uploadAvatar);
+app.post('/profile/upload_avatar', isImage.single('file'), fileController.uploadAvatar);
 
 app.post("/site/subscribe", validator.body(Joi.object({
   email: Joi.string().email().required(),

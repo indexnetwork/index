@@ -5,8 +5,7 @@ export function copyToClipboard(str?: string) {
 	if (navigator && navigator.clipboard) navigator.clipboard.writeText(str || "");
 	else {
 		const temp = document.createElement("input");
-		const newStyle: Partial<CSSStyleDeclaration> =
-    {
+		const newStyle: Partial<CSSStyleDeclaration> = {
     	position: "absolute",
     	left: "-5000px",
     	top: "-5000px",
@@ -30,9 +29,9 @@ export function generateRandomColor() {
 
 export function isSSR() {
 	return !(
-		typeof window !== "undefined" &&
-			window.document &&
-			window.document.createElement
+		typeof window !== "undefined"
+			&& window.document
+			&& window.document.createElement
 	);
 }
 

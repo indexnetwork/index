@@ -13,7 +13,7 @@ export const listItems = async (req, res, next) => {
         res.status(200).json(response);
 
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: error.message });
     }
 };
 
@@ -29,7 +29,7 @@ export const addItem = async (req, res, next) => {
         const item = await itemService.addItem(indexId, itemId);
         res.status(201).json(item);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: error.message });
     }
     //Queue embeddings.
 };
@@ -42,10 +42,10 @@ export const removeItem = async (req, res, next) => {
         const pkpSession = await getPKPSession(req.session, index);
 
         const itemService = new ItemService().setSession(pkpSession);
-        const item = await itemService.removeItem(indexId, itemId);
-        res.status(204);
+        await itemService.removeItem(indexId, itemId);
+        res.sendStatus(204);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(400).json({ error: error.message });
     }
     //Queue embeddings
 };

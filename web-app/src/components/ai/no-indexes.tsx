@@ -1,6 +1,6 @@
-import Flex from "components/layout/base/Grid/Flex";
+import { useApp } from "@/context/AppContext";
 import Button from "components/base/Button";
-import { useApp } from "hooks/useApp";
+import Flex from "components/layout/base/Grid/Flex";
 import Text from "../base/Text";
 
 export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
@@ -8,8 +8,8 @@ export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
 
   return (
     <Flex
-      flexDirection="column"
-      alignItems="center"
+      flexdirection="column"
+      alignitems="center"
       gap="4rem"
       style={{ margin: "auto", padding: "4rem 0" }}
     >
@@ -19,11 +19,11 @@ export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
         width={202}
         alt="illustration"
       />
-      <Flex flexDirection="column" alignItems="center">
+      <Flex flexdirection="column" alignitems="center">
         <Text fontFamily="freizeit" size="xl" fontWeight={700}>
-          {isSelfDid ?
-           "You don't have any index yet." :
-            "There are no indexes here, yet."}
+          {isSelfDid
+            ? "You don't have any index yet."
+            : "There are no indexes here, yet."}
         </Text>
         {isSelfDid && (
           <Text fontFamily="freizeit" size="xl" fontWeight={700}>

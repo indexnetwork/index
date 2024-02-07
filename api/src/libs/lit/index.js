@@ -119,13 +119,21 @@ export const decodeDIDWithLit = (encodedDID) => {
 
 export const walletToDID = (chain, wallet) => `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`
 
+
+export const getPKPSessionForIndexer = async(index) => {
+  const session = await DIDSession.fromSession(process.env.INDEXER_DID_SESSION);
+  await session.did.authenticate()
+
+  const pkpSession =  await getPKPSession(session, index);
+  return pkpSession;
+}
 export const getPKPSession = async (session, index) => {
 
 	if(!session.did.authenticated){
 		throw new Error("Unauthenticated DID");
 	}
 
-	const sessionCacheKey = `${session.did.parent}:${index.signerFunction}`
+	const sessionCacheKey = `${session.did.parent}:${index.id}:${index.signerFunction}`
 
 	const existingSessionStr = await redis.hGet("sessions", sessionCacheKey);
 
@@ -184,7 +192,7 @@ export const getPKPSession = async (session, index) => {
 			return null;
 		}
 
-		if(! resp.signatures.sig1 ){
+		if(!resp.signatures || !resp.signatures.sig1 ){
 			throw new Error("No signature returned")
 		}
 

@@ -1,13 +1,10 @@
-import React, { useContext } from "react";
-import { Indexes } from "../types/entity";
+// import React, { useContext } from "react";
+// import { Indexes } from "../types/entity";
 
-export interface IndexContextValue {
-	pkpCeramic: any;
-	index?: Indexes;
-	roles: any;
-}
-export const IndexContext = React.createContext<IndexContextValue>({
-	roles: { creator: false, owner: false },
-} as any);
+// export interface IndexContextValue {
+//   pkpCeramic: any;
+//   index?: Indexes;
+// }
+// export const IndexContext = React.createContext<IndexContextValue>({} as any);
 
-export const useIndex = () => useContext(IndexContext);
+// export const useIndex = () => useContext(IndexContext);

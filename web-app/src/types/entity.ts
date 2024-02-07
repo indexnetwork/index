@@ -6,35 +6,75 @@
 import { CID } from "multiformats";
 
 export type Indexes = {
-  id: string
-  title: string | null
-  collabAction: string
-  pkpPublicKey: string
-  signerFunction: string
-  signerPublicKey: string
-  controllerDID: { // This is PKP DID
-    id: string
+  id: string;
+  title: string;
+  collabAction: string;
+  pkpPublicKey: string;
+  signerFunction: string;
+  signerPublicKey: string;
+  did: {
+    owned: boolean;
+    starred: boolean;
+  };
+  roles: {
+    owner: boolean;
+    creator: boolean;
   };
   ownerDID: Users;
   createdAt: string;
   updatedAt: string;
   deletedAt: string;
   links: IndexLink[];
-  isOwner?: boolean;
-  isCreator: boolean;
-  isStarred?: boolean;
   isPermittedAddress?: boolean;
 };
 
+// {
+//   "type": "WebPage",
+//   "node": {
+//       "id": "kjzl6kcym7w8y7fjc89gmnkne7qpdz5ws5ryfji3i8dndjh2wxuii7z1anybovo",
+//       "title": "Post medium publishing",
+//       "favicon": null,
+//       "url": "https://www.paulgraham.com/publishing.html",
+//       "content": null,
+//       "createdAt": "2024-01-17T23:58:51.204Z",
+//       "updatedAt": "2024-01-17T23:58:51.204Z",
+//       "deletedAt": null
+//   }
+// },
+
+export type WebNode = {
+  id: string;
+  title: string;
+  favicon?: string;
+  url: string;
+  content?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string;
+};
+
+export type IndexWebPageItem = {
+  type: string;
+  node: WebNode;
+};
+
+export type IndexItem = IndexWebPageItem;
+
 export type IndexLink = {
-  id?: string
+  id?: string;
   indexId?: string;
   linkId?: string;
-  indexerDID?: { // This is PKP DID
-    id: string
-  } | string;
-  controllerDID?: { // This is PKP DID
-    id: string
+  content?: string;
+  url?: string;
+  indexerDID?:
+    | {
+        // This is PKP DID
+        id: string;
+      }
+    | string;
+  controllerDID?: {
+    // This is PKP DID
+    id: string;
   };
   link?: Link;
   index?: Indexes;
@@ -47,7 +87,7 @@ export type IndexLink = {
     "link.tags"?: string;
     "link.url"?: string;
     "link.title"?: string;
-  }
+  };
 };
 
 /**
@@ -57,8 +97,9 @@ export type IndexLink = {
 export type UserIndex = {
   id: string;
   indexId: string;
-  controllerDID?: { // This is PKP DID
-    id: string
+  controllerDID?: {
+    // This is PKP DID
+    id: string;
   };
   type: string;
   createdAt: string;
@@ -71,19 +112,19 @@ export type UserIndex = {
  *
  */
 export type Link = {
-  id?: string;
+  id: string;
   indexId?: string;
   indexerDID?: string;
-  content?: string
-  title?: string
-  url?: string
-  description?: string
-  language?: string
-  favicon?: string
+  content?: string;
+  title?: string;
+  url?: string;
+  description?: string;
+  language?: string;
+  favicon?: string;
   createdAt?: string;
   updatedAt?: string;
   deletedAt?: string;
-  images?: string[]
+  images?: string[];
   favorite?: boolean;
   tags?: string[];
 };
@@ -93,11 +134,10 @@ export type Link = {
  *
  */
 export interface Users {
-  id?: string; // TODO: why is this optional?
+  id: string;
   name?: string;
   bio?: string;
   avatar?: CID;
-  available?: boolean; // TODO debug
   createdAt?: string;
   updatedAt?: string;
 }
@@ -109,7 +149,7 @@ export interface LinkContentResult {
 }
 
 export interface SyncCompleteResult {
-  deletedCount: number,
+  deletedCount: number;
 }
 /**
  * Enums
@@ -126,13 +166,13 @@ export interface AccessControlCondition {
 }
 
 export interface IndexListState {
-  skip: number,
-  totalCount: number,
-  hasMore: boolean,
-  indexes?: Indexes[],
+  skip: number;
+  totalCount: number;
+  hasMore: boolean;
+  indexes?: Indexes[];
 }
 export interface MultipleIndexListState {
-  all: IndexListState,
-  owner: IndexListState,
-  starred: IndexListState,
+  all: IndexListState;
+  owner: IndexListState;
+  starred: IndexListState;
 }
