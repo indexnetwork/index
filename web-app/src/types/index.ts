@@ -1,6 +1,11 @@
 import { NextPage } from "next/types";
 import React, { ReactElement, ReactNode } from "react";
 
+export enum DiscoveryType {
+  INDEX = "index",
+  DID = "did",
+}
+
 /**
  * Common Types
  */

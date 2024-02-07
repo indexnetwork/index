@@ -17,8 +17,6 @@ export const useRole = () => {
       return UserRole.VIEWER;
     }
 
-    // console.log('role viewedIndex', viewedIndex);
-
     if (!viewedIndex) {
       return UserRole.VIEWER;
     }

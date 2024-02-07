@@ -1,18 +1,18 @@
-// import { useParams } from 'next/navigation';
-
-import { useParams } from "next/navigation";
+import { DiscoveryType } from "@/types";
+import { useParams, usePathname } from "next/navigation";
+import { useMemo } from "react";
 
 export const useRouteParams = () => {
   const params = useParams();
   const id = decodeURIComponent(params.id as string);
 
-  return { id };
+  const path = usePathname();
+  const isLanding = useMemo(() => path === "/", [path]);
+
+  const discoveryType = useMemo(
+    () => (id.includes("did:") ? DiscoveryType.DID : DiscoveryType.INDEX),
+    [id],
+  );
+
+  return { id, isLanding, discoveryType };
 };
-
-// index.network/discovery/:did
-// export const useRouteParams = () => {
-//   const path = usePathname();
-//   const did = decodeURIComponent(path.split('/')[2]);
-
-//   return { did };
-// }

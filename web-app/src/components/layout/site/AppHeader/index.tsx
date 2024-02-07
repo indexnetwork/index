@@ -11,11 +11,14 @@ import IconSettings from "components/base/Icon/IconSettings";
 import Text from "components/base/Text";
 import Flex from "components/layout/base/Grid/Flex";
 import Navbar, { NavbarMenu } from "components/layout/base/Navbar";
-import { usePathname } from "next/navigation";
-import React, { useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import React, { useCallback } from "react";
+import { useRouteParams } from "@/hooks/useRouteParams";
 
 const AppHeader = () => {
-  const { connect, disconnect, status } = useAuth();
+  const { connect, disconnect, status, setStatus } = useAuth();
+  const router = useRouter();
+  const { isLanding } = useRouteParams();
   const {
     setCreateModalVisible,
     rightSidebarOpen,
@@ -24,8 +27,15 @@ const AppHeader = () => {
     viewedProfile,
   } = useApp();
 
-  const path = usePathname();
-  const isLanding = useMemo(() => path === "/", [path]);
+  const handleDisconnect = useCallback(async () => {
+    try {
+      disconnect();
+      setStatus(AuthStatus.DISCONNECTED);
+      router.push("/");
+    } catch (err) {
+      console.log(err);
+    }
+  }, [disconnect, setStatus, router]);
 
   const handleConnect = useCallback(async () => {
     try {
@@ -53,7 +63,7 @@ const AppHeader = () => {
     return (
       <Navbar logoSize="mini" className="site-navbar">
         <NavbarMenu placement="right">
-          {status === AuthStatus.LOADING || status === AuthStatus.IDLE ? (
+          {status === AuthStatus.LOADING ? (
             <div
               style={{
                 background: "var(--gray-6)",
@@ -144,7 +154,7 @@ const AppHeader = () => {
                 </Flex>
               </DropdownMenuItem> */}
               <DropdownMenuItem divider />
-              <DropdownMenuItem onClick={disconnect}>
+              <DropdownMenuItem onClick={handleDisconnect}>
                 <Flex alignitems="center">
                   <IconDisconnect
                     className="icon-error"

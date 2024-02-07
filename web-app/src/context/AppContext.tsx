@@ -1,6 +1,7 @@
 import { useApi } from "@/context/APIContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import { DiscoveryType } from "@/types";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import CreateModal from "components/site/modal/CreateModal";
 import { useRouter } from "next/navigation";
@@ -10,7 +11,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import { Indexes, Users } from "types/entity";
@@ -25,11 +25,6 @@ export enum IndexListTabKey {
   ALL = "all",
   OWNER = "owner",
   STARRED = "starred",
-}
-
-export enum DiscoveryType {
-  index = "index",
-  did = "did",
 }
 
 type TabKey = string;
@@ -83,7 +78,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
-  const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
+  const [transactionApprovalWaiting, setTransactionApprovalWaiting] =
+    useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [rightTabKey, setRightTabKey] = useState<TabKey>("history");
@@ -91,10 +87,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [loading, setLoading] = useState(false);
   const [chatID, setChatID] = useState<string | undefined>(undefined);
 
-  const discoveryType = useMemo(
-    () => (id.includes("did:") ? DiscoveryType.did : DiscoveryType.index),
-    [id],
-  );
+  const { isLanding, discoveryType } = useRouteParams();
 
   const fetchIndexes = useCallback(
     async (did: string) => {
@@ -113,7 +106,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     try {
       console.log("fetching index", id, api);
       if (!api || !id) return;
-      if (discoveryType !== DiscoveryType.index) return;
+      if (discoveryType !== DiscoveryType.INDEX) return;
 
       const index = await api.getIndex(id);
       setViewedIndex(index);
@@ -199,34 +192,37 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, []);
 
   useEffect(() => {
-    // const determineDiscoveryType = () => {
-    //   if (id.includes("did:")) {
-    //     return DiscoveryType.did;
-    //   }
-    //   return DiscoveryType.index;
-    // };
+    if (isLanding) return;
 
-    // const newDiscoveryType = determineDiscoveryType();
-    // setDiscoveryType(newDiscoveryType);
-    // console.log("newDiscoveryType", newDiscoveryType);
-
-    let targetDID = id;
-    // if (newDiscoveryType === DiscoveryType.index && session) {
-    //   targetDID = session.did.parent;
-    // }
-    //
-    if (discoveryType === DiscoveryType.index && session) {
-      targetDID = session.did.parent;
+    let targetDID;
+    if (discoveryType === DiscoveryType.INDEX) {
+      if (session) {
+        targetDID = session.did.parent;
+      } else {
+        fetchIndex();
+        targetDID = viewedIndex?.ownerDID?.id;
+      }
+    } else if (discoveryType === DiscoveryType.DID) {
+      targetDID = id;
     }
 
     if (targetDID) {
       fetchProfile(targetDID);
       fetchIndexes(targetDID);
     }
-  }, [id, session, fetchProfile, fetchIndexes]);
+  }, [
+    discoveryType,
+    id,
+    fetchIndex,
+    fetchIndexes,
+    fetchProfile,
+    isLanding,
+    session,
+    viewedIndex,
+  ]);
 
   // useEffect(() => {
-  //   if (discoveryType === DiscoveryType.did) {
+  //   if (discoveryType === DiscoveryType.DID) {
   //     setLoading(true);
   //     try {
   //       fetchIndexes(id);
@@ -237,8 +233,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   //     }
   //   }
   // }, [discoveryType, id, fetchIndexes]);
-
-  // Additional functions like fetchViewedProfile, fetchIndex, etc. would be defined here...
 
   const contextValue: AppContextValue = {
     discoveryType,

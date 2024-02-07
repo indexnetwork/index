@@ -4,7 +4,7 @@ import Button from "components/base/Button";
 import IconMenu from "components/base/Icon/IconMenu";
 import LogoFull from "components/base/Logo/LogoFull";
 import LogoMini from "components/base/Logo/LogoMini";
-import { AuthContext, AuthStatus } from "@/context/AuthContext";
+import { AuthContext, AuthStatus, useAuth } from "@/context/AuthContext";
 import { useYOffSet } from "hooks/useYOffset";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useContext, useEffect, useState } from "react";
@@ -13,6 +13,7 @@ import Col from "../Grid/Col";
 import Container from "../Grid/Container";
 import Flex from "../Grid/Flex";
 import FlexRow from "../Grid/FlexRow";
+import { useRouteParams } from "@/hooks/useRouteParams";
 
 export interface NavbarProps
   extends React.DetailedHTMLProps<
@@ -52,13 +53,11 @@ const Navbar = ({
   const [bgSticky, setBgSticky] = useState(false);
 
   // const { did } = useAppSelector(selectConnection);
-  const { session, status } = useContext(AuthContext);
-  const path = usePathname();
+  const { session, status } = useAuth();
+  const { isLanding } = useRouteParams();
 
   const router = useRouter();
   const { leftSidebarOpen, setLeftSidebarOpen } = useApp();
-
-  const isLanding = path === "/";
 
   /*
   const [showTestnetWarning, setShowTestnetWarning] = useState(false);

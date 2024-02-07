@@ -29,8 +29,8 @@ export interface AuthContextType {
   connect(): Promise<void>;
   disconnect(): void;
   status: AuthStatus;
+  setStatus: (status: AuthStatus) => void;
   session?: DIDSession;
-  pkpPublicKey?: string;
   userDID?: string;
   isLoading?: boolean;
 }
@@ -40,7 +40,6 @@ const defaultAuthContext = {
   disconnect: () => {},
   status: AuthStatus.IDLE,
   session: undefined,
-  pkpPublicKey: undefined,
   userDID: undefined,
   isLoading: false,
 };
@@ -49,7 +48,8 @@ const defaultAuthContext = {
 //   session: DIDSession,
 // };
 
-export const AuthContext = React.createContext<AuthContextType>(defaultAuthContext);
+export const AuthContext =
+  React.createContext<AuthContextType>(defaultAuthContext);
 
 export const AuthProvider = ({ children }: any) => {
   const SESSION_KEY = "did";
@@ -57,11 +57,9 @@ export const AuthProvider = ({ children }: any) => {
   //   originNFTModalVisible,
   // } = useAppSelector(selectConnection);
   // const dispatch = useAppDispatch();
-  const router = useRouter();
 
   const [session, setSession] = useState<DIDSession | undefined>();
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
-  const [pkpPublicKey, setPkpPublicKey] = useState<string | undefined>();
 
   const userDID = session?.did.parent;
 
@@ -82,9 +80,6 @@ export const AuthProvider = ({ children }: any) => {
   const disconnect = () => {
     localStorage.removeItem(SESSION_KEY);
     setSession(undefined);
-    // dispatch(disconnectApp());
-    // router.push("/");
-    router.push("/");
   };
 
   const checkSession = async (): Promise<boolean> => {
@@ -105,7 +100,7 @@ export const AuthProvider = ({ children }: any) => {
     return !existingSession.isExpired;
   };
 
-  const startSession = async (): Promise<void> => {
+  const startSession = useCallback(async (): Promise<void> => {
     const ethProvider = window.ethereum;
 
     if (ethProvider.chainId !== appConfig.testNetwork.chainId) {
@@ -155,7 +150,7 @@ export const AuthProvider = ({ children }: any) => {
 
     localStorage.setItem(SESSION_KEY, newSession.serialize());
     setSession(newSession);
-  };
+  }, []);
 
   const authenticate = useCallback(async () => {
     if (!window.ethereum) {
@@ -186,7 +181,7 @@ export const AuthProvider = ({ children }: any) => {
       console.error("Error during authentication process:", err);
       setStatus(AuthStatus.FAILED);
     }
-  }, [status]);
+  }, [status, checkSession, startSession]);
 
   return (
     <AuthContext.Provider
@@ -194,8 +189,8 @@ export const AuthProvider = ({ children }: any) => {
         connect: authenticate,
         disconnect,
         status,
+        setStatus,
         session,
-        pkpPublicKey,
         userDID,
         isLoading,
       }}
