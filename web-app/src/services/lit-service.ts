@@ -20,7 +20,9 @@ class LitService {
     const mintCost = await litContracts.pkpNftContract.read.mintCost();
     const acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
 
-    const mint = (await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
+    /* eslint-disable */
+    const mint =
+      (await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
         2,
         [2],
         [acid],
