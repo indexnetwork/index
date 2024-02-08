@@ -29,8 +29,7 @@ export class SearchService {
                 body.indexIds,
                 body.model,
                 body.page,
-                body.skip,
-                10
+                body.limit,
             );
 
             const documents = await retriever.invoke({
@@ -38,7 +37,7 @@ export class SearchService {
             });
 
             return {
-                sources: documents
+                items: documents
             }
         
         } catch (e) {

@@ -150,8 +150,6 @@ export const getPKPSession = async (session, index) => {
 		}
 	}
 
-
-
 	const authSig = {
 		signedMessage: SiweMessage.fromCacao(session.cacao).toMessage(),
 		address: getAddress(session.did.parent.split(":").pop()),
@@ -169,6 +167,7 @@ export const getPKPSession = async (session, index) => {
 		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 			litNetwork: 'cayenne',
 			debug: false,
+			// debug: true,
 		});
 		await litNodeClient.connect();
 		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
@@ -177,7 +176,7 @@ export const getPKPSession = async (session, index) => {
 			authSig,
 			jsParams: {
 				authSig,
-				chain: "ethereum",
+				chain: "ethereum", // polygon
 				publicKey: index.signerPublicKey,
 				didKey: didKey.id,
 				nonce: randomString(10),

@@ -27,7 +27,7 @@ async function start() {
 
     await redis.connect()
     const consumerItems = kafka.consumer({
-        groupId: `index-consumer-dev-12`,
+        groupId: `index-consumer-dev-13`,
         sessionTimeout: 300000,
         heartbeatInterval: 10000,
         rebalanceTimeout: 3000,
