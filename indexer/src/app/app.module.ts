@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, Search } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { IndexerController } from '../indexer/controller/indexer.controller';
@@ -10,6 +10,8 @@ import { IndexerService } from 'src/indexer/service/indexer.service';
 import { HttpModule } from '@nestjs/axios';
 import { AgentModule } from './modules/agent.module';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { SearchController } from 'src/search/controller/search.controller';
+import { SearchService } from 'src/search/service/search.service';
 
 @Module({
   imports: [
@@ -20,31 +22,18 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
     ChromaModule.register(process.env.OPENAI_API_KEY),
     AgentModule.register(),
 
-    // TODO: Add event streamer to agents
-    // ClientsModule.register([{
-		// 	name: 'KAFKA_SERVICE',
-		// 	transport: Transport.KAFKA,
-		// 	options: {
-		// 		client: {
-		// 			clientId: 'indexer',
-		// 			brokers: [process.env.INDEXER_KAFKA_URI],
-		// 		},
-		// 		consumer: {
-		// 			groupId: 'indexer-agent',
-		// 		},
-		// 	},
-		// }]),
-
   ],
   controllers: [
     AppController, 
     IndexerController, 
-    ChatController
+    ChatController,
+    SearchController
   ],
   providers: [
     AppService, 
     ChatService, 
-    IndexerService
+    IndexerService,
+    SearchService
   ],
 })
 export class AppModule {}

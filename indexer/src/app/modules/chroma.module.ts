@@ -18,7 +18,7 @@ export class ChromaModule {
                             if (!process.env.OPENAI_API_KEY) throw new Error('OpenAI API key is required');
                             
                             Logger.debug(process.env.CHROMA_URL, 'ChromaModule');
-                            Logger.debug(process.env.COLLECTION_NAME, 'ChromaModule');
+                            Logger.debug(process.env.CHROMA_COLLECTION_NAME, 'ChromaModule');
 
                             const vectorStore = await Chroma.fromExistingCollection(
                                 new OpenAIEmbeddings({
@@ -26,7 +26,7 @@ export class ChromaModule {
                                     modelName: process.env.MODEL_EMBEDDING,
                                 }),
                                 { 
-                                    collectionName: process.env.COLLECTION_NAME,
+                                    collectionName: process.env.CHROMA_COLLECTION_NAME,
                                     url: process.env.CHROMA_URL,
                                 }
                             );
