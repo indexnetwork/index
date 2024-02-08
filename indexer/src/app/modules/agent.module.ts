@@ -51,12 +51,12 @@ export class Agent {
         }
     }
 
-    public async createRetrieverChain(chain_type: string = 'query-v0', index_ids: string[], model_type: string = 'OpenAI', page: number, skip: number, limit: number): Promise<any> {
+    public async createRetrieverChain(chain_type: string = 'query-v0', index_ids: string[], model_type: string = 'OpenAI', page: number, limit: number): Promise<any> {
 
         switch (chain_type) {
 
             case 'query-v0':
-                return this.createQueryRetriever(index_ids, model_type, page, skip, limit);
+                return this.createQueryRetriever(index_ids, model_type, page, limit);
 
             default:
                 throw new Error('Chain type not supported');   
@@ -67,8 +67,12 @@ export class Agent {
     private async createRAGChain (chroma_indices: string[], model_type: string): Promise<any>{
 
         let model: any;
-        if (model_type == 'OpenAI') { model = new ChatOpenAI({ modelName:  process.env.MODEL_CHAT }) }
-        else if (model_type == 'MistralAI') { model = new ChatMistralAI({ modelName: process.env.MISTRAL_MODEL_CHAT, apiKey: process.env.MISTRAL_API_KEY }) }
+        if (model_type == 'OpenAI') { 
+            model = new ChatOpenAI({ 
+                modelName:  process.env.MODEL_CHAT,
+                streaming: true,
+            }) 
+        } else if (model_type == 'MistralAI') { model = new ChatMistralAI({ modelName: process.env.MISTRAL_MODEL_CHAT, apiKey: process.env.MISTRAL_API_KEY }) }
 
         const vectorStore = await Chroma.fromExistingCollection( 
             new OpenAIEmbeddings({ modelName: process.env.MODEL_EMBEDDING}),
@@ -76,14 +80,19 @@ export class Agent {
                 url: process.env.CHROMA_URL, 
                 collectionName: process.env.CHROMA_COLLECTION_NAME, 
                 filter: {
-                    indexId: chroma_indices
+                    indexId: {
+                        $in: chroma_indices
+                    }
             }
         });
         
+        const documentCount = await vectorStore.collection.count();
+        if (!documentCount) throw new Error('Vector store not found');
+
         const retriever = vectorStore.asRetriever();
 
+        
         // TODO: Prior information context -> glossary, etc.
-
         // Prompt link: https://langstream.ai/2023/10/13/rag-chatbot-with-conversation/
         const questionPrompt = PromptTemplate.fromTemplate(`
             Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.
@@ -126,7 +135,6 @@ export class Agent {
         }
 
         // const selfAskPrompt = await pull("hwchase17/self-ask-with-search")
-
         const standalone_question = RunnableSequence.from([
             {
                 question: (input) => input.question,
@@ -136,7 +144,6 @@ export class Agent {
             model,
             new StringOutputParser(),
         ]);
-
 
         const answerChain = RunnableSequence.from([
             {
@@ -156,15 +163,12 @@ export class Agent {
                         context: (input) => {
 
                             // Logger.log(input.context, "ChatService:answerChain:inputContext");
-                            
                             const docs_with_metadata = input.context.docs.map((doc: any) => {
                                 return JSON.stringify(doc.metadata) + "\n" + doc.pageContent
                             })
-
                             // const serialized = formatDocumentsAsString(input.context.docs)
                             const serialized = docs_with_metadata.join("\n");
-
-                            Logger.log(serialized.length, "ChatService:answerChain:contextLength");
+                            // Logger.log(serialized?.length, "ChatService:answerChain:contextLength");
                             return serialized
                         },
                         question:  (input) => {
@@ -185,77 +189,17 @@ export class Agent {
             }
         ])
 
-
         const final_chain = standalone_question.pipe(answerChain);
-
+        
         return final_chain
 
     }
 
-    private async createQueryRetriever (chroma_indices: string[], model_type: string, page: number, skip: number, limit: number) {
+    private async createQueryRetriever (chroma_indices: string[], model_type: string, page: number, limit: number) {
 
         // Not implemented yet
         // https://js.langchain.com/docs/modules/data_connection/retrievers/self_query/chroma-self-query
 
-        const attributeInfo: AttributeInfo[] = [
-            {
-                name: 'indexId',
-                description: "The id of the generated index",
-                type: "string",
-            },
-            {
-                name: 'indexTitle',
-                description: "The title of the generated index",
-                type: "string",
-            },
-            {
-                name: 'indexCreatedAt',
-                description: 'Date of index creation',
-                type: 'date',
-            },
-            {
-                name: 'indexUpdatedAt',
-                description: 'Date of last update of the index',
-                type: 'date',
-            },
-            {
-                name: "webPageId",
-                description: 'The id of the indexed document (html, docx, pdf, etc)',
-                type: 'string',
-            },
-            {
-                name: "webPageUrl",
-                description: 'The web url of the indexed document (html, docx, pdf, etc)',
-                type: 'string',
-            },
-            {
-                name: 'webPageTitle',
-                description: "The title of the indexed document (html, docx, pdf, etc)",
-                type: 'string',
-            },
-            {
-                name: "webPageCreatedAt",
-                description: 'The date of creation the indexed document',
-                type: 'string',
-            },
-            {
-                name: "webPageContent",
-                description: 'The content of the indexed document',
-                type: 'string',
-            },
-            {
-                name: "webPageUpdatedAt",
-                description: 'The date of last update of the indexed document',
-                type: 'string',
-            },
-            {
-                name: "webPageDeletedAt",
-                description: 'The date of deletion of the indexed document',
-                type: 'string',
-            },
-            
-        ];
-        const documentContents = 'Document metadata'
 
         let model: any;
         if (model_type == 'OpenAI' ) { model = new ChatOpenAI({ modelName:  process.env.MODEL_CHAT }) }
@@ -275,14 +219,28 @@ export class Agent {
                 url: process.env.CHROMA_URL, 
                 collectionName: process.env.CHROMA_COLLECTION_NAME, 
                 filter: { 
-                    indexId: chroma_indices
+                    $and: [
+                        {
+                            indexId: {
+                                $in: chroma_indices
+                            }
+                        },
+                        {
+                            webPageContent: {
+                                $exists: true
+                            }
+                        }
+                    ]
             }
         });
+
 
         const final_chain = RunnableSequence.from([
             {
                 documents: async (input) => {
+                    // Get embeddings of the query
                     const queryEmbedding = await embeddings.embedQuery(input.query)
+                    // Fetch most similar semantic content according to query
                     const docs = await vectorStore.collection.query({
                         queryEmbeddings: [queryEmbedding],
                         nResults: (page * limit),
@@ -292,9 +250,9 @@ export class Agent {
             },
             {
                 documents: (input) => {
+                    // Return ids and similarities
                     const ids = input.documents?.ids[0]
                     const similarities = input.documents?.distances[0]
-
                     return ids.map(function(id, i) {
                         return {
                             id: id,
@@ -303,6 +261,7 @@ export class Agent {
                     });
                 }
             },
+            // Add pagination to retrieved documents
             RunnableLambda.from((input) => {
                 return input.documents.slice((page-1)*limit, page*limit)
             })

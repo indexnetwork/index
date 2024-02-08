@@ -29,12 +29,13 @@ export class QueryRequestDTO {
 
     @ApiProperty({
         description: 'Number of documents to skip',
-        example: 0
+        example: 0,
+        default: 10
     })
     @IsNumber()
     @Min(0)
     @Max(100)
-    skip: number;
+    limit: number;
 
     @ApiPropertyOptional({
         description: 'ChromaDB query filters for metadata',

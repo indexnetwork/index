@@ -1126,6 +1126,11 @@
     expect "^29.0.0"
     pretty-format "^29.0.0"
 
+"@types/json-patch@^0.0.33":
+  version "0.0.33"
+  resolved "https://registry.yarnpkg.com/@types/json-patch/-/json-patch-0.0.33.tgz#dafb56dd009d9790b39a790730fc0fdd499b3142"
+  integrity sha512-XQ9hIoJCtnvTCnIV+p+SWQbY8Bt1pe+RuTkPG7lQeRCa9sPwYbhb0aYzM2paVPk0SGvV70R33rxjPjBcJ4Kdxw==
+
 "@types/json-schema@*", "@types/json-schema@^7.0.12", "@types/json-schema@^7.0.8":
   version "7.0.15"
   resolved "https://registry.yarnpkg.com/@types/json-schema/-/json-schema-7.0.15.tgz#596a1747233694d50f6ad8a7869fcb6f56cf5841"

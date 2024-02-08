@@ -8,6 +8,7 @@ if(process.env.NODE_ENV !== 'production'){
     dotenv.config()
 }
 
+// Index Item (C)
 export const createIndexItemEvent = async (id) => {
     console.log("createIndexItemEvent", id)
 
@@ -17,10 +18,18 @@ export const createIndexItemEvent = async (id) => {
     try {
 
         const indexSession = await getPKPSessionForIndexer(indexItem.index);
+
         await indexSession.did.authenticate();
 
+        // TODO: 
+        // Crawl can be null due to some reasons,
+        // need to handle separately.
+        console.log("Indexer Item URL", `${process.env.LLM_INDEXER_HOST}/indexer/embedding`)
+        console.log("Indexer Item", indexItem.item.content)
+        console.log("Indexer Item", indexItem.item.title)
+
         const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embedding`, {
-            text: indexItem.item.content
+            content: 'This is a test content'
         })
         const embeddingService = new EmbeddingService().setSession(indexSession)
         const embedding = await embeddingService.createEmbedding({
@@ -39,22 +48,22 @@ export const createIndexItemEvent = async (id) => {
     }
 
 }
+
+// Index item (UD)
 export const updateIndexItemEvent = async (id) => {
     console.log("updateIndexItemEvent", id)
-}
-
-export const updateWebPageEvent = async (id) => {
-    console.log("updateWebPageEvent", id)
 
     const itemService = new ItemService()
-    const webPage = await itemService.getIndexItemById(id);
+    const indexItem = await itemService.getIndexItemById(id, false);
+
 
     try {
 
-        const indexSession = await getPKPSession(webPage.index);
-        await indexSession.did.authenticate();
+        const indexSession = await getPKPSessionForIndexer(indexItem.index);
 
-        if (webPage.item.deletedAt) { 
+        await indexSession.did.authenticate();
+    
+        if (webPage.deletedAt) { 
             const deleteResponse = await axios.delete(`${process.env.LLM_INDEXER_HOST}/indexer/item:${webPage.item.id}`);
             
             if (deleteResponse.status === 200) {
@@ -63,8 +72,6 @@ export const updateWebPageEvent = async (id) => {
                 console.log("IndexItem Deletion Failed.")
             }
         }
-
-        console.log(`${JSON.stringify(webPage.item)} `)
 
         const updateResponse = await axios.put(
             `${process.env.LLM_INDEXER_HOST}/indexer/index`, 
@@ -77,6 +84,40 @@ export const updateWebPageEvent = async (id) => {
         } else {
             console.log("IndexItem Update Failed.")
         }
+
+        // 
+        const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embedding`, {
+            content: indexItem.item.content
+        })
+        const embeddingService = new EmbeddingService().setSession(indexSession)
+        const embedding = await embeddingService.createEmbedding({
+            "indexId": indexItem.indexId,
+            "itemId": indexItem.itemId,
+            "modelName": embeddingResponse.data.model,
+            "category": "document",
+            "vector": embeddingResponse.data.vector,
+            "description": "Default document embeddings",
+        });
+
+        console.log("Embedding created", embedding.id)
+
+    } catch (e) {
+        console.log("Indexer updateIndexItemEvent error:", e.message);
+    }
+}
+
+export const updateWebPageEvent = async (id) => {
+    console.log("updateWebPageEvent", id)
+
+    const itemService = new ItemService()
+    const webPage = await itemService.getIndexItemById(id, false);
+
+    try {
+
+        const indexSession = await getPKPSession(webPage.index);
+        await indexSession.did.authenticate();
+
+        console.log("Indexer Item", webPage.deletedAt)
         
     } catch (e) {
         console.log(e)
@@ -119,11 +160,11 @@ export const createEmbeddingEvent = async (id) => {
 
     try {
         const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/index`, payload)
+        console.log("IndexItem Indexed with it's content and embeddings.")
     } catch (e) {
         console.log(e)
     }
 
-    console.log("IndexItem Indexed with it's content and embeddings.")
 
 }
 

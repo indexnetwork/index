@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, Post, Put, Query } from '@nestjs/common';
 import { IndexerService } from '../service/indexer.service';
 import { CrawlRequestBody, EmbeddingRequestBody, IndexDeleteQuery, IndexItemDeleteQuery, IndexRequestBody, IndexUpdateBody, IndexUpdateQuery } from '../schema/indexer.schema';
 import { ChromaClient } from 'chromadb';
@@ -20,18 +20,19 @@ export class IndexerController {
         return this.indexerService.embed(body.content);
     }
 
+    // INDEX-WISE OPERATIONS
+
     @Post('/index')
     @ApiQuery({ name: 'indexId', required: true })
-    async index(@Query('indexId') indexId: string, @Body() body: IndexRequestBody) {
+    async createIndex(@Query('indexId') indexId: string, @Body() body: IndexRequestBody) {
         return this.indexerService.index(indexId, body);
     }
 
-    @Put('/index')
+    @Patch('/index')
     @ApiQuery({ name: 'indexId', required: true })
-    @ApiQuery({ name: 'indexItemId', required: true })
-    // TODO: Can update webpage without indexId -> must change content of indexes including webpage
-    async update(@Query('indexId') indexId: string, @Query('indexItemId') indexItemId: string, @Body() body: IndexUpdateBody) {
-        return this.indexerService.update(indexId, indexItemId, body);
+    async updateIndex(@Query('indexId') indexId: string, @Body() body: IndexUpdateQuery) {
+        // TODO: Add update whole index -> update all index items
+        // return this.indexerService.update(indexId, null);
     }
 
     @Delete('/index')
@@ -40,10 +41,25 @@ export class IndexerController {
         return this.indexerService.delete(indexId, null);
     }
 
-    @Delete('/item')
-    @ApiQuery({ name: 'indexId', required: true })
+
+    // INDEX ITEM-WISE OPERATIONS
+
+    @Put('/item')
+    @ApiQuery({ name: 'indexItemId', required: false })
+    // TODO: Can update webpage without indexId -> must change content of indexes including webpage
+    async createIndexItem(@Query('indexId') indexId: string, @Query('indexItemId') indexItemId: string, @Body() body: IndexUpdateBody) {
+        return this.indexerService.update(indexId, indexItemId, body);
+    }
+
+    @Patch('/item')
     @ApiQuery({ name: 'indexItemId', required: true })
-    async deleteItem(@Query('indexId') indexId: string, @Query('indexItemId') indexItemId: string) {
+    async updateIndexItem(@Query('indexId') indexId: string, @Body() body: IndexUpdateQuery) {
+        // return this.indexerService.update(indexId, null, body);
+    }
+
+    @Delete('/item')
+    @ApiQuery({ name: 'indexItemId', required: true })
+    async deleteIndexItem(@Query('indexId') indexId: string, @Query('indexItemId') indexItemId: string) {
         return this.indexerService.delete(indexId, indexItemId);
     }
 
