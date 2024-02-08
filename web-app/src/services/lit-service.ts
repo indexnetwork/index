@@ -18,8 +18,11 @@ class LitService {
     await litContracts.connect();
 
     const mintCost = await litContracts.pkpNftContract.read.mintCost();
-    const acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
 
+    const mint = await litContracts.pkpNftContract.write.mintNext(2, { value: mintCost });
+
+    const wait = await mint.wait();
+    /*
     const mint = (await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
         2,
         [2],
@@ -32,19 +35,22 @@ class LitService {
           value: mintCost,
         },
       )) as any;
-    const wait = await mint.wait();
-
-    /* eslint-disable */
-    const tokenIdFromEvent = wait?.logs
-      ? wait.logs[0].topics[1]
-      : wait?.logs[0].topics[1];
-    const tokenIdNumber = BigInt(tokenIdFromEvent).toString();
-    const pkpPublicKey =
-      await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
-    console.log(
-      `superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
-    );
-
+    */
+    const pkpMintedEventTopic = ethers.id("PKPMinted(uint256,bytes)");
+		const eventLog = wait.logs.find(
+			(log: { topics: string[]; }) => log.topics[0] === pkpMintedEventTopic,
+		);
+		if (!eventLog) {
+			throw new Error("PKP minted event not found");
+		}
+			const tokenIdFromEvent = eventLog.topics[1];
+		const tokenIdNumber = BigInt(tokenIdFromEvent).toString();
+		const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
+		console.log(
+			`superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
+		);
+		const acid = litContracts.utils.getBytesFromMultihash(appConfig.defaultCID);
+		const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenIdNumber, acid, []);
     return {
       tokenIdFromEvent,
       tokenIdNumber,
@@ -84,8 +90,8 @@ class LitService {
     if (existingSessionStr) {
       const es = JSON.parse(existingSessionStr);
       if (
-        es.isPermittedAddress ||
-        (es.isCreator && es.collabAction === collabAction)
+        es.isPermittedAddress
+        || (es.isCreator && es.collabAction === collabAction)
       ) {
         const existing = await DIDSession.fromSession(es.session);
         await existing.did.authenticate();
