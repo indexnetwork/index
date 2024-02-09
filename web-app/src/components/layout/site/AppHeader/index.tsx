@@ -24,7 +24,7 @@ const AppHeader = () => {
     rightSidebarOpen,
     setRightSidebarOpen,
     setEditProfileModalVisible,
-    viewedProfile,
+    userProfile,
   } = useApp();
 
   const handleDisconnect = useCallback(async () => {
@@ -176,7 +176,7 @@ const AppHeader = () => {
         >
           <Avatar
             size={32}
-            user={viewedProfile}
+            user={userProfile}
             className="site-navbar__avatar"
             hoverable
           />
