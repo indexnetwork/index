@@ -13,7 +13,7 @@ const LoadingText: React.FC<LoadingTextProps> = ({
 }) => {
   if (val !== undefined) {
     return <>{children}</>;
-  } else {
+  }
     return (
       <>
         {loadingComponent || (
@@ -30,7 +30,6 @@ const LoadingText: React.FC<LoadingTextProps> = ({
         )}
       </>
     );
-  }
 };
 
 export default LoadingText;

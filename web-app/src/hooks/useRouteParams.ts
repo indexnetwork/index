@@ -24,5 +24,11 @@ export const useRouteParams = () => {
     [discoveryType],
   );
 
-  return { id, isLanding, discoveryType, isDID, isIndex };
+  return {
+    id,
+    isLanding,
+    discoveryType,
+    isDID,
+    isIndex,
+  };
 };

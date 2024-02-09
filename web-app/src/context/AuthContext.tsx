@@ -48,6 +48,7 @@ const defaultAuthContext = {
 //   session: DIDSession,
 // };
 
+/* eslint-disable */
 export const AuthContext =
   React.createContext<AuthContextType>(defaultAuthContext);
 

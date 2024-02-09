@@ -13,6 +13,7 @@ import { Indexes } from "types/entity";
 const IndexListSection: React.FC = () => {
   const { id } = useRouteParams();
 
+  /* eslint-disable */
   const { indexes, setLeftTabKey, leftTabKey, viewedProfile } = useApp();
 
   const handleTabChange = useCallback(

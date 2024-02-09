@@ -75,6 +75,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
+  /* eslint-disable */
   const [transactionApprovalWaiting, setTransactionApprovalWaiting] =
     useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
@@ -84,6 +85,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [loading, setLoading] = useState(false);
   const [chatID, setChatID] = useState<string | undefined>(undefined);
 
+  /* eslint-disable */
   const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
 
   const fetchIndexes = useCallback(

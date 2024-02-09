@@ -4,16 +4,16 @@ import Button from "components/base/Button";
 import IconMenu from "components/base/Icon/IconMenu";
 import LogoFull from "components/base/Logo/LogoFull";
 import LogoMini from "components/base/Logo/LogoMini";
-import { AuthContext, AuthStatus, useAuth } from "@/context/AuthContext";
+import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useYOffSet } from "hooks/useYOffset";
-import { usePathname, useRouter } from "next/navigation";
-import React, { useContext, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useState } from "react";
+import { useRouteParams } from "@/hooks/useRouteParams";
 import Text from "../../../base/Text";
 import Col from "../Grid/Col";
 import Container from "../Grid/Container";
 import Flex from "../Grid/Flex";
 import FlexRow from "../Grid/FlexRow";
-import { useRouteParams } from "@/hooks/useRouteParams";
 
 export interface NavbarProps
   extends React.DetailedHTMLProps<
