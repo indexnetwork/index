@@ -24,7 +24,7 @@ export interface EditProfileModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {}
 
 const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
-  const { viewedProfile, setUserProfile } = useApp();
+  const { userProfile, setUserProfile } = useApp();
   const { apiService: api } = useApi();
   const handleClose = () => {
     modalProps.onClose?.();
@@ -35,7 +35,7 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
 
   const formik = useFormik<Partial<Users>>({
     initialValues: {
-      ...viewedProfile,
+      ...userProfile,
     },
     onSubmit: async (values) => {
       try {
@@ -68,10 +68,10 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
   };
 
   useEffect(() => {
-    if (!viewedProfile) return;
+    if (!userProfile) return;
 
-    viewedProfile.avatar && setImage(viewedProfile.avatar);
-  }, [viewedProfile]);
+    userProfile.avatar && setImage(userProfile.avatar);
+  }, [userProfile]);
 
   return (
     <Modal

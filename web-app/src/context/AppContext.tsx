@@ -1,6 +1,7 @@
 import { useApi } from "@/context/APIContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import { DiscoveryType } from "@/types";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import CreateModal from "components/site/modal/CreateModal";
 import { useRouter } from "next/navigation";
@@ -10,7 +11,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import { Indexes, Users } from "types/entity";
@@ -25,11 +25,6 @@ export enum IndexListTabKey {
   ALL = "all",
   OWNER = "owner",
   STARRED = "starred",
-}
-
-export enum DiscoveryType {
-  index = "index",
-  did = "did",
 }
 
 type TabKey = string;
@@ -74,16 +69,15 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const { apiService: api } = useApi();
   const { session } = useAuth();
   const router = useRouter();
-  // const [discoveryType, setDiscoveryType] = useState<DiscoveryType | undefined>(
-  //   undefined,
-  // );
   const [indexes, setIndexes] = useState<Indexes[]>([]);
   const [viewedIndex, setViewedIndex] = useState<Indexes | undefined>();
   const [viewedProfile, setViewedProfile] = useState<Users | undefined>();
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
-  const [transactionApprovalWaiting, setTransactionApprovalWaiting] = useState(false);
+  /* eslint-disable */
+  const [transactionApprovalWaiting, setTransactionApprovalWaiting] =
+    useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
   const [rightTabKey, setRightTabKey] = useState<TabKey>("history");
@@ -91,10 +85,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [loading, setLoading] = useState(false);
   const [chatID, setChatID] = useState<string | undefined>(undefined);
 
-  const discoveryType = useMemo(
-    () => (id.includes("did:") ? DiscoveryType.did : DiscoveryType.index),
-    [id],
-  );
+  /* eslint-disable */
+  const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
 
   const fetchIndexes = useCallback(
     async (did: string) => {
@@ -113,7 +105,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     try {
       console.log("fetching index", id, api);
       if (!api || !id) return;
-      if (discoveryType !== DiscoveryType.index) return;
+      if (!isIndex) return;
+      if (viewedIndex?.id === id) return;
 
       const index = await api.getIndex(id);
       setViewedIndex(index);
@@ -121,7 +114,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       console.error("Error fetching index", error);
       // Handle error appropriately
     }
-  }, [api, id, discoveryType]);
+  }, [api, id, discoveryType, viewedIndex]);
 
   const handleTransactionCancel = useCallback(() => {
     setTransactionApprovalWaiting(false);
@@ -178,7 +171,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       try {
         if (!api) return;
         const profile = await api.getProfile(did);
-        setViewedProfile(profile);
+        return profile;
       } catch (error) {
         console.error("Error fetching profile", error);
         // Handle error appropriately
@@ -186,6 +179,41 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     },
     [api],
   );
+
+  const handleProfileChange = useCallback(async () => {
+    if (isLanding) return;
+
+    let targetDID;
+    if (isIndex && !viewedProfile) {
+      if (viewedIndex) {
+        targetDID = viewedIndex?.ownerDID?.id;
+      }
+    }
+
+    if (isDID) {
+      targetDID = id;
+    }
+
+    if (targetDID) {
+      const profile = await fetchProfile(targetDID);
+      setViewedProfile(profile);
+    }
+  }, [isLanding, isIndex, viewedProfile, viewedIndex, id, fetchProfile]);
+
+  const handleUserProfileChange = useCallback(async () => {
+    if (session) {
+      const profile = await fetchProfile(session?.did.parent);
+      setUserProfile(profile);
+    }
+  }, [session, fetchProfile]);
+
+  useEffect(() => {
+    setViewedProfile(userProfile);
+  }, [userProfile]);
+
+  useEffect(() => {
+    handleUserProfileChange();
+  }, [handleUserProfileChange]);
 
   useEffect(() => {
     setChatID((prevChatID) => {
@@ -199,46 +227,14 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, []);
 
   useEffect(() => {
-    // const determineDiscoveryType = () => {
-    //   if (id.includes("did:")) {
-    //     return DiscoveryType.did;
-    //   }
-    //   return DiscoveryType.index;
-    // };
-
-    // const newDiscoveryType = determineDiscoveryType();
-    // setDiscoveryType(newDiscoveryType);
-    // console.log("newDiscoveryType", newDiscoveryType);
-
-    let targetDID = id;
-    // if (newDiscoveryType === DiscoveryType.index && session) {
-    //   targetDID = session.did.parent;
-    // }
-    //
-    if (discoveryType === DiscoveryType.index && session) {
-      targetDID = session.did.parent;
+    if (viewedProfile) {
+      fetchIndexes(viewedProfile.id);
     }
+  }, [viewedProfile?.id]);
 
-    if (targetDID) {
-      fetchProfile(targetDID);
-      fetchIndexes(targetDID);
-    }
-  }, [id, session, fetchProfile, fetchIndexes]);
-
-  // useEffect(() => {
-  //   if (discoveryType === DiscoveryType.did) {
-  //     setLoading(true);
-  //     try {
-  //       fetchIndexes(id);
-  //     } catch (error) {
-  //       console.error("Error fetching indexes", error);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   }
-  // }, [discoveryType, id, fetchIndexes]);
-
-  // Additional functions like fetchViewedProfile, fetchIndex, etc. would be defined here...
+  useEffect(() => {
+    handleProfileChange();
+  }, [handleProfileChange]);
 
   const contextValue: AppContextValue = {
     discoveryType,

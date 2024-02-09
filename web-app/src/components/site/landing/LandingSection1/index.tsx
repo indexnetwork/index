@@ -1,31 +1,18 @@
 "use client";
 
-import Header from "components/base/Header";
-import Text from "components/base/Text";
-import React, { useContext, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 import cc from "classcat";
 import Button from "components/base/Button";
-import { useRouter } from "next/navigation";
-import { AuthContext, AuthStatus } from "@/context/AuthContext";
-
-import { useTranslation } from "next-i18next";
+import Header from "components/base/Header";
+import Text from "components/base/Text";
+import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import Col from "components/layout/base/Grid/Col";
 import LandingSection from "../LandingSection";
 import cm from "./style.module.scss";
 
 const LandingSection1 = () => {
-  const router = useRouter();
-  const { t } = useTranslation(["common", "components"]);
-
-  const { status, session, connect } = useContext(AuthContext);
-
-  useEffect(() => {
-    if (status === AuthStatus.CONNECTED) {
-      router.push(`/discovery/${session?.did.parent}`);
-    }
-  }, [status]);
+  const { connect } = useAuth();
 
   const handleConnect = async () => {
     try {

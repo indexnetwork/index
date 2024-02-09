@@ -25,6 +25,7 @@
   "rules": {
     "no-console": "off",
     "implicit-arrow-linebreak": "off",
+    "object-curly-newline": "off",
     "linebreak-style": "off",
     "no-plusplus": "off",
     "no-unused-vars": "off",

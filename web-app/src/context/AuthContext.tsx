@@ -7,7 +7,6 @@ import { getAccountId } from "@didtools/pkh-ethereum";
 import { getAddress } from "@ethersproject/address";
 import { randomBytes, randomString } from "@stablelib/random";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
-import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useState } from "react";
 import { switchTestNetwork } from "utils/helper";
 
@@ -29,8 +28,8 @@ export interface AuthContextType {
   connect(): Promise<void>;
   disconnect(): void;
   status: AuthStatus;
+  setStatus: (status: AuthStatus) => void;
   session?: DIDSession;
-  pkpPublicKey?: string;
   userDID?: string;
   isLoading?: boolean;
 }
@@ -39,8 +38,8 @@ const defaultAuthContext = {
   connect: async () => {},
   disconnect: () => {},
   status: AuthStatus.IDLE,
+  setStatus: (status: AuthStatus) => {},
   session: undefined,
-  pkpPublicKey: undefined,
   userDID: undefined,
   isLoading: false,
 };
@@ -49,7 +48,9 @@ const defaultAuthContext = {
 //   session: DIDSession,
 // };
 
-export const AuthContext = React.createContext<AuthContextType>(defaultAuthContext);
+/* eslint-disable */
+export const AuthContext =
+  React.createContext<AuthContextType>(defaultAuthContext);
 
 export const AuthProvider = ({ children }: any) => {
   const SESSION_KEY = "did";
@@ -57,34 +58,33 @@ export const AuthProvider = ({ children }: any) => {
   //   originNFTModalVisible,
   // } = useAppSelector(selectConnection);
   // const dispatch = useAppDispatch();
-  const router = useRouter();
 
   const [session, setSession] = useState<DIDSession | undefined>();
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
-  const [pkpPublicKey, setPkpPublicKey] = useState<string | undefined>();
 
   const userDID = session?.did.parent;
+  const isLoading = status === AuthStatus.LOADING;
+
+  const handleInitialCheck = useCallback(async () => {
+    const res = await checkSession();
+    console.log("Check session result", res);
+  }, []);
 
   useEffect(() => {
     // TODO: no force connect
     // authenticate();
-    // checkSession();
-  }, [status]);
-
-  const isLoading = status === AuthStatus.LOADING;
+    handleInitialCheck();
+  }, [handleInitialCheck]);
 
   // DEBUG
-  useEffect(() => {
-    if (!session) return;
-    console.log("Session changed", session);
-  }, [session]);
+  // useEffect(() => {
+  //   if (!session) return;
+  //   console.log("Session changed", session);
+  // }, [session]);
 
   const disconnect = () => {
     localStorage.removeItem(SESSION_KEY);
     setSession(undefined);
-    // dispatch(disconnectApp());
-    // router.push("/");
-    router.push("/");
   };
 
   const checkSession = async (): Promise<boolean> => {
@@ -102,10 +102,11 @@ export const AuthProvider = ({ children }: any) => {
     const existingSession = await DIDSession.fromSession(sessionStr);
     console.log("Existing session", existingSession);
     setSession(existingSession);
+    setStatus(AuthStatus.CONNECTED);
     return !existingSession.isExpired;
   };
 
-  const startSession = async (): Promise<void> => {
+  const startSession = useCallback(async (): Promise<void> => {
     const ethProvider = window.ethereum;
 
     if (ethProvider.chainId !== appConfig.testNetwork.chainId) {
@@ -155,7 +156,7 @@ export const AuthProvider = ({ children }: any) => {
 
     localStorage.setItem(SESSION_KEY, newSession.serialize());
     setSession(newSession);
-  };
+  }, []);
 
   const authenticate = useCallback(async () => {
     if (!window.ethereum) {
@@ -186,7 +187,7 @@ export const AuthProvider = ({ children }: any) => {
       console.error("Error during authentication process:", err);
       setStatus(AuthStatus.FAILED);
     }
-  }, [status]);
+  }, [status, checkSession, startSession]);
 
   return (
     <AuthContext.Provider
@@ -194,8 +195,8 @@ export const AuthProvider = ({ children }: any) => {
         connect: authenticate,
         disconnect,
         status,
+        setStatus,
         session,
-        pkpPublicKey,
         userDID,
         isLoading,
       }}

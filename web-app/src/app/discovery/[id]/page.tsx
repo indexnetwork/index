@@ -1,7 +1,8 @@
 "use client";
 
 // import LoadingSection from "@/components/sections/Loading";
-import { DiscoveryType, useApp } from "@/context/AppContext";
+import { useApp } from "@/context/AppContext";
+import { DiscoveryType } from "@/types";
 import DiscoveryLayout from "components/layout/site/DiscoveryLayout";
 import IndexConversationSection from "components/sections/IndexConversation";
 import UserConversationSection from "components/sections/UserConversation";
@@ -29,9 +30,9 @@ const Discovery = () => {
     <DiscoveryLayout>
       {/* {!discoveryType && <LoadingSection />} */}
 
-      {discoveryType === DiscoveryType.did && <UserConversationSection />}
+      {discoveryType === DiscoveryType.DID && <UserConversationSection />}
 
-      {discoveryType === DiscoveryType.index && <IndexConversationSection />}
+      {discoveryType === DiscoveryType.INDEX && <IndexConversationSection />}
     </DiscoveryLayout>
   );
 };

@@ -1,3 +1,4 @@
+import { useApp } from "@/context/AppContext";
 import cc from "classcat";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
@@ -7,8 +8,8 @@ import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { useApp } from "@/context/AppContext";
 import { maskDID } from "utils/helper";
+import LoadingText from "../base/Loading";
 import IndexListSection from "./IndexList";
 
 const AppLeft = () => {
@@ -46,55 +47,32 @@ const AppLeft = () => {
               </Col>
               <Col className="idxflex-grow-1 ml-6">
                 <Flex flexdirection={"column"}>
-                  {!viewedProfile ? (
-                    <>
-                      <Text
-                        style={{
-                          width: "8em",
-                          background: "var(--gray-2)",
-                          height: "1.5em",
-                        }}
-                        className={"my-1"}
-                        theme="gray6"
-                        size="sm"
-                        verticalAlign="middle"
-                        fontWeight={500}
-                        element="p"
-                      ></Text>
-                      <Text
-                        style={{
-                          width: "16em",
-                          background: "var(--gray-2)",
-                          height: "1.5em",
-                        }}
-                        className={"my-0"}
-                        theme="gray6"
-                        size="sm"
-                        verticalAlign="middle"
-                        fontWeight={500}
-                        element="p"
-                      ></Text>
-                    </>
-                  ) : (
-                    <>
+                  {/* {"viewedProfile " + JSON.stringify(viewedProfile)} */}
+                  <>
+                    <LoadingText val={viewedProfile?.name || viewedProfile?.id}>
                       <Header level={4} className={"mb-1"}>
-                        {viewedProfile?.name
-                          || (viewedProfile?.id
-                            ? maskDID(viewedProfile?.id!)
-                            : "")}
+                        {
+                          /* eslint-disable */
+                          viewedProfile?.name ||
+                            (viewedProfile?.id
+                              ? maskDID(viewedProfile?.id!)
+                              : "")
+                        }
                       </Header>
-                      <Text
-                        className={"my-0"}
-                        theme="gray6"
-                        size="sm"
-                        verticalAlign="middle"
-                        fontWeight={500}
-                        element="p"
-                      >
-                        {viewedProfile?.bio}
-                      </Text>
-                    </>
-                  )}
+                    </LoadingText>
+                    {/* <LoadingText val={viewedProfile?.bio}> */}
+                    <Text
+                      className={"my-0"}
+                      theme="gray6"
+                      size="sm"
+                      verticalAlign="middle"
+                      fontWeight={500}
+                      element="p"
+                    >
+                      {viewedProfile?.bio}
+                    </Text>
+                    {/* </LoadingText> */}
+                  </>
                 </Flex>
               </Col>
             </FlexRow>
