@@ -15,15 +15,15 @@ async function bootstrap() {
   const port = process.env.PORT || 3000;
 
 
-  const corsOptions: CorsOptions = {
-    origin: `http://localhost:${port}`, // Specify the front-end URL
-    credentials: true, // Enable reading cookies from the request
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    maxAge: 24 * 60 * 60 * 5, // Set the maximum age of preflight requests to 5 days
-  };
+  // const corsOptions: CorsOptions = {
+  //   origin: `http://localhost:${port}`, // Specify the front-end URL
+  //   credentials: true, // Enable reading cookies from the request
+  //   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  //   maxAge: 24 * 60 * 60 * 5, // Set the maximum age of preflight requests to 5 days
+  // };
 
-  // Enable CORS with the specified options.
-  app.enableCors(corsOptions);
+  // // Enable CORS with the specified options.
+  // app.enableCors(corsOptions);
   // Use global validation pipes for input validation.
   app.useGlobalPipes(new ValidationPipe());
 
