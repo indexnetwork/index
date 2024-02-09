@@ -61,7 +61,6 @@ export class QueryRequestDTO {
     })
     desc: boolean;
 
-
     @ApiPropertyOptional({
         description: 'Chain type to be used',
         example: 'query-v0'

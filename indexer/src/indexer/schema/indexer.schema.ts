@@ -198,7 +198,7 @@ export class IndexRequestBody {
         example: ''
     })
     @Type(() => String)
-    webPageContent: string;
+    webPageContent: string | null;
 
     @ApiProperty({
         description: 'Date of web page indexing',

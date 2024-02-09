@@ -1,11 +1,11 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { Chroma } from "@langchain/community/vectorstores/chroma";
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { UnstructuredLoader } from 'langchain/document_loaders/fs/unstructured'
 import { JSONLoader } from "langchain/document_loaders/fs/json";
 
 import { IndexDeleteQuery, IndexItemDeleteQuery, IndexRequestBody, IndexUpdateBody } from '../schema/indexer.schema';
-import { HttpService } from '@nestjs/axios';
+import { HttpModule, HttpService } from '@nestjs/axios';
 import * as fs from 'fs';
 import { MIME_TYPE } from '../schema/indexer.schema';
 
@@ -94,13 +94,13 @@ export class IndexerService {
      */
     async index(indexId: string, body: IndexRequestBody): Promise<{ message: string }> {
 
-        const chromaID = indexId + body.webPageId;
+        Logger.log(`Indexing ${JSON.stringify(body)}`, 'indexerService:index');
+        
+        const chromaID = await this.generateChromaID(indexId, body.webPageId);
         
         try {
 
-            let metadata = {
-                source: body.webPageId
-            }
+            let metadata = {}
 
             const metadata_keys = [
                 "indexId", "indexTitle", "indexCreatedAt", "indexUpdatedAt",
@@ -114,7 +114,7 @@ export class IndexerService {
             });
 
             const documents = [{
-                pageContent: body.webPageContent,
+                pageContent: body.webPageContent ?? 'This is a test content',
                 metadata
             }]
 
@@ -128,16 +128,16 @@ export class IndexerService {
             console.log(e); throw e;
         }
     }
-
+    
     /**
      * @description Updates the document at ChromaDB with the given indexId and indexItemId
      * 
      * @param body 
      * @returns Success or error message
      */
-    async update(indexId: string, indexItemId: string, body: IndexUpdateBody): Promise<{ message: string }> {
+    async update(indexId: string , indexItemId: string, body: IndexUpdateBody): Promise<{ message: string }> {
 
-        const chromaID = indexId + indexItemId;
+        const chromaID = await this.generateChromaID(indexId, indexItemId);
 
         try {
 
@@ -149,7 +149,7 @@ export class IndexerService {
             if (body.metadata) { updated['metadata'] = body.metadata; }
     
             const response = await this.chromaClient.collection.update(updated)
-            
+
             return {
                 message: `Successfully updated ${chromaID}`
             }
@@ -171,11 +171,11 @@ export class IndexerService {
      */
     async delete(indexId: string, indexItemId: string | null): Promise<{ message: string }> {
 
+        let response;
+
+        const chromaID = await this.generateChromaID(indexId, indexItemId);
+
         try {
-
-            let response;
-
-            const chromaID = indexId + '-' + indexItemId;  
 
             if (indexItemId) { 
 
@@ -183,11 +183,14 @@ export class IndexerService {
                     ids: [chromaID],
                     limit: 1,
                 })
-                if (res.ids.length === 0) throw new Error('Delete failed, document not found');
+
+                if (res.ids.length === 0) Logger.log('Delete failed, document not found', 'indexerService:delete');
 
                 const response = await this.chromaClient.collection.delete({ ids: [chromaID] }) 
             
-                if (!response) throw new Error('Delete failed');
+                Logger.log(`Delete Response ${JSON.stringify(response)}`, 'indexerService:delete');
+                
+                // if (!response) throw new Error('Delete failed');
 
                 return {
                     message: `Successfully deleted ${JSON.stringify(response)}`
@@ -204,7 +207,7 @@ export class IndexerService {
 
                 response = await this.chromaClient.collection.delete({ ids: res?.ids })
 
-                if (!response) throw new Error('Delete failed');
+                // if (!response) throw new Error('Delete failed');
 
                 return {
                     message: `Successfully deleted ${response.ids.length} documents`
@@ -224,7 +227,11 @@ export class IndexerService {
      * @param content
      * @returns Embedding vector
     */
-    async embed(content: string): Promise<{ model: string; vector: number[]; }>  {
+    async embed(content: string | null): Promise<{ model: string; vector: number[]; } | HttpStatus.OK>  {
+
+        // If no content, return OK 
+        // This is a temporary fix for the API for now
+        if (!content) return HttpStatus.OK;
 
         try {
 
@@ -237,9 +244,9 @@ export class IndexerService {
 
             const embedding = await embeddings.embedDocuments([content]);
 
+            Logger.log(`Embedded successfully`, 'indexerService:embed');
             return {
                 model: process.env.MODEL_EMBEDDING,
-    
                 vector: embedding[0]
             };
         }
@@ -247,6 +254,11 @@ export class IndexerService {
             console.log(e);
         }
 
+    }
+
+    private async generateChromaID(indexId: string, indexItemId: string): Promise<string> {
+    
+        return indexId + '-' + indexItemId;
     }
 
 }

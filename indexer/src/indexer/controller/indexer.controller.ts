@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Logger, Patch, Post, Put, Query } from '@nestjs/common';
 import { IndexerService } from '../service/indexer.service';
 import { CrawlRequestBody, EmbeddingRequestBody, IndexDeleteQuery, IndexItemDeleteQuery, IndexRequestBody, IndexUpdateBody, IndexUpdateQuery } from '../schema/indexer.schema';
 import { ChromaClient } from 'chromadb';
@@ -15,7 +15,7 @@ export class IndexerController {
         return this.indexerService.crawl(body.url);
     }
 
-    @Post('/embedding')
+    @Post('/embeddings')
     async embeddings(@Body() body: EmbeddingRequestBody) {
         return this.indexerService.embed(body.content);
     }
@@ -24,15 +24,8 @@ export class IndexerController {
 
     @Post('/index')
     @ApiQuery({ name: 'indexId', required: true })
-    async createIndex(@Query('indexId') indexId: string, @Body() body: IndexRequestBody) {
+    async updateIndex(@Query('indexId') indexId: string, @Body() body: IndexRequestBody) {
         return this.indexerService.index(indexId, body);
-    }
-
-    @Patch('/index')
-    @ApiQuery({ name: 'indexId', required: true })
-    async updateIndex(@Query('indexId') indexId: string, @Body() body: IndexUpdateQuery) {
-        // TODO: Add update whole index -> update all index items
-        // return this.indexerService.update(indexId, null);
     }
 
     @Delete('/index')
@@ -53,13 +46,14 @@ export class IndexerController {
 
     @Patch('/item')
     @ApiQuery({ name: 'indexItemId', required: true })
-    async updateIndexItem(@Query('indexId') indexId: string, @Body() body: IndexUpdateQuery) {
-        // return this.indexerService.update(indexId, null, body);
+    async updateIndexItem(@Query('indexId') indexId: string, @Query('indexItemId') indexItemId: string, @Body() body: IndexUpdateBody) {
+        return this.indexerService.update(indexId, indexItemId, body);
     }
 
     @Delete('/item')
     @ApiQuery({ name: 'indexItemId', required: true })
     async deleteIndexItem(@Query('indexId') indexId: string, @Query('indexItemId') indexItemId: string) {
+        Logger.log(`Deleting ${indexId} ${indexItemId}`, 'indexerController:deleteIndexItem');
         return this.indexerService.delete(indexId, indexItemId);
     }
 

@@ -1,9 +1,20 @@
+import axios from 'axios';
 
 export const chat = async (req, res, next) => {
-  try{
-    let resp = await axios.post(`${process.env.LLM_INDEXER_HOST}/chat/stream`, req.body, {
+  try {
+    const chatRequest = {
+      indexIds: req.body.indexIds,
+      input: {
+        question: req.body.messages.at(-1).content,
+        chat_history: [...req.body.messages.slice(0, -1)]
+      }
+    }
+    let resp = await axios.post(
+      `${process.env.LLM_INDEXER_HOST}/chat/stream`,
+      chatRequest,
+      {
         responseType: 'stream'
-    })
+      })
     res.set(resp.headers);
     resp.data.pipe(res);
   } catch (error) {
@@ -13,12 +24,22 @@ export const chat = async (req, res, next) => {
   }
 };
 
-
 export const search = async (req, res, next) => {
-  try{
-    let resp = await axios.post(`${process.env.LLM_INDEXER_HOST}/search/query`, req.body, {
+  try {
+    const searchRequest = {
+      indexIds: req.body.indexIds,
+      query: req.body.query,
+      page: req.body.page || 1,
+      limit: req.body.limit || 10,
+      filters: req.body.filters || [],
+    }
+
+    let resp = await axios.post(
+      `${process.env.LLM_INDEXER_HOST}/search/query`,
+      searchRequest,
+      {
         responseType: 'stream'
-    })
+      })
     res.set(resp.headers);
     resp.data.pipe(res);
   } catch (error) {
