@@ -18,6 +18,7 @@ import * as indexController from '../controllers/index.js';
 import * as itemController from '../controllers/item.js';
 import * as embeddingController from '../controllers/embedding.js';
 import * as didController from '../controllers/did.js';
+import * as discoveryController from '../controllers/discovery.js';
 
 import * as litProtocol from '../controllers/lit-protocol.js';
 
