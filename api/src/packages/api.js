@@ -154,7 +154,13 @@ app.delete('/embeddings', authCheckMiddleware, validator.body(Joi.object({
   category: Joi.string().required()
 })), embeddingController.deleteEmbedding);
 
-app.post('/chat_stream', validator.body(Joi.object({
+
+app.post('/discovery/search', validator.body(Joi.object({
+  query: Joi.string().required(),
+  indexIds: Joi.array().items(Joi.string()).required(),
+})), discoveryController.search)
+
+app.post('/discovery/chat', validator.body(Joi.object({
   id: Joi.string().required(),
   messages: Joi.array().required(),
   did: Joi.string().optional(),
@@ -163,21 +169,8 @@ app.post('/chat_stream', validator.body(Joi.object({
     then: Joi.string().valid('owned', 'starred').optional(),
     otherwise: Joi.forbidden()
   }),
-  indexes: Joi.array().items(Joi.string()).optional(),
-}).or('did', 'indexes')), async (req, res) => {
-  try{
-    let resp = await axios.post(`${process.env.LLM_INDEXER_HOST}/chat_stream`, req.body, {
-        responseType: 'stream'
-    })
-    res.set(resp.headers);
-    resp.data.pipe(res);
-  } catch (error) {
-    // Handle the exception
-    console.error('An error occurred:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-
-})
+  indexIds: Joi.array().items(Joi.string()).optional(),
+}).or('did', 'indexIds')), discoveryController.chat)
 
 app.post('/web2/webpage', authCheckMiddleware,  validator.body(Joi.object({
   title: Joi.string().required(),
