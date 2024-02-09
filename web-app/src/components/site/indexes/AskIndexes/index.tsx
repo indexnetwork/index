@@ -23,14 +23,14 @@ export interface ChatProps extends React.ComponentProps<"div"> {
 export interface AskIndexesProps {
   chatID: string;
   did?: string;
-  indexes?: string[];
+  indexIds?: string[];
 }
 
 export interface MessageWithIndex extends Message {
   index?: number;
 }
 
-const AskIndexes: React.FC<AskIndexesProps> = ({ chatID, did, indexes }) => {
+const AskIndexes: React.FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
   // const index = useIndex();
   const { viewedProfile, indexes: indexesFromApp, discoveryType } = useApp();
 
@@ -114,7 +114,7 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ chatID, did, indexes }) => {
     body: {
       id: chatID,
       did,
-      indexes,
+      indexIds,
     },
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -140,7 +140,7 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ chatID, did, indexes }) => {
         id={chatID}
         key={chatID}
         className={
-          indexes
+          indexIds
             ? "scrollable-area px-0 pt-7"
             : "px-md-10 scrollable-area px-0 px-4 pt-7"
         }
@@ -193,7 +193,7 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ chatID, did, indexes }) => {
                 <EmptyScreen
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}
-                  indexes={indexes}
+                  indexIds={indexIds}
                 />
               </Flex>
             )}

@@ -20,11 +20,11 @@ const exampleMessages = [
 export function EmptyScreen({
   setInput,
   contextMessage,
-  indexes,
+  indexIds,
 }: {
   setInput: (input: string) => void;
   contextMessage: string;
-  indexes?: string[];
+  indexIds?: string[];
 }) {
   return (
     <Flex
@@ -44,7 +44,7 @@ export function EmptyScreen({
         </Text>
       </div>
       <div className="example-messages-empty-screen">
-        {indexes && indexes.length > 0
+        {indexIds && indexIds.length > 0
           ? exampleMessages
               .slice(0, 2)
               .map((message, i) => (
