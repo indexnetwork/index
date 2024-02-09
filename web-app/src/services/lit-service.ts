@@ -28,7 +28,7 @@ class LitService {
         [acid],
         ["0x"],
         [[BigInt(1)]],
-        false,
+        true,
         false,
         {
           value: mintCost,
