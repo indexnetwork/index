@@ -125,7 +125,7 @@ export class Agent {
                 const updatedChat =  chatHistory.map(
                     (dialogTurn: any) => {
                         if (dialogTurn['role'] == 'human') { return `Human: ${dialogTurn['content']}` }
-                        if (dialogTurn['role'] == 'ai') { return `AI: ${dialogTurn['content']}` }
+                        if (dialogTurn['role'] == 'assistant') { return `AI: ${dialogTurn['content']}` }
                     }
                 ).join("\n");
                 Logger.log(updatedChat, "ChatService:formatChatHistory");
