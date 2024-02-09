@@ -29,7 +29,7 @@ const DiscoveryLayout = ({ children, page }: DiscoveryLayoutProps) => {
   };
 
   return (
-    <div className={"scrollable-container"}>
+    <div>
       <AppHeader />
       <Container fluid className={"app-container"}>
         {(rightSidebarOpen || leftSidebarOpen) && (
@@ -41,7 +41,7 @@ const DiscoveryLayout = ({ children, page }: DiscoveryLayoutProps) => {
         <FlexRow>
           <AppLeft />
 
-          <Col className={cc(["main-panel", `page-${page}`])}>{children}</Col>
+          <Col className={cc(["scrollable-container", "main-panel", `page-${page}`])}>{children}</Col>
 
           <AppRight />
         </FlexRow>
