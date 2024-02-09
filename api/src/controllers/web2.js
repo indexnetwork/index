@@ -22,7 +22,7 @@ export const crawlWebPage = async (req, res, next) => {
         const webPageService = new WebPageService().setSession(req.session);
         let params = req.body;
         try{
-            const crawlResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/crawl`, {
+            const crawlResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/crawl`, {
                 url: params.url
             })
             if (crawlResponse && crawlResponse.data && crawlResponse.data.content) {
@@ -38,4 +38,3 @@ export const crawlWebPage = async (req, res, next) => {
         res.status(500).json({ error: error.message });
     }
 };
-

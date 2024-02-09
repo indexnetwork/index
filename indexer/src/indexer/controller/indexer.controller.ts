@@ -1,18 +1,13 @@
-import { Body, Controller, Delete, Get, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Logger, Patch, Post, Put, Query } from '@nestjs/common';
 import { IndexerService } from '../service/indexer.service';
-import { CrawlRequestBody, EmbeddingRequestBody, IndexDeleteBody, IndexRequestBody, IndexUpdateBody } from '../schema/indexer.schema';
+import { CrawlRequestBody, EmbeddingRequestBody, IndexDeleteQuery, IndexItemDeleteQuery, IndexRequestBody, IndexUpdateBody, IndexUpdateQuery } from '../schema/indexer.schema';
 import { ChromaClient } from 'chromadb';
+import { ApiQuery } from '@nestjs/swagger';
 
 @Controller('indexer')
 export class IndexerController {
 
     constructor(private readonly indexerService: IndexerService) {
-        // TODO: Talk about upsert
-    }
-
-    @Get('/')
-    async getHello() {
-        return 'Hello World';
     }
 
     @Post('/crawl')
@@ -25,24 +20,41 @@ export class IndexerController {
         return this.indexerService.embed(body.content);
     }
 
-    @Post('/index')
-    async index(@Body() body: IndexRequestBody) {
-        return this.indexerService.index(body);
-    }
+    // INDEX-WISE OPERATIONS
 
-    @Put('/index')
-    async update(@Body() body: IndexUpdateBody) {
-        return this.indexerService.update(body);
+    @Post('/index')
+    @ApiQuery({ name: 'indexId', required: true })
+    async updateIndex(@Query('indexId') indexId: string, @Body() body: IndexRequestBody) {
+        return this.indexerService.index(indexId, body);
     }
 
     @Delete('/index')
-    async deleteIndex(@Body() body: IndexDeleteBody) {
-        return this.indexerService.delete(body, 'index');
+    @ApiQuery({ name: 'indexId', required: true })
+    async deleteIndex(@Query('indexId') indexId: string) {
+        return this.indexerService.delete(indexId, null);
+    }
+
+
+    // INDEX ITEM-WISE OPERATIONS
+
+    @Put('/item')
+    @ApiQuery({ name: 'indexItemId', required: false })
+    // TODO: Can update webpage without indexId -> must change content of indexes including webpage
+    async createIndexItem(@Query('indexId') indexId: string, @Query('indexItemId') indexItemId: string, @Body() body: IndexUpdateBody) {
+        return this.indexerService.update(indexId, indexItemId, body);
+    }
+
+    @Patch('/item')
+    @ApiQuery({ name: 'indexItemId', required: true })
+    async updateIndexItem(@Query('indexId') indexId: string, @Query('indexItemId') indexItemId: string, @Body() body: IndexUpdateBody) {
+        return this.indexerService.update(indexId, indexItemId, body);
     }
 
     @Delete('/item')
-    async deleteItem(@Body() body: IndexDeleteBody) {
-        return this.indexerService.delete(body, 'item');
+    @ApiQuery({ name: 'indexItemId', required: true })
+    async deleteIndexItem(@Query('indexId') indexId: string, @Query('indexItemId') indexItemId: string) {
+        Logger.log(`Deleting ${indexId} ${indexItemId}`, 'indexerController:deleteIndexItem');
+        return this.indexerService.delete(indexId, indexItemId);
     }
 
 }

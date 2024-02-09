@@ -27,7 +27,7 @@ async function start() {
 
     await redis.connect()
     const consumerItems = kafka.consumer({
-        groupId: `index-consumer-dev-12`,
+        groupId: `index-consumer-dev-131`,
         sessionTimeout: 300000,
         heartbeatInterval: 10000,
         rebalanceTimeout: 3000,
@@ -47,6 +47,9 @@ async function start() {
             let docId = value.stream_id;
             try {
                 switch (topic) {
+
+                    // TODO: Add index delete update events
+
                     case definition.models.IndexItem.id:
                         switch (op) {
                             case "c":

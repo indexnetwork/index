@@ -42,7 +42,7 @@ export class WebPageService {
                             title
                             favicon
                             url
-                            content 
+                            content
                             createdAt
                             updatedAt
                             deletedAt
@@ -70,6 +70,31 @@ export class WebPageService {
         }
     }
 
+    async getWebPageById(webPageId) {
+
+        try {
+            const {data, errors} = await this.client.executeQuery(`
+            {
+              node(id: "${webPageId}") {
+                ${webPageFragment}
+              }
+            }`);
+
+            // Handle GraphQL errors
+            if (errors) {
+                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+            }
+            // Validate the data response
+            if (!data || !data.node) {
+                throw new Error('Invalid response data');
+            }
+
+            return data.node;
+
+        } catch (error) {
+            // Log the error and rethrow it for external handling
+            console.error('Exception occurred in getWebPageById:', error);
+            throw error;
+        }
+    }
 }
-
-

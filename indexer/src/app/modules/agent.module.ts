@@ -24,6 +24,12 @@ export class Agent {
         // TODO: Can we also add context type by intent find?
         // TODO: Research on low-computation models for subtasks
 
+
+    // IMPLEMENTATION TODOS:
+        // TODO: Add initial filtering according to the index (rag)
+        // TODO: Add initial filtering according to the index (retriever)
+        // TODO: Add standalone question pipeline
+
 	constructor (
     ) {
         const apiKey = process.env.OPENAI_API_KEY;
@@ -33,24 +39,24 @@ export class Agent {
 		this.apiKey = apiKey;
 	}
 
-    public async createAgentChain(chain_type: string, index_id: string, model_type: string) {
+    public async createAgentChain(chain_type: string = 'rag-v0', indexIds: string[], model_type: string = 'OpenAI'): Promise<any> {
 
         switch (chain_type) {
 
             case 'rag-v0':
-                return this.createRAGChain(index_id, model_type);
+                return this.createRAGChain(indexIds, model_type);
 
             default:
                 throw new Error('Chain type not supported');   
         }
     }
 
-    public async createRetrieverChain(chain_type: string, index_id: string, model_type: string, k: number) {
+    public async createRetrieverChain(chain_type: string = 'query-v0', index_ids: string[], model_type: string = 'OpenAI', page: number, limit: number): Promise<any> {
 
         switch (chain_type) {
 
             case 'query-v0':
-                return this.createQueryRetriever(index_id, model_type, k);
+                return this.createQueryRetriever(index_ids, model_type, page, limit);
 
             default:
                 throw new Error('Chain type not supported');   
@@ -58,21 +64,35 @@ export class Agent {
     }
 
 
-    private async createRAGChain (chroma_index: string, model_type: string): Promise<any>{
+    private async createRAGChain (chroma_indices: string[], model_type: string): Promise<any>{
 
         let model: any;
-        if (model_type == 'OpenAI') { model = new ChatOpenAI({ modelName:  process.env.MODEL_CHAT }) }
-        else if (model_type == 'MistralAI') { model = new ChatMistralAI({ modelName: process.env.MISTRAL_MODEL_CHAT, apiKey: process.env.MISTRAL_API_KEY }) }
+        if (model_type == 'OpenAI') { 
+            model = new ChatOpenAI({ 
+                modelName:  process.env.MODEL_CHAT,
+                streaming: true,
+            }) 
+        } else if (model_type == 'MistralAI') { model = new ChatMistralAI({ modelName: process.env.MISTRAL_MODEL_CHAT, apiKey: process.env.MISTRAL_API_KEY }) }
 
         const vectorStore = await Chroma.fromExistingCollection( 
-            new OpenAIEmbeddings({ openAIApiKey: process.env.OPENAI_API_KEY, modelName: process.env.MODEL_EMBEDDING}),
-            { url: process.env.CHROMA_URL, collectionName: chroma_index }
-        );
+            new OpenAIEmbeddings({ modelName: process.env.MODEL_EMBEDDING}),
+            { 
+                url: process.env.CHROMA_URL, 
+                collectionName: process.env.CHROMA_COLLECTION_NAME, 
+                filter: {
+                    indexId: {
+                        $in: chroma_indices
+                    }
+            }
+        });
         
+        const documentCount = await vectorStore.collection.count();
+        if (!documentCount) throw new Error('Vector store not found');
+
         const retriever = vectorStore.asRetriever();
 
+        
         // TODO: Prior information context -> glossary, etc.
-
         // Prompt link: https://langstream.ai/2023/10/13/rag-chatbot-with-conversation/
         const questionPrompt = PromptTemplate.fromTemplate(`
             Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.
@@ -104,8 +124,8 @@ export class Agent {
             if (Array.isArray(chatHistory)) {
                 const updatedChat =  chatHistory.map(
                     (dialogTurn: any) => {
-                        if (dialogTurn.hasOwnProperty('human')) { return `Human: ${dialogTurn['human']}` }
-                        if (dialogTurn.hasOwnProperty('ai')) { return `AI: ${dialogTurn['ai']}` }
+                        if (dialogTurn['role'] == 'human') { return `Human: ${dialogTurn['content']}` }
+                        if (dialogTurn['role'] == 'ai') { return `AI: ${dialogTurn['content']}` }
                     }
                 ).join("\n");
                 Logger.log(updatedChat, "ChatService:formatChatHistory");
@@ -115,7 +135,6 @@ export class Agent {
         }
 
         // const selfAskPrompt = await pull("hwchase17/self-ask-with-search")
-
         const standalone_question = RunnableSequence.from([
             {
                 question: (input) => input.question,
@@ -125,7 +144,6 @@ export class Agent {
             model,
             new StringOutputParser(),
         ]);
-
 
         const answerChain = RunnableSequence.from([
             {
@@ -145,15 +163,12 @@ export class Agent {
                         context: (input) => {
 
                             // Logger.log(input.context, "ChatService:answerChain:inputContext");
-                            
                             const docs_with_metadata = input.context.docs.map((doc: any) => {
                                 return JSON.stringify(doc.metadata) + "\n" + doc.pageContent
                             })
-
                             // const serialized = formatDocumentsAsString(input.context.docs)
                             const serialized = docs_with_metadata.join("\n");
-
-                            Logger.log(serialized.length, "ChatService:answerChain:contextLength");
+                            // Logger.log(serialized?.length, "ChatService:answerChain:contextLength");
                             return serialized
                         },
                         question:  (input) => {
@@ -174,126 +189,90 @@ export class Agent {
             }
         ])
 
-
         const final_chain = standalone_question.pipe(answerChain);
-
+        
         return final_chain
 
     }
 
-    private async createQueryRetriever (chroma_index: string, model_type: string, k: number) {
+    private async createQueryRetriever (chroma_indices: string[], model_type: string, page: number, limit: number) {
 
         // Not implemented yet
         // https://js.langchain.com/docs/modules/data_connection/retrievers/self_query/chroma-self-query
-
-        const attributeInfo: AttributeInfo[] = [
-            {
-                name: 'indexId',
-                description: "The id of the generated index",
-                type: "string",
-            },
-            {
-                name: 'indexTitle',
-                description: "The title of the generated index",
-                type: "string",
-            },
-            {
-                name: 'indexCreatedAt',
-                description: 'Date of index creation',
-                type: 'date',
-            },
-            {
-                name: 'indexUpdatedAt',
-                description: 'Date of last update of the index',
-                type: 'date',
-            },
-            {
-                name: "webPageId",
-                description: 'The id of the indexed document (html, docx, pdf, etc)',
-                type: 'string',
-            },
-            {
-                name: "webPageUrl",
-                description: 'The web url of the indexed document (html, docx, pdf, etc)',
-                type: 'string',
-            },
-            {
-                name: 'webPageTitle',
-                description: "The title of the indexed document (html, docx, pdf, etc)",
-                type: 'string',
-            },
-            {
-                name: "webPageCreatedAt",
-                description: 'The date of creation the indexed document',
-                type: 'string',
-            },
-            {
-                name: "webPageContent",
-                description: 'The content of the indexed document',
-                type: 'string',
-            },
-            {
-                name: "webPageUpdatedAt",
-                description: 'The date of last update of the indexed document',
-                type: 'string',
-            },
-            {
-                name: "webPageDeletedAt",
-                description: 'The date of deletion of the indexed document',
-                type: 'string',
-            },
-            
-        ];
 
 
         let model: any;
         if (model_type == 'OpenAI' ) { model = new ChatOpenAI({ modelName:  process.env.MODEL_CHAT }) }
         else if (model_type == 'MistralAI') { model = new ChatMistralAI({ modelName: process.env.MISTRAL_MODEL_CHAT, apiKey: process.env.MISTRAL_API_KEY }) }
 
+        const embeddings = new OpenAIEmbeddings({
+            verbose: true,
+            openAIApiKey: process.env.OPENAI_API_KEY, 
+            modelName: process.env.MODEL_EMBEDDING
+        })
+
+        Logger.log(`Creating vector store with ${process.env.MODEL_EMBEDDING} embeddings`, "Agent:createQueryRetriever");
+
         const vectorStore = await Chroma.fromExistingCollection( 
-            new OpenAIEmbeddings({openAIApiKey: process.env.OPENAI_API_KEY, modelName: process.env.MODEL_EMBEDDING}),
-            { url: process.env.CHROMA_URL, collectionName: chroma_index }
-        );
-        
-        // Maybe we can generate doc contents as well?
-        const documentContents = 'Document metadata'
-
-        Logger.log("Creating retriever", "Agent:createQueryRetriever");
-        Logger.log(JSON.stringify(model), "Agent:createQueryRetriever:model");
-
-        const selfQueryRetriever = SelfQueryRetriever.fromLLM({
-            llm: model,
-            vectorStore,
-            documentContents,
-            attributeInfo,
-            structuredQueryTranslator: new ChromaTranslator(),
-            searchParams: {
-                k: k,
-                mergeFiltersOperator: 'and',
+            embeddings,
+            { 
+                url: process.env.CHROMA_URL, 
+                collectionName: process.env.CHROMA_COLLECTION_NAME, 
+                filter: { 
+                    $and: [
+                        {
+                            indexId: {
+                                $in: chroma_indices
+                            }
+                        },
+                        {
+                            webPageContent: {
+                                $exists: true
+                            }
+                        }
+                    ]
             }
-          });
+        });
 
-        return selfQueryRetriever;
+
+        const final_chain = RunnableSequence.from([
+            {
+                documents: async (input) => {
+                    // Get embeddings of the query
+                    const queryEmbedding = await embeddings.embedQuery(input.query)
+                    // Fetch most similar semantic content according to query
+                    const docs = await vectorStore.collection.query({
+                        queryEmbeddings: [queryEmbedding],
+                        nResults: (page * limit),
+                    })
+                    return docs
+                }
+            },
+            {
+                documents: (input) => {
+                    // Return ids and similarities
+                    const ids = input.documents?.ids[0]
+                    const similarities = input.documents?.distances[0]
+                    return ids.map(function(id, i) {
+                        return {
+                            id: id,
+                            similarity: similarities[i],
+                        };
+                    });
+                }
+            },
+            // Add pagination to retrieved documents
+            RunnableLambda.from((input) => {
+                return input.documents.slice((page-1)*limit, page*limit)
+            })
+        ]);
+        
+        return final_chain;
     }
-
 
 
     //* Helper functions
 
-    private async serializeChatHistory(chatHistory: string | string[]) {
-        if (Array.isArray(chatHistory)) {
-            return chatHistory.join("\n");
-        }
-        
-        return chatHistory;
-    };
-
-    private async combineDocuments(documents: any[], document_prompt: PromptTemplate, document_separator: string) {
-
-        const combinedDocument = formatDocumentsAsString(documents);
-
-        return combinedDocument;
-    }
 }
 
 

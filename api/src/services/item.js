@@ -108,7 +108,7 @@ export class ItemService {
         }
     }
     // Todo make it multimodel later.
-    async getIndexItemById(indexItemId) {
+    async getIndexItemById(indexItemId, transformation=true) {
 
         try {
             const {data, errors} = await this.client.executeQuery(`
@@ -127,7 +127,7 @@ export class ItemService {
                 throw new Error('Invalid response data');
             }
 
-            return transformIndexItem(data.node);
+            return transformation ?transformIndexItem(data.node) : data.node;
 
         } catch (error) {
             // Log the error and rethrow it for external handling

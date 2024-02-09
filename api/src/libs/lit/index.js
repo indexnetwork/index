@@ -119,6 +119,14 @@ export const decodeDIDWithLit = (encodedDID) => {
 
 export const walletToDID = (chain, wallet) => `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`
 
+
+export const getPKPSessionForIndexer = async(index) => {
+  const session = await DIDSession.fromSession(process.env.INDEXER_DID_SESSION);
+  await session.did.authenticate()
+
+  const pkpSession =  await getPKPSession(session, index);
+  return pkpSession;
+}
 export const getPKPSession = async (session, index) => {
 
 	if(!session.did.authenticated){
@@ -142,8 +150,6 @@ export const getPKPSession = async (session, index) => {
 		}
 	}
 
-
-
 	const authSig = {
 		signedMessage: SiweMessage.fromCacao(session.cacao).toMessage(),
 		address: getAddress(session.did.parent.split(":").pop()),
@@ -161,6 +167,7 @@ export const getPKPSession = async (session, index) => {
 		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 			litNetwork: 'cayenne',
 			debug: false,
+			// debug: true,
 		});
 		await litNodeClient.connect();
 		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
@@ -169,7 +176,7 @@ export const getPKPSession = async (session, index) => {
 			authSig,
 			jsParams: {
 				authSig,
-				chain: "ethereum",
+				chain: "ethereum", // polygon
 				publicKey: index.signerPublicKey,
 				didKey: didKey.id,
 				nonce: randomString(10),

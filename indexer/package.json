@@ -31,6 +31,7 @@
     "@nestjs/microservices": "^10.3.0",
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/swagger": "^7.2.0",
+    "@types/json-patch": "^0.0.33",
     "axios": "^1.6.5",
     "chromadb": "^1.7.3",
     "class-transformer": "^0.5.1",
