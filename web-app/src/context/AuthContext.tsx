@@ -7,7 +7,6 @@ import { getAccountId } from "@didtools/pkh-ethereum";
 import { getAddress } from "@ethersproject/address";
 import { randomBytes, randomString } from "@stablelib/random";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
-import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useState } from "react";
 import { switchTestNetwork } from "utils/helper";
 
@@ -39,6 +38,7 @@ const defaultAuthContext = {
   connect: async () => {},
   disconnect: () => {},
   status: AuthStatus.IDLE,
+  setStatus: (status: AuthStatus) => {},
   session: undefined,
   userDID: undefined,
   isLoading: false,
@@ -62,20 +62,24 @@ export const AuthProvider = ({ children }: any) => {
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
 
   const userDID = session?.did.parent;
+  const isLoading = status === AuthStatus.LOADING;
+
+  const handleInitialCheck = useCallback(async () => {
+    const res = await checkSession();
+    console.log("Check session result", res);
+  }, []);
 
   useEffect(() => {
     // TODO: no force connect
     // authenticate();
-    // checkSession();
-  }, [status]);
-
-  const isLoading = status === AuthStatus.LOADING;
+    handleInitialCheck();
+  }, [handleInitialCheck]);
 
   // DEBUG
-  useEffect(() => {
-    if (!session) return;
-    console.log("Session changed", session);
-  }, [session]);
+  // useEffect(() => {
+  //   if (!session) return;
+  //   console.log("Session changed", session);
+  // }, [session]);
 
   const disconnect = () => {
     localStorage.removeItem(SESSION_KEY);
@@ -97,6 +101,7 @@ export const AuthProvider = ({ children }: any) => {
     const existingSession = await DIDSession.fromSession(sessionStr);
     console.log("Existing session", existingSession);
     setSession(existingSession);
+    setStatus(AuthStatus.CONNECTED);
     return !existingSession.isExpired;
   };
 

@@ -69,9 +69,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const { apiService: api } = useApi();
   const { session } = useAuth();
   const router = useRouter();
-  // const [discoveryType, setDiscoveryType] = useState<DiscoveryType | undefined>(
-  //   undefined,
-  // );
   const [indexes, setIndexes] = useState<Indexes[]>([]);
   const [viewedIndex, setViewedIndex] = useState<Indexes | undefined>();
   const [viewedProfile, setViewedProfile] = useState<Users | undefined>();
@@ -87,7 +84,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [loading, setLoading] = useState(false);
   const [chatID, setChatID] = useState<string | undefined>(undefined);
 
-  const { isLanding, discoveryType } = useRouteParams();
+  const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
 
   const fetchIndexes = useCallback(
     async (did: string) => {
@@ -106,7 +103,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     try {
       console.log("fetching index", id, api);
       if (!api || !id) return;
-      if (discoveryType !== DiscoveryType.INDEX) return;
+      if (!isIndex) return;
+      if (viewedIndex?.id === id) return;
 
       const index = await api.getIndex(id);
       setViewedIndex(index);
@@ -114,7 +112,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       console.error("Error fetching index", error);
       // Handle error appropriately
     }
-  }, [api, id, discoveryType]);
+  }, [api, id, discoveryType, viewedIndex]);
 
   const handleTransactionCancel = useCallback(() => {
     setTransactionApprovalWaiting(false);
@@ -171,7 +169,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       try {
         if (!api) return;
         const profile = await api.getProfile(did);
-        setViewedProfile(profile);
+        return profile;
       } catch (error) {
         console.error("Error fetching profile", error);
         // Handle error appropriately
@@ -179,6 +177,41 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     },
     [api],
   );
+
+  const handleProfileChange = useCallback(async () => {
+    if (isLanding) return;
+
+    let targetDID;
+    if (isIndex && !viewedProfile) {
+      if (viewedIndex) {
+        targetDID = viewedIndex?.ownerDID?.id;
+      }
+    }
+
+    if (isDID) {
+      targetDID = id;
+    }
+
+    if (targetDID) {
+      const profile = await fetchProfile(targetDID);
+      setViewedProfile(profile);
+    }
+  }, [isLanding, isIndex, viewedProfile, viewedIndex, id, fetchProfile]);
+
+  const handleUserProfileChange = useCallback(async () => {
+    if (session) {
+      const profile = await fetchProfile(session?.did.parent);
+      setUserProfile(profile);
+    }
+  }, [session, fetchProfile]);
+
+  useEffect(() => {
+    setViewedProfile(userProfile);
+  }, [userProfile]);
+
+  useEffect(() => {
+    handleUserProfileChange();
+  }, [handleUserProfileChange]);
 
   useEffect(() => {
     setChatID((prevChatID) => {
@@ -192,47 +225,14 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, []);
 
   useEffect(() => {
-    if (isLanding) return;
-
-    let targetDID;
-    if (discoveryType === DiscoveryType.INDEX) {
-      if (session) {
-        targetDID = session.did.parent;
-      } else {
-        fetchIndex();
-        targetDID = viewedIndex?.ownerDID?.id;
-      }
-    } else if (discoveryType === DiscoveryType.DID) {
-      targetDID = id;
+    if (viewedProfile) {
+      fetchIndexes(viewedProfile.id);
     }
+  }, [viewedProfile?.id]);
 
-    if (targetDID) {
-      fetchProfile(targetDID);
-      fetchIndexes(targetDID);
-    }
-  }, [
-    discoveryType,
-    id,
-    fetchIndex,
-    fetchIndexes,
-    fetchProfile,
-    isLanding,
-    session,
-    viewedIndex,
-  ]);
-
-  // useEffect(() => {
-  //   if (discoveryType === DiscoveryType.DID) {
-  //     setLoading(true);
-  //     try {
-  //       fetchIndexes(id);
-  //     } catch (error) {
-  //       console.error("Error fetching indexes", error);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   }
-  // }, [discoveryType, id, fetchIndexes]);
+  useEffect(() => {
+    handleProfileChange();
+  }, [handleProfileChange]);
 
   const contextValue: AppContextValue = {
     discoveryType,

@@ -1,3 +1,4 @@
+import LoadingText from "@/components/base/Loading";
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
@@ -22,9 +23,8 @@ export const IndexConversationHeader: React.FC = () => {
   const { session } = useAuth();
   const { apiService: api } = useApi();
   const [titleLoading, setTitleLoading] = useState(false);
-  const {
- viewedIndex, viewedProfile, setViewedIndex, indexes, setIndexes,
-} = useApp();
+  const { viewedIndex, viewedProfile, setViewedIndex, indexes, setIndexes } =
+    useApp();
 
   // if (!viewedIndex || !viewedProfile) return null;
 
@@ -70,7 +70,8 @@ export const IndexConversationHeader: React.FC = () => {
       setViewedIndex(updatedIndex);
       setIndexes(
         indexes.map((index) =>
-          (index.id === updatedIndex.id ? updatedIndex : index)),
+          index.id === updatedIndex.id ? updatedIndex : index,
+        ),
       );
     },
     [viewedIndex, viewedProfile, api, setViewedIndex, indexes, setIndexes],
@@ -84,19 +85,27 @@ export const IndexConversationHeader: React.FC = () => {
         <Col centerBlock className="idxflex-grow-1">
           {
             <Link href={`/discovery/${viewedIndex?.ownerDID?.id!}`}>
-              <Avatar size={20} user={viewedIndex?.ownerDID} />
-              <Text
-                className="ml-3"
-                size="sm"
-                verticalAlign="middle"
-                fontWeight={500}
-                element="span"
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "0.8em" }}
               >
-                {viewedIndex?.ownerDID?.name
-                  || (viewedIndex?.ownerDID
-                    && maskDID(viewedIndex?.ownerDID?.id!))
-                  || ""}
-              </Text>
+                <Avatar size={20} user={viewedIndex?.ownerDID} />
+                <LoadingText
+                  val={viewedIndex?.ownerDID?.name || viewedIndex?.ownerDID?.id}
+                  // val={undefined}
+                >
+                  <Text
+                    size="sm"
+                    verticalAlign="middle"
+                    fontWeight={500}
+                    element="span"
+                  >
+                    {viewedIndex?.ownerDID?.name ||
+                      (viewedIndex?.ownerDID &&
+                        maskDID(viewedIndex?.ownerDID?.id!)) ||
+                      ""}
+                  </Text>
+                </LoadingText>
+              </div>
             </Link>
           }
         </Col>
@@ -104,32 +113,36 @@ export const IndexConversationHeader: React.FC = () => {
 
       <FlexRow className="pt-3">
         <Col className="idxflex-grow-1 mr-5">
-          <IndexTitleInput
-            defaultValue={viewedIndex?.title || ""}
-            onChange={handleTitleChange}
-            disabled={!isOwner}
-            loading={titleLoading}
-          />
+          <LoadingText val={viewedIndex?.title}>
+            <IndexTitleInput
+              defaultValue={viewedIndex?.title || ""}
+              onChange={handleTitleChange}
+              disabled={!isOwner}
+              loading={titleLoading}
+            />
+          </LoadingText>
         </Col>
         <Col className="mb-3 mr-2">
-          <Tooltip content="Add to Starred Index">
-            <Button
-              iconHover
-              theme="clear"
-              onClick={() =>
-                handleUserIndexToggle("star", !viewedIndex?.did?.starred)
-              }
-              borderless
-            >
-              <IconStar
-                fill={
-                  viewedIndex?.did?.starred ? "var(--main)" : "var(--white)"
+          {session && (
+            <Tooltip content="Add to Starred Index">
+              <Button
+                iconHover
+                theme="clear"
+                onClick={() =>
+                  handleUserIndexToggle("star", !viewedIndex?.did?.starred)
                 }
-                width={20}
-                height={20}
-              />
-            </Button>
-          </Tooltip>
+                borderless
+              >
+                <IconStar
+                  fill={
+                    viewedIndex?.did?.starred ? "var(--main)" : "var(--white)"
+                  }
+                  width={20}
+                  height={20}
+                />
+              </Button>
+            </Tooltip>
+          )}
         </Col>
         <Col className="mb-3 ml-2">
           <Button iconHover theme="clear" borderless>
@@ -143,11 +156,13 @@ export const IndexConversationHeader: React.FC = () => {
         </Col>
       </FlexRow>
       <FlexRow>
-        <Text size="sm" theme="disabled">
-          {viewedIndex?.updatedAt
-            ? `Updated ${moment(viewedIndex?.updatedAt).fromNow()}`
-            : ""}{" "}
-        </Text>
+        <LoadingText val={viewedIndex?.updatedAt}>
+          <Text size="sm" theme="disabled">
+            {viewedIndex?.updatedAt
+              ? `Updated ${moment(viewedIndex?.updatedAt).fromNow()}`
+              : ""}{" "}
+          </Text>
+        </LoadingText>
       </FlexRow>
     </>
   );

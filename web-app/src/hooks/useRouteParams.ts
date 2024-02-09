@@ -14,5 +14,15 @@ export const useRouteParams = () => {
     [id],
   );
 
-  return { id, isLanding, discoveryType };
+  const isDID = useMemo(
+    () => discoveryType === DiscoveryType.DID,
+    [discoveryType],
+  );
+
+  const isIndex = useMemo(
+    () => discoveryType === DiscoveryType.INDEX,
+    [discoveryType],
+  );
+
+  return { id, isLanding, discoveryType, isDID, isIndex };
 };

@@ -36,13 +36,13 @@ export function ChatMessage({
   index,
   editingIndex,
 }: ChatMessageProps) {
-  const { viewedProfile } = useApp();
+  const { userProfile } = useApp();
 
   return (
     <FlexRow wrap={false} align={"start"} className="chat-message py-5">
       <Col>
         {message.role === "user" ? (
-          <Avatar size={24} user={viewedProfile} />
+          <Avatar size={24} user={userProfile} />
         ) : (
           <div
             style={{
@@ -96,9 +96,7 @@ export function ChatMessage({
                     </p>
                   );
                 },
-                code({
- inline, className, children, ...props
-}) {
+                code({ inline, className, children, ...props }) {
                   if (children.length) {
                     if (children[0] === "▍") {
                       return (

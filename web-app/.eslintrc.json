@@ -24,7 +24,7 @@
   },
   "rules": {
     "no-console": "off",
-    "implicit-arrow-linebreak": "off",
+    "implicit-arrow-linebreak": "on",
     "linebreak-style": "off",
     "no-plusplus": "off",
     "no-unused-vars": "off",

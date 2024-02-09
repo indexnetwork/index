@@ -13,7 +13,7 @@ const API_ENDPOINTS = {
   INDEXES: "/indexes/:id",
   GET_ALL_INDEXES: "/dids/:did/indexes",
   CREATE_INDEX: "/indexes",
-  UPDATE_INDEX: "/dids/:did/indexes/:indexId",
+  UPDATE_INDEX: "/indexes/:id",
   STAR_INDEX: "/dids/:did/indexes/:indexId/star",
   OWN_INDEX: "/dids/:did/indexes/:indexId/own",
   GET_PROFILE: "/dids/:did/profile",
@@ -129,8 +129,8 @@ class ApiService {
     return data as Indexes;
   }
 
-  async updateIndex(indexId: string, index: Partial<Indexes>) {
-    const url = API_ENDPOINTS.UPDATE_INDEX.replace(":id", indexId);
+  async updateIndex(id: string, index: Partial<Indexes>) {
+    const url = API_ENDPOINTS.UPDATE_INDEX.replace(":id", id);
     const { data } = await this.apiAxios.patch<Indexes>(url, index);
     return data;
   }
@@ -184,8 +184,8 @@ class ApiService {
       const { data } = await this.apiAxios.put(url);
       return data;
     }
-      const { data } = await this.apiAxios.delete(url);
-      return data;
+    const { data } = await this.apiAxios.delete(url);
+    return data;
   }
   async ownIndex(did: string, indexId: string, add: boolean) {
     const url = API_ENDPOINTS.OWN_INDEX.replace(":did", did).replace(
@@ -197,8 +197,8 @@ class ApiService {
       const { data } = await this.apiAxios.put(url);
       return data;
     }
-      const { data } = await this.apiAxios.delete(url);
-      return data;
+    const { data } = await this.apiAxios.delete(url);
+    return data;
   }
 
   async getItems(indexId: string, queryParams: GetItemQueryParams = {}) {
