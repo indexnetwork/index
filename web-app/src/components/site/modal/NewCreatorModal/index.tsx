@@ -54,11 +54,11 @@ const NewCreatorModal = ({
         <>
           {activeForm === "nft-options" ? (
             <>TBI</>
-          ) // <NFTOptions
+          ) : // <NFTOptions
           //   handleCreate={handleCreate}
           //   handleBack={() => handleFormState("initial")}
           // ></NFTOptions>
-          : activeForm === "new-nft" ? (
+          activeForm === "new-nft" ? (
             <></>
           ) : activeForm === "individual-wallet" ? (
             <> TBI </>
