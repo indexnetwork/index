@@ -1,12 +1,23 @@
 import axios from 'axios';
+import { DIDService } from '../services/did.js';
 
 export const chat = async (req, res, next) => {
+
+  const { id, messages, indexIds, did, type } = req.body;
+  let reqIndexIds = [];
+  if(did){
+    const didService = new DIDService();
+    const indexes = await didService.getIndexes(did, type);
+    reqIndexIds = indexes.map(i => i.id)
+  }else {
+    reqIndexIds = indexIds
+  }
   try {
     const chatRequest = {
-      indexIds: req.body.indexIds,
+      indexIds: reqIndexIds,
       input: {
-        question: req.body.messages.at(-1).content,
-        chat_history: [...req.body.messages.slice(0, -1)]
+        question: messages.at(-1).content,
+        chat_history: [...messages.slice(0, -1)]
       }
     }
     let resp = await axios.post(
