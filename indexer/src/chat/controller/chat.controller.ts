@@ -21,20 +21,10 @@ export class ChatController {
         const stream = await this.chatService.stream(body);
 
         for await (const chunk of stream) {
-            res.write(JSON.stringify({
-                ops: [
-                    {
-                        op: 'add',
-                        path: '/stream',
-                        value: chunk
-                    }
-                ]   
-            })+ '\n')
+            chunk.answer && res.write(chunk.answer)
         }
 
         res.end();
-    }    
-    
+    }
+
 }
-
-
