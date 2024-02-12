@@ -79,7 +79,9 @@ app.get('/dids/:did/profile', validator.params(Joi.object({
 })), didController.getProfileByDID)
 
 // Indexes
-app.get('/indexes/:id', validator.params(Joi.object({
+app.get('/indexes/:id',  validator.query(Joi.object({
+  roles: Joi.boolean().default(false).optional(),
+})), validator.params(Joi.object({
   id: Joi.custom(isStreamID, "Index ID").required(),
 })), indexController.getIndexById)
 

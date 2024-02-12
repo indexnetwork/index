@@ -7,14 +7,23 @@ export const getIndexById = async (req, res, next) => {
         const indexService = new IndexService().setSession(req.session);
         const index = await indexService.getIndexById(req.params.id);
 
-        if(req.session){
+        const { roles }  = req.query
+
+        if(req.session) {
+
+          Object.assign(index, {roles: {
+            owner: index.ownerDID.id === req.session.did.parent,
+          }});
+
+          if( roles ) {
             const pkpSession = await getPKPSession(req.session, index);
             if(pkpSession){
-                const roles = getRolesFromSession(pkpSession);
-                Object.assign(index, {roles});
-            }else{
-                Object.assign(index, {roles: {owner: false, creator: false}});
+              const userRoles =  getRolesFromSession(pkpSession);
+              Object.assign(index, {roles: userRoles});
             }
+          }
+        } else {
+          Object.assign(index, {roles: {owner: false, creator: false}});
         }
 
         res.status(200).json(index);
