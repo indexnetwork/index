@@ -41,7 +41,7 @@ export class Agent {
                 return this.createRAGChain(indexIds, model_type);
 
             default:
-                throw new Error('Chain type not supported');   
+                throw new Error('Chain type not supported');
         }
     }
 
@@ -85,35 +85,6 @@ export class Agent {
 
         const retriever = vectorStore.asRetriever();
 
-        
-        // TODO: Prior information context -> glossary, etc.
-        // Prompt link: https://langstream.ai/2023/10/13/rag-chatbot-with-conversation/
-
-        // const questionPrompt = PromptTemplate.fromTemplate(`
-        //     Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.
-
-        //     The user will give you a question without context. You will reformulate the question to take into account the context of the conversation. 
-        //     You should also consult with the Chat History below when reformulating the question. 
-        //     For example, you will substitute pronouns for mostly likely noun in the conversation history. 
-
-        //     When reformulating the question give higher value to the latest question and response in the Chat History. 
-        //     The chat history is in reverse chronological order, so the most recent exchange is at the top.
-
-        //     Chat History:
-        //     {chat_history}
-        //     ----------------
-        //     Follow Up Input: {question}
-        //     ----------------
-        //     Standalone question:
-        // `);
-
-        // const answerPrompt = PromptTemplate.fromTemplate(`
-        //     Answer the question based on the following context if there is no:
-        //     ----------------
-        //     CONTEXT: {context}
-        //     ----------------
-        //     QUESTION: {question}
-        // `);
 
         const questionPrompt = await pull("seref/standalone_question_index")
         const answerPrompt = await pull("seref/answer_generation_prompt")

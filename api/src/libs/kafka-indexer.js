@@ -23,26 +23,28 @@ export const createIndexItemEvent = async (id) => {
 
         await indexSession.did.authenticate();
 
-        // TODO: 
-        // Crawl can be null due to some reasons,
-        // need to handle separately.
         console.log("Indexer Item URL", `${process.env.LLM_INDEXER_HOST}/indexer/embeddings`)
         
-        const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
-            content: indexItem.content ?? 'This is a test content'
-        })
+        if (indexItem.content) {
 
-        const embeddingService = new EmbeddingService().setSession(indexSession)
-        const embedding = await embeddingService.createEmbedding({
-            "indexId": indexItem.indexId,
-            "itemId": indexItem.itemId,
-            "modelName": embeddingResponse.data.model,
-            "category": "document",
-            "vector": embeddingResponse.data.vector,
-            "description": "Default document embeddings",
-        });
+            const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
+                content: indexItem.content
+            })
+    
+            const embeddingService = new EmbeddingService().setSession(indexSession)
+            const embedding = await embeddingService.createEmbedding({
+                "indexId": indexItem.indexId,
+                "itemId": indexItem.itemId,
+                "modelName": embeddingResponse.data.model,
+                "category": "document",
+                "vector": embeddingResponse.data.vector,
+                "description": "Default document embeddings",
+            });
+    
+            console.log("Embedding created", embedding.id)
+        }
 
-        console.log("Embedding created", embedding.id)
+        console.log('No content found not indexing document')
 
     } catch (e) {
         console.log("Indexer error:", e.message);
