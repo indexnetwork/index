@@ -187,8 +187,12 @@ app.post('/web2/webpage', authCheckMiddleware,  validator.body(Joi.object({
   content: Joi.string().required(),
 })), web2Controller.createWebPage)
 
+app.get('/web2/webpage/:id', validator.params(Joi.object({
+  id: Joi.custom(isStreamID, "WebPage ID").required(),
+})), web2Controller.getWebPageById)
+
 app.post('/web2/webpage/crawl', authCheckMiddleware, validator.body(Joi.object({
-  title: Joi.string().required(),
+  title: Joi.string().optional(),
   favicon: Joi.string().optional(),
   url: Joi.string().uri().required(),
 })), web2Controller.crawlWebPage)
