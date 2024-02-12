@@ -1,7 +1,7 @@
 import { ChatOpenAI, OpenAI, OpenAIEmbeddings } from '@langchain/openai';
 import { AIMessagePromptTemplate, ChatPromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder, PromptTemplate } from "@langchain/core/prompts";
 import { ConversationalRetrievalQAChain, LLMChain, RetrievalQAChain } from "langchain/chains";
-import { RunnableBranch, RunnableLambda, RunnableParallel, RunnablePassthrough, RunnableSequence } from "@langchain/core/runnables";
+import { Runnable, RunnableBranch, RunnableLambda, RunnableParallel, RunnablePassthrough, RunnableSequence } from "@langchain/core/runnables";
 import { formatDocumentsAsString } from "langchain/util/document";
 
 import { DynamicModule, Inject, Logger, Module } from '@nestjs/common';
@@ -23,12 +23,6 @@ export class Agent {
         // TODO: Also add method type -> reAcT , selfAsk, etc
         // TODO: Can we also add context type by intent find?
         // TODO: Research on low-computation models for subtasks
-
-
-    // IMPLEMENTATION TODOS:
-        // TODO: Add initial filtering according to the index (rag)
-        // TODO: Add initial filtering according to the index (retriever)
-        // TODO: Add standalone question pipeline
 
 	constructor (
     ) {
@@ -94,31 +88,35 @@ export class Agent {
         
         // TODO: Prior information context -> glossary, etc.
         // Prompt link: https://langstream.ai/2023/10/13/rag-chatbot-with-conversation/
-        const questionPrompt = PromptTemplate.fromTemplate(`
-            Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.
 
-            The user will give you a question without context. You will reformulate the question to take into account the context of the conversation. 
-            You should also consult with the Chat History below when reformulating the question. 
-            For example, you will substitute pronouns for mostly likely noun in the conversation history. 
+        // const questionPrompt = PromptTemplate.fromTemplate(`
+        //     Given the following conversation and a follow up question, rephrase the follow up question to be a standalone question, in its original language.
 
-            When reformulating the question give higher value to the latest question and response in the Chat History. 
-            The chat history is in reverse chronological order, so the most recent exchange is at the top.
+        //     The user will give you a question without context. You will reformulate the question to take into account the context of the conversation. 
+        //     You should also consult with the Chat History below when reformulating the question. 
+        //     For example, you will substitute pronouns for mostly likely noun in the conversation history. 
 
-            Chat History:
-            {chat_history}
-            ----------------
-            Follow Up Input: {question}
-            ----------------
-            Standalone question:
-        `);
+        //     When reformulating the question give higher value to the latest question and response in the Chat History. 
+        //     The chat history is in reverse chronological order, so the most recent exchange is at the top.
 
-        const answerPrompt = PromptTemplate.fromTemplate(`
-            Answer the question based only on the following context:
-            ----------------
-            CONTEXT: {context}
-            ----------------
-            QUESTION: {question}
-        `);
+        //     Chat History:
+        //     {chat_history}
+        //     ----------------
+        //     Follow Up Input: {question}
+        //     ----------------
+        //     Standalone question:
+        // `);
+
+        // const answerPrompt = PromptTemplate.fromTemplate(`
+        //     Answer the question based on the following context if there is no:
+        //     ----------------
+        //     CONTEXT: {context}
+        //     ----------------
+        //     QUESTION: {question}
+        // `);
+
+        const questionPrompt = await pull("seref/standalone_question_index")
+        const answerPrompt = await pull("seref/answer_generation_prompt")
 
         const formatChatHistory = (chatHistory: string | string[]) => {
             if (Array.isArray(chatHistory)) {
@@ -134,13 +132,12 @@ export class Agent {
             return '';
         }
 
-        // const selfAskPrompt = await pull("hwchase17/self-ask-with-search")
         const standalone_question = RunnableSequence.from([
             {
                 question: (input) => input.question,
                 chat_history: (input) => formatChatHistory(input.chat_history),
             },
-            questionPrompt,
+            questionPrompt as any,
             model,
             new StringOutputParser(),
         ]);
@@ -176,7 +173,7 @@ export class Agent {
                             return input.question
                         },
                     },
-                    answerPrompt,
+                    answerPrompt as any,
                     model,
                     new StringOutputParser(),
                 ]),
@@ -269,9 +266,6 @@ export class Agent {
         
         return final_chain;
     }
-
-
-    //* Helper functions
 
 }
 
