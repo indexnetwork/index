@@ -24,11 +24,11 @@ export const createIndexItemEvent = async (id) => {
         await indexSession.did.authenticate();
 
         console.log("Indexer Item URL", `${process.env.LLM_INDEXER_HOST}/indexer/embeddings`)
-        
-        if (indexItem.content) {
+
+        if (indexItem.item.content) {
 
             const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
-                content: indexItem.content
+                content: indexItem.item.content
             })
     
             const embeddingService = new EmbeddingService().setSession(indexSession)
@@ -44,7 +44,7 @@ export const createIndexItemEvent = async (id) => {
             console.log("Embedding created", embedding.id)
         }
 
-        console.log('No content found not indexing document')
+        console.log('No content found, createIndexItem event incomplete')
 
     } catch (e) {
         console.log("Indexer error:", e.message);
