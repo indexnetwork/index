@@ -323,8 +323,12 @@ export class DIDService {
                 throw new Error('Invalid response data');
             }
 
-            // Return the created profile document
-            return data.createProfile.document;
+            const profileObj = data.createProfile.document;
+
+            profileObj.id = profileObj.controllerDID.id
+            delete profileObj.controllerDID;
+
+            return profileObj;
 
         } catch (error) {
             // Log the error and rethrow it for external handling
@@ -371,11 +375,13 @@ export class DIDService {
                 return null
             }
 
-            data.node.profile.id = data.node.profile.controllerDID.id
-            delete data.node.profile.controllerDID;
+            const profileObj = data.node.profile;
 
-            // Return the created profile document
-            return data.node.profile;
+            profileObj.id = profileObj.controllerDID.id
+            delete profileObj.controllerDID;
+
+            return profileObj;
+
 
         } catch (error) {
             // Log the error and rethrow it for external handling
