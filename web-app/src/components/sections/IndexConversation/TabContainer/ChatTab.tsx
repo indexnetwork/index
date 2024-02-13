@@ -1,4 +1,4 @@
-import { EmptyScreen } from "@/components/ai/empty-screen";
+import NoIndexesChat from "@/components/ai/no-indexes";
 import AskIndexes from "@/components/site/indexes/AskIndexes";
 import { useApp } from "@/context/AppContext";
 import LoadingSection from "../../Loading";
@@ -29,5 +29,6 @@ export default function ChatTabSection() {
       <AskIndexes chatID={chatID} indexIds={[viewedIndex?.id!]} />
     ) : null;
   }
-  return <EmptyScreen setInput={() => {}} contextMessage="your responses" />;
+  // return <EmptyScreen setInput={() => {}} contextMessage="your responses" />;
+  return <NoIndexesChat />;
 }

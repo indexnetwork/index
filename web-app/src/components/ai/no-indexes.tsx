@@ -7,11 +7,19 @@ export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
   const { setCreateModalVisible } = useApp();
 
   return (
-    <Flex
-      flexdirection="column"
-      alignitems="center"
-      gap="4rem"
-      style={{ margin: "auto", padding: "4rem 0" }}
+    // <Flex
+    //   flexdirection="column"
+    //   alignitems="center"
+    //   gap="4rem"
+    //   style={{ margin: "auto", padding: "4rem 0" }}
+    // >
+    <div
+      style={{
+        textAlign: "center",
+        flexDirection: "column",
+        alignItems: "center",
+        padding: "4rem 0",
+      }}
     >
       <img
         src="/images/no-indexes-screen-new.png"
@@ -43,6 +51,6 @@ export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
           Create your first index
         </Button>
       )}
-    </Flex>
+    </div>
   );
 }

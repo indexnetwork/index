@@ -232,15 +232,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, [handleProfileChange]);
 
   useEffect(() => {
-    setChatID((prevChatID) => {
-      if (!prevChatID) {
-        const newChatID = uuidv4();
-        localStorage.setItem("chatterID", newChatID);
-        return newChatID;
-      }
-      return prevChatID;
-    });
-  }, []);
+    const newChatID = uuidv4();
+    localStorage.setItem("chatterID", newChatID);
+    setChatID(newChatID);
+  }, [id]);
 
   useEffect(() => {
     if (viewedProfile) {
