@@ -63,7 +63,7 @@ export const IndexConversationHeader: FC = () => {
 
   const handleUserIndexToggle = useCallback(
     async (type: string, value: boolean) => {
-      if (!apiReady || !viewedIndex || !session) return;
+      if (!apiReady || !viewedIndex || !viewedProfile || !session) return;
       let updatedIndex: Indexes;
 
       try {
@@ -85,37 +85,8 @@ export const IndexConversationHeader: FC = () => {
         return;
       }
 
-      let updatedIndexes: Indexes[];
-      // if (!value) {
-      //   updatedIndexes = indexes.filter((i) => i.id !== viewedIndex.id);
-      // } else {
-      //   // updatedIndexes = [updatedIndex, ...indexes];
-      //   // add only if not already in the list
-      //   updatedIndexes = indexes.some((i) => i.id === viewedIndex.id)
-      //     ? indexes
-      //     : [updatedIndex, ...indexes];
-      // }
-      //
-      // merge owned and starred indexes into one list
-      if (type === "star") {
-        updatedIndexes = indexes.map((i) =>
-          i.id === viewedIndex.id ? updatedIndex : i,
-        );
-      } else {
-        updatedIndexes = indexes.some((i) => i.id === viewedIndex.id)
-          ? indexes
-          : [updatedIndex, ...indexes];
-      }
-
-      updatedIndexes = updatedIndexes.sort((a, b) => {
-        const aDate = moment(a.createdAt).unix();
-        const bDate = moment(b.createdAt).unix();
-        return bDate - aDate;
-      });
-
       setViewedIndex(updatedIndex);
-      // setIndexes(updatedIndexes);
-      fetchIndexes(viewedProfile!.id);
+      fetchIndexes(viewedProfile.id);
     },
     [api, session, viewedIndex, apiReady, setViewedIndex, indexes, setIndexes],
   );

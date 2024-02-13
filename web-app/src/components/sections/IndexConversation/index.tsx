@@ -1,5 +1,4 @@
 import { useApp } from "@/context/AppContext";
-import Flex from "components/layout/base/Grid/Flex";
 import Head from "next/head";
 import { IndexConversationProvider } from "./IndexConversationContext";
 import { IndexConversationHeader } from "./IndexConversationHeader";
