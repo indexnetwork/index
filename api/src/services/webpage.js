@@ -6,6 +6,16 @@ const getCurrentDateTime = () => moment.utc().toISOString();
 
 import {definition} from "../types/merged-runtime.js";
 
+const webPageFragment = `
+  id
+  title
+  favicon
+  url
+  content
+  createdAt
+  updatedAt
+  deletedAt`
+
 export class WebPageService {
     constructor() {
         this.client = new ComposeClient({
@@ -38,14 +48,7 @@ export class WebPageService {
                 mutation CreateWebPage($input: CreateWebPageInput!) {
                     createWebPage(input: $input) {
                         document {
-                            id
-                            title
-                            favicon
-                            url
-                            content
-                            createdAt
-                            updatedAt
-                            deletedAt
+                            ${webPageFragment}
                         }
                     }
                 }`, {input: {content}});
@@ -70,19 +73,61 @@ export class WebPageService {
         }
     }
 
+    async updateWebPage(id, params) {
+        if (!this.did) {
+            throw new Error("DID not set. Use setDID() to set the did.");
+        }
+
+        try {
+            const content = {
+                ...params,
+                updatedAt: getCurrentDateTime(),
+            };
+            this.client.setDID(this.did);
+            const {data, errors} = await this.client.executeQuery(`
+                mutation UpdateWebPage($input: UpdateWebPageInput!) {
+                    updateWebPage(input: $input) {
+                        document {
+                          ${webPageFragment}
+                        }
+                    }
+                }`, {input: {id, content}});
+
+            // Handle GraphQL errors
+            if (errors) {
+                throw new Error(`Error updating webPage: ${JSON.stringify(errors)}`);
+            }
+
+            // Validate the data response
+            if (!data || !data.updateWebPage || !data.updateWebPage.document) {
+                throw new Error('Invalid response data');
+            }
+
+            // Return the created index document
+            return data.updateWebPage.document;
+
+        } catch (error) {
+            // Log the error and rethrow it for external handling
+            console.error('Exception occurred in updateWebPage:', error);
+            throw error;
+        }
+    }
+
     async getWebPageById(webPageId) {
 
         try {
             const {data, errors} = await this.client.executeQuery(`
             {
               node(id: "${webPageId}") {
+                ... on WebPage {
                 ${webPageFragment}
+                }
               }
             }`);
 
             // Handle GraphQL errors
             if (errors) {
-                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+                throw new Error(`Error getting webpage: ${JSON.stringify(errors)}`);
             }
             // Validate the data response
             if (!data || !data.node) {
