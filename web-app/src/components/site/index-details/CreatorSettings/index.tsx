@@ -47,7 +47,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({
       ...conditions.slice(i + 1),
     ];
     const newAction = await api?.postLITAction(addOrStatements(newConditions));
-    await onChange(newAction!);
+    onChange(newAction!);
     setTransactionApprovalWaiting(false);
   };
 

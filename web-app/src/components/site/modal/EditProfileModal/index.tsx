@@ -18,13 +18,13 @@ import { useFormik } from "formik";
 import { CID } from "multiformats";
 import React, { useCallback, useEffect, useState } from "react";
 import ImageUploading from "react-images-uploading";
-import { Users } from "types/entity";
+import { Indexes, Users } from "types/entity";
 
 export interface EditProfileModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {}
 
 const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
-  const { userProfile, setUserProfile, updateIndexesOwnerProfile } = useApp();
+  const { userProfile, setUserProfile, indexes, setIndexes } = useApp();
   const { api, ready: apiReady } = useApi();
   const handleClose = () => {
     modalProps.onClose?.();
@@ -32,6 +32,19 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
 
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState<CID>();
+
+  const updateIndexesOwnerProfile = useCallback((profile: Users) => {
+    const updatedIndexes = indexes.map((index: Indexes) => {
+      if (index.ownerDID.id === profile.id) {
+        return {
+          ...index,
+          ownerDID: profile,
+        };
+      }
+      return index;
+    });
+    setIndexes(updatedIndexes);
+  }, []);
 
   const formik = useFormik<Partial<Users>>({
     initialValues: {
@@ -50,6 +63,7 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
         }
         const newProfile = await api!.updateProfile(params);
         setUserProfile(newProfile);
+        updateIndexesOwnerProfile(newProfile);
       } catch (err) {
         console.log(err);
       } finally {
@@ -59,15 +73,18 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
     },
   });
 
-  const onChange = useCallback(async (imageList: any) => {
-    if (!apiReady) return;
-    if (imageList.length > 0) {
-      const res = await api!.uploadAvatar(imageList[0].file);
-      res && setImage(res.cid);
-    } else {
-      setImage(undefined);
-    }
-  }, [apiReady]);
+  const onChange = useCallback(
+    async (imageList: any) => {
+      if (!apiReady) return;
+      if (imageList.length > 0) {
+        const res = await api!.uploadAvatar(imageList[0].file);
+        res && setImage(res.cid);
+      } else {
+        setImage(undefined);
+      }
+    },
+    [api, apiReady],
+  );
 
   useEffect(() => {
     if (!userProfile) return;

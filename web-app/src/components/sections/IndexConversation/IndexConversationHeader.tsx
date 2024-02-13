@@ -14,17 +14,16 @@ import IndexTitleInput from "components/site/input/IndexTitleInput";
 import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import moment from "moment";
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { FC, useCallback, useState } from "react";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
 
-export const IndexConversationHeader: React.FC = () => {
+export const IndexConversationHeader: FC = () => {
   const { isOwner } = useRole();
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
   const [titleLoading, setTitleLoading] = useState(false);
-  const { viewedIndex, viewedProfile, setViewedIndex, indexes, setIndexes } =
-    useApp();
+  const { viewedIndex, setViewedIndex, indexes, setIndexes } = useApp();
 
   const handleTitleChange = useCallback(
     async (title: string) => {
@@ -33,9 +32,12 @@ export const IndexConversationHeader: React.FC = () => {
       setTitleLoading(true);
       try {
         const result = await api!.updateIndex(viewedIndex.id, { title });
-        const updatedIndex = { ...viewedIndex, title: result.title };
+        const updatedIndex = {
+          ...viewedIndex,
+          title: result.title,
+          updatedAt: result.updatedAt,
+        };
         setViewedIndex(updatedIndex);
-        console.log("updatedIndex", updatedIndex);
         const updatedIndexes = indexes.map((i) =>
           i.id === viewedIndex.id ? { ...i, title: result.title } : i,
         );
@@ -45,8 +47,9 @@ export const IndexConversationHeader: React.FC = () => {
         setIndexes(updatedIndexes);
       } catch (error) {
         console.error("Error updating index", error);
+      } finally {
+        setTitleLoading(false);
       }
-      setTitleLoading(false);
     },
     [api, viewedIndex, indexes, setIndexes, apiReady, setViewedIndex],
   );
@@ -55,6 +58,7 @@ export const IndexConversationHeader: React.FC = () => {
     async (type: string, value: boolean) => {
       if (!apiReady || !viewedIndex || !session) return;
       let updatedIndex: Indexes;
+
       try {
         if (type === "star") {
           await api!.starIndex(session!.did.parent, viewedIndex.id, value);
@@ -84,10 +88,8 @@ export const IndexConversationHeader: React.FC = () => {
       setViewedIndex(updatedIndex);
       setIndexes(updatedIndexes);
     },
-    [viewedIndex, viewedProfile, apiReady, setViewedIndex, indexes, setIndexes],
+    [api, session, viewedIndex, apiReady, setViewedIndex, indexes, setIndexes],
   );
-
-  // if (!viewedIndex) return null;
 
   return (
     <div

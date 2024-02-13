@@ -36,7 +36,7 @@ export default function IndexItemsTabSection() {
 
   const handleAddLink = useCallback(
     async (urls: string[]) => {
-      if (!api || !apiReady || !viewedIndex) return;
+      if (!apiReady || !viewedIndex) return;
 
       setLoading(true);
       try {
@@ -62,14 +62,23 @@ export default function IndexItemsTabSection() {
         setLoading(false);
       }
     },
-    [viewedIndex, setItemsState, setLoading, apiReady],
+    [
+      api,
+      viewedIndex,
+      setItemsState,
+      itemsState.cursor,
+      itemsState.items,
+      setLoading,
+      apiReady,
+    ],
   );
 
   const handleRemove = useCallback(
     (item: IndexItem) => {
       if (!apiReady || !viewedIndex) return;
       setLoading(true);
-      api!.deleteItem(viewedIndex.id, item.node.id)
+      api!
+        .deleteItem(viewedIndex.id, item.node.id)
         .then(() => {
           setItemsState({
             items: itemsState.items.filter((i) => i.node.id !== item.node.id),
@@ -81,7 +90,15 @@ export default function IndexItemsTabSection() {
         })
         .finally(() => setLoading(false));
     },
-    [apiReady, viewedIndex, setItemsState, setLoading],
+    [
+      api,
+      apiReady,
+      viewedIndex,
+      setItemsState,
+      itemsState.cursor,
+      itemsState.items,
+      setLoading,
+    ],
   );
 
   return (

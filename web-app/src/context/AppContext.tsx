@@ -61,7 +61,6 @@ export interface AppContextValue {
   handleCreate: (title: string) => Promise<void>;
   handleTransactionCancel: () => void;
   chatID: string | undefined;
-  updateIndexesOwnerProfile: (profile: Users) => void;
 }
 
 export const AppContext = createContext<AppContextValue>({} as AppContextValue);
@@ -220,25 +219,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     }
   }, [session, fetchProfile]);
 
-  //func to update indexes owner profile when user profile is updated
-  const updateIndexesOwnerProfile = useCallback(
-    (profile: Users) => {
-      setIndexes((prevIndexes) => {
-        return prevIndexes.map((index) => {
-          if (index.ownerDID.id === profile.id) {
-            console.log("777", index);
-            return {
-              ...index,
-              ownerDID: profile,
-            };
-          }
-          return index;
-        });
-      });
-    },
-    [setIndexes],
-  );
-
   useEffect(() => {
     setViewedProfile(userProfile);
   }, [userProfile]);
@@ -300,7 +280,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     handleTransactionCancel,
     editProfileModalVisible,
     chatID,
-    updateIndexesOwnerProfile,
   };
 
   return (

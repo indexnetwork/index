@@ -1,5 +1,5 @@
 import Col from "components/layout/base/Grid/Col";
-import React, { useContext, useState } from "react";
+import { ComponentProps, FC, useState } from "react";
 import { useChat, type Message } from "ai/react";
 import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
@@ -14,9 +14,9 @@ import { maskDID } from "utils/helper";
 import { useApp } from "@/context/AppContext";
 import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
 import NoIndexesChat from "components/ai/no-indexes";
-import { AuthContext } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
 
-export interface ChatProps extends React.ComponentProps<"div"> {
+export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
   id?: string;
 }
@@ -30,11 +30,11 @@ export interface MessageWithIndex extends Message {
   index?: number;
 }
 
-const AskIndexes: React.FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
+const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
   // const index = useIndex();
-  const { viewedProfile, indexes: indexesFromApp, discoveryType } = useApp();
+  const { viewedProfile, indexes: indexesFromApp } = useApp();
 
-  const { session, status } = useContext(AuthContext);
+  const { session, status } = useAuth();
   const { viewedIndex } = useApp();
 
   const { leftTabKey } = useApp();
