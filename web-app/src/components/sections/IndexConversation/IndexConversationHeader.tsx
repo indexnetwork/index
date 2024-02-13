@@ -23,7 +23,14 @@ export const IndexConversationHeader: FC = () => {
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
   const [titleLoading, setTitleLoading] = useState(false);
-  const { viewedIndex, setViewedIndex, indexes, setIndexes } = useApp();
+  const {
+    viewedIndex,
+    setViewedIndex,
+    viewedProfile,
+    indexes,
+    setIndexes,
+    fetchIndexes,
+  } = useApp();
 
   const handleTitleChange = useCallback(
     async (title: string) => {
@@ -79,14 +86,36 @@ export const IndexConversationHeader: FC = () => {
       }
 
       let updatedIndexes: Indexes[];
-      if (!value) {
-        updatedIndexes = indexes.filter((i) => i.id !== viewedIndex.id);
+      // if (!value) {
+      //   updatedIndexes = indexes.filter((i) => i.id !== viewedIndex.id);
+      // } else {
+      //   // updatedIndexes = [updatedIndex, ...indexes];
+      //   // add only if not already in the list
+      //   updatedIndexes = indexes.some((i) => i.id === viewedIndex.id)
+      //     ? indexes
+      //     : [updatedIndex, ...indexes];
+      // }
+      //
+      // merge owned and starred indexes into one list
+      if (type === "star") {
+        updatedIndexes = indexes.map((i) =>
+          i.id === viewedIndex.id ? updatedIndex : i,
+        );
       } else {
-        updatedIndexes = [updatedIndex, ...indexes];
+        updatedIndexes = indexes.some((i) => i.id === viewedIndex.id)
+          ? indexes
+          : [updatedIndex, ...indexes];
       }
 
+      updatedIndexes = updatedIndexes.sort((a, b) => {
+        const aDate = moment(a.createdAt).unix();
+        const bDate = moment(b.createdAt).unix();
+        return bDate - aDate;
+      });
+
       setViewedIndex(updatedIndex);
-      setIndexes(updatedIndexes);
+      // setIndexes(updatedIndexes);
+      fetchIndexes(viewedProfile!.id);
     },
     [api, session, viewedIndex, apiReady, setViewedIndex, indexes, setIndexes],
   );

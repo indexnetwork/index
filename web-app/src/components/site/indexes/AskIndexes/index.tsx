@@ -1,20 +1,20 @@
-import Col from "components/layout/base/Grid/Col";
-import { ComponentProps, FC, useState } from "react";
+import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import { useChat, type Message } from "ai/react";
+import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
-import { EmptyScreen } from "components/ai/empty-screen";
-import { toast } from "react-hot-toast";
-import AskInput from "components/base/AskInput";
-import FlexRow from "components/layout/base/Grid/FlexRow";
-import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
-import { API_ENDPOINTS } from "utils/constants";
-import Flex from "components/layout/base/Grid/Flex";
-import { maskDID } from "utils/helper";
-import { useApp } from "@/context/AppContext";
 import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
+import { EmptyScreen } from "components/ai/empty-screen";
 import NoIndexesChat from "components/ai/no-indexes";
-import { useAuth } from "@/context/AuthContext";
+import AskInput from "components/base/AskInput";
+import Col from "components/layout/base/Grid/Col";
+import Flex from "components/layout/base/Grid/Flex";
+import FlexRow from "components/layout/base/Grid/FlexRow";
+import { ComponentProps, FC, useState } from "react";
+import { toast } from "react-hot-toast";
+import { API_ENDPOINTS } from "utils/constants";
+import { maskDID } from "utils/helper";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -139,19 +139,13 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
         className={indexIds ? "px-0 pt-7" : "px-md-10 px-0 px-4 pt-7"}
         flexdirection={"column"}
         style={{
-          display: "flex", // Ensure it's a flex container
-          flexDirection: "column", // Stack children vertically
-          height: "100%", // Take full available height
+          display: "flex",
+          flexDirection: "column",
+          height: "100%",
         }}
       >
         <FlexRow wrap={true} align={"start"} style={{ flex: "1 1 auto" }}>
-          <Col
-            className="idxflex-grow-1"
-            style={{
-              overflowY: "auto",
-              flex: "1", // Allow this container to grow and fill available space
-            }}
-          >
+          <Col className="idxflex-grow-1">
             {messages.length ? (
               <>
                 <ChatList

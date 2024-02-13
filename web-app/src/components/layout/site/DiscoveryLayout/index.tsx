@@ -3,17 +3,17 @@ import { useApp } from "@/context/AppContext";
 import cc from "classcat";
 import AppLeft from "components/sections/AppLeft";
 import AppRight from "components/sections/AppRight";
-import React from "react";
+import { ReactNode } from "react";
 import Col from "../../base/Grid/Col";
 import Container from "../../base/Grid/Container";
 import FlexRow from "../../base/Grid/FlexRow";
 import AppHeader from "../AppHeader";
 
 export interface DiscoveryLayoutProps {
-  children: React.ReactNode;
-  page?: string;
+  children: ReactNode;
 }
-const DiscoveryLayout = ({ children, page }: DiscoveryLayoutProps) => {
+
+const DiscoveryLayout = ({ children }: DiscoveryLayoutProps) => {
   const {
     leftSidebarOpen,
     setLeftSidebarOpen,
@@ -41,7 +41,7 @@ const DiscoveryLayout = ({ children, page }: DiscoveryLayoutProps) => {
         <FlexRow>
           <AppLeft />
 
-          <Col className={cc(["scrollable-container", "main-panel", `page-${page}`])}>{children}</Col>
+          <Col className={cc(["main-panel"])}>{children}</Col>
 
           <AppRight />
         </FlexRow>

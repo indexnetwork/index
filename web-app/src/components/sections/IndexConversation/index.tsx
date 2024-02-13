@@ -1,40 +1,26 @@
-import Flex from "components/layout/base/Grid/Flex";
 import { useApp } from "@/context/AppContext";
+import Flex from "components/layout/base/Grid/Flex";
 import Head from "next/head";
 import { IndexConversationProvider } from "./IndexConversationContext";
 import { IndexConversationHeader } from "./IndexConversationHeader";
 import TabContainer from "./TabContainer";
 
 const IndexConversationSection = () => {
-  const { viewedIndex, fetchIndex } = useApp();
-
-  // const handleCollabActionChange = async (CID: string) => {
-  //   if (!viewedIndex) return;
-  //   const litContracts = new LitContracts();
-  //   await litContracts.connect();
-  //   const pubKeyHash = ethers.keccak256(viewedIndex.pkpPublicKey!);
-  //   const tokenId = BigInt(pubKeyHash);
-  //   const newCollabAction = litContracts.utils.getBytesFromMultihash(CID);
-  //   const previousCollabAction = litContracts.utils.getBytesFromMultihash(viewedIndex.collabAction!);
-  //   const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(tokenId, newCollabAction, []);
-  //   const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(tokenId, previousCollabAction);
-  // };
-  //
+  const { viewedIndex } = useApp();
 
   return (
     <IndexConversationProvider>
-      <Flex
+      <div
         className={"px-md-10 px-0 pt-6"}
-        flexdirection={"column"}
         style={{
-          maxHeight: "90dvh",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        <Flex flexdirection={"column"}>
-          <IndexConversationHeader />
-          <TabContainer />
-        </Flex>
-      </Flex>
+        <IndexConversationHeader />
+        <TabContainer />
+      </div>
       {viewedIndex && (
         <Head>
           <title>{viewedIndex.title} - Index Network</title>

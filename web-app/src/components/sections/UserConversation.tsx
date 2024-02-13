@@ -10,5 +10,15 @@ export default function UserConversationSection() {
     return null;
   }
 
-  return <AskIndexes chatID={chatID} did={id} />;
+  return (
+    <div
+      style={{
+        flex: 1,
+        overflowY: "auto",
+        maxHeight: "calc(100dvh - 12em)",
+      }}
+    >
+      <AskIndexes chatID={chatID} did={id} />;
+    </div>
+  );
 }

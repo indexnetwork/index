@@ -40,7 +40,7 @@ export const ChatList = ({
           />
         </div>
       ))}
-      <div style={{ width: "100%", height: "15rem" }}></div>
+      {/* <div style={{ width: "100%", height: "15rem" }}></div> */}
     </div>
   );
 };
