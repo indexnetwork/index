@@ -22,6 +22,7 @@ export enum AuthStatus {
   LOADING = "LOADING",
   FAILED = "FAILED",
   IDLE = "IDLE",
+  NOT_CONNECTED = "NOT_CONNECTED",
 }
 
 export interface AuthContextType {
@@ -38,15 +39,11 @@ const defaultAuthContext = {
   connect: async () => {},
   disconnect: () => {},
   status: AuthStatus.IDLE,
-  setStatus: (status: AuthStatus) => {},
+  setStatus: () => {},
   session: undefined,
   userDID: undefined,
   isLoading: false,
 };
-
-// type SessionResponse = {
-//   session: DIDSession,
-// };
 
 /* eslint-disable */
 export const AuthContext =
@@ -54,10 +51,6 @@ export const AuthContext =
 
 export const AuthProvider = ({ children }: any) => {
   const SESSION_KEY = "did";
-  // const {
-  //   originNFTModalVisible,
-  // } = useAppSelector(selectConnection);
-  // const dispatch = useAppDispatch();
 
   const [session, setSession] = useState<DIDSession | undefined>();
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
@@ -71,8 +64,6 @@ export const AuthProvider = ({ children }: any) => {
   }, []);
 
   useEffect(() => {
-    // TODO: no force connect
-    // authenticate();
     handleInitialCheck();
   }, [handleInitialCheck]);
 
@@ -82,13 +73,14 @@ export const AuthProvider = ({ children }: any) => {
   //   console.log("Session changed", session);
   // }, [session]);
 
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     localStorage.removeItem(SESSION_KEY);
     setSession(undefined);
-  };
+  }, []);
 
-  const checkSession = async (): Promise<boolean> => {
-    if (session && !session.isExpired) {
+  const checkSession = useCallback(async (): Promise<boolean> => {
+    if (session && session?.isExpired) {
+      setStatus(AuthStatus.CONNECTED);
       console.log("Session already exists and is valid");
       return true;
     }
@@ -96,6 +88,7 @@ export const AuthProvider = ({ children }: any) => {
     const sessionStr = localStorage.getItem(SESSION_KEY);
     if (!sessionStr) {
       console.log("No session found in local storage");
+      setStatus(AuthStatus.NOT_CONNECTED);
       return false;
     }
 
@@ -104,7 +97,7 @@ export const AuthProvider = ({ children }: any) => {
     setSession(existingSession);
     setStatus(AuthStatus.CONNECTED);
     return !existingSession.isExpired;
-  };
+  }, [session]);
 
   const startSession = useCallback(async (): Promise<void> => {
     const ethProvider = window.ethereum;
@@ -112,8 +105,6 @@ export const AuthProvider = ({ children }: any) => {
     if (ethProvider.chainId !== appConfig.testNetwork.chainId) {
       const switchRes = await switchTestNetwork();
       if (!switchRes) {
-        // dispatch(setAuthLoading(false));
-        // setStatus(AuthStatus.FAILED);
         throw new Error("Network error.");
       }
     }

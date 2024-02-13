@@ -3,7 +3,7 @@ import { useApp } from "@/context/AppContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { GetItemQueryParams } from "@/services/api-service-new";
 import { IndexItem } from "@/types/entity";
-import React, {
+import {
   createContext,
   useCallback,
   useContext,
@@ -50,13 +50,13 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<any>(null);
 
-  const { apiService: api } = useApi();
+  const { api, ready: apiReady } = useApi();
   const { viewedIndex, fetchIndex } = useApp();
   const { id } = useRouteParams();
 
   const fetchIndexItems = useCallback(
     async (resetCursor = false, params: GetItemQueryParams = {}) => {
-      if (!api || !viewedIndex) return;
+      if (!apiReady || !viewedIndex) return;
 
       // setLoading(true);
       try {
@@ -71,7 +71,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         }
 
         // DEBUG
-        const response = await api.getItems(viewedIndex.id, itemParams);
+        const response = await api!.getItems(viewedIndex.id, itemParams);
         // if (itemParams.query) {
         //   response = {
         //     items: [],
@@ -95,13 +95,13 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         // setLoading(false);
       }
     },
-    [api, id, viewedIndex, itemsState.cursor],
+    [api, id, viewedIndex, itemsState.cursor, apiReady],
   );
 
   useEffect(() => {
     fetchIndex();
     fetchIndexItems(true);
-  }, [viewedIndex?.id]);
+  }, [viewedIndex?.id, fetchIndex, fetchIndexItems]);
 
   const addItem = useCallback((item: IndexItem) => {
     setItemsState((prevState) => ({

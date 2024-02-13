@@ -21,11 +21,6 @@ const IndexConversationSection = () => {
   // };
   //
 
-  // useEffect(() => {
-  //   fetchIndex();
-  //   console.log("fetching index", viewedIndex);
-  // }, [fetchIndex]);
-
   return (
     <IndexConversationProvider>
       <Flex
@@ -33,7 +28,6 @@ const IndexConversationSection = () => {
         flexdirection={"column"}
         style={{
           maxHeight: "90dvh",
-          overflowY: "hidden",
         }}
       >
         <Flex flexdirection={"column"}>

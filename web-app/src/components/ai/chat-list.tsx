@@ -1,7 +1,6 @@
 import { type Message } from "ai";
 
 import { ChatMessage } from "components/ai/chat-message";
-import React from "react";
 
 export interface ChatListInterface {
   messages: Message[];

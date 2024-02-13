@@ -24,6 +24,9 @@
   },
   "rules": {
     "no-console": "off",
+    "function-paren-newline": "off",
+    "no-confusing-arrow": "off",
+    "operator-linebreak": "off",
     "implicit-arrow-linebreak": "off",
     "object-curly-newline": "off",
     "linebreak-style": "off",

@@ -21,41 +21,49 @@ import { maskDID } from "utils/helper";
 export const IndexConversationHeader: React.FC = () => {
   const { isOwner } = useRole();
   const { session } = useAuth();
-  const { apiService: api } = useApi();
+  const { api, ready: apiReady } = useApi();
   const [titleLoading, setTitleLoading] = useState(false);
-  const { viewedIndex, viewedProfile, setViewedIndex, indexes, setIndexes } = useApp();
-
-  // if (!viewedIndex || !viewedProfile) return null;
+  const { viewedIndex, viewedProfile, setViewedIndex, indexes, setIndexes } =
+    useApp();
 
   const handleTitleChange = useCallback(
     async (title: string) => {
-      if (!api || !viewedIndex) return;
+      if (!apiReady || !viewedIndex) return;
 
       setTitleLoading(true);
       try {
-        const result = await api.updateIndex(viewedIndex.id, { title });
-        setViewedIndex({ ...viewedIndex, title: result.title });
+        const result = await api!.updateIndex(viewedIndex.id, { title });
+        const updatedIndex = { ...viewedIndex, title: result.title };
+        setViewedIndex(updatedIndex);
+        console.log("updatedIndex", updatedIndex);
+        const updatedIndexes = indexes.map((i) =>
+          i.id === viewedIndex.id ? { ...i, title: result.title } : i,
+        );
+
+        console.log("updatedIndexes", updatedIndexes);
+
+        setIndexes(updatedIndexes);
       } catch (error) {
         console.error("Error updating index", error);
       }
       setTitleLoading(false);
     },
-    [viewedIndex, api, setViewedIndex],
+    [api, viewedIndex, indexes, setIndexes, apiReady, setViewedIndex],
   );
 
   const handleUserIndexToggle = useCallback(
     async (type: string, value: boolean) => {
-      if (!api || !viewedIndex || !session) return;
+      if (!apiReady || !viewedIndex || !session) return;
       let updatedIndex: Indexes;
       try {
         if (type === "star") {
-          await api?.starIndex(session!.did.parent, viewedIndex.id, value);
+          await api!.starIndex(session!.did.parent, viewedIndex.id, value);
           updatedIndex = {
             ...viewedIndex,
             did: { ...viewedIndex.did, starred: value },
           };
         } else {
-          await api?.ownIndex(session!.did.parent, viewedIndex.id, value);
+          await api!.ownIndex(session!.did.parent, viewedIndex.id, value);
           updatedIndex = {
             ...viewedIndex,
             did: { ...viewedIndex.did, owned: value },
@@ -66,19 +74,28 @@ export const IndexConversationHeader: React.FC = () => {
         return;
       }
 
+      let updatedIndexes: Indexes[];
+      if (!value) {
+        updatedIndexes = indexes.filter((i) => i.id !== viewedIndex.id);
+      } else {
+        updatedIndexes = [updatedIndex, ...indexes];
+      }
+
       setViewedIndex(updatedIndex);
-      setIndexes(
-        indexes.map((index) =>
-          (index.id === updatedIndex.id ? updatedIndex : index)),
-      );
+      setIndexes(updatedIndexes);
     },
-    [viewedIndex, viewedProfile, api, setViewedIndex, indexes, setIndexes],
+    [viewedIndex, viewedProfile, apiReady, setViewedIndex, indexes, setIndexes],
   );
 
   // if (!viewedIndex) return null;
 
   return (
-    <>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
       <FlexRow>
         <Col centerBlock className="idxflex-grow-1">
           {
@@ -97,10 +114,10 @@ export const IndexConversationHeader: React.FC = () => {
                     fontWeight={500}
                     element="span"
                   >
-                    {viewedIndex?.ownerDID?.name
-                      || (viewedIndex?.ownerDID
-                        && maskDID(viewedIndex?.ownerDID?.id!))
-                      || ""}
+                    {viewedIndex?.ownerDID?.name ||
+                      (viewedIndex?.ownerDID &&
+                        maskDID(viewedIndex?.ownerDID?.id!)) ||
+                      ""}
                   </Text>
                 </LoadingText>
               </div>
@@ -162,6 +179,6 @@ export const IndexConversationHeader: React.FC = () => {
           </Text>
         </LoadingText>
       </FlexRow>
-    </>
+    </div>
   );
 };

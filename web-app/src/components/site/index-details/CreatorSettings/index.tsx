@@ -25,7 +25,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({
 }) => {
   const { role } = useRole();
 
-  const { apiService: api } = useApi();
+  const { api } = useApi();
   const [loading, setLoading] = useState(false);
   const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
   const { setTransactionApprovalWaiting } = useApp();
@@ -56,9 +56,10 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({
     setTransactionApprovalWaiting(true);
     const newConditions = [condition, ...conditions];
     const newAction = await api?.postLITAction(addOrStatements(newConditions));
-    await onChange(newAction!);
+    onChange(newAction!);
     setTransactionApprovalWaiting(false);
   };
+
   const handleToggleNewCreatorModal = () => {
     setNewCreatorModalVisible(!newCreatorModalVisible);
   };
@@ -101,8 +102,8 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({
         </Col>
       </Row>
       <FlexRow className={"mt-6"} rowGutter={0} rowSpacing={2} colSpacing={2}>
-        {conditions
-          && conditions.map((c: any, i: any) => (
+        {conditions &&
+          conditions.map((c: any, i: any) => (
             <Col key={i} lg={6} xs={12}>
               <CreatorRule
                 handleRemove={() => handleRemove(i)}

@@ -1,7 +1,6 @@
 import { EmptyScreen } from "@/components/ai/empty-screen";
-import { useApp } from "@/context/AppContext";
 import AskIndexes from "@/components/site/indexes/AskIndexes";
-import React from "react";
+import { useApp } from "@/context/AppContext";
 import LoadingSection from "../../Loading";
 import { useIndexConversation } from "../IndexConversationContext";
 
@@ -30,5 +29,5 @@ export default function ChatTabSection() {
       <AskIndexes chatID={chatID} indexIds={[viewedIndex?.id!]} />
     ) : null;
   }
-    return <EmptyScreen setInput={() => {}} contextMessage="your responses" />;
+  return <EmptyScreen setInput={() => {}} contextMessage="your responses" />;
 }

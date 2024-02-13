@@ -16,7 +16,7 @@ import Row from "components/layout/base/Grid/Row";
 import { appConfig } from "config";
 import { useFormik } from "formik";
 import { CID } from "multiformats";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import ImageUploading from "react-images-uploading";
 import { Users } from "types/entity";
 
@@ -24,8 +24,8 @@ export interface EditProfileModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {}
 
 const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
-  const { userProfile, setUserProfile } = useApp();
-  const { apiService: api } = useApi();
+  const { userProfile, setUserProfile, updateIndexesOwnerProfile } = useApp();
+  const { api, ready: apiReady } = useApi();
   const handleClose = () => {
     modalProps.onClose?.();
   };
@@ -39,6 +39,7 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
     },
     onSubmit: async (values) => {
       try {
+        if (!apiReady) return;
         setLoading(true);
         const params: Partial<Users> = {
           name: values.name,
@@ -47,7 +48,7 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
         if (image) {
           params.avatar = image;
         }
-        const newProfile = await api.updateProfile(params);
+        const newProfile = await api!.updateProfile(params);
         setUserProfile(newProfile);
       } catch (err) {
         console.log(err);
@@ -58,20 +59,22 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
     },
   });
 
-  const onChange = async (imageList: any) => {
+  const onChange = useCallback(async (imageList: any) => {
+    if (!apiReady) return;
     if (imageList.length > 0) {
-      const res = await api.uploadAvatar(imageList[0].file);
+      const res = await api!.uploadAvatar(imageList[0].file);
       res && setImage(res.cid);
     } else {
       setImage(undefined);
     }
-  };
+  }, [apiReady]);
 
   useEffect(() => {
     if (!userProfile) return;
 
     userProfile.avatar && setImage(userProfile.avatar);
-  }, [userProfile]);
+    updateIndexesOwnerProfile(userProfile);
+  }, [userProfile, updateIndexesOwnerProfile]);
 
   return (
     <Modal

@@ -47,7 +47,6 @@ const AppLeft = () => {
               </Col>
               <Col className="idxflex-grow-1 ml-6">
                 <Flex flexdirection={"column"}>
-                  {/* {"viewedProfile " + JSON.stringify(viewedProfile)} */}
                   <>
                     <LoadingText val={viewedProfile?.name || viewedProfile?.id}>
                       <Header level={4} className={"mb-1"}>
@@ -60,7 +59,6 @@ const AppLeft = () => {
                         }
                       </Header>
                     </LoadingText>
-                    {/* <LoadingText val={viewedProfile?.bio}> */}
                     <Text
                       className={"my-0"}
                       theme="gray6"
@@ -71,7 +69,6 @@ const AppLeft = () => {
                     >
                       {viewedProfile?.bio}
                     </Text>
-                    {/* </LoadingText> */}
                   </>
                 </Flex>
               </Col>
