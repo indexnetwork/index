@@ -16,7 +16,7 @@ export const APIProvider: FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const { session, status } = useAuth();
-  const [apiService, _] = useState<ApiService | null>(
+  const [apiService, setApiServie] = useState<ApiService | null>(
     ApiService.getInstance(),
   );
   const [ready, setReady] = useState(false);
