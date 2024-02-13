@@ -49,7 +49,15 @@ export default function TabContainer() {
   }, [tabKey]);
 
   return (
-    <Flex flexdirection={"column"}>
+    <Flex
+      flexdirection={"column"}
+      style={{
+        flex: 1,
+        display: "flex",
+        height: "100%",
+        overflow: "hidden",
+      }}
+    >
       <FlexRow>
         <Col className="idxflex-grow-1 mt-3">
           <Tabs activeKey={tabKey} onTabChange={setTabKey}>
@@ -66,9 +74,15 @@ export default function TabContainer() {
         </Col>
       </FlexRow>
       <FlexRow>
-        <Flex flexdirection={"column"} className={"idxflex-grow-1"}>
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            maxHeight: "calc(100dvh - 24em)",
+          }}
+        >
           {renderTabContent()}
-        </Flex>
+        </div>
       </FlexRow>
     </Flex>
   );

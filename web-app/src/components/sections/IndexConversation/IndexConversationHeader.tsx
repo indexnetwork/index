@@ -23,7 +23,14 @@ export const IndexConversationHeader: FC = () => {
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
   const [titleLoading, setTitleLoading] = useState(false);
-  const { viewedIndex, setViewedIndex, indexes, setIndexes } = useApp();
+  const {
+    viewedIndex,
+    setViewedIndex,
+    viewedProfile,
+    indexes,
+    setIndexes,
+    fetchIndexes,
+  } = useApp();
 
   const handleTitleChange = useCallback(
     async (title: string) => {
@@ -56,7 +63,7 @@ export const IndexConversationHeader: FC = () => {
 
   const handleUserIndexToggle = useCallback(
     async (type: string, value: boolean) => {
-      if (!apiReady || !viewedIndex || !session) return;
+      if (!apiReady || !viewedIndex || !viewedProfile || !session) return;
       let updatedIndex: Indexes;
 
       try {
@@ -78,15 +85,8 @@ export const IndexConversationHeader: FC = () => {
         return;
       }
 
-      let updatedIndexes: Indexes[];
-      if (!value) {
-        updatedIndexes = indexes.filter((i) => i.id !== viewedIndex.id);
-      } else {
-        updatedIndexes = [updatedIndex, ...indexes];
-      }
-
       setViewedIndex(updatedIndex);
-      setIndexes(updatedIndexes);
+      fetchIndexes(viewedProfile.id);
     },
     [api, session, viewedIndex, apiReady, setViewedIndex, indexes, setIndexes],
   );

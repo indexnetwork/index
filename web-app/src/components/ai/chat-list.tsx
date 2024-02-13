@@ -1,5 +1,4 @@
 import { type Message } from "ai";
-
 import { ChatMessage } from "components/ai/chat-message";
 
 export interface ChatListInterface {
@@ -40,7 +39,6 @@ export const ChatList = ({
           />
         </div>
       ))}
-      <div style={{ width: "100%", height: "15rem" }}></div>
     </div>
   );
 };

@@ -76,7 +76,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
-  /* eslint-disable */
   const [transactionApprovalWaiting, setTransactionApprovalWaiting] =
     useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
@@ -89,17 +88,18 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const prevIndexID = useRef(id);
   const isFetchingRef = useRef(false);
 
-  /* eslint-disable */
   const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
 
   const fetchIndexes = useCallback(
     async (did: string) => {
       if (!apiReady) return;
       try {
-        console.log("44", viewedProfile);
         const fetchedIndexes = await api!.getAllIndexes(did);
-        console.log("87 fetchedIndexes", fetchedIndexes);
-        setIndexes(fetchedIndexes);
+        const sortedIndexes = fetchedIndexes.sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+        setIndexes(sortedIndexes);
       } catch (error) {
         console.error("Error fetching indexes", error);
       }
