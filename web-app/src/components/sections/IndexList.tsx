@@ -7,14 +7,15 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import { IndexListTabKey, useApp } from "@/context/AppContext";
 import IndexItem from "components/site/indexes/IndexItem";
 import { useRouteParams } from "hooks/useRouteParams";
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { Indexes } from "types/entity";
 
 const IndexListSection: React.FC = () => {
   const { id } = useRouteParams();
 
-  /* eslint-disable */
   const { indexes, setLeftTabKey, leftTabKey, viewedProfile } = useApp();
+
+  const prevProfileID = useRef(viewedProfile?.id);
 
   const handleTabChange = useCallback(
     (tabKey: IndexListTabKey) => {
@@ -37,8 +38,10 @@ const IndexListSection: React.FC = () => {
   }, [indexes, leftTabKey]);
 
   useEffect(() => {
-    setLeftTabKey(IndexListTabKey.ALL);
-  }, [viewedProfile?.id]);
+    if (viewedProfile?.id !== prevProfileID.current) {
+      setLeftTabKey(IndexListTabKey.ALL);
+    }
+  }, [viewedProfile?.id, setLeftTabKey]);
 
   return (
     <>

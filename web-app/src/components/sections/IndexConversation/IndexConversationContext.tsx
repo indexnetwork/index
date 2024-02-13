@@ -1,13 +1,13 @@
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
-import { useRouteParams } from "@/hooks/useRouteParams";
 import { GetItemQueryParams } from "@/services/api-service-new";
 import { IndexItem } from "@/types/entity";
-import React, {
+import {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -22,7 +22,6 @@ type IndexConversationContextType = {
   fetchIndexItems: (resetCursor?: boolean, params?: GetItemQueryParams) => void;
   loading: boolean;
   setLoading: (loading: boolean) => void;
-  error: any;
   addItem: (item: IndexItem) => void;
   removeItem: (itemId: string) => void;
   loadMoreItems: () => void;
@@ -48,15 +47,18 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
     cursor: undefined,
   });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<any>(null);
 
-  const { apiService: api } = useApi();
+  const { api, ready: apiReady } = useApi();
   const { viewedIndex, fetchIndex } = useApp();
-  const { id } = useRouteParams();
+
+  const fetchingIndexItems = useRef(false);
 
   const fetchIndexItems = useCallback(
     async (resetCursor = false, params: GetItemQueryParams = {}) => {
-      if (!api || !viewedIndex) return;
+      if (!apiReady || !viewedIndex) return;
+      if (fetchingIndexItems.current) return;
+
+      fetchingIndexItems.current = true;
 
       // setLoading(true);
       try {
@@ -70,14 +72,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
           itemParams.query = params.query;
         }
 
-        // DEBUG
-        const response = await api.getItems(viewedIndex.id, itemParams);
-        // if (itemParams.query) {
-        //   response = {
-        //     items: [],
-        //     cursor: null,
-        //   };
-        // }
+        const response = await api!.getItems(viewedIndex.id, itemParams);
 
         if (response) {
           setItemsState((prevState) => ({
@@ -90,18 +85,18 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         }
       } catch (err: any) {
         console.error("Error fetching index links", err);
-        setError(error);
       } finally {
         // setLoading(false);
+        fetchingIndexItems.current = false;
       }
     },
-    [api, id, viewedIndex, itemsState.cursor],
+    [api, viewedIndex, itemsState.cursor, apiReady],
   );
 
   useEffect(() => {
     fetchIndex();
     fetchIndexItems(true);
-  }, [viewedIndex?.id]);
+  }, [viewedIndex?.id, fetchIndex, fetchIndexItems]);
 
   const addItem = useCallback((item: IndexItem) => {
     setItemsState((prevState) => ({
@@ -126,7 +121,6 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
       value={{
         itemsState,
         loading,
-        error,
         addItem,
         removeItem,
         loadMoreItems,

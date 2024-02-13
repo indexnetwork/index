@@ -1,5 +1,5 @@
 import Col from "components/layout/base/Grid/Col";
-import React, { useContext, useState } from "react";
+import { ComponentProps, FC, useState } from "react";
 import { useChat, type Message } from "ai/react";
 import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
@@ -14,9 +14,9 @@ import { maskDID } from "utils/helper";
 import { useApp } from "@/context/AppContext";
 import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
 import NoIndexesChat from "components/ai/no-indexes";
-import { AuthContext } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
 
-export interface ChatProps extends React.ComponentProps<"div"> {
+export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
   id?: string;
 }
@@ -30,11 +30,11 @@ export interface MessageWithIndex extends Message {
   index?: number;
 }
 
-const AskIndexes: React.FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
+const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
   // const index = useIndex();
-  const { viewedProfile, indexes: indexesFromApp, discoveryType } = useApp();
+  const { viewedProfile, indexes: indexesFromApp } = useApp();
 
-  const { session, status } = useContext(AuthContext);
+  const { session, status } = useAuth();
   const { viewedIndex } = useApp();
 
   const { leftTabKey } = useApp();
@@ -131,50 +131,27 @@ const AskIndexes: React.FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
     return <NoIndexesChat isSelfDid={did === viewedProfile?.id} />;
   }
 
-  // if (discoveryType === DiscoveryType.index) {
-  // }
-
   return (
     <>
       <Flex
         id={chatID}
         key={chatID}
-        className={
-          indexIds
-            ? "scrollable-area px-0 pt-7"
-            : "px-md-10 scrollable-area px-0 px-4 pt-7"
-        }
+        className={indexIds ? "px-0 pt-7" : "px-md-10 px-0 px-4 pt-7"}
         flexdirection={"column"}
+        style={{
+          display: "flex", // Ensure it's a flex container
+          flexDirection: "column", // Stack children vertically
+          height: "100%", // Take full available height
+        }}
       >
-        <FlexRow wrap={true} align={"start"}>
-          {/* {indexesFromApp.map((index) => (
-            <Col key={index.id} className="idxflex-grow-1" style={{ width: "100%" }}>
-              {messages.length ? (
-                <>
-                  <ChatList
-                    messages={messages}
-                    handleEditClick={handleEditClick}
-                    editingMessage={editingMessage}
-                    setEditInput={setEditInput}
-                    editInput={editInput}
-                    handleSaveEdit={handleSaveEdit}
-                    editingIndex={editingIndex}
-                  />
-                  <ChatScrollAnchor trackVisibility={isLoading} />
-                </>
-              ) : (
-                <Flex className="px-8">
-                  <EmptyScreen
-                    contextMessage={getChatContextMessage()}
-                    setInput={setInput}
-                    indexes={indexes}
-                  />
-                </Flex>
-              )}
-            </Col>
-          ))} */}
-
-          <Col className="idxflex-grow-1" style={{ width: "100%" }}>
+        <FlexRow wrap={true} align={"start"} style={{ flex: "1 1 auto" }}>
+          <Col
+            className="idxflex-grow-1"
+            style={{
+              overflowY: "auto",
+              flex: "1", // Allow this container to grow and fill available space
+            }}
+          >
             {messages.length ? (
               <>
                 <ChatList

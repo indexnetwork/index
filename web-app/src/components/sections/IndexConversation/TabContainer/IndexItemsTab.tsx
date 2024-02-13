@@ -21,7 +21,7 @@ export default function IndexItemsTabSection() {
     // loadMoreItems,
   } = useIndexConversation();
   const { isCreator } = useRole();
-  const { apiService: api } = useApi();
+  const { api, ready: apiReady } = useApi();
   const [search, setSearch] = useState("");
 
   const { viewedIndex } = useApp();
@@ -29,22 +29,22 @@ export default function IndexItemsTabSection() {
   const handleSearch = useCallback(
     (searchQuery: string) => {
       setSearch(searchQuery);
-      fetchIndexItems(true, { query: searchQuery }); // Reset cursor and pass query
+      fetchIndexItems(true, { query: searchQuery });
     },
     [fetchIndexItems],
   );
 
   const handleAddLink = useCallback(
     async (urls: string[]) => {
-      if (!api || !viewedIndex) return;
+      if (!apiReady || !viewedIndex) return;
 
       setLoading(true);
       try {
-        const createdLink = await api.crawlLink(urls[0]);
+        const createdLink = await api!.crawlLink(urls[0]);
         if (!createdLink) {
           throw new Error("Error creating link");
         }
-        const createdItem = await api.createItem(
+        const createdItem = await api!.createItem(
           viewedIndex.id,
           createdLink.id,
         );
@@ -62,14 +62,22 @@ export default function IndexItemsTabSection() {
         setLoading(false);
       }
     },
-    [api, viewedIndex, setItemsState, setLoading],
+    [
+      api,
+      viewedIndex,
+      setItemsState,
+      itemsState.cursor,
+      itemsState.items,
+      setLoading,
+      apiReady,
+    ],
   );
 
   const handleRemove = useCallback(
     (item: IndexItem) => {
-      if (!api || !viewedIndex) return;
+      if (!apiReady || !viewedIndex) return;
       setLoading(true);
-      api
+      api!
         .deleteItem(viewedIndex.id, item.node.id)
         .then(() => {
           setItemsState({
@@ -82,7 +90,15 @@ export default function IndexItemsTabSection() {
         })
         .finally(() => setLoading(false));
     },
-    [api, viewedIndex, setItemsState, setLoading],
+    [
+      api,
+      apiReady,
+      viewedIndex,
+      setItemsState,
+      itemsState.cursor,
+      itemsState.items,
+      setLoading,
+    ],
   );
 
   return (

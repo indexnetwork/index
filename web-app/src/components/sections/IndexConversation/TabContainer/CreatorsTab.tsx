@@ -14,7 +14,7 @@ export default function CreatorsTabSection({ noLinks }: { noLinks?: boolean }) {
   const { id: indexID } = useRouteParams();
   // const [links, setLinks] = useState<IndexLink[]>([]);
   const { isOwner } = useRole();
-  const { apiService: api } = useApi();
+  const { api, ready: apiReady } = useApi();
   const { viewedIndex } = useApp();
 
   const handleCollabActionChange = async (CID: string) => {

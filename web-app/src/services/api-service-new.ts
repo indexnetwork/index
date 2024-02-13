@@ -1,5 +1,3 @@
-// ApiService.ts
-
 import axios, { AxiosInstance } from "axios";
 import { appConfig } from "config";
 import { DIDSession } from "did-session";
@@ -53,7 +51,6 @@ class ApiService {
   private static instance: ApiService;
   private apiAxios: AxiosInstance;
   private session: DIDSession | null = null;
-  private signerPublicKey: Indexes["signerPublicKey"] | null = null;
 
   private constructor() {
     this.apiAxios = axios.create({
@@ -72,22 +69,17 @@ class ApiService {
   }
 
   public setSession(session: DIDSession) {
-    // console.log('setSession', session);
+    console.log("41 setSession", session);
     this.session = session;
     this.apiAxios.defaults.headers.Authorization = `Bearer ${session.serialize()}`;
-    // debugger;
   }
 
   public getSession() {
     return this.session;
   }
 
-  setPkpPublicKey(signerPublicKey: Indexes["signerPublicKey"]) {
-    this.signerPublicKey = signerPublicKey;
-  }
-
-  async getAllIndexes(id: string): Promise<Indexes[]> {
-    const url = API_ENDPOINTS.GET_ALL_INDEXES.replace(":did", id);
+  async getAllIndexes(did: string): Promise<Indexes[]> {
+    const url = API_ENDPOINTS.GET_ALL_INDEXES.replace(":did", did);
     const { data } = await this.apiAxios.get<Indexes[]>(url);
     return data;
   }

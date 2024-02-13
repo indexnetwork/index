@@ -11,6 +11,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { Indexes, Users } from "types/entity";
@@ -66,7 +67,7 @@ export const AppContext = createContext<AppContextValue>({} as AppContextValue);
 
 export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const { id } = useRouteParams();
-  const { apiService: api } = useApi();
+  const { api, ready: apiReady } = useApi();
   const { session } = useAuth();
   const router = useRouter();
   const [indexes, setIndexes] = useState<Indexes[]>([]);
@@ -85,36 +86,46 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [loading, setLoading] = useState(false);
   const [chatID, setChatID] = useState<string | undefined>(undefined);
 
+  const prevIndexID = useRef(id);
+  const isFetchingRef = useRef(false);
+
   /* eslint-disable */
   const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
 
   const fetchIndexes = useCallback(
     async (did: string) => {
-      if (!api) return;
+      if (!apiReady) return;
       try {
-        const fetchedIndexes = await api.getAllIndexes(did);
+        console.log("44", viewedProfile);
+        const fetchedIndexes = await api!.getAllIndexes(did);
+        console.log("87 fetchedIndexes", fetchedIndexes);
         setIndexes(fetchedIndexes);
       } catch (error) {
         console.error("Error fetching indexes", error);
       }
     },
-    [api],
+    [apiReady],
   );
 
   const fetchIndex = useCallback(async () => {
     try {
-      console.log("fetching index", id, api);
-      if (!api || !id) return;
-      if (!isIndex) return;
+      if (!apiReady || !id || !isIndex) return;
       if (viewedIndex?.id === id) return;
+      if (isFetchingRef.current) return;
 
-      const index = await api.getIndex(id);
+      isFetchingRef.current = true;
+
+      console.log("fetching index", id, apiReady, viewedIndex);
+      const index = await api!.getIndex(id);
+      console.log("65 index", index);
       setViewedIndex(index);
+      prevIndexID.current = id;
+      isFetchingRef.current = false; // Unlock fetching at the end
     } catch (error) {
       console.error("Error fetching index", error);
       // Handle error appropriately
     }
-  }, [api, id, discoveryType, viewedIndex]);
+  }, [id, viewedIndex, isIndex, apiReady]);
 
   const handleTransactionCancel = useCallback(() => {
     setTransactionApprovalWaiting(false);
@@ -125,11 +136,12 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       setCreateModalVisible(false);
       setTransactionApprovalWaiting(true);
       try {
-        if (!api) return;
-        const doc = await api.createIndex(title);
+        if (!apiReady) return;
+        const doc = await api!.createIndex(title);
         if (!doc) {
           throw new Error("API didn't return a doc");
         }
+        setIndexes((prevIndexes) => [doc, ...prevIndexes]);
         router.push(`/discovery/${doc.id}`);
       } catch (err) {
         console.error("Couldn't create index", err);
@@ -137,7 +149,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         setTransactionApprovalWaiting(false);
       }
     },
-    [api, router],
+    [apiReady, router],
   );
 
   const updateIndex = useCallback(
@@ -169,15 +181,15 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const fetchProfile = useCallback(
     async (did: string) => {
       try {
-        if (!api) return;
-        const profile = await api.getProfile(did);
+        if (!apiReady) return;
+        const profile = await api!.getProfile(did);
         return profile;
       } catch (error) {
         console.error("Error fetching profile", error);
         // Handle error appropriately
       }
     },
-    [api],
+    [apiReady],
   );
 
   const handleProfileChange = useCallback(async () => {
@@ -216,25 +228,21 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, [handleUserProfileChange]);
 
   useEffect(() => {
-    setChatID((prevChatID) => {
-      if (!prevChatID) {
-        const newChatID = uuidv4();
-        localStorage.setItem("chatterID", newChatID);
-        return newChatID;
-      }
-      return prevChatID;
-    });
-  }, []);
+    handleProfileChange();
+  }, [handleProfileChange]);
+
+  useEffect(() => {
+    const newChatID = uuidv4();
+    localStorage.setItem("chatterID", newChatID);
+    setChatID(newChatID);
+  }, [id]);
 
   useEffect(() => {
     if (viewedProfile) {
+      console.log("83 viewedProfile", viewedProfile);
       fetchIndexes(viewedProfile.id);
     }
   }, [viewedProfile?.id]);
-
-  useEffect(() => {
-    handleProfileChange();
-  }, [handleProfileChange]);
 
   const contextValue: AppContextValue = {
     discoveryType,

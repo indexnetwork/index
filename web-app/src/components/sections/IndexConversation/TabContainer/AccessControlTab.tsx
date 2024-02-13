@@ -12,7 +12,7 @@ export default function AccessControlTabSection() {
   const { id: indexID } = useRouteParams();
   // const [links, setLinks] = useState<IndexLink[]>([]);
   const { isOwner } = useRole();
-  const { apiService: api } = useApi();
+  const { api } = useApi();
   const { viewedIndex } = useApp();
   const { itemsState } = useIndexConversation();
 

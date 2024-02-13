@@ -16,16 +16,16 @@ import Row from "components/layout/base/Grid/Row";
 import { appConfig } from "config";
 import { useFormik } from "formik";
 import { CID } from "multiformats";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import ImageUploading from "react-images-uploading";
-import { Users } from "types/entity";
+import { Indexes, Users } from "types/entity";
 
 export interface EditProfileModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {}
 
 const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
-  const { userProfile, setUserProfile } = useApp();
-  const { apiService: api } = useApi();
+  const { userProfile, setUserProfile, indexes, setIndexes } = useApp();
+  const { api, ready: apiReady } = useApi();
   const handleClose = () => {
     modalProps.onClose?.();
   };
@@ -33,12 +33,26 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState<CID>();
 
+  const updateIndexesOwnerProfile = useCallback((profile: Users) => {
+    const updatedIndexes = indexes.map((index: Indexes) => {
+      if (index.ownerDID.id === profile.id) {
+        return {
+          ...index,
+          ownerDID: profile,
+        };
+      }
+      return index;
+    });
+    setIndexes(updatedIndexes);
+  }, []);
+
   const formik = useFormik<Partial<Users>>({
     initialValues: {
       ...userProfile,
     },
     onSubmit: async (values) => {
       try {
+        if (!apiReady) return;
         setLoading(true);
         const params: Partial<Users> = {
           name: values.name,
@@ -47,8 +61,9 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
         if (image) {
           params.avatar = image;
         }
-        const newProfile = await api.updateProfile(params);
+        const newProfile = await api!.updateProfile(params);
         setUserProfile(newProfile);
+        updateIndexesOwnerProfile(newProfile);
       } catch (err) {
         console.log(err);
       } finally {
@@ -58,20 +73,25 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
     },
   });
 
-  const onChange = async (imageList: any) => {
-    if (imageList.length > 0) {
-      const res = await api.uploadAvatar(imageList[0].file);
-      res && setImage(res.cid);
-    } else {
-      setImage(undefined);
-    }
-  };
+  const onChange = useCallback(
+    async (imageList: any) => {
+      if (!apiReady) return;
+      if (imageList.length > 0) {
+        const res = await api!.uploadAvatar(imageList[0].file);
+        res && setImage(res.cid);
+      } else {
+        setImage(undefined);
+      }
+    },
+    [api, apiReady],
+  );
 
   useEffect(() => {
     if (!userProfile) return;
 
     userProfile.avatar && setImage(userProfile.avatar);
-  }, [userProfile]);
+    updateIndexesOwnerProfile(userProfile);
+  }, [userProfile, updateIndexesOwnerProfile]);
 
   return (
     <Modal
