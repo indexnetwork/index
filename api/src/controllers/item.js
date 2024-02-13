@@ -49,3 +49,18 @@ export const removeItem = async (req, res, next) => {
     }
     //Queue embeddings
 };
+
+export const getIndexesByItemId = async (req, res, next) => {
+    const { itemId } = req.params;
+    try {
+
+        const itemService = new ItemService();
+        const items = await itemService.getIndexesByItemId(itemId, null, 24, false);
+
+
+        return res.json(items);
+    } catch (error) {
+        res.status(400).json({ error: error.message });
+    }
+    //Queue embeddings
+};

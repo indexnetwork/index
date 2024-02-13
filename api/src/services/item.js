@@ -187,7 +187,7 @@ export class ItemService {
         }
     }
 
-    async getIndexesByItemId(itemId, cursor=null, limit= 24) {
+    async getIndexesByItemId(itemId, cursor=null, limit= 24, transform=true) {
         try {
 
             let cursorFilter = cursor ? `after: "${cursor}",` : "";
@@ -228,7 +228,7 @@ export class ItemService {
 
             return { //Todo fix itemId to id
                 endCursor: data.indexItemIndex.pageInfo.endCursor,
-                items: data.indexItemIndex.edges.map(e => transformIndexItem(e.node)),
+                items: data.indexItemIndex.edges.map(e => transform ? transformIndexItem(e.node) : e.node),
             }
 
         } catch (error) {

@@ -121,6 +121,10 @@ app.delete('/indexes/:indexId/items/:itemId', authCheckMiddleware, validator.par
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
 })), itemController.removeItem)
 
+app.get('/items/:itemId/indexes', validator.params(Joi.object({
+  itemId: Joi.custom(isStreamID, "Item ID").required(),
+})), itemController.getIndexesByItemId)
+
 app.get('/embeddings', validator.query(Joi.object({
   indexId: Joi.custom(isStreamID, "Index ID").required(),
   itemId: Joi.custom(isStreamID, "Stream ID").required(),
