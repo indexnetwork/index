@@ -30,7 +30,7 @@ export default function ChatTabSection() {
         style={{
           display: "flex",
           overflowY: "auto",
-          maxHeight: "calc(100dvh - 30rem)",
+          maxHeight: "calc(-30rem + 100dvh)",
         }}
       >
         <AskIndexes chatID={chatID} indexIds={[viewedIndex?.id!]} />
