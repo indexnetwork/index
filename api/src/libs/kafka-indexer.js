@@ -1,6 +1,7 @@
 import dotenv from 'dotenv'
 import axios from 'axios'
 import { ItemService } from "../services/item.js";
+import { WebPageService } from "../services/webpage.js";
 import { EmbeddingService } from "../services/embedding.js";
 import { getPKPSession, getPKPSessionForIndexer } from "../libs/lit/index.js";
 
@@ -10,9 +11,8 @@ if(process.env.NODE_ENV !== 'production'){
 
 // Index Item (C)
 export const createIndexItemEvent = async (id) => {
-    console.log("createIndexItemEvent", id)
 
-    console.log("Creating index", process.env.LLM_INDEXER_HOST)
+    console.log("createIndexItemEvent", id)
 
     const itemService = new ItemService()
     const indexItem = await itemService.getIndexItemById(id, false);
@@ -20,10 +20,10 @@ export const createIndexItemEvent = async (id) => {
     try {
 
         const indexSession = await getPKPSessionForIndexer(indexItem.index);
-
         await indexSession.did.authenticate();
 
-        console.log("Indexer Item URL", `${process.env.LLM_INDEXER_HOST}/indexer/embeddings`)
+        // console.log("Indexing item at", `${process.env.LLM_INDEXER_HOST}/indexer/index?indexId=${indexItem.indexId}`, )
+        // console.log("Indexing item", indexItem)
 
         if (indexItem.item.content) {
 
@@ -47,13 +47,14 @@ export const createIndexItemEvent = async (id) => {
         console.log('No content found, createIndexItem event incomplete')
 
     } catch (e) {
-        console.log("Indexer error:", e.message);
+        console.log("Indexer createIndexItemEvent error:", e.message);
     }
 
 }
 
 // Index item (UD)
 export const updateIndexItemEvent = async (id) => {
+
     console.log("updateIndexItemEvent", id)
 
     const itemService = new ItemService()
@@ -61,7 +62,6 @@ export const updateIndexItemEvent = async (id) => {
 
     try {
 
-        console.log("Logging PKP Session", indexItem)
         const indexSession = await getPKPSessionForIndexer(indexItem.index);
         await indexSession.did.authenticate();
         console.log("Logged PKP Session")
@@ -75,7 +75,7 @@ export const updateIndexItemEvent = async (id) => {
 
             const deleteResponse = await axios.delete(updateURL);
 
-            console.log("IndexItem Delete Response", deleteResponse)
+            // console.log("IndexItem Delete Response", deleteResponse)
             
             if (deleteResponse.status === 200) {
                 console.log("IndexItem Deleted.")
@@ -120,10 +120,57 @@ export const updateIndexItemEvent = async (id) => {
 }
 
 export const updateWebPageEvent = async (id) => {
+
     console.log("updateWebPageEvent", id)
+
+    const webPage = new WebPageService()
+    const webPageItem = await webPage.getWebPageById(id, false);
+
+    try {
+
+        console.log("WebPageItem", webPageItem)
+        console.log("WebPageItem", webPageItem.content)
+
+        if (webPageItem && webPageItem.content) {
+
+            const itemSession = new ItemService()
+            const indexItems = await itemSession.getIndexesByItemId(webPageItem.id, null, 24, false);
+            
+            // console.log("Logging PKP Session for Indexer", indexItems)
+
+            for (let indexItem of indexItems.items) {
+                
+                console.log("IndexItem", indexItem.index.title)
+
+                const indexSession = await getPKPSessionForIndexer(indexItem.index);
+
+                const embeddingService = new EmbeddingService().setSession(indexSession)
+
+                const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
+                    content: webPageItem.content
+                })
+
+                const embedding = await embeddingService.createEmbedding({
+                    "indexId": indexItem.index.id,
+                    "itemId": indexItem.item.id,
+                    "modelName": embeddingResponse.data.model,
+                    "category": "document",
+                    "vector": embeddingResponse.data.vector,
+                    "description": "Default document embeddings",
+                });
+        
+                console.log("Embedding created", embedding.id)
+            }
+        }
+
+    } catch (e) {
+        console.log("Update Web Page Error:", e.message);
+    }
+
 }
 
 export const createEmbeddingEvent = async (id) => {
+
     console.log("createEmbeddingEvent", id)
 
     const embeddingService = new EmbeddingService()
@@ -149,6 +196,7 @@ export const createEmbeddingEvent = async (id) => {
         vector: embedding.vector,
     };
 
+
     if(embedding.index.ownerDID.name){
         payload.indexOwnerName = embedding.index.ownerDID.name
     }
@@ -156,9 +204,11 @@ export const createEmbeddingEvent = async (id) => {
         payload.indexOwnerBio = embedding.index.ownerDID.bio
     }
 
+    // console.log("Payload", payload)
+
     try {
-        const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/index`, payload)
-        console.log("IndexItem Indexed with it's content and embeddings.")
+        const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/index?indexId=${embedding.item.id}`, payload)
+        console.log(`IndexItem ${payload.webPageId} with ${payload.webPageUrl} Indexed with it's content and embeddings`)
     } catch (e) {
         console.log(e)
     }
@@ -166,4 +216,7 @@ export const createEmbeddingEvent = async (id) => {
 
 export const updateEmbeddingEvent = async (id) => {
     console.log("updateEmbeddingEvent", id)
+
+
+
 }

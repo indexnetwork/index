@@ -83,9 +83,18 @@ export class IndexerService {
         // Delete the file
         fs.unlinkSync(file_name);
 
+        // Merge the documents
+        let content = ''
+        for (let doc of docs) {
+            // Logger.log(`Extracted ${doc?.pageContent.length} bytes from ${url}`, 'indexerService:crawl');
+            content = content + '\n' + doc?.pageContent;
+        }
+
+        Logger.log(`Extracted ${docs[0].pageContent.length} bytes from ${url}`, 'indexerService:crawl');
+
         return {
             url: url,
-            content: docs[0].pageContent
+            content: content
         };
     }
 
@@ -97,7 +106,8 @@ export class IndexerService {
      */
     async index(indexId: string, body: IndexRequestBody): Promise<{ message: string }> {
 
-        Logger.log(`Indexing ${JSON.stringify(body)}`, 'indexerService:index');
+        Logger.log(`Indexing ${body.webPageContent}`, 'indexerService:index');
+        // Logger.log(`Index item ${JSON.stringify(body)}`)
         
         const chromaID = await this.generateChromaID(indexId, body.webPageId);
         
@@ -117,7 +127,7 @@ export class IndexerService {
             });
 
             const documents = [{
-                pageContent: body.webPageContent ?? 'This is a test content',
+                pageContent: body.webPageContent ?? '',
                 metadata
             }]
 
@@ -215,6 +225,7 @@ export class IndexerService {
                 return {
                     message: `Successfully deleted ${response.ids.length} documents`
                 }
+
             }
 
         } catch (e) {

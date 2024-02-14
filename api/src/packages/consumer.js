@@ -27,7 +27,7 @@ async function start() {
 
     await redis.connect()
     const consumerItems = kafka.consumer({
-        groupId: `index-consumer-dev-131`,
+        groupId: `index-consumer-dev-1321`,
         sessionTimeout: 300000,
         heartbeatInterval: 10000,
         rebalanceTimeout: 3000,
@@ -39,6 +39,7 @@ async function start() {
         eachMessage: async ({ topic, partition, message }) => {
 
             const value = JSON.parse(message.value.toString());
+            
             const op = value.__op;
             if(!['c', 'u'].includes(op)){
                 return;

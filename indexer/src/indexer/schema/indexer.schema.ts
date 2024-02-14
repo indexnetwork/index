@@ -189,7 +189,7 @@ export class IndexRequestBody {
         description: 'Url of the indexed web page',
         example: ''
     })
-    @IsUrl()
+    // @IsUrl()
     @Type(() => String)
     webPageUrl: string;
 
