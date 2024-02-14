@@ -66,5 +66,4 @@ export class IndexerController {
         return this.indexerService.delete(indexId, indexItemId);
     }
 
-
 }

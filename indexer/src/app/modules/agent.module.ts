@@ -93,7 +93,7 @@ export class Agent {
             if (Array.isArray(chatHistory)) {
                 const updatedChat =  chatHistory.map(
                     (dialogTurn: any) => {
-                        if (dialogTurn['role'] == 'human') { return `Human: ${dialogTurn['content']}` }
+                        if (dialogTurn['role'] == 'user') { return `Human: ${dialogTurn['content']}` }
                         if (dialogTurn['role'] == 'assistant') { return `AI: ${dialogTurn['content']}` }
                     }
                 ).join("\n");
