@@ -8,8 +8,6 @@ import { CID } from "multiformats";
 export type Indexes = {
   id: string;
   title: string;
-  collabAction: string;
-  pkpPublicKey: string;
   signerFunction: string;
   signerPublicKey: string;
   did: {
@@ -25,7 +23,6 @@ export type Indexes = {
   updatedAt: string;
   deletedAt: string;
   links: IndexLink[];
-  isPermittedAddress?: boolean;
 };
 
 // {

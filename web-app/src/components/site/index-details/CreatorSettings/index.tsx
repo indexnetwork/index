@@ -1,16 +1,15 @@
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
 import Button from "components/base/Button";
 import Header from "components/base/Header";
+import IconAdd from "components/base/Icon/IconAdd";
 import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Row from "components/layout/base/Grid/Row";
-import React, { useState } from "react";
-// import api from "services/api-service";
-import { useApi } from "@/context/APIContext";
-import { useApp } from "@/context/AppContext";
-import IconAdd from "components/base/Icon/IconAdd";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
-import { UserRole, useRole } from "hooks/useRole";
+import { useRole } from "hooks/useRole";
+import { FC, useCallback, useEffect, useState } from "react";
 import { AccessControlCondition } from "types/entity";
 import CreatorRule from "./CreatorRule";
 
@@ -19,53 +18,68 @@ export interface CreatorSettingsProps {
   onChange: (value: string) => void;
 }
 
-const CreatorSettings: React.VFC<CreatorSettingsProps> = ({
+const CreatorSettings: FC<CreatorSettingsProps> = ({
   onChange,
   collabAction,
 }) => {
-  const { role } = useRole();
+  const { isOwner } = useRole();
 
-  const { api } = useApi();
-  const [loading, setLoading] = useState(false);
+  const { api, ready: apiReady } = useApi();
   const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
   const { setTransactionApprovalWaiting } = useApp();
   const [conditions, setConditions] = useState<any>([]);
   const addOrStatements = (c: AccessControlCondition[]) =>
     c.flatMap((el, i) => (i === c.length - 1 ? el : [el, { operator: "or" }]));
-  // const loadAction = async (action: string) => {
-  //   const litAction = await api?.getLITAction(action) as [any];
-  //   if (litAction && litAction.length > 0) {
-  //     setConditions(litAction.filter((item: any, i: number) => i % 2 === 0));
-  //   }
-  // };
 
-  const handleRemove = async (i: number) => {
-    setNewCreatorModalVisible(false);
-    setTransactionApprovalWaiting(true);
-    const newConditions = [
-      ...conditions.slice(0, i),
-      ...conditions.slice(i + 1),
-    ];
-    const newAction = await api?.postLITAction(addOrStatements(newConditions));
-    onChange(newAction!);
-    setTransactionApprovalWaiting(false);
-  };
+  const loadAction = useCallback(async (action: string) => {
+    if (!apiReady) return;
 
-  const handleCreate = async (condition: AccessControlCondition) => {
-    setNewCreatorModalVisible(false);
-    setTransactionApprovalWaiting(true);
-    const newConditions = [condition, ...conditions];
-    const newAction = await api?.postLITAction(addOrStatements(newConditions));
-    onChange(newAction!);
-    setTransactionApprovalWaiting(false);
-  };
+    const litAction = (await api!.getLITAction(action)) as [any];
+    if (litAction && litAction.length > 0) {
+      setConditions(litAction.filter((item: any, i: number) => i % 2 === 0));
+    }
+  }, []);
 
-  const handleToggleNewCreatorModal = () => {
+  const handleRemove = useCallback(
+    async (i: number) => {
+      if (!apiReady) return;
+      setNewCreatorModalVisible(false);
+      setTransactionApprovalWaiting(true);
+      const newConditions = [
+        ...conditions.slice(0, i),
+        ...conditions.slice(i + 1),
+      ];
+      const newAction = await api!.postLITAction(
+        addOrStatements(newConditions),
+      );
+      onChange(newAction!);
+      setTransactionApprovalWaiting(false);
+    },
+    [apiReady],
+  );
+
+  const handleCreate = useCallback(
+    async (condition: AccessControlCondition) => {
+      if (!apiReady) return;
+      setNewCreatorModalVisible(false);
+      setTransactionApprovalWaiting(true);
+      const newConditions = [condition, ...conditions];
+      const newAction = await api!.postLITAction(
+        addOrStatements(newConditions),
+      );
+      onChange(newAction!);
+      setTransactionApprovalWaiting(false);
+    },
+    [apiReady],
+  );
+
+  const handleToggleNewCreatorModal = useCallback(() => {
     setNewCreatorModalVisible(!newCreatorModalVisible);
-  };
-  // useEffect(() => {
-  //   loadAction(collabAction);
-  // }, [collabAction]);
+  }, [newCreatorModalVisible]);
+
+  useEffect(() => {
+    loadAction(collabAction);
+  }, [collabAction]);
 
   return (
     <>
@@ -75,7 +89,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({
             Creators
           </Header>
         </Col>
-        {role === UserRole.OWNER && (
+        {isOwner && (
           <Col pullRight>
             <Button
               addOnBefore
@@ -91,7 +105,7 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({
       <Row className={"mt-0"}>
         <Col xs={10}>
           <Text fontFamily="freizeit" size={"lg"} fontWeight={500}>
-            {role === UserRole.OWNER && (
+            {isOwner && (
               <>
                 Control write access to your index through NFTs.
                 <br />
@@ -138,15 +152,12 @@ const CreatorSettings: React.VFC<CreatorSettingsProps> = ({
           </>
         )}
       </FlexRow>
-      {/* eslint-disable-next-line max-len */}
-      {newCreatorModalVisible ? (
+      {newCreatorModalVisible && (
         <NewCreatorModal
           handleCreate={handleCreate}
           visible={newCreatorModalVisible}
           onClose={handleToggleNewCreatorModal}
         ></NewCreatorModal>
-      ) : (
-        <></>
       )}
     </>
   );

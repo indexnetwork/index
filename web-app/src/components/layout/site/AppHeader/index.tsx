@@ -1,6 +1,7 @@
 import Spin from "@/components/base/Spin";
-import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useApp } from "@/context/AppContext";
+import { AuthStatus, useAuth } from "@/context/AuthContext";
+import { useRouteParams } from "@/hooks/useRouteParams";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
 import Dropdown from "components/base/Dropdown";
@@ -9,11 +10,9 @@ import IconDisconnect from "components/base/Icon/IconDisconnect";
 import IconHistory from "components/base/Icon/IconHistory";
 import IconSettings from "components/base/Icon/IconSettings";
 import Text from "components/base/Text";
-import Flex from "components/layout/base/Grid/Flex";
 import Navbar, { NavbarMenu } from "components/layout/base/Navbar";
 import { useRouter } from "next/navigation";
 import React, { useCallback } from "react";
-import { useRouteParams } from "@/hooks/useRouteParams";
 
 const AppHeader = () => {
   const { connect, disconnect, status, setStatus } = useAuth();
@@ -133,29 +132,28 @@ const AppHeader = () => {
                   setEditProfileModalVisible(true);
                 }}
               >
-                <Flex alignitems="center">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "start",
+                  }}
+                >
                   <IconSettings width={16} height="100%" />
                   <Text className="ml-3" element="span" size="md">
                     Profile Settings
                   </Text>
-                </Flex>
+                </div>
               </DropdownMenuItem>
-              {/* <DropdownMenuItem>
-                <Flex alignitems="center">
-                  <IconSettings width={12} height="100%" />
-                  <Text
-                    className="ml-3"
-                    element="span"
-                    size="sm"
-                    theme="secondary"
-                  >
-                    Settings
-                  </Text>
-                </Flex>
-              </DropdownMenuItem> */}
               <DropdownMenuItem divider />
               <DropdownMenuItem onClick={handleDisconnect}>
-                <Flex alignitems="center">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "start",
+                  }}
+                >
                   <IconDisconnect
                     className="icon-error"
                     width={16}
@@ -169,7 +167,7 @@ const AppHeader = () => {
                   >
                     Disconnect
                   </Text>
-                </Flex>
+                </div>
               </DropdownMenuItem>
             </>
           }

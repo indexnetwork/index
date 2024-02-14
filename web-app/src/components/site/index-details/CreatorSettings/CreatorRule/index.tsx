@@ -36,7 +36,7 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) => (
             </Text>
           </Row>
           <Row className={"mt-3"}>
-            <Flex alignitems={"center"}>
+            <Flex alignitems={"left"}>
               <Col>
                 <Avatar
                   size={40}
@@ -47,10 +47,10 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) => (
               </Col>
               <Col>
                 <Header level={4} className="mb-1">
-                  {rule.name
-                    || rule.ensName
-                    || (rule.walletAddress && maskAddress(rule.walletAddress))
-                    || (rule.contractAddress && maskAddress(rule.contractAddress))}
+                  {rule.name ||
+                    rule.ensName ||
+                    (rule.walletAddress && maskAddress(rule.walletAddress)) ||
+                    (rule.contractAddress && maskAddress(rule.contractAddress))}
                 </Header>
                 <Flex alignitems={"center"}>
                   <Text

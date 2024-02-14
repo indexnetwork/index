@@ -1,10 +1,9 @@
 import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
 import Col from "@/components/layout/base/Grid/Col";
-import Flex from "@/components/layout/base/Grid/Flex";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import { useRole } from "@/hooks/useRole";
-import React, { useCallback } from "react";
+import { useCallback, useState } from "react";
 import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
 import CreatorsTab from "./CreatorsTab";
@@ -28,7 +27,7 @@ const TAB_TITLES = {
 };
 
 export default function TabContainer() {
-  const [tabKey, setTabKey] = React.useState<string>(TabKey.Chat);
+  const [tabKey, setTabKey] = useState<string>(TabKey.Chat);
   const { isOwner } = useRole();
 
   const renderTabContent = useCallback(() => {
@@ -49,13 +48,13 @@ export default function TabContainer() {
   }, [tabKey]);
 
   return (
-    <Flex
-      flexdirection={"column"}
+    <div
       style={{
         flex: 1,
         display: "flex",
         height: "100%",
         overflow: "hidden",
+        flexDirection: "column",
       }}
     >
       <FlexRow>
@@ -84,6 +83,6 @@ export default function TabContainer() {
           {renderTabContent()}
         </div>
       </FlexRow>
-    </Flex>
+    </div>
   );
 }

@@ -1,46 +1,53 @@
 import Col from "@/components/layout/base/Grid/Col";
 import Flex from "@/components/layout/base/Grid/Flex";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
+import CreatorSettings from "@/components/site/index-details/CreatorSettings";
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
-import CreatorSettings from "@/components/site/index-details/CreatorSettings";
-import { useRole } from "@/hooks/useRole";
-import { useRouteParams } from "@/hooks/useRouteParams";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
-import React from "react";
+import { CID } from "multiformats/cid";
+import { useCallback } from "react";
 
-export default function CreatorsTabSection({ noLinks }: { noLinks?: boolean }) {
-  const { id: indexID } = useRouteParams();
-  // const [links, setLinks] = useState<IndexLink[]>([]);
-  const { isOwner } = useRole();
+export default function CreatorsTabSection() {
   const { api, ready: apiReady } = useApi();
-  const { viewedIndex } = useApp();
+  const { viewedIndex, setViewedIndex } = useApp();
 
-  const handleCollabActionChange = async (CID: string) => {
-    if (!viewedIndex) return;
-    const litContracts = new LitContracts();
-    await litContracts.connect();
-    const pubKeyHash = ethers.keccak256(viewedIndex.pkpPublicKey!);
-    const tokenId = BigInt(pubKeyHash);
-    const newCollabAction = litContracts.utils.getBytesFromMultihash(CID);
-    const previousCollabAction = litContracts.utils.getBytesFromMultihash(
-      viewedIndex.collabAction!,
-    );
-    const addPermissionTx = await litContracts.pkpPermissionsContract.write.addPermittedAction(
-        tokenId,
-        newCollabAction,
-        [],
-      );
-    const removePermissionTx = await litContracts.pkpPermissionsContract.write.removePermittedAction(
-        tokenId,
-        previousCollabAction,
-      );
-    // const result = await pkpCeramic.updateIndex(viewedIndex, {
-    // 	collabAction: CID,
-    // });
-    // setViewedProfile(result);
-  };
+  const handleCollabActionChange = useCallback(
+    async (cid: string) => {
+      if (!viewedIndex || !apiReady) return;
+
+      try {
+        const litContracts = new LitContracts();
+        await litContracts.connect();
+        const signerFunctionV0 = CID.parse(viewedIndex.signerFunction)
+          .toV0()
+          .toString();
+        const pubKeyHash = ethers.keccak256(viewedIndex.signerPublicKey!);
+        const tokenId = BigInt(pubKeyHash);
+        const newCollabAction = litContracts.utils.getBytesFromMultihash(cid);
+        const previousCollabAction =
+          litContracts.utils.getBytesFromMultihash(signerFunctionV0);
+
+        await litContracts.pkpPermissionsContract.write.addPermittedAction(
+          tokenId,
+          newCollabAction,
+          [],
+        );
+        await litContracts.pkpPermissionsContract.write.removePermittedAction(
+          tokenId,
+          previousCollabAction,
+        );
+        const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
+          signerFunction: cid,
+        });
+        setViewedIndex(updatedIndex);
+      } catch (error) {
+        console.error("Error creating rule", error);
+      }
+    },
+    [api, viewedIndex],
+  );
 
   return (
     <Flex flexdirection={"column"}>
@@ -48,7 +55,7 @@ export default function CreatorsTabSection({ noLinks }: { noLinks?: boolean }) {
         <Col className="idxflex-grow-1">
           <CreatorSettings
             onChange={handleCollabActionChange}
-            collabAction={viewedIndex?.collabAction!}
+            collabAction={viewedIndex?.signerFunction!}
           />
         </Col>
       </FlexRow>
