@@ -26,7 +26,15 @@ export default function ChatTabSection() {
 
   if (itemsState.items.length > 0) {
     return chatID ? (
-      <AskIndexes chatID={chatID} indexIds={[viewedIndex?.id!]} />
+      <div
+        style={{
+          display: "flex",
+          overflowY: "auto",
+          maxHeight: "calc(100dvh - 30rem)",
+        }}
+      >
+        <AskIndexes chatID={chatID} indexIds={[viewedIndex?.id!]} />
+      </div>
     ) : null;
   }
   // return <EmptyScreen setInput={() => {}} contextMessage="your responses" />;

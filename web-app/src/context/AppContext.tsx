@@ -239,7 +239,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   useEffect(() => {
     if (viewedProfile) {
-      console.log("83 viewedProfile", viewedProfile);
       fetchIndexes(viewedProfile.id);
     }
   }, [viewedProfile?.id]);

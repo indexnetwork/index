@@ -262,6 +262,24 @@ class ApiService {
     const { data } = await this.apiAxios.post<Indexes>(url, body);
     return data;
   }
+
+  async getContract(
+    network: string,
+    address: string,
+    tokenId?: string,
+  ): Promise<any | null> {
+    try {
+      // eslint-disable-next-line max-len
+      const { data } = await this.apiAxios.get<LitActionConditions>(
+        tokenId
+          ? `${API_ENDPOINTS.NFT_METADATA}/${network}/${address}/${tokenId}`
+          : `${API_ENDPOINTS.NFT_METADATA}/${network}/${address}`,
+      );
+      return data;
+    } catch (err) {
+      return null;
+    }
+  }
 }
 
 export default ApiService;
