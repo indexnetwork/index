@@ -238,6 +238,59 @@ export class ItemService {
         }
     }
 
+    async getIndexItemsByIds(itemIds, cursor=null, limit= 240, transform=true) {
+        try {
+
+            let cursorFilter = cursor ? `after: "${cursor}",` : "";
+
+            const {data, errors} = await this.client.executeQuery(`{
+              indexItemIndex(first: ${limit}, ${cursorFilter} filters: {
+                where: {
+                  itemId: { in: ["${itemIds.join('","')}"]},
+                  deletedAt: {isNull: true}
+                }
+              }, sorting: { createdAt: DESC}) {
+                pageInfo {
+                  endCursor
+                }
+                edges {
+                  node {
+                    ${indexItemFragment}
+                  }
+                }
+              }
+            }`);
+
+
+
+            // Handle GraphQL errors
+            if (errors) {
+                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+            }
+            // Validate the data response
+            if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
+                throw new Error('Invalid response data');
+            }
+
+            if (data.indexItemIndex.edges.length === 0) {
+                return {
+                    endCursor: null,
+                    items: [],
+                };
+            }
+
+            return { //Todo fix itemId to id
+                endCursor: data.indexItemIndex.pageInfo.endCursor,
+                items: data.indexItemIndex.edges.map(e => transform ? transformIndexItem(e.node) : e.node),
+            }
+
+        } catch (error) {
+            // Log the error and rethrow it for external handling
+            console.error('Exception occurred in getIndexItem:', error);
+            throw error;
+        }
+    }
+
     async addItem(indexId, itemId) {
 
         if (!this.did) {
