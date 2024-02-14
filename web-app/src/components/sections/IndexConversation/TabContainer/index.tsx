@@ -77,8 +77,8 @@ export default function TabContainer() {
         <div
           style={{
             flex: 1,
-            overflowY: "auto",
-            maxHeight: "calc(100dvh - 24em)",
+            // overflowY: "auto",
+            // maxHeight: "calc(100dvh - 24em)",
           }}
         >
           {renderTabContent()}

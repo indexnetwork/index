@@ -128,10 +128,15 @@ export default function IndexItemsTabSection() {
         </FlexRow>
       )}
 
-      <FlexRow
+      <div
         key={viewedIndex?.id}
         className={"scrollable-container mb-4 mt-6"}
-        justify="center"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          overflowY: "auto",
+          maxHeight: "calc(100vh - 34rem)",
+        }}
       >
         <IndexItemList
           items={itemsState.items}
@@ -141,7 +146,7 @@ export default function IndexItemsTabSection() {
           // loadMore={fetchIndexItems}
           loadMore={() => {}}
         />
-      </FlexRow>
+      </div>
     </Flex>
   );
 }

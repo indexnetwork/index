@@ -1,3 +1,8 @@
+body {
+    max-height: 100dvh;
+    overflow: hidden;
+}
+
 .app-container {
   .sidebar-open-backdrop{
     background: rgba(0,0,0,0.10);
