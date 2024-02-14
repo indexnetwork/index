@@ -204,8 +204,6 @@ export const createEmbeddingEvent = async (id) => {
         payload.indexOwnerBio = embedding.index.ownerDID.bio
     }
 
-    // console.log("Payload", payload)
-
     try {
         const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/index?indexId=${embedding.item.id}`, payload)
         console.log(`IndexItem ${payload.webPageId} with ${payload.webPageUrl} Indexed with it's content and embeddings`)

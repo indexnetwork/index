@@ -90,7 +90,7 @@ export class IndexerService {
             content = content + '\n' + doc?.pageContent;
         }
 
-        Logger.log(`Extracted ${docs[0].pageContent.length} bytes from ${url}`, 'indexerService:crawl');
+        Logger.log(`Extracted ${content.length} bytes from ${url}`, 'indexerService:crawl');
 
         return {
             url: url,
