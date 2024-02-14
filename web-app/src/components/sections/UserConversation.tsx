@@ -18,7 +18,7 @@ export default function UserConversationSection() {
         maxHeight: "calc(100dvh - 12em)",
       }}
     >
-      <AskIndexes chatID={chatID} did={id} />;
+      <AskIndexes chatID={chatID} did={id} />
     </div>
   );
 }

@@ -1,17 +1,19 @@
+import { IndexListTabKey, useApp } from "@/context/AppContext";
 import List from "components/base/List";
 import { Tabs } from "components/base/Tabs";
 import TabPane from "components/base/Tabs/TabPane";
 import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { IndexListTabKey, useApp } from "@/context/AppContext";
 import IndexItem from "components/site/indexes/IndexItem";
 import { useRouteParams } from "hooks/useRouteParams";
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import { Indexes } from "types/entity";
 
-const IndexListSection: React.FC = () => {
-  const { id } = useRouteParams();
+const IndexListSection: FC = () => {
+  const { id, isIndex } = useRouteParams();
+  const router = useRouter();
 
   const { indexes, setLeftTabKey, leftTabKey, viewedProfile } = useApp();
 
@@ -20,6 +22,9 @@ const IndexListSection: React.FC = () => {
   const handleTabChange = useCallback(
     (tabKey: IndexListTabKey) => {
       setLeftTabKey(tabKey);
+      if (isIndex) {
+        router.push(`/discovery/${viewedProfile?.id}`);
+      }
     },
     [setLeftTabKey],
   );

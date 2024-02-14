@@ -29,24 +29,36 @@ const IndexOperationsPopup: React.FC<IndexOperationsPopupProps> = ({
             copyToClipboard(`${window.location.href}`);
           }}
         >
-          <Flex alignitems="center">
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "start",
+            }}
+          >
             <IconCopy />
             <Text className="ml-3" element="span" size="md">
               Copy Link
             </Text>
-          </Flex>
+          </div>
         </DropdownMenuItem>
-        {index?.roles?.owner
-          && (index?.did?.owned ? (
+        {index?.roles?.owner &&
+          (index?.did?.owned ? (
             <>
               <DropdownMenuItem divider />
               <DropdownMenuItem onClick={userIndexToggle}>
-                <Flex alignitems="center">
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "start",
+                  }}
+                >
                   <IconRemove />
                   <Text className="ml-3" theme="error" element="span" size="md">
                     Remove
                   </Text>
-                </Flex>
+                </div>
               </DropdownMenuItem>
             </>
           ) : (

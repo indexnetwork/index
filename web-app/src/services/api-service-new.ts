@@ -235,17 +235,6 @@ class ApiService {
     return data;
   }
 
-  // async createIndex(title: string = DEFAULT_CREATE_INDEX_TITLE): Promise<Indexes> {
-  //   const body = {
-  //     title,
-  //     signerPublicKey: this.signerPublicKey,
-  //     signerFunction: this.signerFunction,
-  //   };
-
-  //   const { data } = await this.apiAxios.post<Indexes>('/indexes', body);
-  //   return data;
-  // }
-
   async createIndex(
     title: string = DEFAULT_CREATE_INDEX_TITLE,
   ): Promise<Indexes> {
@@ -274,6 +263,17 @@ class ApiService {
         tokenId
           ? `${API_ENDPOINTS.NFT_METADATA}/${network}/${address}/${tokenId}`
           : `${API_ENDPOINTS.NFT_METADATA}/${network}/${address}`,
+      );
+      return data;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  async getWallet(ensName: string): Promise<any | null> {
+    try {
+      const { data } = await this.apiAxios.get<LitActionConditions>(
+        `${API_ENDPOINTS.ENS}/${ensName}`,
       );
       return data;
     } catch (err) {
