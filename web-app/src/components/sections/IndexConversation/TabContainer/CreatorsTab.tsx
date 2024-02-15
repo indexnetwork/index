@@ -32,16 +32,21 @@ export default function CreatorsTabSection() {
         await litContracts.pkpPermissionsContract.write.addPermittedAction(
           tokenId,
           newCollabAction,
-          [],
+          [1],
         );
+
+        /*
+
+        const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
+          signerFunction: cid,
+        });
         await litContracts.pkpPermissionsContract.write.removePermittedAction(
           tokenId,
           previousCollabAction,
         );
-        const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
-          signerFunction: cid,
-        });
-        setViewedIndex(updatedIndex);
+        */
+
+        //setViewedIndex(updatedIndex);
       } catch (error) {
         console.error("Error creating rule", error);
       }
