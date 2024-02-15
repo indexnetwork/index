@@ -1,5 +1,6 @@
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
+import { useRouteParams } from "@/hooks/useRouteParams";
 import { useChat, type Message } from "ai/react";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { ChatList } from "components/ai/chat-list";
@@ -32,12 +33,11 @@ export interface MessageWithIndex extends Message {
 
 const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
   // const index = useIndex();
-  const { viewedProfile, indexes: indexesFromApp } = useApp();
+  const { viewedProfile, indexes: indexesFromApp, leftTabKey } = useApp();
 
-  const { session, status } = useAuth();
+  const { session } = useAuth();
   const { viewedIndex } = useApp();
-
-  const { leftTabKey } = useApp();
+  const { isIndex } = useRouteParams();
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
@@ -70,7 +70,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
   };
 
   const getChatContextMessage = (): string => {
-    if (viewedIndex) {
+    if (viewedIndex && isIndex) {
       return viewedIndex.title;
     }
 
