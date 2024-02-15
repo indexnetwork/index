@@ -46,7 +46,7 @@ export default function CreatorsTabSection() {
         );
         */
 
-        //setViewedIndex(updatedIndex);
+        // setViewedIndex(updatedIndex);
       } catch (error) {
         console.error("Error creating rule", error);
       }

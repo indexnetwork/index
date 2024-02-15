@@ -10,61 +10,59 @@ interface WaitingForTransactionProps {
 const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
   onCancel,
   onSubmit,
-}) => {
-  return (
-    <div>
+}) => (
+  <div>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        flexDirection: "column",
+      }}
+    >
+      <div className="">
+        <h2>Waiting for transaction</h2>
+        <p>
+          Please wait while the transaction is being processed. This may take a
+          few minutes.
+        </p>
+      </div>
+      <div>
+        <Image
+          width={"160"}
+          height={"160"}
+          src={"/images/waiting.png"}
+          alt="waiting"
+        />
+      </div>
+
       <div
         style={{
           display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          flexDirection: "column",
+          justifyContent: "space-between",
+          width: "100%",
         }}
       >
-        <div className="">
-          <h2>Waiting for transaction</h2>
-          <p>
-            Please wait while the transaction is being processed. This may take
-            a few minutes.
-          </p>
-        </div>
-        <div>
-          <Image
-            width={"160"}
-            height={"160"}
-            src={"/images/waiting.png"}
-            alt="waiting"
-          />
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            width: "100%",
-          }}
+        <Button
+          onClick={onCancel}
+          className="mt-7 pl-8 pr-8 "
+          size="lg"
+          theme="clear"
         >
-          <Button
-            onClick={onCancel}
-            className="mt-7 pl-8 pr-8 "
-            size="lg"
-            theme="clear"
-          >
-            Back
-          </Button>
-          <Button
-            theme="primary"
-            type="submit"
-            size="lg"
-            className="mt-7 pl-8 pr-8"
-            onClick={onSubmit}
-          >
-            Loading
-          </Button>
-        </div>
+          Back
+        </Button>
+        <Button
+          theme="primary"
+          type="submit"
+          size="lg"
+          className="mt-7 pl-8 pr-8"
+          onClick={onSubmit}
+        >
+          Loading
+        </Button>
       </div>
     </div>
-  );
-};
+  </div>
+);
 
 export default WaitingForTransaction;

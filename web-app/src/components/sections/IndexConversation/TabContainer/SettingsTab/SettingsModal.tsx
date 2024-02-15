@@ -1,5 +1,5 @@
 import Modal from "@/components/base/Modal";
-import { FC, useState } from "react";
+import { FC } from "react";
 import WaitingForTransaction from "./WaitingForTransaction";
 import SaveYourKey from "./SaveYourKey";
 
