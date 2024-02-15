@@ -97,10 +97,7 @@ export class Agent {
 
     private async createRAGChain (chroma_indices: string[], model_type: string): Promise<any>{
 
-        // TODO: Add split for indexing and retrieval
         // TODO: Indexer documentation and README Update
-        // FIXME: Query response filtering
-        
         // TODO: Add prior filtering for questions such as "What is new today?" (with date filter)
         // TODO: Add self-ask prompt for fact-checking
 

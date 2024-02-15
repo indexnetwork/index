@@ -33,7 +33,7 @@ export class SearchService {
 
             const response = await this.chromaClient.collection.query({
                 queryEmbeddings: await embeddings.embedQuery(body.query),
-                nResults: body.page * body.limit,
+                // nResults: body.page * body.limit,
                 include: [IncludeEnum.Metadatas, IncludeEnum.Distances],
                 where:{     
                     indexId: {
