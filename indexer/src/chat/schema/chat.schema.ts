@@ -34,6 +34,18 @@ export class RetrievalDocumentInput {
     document: string;
 }   
 
+
+export class QuestionGenerationInput {
+
+    @ApiProperty({
+        description: 'Index to use',
+        example: 'id_1' 
+    })
+    @IsString()
+    indexIds: string;
+
+}
+
 export class RetrievalQuestionInput {
 
     @ApiPropertyOptional({

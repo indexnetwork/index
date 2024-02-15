@@ -4,6 +4,10 @@ import { ItemService } from "../services/item.js";
 import { WebPageService } from "../services/webpage.js";
 import { EmbeddingService } from "../services/embedding.js";
 import { getPKPSession, getPKPSessionForIndexer } from "../libs/lit/index.js";
+import RedisClient from '../clients/redis.js';
+import e from 'express';
+
+const redis = RedisClient.getInstance();
 
 if(process.env.NODE_ENV !== 'production'){
     dotenv.config()
@@ -136,8 +140,6 @@ export const updateWebPageEvent = async (id) => {
             const itemSession = new ItemService()
             const indexItems = await itemSession.getIndexesByItemId(webPageItem.id, null, 24, false);
             
-            // console.log("Logging PKP Session for Indexer", indexItems)
-
             for (let indexItem of indexItems.items) {
                 
                 console.log("IndexItem", indexItem.index.title)
@@ -149,7 +151,7 @@ export const updateWebPageEvent = async (id) => {
                 const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
                     content: webPageItem.content
                 })
-
+                
                 const embedding = await embeddingService.createEmbedding({
                     "indexId": indexItem.index.id,
                     "itemId": indexItem.item.id,
@@ -159,7 +161,16 @@ export const updateWebPageEvent = async (id) => {
                     "description": "Default document embeddings",
                 });
         
-                console.log("Embedding created", embedding.id)
+                console.log("Embedding created", embedding.id);
+
+                // Cache updated questions to reddis
+                try {
+                    let response = await axios.get(`${process.env.LLM_INDEXER_HOST}/chat/generate?indexId=${req.params.id}`)
+                    redis.set(`questions:${req.params.id}`, JSON.stringify(response.data), { EX: 86400 } );
+                } catch (error) {
+                    console.log("Error updating questions", error.message);
+                }
+
             }
         }
 

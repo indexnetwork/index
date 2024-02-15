@@ -78,6 +78,10 @@ app.get('/dids/:did/profile', validator.params(Joi.object({
   did: Joi.custom(isDID, "DID").required(),
 })), didController.getProfileByDID)
 
+app.get('/indexes/:id/questions', validator.params(Joi.object({
+  id: Joi.custom(isStreamID, "Index ID").required(),
+})), indexController.getQuestions)
+
 // Indexes
 app.get('/indexes/:id',  validator.query(Joi.object({
   roles: Joi.boolean().default(false).optional(),
@@ -101,6 +105,7 @@ app.patch('/indexes/:id', authCheckMiddleware, validator.body(Joi.object({
 app.delete('/indexes/:id', authCheckMiddleware, validator.params(Joi.object({
   id: Joi.custom(isStreamID, "Index ID").required(),
 })), indexController.deleteIndex)
+
 
 // Items
 app.get('/indexes/:indexId/items', validator.query(Joi.object({

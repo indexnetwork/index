@@ -1,19 +1,20 @@
 import { ChatOpenAI, OpenAI, OpenAIEmbeddings } from '@langchain/openai';
-import { AIMessagePromptTemplate, ChatPromptTemplate, HumanMessagePromptTemplate, MessagesPlaceholder, PromptTemplate } from "@langchain/core/prompts";
-import { ConversationalRetrievalQAChain, LLMChain, RetrievalQAChain } from "langchain/chains";
-import { Runnable, RunnableBranch, RunnableLambda, RunnableParallel, RunnablePassthrough, RunnableSequence } from "@langchain/core/runnables";
-import { formatDocumentsAsString } from "langchain/util/document";
+import { loadSummarizationChain } from "langchain/chains";
+import { RunnableLambda, RunnablePassthrough, RunnableSequence } from "@langchain/core/runnables";
 
-import { DynamicModule, Inject, Logger, Module } from '@nestjs/common';
+import { DynamicModule, Logger, Module } from '@nestjs/common';
 import { ChromaModule } from './chroma.module';
 import { Chroma } from '@langchain/community/vectorstores/chroma';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { pull } from "langchain/hub";
-import { AttributeInfo } from "langchain/schema/query_constructor";
-import { SelfQueryRetriever } from "langchain/retrievers/self_query";
-import { ChromaTranslator } from "langchain/retrievers/self_query/chroma";
 import { ChatMistralAI } from '@langchain/mistralai';
+import { ListOutputParser } from '@langchain/core/output_parsers';
 
+enum SummarizationType {
+    map_reduce = "map_reduce",
+    stuff = "stuff",
+    refine = "refine",
+}
 
 export class Agent {
 
@@ -45,20 +46,63 @@ export class Agent {
         }
     }
 
-    public async createRetrieverChain(chain_type: string = 'query-v0', index_ids: string[], model_type: string = 'OpenAI', page: number, limit: number): Promise<any> {
+    
+    public async createSummarizationChain (sum_type: SummarizationType): Promise<any> {
 
-        switch (chain_type) {
+        const model = new OpenAI({ temperature: 0 });
 
-            case 'query-v0':
-                return this.createQueryRetriever(index_ids, model_type, page, limit);
+        const chain = loadSummarizationChain(model as any, { type : sum_type })
 
-            default:
-                throw new Error('Chain type not supported');   
-        }
+        return chain;
+    }
+
+    /**
+     * @description Create a question generation chain for given documents
+     * 
+     * @param model_type: string 
+     * @returns questions: RunnableSequence 
+     */
+    public async createQuestionGenerationChain (model_type: string): Promise<any> {
+        
+        let model: any;
+        if (model_type == 'OpenAI') { 
+            model = new ChatOpenAI({ 
+                modelName:  process.env.MODEL_CHAT,
+            }) 
+        } else if (model_type == 'MistralAI') { model = new ChatMistralAI({ modelName: process.env.MISTRAL_MODEL_CHAT, apiKey: process.env.MISTRAL_API_KEY }) }
+
+        const questionGenerationPrompt = await pull("seref/question_generation_prompt")
+
+        const questions = RunnableSequence.from([
+            {
+                context: (input) => input.documents.join("\n"),
+            },
+            questionGenerationPrompt as any,
+            model,
+            new StringOutputParser(),
+            {
+                questions: (input) => {
+                    Logger.log(input, "ChatService:createQuestionGenerationChain:input");
+                    return input.split("\n").map((question: string) => {
+                        return question.replace(/^\d+\.\s/g, '')
+                    }).filter((question: string) => { return question.length > 5 })
+                }
+            }
+        ]);
+
+        return questions
+
     }
 
 
     private async createRAGChain (chroma_indices: string[], model_type: string): Promise<any>{
+
+        // TODO: Add split for indexing and retrieval
+        // TODO: Indexer documentation and README Update
+        // FIXME: Query response filtering
+        
+        // TODO: Add prior filtering for questions such as "What is new today?" (with date filter)
+        // TODO: Add self-ask prompt for fact-checking
 
         let model: any;
         if (model_type == 'OpenAI') { 
@@ -84,7 +128,6 @@ export class Agent {
         if (!documentCount) throw new Error('Vector store not found');
 
         const retriever = vectorStore.asRetriever();
-
 
         const questionPrompt = await pull("seref/standalone_question_index")
         const answerPrompt = await pull("seref/answer_generation_prompt")
@@ -162,82 +205,6 @@ export class Agent {
         return final_chain
 
     }
-
-    private async createQueryRetriever (chroma_indices: string[], model_type: string, page: number, limit: number) {
-
-        // Not implemented yet
-        // https://js.langchain.com/docs/modules/data_connection/retrievers/self_query/chroma-self-query
-
-
-        let model: any;
-        if (model_type == 'OpenAI' ) { model = new ChatOpenAI({ modelName:  process.env.MODEL_CHAT }) }
-        else if (model_type == 'MistralAI') { model = new ChatMistralAI({ modelName: process.env.MISTRAL_MODEL_CHAT, apiKey: process.env.MISTRAL_API_KEY }) }
-
-        const embeddings = new OpenAIEmbeddings({
-            verbose: true,
-            openAIApiKey: process.env.OPENAI_API_KEY, 
-            modelName: process.env.MODEL_EMBEDDING
-        })
-
-        Logger.log(`Creating vector store with ${process.env.MODEL_EMBEDDING} embeddings`, "Agent:createQueryRetriever");
-
-        const vectorStore = await Chroma.fromExistingCollection( 
-            embeddings,
-            { 
-                url: process.env.CHROMA_URL, 
-                collectionName: process.env.CHROMA_COLLECTION_NAME, 
-                filter: { 
-                    $and: [
-                        {
-                            indexId: {
-                                $in: chroma_indices
-                            }
-                        },
-                        {
-                            webPageContent: {
-                                $exists: true
-                            }
-                        }
-                    ]
-            }
-        });
-
-
-        const final_chain = RunnableSequence.from([
-            {
-                documents: async (input) => {
-                    // Get embeddings of the query
-                    const queryEmbedding = await embeddings.embedQuery(input.query)
-                    // Fetch most similar semantic content according to query
-                    const docs = await vectorStore.collection.query({
-                        queryEmbeddings: [queryEmbedding],
-                        nResults: (page * limit),
-                    })
-                    return docs
-                }
-            },
-            {
-                documents: (input) => {
-                    // Return ids and similarities
-                    const ids = input.documents?.ids[0]
-                    const similarities = input.documents?.distances[0]
-                    return ids.map(function(id, i) {
-                        return {
-                            id: id,
-                            similarity: similarities[i],
-                        };
-                    });
-                }
-            },
-            // Add pagination to retrieved documents
-            RunnableLambda.from((input) => {
-                return input.documents.slice((page-1)*limit, page*limit)
-            })
-        ]);
-        
-        return final_chain;
-    }
-
 }
 
 
