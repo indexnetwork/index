@@ -18,6 +18,7 @@ export interface AvatarProps
   contentRatio?: number;
   randomColor?: boolean;
   bgColor?: string;
+  placeholder?: string;
 }
 
 const Avatar = ({
