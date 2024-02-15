@@ -166,7 +166,7 @@ export const getPKPSession = async (session, index) => {
 	try{
 		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 			litNetwork: 'cayenne',
-			debug: false,
+			debug: true,
 			// debug: true,
 		});
 		await litNodeClient.connect();
@@ -234,4 +234,3 @@ export const getRolesFromSession = (session) => {
 		creator,
 	};
 }
-

@@ -48,7 +48,6 @@ const IndividualWallet: React.VFC<IndividualWalletOptionsProps> = ({
 
   const onSubmit = (values: any) => {
     const conditions = {
-      conditionType: "evmBasic",
       contractAddress: "",
       standardContractType: "",
       chain: values.chain,
