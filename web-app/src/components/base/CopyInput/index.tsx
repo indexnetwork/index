@@ -39,7 +39,7 @@ const CopyInput = ({ value }: CopyInputProps) => {
     <Flex
       className={cc(["copy-input__button", copied ? "copied" : ""])}
       onClick={handleCopy}
-      alignitems="flex-end"
+      alignitems="center"
     >
       <IconCopy strokeWidth={"1"} className="copy-input__icon" />
       <Text className="copy-input__text" size="sm" fontWeight={400}>

@@ -101,7 +101,13 @@ export const IndexConversationHeader: FC = () => {
       <FlexRow>
         <Col centerBlock className="idxflex-grow-1">
           {
-            <Link href={`/discovery/${viewedIndex?.ownerDID?.id!}`}>
+            <Link
+              style={{
+                display: "flex",
+                width: "fit-content",
+              }}
+              href={`/discovery/${viewedIndex?.ownerDID?.id!}`}
+            >
               <div
                 style={{ display: "flex", alignItems: "center", gap: "0.8em" }}
               >

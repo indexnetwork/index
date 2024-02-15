@@ -1,11 +1,10 @@
 import { useRole } from "@/hooks/useRole";
 import Dropdown from "components/base/Dropdown";
 import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
-import Text from "components/base/Text";
-import Flex from "components/layout/base/Grid/Flex";
-import React from "react";
-import IconRemove from "components/base/Icon/IconRemove";
 import IconEmbed from "components/base/Icon/IconEmbed";
+import IconRemove from "components/base/Icon/IconRemove";
+import Text from "components/base/Text";
+import React from "react";
 
 export interface CreatorRulePopupPopupProps {
   onRemove: () => void;
@@ -36,22 +35,34 @@ const CreatorRulePopup = ({
       menuItems={
         <>
           <DropdownMenuItem onClick={handleEtherscan}>
-            <Flex alignitems="center">
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "start",
+              }}
+            >
               <IconEmbed width={20} height="auto" />
               <Text className="ml-3" element="span">
                 View on Etherscan
               </Text>
-            </Flex>
+            </div>
           </DropdownMenuItem>
           {isOwner && (
             <DropdownMenuItem onClick={handleRemove}>
-              <Flex alignitems="center">
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "start",
+                }}
+              >
                 <IconRemove height="auto" className="icon-error" />
                 <Text className="ml-3" element="span" theme="error">
                   {" "}
                   {"Remove"}
                 </Text>
-              </Flex>
+              </div>
             </DropdownMenuItem>
           )}
         </>
