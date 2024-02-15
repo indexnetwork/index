@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Logger, Post, RequestMethod, Res, StreamableFile } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Post, Query, RequestMethod, Res, StreamableFile } from '@nestjs/common';
 import { ChatService } from '../service/chat.service';
-import { RetrievalQuestionInput } from '../schema/chat.schema';
-import { ApiBody } from '@nestjs/swagger';
+import { QuestionGenerationInput, RetrievalQuestionInput } from '../schema/chat.schema';
+import { ApiBody, ApiQuery } from '@nestjs/swagger';
 
 @Controller('chat')
 export class ChatController {
@@ -25,6 +25,13 @@ export class ChatController {
         }
 
         res.end();
+    }
+
+
+    @Get('/generate')
+    async generate(@Query('indexId') indexId: string): Promise<any> {
+        Logger.log(`Generating question for ${JSON.stringify(indexId)}`, 'chatController:generate')
+        return this.chatService.generate(indexId);
     }
 
 }

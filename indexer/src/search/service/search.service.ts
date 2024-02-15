@@ -4,6 +4,9 @@ import { SelfQueryRetriever } from 'langchain/retrievers/self_query';
 import { Agent } from 'src/app/modules/agent.module';
 import { QueryRequestDTO, SearchRequestDTO } from '../schema/search.schema';
 import { LLMChain } from 'langchain/chains';
+import { RunnableSequence, RunnableLambda } from '@langchain/core/runnables';
+import { ChatMistralAI } from '@langchain/mistralai';
+import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
 
 @Injectable()
 export class SearchService {
@@ -24,18 +27,79 @@ export class SearchService {
         Logger.log( `Processing ${JSON.stringify(body)}`, 'chatService:query')
 
         try {
-            const retriever = await this.agentClient.createRetrieverChain(
-                body.chainType, 
-                body.indexIds,
-                body.model,
-                body.page,
-                body.limit,
-            );
 
-            const documents = await retriever.invoke({
+            const embeddings = new OpenAIEmbeddings({
+                verbose: true,
+                openAIApiKey: process.env.OPENAI_API_KEY, 
+                modelName: process.env.MODEL_EMBEDDING
+            })
+
+            Logger.log(`Creating vector store with ${process.env.MODEL_EMBEDDING} embeddings`, "Agent:createQueryRetriever");
+
+            const vectorStore = await Chroma.fromExistingCollection( 
+                embeddings,
+                { 
+                    url: process.env.CHROMA_URL, 
+                    collectionName: process.env.CHROMA_COLLECTION_NAME, 
+                    filter: { 
+                        $and: [
+                            {
+                                indexId: {
+                                    $in: body.indexIds
+                                }
+                            },
+                            {
+                                webPageContent: {
+                                    $exists: true
+                                }
+                            }
+                        ]
+                }
+            });
+
+            const final_chain = RunnableSequence.from([
+                {
+                    documents: async (input) => {
+                        // Get embeddings of the query
+                        const queryEmbedding = await embeddings.embedQuery(input.query)
+                        // Fetch most similar semantic content according to query
+                        const docs = await vectorStore.collection.query({
+                            queryEmbeddings: [queryEmbedding],
+                            // nResults: (body.page * body.limit),
+                            where: {     
+                                indexId: {
+                                    $in: body.indexIds
+                                }
+                            }
+                        })
+                        return docs
+                    }
+                },
+                {
+                    documents: (input) => {
+                        // Return ids and similarities
+                        const ids = input.documents?.ids[0]
+                        const similarities = input.documents?.distances[0]
+                        // TODO: Fix chunk retrieval
+                        return ids.map(function(id, i) {
+                            return {
+                                id: id,
+                                similarity: similarities[i],
+                            };
+                        });
+                    }
+                },
+                // Add pagination to retrieved documents
+                RunnableLambda.from((input) => {
+                    return input.documents.slice((body.page-1)*body.limit, body.page*body.limit)
+                })
+            ]);
+            
+            const documents = await final_chain.invoke({
                 query: body.query,
             });
 
+            
             return {
                 items: documents
             }

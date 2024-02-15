@@ -4,10 +4,11 @@ import { OpenAIEmbeddings } from '@langchain/openai';
 import { UnstructuredLoader } from 'langchain/document_loaders/fs/unstructured'
 import { JSONLoader } from "langchain/document_loaders/fs/json";
 
-import { IndexDeleteQuery, IndexItemDeleteQuery, IndexRequestBody, IndexUpdateBody } from '../schema/indexer.schema';
-import { HttpModule, HttpService } from '@nestjs/axios';
+import { IndexRequestBody, IndexUpdateBody } from '../schema/indexer.schema';
+import { HttpService } from '@nestjs/axios';
 import * as fs from 'fs';
 import { MIME_TYPE } from '../schema/indexer.schema';
+import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 
 
 @Injectable()
@@ -16,9 +17,6 @@ export class IndexerService {
         private readonly httpService: HttpService,
         @Inject('CHROMA_DB') private readonly chromaClient: Chroma,
     ) {
-        
-        // TODO: Add support for chunked documents
-        // TODO: Add support for multiple documents opts
     }
 
     /**
@@ -27,7 +25,7 @@ export class IndexerService {
      * @param url Url to crawl
      * @returns Web page content
      */
-    async crawl(url: string): Promise<{ url: string; content: string | Document[]; }>{
+    async crawl(url: string): Promise<{ url: string; content: string; }>{
 
         const response = await this.httpService.axiosRef({
             url: url,
@@ -65,7 +63,7 @@ export class IndexerService {
             const docs = await loader.load();
             return {
                 url: url,
-                content: '' //docs
+                content: docs as any
             }
         }
 
@@ -86,7 +84,6 @@ export class IndexerService {
         // Merge the documents
         let content = ''
         for (let doc of docs) {
-            // Logger.log(`Extracted ${doc?.pageContent.length} bytes from ${url}`, 'indexerService:crawl');
             content = content + '\n' + doc?.pageContent;
         }
 
@@ -107,7 +104,6 @@ export class IndexerService {
     async index(indexId: string, body: IndexRequestBody): Promise<{ message: string }> {
 
         Logger.log(`Indexing ${body.webPageContent}`, 'indexerService:index');
-        // Logger.log(`Index item ${JSON.stringify(body)}`)
         
         const chromaID = await this.generateChromaID(indexId, body.webPageId);
         
