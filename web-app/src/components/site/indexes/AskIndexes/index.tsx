@@ -32,7 +32,6 @@ export interface MessageWithIndex extends Message {
 }
 
 const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
-  // const index = useIndex();
   const { viewedProfile, indexes: indexesFromApp, leftTabKey } = useApp();
 
   const { session } = useAuth();
