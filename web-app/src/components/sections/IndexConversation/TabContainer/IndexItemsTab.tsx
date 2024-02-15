@@ -2,10 +2,10 @@ import SearchInput from "@/components/base/SearchInput";
 import Col from "@/components/layout/base/Grid/Col";
 import Flex from "@/components/layout/base/Grid/Flex";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
-import { useApi } from "@/context/APIContext";
-import { useApp } from "@/context/AppContext";
 import IndexItemList from "@/components/site/index-details/IndexItemList";
 import LinkInput from "@/components/site/input/LinkInput";
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import { IndexItem } from "@/types/entity";
 import { useCallback, useState } from "react";
@@ -48,7 +48,6 @@ export default function IndexItemsTabSection() {
           viewedIndex.id,
           createdLink.id,
         );
-        console.log("create item", createdItem);
         if (!createdItem) {
           throw new Error("Error creating item");
         }

@@ -27,6 +27,7 @@
     "function-paren-newline": "off",
     "no-confusing-arrow": "off",
     "operator-linebreak": "off",
+    "react/no-unescaped-entities": "off",
     "implicit-arrow-linebreak": "off",
     "object-curly-newline": "off",
     "linebreak-style": "off",

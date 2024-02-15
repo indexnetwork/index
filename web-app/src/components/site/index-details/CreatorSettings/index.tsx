@@ -60,7 +60,7 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
 
   const handleCreate = useCallback(
     async (condition: AccessControlCondition) => {
-      if (!apiReady) return;
+      if (!apiReady || conditions.length === 0) return;
       setNewCreatorModalVisible(false);
       setTransactionApprovalWaiting(true);
       const newConditions = [condition, ...conditions];
@@ -70,7 +70,7 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
       onChange(newAction!);
       setTransactionApprovalWaiting(false);
     },
-    [apiReady],
+    [apiReady, conditions],
   );
 
   const handleToggleNewCreatorModal = useCallback(() => {
