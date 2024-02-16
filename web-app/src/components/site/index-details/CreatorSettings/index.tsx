@@ -29,7 +29,10 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
   const { setTransactionApprovalWaiting } = useApp();
   const [conditions, setConditions] = useState<any>([]);
   const addOrStatements = (c: AccessControlCondition[]) =>
-    c.flatMap((el, i) => (i === c.length - 1 ? el : [el, { operator: "or" }]));
+    c.flatMap((el, i) => (i === c.length - 1 ? el : [el, { operator: "or" }])).map(a => {
+      delete a.metadata
+      return a
+    });
 
   const loadAction = useCallback(async (action: string) => {
     if (!apiReady) return;

@@ -44,10 +44,11 @@
   };
   var getResources = (isPermittedAddress = false) => {
     const models = {
-      "Index": "kjzl6hvfrbw6caw09g11y7vy1qza903xne35pi30xvmelvnvlfxy9tadwwkzzd6",
-      "IndexLink": "kjzl6hvfrbw6c8a1u7qrk1xcz5oty0temwn2szbmhl8nfnw9tddljj4ue8wba68"
+      "Index": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
+      "IndexItem": "kjzl6hvfrbw6c66p7dxhk35uass66v2q42b2sdbaw7smitphfv60y9tux4obxu4",
+      "Embedding": "kjzl6hvfrbw6c5wx4eb9mmw2su1q7y4m65wd8m887ulubbfn5iawpy6ukprq4va"
     };
-    return isPermittedAddress ? [models.Index, models.IndexLink] : [models.IndexLink];
+    return isPermittedAddress ? [models.Index, models.IndexItem, models.Embedding] : [models.IndexItem, models.Embedding];
   };
   var go = async () => {
     if (typeof ACTION_CALL_MODE !== "undefined") {

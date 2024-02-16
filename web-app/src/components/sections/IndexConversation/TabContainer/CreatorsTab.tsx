@@ -14,8 +14,7 @@ export default function CreatorsTabSection() {
   const { viewedIndex, setViewedIndex } = useApp();
 
   const handleCollabActionChange = useCallback(
-    async (cid: string) => {
-      if (!viewedIndex || !apiReady) return;
+    async ({ cid }: any) => {
 
       try {
         const litContracts = new LitContracts();
@@ -29,24 +28,21 @@ export default function CreatorsTabSection() {
         const previousCollabAction =
           litContracts.utils.getBytesFromMultihash(signerFunctionV0);
 
-        await litContracts.pkpPermissionsContract.write.addPermittedAction(
+        await litContracts.pkpPermissionsContract.write.batchAddRemoveAuthMethods(
           tokenId,
-          newCollabAction,
-          [1],
+          [2],
+          [newCollabAction],
+          ["0x"],
+          [[BigInt(1)]],
+          [2],
+          [previousCollabAction]
         );
-
-        /*
 
         const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
           signerFunction: cid,
         });
-        await litContracts.pkpPermissionsContract.write.removePermittedAction(
-          tokenId,
-          previousCollabAction,
-        );
-        */
+        setViewedIndex(updatedIndex);
 
-        // setViewedIndex(updatedIndex);
       } catch (error) {
         console.error("Error creating rule", error);
       }
