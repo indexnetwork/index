@@ -39,7 +39,8 @@ export default function CreatorsTabSection() {
           [2],
           [previousCollabAction]
         );
-
+        //There's a risk here.
+        //If the user refreshes the page before the transaction is mined, the UI will show the old value.
         const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
           signerFunction: cid,
         });

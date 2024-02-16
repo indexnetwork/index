@@ -30,6 +30,7 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
   const [conditions, setConditions] = useState<any>([]);
   const addOrStatements = (c: AccessControlCondition[]) =>
     c.flatMap((el, i) => (i === c.length - 1 ? el : [el, { operator: "or" }])).map(a => {
+      // @ts-ignore
       delete a.metadata
       return a
     });
