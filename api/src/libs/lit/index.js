@@ -63,12 +63,12 @@ export const getOwnerProfile = async (pkpPubKey) => {
 	const owner = await getOwner(pkpPubKey);
 
 	const didService = new DIDService()
-	const profile = await didService.getProfile(`did:pkh:eip155:175177:${owner}`)
+	const profile = await didService.getProfile(`did:pkh:eip155:1:${owner}`)
 
 	if(profile){
 		return profile;
 	}else{
-		return { id: `did:pkh:eip155:175177:${owner}` }
+		return { id: `did:pkh:eip155:1:${owner}` }
 	}
 }
 
