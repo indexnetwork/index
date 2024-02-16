@@ -49,7 +49,7 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
           size="lg"
           theme="clear"
         >
-          Back
+          Cancel
         </Button>
         <Button
           theme="primary"
