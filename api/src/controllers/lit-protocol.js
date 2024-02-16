@@ -7,7 +7,9 @@ import { TextEncoder, TextDecoder } from "util";
 import RedisClient from '../clients/redis.js';
 import IPFSClient from '../clients/ipfs.js';
 const redis = RedisClient.getInstance();
+import  pinataSDK from '@pinata/sdk';
 
+import { Readable } from "stream";
 
 
 //import { Index } from '../protocol.ts';
@@ -139,10 +141,18 @@ export const postAction = async (req, res, next) => {
     let actionStr = await fs.readFile('lit_action.js', 'utf8');
     actionStr = actionStr.replace('__REPLACE_THIS_AS_CONDITIONS_ARRAY__', JSON.stringify(req.body));
 
-    IPFSClient.add(actionStr).then((r) => {
-        return res.json(r.path)
-    });
+    const pinata = new pinataSDK({ pinataJWTKey: process.env.PINATA_JWT_KEY});
+
+    const buffer = Buffer.from(actionStr, "utf8");
+		const stream = Readable.from(buffer);
+
+		stream.path = "string.txt";
+
+		const resp = await pinata.pinFileToIPFS(stream,{
+		  pinataMetadata: { name: "signerFunction" }
+		})
+
+		return res.json({
+		  cid: resp.IpfsHash
+		})
 };
-
-
-
