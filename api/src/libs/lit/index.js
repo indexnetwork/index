@@ -22,15 +22,18 @@ import { SiweMessage } from "@didtools/cacao";
 import { getAddress } from "@ethersproject/address";
 
 const config = {
-	litNetwork: "cayenne",
+	litNetwork: "habanero",
 	domain: "index.network",
 };
+
+const litContracts = new LitContracts({
+ network: config.litNetwork
+});
 
 const redis = RedisClient.getInstance();
 
 
 export const getPkpPublicKey = async (tokenId) => {
-	const litContracts = new LitContracts();
 	await litContracts.connect();
 	const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenId);
 	return pkpPublicKey
@@ -46,7 +49,7 @@ export const getOwner = async (pkpPubKey) => {
 	const pubKeyHash = keccak256(pkpPubKey);
 	const tokenId = BigInt(pubKeyHash);
 
-	const litContracts = new LitContracts();
+
 	await litContracts.connect();
 
 	const address = await litContracts.pkpNftContract.read.ownerOf(tokenId);
@@ -166,8 +169,7 @@ export const getPKPSession = async (session, index) => {
 	try{
 		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 			litNetwork: config.litNetwork,
-			debug: true,
-			// debug: true,
+			debug: false,
 		});
 		await litNodeClient.connect();
 		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();

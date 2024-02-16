@@ -7,7 +7,9 @@ const checkAndSignAuthMessage = async () =>
 
 class LitService {
   async mintPKP() {
-    const litContracts = new LitContracts();
+    const litContracts = new LitContracts({
+      network: appConfig.litNetwork,
+    });
     await litContracts.connect();
 
     const signerFunctionV0 = CID.parse(appConfig.defaultCID).toV0().toString();

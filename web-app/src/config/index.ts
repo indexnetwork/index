@@ -4,6 +4,7 @@ export const appConfig = {
   ipfsProxy: "https://indexas.infura-ipfs.io/ipfs",
   ipfsInfura: "http://localhost:3001/avatar",
   defaultCID: "QmZyGfCQw1xwNnPKGtnVLXSBbpQPqLtkqWEc5CJCWfNnmy", // Empty.
+  litNetwork: "habanero" as "cayenne" | "custom" | "localhost" | "manzano" | "habanero",
   testNetwork: {
     chainId: "0x2ac49",
     chainName: "Chronicle - Lit Protocol Testnet",

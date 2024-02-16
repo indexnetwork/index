@@ -2,6 +2,7 @@ import Col from "@/components/layout/base/Grid/Col";
 import Flex from "@/components/layout/base/Grid/Flex";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import CreatorSettings from "@/components/site/index-details/CreatorSettings";
+import { appConfig } from "@/config";
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
@@ -18,7 +19,9 @@ export default function CreatorsTabSection() {
       if (!viewedIndex) return;
 
       try {
-        const litContracts = new LitContracts();
+        const litContracts = new LitContracts({
+          network: appConfig.litNetwork,
+       	});
         await litContracts.connect();
         const signerFunctionV0 = CID.parse(viewedIndex.signerFunction)
           .toV0()
