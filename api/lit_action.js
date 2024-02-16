@@ -15,7 +15,8 @@
     const uriField = `URI: ${message.uri}`;
     let prefix = [header, message.address].join("\n");
     const versionField = `Version: ${message.version}`;
-    const chainField = `Chain ID: ` + message.chainId || "1";
+    const chainField = `Chain ID: 1`;
+    //const chainField = `Chain ID: ` + message.chainId || "1";
     const nonceField = `Nonce: ${message.nonce}`;
     const suffixArray = [uriField, versionField, chainField, nonceField];
     message.issuedAt = message.issuedAt || (/* @__PURE__ */ new Date()).toISOString();
@@ -76,7 +77,7 @@
         statement: "Give this application access to some of your data on Ceramic",
         uri: didKey,
         version: "1",
-        chainId: "175177",
+        chainId: "1",
         nonce,
         issuedAt: now.toISOString(),
         expirationTime: twentyFiveDaysLater.toISOString(),

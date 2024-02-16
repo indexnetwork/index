@@ -8,7 +8,6 @@ import { getAddress } from "@ethersproject/address";
 import { randomBytes, randomString } from "@stablelib/random";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import React, { useCallback, useEffect, useState } from "react";
-import { switchTestNetwork } from "utils/helper";
 
 declare global {
   interface Window {
@@ -103,10 +102,10 @@ export const AuthProvider = ({ children }: any) => {
     const ethProvider = window.ethereum;
 
     if (ethProvider.chainId !== appConfig.testNetwork.chainId) {
-      const switchRes = await switchTestNetwork();
+      /*const switchRes = await switchTestNetwork();
       if (!switchRes) {
         throw new Error("Network error.");
-      }
+        }*/
     }
     // request ethereum accounts.
     const addresses = await ethProvider.enable({
@@ -129,7 +128,7 @@ export const AuthProvider = ({ children }: any) => {
       statement: "Give this application access to some of your data on Ceramic",
       uri: didKey.id,
       version: "1",
-      chainId: normAccount.chainId.reference,
+      chainId: "1",
       nonce: randomString(10),
       issuedAt: now.toISOString(),
       expirationTime: twentyFiveDaysLater.toISOString(),
