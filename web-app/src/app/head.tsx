@@ -7,6 +7,7 @@ export default function PageHead() {
       <title>
         Index Network | The human bridge between context and content.
       </title>
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta
         name="title"
         content="Index Network | The human bridge between context and content."
