@@ -16,6 +16,8 @@ export default function CreatorsTabSection() {
   const handleCollabActionChange = useCallback(
     async ({ cid }: any) => {
 
+      if(!viewedIndex) return;
+
       try {
         const litContracts = new LitContracts();
         await litContracts.connect();
