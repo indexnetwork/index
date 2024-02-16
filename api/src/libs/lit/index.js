@@ -165,7 +165,7 @@ export const getPKPSession = async (session, index) => {
 
 	try{
 		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
-			litNetwork: 'cayenne',
+			litNetwork: config.litNetwork,
 			debug: true,
 			// debug: true,
 		});
