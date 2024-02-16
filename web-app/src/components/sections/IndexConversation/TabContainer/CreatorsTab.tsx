@@ -15,8 +15,7 @@ export default function CreatorsTabSection() {
 
   const handleCollabActionChange = useCallback(
     async ({ cid }: any) => {
-
-      if(!viewedIndex) return;
+      if (!viewedIndex) return;
 
       try {
         const litContracts = new LitContracts();
@@ -37,15 +36,14 @@ export default function CreatorsTabSection() {
           ["0x"],
           [[BigInt(1)]],
           [2],
-          [previousCollabAction]
+          [previousCollabAction],
         );
-        //There's a risk here.
-        //If the user refreshes the page before the transaction is mined, the UI will show the old value.
+        // There's a risk here.
+        // If the user refreshes the page before the transaction is mined, the UI will show the old value.
         const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
           signerFunction: cid,
         });
         setViewedIndex(updatedIndex);
-
       } catch (error) {
         console.error("Error creating rule", error);
       }
