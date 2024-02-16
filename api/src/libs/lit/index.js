@@ -22,7 +22,7 @@ import { SiweMessage } from "@didtools/cacao";
 import { getAddress } from "@ethersproject/address";
 
 const config = {
-	litNetwork: "habanero",
+	litNetwork: "cayenne",
 	domain: "index.network",
 };
 
