@@ -5,7 +5,6 @@ import { TextEncoder, TextDecoder } from "util";
 
 
 import RedisClient from '../clients/redis.js';
-import IPFSClient from '../clients/ipfs.js';
 const redis = RedisClient.getInstance();
 import  pinataSDK from '@pinata/sdk';
 
