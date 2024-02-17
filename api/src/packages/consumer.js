@@ -10,6 +10,20 @@ import RedisClient from '../clients/redis.js';
 
 import * as indexer from '../libs/kafka-indexer.js';
 
+import * as Sentry from "@sentry/node";
+import { ProfilingIntegration } from "@sentry/profiling-node";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  integrations: [
+    new ProfilingIntegration(),
+  ],
+  // Performance Monitoring
+  tracesSampleRate: 1.0, //  Capture 100% of the transactions
+  // Set sampling rate for profiling - this is relative to tracesSampleRate
+  profilesSampleRate: 1.0,
+});
+
 const kafka = new Kafka({
     clientId: 'api',
     brokers: [process.env.KAFKA_HOST],
@@ -39,7 +53,7 @@ async function start() {
         eachMessage: async ({ topic, partition, message }) => {
 
             const value = JSON.parse(message.value.toString());
-            
+
             const op = value.__op;
             if(!['c', 'u'].includes(op)){
                 return;
