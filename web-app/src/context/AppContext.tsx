@@ -119,8 +119,11 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       const index = await api!.getIndex(id);
       console.log("65 index", index);
       setViewedIndex(index);
+
+      const indexWithIsOwner = await api!.getIndexWithIsCreator(id);
+      setViewedIndex(indexWithIsOwner);
       prevIndexID.current = id;
-      isFetchingRef.current = false; // Unlock fetching at the end
+      isFetchingRef.current = false;
     } catch (error) {
       console.error("Error fetching index", error);
       // Handle error appropriately

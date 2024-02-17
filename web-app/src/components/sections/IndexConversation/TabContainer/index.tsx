@@ -3,12 +3,14 @@ import TabPane from "@/components/base/Tabs/TabPane";
 import Col from "@/components/layout/base/Grid/Col";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import { useRole } from "@/hooks/useRole";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
 import CreatorsTab from "./CreatorsTab";
 import IndexItemsTab from "./IndexItemsTab";
 import IndexSettingsTab from "./SettingsTab";
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
 
 enum TabKey {
   Chat = "chat",
@@ -28,7 +30,29 @@ const TAB_TITLES = {
 
 export default function TabContainer() {
   const [tabKey, setTabKey] = useState<string>(TabKey.Chat);
-  const { isOwner } = useRole();
+  const { isOwner, isCreator } = useRole();
+  const { viewedIndex, setViewedIndex } = useApp();
+  const { api, ready: apiReady } = useApi();
+  const fetchRef = useRef(false);
+
+  // const fetchIsCreator = useCallback(async () => {
+  //   if (!apiReady || !viewedIndex || fetchRef.current) return;
+  //   fetchRef.current = true;
+  //   try {
+  //     const result = await api!.getIndexWithIsOwner(viewedIndex.id);
+  //     if (!result) throw new Error("result is undefined");
+
+  //     setViewedIndex(result);
+  //   } catch (error) {
+  //     console.error("Failed to fetch creator status", error);
+  //   } finally {
+  //     fetchRef.current = false;
+  //   }
+  // }, [apiReady]);
+
+  // useEffect(() => {
+  //   fetchIsCreator();
+  // }, [fetchIsCreator]);
 
   const renderTabContent = useCallback(() => {
     switch (tabKey) {
@@ -64,7 +88,7 @@ export default function TabContainer() {
               <TabPane
                 key={key}
                 enabled={true}
-                hidden={key === TabKey.Settings && !isOwner}
+                hidden={key === TabKey.Settings && (!isOwner || !isCreator)}
                 tabKey={key}
                 title={TAB_TITLES[key]}
               />
@@ -76,8 +100,6 @@ export default function TabContainer() {
         <div
           style={{
             flex: 1,
-            // overflowY: "auto",
-            // maxHeight: "calc(100dvh - 24em)",
           }}
         >
           {renderTabContent()}

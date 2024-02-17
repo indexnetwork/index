@@ -121,6 +121,14 @@ class ApiService {
     return data as Indexes;
   }
 
+  async getIndexWithIsCreator(indexId: string): Promise<Indexes | undefined> {
+    const url = API_ENDPOINTS.INDEXES.replace(":id", indexId).concat(
+      "?roles=true",
+    );
+    const { data } = await this.apiAxios.get<Indexes>(url);
+    return data as Indexes;
+  }
+
   async updateIndex(id: string, index: Partial<Indexes>) {
     const url = API_ENDPOINTS.UPDATE_INDEX.replace(":id", id);
     const { data } = await this.apiAxios.patch<Indexes>(url, index);

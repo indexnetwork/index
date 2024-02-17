@@ -38,7 +38,7 @@ export default function IndexItemsTabSection() {
     async (urls: string[]) => {
       if (!apiReady || !viewedIndex) return;
 
-      setLoading(true);
+      // setLoading(true);
       try {
         const createdLink = await api!.crawlLink(urls[0]);
         if (!createdLink) {
@@ -58,7 +58,7 @@ export default function IndexItemsTabSection() {
       } catch (error) {
         console.error("Error adding link", error);
       } finally {
-        setLoading(false);
+        // setLoading(false);
       }
     },
     [
