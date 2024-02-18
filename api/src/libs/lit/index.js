@@ -238,7 +238,7 @@ export const getPKPSession = async (session, index) => {
 
 		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 			litNetwork: config.litNetwork,
-			debug: true,
+			debug: false,
 		});
 		await litNodeClient.connect();
 
@@ -266,8 +266,6 @@ export const getPKPSession = async (session, index) => {
     });
 
 
-
-    console.log(pkpSessionSigs, userAuthSig, "merhaba")
 		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
 		const resp = await litNodeClient.executeJs({
 			ipfsId: signerFunctionV0,
