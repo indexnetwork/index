@@ -167,7 +167,7 @@ const pkpAuthNeededCallback =  async ({resources, expiration, uri}) => {
   let siweMessage = new SiweMessage({
     domain: 'index.network', // change to your domain ex: example.app.com
     address: dappOwnerWallet.address,
-    //statement: 'Some custom statement.', // configure to what ever you would like
+    statement: 'Index Network says: ' // configure to what ever you would like
     uri,
     version: '1',
     chainId: '1',
@@ -238,7 +238,7 @@ export const getPKPSession = async (session, index) => {
 
   	const { capacityDelegationAuthSig } =
       await litNodeClient.createCapacityDelegationAuthSig({
-      uses: '2',
+      uses: '10',
       dAppOwnerWallet: dappOwnerWallet,
       capacityTokenId: process.env.LIT_PROTOCOL_CAPACITY_TOKEN_ID,
       delegateeAddresses: [authSig.address],
