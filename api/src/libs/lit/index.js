@@ -141,56 +141,7 @@ const dappOwnerWallet = new ethers.Wallet(
   provider
 );
 
-const pkpAuthNeededCallback =  async ({resources, expiration, uri}) => {
 
-  const litResource = new LitActionResource('*');
-
-  const recapObject =
-    await litNodeClient.generateSessionCapabilityObjectWithWildcards([
-      litResource,
-    ]);
-
-  recapObject.addCapabilityForResource(
-    litResource,
-    LitAbility.LitActionExecution
-  );
-
-  const verified = recapObject.verifyCapabilitiesForResource(
-    litResource,
-    LitAbility.LitActionExecution
-  );
-
-  if (!verified) {
-    throw new Error('Failed to verify capabilities for resource');
-  }
-
-  let siweMessage = new SiweMessage({
-    domain: 'index.network', // change to your domain ex: example.app.com
-    address: dappOwnerWallet.address,
-    statement: 'Index Network says: ', // configure to what ever you would like
-    uri,
-    version: '1',
-    chainId: '1',
-    expirationTime: expiration,
-    resources,
-  });
-
-  siweMessage = recapObject.addToSiweMessage(siweMessage);
-
-  const messageToSign = siweMessage.toMessage();
-  const signature = await dappOwnerWallet.signMessage(messageToSign);
-
-  const authSig = {
-    sig: signature.replace('0x', ''),
-    derivedVia: 'web3.eth.personal.sign',
-    signedMessage: messageToSign,
-    address: dappOwnerWallet.address,
-  };
-
-  return authSig;
-
-
-}
 
 export const getPKPSession = async (session, index) => {
 
@@ -198,50 +149,106 @@ export const getPKPSession = async (session, index) => {
 		throw new Error("Unauthenticated DID");
 	}
 
-	const sessionCacheKey = `${session.did.parent}:${index.id}:${index.signerFunction}`
 
-	const existingSessionStr = await redis.hGet("sessions", sessionCacheKey);
+	let sessionCacheKey = false;
 
-	if (existingSessionStr) {
-		try {
-			const didSession = await DIDSession.fromSession(existingSessionStr);
-			await didSession.did.authenticate()
-			return didSession;
+	if(index.id && index.signerFunction) {
+	  const existingSessionStr = await redis.hGet("sessions", sessionCacheKey);
+		sessionCacheKey = `${session.did.parent}:${index.id}:${index.signerFunction}`
+		if (existingSessionStr) {
+			try {
+				const didSession = await DIDSession.fromSession(existingSessionStr);
+				await didSession.did.authenticate()
+				return didSession;
 
-		} catch (error) {
-			//Expired or invalid session, remove cache.
-			console.warn(error);
-			await redis.hDel("sessions", sessionCacheKey);
+			} catch (error) {
+				//Expired or invalid session, remove cache.
+				console.warn(error);
+				await redis.hDel("sessions", sessionCacheKey);
+			}
 		}
-	}
+  }
 
-	const authSig = {
+
+	const userAuthSig = {
 		signedMessage: SiweMessage.fromCacao(session.cacao).toMessage(),
 		address: getAddress(session.did.parent.split(":").pop()),
 		derivedVia: "web3.eth.personal.sign",
 		sig: session.cacao.s.s,
 	};
 
+
+	const pkpAuthNeededCallback =  async ({resources, expiration, uri}) => {
+
+    const litResource = new LitActionResource('*');
+
+    const recapObject =
+      await litNodeClient.generateSessionCapabilityObjectWithWildcards([
+        litResource,
+      ]);
+
+    recapObject.addCapabilityForResource(
+      litResource,
+      LitAbility.LitActionExecution
+    );
+
+    const verified = recapObject.verifyCapabilitiesForResource(
+      litResource,
+      LitAbility.LitActionExecution
+    );
+
+    if (!verified) {
+      throw new Error('Failed to verify capabilities for resource');
+    }
+
+    let siweMessage = new SiweMessage({
+      domain: 'index.network', // change to your domain ex: example.app.com
+      address: dappOwnerWallet.address,
+      statement: 'Index Network says: ', // configure to what ever you would like
+      uri,
+      version: '1',
+      chainId: '1',
+      expirationTime: expiration,
+      resources,
+    });
+
+    siweMessage = recapObject.addToSiweMessage(siweMessage);
+
+    const messageToSign = siweMessage.toMessage();
+    const signature = await dappOwnerWallet.signMessage(messageToSign);
+
+    const authSig = {
+      sig: signature.replace('0x', ''),
+      derivedVia: 'web3.eth.personal.sign',
+      signedMessage: messageToSign,
+      address: userAuthSig.address,
+    };
+
+    return authSig;
+
+	}
+
 	const keySeed = randomBytes(32);
-	const provider = new Ed25519Provider(keySeed);
+	const didProvider = new Ed25519Provider(keySeed);
 	// @ts-ignore
-	const didKey = new DID({ provider, resolver: getResolver() });
+	const didKey = new DID({ provider:didProvider, resolver: getResolver() });
 	await didKey.authenticate();
 
 	try {
 
 		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 			litNetwork: config.litNetwork,
-			debug: false,
+			debug: true,
 		});
 		await litNodeClient.connect();
+
 
   	const { capacityDelegationAuthSig } =
       await litNodeClient.createCapacityDelegationAuthSig({
       uses: '10',
       dAppOwnerWallet: dappOwnerWallet,
       capacityTokenId: process.env.LIT_PROTOCOL_CAPACITY_TOKEN_ID,
-      delegateeAddresses: [authSig.address],
+      delegateeAddresses: [userAuthSig.address],
     });
 
     const pkpSessionSigs = await litNodeClient.getSessionSigs({
@@ -258,12 +265,15 @@ export const getPKPSession = async (session, index) => {
       capacityDelegationAuthSig,
     });
 
+
+
+    console.log(pkpSessionSigs, userAuthSig, "merhaba")
 		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
 		const resp = await litNodeClient.executeJs({
 			ipfsId: signerFunctionV0,
 			sessionSigs: pkpSessionSigs,
 			jsParams: {
-				authSig, // for conditions control. session signature is not enough.
+				authSig: userAuthSig, // for conditions control. session signature is not enough.
 				chain: "ethereum", // polygon
 				publicKey: index.signerPublicKey,
 				didKey: didKey.id,
@@ -275,8 +285,7 @@ export const getPKPSession = async (session, index) => {
 
 		const { error } = resp.response; // TODO Handle.
 		if (error) {
-			console.log("LIT Node Client Error", error);
-			return null;
+			throw new Error("LIT Node Client Error")
 		}
 
 		if(!resp.signatures || !resp.signatures.sig1 ){
@@ -297,7 +306,9 @@ export const getPKPSession = async (session, index) => {
 		const did = await createDIDCacao(didKey, cacao);
 		const pkpSession = new DIDSession({ cacao, keySeed, did });
 
-		await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
+		if(sessionCacheKey){
+		  await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
+		}
 
 		await pkpSession.did.authenticate()
 		return pkpSession
