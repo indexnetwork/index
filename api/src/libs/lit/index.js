@@ -8,7 +8,7 @@ const ec = new elliptic.ec("secp256k1");
 import RedisClient from '../../clients/redis.js';
 import {DIDService} from "../../services/did.js";
 import { definition } from "../../types/merged-runtime.js";
-import { getLitNodeClient } from "../../clients/lit.js"
+import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
 
 import { DID } from "dids";
 import { randomBytes, randomString } from "@stablelib/random";
@@ -28,7 +28,6 @@ const config = {
 	domain: "index.network",
 };
 
-const litNodeClient = getLitNodeClient();
 
 const litContracts = new LitContracts({
  network: config.litNetwork
@@ -141,6 +140,12 @@ export const getPKPSessionForIndexer = async(index) => {
 }
 
 export const getPKPSession = async (session, index) => {
+
+  const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
+		litNetwork: config.litNetwork,
+		debug: true,
+	});
+	await litNodeClient.connect();
 
 	if(!session.did.authenticated){
 		throw new Error("Unauthenticated DID");
