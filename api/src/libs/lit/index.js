@@ -21,8 +21,11 @@ import { CID } from 'multiformats/cid';
 import { SiweMessage } from "@didtools/cacao";
 import { getAddress } from "@ethersproject/address";
 
+import { LitAbility, LitPKPResource, LitActionResource } from '@lit-protocol/auth-helpers';
+
+
 const config = {
-	litNetwork: "cayenne",
+	litNetwork: "habanero",
 	domain: "index.network",
 };
 
@@ -130,6 +133,65 @@ export const getPKPSessionForIndexer = async(index) => {
   const pkpSession =  await getPKPSession(session, index);
   return pkpSession;
 }
+
+const provider = new ethers.JsonRpcProvider(process.env.LIT_PROTOCOL_RPC_PROVIDER);
+
+const dappOwnerWallet = new ethers.Wallet(
+  process.env.INDEXER_WALLET_PRIVATE_KEY,
+  provider
+);
+
+const pkpAuthNeededCallback =  async ({resources, expiration, uri}) => {
+
+  const litResource = new LitActionResource('*');
+
+  const recapObject =
+    await litNodeClient.generateSessionCapabilityObjectWithWildcards([
+      litResource,
+    ]);
+
+  recapObject.addCapabilityForResource(
+    litResource,
+    LitAbility.LitActionExecution
+  );
+
+  const verified = recapObject.verifyCapabilitiesForResource(
+    litResource,
+    LitAbility.LitActionExecution
+  );
+
+  if (!verified) {
+    throw new Error('Failed to verify capabilities for resource');
+  }
+
+  let siweMessage = new SiweMessage({
+    domain: 'index.network', // change to your domain ex: example.app.com
+    address: dappOwnerWallet.address,
+    //statement: 'Some custom statement.', // configure to what ever you would like
+    uri,
+    version: '1',
+    chainId: '1',
+    expirationTime: expiration,
+    resources,
+  });
+
+  siweMessage = recapObject.addToSiweMessage(siweMessage);
+
+  const messageToSign = siweMessage.toMessage();
+  const signature = await dappOwnerWallet.signMessage(messageToSign);
+
+  const authSig = {
+    sig: signature.replace('0x', ''),
+    derivedVia: 'web3.eth.personal.sign',
+    signedMessage: messageToSign,
+    address: dappOwnerWallet.address,
+  };
+
+  return authSig;
+
+
+}
+
 export const getPKPSession = async (session, index) => {
 
 	if(!session.did.authenticated){
@@ -166,18 +228,42 @@ export const getPKPSession = async (session, index) => {
 	const didKey = new DID({ provider, resolver: getResolver() });
 	await didKey.authenticate();
 
-	try{
+	try {
+
 		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 			litNetwork: config.litNetwork,
 			debug: false,
 		});
 		await litNodeClient.connect();
+
+  	const { capacityDelegationAuthSig } =
+      await litNodeClient.createCapacityDelegationAuthSig({
+      uses: '2',
+      dAppOwnerWallet: dappOwnerWallet,
+      capacityTokenId: process.env.LIT_PROTOCOL_CAPACITY_TOKEN_ID,
+      delegateeAddresses: [authSig.address],
+    });
+
+    const pkpSessionSigs = await litNodeClient.getSessionSigs({
+      pkpPublicKey: index.signerPublicKey,
+      expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(), // 24 hours
+      chain: 'ethereum',
+      resourceAbilityRequests: [
+        {
+          resource: new LitPKPResource('*'),
+          ability: LitAbility.PKPSigning,
+        },
+      ],
+      authNeededCallback: pkpAuthNeededCallback,
+      capacityDelegationAuthSig,
+    });
+
 		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
 		const resp = await litNodeClient.executeJs({
 			ipfsId: signerFunctionV0,
-			authSig,
+			sessionSigs: pkpSessionSigs,
 			jsParams: {
-				authSig,
+				authSig, // for conditions control. session signature is not enough.
 				chain: "ethereum", // polygon
 				publicKey: index.signerPublicKey,
 				didKey: didKey.id,
