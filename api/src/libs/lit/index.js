@@ -11,7 +11,6 @@ import { definition } from "../../types/merged-runtime.js";
 import { getLitNodeClient } from "../../clients/lit.js"
 
 import { DID } from "dids";
-import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
 import { randomBytes, randomString } from "@stablelib/random";
 import { Cacao } from "@didtools/cacao";
 import { getResolver } from "key-did-resolver";
@@ -34,6 +33,13 @@ const litNodeClient = getLitNodeClient();
 const litContracts = new LitContracts({
  network: config.litNetwork
 });
+
+const provider = new ethers.JsonRpcProvider(process.env.LIT_PROTOCOL_RPC_PROVIDER);
+
+const dappOwnerWallet = new ethers.Wallet(
+  process.env.INDEXER_WALLET_PRIVATE_KEY,
+  provider
+);
 
 const redis = RedisClient.getInstance();
 
@@ -98,8 +104,6 @@ export const encodeDIDWithLit = (pkpPubKey) =>  {
 }
 
 
-
-
 export const decodeDIDWithLit = (encodedDID) => {
 
     const arr = encodedDID?.split(':');
@@ -135,15 +139,6 @@ export const getPKPSessionForIndexer = async(index) => {
   const pkpSession =  await getPKPSession(session, index);
   return pkpSession;
 }
-
-const provider = new ethers.JsonRpcProvider(process.env.LIT_PROTOCOL_RPC_PROVIDER);
-
-const dappOwnerWallet = new ethers.Wallet(
-  process.env.INDEXER_WALLET_PRIVATE_KEY,
-  provider
-);
-
-
 
 export const getPKPSession = async (session, index) => {
 
