@@ -59,7 +59,7 @@
     const context = { isPermittedAddress: false, isCreator: false, siweMessage: false };
     const pkpTokenId = Lit.Actions.pubkeyToTokenId({ publicKey });
     const pkpAddress = ethers.utils.computeAddress(publicKey).toLowerCase();
-    const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: Lit.Auth.authSigAddress });
+    const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: authSig.address });
     context.isPermittedAddress = isPermittedAddress;
     const conditions = getCreatorConditions();
     let isCreator = false;
@@ -88,6 +88,7 @@
         publicKey,
         sigName
       });
+      context.litAuth = Lit.Auth;
       context.siweMessage = siweMessage;
       LitActions.setResponse({
         response: JSON.stringify({

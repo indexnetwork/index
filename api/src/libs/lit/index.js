@@ -8,7 +8,7 @@ const ec = new elliptic.ec("secp256k1");
 import RedisClient from '../../clients/redis.js';
 import {DIDService} from "../../services/did.js";
 import { definition } from "../../types/merged-runtime.js";
-
+import { getLitNodeClient } from "../../clients/lit.js"
 
 import { DID } from "dids";
 import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
@@ -28,6 +28,8 @@ const config = {
 	litNetwork: "habanero",
 	domain: "index.network",
 };
+
+const litNodeClient = getLitNodeClient();
 
 const litContracts = new LitContracts({
  network: config.litNetwork
@@ -221,7 +223,7 @@ export const getPKPSession = async (session, index) => {
       sig: signature.replace('0x', ''),
       derivedVia: 'web3.eth.personal.sign',
       signedMessage: messageToSign,
-      address: userAuthSig.address,
+      address: dappOwnerWallet.address,
     };
 
     return authSig;
@@ -235,12 +237,6 @@ export const getPKPSession = async (session, index) => {
 	await didKey.authenticate();
 
 	try {
-
-		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
-			litNetwork: config.litNetwork,
-			debug: false,
-		});
-		await litNodeClient.connect();
 
 
   	const { capacityDelegationAuthSig } =
