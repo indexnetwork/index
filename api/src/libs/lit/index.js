@@ -155,8 +155,8 @@ export const getPKPSession = async (session, index) => {
 	let sessionCacheKey = false;
 
 	if(index.id && index.signerFunction) {
+	  sessionCacheKey = `${session.did.parent}:${index.id}:${index.signerFunction}`
 	  const existingSessionStr = await redis.hGet("sessions", sessionCacheKey);
-		sessionCacheKey = `${session.did.parent}:${index.id}:${index.signerFunction}`
 		if (existingSessionStr) {
 			try {
 				const didSession = await DIDSession.fromSession(existingSessionStr);
