@@ -167,7 +167,7 @@ const pkpAuthNeededCallback =  async ({resources, expiration, uri}) => {
   let siweMessage = new SiweMessage({
     domain: 'index.network', // change to your domain ex: example.app.com
     address: dappOwnerWallet.address,
-    statement: 'Index Network says: ' // configure to what ever you would like
+    statement: 'Index Network says: ', // configure to what ever you would like
     uri,
     version: '1',
     chainId: '1',
