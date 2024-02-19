@@ -106,7 +106,7 @@ export const IndexConversationHeader: FC = () => {
                 display: "flex",
                 width: "fit-content",
               }}
-              href={`/discovery/${viewedIndex?.ownerDID?.id!}`}
+              href={`/${viewedIndex?.ownerDID?.id!}`}
             >
               <div
                 style={{ display: "flex", alignItems: "center", gap: "0.8em" }}

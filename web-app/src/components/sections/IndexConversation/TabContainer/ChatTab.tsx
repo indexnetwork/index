@@ -30,6 +30,8 @@ export default function ChatTabSection() {
         style={{
           display: "flex",
           overflowY: "auto",
+          justifyContent: "center",
+          alignItems: "center",
           maxHeight: "calc(-30rem + 100dvh)",
         }}
       >
@@ -37,6 +39,5 @@ export default function ChatTabSection() {
       </div>
     ) : null;
   }
-  // return <EmptyScreen setInput={() => {}} contextMessage="your responses" />;
   return <NoIndexesChat />;
 }

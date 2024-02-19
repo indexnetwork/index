@@ -43,7 +43,7 @@ redirects to session user page
 needed:
 endpoint for: owner.DID of indexID: get from response
 
-endpoint for: modify index: star: 
+endpoint for: modify index: star:
 - edit title: role owner : updateIndex()
 - add/remove star: public : createDIDIndex({
     "indexId": "{{indexId}}",

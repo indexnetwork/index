@@ -88,7 +88,7 @@ export default function TabContainer() {
               <TabPane
                 key={key}
                 enabled={true}
-                hidden={key === TabKey.Settings && (!isOwner || !isCreator)}
+                hidden={key === TabKey.Settings && !isOwner}
                 tabKey={key}
                 title={TAB_TITLES[key]}
               />

@@ -1,3 +1,5 @@
+import ConfirmTransaction from "@/components/site/modal/Common/ConfirmTransaction";
+import CreateModal from "@/components/site/modal/CreateModal";
 import EditProfileModal from "@/components/site/modal/EditProfileModal";
 import { useApp } from "@/context/AppContext";
 import cc from "classcat";
@@ -21,6 +23,11 @@ const DiscoveryLayout = ({ children }: DiscoveryLayoutProps) => {
     setRightSidebarOpen,
     setEditProfileModalVisible,
     editProfileModalVisible,
+    transactionApprovalWaiting,
+    handleTransactionCancel,
+    createModalVisible,
+    setCreateModalVisible,
+    handleCreate,
   } = useApp();
 
   const closeSidebars = () => {
@@ -50,6 +57,19 @@ const DiscoveryLayout = ({ children }: DiscoveryLayoutProps) => {
         <EditProfileModal
           visible={editProfileModalVisible}
           onClose={() => setEditProfileModalVisible(false)}
+        />
+      )}
+      {createModalVisible && (
+        <CreateModal
+          visible={createModalVisible}
+          onClose={() => setCreateModalVisible(false)}
+          onCreate={handleCreate}
+        />
+      )}
+      {transactionApprovalWaiting && (
+        <ConfirmTransaction
+          handleCancel={handleTransactionCancel}
+          visible={transactionApprovalWaiting}
         />
       )}
     </div>

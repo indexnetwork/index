@@ -8,8 +8,9 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import { IndexItem } from "@/types/entity";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useIndexConversation } from "../IndexConversationContext";
+import { filterValidUrls } from "@/utils/helper";
 
 export default function IndexItemsTabSection() {
   const {
@@ -23,8 +24,28 @@ export default function IndexItemsTabSection() {
   const { isCreator } = useRole();
   const { api, ready: apiReady } = useApi();
   const [search, setSearch] = useState("");
+  const [addedItem, setAddedItem] = useState(null);
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
 
   const { viewedIndex } = useApp();
+
+  useEffect(() => {
+    if (!addedItem) return;
+    console.log("addedItem", addedItem, progress);
+    setItemsState({
+      items: [addedItem, ...itemsState.items],
+      cursor: itemsState.cursor,
+    });
+
+    setProgress({
+      ...progress,
+      current: progress.current + 1,
+    });
+    if (progress.current === progress.total) {
+      setLoading(false);
+      setProgress({ current: 0, total: 0 });
+    }
+  }, [addedItem, setItemsState]);
 
   const handleSearch = useCallback(
     (searchQuery: string) => {
@@ -34,42 +55,32 @@ export default function IndexItemsTabSection() {
     [fetchIndexItems],
   );
 
-  const handleAddLink = useCallback(
-    async (urls: string[]) => {
+  const handleAddItem = useCallback(
+    async (inputUrls: string[]) => {
       if (!apiReady || !viewedIndex) return;
 
-      // setLoading(true);
-      try {
-        const createdLink = await api!.crawlLink(urls[0]);
-        if (!createdLink) {
-          throw new Error("Error creating link");
+      const urls = filterValidUrls(inputUrls);
+      setProgress({ current: 1, total: urls.length });
+
+      setLoading(true);
+      urls.forEach(async (url) => {
+        try {
+          const createdLink = await api!.crawlLink(url);
+          if (!createdLink) return;
+
+          const createdItem = await api!.createItem(
+            viewedIndex.id,
+            createdLink.id,
+          );
+          if (!createdItem) return;
+
+          setAddedItem(createdItem);
+        } catch (error) {
+          console.error("Error adding link", error);
         }
-        const createdItem = await api!.createItem(
-          viewedIndex.id,
-          createdLink.id,
-        );
-        if (!createdItem) {
-          throw new Error("Error creating item");
-        }
-        setItemsState({
-          items: [createdItem, ...itemsState.items],
-          cursor: itemsState.cursor,
-        });
-      } catch (error) {
-        console.error("Error adding link", error);
-      } finally {
-        // setLoading(false);
-      }
+      });
     },
-    [
-      api,
-      viewedIndex,
-      setItemsState,
-      itemsState.cursor,
-      itemsState.items,
-      setLoading,
-      apiReady,
-    ],
+    [api, viewedIndex, apiReady],
   );
 
   const handleRemove = useCallback(
@@ -105,7 +116,7 @@ export default function IndexItemsTabSection() {
       <FlexRow className={"mt-6"}>
         <Col className="idxflex-grow-1">
           <SearchInput
-            loading={loading}
+            // loading={loading}
             onSearch={handleSearch}
             debounceTime={300}
             showClear
@@ -120,8 +131,8 @@ export default function IndexItemsTabSection() {
           <Col className="idxflex-grow-1 mt-6 pb-0">
             <LinkInput
               loading={loading}
-              onLinkAdd={handleAddLink}
-              // progress={progress}
+              onItemAdd={handleAddItem}
+              progress={progress}
             />
           </Col>
         </FlexRow>

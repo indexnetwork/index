@@ -3,8 +3,13 @@ export const appConfig = {
   apiUrl: "https://dev.index.network/api", // TODO: handle better
   ipfsProxy: "https://indexas.infura-ipfs.io/ipfs",
   ipfsInfura: "http://localhost:3001/avatar",
-  defaultCID: "QmPAoTyDyaFJJdKK6FQd9pWivAhiNLYxTUpan5zVxbbMUZ", // Empty.
-  litNetwork: "cayenne" as "cayenne" | "custom" | "localhost" | "manzano" | "habanero",
+  defaultCID: "QmUGZYw7xY3VHYnagmaVsmgP2AnuGrqwVryNSgKgcNX9AD", // Empty.
+  litNetwork: "habanero" as
+    | "cayenne"
+    | "custom"
+    | "localhost"
+    | "manzano"
+    | "habanero",
   testNetwork: {
     chainId: "0x2ac49",
     chainName: "Chronicle - Lit Protocol Testnet",

@@ -86,7 +86,10 @@ const Modal = ({
 
     return () => {
       const portalElement = portal || document.getElementById(PORTAL_ID);
-      portalElement!.remove();
+      if (portalElement) {
+        portalElement.remove();
+      }
+      // portalElement!.remove();
     };
   }, []);
 
@@ -145,7 +148,7 @@ const Modal = ({
           maxVh={mobileMaxVh}
           onClick={handleBackdropClick}
         >
-          {header && <div className="modal-header">{header}</div>}
+          <div className="modal-header">{header}</div>
           <div className="modal-body">{body}</div>
           {footer && <div className="modal-footer">{footer}</div>}
         </BottomMenuDiv>

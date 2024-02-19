@@ -61,6 +61,8 @@ export interface AppContextValue {
   handleCreate: (title: string) => Promise<void>;
   handleTransactionCancel: () => void;
   chatID: string | undefined;
+  transactionApprovalWaiting: boolean;
+  createModalVisible: boolean;
 }
 
 export const AppContext = createContext<AppContextValue>({} as AppContextValue);
@@ -145,7 +147,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
           throw new Error("API didn't return a doc");
         }
         setIndexes((prevIndexes) => [doc, ...prevIndexes]);
-        router.push(`/discovery/${doc.id}`);
+        router.push(`/${doc.id}`);
       } catch (err) {
         console.error("Couldn't create index", err);
       } finally {
@@ -252,6 +254,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     setIndexes,
     fetchIndexes,
     setCreateModalVisible,
+    createModalVisible,
     setTransactionApprovalWaiting,
     leftSidebarOpen,
     setLeftSidebarOpen,
@@ -277,12 +280,13 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     handleTransactionCancel,
     editProfileModalVisible,
     chatID,
+    transactionApprovalWaiting,
   };
 
   return (
     <AppContext.Provider value={contextValue}>
       {children}
-      {transactionApprovalWaiting && (
+      {/* {transactionApprovalWaiting && (
         <ConfirmTransaction
           handleCancel={handleTransactionCancel}
           visible={transactionApprovalWaiting}
@@ -294,7 +298,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
           onClose={() => setCreateModalVisible(false)}
           onCreate={handleCreate}
         />
-      )}
+      )} */}
     </AppContext.Provider>
   );
 };

@@ -19,35 +19,38 @@ export interface IndividualWalletOptionsProps {
   handleCreate(condition: AccessControlCondition): void;
 }
 
-const IndividualWallet: React.VFC<IndividualWalletOptionsProps> = ({
+const IndividualWallet: React.FC<IndividualWalletOptionsProps> = ({
   handleBack,
   handleCreate,
 }) => {
   const [address, setAddress] = useState("");
   const { api, ready: apiReady } = useApi();
 
-  const validate = useCallback(async (values: any) => {
-    if (!apiReady) return;
-    const errors = {} as any;
-    if (values.walletAddress.endsWith(".eth")) {
-      const addressResponse = await api!.getWallet(values.walletAddress);
-      if (!addressResponse || !addressResponse.walletAddress) {
-        errors.walletAddress = "Invalid ENS name";
-      } else {
-        setAddress(addressResponse.walletAddress);
+  const validate = useCallback(
+    async (values: any) => {
+      if (!apiReady) return;
+      const errors = {} as any;
+      if (values.walletAddress.endsWith(".eth")) {
+        const addressResponse = await api!.getWallet(values.walletAddress);
+        if (!addressResponse || !addressResponse.walletAddress) {
+          errors.walletAddress = "Invalid ENS name";
+        } else {
+          setAddress(addressResponse.walletAddress);
+        }
+        return errors;
       }
+      if (!isValidContractAddress(values.walletAddress)) {
+        errors.walletAddress = "Invalid address";
+        return errors;
+      }
+      setAddress(values.walletAddress);
       return errors;
-    }
-    if (!isValidContractAddress(values.walletAddress)) {
-      errors.walletAddress = "Invalid address";
-      return errors;
-    }
-    setAddress(values.walletAddress);
-    return errors;
-  }, []);
+    },
+    [apiReady],
+  );
 
-  const onSubmit = (values: any) => {
-    const conditions = {
+  const onSubmit = useCallback((values: any) => {
+    const condition = {
       contractAddress: "",
       standardContractType: "",
       chain: values.chain,
@@ -58,8 +61,10 @@ const IndividualWallet: React.VFC<IndividualWalletOptionsProps> = ({
         value: address,
       },
     };
-    return handleCreate(conditions as AccessControlCondition);
-  };
+    debugger;
+    return handleCreate(condition as AccessControlCondition);
+  }, []);
+
   const {
     setFieldValue,
     errors,

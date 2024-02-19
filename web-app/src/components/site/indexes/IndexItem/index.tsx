@@ -21,7 +21,7 @@ export interface IndexItemProps {
 }
 
 const IndexItem: FC<IndexItemProps> = ({ index, selected, onClick }) => (
-  <Link href={`/discovery/${index.id}`}>
+  <Link href={`/${index.id}`}>
     <FlexRow
       className={cc([
         selected ? "index-list-item-selected" : "index-list-item",

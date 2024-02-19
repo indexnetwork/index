@@ -16,12 +16,12 @@ export default function CreatorsTabSection() {
 
   const handleCollabActionChange = useCallback(
     async ({ cid }: any) => {
-      if (!viewedIndex) return;
+      if (!viewedIndex || !apiReady) return;
 
       try {
         const litContracts = new LitContracts({
           network: appConfig.litNetwork,
-       	});
+        });
         await litContracts.connect();
         const signerFunctionV0 = CID.parse(viewedIndex.signerFunction)
           .toV0()
@@ -51,7 +51,7 @@ export default function CreatorsTabSection() {
         console.error("Error creating rule", error);
       }
     },
-    [api, viewedIndex],
+    [api, viewedIndex, apiReady],
   );
 
   return (

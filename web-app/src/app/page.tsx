@@ -20,7 +20,7 @@ const Landing = () => {
 
   useEffect(() => {
     if (status === AuthStatus.CONNECTED) {
-      router.push(`/discovery/${session?.did.parent}`);
+      router.push(`/${session?.did.parent}`);
     }
   }, [status, session, router]);
 

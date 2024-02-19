@@ -23,7 +23,7 @@ const IndexListSection: FC = () => {
     (tabKey: IndexListTabKey) => {
       setLeftTabKey(tabKey);
       if (isIndex) {
-        router.push(`/discovery/${viewedProfile?.id}`);
+        router.push(`/${viewedProfile?.id}`);
       }
     },
     [setLeftTabKey],

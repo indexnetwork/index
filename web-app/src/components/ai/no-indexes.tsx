@@ -22,30 +22,46 @@ export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
         width={202}
         alt="illustration"
       />
-      <Flex flexdirection="column" alignitems="center">
-        <Text fontFamily="freizeit" size="xl" fontWeight={700}>
-          {isSelfDid
-            ? "You don't have any index yet."
-            : "There are no indexes here, yet."}
-        </Text>
-        {isSelfDid && (
-          <Text fontFamily="freizeit" size="xl" fontWeight={700}>
-            Please create or star an index to enable chat functionality.
-          </Text>
-        )}
-      </Flex>
-      {isSelfDid && (
-        <Button
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          gap: "48px",
+        }}
+      >
+        <div
           style={{
-            borderRadius: "2px",
-          }}
-          onClick={() => {
-            setCreateModalVisible(true);
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          Create your first index
-        </Button>
-      )}
+          <Text fontFamily="freizeit" size="xl" fontWeight={700}>
+            {isSelfDid
+              ? "You don't have any index yet."
+              : "There are no indexes here, yet."}
+          </Text>
+          {isSelfDid && (
+            <Text fontFamily="freizeit" size="xl" fontWeight={700}>
+              Please create or star an index to enable chat functionality.
+            </Text>
+          )}
+        </div>
+
+        {isSelfDid && (
+          <Button
+            style={{
+              borderRadius: "2px",
+            }}
+            onClick={() => {
+              setCreateModalVisible(true);
+            }}
+          >
+            Create your first index
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

@@ -13,6 +13,9 @@ export default function UserConversationSection() {
   return (
     <div
       style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
         flex: 1,
         overflowY: "auto",
         maxHeight: "calc(100dvh - 12em)",
