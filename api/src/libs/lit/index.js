@@ -143,7 +143,7 @@ export const getPKPSession = async (session, index) => {
 
   const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 		litNetwork: config.litNetwork,
-		debug: false,
+		debug: process.env.DEBUG || false,
 	});
 	await litNodeClient.connect();
 
