@@ -1,13 +1,14 @@
 import { Chroma } from '@langchain/community/vectorstores/chroma';
 import { HttpException, HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import { SelfQueryRetriever } from 'langchain/retrievers/self_query';
 import { Agent } from 'src/app/modules/agent.module';
-import { QueryRequestDTO, SearchRequestDTO } from '../schema/search.schema';
-import { LLMChain } from 'langchain/chains';
-import { RunnableSequence, RunnableLambda } from '@langchain/core/runnables';
-import { ChatMistralAI } from '@langchain/mistralai';
+import { AutocompleteRequestDTO, QueryRequestDTO, SearchRequestDTO } from '../schema/search.schema';
 import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
-import { IncludeEnum } from 'chromadb';
+import { HydeRetriever } from "langchain/retrievers/hyde";
+import { MemoryVectorStore } from "langchain/vectorstores/memory";
+import { Completion, Completions } from 'openai/resources';
+import OpenAI from 'openai';
+import { Document } from "@langchain/core/documents";
+
 
 @Injectable()
 export class SearchService {
@@ -17,7 +18,54 @@ export class SearchService {
         @Inject('AGENT_METACLASS') private readonly agentClient: Agent,
     ) {}
 
-    /**
+
+    async autocomplete(body: AutocompleteRequestDTO): Promise<any> {
+
+        // const completions = await Completions.call()
+
+        const docs = await this.chromaClient.collection.get({
+            where: {
+                indexId: body.indexId,
+            }
+        })
+
+        // Logger.log(`Docs ${JSON.stringify(docs.documents)}`, 'chatService:autocomplete');
+
+        // const context = docs.metadatas.map((doc: any) => doc.webPageTitle).join('\n');
+        const context = docs.documents.join('');
+        const message = `
+        Provide a list of ${body.n} suggestions for autocompleting containing max 3-4 words have the string and content below:
+        --------
+        String: ${body.query}
+        --------
+        Content: 
+        ${context.slice(0, 10000)}
+        `
+
+        Logger.log(`Autocompleting ${body.query} via ${message}`, 'chatService:autocomplete');
+
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const completion = await openai.chat.completions.create({
+            // model: "gpt-4-turbo-preview",
+            model: "gpt-3.5-turbo",
+            logprobs: true,
+            messages: [
+                {"role": "system", "content": message },
+                {"role": "user", "content": ``}
+            ],
+        });
+
+        Logger.log(`Autocompleted ${JSON.stringify(completion)}`, 'chatService:autocomplete');
+
+        const suggestions = completion.choices[0].message.content.split('\n').map((suggestion: string) => suggestion.replace(/^\d+\.\s/g, '') );
+
+        
+        return {
+            suggestions: suggestions
+        }
+    }
+
+    /**s
      * @description Generate a query from question with the agent without a chat history
      * 
      * @param body 
@@ -30,28 +78,51 @@ export class SearchService {
         try {
 
             const embeddings = new OpenAIEmbeddings({ modelName: process.env.MODEL_EMBEDDING, openAIApiKey: process.env.OPENAI_API_KEY });
-
-            const response = await this.chromaClient.collection.query({
-                queryEmbeddings: await embeddings.embedQuery(body.query),
-                // nResults: body.page * body.limit,
-                include: [IncludeEnum.Metadatas, IncludeEnum.Distances],
-                where:{     
-                    indexId: {
-                        $in: body.indexIds
-                    }
+            
+            const docs = await this.chromaClient.collection.get({
+                where: {
+                    indexId: body.indexIds[0],
                 }
             })
+                
+            const texts = docs.documents
+            const ids = docs.metadatas.map((doc: any) => {
+                return { id: doc.webPageId, title: doc.webPageTitle }
+            })
 
-            const documents = response.metadatas[0].map(function(doc: any, idx: number) {
-                Logger.log(`Processing ${JSON.stringify(doc)} with ${idx}`, 'chatService:query:document');
-                return {
-                    id: doc?.webPageId,
-                    similarity: response.distances[0][idx],
-                };
+            Logger.log(`Creating vector store for ${ids}`, 'chatService:query')
+
+            const vectorStore = await MemoryVectorStore.fromTexts(
+                texts,
+                ids,
+                embeddings
+            );
+
+            const retriever = new HydeRetriever({
+                vectorStore,
+                llm: new ChatOpenAI({ modelName: process.env.MODEL_CHAT }) as any,
+                searchType: 'mmr',
             });
 
+            // const suggestions = await this.autocomplete({ indexId: body.indexIds[0], n: 5, query: body.query });
+
+            Logger.log(`Retrieving documents for ${body.query}`, 'chatService:query');
+
+            const documents = await retriever.getRelevantDocuments(
+                body.query,
+                
+            );
+
+            Logger.log(`Retrieved ${JSON.stringify(documents)} documents`, 'chatService:query');
+
             return {
-                items: documents.slice((body.page - 1) * body.limit, body.page * body.limit),
+                items: documents.map((doc: any) => { 
+                    Logger.log(`Processing ${JSON.stringify(doc)}`, 'chatService:query')
+                    return { 
+                        webPageId: doc.metadata.id,
+                        webPageTitle: doc.metadata.title,
+                } } )
+                .slice((body.page - 1) * body.limit, body.page * body.limit)
             }
         
         } catch (e) {
@@ -64,7 +135,7 @@ export class SearchService {
      * @description Stream a question to the agent with a chat history
      * @ignore
      * 
-     * @param body 
+     * @param body
      * @returns 
      */
     async search(body: SearchRequestDTO) {
@@ -75,9 +146,7 @@ export class SearchService {
                 queryEmbeddings: body.embedding,
                 nResults: 10,
                 where: body.filters,
-                // include: ["metadata", "document"]
             })
-
             
         } catch (e) {
             Logger.log(`Cannot process`, 'chatService:search:error'); throw new HttpException(`Cannot process`, HttpStatus.INTERNAL_SERVER_ERROR);
