@@ -53,7 +53,8 @@
     "striptags": "^3.2.0",
     "uint8arrays": "^4.0.3",
     "vm2": "^3.9.17",
-    "web3": "^4.1.1"
+    "web3": "^4.1.1",
+    "winston": "^3.11.0"
   },
   "type": "module"
 }
