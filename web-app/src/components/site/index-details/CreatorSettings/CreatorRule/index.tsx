@@ -28,11 +28,12 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) => (
         >
           <Row>
             <Text fontFamily="Freizeit" fontWeight={500}>
-              {rule.ruleType === "nftOwner"
-                ? rule.standardContractType === "ERC721" && rule.tokenId
+              {rule?.ruleType === "nftOwner"
+                ? rule?.standardContractType === "ERC721" && rule?.tokenId
                   ? "NFT OWNER"
                   : "NFT OWNERS"
-                : "INDIVIDUAL WALLET"}
+                : "OTHER RULE TYPE"}{" "}
+              {/* Adjusted to include a fallback for demonstration */}
             </Text>
           </Row>
           <Row className={"mt-3"}>
@@ -47,10 +48,11 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) => (
               </Col>
               <Col>
                 <Header level={4} className="mb-1">
-                  {rule.name ||
-                    rule.ensName ||
-                    (rule.walletAddress && maskAddress(rule.walletAddress)) ||
-                    (rule.contractAddress && maskAddress(rule.contractAddress))}
+                  {rule?.name ||
+                    rule?.ensName ||
+                    (rule?.walletAddress && maskAddress(rule?.walletAddress)) ||
+                    (rule?.contractAddress &&
+                      maskAddress(rule?.contractAddress))}
                 </Header>
                 <Flex alignitems={"center"}>
                   <Text
@@ -59,12 +61,12 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) => (
                     size={"sm"}
                     className={"mr-1"}
                   >
-                    {maskAddress(rule.walletAddress || rule.contractAddress)}
+                    {maskAddress(rule?.walletAddress || rule?.contractAddress)}
                   </Text>
                   <Button
                     onClick={() => {
                       copyToClipboard(
-                        `${rule.walletAddress || rule.contractAddress}`,
+                        `${rule?.walletAddress || rule?.contractAddress}`,
                       );
                     }}
                     iconButton

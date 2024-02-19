@@ -126,8 +126,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
     },
   });
 
-  // if (indexesFromApp.length === 0) {
-  if (true) {
+  if (indexesFromApp.length === 0) {
     return <NoIndexesChat isSelfDid={did === viewedProfile?.id} />;
   }
 

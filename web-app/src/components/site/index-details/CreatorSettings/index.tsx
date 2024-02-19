@@ -12,8 +12,6 @@ import { useRole } from "hooks/useRole";
 import { FC, useCallback, useEffect, useState } from "react";
 import { AccessControlCondition } from "types/entity";
 import CreatorRule from "./CreatorRule";
-import ConfirmTransaction from "../../modal/Common/ConfirmTransaction";
-import CreateModal from "../../modal/CreateModal";
 
 export interface CreatorSettingsProps {
   collabAction: string;
@@ -24,10 +22,11 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
   onChange,
   collabAction,
 }) => {
-  const { handleTransactionCancel } = useApp();
   const { isOwner } = useRole();
 
   const { api, ready: apiReady } = useApi();
+  const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
+  const { setTransactionApprovalWaiting } = useApp();
   const [conditions, setConditions] = useState<any>([]);
   const addOrStatements = (c: AccessControlCondition[]) =>
     c
@@ -46,10 +45,6 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
       setConditions(litAction.filter((item: any, i: number) => i % 2 === 0));
     }
   }, []);
-  const [transactionApprovalWaiting, setTransactionApprovalWaiting] =
-    useState(false);
-  const [createModalVisible, setCreateModalVisible] = useState(false);
-  const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
 
   const handleRemove = useCallback(
     async (i: number) => {
@@ -72,22 +67,21 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
   const handleCreate = useCallback(
     async (condition: AccessControlCondition) => {
       if (!apiReady || conditions.length === 0) return;
-      // setNewCreatorModalVisible(false);
-      // setTransactionApprovalWaiting(true);
+      setNewCreatorModalVisible(false);
+      setTransactionApprovalWaiting(true);
       const newConditions = [condition, ...conditions];
-      try {
-        const newAction = await api!.postLITAction(
-          addOrStatements(newConditions),
-        );
-        onChange(newAction!);
-      } catch (e) {
-        console.error("Error creating new creator rule", e);
-      } finally {
-        // setNewCreatorModalVisible(false);
-      }
+      const newAction = await api!.postLITAction(
+        addOrStatements(newConditions),
+      );
+      onChange(newAction!);
+      setTransactionApprovalWaiting(false);
     },
     [apiReady, conditions],
   );
+
+  const handleToggleNewCreatorModal = useCallback(() => {
+    setNewCreatorModalVisible(!newCreatorModalVisible);
+  }, [newCreatorModalVisible]);
 
   useEffect(() => {
     loadAction(collabAction);
@@ -107,7 +101,7 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
               addOnBefore
               className={"mr-0"}
               size="sm"
-              onClick={() => setNewCreatorModalVisible(true)}
+              onClick={handleToggleNewCreatorModal}
             >
               <IconAdd width={12} stroke="white" strokeWidth={"1.5"} /> Add New
             </Button>
@@ -166,9 +160,9 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
       </FlexRow>
       {newCreatorModalVisible && (
         <NewCreatorModal
-          visible={newCreatorModalVisible}
           handleCreate={handleCreate}
-          onClose={() => setNewCreatorModalVisible(false)}
+          visible={newCreatorModalVisible}
+          onClose={handleToggleNewCreatorModal}
         ></NewCreatorModal>
       )}
     </>
