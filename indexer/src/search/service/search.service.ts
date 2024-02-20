@@ -8,6 +8,7 @@ import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { Completion, Completions } from 'openai/resources';
 import OpenAI from 'openai';
 import { Document } from "@langchain/core/documents";
+import { IncludeEnum } from 'chromadb';
 
 
 @Injectable()
@@ -21,18 +22,14 @@ export class SearchService {
 
     async autocomplete(body: AutocompleteRequestDTO): Promise<any> {
 
-        // const completions = await Completions.call()
-
         const docs = await this.chromaClient.collection.get({
             where: {
                 indexId: body.indexId,
             }
         })
 
-        // Logger.log(`Docs ${JSON.stringify(docs.documents)}`, 'chatService:autocomplete');
-
-        // const context = docs.metadatas.map((doc: any) => doc.webPageTitle).join('\n');
-        const context = docs.documents.join('');
+        const context = docs.metadatas.map((doc: any) => doc.webPageTitle).join('\n');
+        // const context = docs.documents.join('');
         const message = `
         Provide a list of ${body.n} suggestions for autocompleting containing max 3-4 words have the string and content below:
         --------
@@ -42,23 +39,18 @@ export class SearchService {
         ${context.slice(0, 10000)}
         `
 
-        Logger.log(`Autocompleting ${body.query} via ${message}`, 'chatService:autocomplete');
+        // Logger.log(`Autocompleting ${body.query} via ${message}`, 'chatService:autocomplete');
 
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
         const completion = await openai.chat.completions.create({
-            // model: "gpt-4-turbo-preview",
-            model: "gpt-3.5-turbo",
-            logprobs: true,
+            model: "gpt-4-turbo-preview",
             messages: [
                 {"role": "system", "content": message },
                 {"role": "user", "content": ``}
             ],
         });
 
-        Logger.log(`Autocompleted ${JSON.stringify(completion)}`, 'chatService:autocomplete');
-
         const suggestions = completion.choices[0].message.content.split('\n').map((suggestion: string) => suggestion.replace(/^\d+\.\s/g, '') );
-
         
         return {
             suggestions: suggestions
@@ -66,7 +58,9 @@ export class SearchService {
     }
 
     /**s
-     * @description Generate a query from question with the agent without a chat history
+     * @description Suggest a list of documents for a given query and index
+     * Currently, the service uses the OpenAI GPT-4 model to generate suggestions and then retrieves the documents from the ChromaDB
+     * The ranking of the documents is based on the similarity of the expanded query from suggestions and the document
      * 
      * @param body 
      * @returns 
@@ -78,52 +72,62 @@ export class SearchService {
         try {
 
             const embeddings = new OpenAIEmbeddings({ modelName: process.env.MODEL_EMBEDDING, openAIApiKey: process.env.OPENAI_API_KEY });
-            
-            const docs = await this.chromaClient.collection.get({
-                where: {
-                    indexId: body.indexIds[0],
-                }
-            })
-                
-            const texts = docs.documents
-            const ids = docs.metadatas.map((doc: any) => {
-                return { id: doc.webPageId, title: doc.webPageTitle }
-            })
-
-            Logger.log(`Creating vector store for ${ids}`, 'chatService:query')
-
-            const vectorStore = await MemoryVectorStore.fromTexts(
-                texts,
-                ids,
-                embeddings
-            );
-
-            const retriever = new HydeRetriever({
-                vectorStore,
-                llm: new ChatOpenAI({ modelName: process.env.MODEL_CHAT }) as any,
-                searchType: 'mmr',
-            });
-
-            // const suggestions = await this.autocomplete({ indexId: body.indexIds[0], n: 5, query: body.query });
 
             Logger.log(`Retrieving documents for ${body.query}`, 'chatService:query');
 
-            const documents = await retriever.getRelevantDocuments(
-                body.query,
-                
-            );
+            // Calculate time to suggestions
+            const start_exp = new Date().getTime();
+            
+            const expandedQuery = await this.autocomplete({
+                indexId: body.indexIds[0],
+                n: 3,
+                query: body.query
+            });
+            
 
-            Logger.log(`Retrieved ${JSON.stringify(documents)} documents`, 'chatService:query');
+            const end_exp = new Date().getTime();
+            const time = end_exp - start_exp;
 
-            return {
-                items: documents.map((doc: any) => { 
-                    Logger.log(`Processing ${JSON.stringify(doc)}`, 'chatService:query')
-                    return { 
-                        webPageId: doc.metadata.id,
-                        webPageTitle: doc.metadata.title,
-                } } )
-                .slice((body.page - 1) * body.limit, body.page * body.limit)
+            Logger.log(`Retrieved suggestion list ${JSON.stringify(expandedQuery, null, 2)} in ${time}ms`, 'chatService:query');
+            
+
+            const start_retrieve = new Date().getTime();
+
+            const documents = await this.chromaClient.collection.query({
+                queryEmbeddings: await embeddings.embedQuery(body.query + ' ' + expandedQuery.suggestions.join(' ')),
+                nResults: 10,
+                where: {
+                    indexId: body.indexIds[0]
+                },
+                include: [IncludeEnum.Documents, IncludeEnum.Metadatas, IncludeEnum.Distances]
+            });
+
+            // Define softmax function
+            const softmax = (x: number[]) => {
+                const e = x.map((xi: number) => Math.exp(xi));
+                const sum = e.reduce((a, b) => a + b, 0);
+                return e.map((ei: number) => ei / sum);
             }
+
+            // Normalize distances and expand values
+            const distances = documents.distances[0].map((distance: number) => 1 - distance)
+            const normalizedDistances = softmax(distances.map((distance: number) => distance * 100 ));
+
+            const end_retrieve = new Date().getTime();
+
+            Logger.log(`Retrieved documents in ${end_retrieve - start_retrieve}ms`, 'chatService:query');
+            
+            return documents.ids[0].map((id: any, idx: number) => {
+                if (normalizedDistances[idx] > 0.1)
+                    return {
+                        webPageId: documents.metadatas[0][idx].webPageId,
+                        title: documents.metadatas[0][idx].webPageTitle,
+                        content: documents.documents[0][idx].slice(0, 100),
+                        similarity: normalizedDistances[idx]
+                    }
+            })
+            .filter((doc: any) => doc)
+            .slice((body.page - 1) * body.limit, body.page * body.limit)
         
         } catch (e) {
             Logger.log(`Cannot process ${body.query} ${e}`, 'chatService:query:error'); throw new HttpException(`Cannot process ${body.query}`, HttpStatus.INTERNAL_SERVER_ERROR);
@@ -141,7 +145,6 @@ export class SearchService {
     async search(body: SearchRequestDTO) {
 
         try {
-
             const results = await this.chromaClient.collection.query({
                 queryEmbeddings: body.embedding,
                 nResults: 10,
