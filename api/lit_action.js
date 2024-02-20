@@ -7,8 +7,24 @@
 "use strict";
 (() => {
   // lit_actions/src/session.action.ts
-  var getCreatorConditions = () => {
-    return __REPLACE_THIS_AS_CONDITIONS_ARRAY__;
+  var getCreatorConditions = (transform=true) => {
+    let conditionsArray = __REPLACE_THIS_AS_CONDITIONS_ARRAY__;
+
+    if(conditionsArray.length < 1){
+      return [];
+    }
+
+    if(!transform){
+      return conditionsArray
+    }
+
+    return conditionsArray
+      .map(c => c.value)
+      .flatMap((v, i) => i < conditionsArray.length - 1 ? [v, {"operator": "or"}] : [v])
+      .map(v => {
+        delete v.metadata
+        return v
+      })
   };
   var toSiweMessage = (message) => {
     const header = `${message.domain} wants you to sign in with your Ethereum account:`;
@@ -53,7 +69,7 @@
   };
   var go = async () => {
     if (typeof ACTION_CALL_MODE !== "undefined") {
-      console.log(JSON.stringify(getCreatorConditions()));
+      console.log(JSON.stringify(getCreatorConditions(false)));
       return;
     }
     const context = { isPermittedAddress: false, isCreator: false, siweMessage: false };

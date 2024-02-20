@@ -414,8 +414,12 @@ app.post("/zapier/index_link", zapierController.indexLink);
 app.get("/zapier/auth", zapierController.authenticate);
 
 //Todo refactor later.
-app.get("/lit_actions/:cid", litProtocol.getAction);
-app.post("/lit_actions", litProtocol.postAction);
+app.get('/lit_actions/:cid', litProtocol.getAction);
+app.post('/lit_actions/', validator.body(Joi.array().items(Joi.object({
+  tag: Joi.string().valid('apiKey', 'creator', 'semanticIndex').required(),
+  value: Joi.object().required()
+}))), litProtocol.postAction);
+
 
 //Todo refactor later.
 app.get(
