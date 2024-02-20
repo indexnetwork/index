@@ -35,6 +35,10 @@ const API_ENDPOINTS = {
 
 export interface LitActionConditions {}
 
+export type CreatorAction = {
+  cid: string;
+};
+
 export type GetItemQueryParams = {
   limit?: number;
   cursor?: string;
@@ -135,27 +139,19 @@ class ApiService {
     return data;
   }
 
-  async getLITAction(cid: string): Promise<LitActionConditions | null> {
-    try {
-      const { data } = await this.apiAxios.get<LitActionConditions>(
-        `${API_ENDPOINTS.LIT_ACTIONS}/${cid}`,
-      );
-      return data;
-    } catch (err) {
-      return null;
-    }
+  async getLITAction(cid: string): Promise<LitActionConditions[]> {
+    const { data } = await this.apiAxios.get<LitActionConditions>(
+      `${API_ENDPOINTS.LIT_ACTIONS}/${cid}`,
+    );
+    return data as LitActionConditions[];
   }
 
-  async postLITAction(conditions: LitActionConditions): Promise<string | null> {
-    try {
-      const { data } = await this.apiAxios.post<LitActionConditions>(
-        `${API_ENDPOINTS.LIT_ACTIONS}`,
-        conditions,
-      );
-      return data as string;
-    } catch (err) {
-      return null;
-    }
+  async postLITAction(conditions: LitActionConditions): Promise<CreatorAction> {
+    const { data } = await this.apiAxios.post<LitActionConditions>(
+      `${API_ENDPOINTS.LIT_ACTIONS}`,
+      conditions,
+    );
+    return data as CreatorAction;
   }
 
   async crawlLink(url: string): Promise<Link> {

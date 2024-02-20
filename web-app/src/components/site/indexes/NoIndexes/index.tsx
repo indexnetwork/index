@@ -3,7 +3,7 @@ import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
 import { FC } from "react";
-import { useApp } from "@/context/AppContext";
+import { IndexListTabKey, useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 
 export interface NoIndexesProps {
@@ -17,18 +17,20 @@ const NoIndexes: FC<NoIndexesProps> = ({ tabKey }) => {
   return (
     <>
       <Row fullWidth rowSpacing={5}>
-        <Col
-          xs={12}
-          centerBlock
+        <div
           style={{
             height: 166,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            marginTop: "8rem",
           }}
         >
           <img src="/images/no_indexes.png" alt="No Indexes" />
-        </Col>
+        </div>
         <Col className="text-center" centerBlock>
           {isOwner ? (
-            tabKey === "starred" ? (
+            tabKey === IndexListTabKey.STARRED ? (
               <Header
                 style={{
                   maxWidth: 350,
@@ -52,7 +54,7 @@ const NoIndexes: FC<NoIndexesProps> = ({ tabKey }) => {
             >{`There are no indexes yet...`}</Header>
           )}
         </Col>
-        {isOwner && tabKey !== "starred" && (
+        {isOwner && tabKey !== IndexListTabKey.STARRED && (
           <Col centerBlock>
             <Button
               onClick={() => {

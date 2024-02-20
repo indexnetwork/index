@@ -40,7 +40,7 @@ const ConfirmTransaction = ({ handleCancel, ...modalProps }: any) => {
         <>
           <Header level={2}>Waiting for transaction confirmation</Header>
           <Text className={"mt-4"} element={"p"}>
-            Please confirm two transactions with your connected wallet.
+            Please confirm the transaction with your connected wallet.
           </Text>
         </>
       }

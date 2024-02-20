@@ -3,9 +3,10 @@ import AskIndexes from "@/components/site/indexes/AskIndexes";
 import { useApp } from "@/context/AppContext";
 import LoadingSection from "../../Loading";
 import { useIndexConversation } from "../IndexConversationContext";
+import NoIndexes from "@/components/site/indexes/NoIndexes";
 
 export default function ChatTabSection() {
-  const { viewedIndex, chatID } = useApp();
+  const { viewedIndex, viewedProfile, chatID } = useApp();
   const { itemsState, loading: indexLoading } = useIndexConversation();
 
   if (indexLoading) {
@@ -35,9 +36,15 @@ export default function ChatTabSection() {
           maxHeight: "calc(-30rem + 100dvh)",
         }}
       >
-        <AskIndexes chatID={chatID} indexIds={[viewedIndex?.id!]} />
+        <AskIndexes
+          did={viewedIndex?.ownerDID.id}
+          chatID={chatID}
+          indexIds={[viewedIndex?.id!]}
+        />
       </div>
     ) : null;
   }
-  return <NoIndexesChat />;
+  return (
+    <NoIndexesChat isSelfDid={viewedIndex?.ownerDID.id === viewedProfile?.id} />
+  );
 }

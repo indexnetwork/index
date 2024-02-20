@@ -1,11 +1,12 @@
 import { useApp } from "@/context/AppContext";
 import Button from "components/base/Button";
-import Flex from "components/layout/base/Grid/Flex";
 import Image from "next/image";
 import Text from "../base/Text";
+import { useRouteParams } from "@/hooks/useRouteParams";
 
 export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
   const { setCreateModalVisible } = useApp();
+  const { isDID } = useRouteParams();
 
   return (
     <div
@@ -35,21 +36,22 @@ export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
           style={{
             display: "flex",
             flexDirection: "column",
+            fontFamily: "freizeit",
           }}
         >
-          <Text fontFamily="freizeit" size="xl" fontWeight={700}>
+          <Text size="xl" fontWeight={700}>
             {isSelfDid
-              ? "You don't have any index yet."
-              : "There are no indexes here, yet."}
+              ? "You don't have any items yet."
+              : "There are no items here, yet."}
           </Text>
-          {isSelfDid && (
-            <Text fontFamily="freizeit" size="xl" fontWeight={700}>
+          {isSelfDid && isDID && (
+            <Text size="xl" fontWeight={700}>
               Please create or star an index to enable chat functionality.
             </Text>
           )}
         </div>
 
-        {isSelfDid && (
+        {isSelfDid && isDID && (
           <Button
             style={{
               borderRadius: "2px",

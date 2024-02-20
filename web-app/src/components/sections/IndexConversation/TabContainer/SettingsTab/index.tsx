@@ -3,16 +3,28 @@ import Header from "components/base/Header";
 import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import SettingsModal, { SettingsModalStep } from "./SettingsModal";
+import litService from "@/services/lit-service";
+import { encodeBase64 } from "ethers";
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
+import { maskAddress } from "@/utils/helper";
+import { AccessControlCondition } from "@/types/entity";
 
 export interface IndexSettingsTabSectionProps {}
 
 const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
-  const [keys, setKeys] = useState<string[]>([]);
+  const [conditions, setConditions] = useState<AccessControlCondition[]>([]);
   const [secretKey, setSecretKey] = useState<string | undefined>();
+  const { api, ready: apiReady } = useApi();
+  const { viewedIndex, createConditions } = useApp();
+  const loadActionRef = React.useRef(false);
 
   const [showModal, setShowModal] = useState(false);
+  const apiKeys = useMemo(() => {
+    return conditions.filter((action: any) => action.tag === "apiKey") as any;
+  }, [conditions]);
 
   const [step, setStep] = useState<SettingsModalStep>("waiting");
   // const { index } = useIndex();
@@ -33,15 +45,27 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   // useEffect(() => {
   // 	index && getIntegrationKey();
   // }, [index]);
-  //
 
   useEffect(() => {
     loadKeys();
   }, []);
 
-  const loadKeys = useCallback(() => {
-    setKeys(["pkp_o234a67890", "pkp_1c34567890", "pkp_e234567890"]);
-  }, []);
+  const loadKeys = useCallback(async () => {
+    if (!apiReady || !viewedIndex) return;
+    if (loadActionRef.current) return;
+    loadActionRef.current = true;
+
+    const litActions = await api!.getLITAction(viewedIndex.signerFunction);
+    if (litActions && litActions.length > 0) {
+      setConditions(litActions as any);
+      setApiKeys(
+        litActions.filter((action: any) => action.tag === "apiKey") as any,
+      );
+    }
+
+    loadActionRef.current = false;
+    debugger;
+  }, [apiReady, viewedIndex]);
 
   const handleCancel = useCallback(() => {
     setShowModal(false);
@@ -49,28 +73,54 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
     setSecretKey(undefined);
   }, []);
 
-  const handleCreate = useCallback(() => {
+  const handleCreate = useCallback(async () => {
     setShowModal(true);
-    setTimeout(() => {
-      const key = "pkp_your_secret_key_1234567890";
-      setSecretKey(key);
+    try {
+      const authSig = await litService.getRandomAuthSig();
+      const condition = {
+        tag: "apiKey",
+        value: {
+          contractAddress: "",
+          standardContractType: "",
+          chain: 1,
+          method: "",
+          parameters: [":userAddress"],
+          returnValueTest: {
+            comparator: "=",
+            value: authSig.address,
+          },
+        },
+      } as any;
+
+      const deepCopyOfConditions = JSON.parse(
+        JSON.stringify(conditions),
+      ) as AccessControlCondition[];
+
+      const newConditions = [condition, ...deepCopyOfConditions];
+
+      await createConditions(newConditions);
+      setSecretKey(encodeBase64(JSON.stringify(authSig)));
+      setApiKeys([...apiKeys, authSig.address]);
+
       setStep("done");
-    }, 1000);
+    } catch (e) {
+      console.error(e);
+    }
   }, []);
 
   const handleRemove = useCallback(
     (key: string) => {
-      setKeys(keys.filter((k) => k !== key));
+      setApiKeys(apiKeys.filter((k) => k !== key));
     },
-    [keys],
+    [apiKeys],
   );
 
   const onDone = useCallback(() => {
-    setKeys([...keys, secretKey!]);
+    // setApiKeys([...apiKeys, secretKey!]);
     setShowModal(false);
     setStep("waiting");
     setSecretKey(undefined);
-  }, [keys, secretKey]);
+  }, [apiKeys, secretKey]);
 
   return (
     <>
@@ -103,7 +153,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
                 flexDirection: "column",
               }}
             >
-              {keys.map((key, i) => (
+              {apiKeys.map((key, i) => (
                 <div
                   key={key}
                   style={{
@@ -112,10 +162,10 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
                     alignItems: "center",
                     padding: "1rem 0 ",
                     borderBottom:
-                      keys.length - 1 === i ? "none" : "1px solid #E2E8F0",
+                      apiKeys.length - 1 === i ? "none" : "1px solid #E2E8F0",
                   }}
                 >
-                  <Text> {key}</Text>
+                  <Text> {JSON.stringify(key)}</Text>
                   <button
                     style={{
                       background: "none",

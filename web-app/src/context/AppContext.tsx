@@ -1,6 +1,7 @@
 import { useApi } from "@/context/APIContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import litService from "@/services/lit-service";
 import { DiscoveryType } from "@/types";
 import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
 import CreateModal from "components/site/modal/CreateModal";
@@ -14,7 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Indexes, Users } from "types/entity";
+import { AccessControlCondition, Indexes, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { v4 as uuidv4 } from "uuid";
 
@@ -63,6 +64,7 @@ export interface AppContextValue {
   chatID: string | undefined;
   transactionApprovalWaiting: boolean;
   createModalVisible: boolean;
+  createConditions: (conditions: AccessControlCondition[]) => Promise<void>;
 }
 
 export const AppContext = createContext<AppContextValue>({} as AppContextValue);
@@ -224,6 +226,27 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     }
   }, [session, fetchProfile]);
 
+  const createConditions = useCallback(
+    async (conditions: AccessControlCondition[]) => {
+      if (!apiReady || !viewedIndex || conditions.length === 0) return;
+
+      const newAction = await api!.postLITAction(conditions);
+
+      await litService.writeAuthMethods({
+        prevCID: viewedIndex?.signerFunction,
+        signerPublicKey: viewedIndex?.signerPublicKey,
+        newCID: newAction.cid,
+      });
+
+      const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
+        signerFunction: newAction.cid,
+      });
+
+      setViewedIndex(updatedIndex);
+    },
+    [apiReady, viewedIndex],
+  );
+
   useEffect(() => {
     setViewedProfile(userProfile);
   }, [userProfile]);
@@ -281,6 +304,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     editProfileModalVisible,
     chatID,
     transactionApprovalWaiting,
+    createConditions,
   };
 
   return (

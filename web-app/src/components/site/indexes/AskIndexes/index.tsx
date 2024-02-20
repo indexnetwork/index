@@ -1,4 +1,4 @@
-import { useApp } from "@/context/AppContext";
+import { IndexListTabKey, useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { useChat, type Message } from "ai/react";
@@ -12,10 +12,11 @@ import AskInput from "components/base/AskInput";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { ComponentProps, FC, useState } from "react";
+import { ComponentProps, FC, useMemo, useState } from "react";
 import { toast } from "react-hot-toast";
 import { API_ENDPOINTS } from "utils/constants";
 import { maskDID } from "utils/helper";
+import NoIndexes from "../NoIndexes";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -41,6 +42,19 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
   const [editInput, setEditInput] = useState<string>("");
+
+  const sectionIndexes = useMemo(() => {
+    if (leftTabKey === IndexListTabKey.ALL) {
+      return indexesFromApp;
+    }
+    if (leftTabKey === IndexListTabKey.OWNER) {
+      return indexesFromApp.filter((i) => i.did.owned);
+    }
+    if (leftTabKey === IndexListTabKey.STARRED) {
+      return indexesFromApp.filter((i) => i.did.starred);
+    }
+    return [];
+  }, [indexesFromApp, leftTabKey]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
@@ -126,8 +140,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
     },
   });
 
-  if (indexesFromApp.length === 0) {
-    return <NoIndexesChat isSelfDid={did === viewedProfile?.id} />;
+  if (sectionIndexes.length === 0) {
+    return <NoIndexes tabKey={leftTabKey} />;
   }
 
   return (

@@ -37,6 +37,7 @@ export function isSSR() {
 }
 
 export function maskAddress(address: string) {
+  if (!address) return "";
   return `${address.slice(0, 5)}...${address.slice(-4)}`;
 }
 export function maskDID(did: string) {

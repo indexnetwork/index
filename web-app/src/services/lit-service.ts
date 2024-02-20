@@ -90,6 +90,29 @@ class LitService {
     return authSig;
   }
 
+  async writeAuthMethods({ newCID, prevCID, signerPublicKey }: any) {
+    const litContracts = new LitContracts({
+      network: appConfig.litNetwork,
+    });
+    await litContracts.connect();
+    const prevCIDV0 = CID.parse(prevCID).toV0().toString();
+    const pubKeyHash = ethers.keccak256(signerPublicKey!);
+    const tokenId = BigInt(pubKeyHash);
+    const newCollabAction = litContracts.utils.getBytesFromMultihash(newCID);
+    const previousCollabAction =
+      litContracts.utils.getBytesFromMultihash(prevCIDV0);
+
+    await litContracts.pkpPermissionsContract.write.batchAddRemoveAuthMethods(
+      tokenId,
+      [2],
+      [newCollabAction],
+      ["0x"],
+      [[BigInt(1)]],
+      [2],
+      [previousCollabAction],
+    );
+  }
+
   checkAndSignAuthMessage() {
     JSON.parse(localStorage.getItem("authSig")!);
   }

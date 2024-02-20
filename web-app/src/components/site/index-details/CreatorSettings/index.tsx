@@ -9,57 +9,81 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import Row from "components/layout/base/Grid/Row";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
 import { useRole } from "hooks/useRole";
-import { FC, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccessControlCondition } from "types/entity";
 import CreatorRule from "./CreatorRule";
 
-export interface CreatorSettingsProps {
-  collabAction: string;
-  onChange: (value: string) => void;
-}
-
-const CreatorSettings: FC<CreatorSettingsProps> = ({
-  onChange,
-  collabAction,
-}) => {
+const CreatorSettings = () => {
   const { isOwner } = useRole();
+  const { viewedIndex, setViewedIndex, createConditions } = useApp();
 
   const { api, ready: apiReady } = useApi();
   const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
   const { setTransactionApprovalWaiting } = useApp();
   const [conditions, setConditions] = useState<any>([]);
-  const addOrStatements = (c: AccessControlCondition[]) =>
-    c
-      .flatMap((el, i) => (i === c.length - 1 ? el : [el, { operator: "or" }]))
-      .map((a) => {
-        // @ts-ignore
-        delete a.metadata;
-        return a;
-      });
+  const loadActionRef = useRef(false);
 
-  const loadAction = useCallback(async (action: string) => {
-    if (!apiReady) return;
+  const creators = useMemo(() => {
+    return conditions.filter((action: any) => action.tag === "creators") as any;
+  }, [conditions]);
 
-    const litAction = (await api!.getLITAction(action)) as [any];
-    if (litAction && litAction.length > 0) {
-      setConditions(litAction.filter((item: any, i: number) => i % 2 === 0));
+  // const handleActionChange = useCallback(
+  //   async ({ cid }: CreatorAction) => {
+  //     if (!viewedIndex || !apiReady) return;
+
+  //     debugger;
+  //     try {
+  //       // There's a risk here.
+  //       // If the user refreshes the page before the transaction is mined, the UI will show the old value.
+  //       await litService.writeAuthMethods({
+  //         cid,
+  //         signerPublicKey: viewedIndex.signerPublicKey!,
+  //         signerFunction: viewedIndex.signerFunction!,
+  //       });
+  //       const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
+  //         signerFunction: cid,
+  //       });
+  //       setViewedIndex(updatedIndex);
+  //     } catch (error) {
+  //       console.error("Error creating rule", error);
+  //     }
+  //   },
+  //   [api, viewedIndex, apiReady],
+  // );
+
+  const loadActions = useCallback(async () => {
+    if (!apiReady || !viewedIndex) return;
+    if (loadActionRef.current) return;
+    loadActionRef.current = true;
+
+    const litActions = await api!.getLITAction(viewedIndex.signerFunction);
+    if (litActions && litActions.length > 0) {
+      setConditions(litActions as any);
     }
-  }, []);
+
+    loadActionRef.current = false;
+    debugger;
+  }, [apiReady, viewedIndex]);
 
   const handleRemove = useCallback(
     async (i: number) => {
       if (!apiReady) return;
       setNewCreatorModalVisible(false);
       setTransactionApprovalWaiting(true);
-      const newConditions = [
-        ...conditions.slice(0, i),
-        ...conditions.slice(i + 1),
-      ];
-      const newAction = await api!.postLITAction(
-        addOrStatements(newConditions),
-      );
-      onChange(newAction!);
-      setTransactionApprovalWaiting(false);
+
+      try {
+        const deepCopyOfConditions = JSON.parse(JSON.stringify(conditions));
+
+        const newConditions = [
+          ...deepCopyOfConditions.slice(0, i),
+          ...deepCopyOfConditions.slice(i + 1),
+        ];
+        await createConditions(newConditions);
+      } catch (error) {
+        console.error("Error creating rule", error);
+      } finally {
+        setTransactionApprovalWaiting(false);
+      }
     },
     [apiReady],
   );
@@ -67,14 +91,24 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
   const handleCreate = useCallback(
     async (condition: AccessControlCondition) => {
       if (!apiReady || conditions.length === 0) return;
+
       setNewCreatorModalVisible(false);
       setTransactionApprovalWaiting(true);
-      const newConditions = [condition, ...conditions];
-      const newAction = await api!.postLITAction(
-        addOrStatements(newConditions),
-      );
-      onChange(newAction!);
-      setTransactionApprovalWaiting(false);
+      try {
+        const deepCopyOfConditions = JSON.parse(JSON.stringify(conditions));
+        const newConditions = [
+          {
+            tag: "creator",
+            value: condition,
+          },
+          ...deepCopyOfConditions,
+        ] as AccessControlCondition[];
+        await createConditions(newConditions);
+      } catch (error) {
+        console.error("Error creating rule", error);
+      } finally {
+        setTransactionApprovalWaiting(false);
+      }
     },
     [apiReady, conditions],
   );
@@ -84,8 +118,8 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
   }, [newCreatorModalVisible]);
 
   useEffect(() => {
-    loadAction(collabAction);
-  }, [collabAction]);
+    loadActions();
+  }, [loadActions]);
 
   return (
     <>
@@ -122,8 +156,8 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
         </Col>
       </Row>
       <FlexRow className={"mt-6"} rowGutter={0} rowSpacing={2} colSpacing={2}>
-        {conditions &&
-          conditions.map((c: any, i: any) => (
+        {creators.length > 0 &&
+          creators.map((c: any, i: any) => (
             <Col key={i} lg={6} xs={12}>
               <CreatorRule
                 handleRemove={() => handleRemove(i)}
@@ -131,7 +165,7 @@ const CreatorSettings: FC<CreatorSettingsProps> = ({
               ></CreatorRule>
             </Col>
           ))}
-        {conditions.length === 0 && (
+        {creators.length === 0 && (
           <>
             <Col
               className={"mt-4"}
