@@ -470,5 +470,5 @@ const start = async () => {
   app.listen(port, async () => {
     console.log(`Search service listening on port ${port}`)
   })
-
+}
 start();

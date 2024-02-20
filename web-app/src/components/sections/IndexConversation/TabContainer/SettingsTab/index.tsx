@@ -1,13 +1,14 @@
 import { IconTrash } from "@/components/ai/ui/icons";
-import { useApi } from "@/context/APIContext";
-import { useApp } from "@/context/AppContext";
-import litService from "@/services/lit-service";
-import { AccessControlCondition } from "@/types/entity";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import litService from "@/services/lit-service";
+import { encodeBase64 } from "ethers";
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
+import { AccessControlCondition } from "@/types/entity";
 import SettingsModal, { SettingsModalStep } from "./SettingsModal";
 
 export interface IndexSettingsTabSectionProps {}
@@ -20,30 +21,48 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   const loadActionRef = React.useRef(false);
 
   const [showModal, setShowModal] = useState(false);
-  const apiKeys = useMemo(() => {
-    return conditions
-      .filter((action: any) => action.tag === "apiKey")
-      .map((c: any) => c.value.metadata.walletAddress) as any;
-  }, [conditions]);
+  const apiKeys = useMemo(() => conditions.filter((action: any) => action.tag === "apiKey") as any, [conditions]);
 
   const [step, setStep] = useState<SettingsModalStep>("waiting");
+  // const { index } = useIndex();
+  // const [key, setKey] = useState<string>();
+  // const getIntegrationKey = async () => {
+  // 	if (!index) return;
+  // 	const indexSession = await LitService.getPKPSession(index.pkpPublicKey!, index.collabAction!);
+  // 	const personalSession = localStorage.getItem("did");
+  // 	if (!indexSession.session || !personalSession) return;
+  // 	setKey(btoa(JSON.stringify({
+  // 		session: {
+  // 			index: indexSession.session.serialize(),
+  // 			personal: personalSession,
+  // 		},
+  // 		indexId: index.id!,
+  // 	})));
+  // };
+  // useEffect(() => {
+  // 	index && getIntegrationKey();
+  // }, [index]);
+
+  useEffect(() => {
+    loadKeys();
+  }, []);
+
   const loadKeys = useCallback(async () => {
     if (!apiReady || !viewedIndex) return;
     if (loadActionRef.current) return;
     loadActionRef.current = true;
 
     const litActions = await api!.getLITAction(viewedIndex.signerFunction);
-    console.log("litActions", litActions);
     if (litActions && litActions.length > 0) {
       setConditions(litActions as any);
+      setApiKeys(
+        litActions.filter((action: any) => action.tag === "apiKey") as any,
+      );
     }
 
     loadActionRef.current = false;
+    debugger;
   }, [apiReady, viewedIndex]);
-
-  useEffect(() => {
-    loadKeys();
-  }, [loadKeys]);
 
   const handleCancel = useCallback(() => {
     setShowModal(false);
@@ -77,36 +96,24 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
       const newConditions = [condition, ...deepCopyOfConditions];
 
       await createConditions(newConditions);
-      setSecretKey(btoa(JSON.stringify(authSig)));
+      setSecretKey(encodeBase64(JSON.stringify(authSig)));
+      setApiKeys([...apiKeys, authSig.address]);
+
       setStep("done");
     } catch (e) {
-      console.error("Error creating rule", e);
+      console.error(e);
     }
   }, []);
 
   const handleRemove = useCallback(
-    async (i: number) => {
-      if (!apiReady) return;
-      setShowModal(true);
-
-      try {
-        const deepCopyOfConditions = JSON.parse(JSON.stringify(conditions));
-
-        const newConditions = [
-          ...deepCopyOfConditions.slice(0, i),
-          ...deepCopyOfConditions.slice(i + 1),
-        ];
-        await createConditions(newConditions);
-      } catch (error) {
-        console.error("Error removing rule", error);
-      } finally {
-        setStep("done");
-      }
+    (key: string) => {
+      setApiKeys(apiKeys.filter((k) => k !== key));
     },
-    [apiReady],
+    [apiKeys],
   );
 
   const onDone = useCallback(() => {
+    // setApiKeys([...apiKeys, secretKey!]);
     setShowModal(false);
     setStep("waiting");
     setSecretKey(undefined);
@@ -143,7 +150,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
                 flexDirection: "column",
               }}
             >
-              {apiKeys.map((key: any, i: number) => (
+              {apiKeys.map((key, i) => (
                 <div
                   key={key}
                   style={{
@@ -155,7 +162,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
                       apiKeys.length - 1 === i ? "none" : "1px solid #E2E8F0",
                   }}
                 >
-                  <Text> {key}</Text>
+                  <Text> {JSON.stringify(key)}</Text>
                   <button
                     style={{
                       background: "none",

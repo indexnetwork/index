@@ -1,7 +1,7 @@
 import { useApp } from "@/context/AppContext";
-import { useRouteParams } from "@/hooks/useRouteParams";
 import Button from "components/base/Button";
 import Image from "next/image";
+import { useRouteParams } from "@/hooks/useRouteParams";
 import Text from "../base/Text";
 
 export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
