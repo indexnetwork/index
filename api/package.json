@@ -22,6 +22,8 @@
     "@lit-protocol/uint8arrays": "3.1.4",
     "@mailchimp/mailchimp_marketing": "^3.0.80",
     "@pinata/sdk": "^2.1.0",
+    "@sentry/node": "^7.101.1",
+    "@sentry/profiling-node": "^7.101.1",
     "aws-sdk": "^2.1327.0",
     "cid": "multiformats/cid",
     "cookie-parser": "~1.4.6",
@@ -51,7 +53,8 @@
     "striptags": "^3.2.0",
     "uint8arrays": "^4.0.3",
     "vm2": "^3.9.17",
-    "web3": "^4.1.1"
+    "web3": "^4.1.1",
+    "winston": "^3.11.0"
   },
   "type": "module"
 }

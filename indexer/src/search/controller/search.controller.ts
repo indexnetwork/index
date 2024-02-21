@@ -2,7 +2,7 @@ import { Body, Controller, HttpStatus, Post, Query, ValidationPipe } from '@nest
 import { SearchService } from '../service/search.service';
 import { Stream } from 'stream';
 import { ApiPropertyOptional, ApiQuery } from '@nestjs/swagger';
-import { QueryRequestDTO, SearchRequestDTO } from '../schema/search.schema';
+import { AutocompleteRequestDTO, QueryRequestDTO, SearchRequestDTO } from '../schema/search.schema';
 
 @Controller('search')
 export class SearchController {
@@ -17,6 +17,11 @@ export class SearchController {
     @Post('/search')
     async search(@Body() body: SearchRequestDTO ) {
         return HttpStatus.NOT_IMPLEMENTED;
+    }
+
+    @Post('/autocomplete')
+    async autocomplete(@Body() body: AutocompleteRequestDTO ) {
+        return this.searchService.autocomplete(body);
     }
 
 }
