@@ -6,7 +6,7 @@ const FooterSection = () => {
       style={{
         background: "rgba(110, 191, 244, 0.07)",
       }}
-      className="mt-8 py-4 md:mt-16 md:py-8"
+      className="mt-8 py-16 pt-8 md:mt-16 md:py-24 md:pt-16"
     >
       <div className="m-auto flex max-w-screen-lg flex-col gap-12 px-4 pt-8 md:flex-row md:gap-48">
         <div>
@@ -49,11 +49,9 @@ const FooterSection = () => {
           </div>
         </div>
       </div>
-      <div className="m-auto mt-8 max-w-screen-lg md:mt-12">
-        <p className="text-center md:text-end">
-          © 2024 Index Network. All rights reserved
-        </p>
-      </div>
+      {/* <div className="m-auto mt-8 max-w-screen-lg md:mt-12">
+        <p className="text-center md:text-end"></p>
+      </div> */}
     </footer>
   );
 };
