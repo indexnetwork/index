@@ -77,7 +77,8 @@ export const updateIndex = async (req, res, next) => {
             .setSession(pkpSession)
             .updateIndex(req.params.id, req.body);
 
-        res.status(200).json(newIndex);
+        return await getIndexById(req, res, next);
+
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
