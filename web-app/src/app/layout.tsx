@@ -1,7 +1,7 @@
 import { AppLayout } from "components/layout/site/AppLayout";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import "../styles/main.scss";
+import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
