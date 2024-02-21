@@ -8,7 +8,7 @@ const HeroSection = () => {
 
   return (
     <section className="relative">
-      <div className="m-auto flex max-w-screen-lg flex-col gap-12 lg:h-[70dvh] lg:flex-row lg:justify-end">
+      <div className="m-auto flex max-w-screen-lg flex-col gap-12 lg:h-[75dvh] lg:flex-row lg:justify-end">
         <div className="bottom-0 left-0 top-0 flex items-center lg:absolute">
           <video
             autoPlay
