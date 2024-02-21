@@ -16,7 +16,10 @@ const FeatureSection2 = () => {
               integrated discovery experience, ensuring responses are both
               personalized and trusted.
             </p>
-            <a className="text-secondary" href="#">
+            <a
+              className="text-secondary"
+              href="https://docs.index.network/docs/api-reference/discovery-protocol"
+            >
               Learn More
             </a>
           </div>

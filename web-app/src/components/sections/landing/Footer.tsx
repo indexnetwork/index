@@ -21,13 +21,13 @@ const FooterSection = () => {
           <div className="flex flex-col gap-4">
             <h3>Resources</h3>
             <ul className="flex flex-col gap-4 opacity-65">
-              <a href="#">
+              <a href="https://docs.index.network/docs/overview/readme">
                 <li>Documentation</li>
               </a>
-              <a href="#">
+              <a href="https://drive.google.com/drive/folders/1cEO7MyjE8b-ARvX1mfgMGRDzr8Gwq4c2?usp=sharing">
                 <li>Brand Kit</li>
               </a>
-              <a href="#">
+              <a href="mailto:hello@index.network">
                 <li>Contact</li>
               </a>
             </ul>
@@ -36,13 +36,13 @@ const FooterSection = () => {
           <div className="flex flex-col gap-4">
             <h3>Social</h3>
             <ul className="flex flex-col gap-4 opacity-65">
-              <a href="#">
+              <a href="https://twitter.com/indexnetwork_">
                 <li>Twitter</li>
               </a>
-              <a href="#">
+              <a href="https://discord.gg/DjBcKCx4na">
                 <li>Discord</li>
               </a>
-              <a href="#">
+              <a href="https://github.com/indexnetwork/index">
                 <li>Github</li>
               </a>
             </ul>

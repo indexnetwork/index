@@ -16,7 +16,10 @@ const FeatureSection1 = () => {
               same graph, Index introduces a new open layer for information
               discovery.
             </p>
-            <a className="text-secondary" href="#">
+            <a
+              className="text-secondary"
+              href="https://docs.index.network/docs/api-reference/indexing"
+            >
               Learn More
             </a>
           </div>
