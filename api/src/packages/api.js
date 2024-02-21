@@ -3,15 +3,39 @@ if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
 
-import express from "express";
-import axios from "axios";
-import Joi from "joi";
-import * as ejv from "express-joi-validation";
+import express from 'express';
+import Joi from 'joi';
+import * as ejv from 'express-joi-validation';
 
-const app = express();
+import RedisClient  from '../clients/redis.js';
+
+import * as Sentry from "@sentry/node";
+import { ProfilingIntegration } from "@sentry/profiling-node";
+
+const app = express()
+
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  integrations: [
+    // enable HTTP calls tracing
+    new Sentry.Integrations.Http({ tracing: true }),
+    // enable Express.js middleware tracing
+    new Sentry.Integrations.Express({ app }),
+    new ProfilingIntegration(),
+  ],
+  // Performance Monitoring
+  tracesSampleRate: 1.0, //  Capture 100% of the transactions
+  // Set sampling rate for profiling - this is relative to tracesSampleRate
+  profilesSampleRate: 1.0,
+});
+
+app.use(Sentry.Handlers.requestHandler());
+app.use(Sentry.Handlers.tracingHandler());
+
 const port = process.env.PORT || 3001;
 
-import RedisClient from "../clients/redis.js";
+
 const redis = RedisClient.getInstance();
 
 import * as indexController from "../controllers/index.js";
@@ -50,6 +74,7 @@ app.use(express.json());
 const validator = ejv.createValidator({
   passError: true,
 });
+
 
 // Authenticate
 app.use(authenticateMiddleware);
@@ -389,8 +414,12 @@ app.post("/zapier/index_link", zapierController.indexLink);
 app.get("/zapier/auth", zapierController.authenticate);
 
 //Todo refactor later.
-app.get("/lit_actions/:cid", litProtocol.getAction);
-app.post("/lit_actions", litProtocol.postAction);
+app.get('/lit_actions/:cid', litProtocol.getAction);
+app.post('/lit_actions/', validator.body(Joi.array().items(Joi.object({
+  tag: Joi.string().valid('apiKey', 'creator', 'semanticIndex').required(),
+  value: Joi.object().required()
+}))), litProtocol.postAction);
+
 
 //Todo refactor later.
 app.get(
@@ -437,9 +466,9 @@ app.use(errorMiddleware);
 const start = async () => {
   await redis.connect();
 
-  await app.listen(port, async () => {
-    console.log(`Search service listening on port ${port}`);
-  });
-};
-
+  app.use(Sentry.Handlers.errorHandler());
+  app.listen(port, async () => {
+    console.log(`Search service listening on port ${port}`)
+  })
+}
 start();

@@ -42,6 +42,13 @@ export const createIndex = async (req, res, next) =>  {
 
         const indexService = new IndexService().setSession(pkpSession); //PKP
         const newIndex = await indexService.createIndex(req.body);
+        if(!newIndex){
+          return res.status(500).json({ error: "Create index error" });
+        }
+
+        //Cache pkp session after index creation.
+        const sessionCacheKey = `${pkpSession.did.parent}:${newIndex.id}:${newIndex.signerFunction}`
+        await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
 
         const didService = new DIDService().setSession(req.session); //Personal
         const newIndexDID = await didService.addIndex(newIndex.id, "owned");
@@ -70,7 +77,8 @@ export const updateIndex = async (req, res, next) => {
             .setSession(pkpSession)
             .updateIndex(req.params.id, req.body);
 
-        res.status(200).json(newIndex);
+        return await getIndexById(req, res, next);
+
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
