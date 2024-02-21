@@ -14,6 +14,7 @@ const HeroSection = () => {
             autoPlay
             preload="auto"
             loop
+            muted
             className="m-auto w-full pt-8 md:w-[75%] md:pt-0 lg:m-0"
           >
             <source src="/video/hero.webm" type="video/webm" />
@@ -26,8 +27,8 @@ const HeroSection = () => {
             The Composable Discovery Protocol
           </h1>
           <p className="text-base md:text-xl">
-            Index allows to create truly personalised and autonomous discovery
-            experiences across the web
+            Index allows to create truly personalised and <br /> autonomous
+            discovery experiences across the web
           </p>
           <div className="flex gap-4">
             <Button onClick={connect}>Connect</Button>
