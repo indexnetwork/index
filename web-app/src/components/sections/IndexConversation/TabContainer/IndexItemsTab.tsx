@@ -8,9 +8,9 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import { IndexItem } from "@/types/entity";
+import { filterValidUrls } from "@/utils/helper";
 import { useCallback, useEffect, useState } from "react";
 import { useIndexConversation } from "../IndexConversationContext";
-import { filterValidUrls } from "@/utils/helper";
 
 export default function IndexItemsTabSection() {
   const {

@@ -1,8 +1,8 @@
+import { SiweMessage } from "@didtools/cacao";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
+import { ethers } from "ethers";
 import { CID } from "multiformats/cid";
 import { appConfig } from "../config";
-import { SiweMessage } from "@didtools/cacao";
-import { ethers } from "ethers";
 
 class LitService {
   async mintPKP() {

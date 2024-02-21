@@ -108,13 +108,13 @@ export const IndexConversationHeader: FC = () => {
               }}
               href={`/${viewedIndex?.ownerDID?.id!}`}
             >
+              <p>{JSON.stringify(viewedIndex)}</p>
               <div
                 style={{ display: "flex", alignItems: "center", gap: "0.8em" }}
               >
                 <Avatar size={20} user={viewedIndex?.ownerDID} />
                 <LoadingText
                   val={viewedIndex?.ownerDID?.name || viewedIndex?.ownerDID?.id}
-                  // val={undefined}
                 >
                   <Text
                     size="sm"

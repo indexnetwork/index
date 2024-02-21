@@ -23,9 +23,15 @@ const CreatorSettings = () => {
   const [conditions, setConditions] = useState<any>([]);
   const loadActionRef = useRef(false);
 
-  const creators = useMemo(() => {
-    return conditions.filter((action: any) => action.tag === "creators") as any;
-  }, [conditions]);
+  const creators = useMemo(
+    () =>
+      conditions
+        .filter(
+          (condition: any) => condition.tag === "creators" || "semanticIndex",
+        )
+        .map((c: any) => c.value) as any,
+    [conditions],
+  );
 
   // const handleActionChange = useCallback(
   //   async ({ cid }: CreatorAction) => {
@@ -62,25 +68,23 @@ const CreatorSettings = () => {
     }
 
     loadActionRef.current = false;
-    debugger;
   }, [apiReady, viewedIndex]);
 
   const handleRemove = useCallback(
-    async (i: number) => {
+    async (walletAddress: number) => {
       if (!apiReady) return;
-      setNewCreatorModalVisible(false);
       setTransactionApprovalWaiting(true);
 
       try {
         const deepCopyOfConditions = JSON.parse(JSON.stringify(conditions));
 
-        const newConditions = [
-          ...deepCopyOfConditions.slice(0, i),
-          ...deepCopyOfConditions.slice(i + 1),
-        ];
+        const newConditions = deepCopyOfConditions.filter(
+          (c: any) => c.value.metadata.walletAddress !== walletAddress,
+        ) as AccessControlCondition[];
+
         await createConditions(newConditions);
       } catch (error) {
-        console.error("Error creating rule", error);
+        console.error("Error removing rule", error);
       } finally {
         setTransactionApprovalWaiting(false);
       }
@@ -160,7 +164,7 @@ const CreatorSettings = () => {
           creators.map((c: any, i: any) => (
             <Col key={i} lg={6} xs={12}>
               <CreatorRule
-                handleRemove={() => handleRemove(i)}
+                handleRemove={() => handleRemove(c.metadata.walletAddress)}
                 rule={c.metadata}
               ></CreatorRule>
             </Col>

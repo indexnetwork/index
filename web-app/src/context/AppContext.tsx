@@ -3,8 +3,6 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import litService from "@/services/lit-service";
 import { DiscoveryType } from "@/types";
-import ConfirmTransaction from "components/site/modal/Common/ConfirmTransaction";
-import CreateModal from "components/site/modal/CreateModal";
 import { useRouter } from "next/navigation";
 import {
   ReactNode,

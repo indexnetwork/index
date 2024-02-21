@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React from "react";
 import Text from "components/base/Text";
 import Flex from "components/layout/base/Grid/Flex";
 import Col from "components/layout/base/Grid/Col";
@@ -63,7 +63,6 @@ const IndividualWallet: React.FC<IndividualWalletOptionsProps> = ({
           value: values.walletAddress,
         },
       };
-      debugger;
       handleCreate(condition as AccessControlCondition);
     },
   });

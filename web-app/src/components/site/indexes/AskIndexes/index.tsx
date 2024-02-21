@@ -7,7 +7,6 @@ import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
 import { ChatScrollAnchor } from "components/ai/chat-scroll-anchor";
 import { EmptyScreen } from "components/ai/empty-screen";
-import NoIndexesChat from "components/ai/no-indexes";
 import AskInput from "components/base/AskInput";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";

@@ -3,7 +3,6 @@ import AskIndexes from "@/components/site/indexes/AskIndexes";
 import { useApp } from "@/context/AppContext";
 import LoadingSection from "../../Loading";
 import { useIndexConversation } from "../IndexConversationContext";
-import NoIndexes from "@/components/site/indexes/NoIndexes";
 
 export default function ChatTabSection() {
   const { viewedIndex, viewedProfile, chatID } = useApp();

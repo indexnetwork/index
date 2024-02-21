@@ -2,9 +2,9 @@ import moment from "moment";
 import { appConfig } from "config";
 
 export function copyToClipboard(str?: string) {
-  if (navigator && navigator.clipboard)
+  if (navigator && navigator.clipboard) {
     navigator.clipboard.writeText(str || "");
-  else {
+  } else {
     const temp = document.createElement("input");
     const newStyle: Partial<CSSStyleDeclaration> = {
       position: "absolute",
@@ -101,7 +101,7 @@ export const getCurrentDateTime = () => moment.utc().toISOString();
 
 const isValidUrl = (url: string) => {
   try {
-    new URL(url);
+    const testURL = new URL(url);
     return true;
   } catch (_) {
     return false;

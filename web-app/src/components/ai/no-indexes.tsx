@@ -1,8 +1,8 @@
 import { useApp } from "@/context/AppContext";
+import { useRouteParams } from "@/hooks/useRouteParams";
 import Button from "components/base/Button";
 import Image from "next/image";
 import Text from "../base/Text";
-import { useRouteParams } from "@/hooks/useRouteParams";
 
 export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
   const { setCreateModalVisible } = useApp();

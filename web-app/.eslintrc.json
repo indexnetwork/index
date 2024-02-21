@@ -23,6 +23,7 @@
     }
   },
   "rules": {
+    "arrow-body-style": "off",
     "no-console": "off",
     "function-paren-newline": "off",
     "no-confusing-arrow": "off",
