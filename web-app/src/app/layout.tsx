@@ -5,8 +5,33 @@ import { Inter } from "next/font/google";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Index Network | The human bridge between context and content.",
-  description: "Create composable discovery engines.",
+  metadataBase: new URL("https://index.network"),
+  title: "Index Network | Composable Discovery Protocol",
+  description:
+    "Index allows to create truly personalised and autonomous discovery experiences across the web",
+  viewport: "width=device-width, initial-scale=1",
+  referrer: "origin-when-cross-origin",
+  icons: [
+    { rel: "shortcut icon", url: "/favicon-white.png" },
+    { rel: "icon", url: "/favicon-white.png" },
+    { rel: "apple-touch-icon", url: "/favicon-white.png" },
+  ],
+  twitter: {
+    card: "summary_large_image",
+    creator: "@indexnetwork_",
+    site: "https://index.network",
+    title: "Index Network | Composable Discovery Protocol",
+    description:
+      "Index allows to create truly personalised and autonomous discovery experiences across the web",
+    images: ["https://index.network/images/bridge.jpg"],
+  },
+  openGraph: {
+    title: "Index Network | Composable Discovery Protocol",
+    description:
+      "Index allows to create truly personalised and autonomous discovery experiences across the web",
+    url: "https://index.network",
+    images: "https://index.network/images/bridge.jpg",
+  },
 };
 
 export default function RootLayout({
