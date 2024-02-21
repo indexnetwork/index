@@ -29,7 +29,7 @@ export default function PageHead() {
       />
       <meta
         property="twitter:image"
-        content="https://index.network/images/bridge.jpg"
+        content="https://index.network/images/bridge.jpg?a"
       />
 
       <link

@@ -22,14 +22,14 @@ export const metadata: Metadata = {
     title: "Index Network | Composable Discovery Protocol",
     description:
       "Index allows to create truly personalised and autonomous discovery experiences across the web.",
-    images: ["https://index.network/images/bridge.jpg"],
+    images: ["https://index.network/images/bridge.jpg?a"],
   },
   openGraph: {
     title: "Index Network | Composable Discovery Protocol",
     description:
       "Index allows to create truly personalised and autonomous discovery experiences across the web.",
     url: "https://index.network",
-    images: "https://index.network/images/bridge.jpg",
+    images: "https://index.network/images/bridge.jpg=a",
   },
 };
 
