@@ -23,7 +23,10 @@ const CreatorSettings = () => {
   const [conditions, setConditions] = useState<any>([]);
   const loadActionRef = useRef(false);
 
-  const creators = useMemo(() => conditions.filter((action: any) => action.tag === "creators") as any, [conditions]);
+  const creators = useMemo(
+    () => conditions.filter((action: any) => action.tag === "creators") as any,
+    [conditions],
+  );
 
   // const handleActionChange = useCallback(
   //   async ({ cid }: CreatorAction) => {
@@ -60,7 +63,6 @@ const CreatorSettings = () => {
     }
 
     loadActionRef.current = false;
-    debugger;
   }, [apiReady, viewedIndex]);
 
   const handleRemove = useCallback(
