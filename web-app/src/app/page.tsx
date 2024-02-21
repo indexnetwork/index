@@ -1,16 +1,17 @@
 "use client";
 
+import AppHeader from "@/components/new/AppHeader";
 import FeatureSection1 from "@/components/sections/landing/Feature1";
 import FeatureSection2 from "@/components/sections/landing/Feature2";
 import FeatureSection3 from "@/components/sections/landing/Feature3";
+import FooterSection from "@/components/sections/landing/Footer";
 import HeroSection from "@/components/sections/landing/Hero";
 import PartnersSection from "@/components/sections/landing/Partners";
+import SubscribeSection from "@/components/sections/landing/Subscribe";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import "./globals.css";
-import AppHeader from "@/components/new/AppHeader";
-import FooterSection from "@/components/sections/landing/Footer";
 
 const Landing = () => {
   const router = useRouter();
@@ -28,11 +29,12 @@ const Landing = () => {
       <AppHeader />
       <HeroSection />
       <PartnersSection />
-      <div className="flex flex-col gap-16 md:gap-32">
+      <div className="mb-16 flex flex-col gap-24 md:mb-32 md:gap-48">
         <FeatureSection1 />
         <FeatureSection2 />
         <FeatureSection3 />
       </div>
+      <SubscribeSection />
       <FooterSection />
     </div>
   );

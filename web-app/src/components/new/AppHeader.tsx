@@ -14,7 +14,7 @@ const AppHeader = () => {
           src="/images/logo-full-white.svg"
           alt="index network"
         />
-        <Button onClick={connect}>Connect</Button>
+        <Button onClick={connect}>Apply for Beta</Button>
       </div>
     </header>
   );

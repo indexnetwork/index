@@ -10,9 +10,10 @@ const FeatureSection3 = () => {
             <h2 className="text-secondary text-3xl font-bold md:text-5xl">
               Real-time <br /> Discovery Agents
             </h2>
-            <p className="md:text-lg">
-              Index allows to create truly personalised and autonomous discovery
-              experiences across the web
+            <p className="md:w-[75%] md:text-lg">
+              Index allows the automation of knowledge tasks by using AI agents
+              and facilitates the composition of autonomous agents, bringing
+              together a variety of economic models and methods.
             </p>
             <a className="text-secondary" href="#">
               Learn More
@@ -31,10 +32,10 @@ const FeatureSection3 = () => {
               <Abstract variant={1} />
             </div>
             <div className="flex flex-col gap-6">
-              <h3 className="font-bold">Multi-index queries</h3>
+              <h3 className="text-lg font-bold">Reactive, streaming agents</h3>
               <p>
-                Compose natural language based questions and get knowledge
-                linked responses from multiple sources
+                Invite multiple agents to automate and personalize discovery
+                experiences and allow getting multiple perspectives.
               </p>
             </div>
           </div>
@@ -43,10 +44,10 @@ const FeatureSection3 = () => {
               <Abstract variant={2} />
             </div>
             <div className="flex flex-col gap-6">
-              <h3 className="font-bold">Semantic</h3>
+              <h3 className="text-lg font-bold">Open, network of agents</h3>
               <p>
-                Subscribe to contexts like "tell me if something new happens
-                about quantum materials
+                Enable thousands of agents to work together, in an independent,
+                self-sovereign and private way.
               </p>
             </div>
           </div>
@@ -55,7 +56,7 @@ const FeatureSection3 = () => {
               <Abstract variant={3} />
             </div>
             <div className="flex flex-col gap-6">
-              <h3 className="font-bold">Real-time listening</h3>
+              <h3 className="text-lg font-bold">Real-time listening</h3>
               <p>
                 Store, share, and discover verifiable generative information.
               </p>

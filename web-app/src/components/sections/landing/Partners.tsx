@@ -2,9 +2,9 @@ import Image from "next/image";
 
 const PartnersSection = () => {
   return (
-    <section className="mb-8 mt-8">
+    <section className="mb-16 mt-8">
       <div
-        className="flex flex-col gap-12 py-6 md:py-8"
+        className="flex flex-col gap-12 py-6 md:py-12"
         style={{
           background: "rgba(110, 191, 244, 0.07)",
           borderTop: "1px solid rgba(110, 191, 244, 0.2)",
@@ -12,17 +12,17 @@ const PartnersSection = () => {
         }}
       >
         <div className="flex flex-col items-center gap-8">
-          <h2 className="text-passiveLight font-title text-2xl md:text-3xl">
+          <h2 className="text-passiveLight font-title text-2xl opacity-65 md:text-2xl">
             Partners and Allies
           </h2>
-          <div className="flex flex-col items-center gap-6 md:flex-row md:gap-8">
+          <div className="flex flex-col items-center gap-6 md:flex-row md:gap-16">
             <Image
               src="/images/partners/ic_ceramic.png"
               alt="Ceramic Network"
               width={240}
               height={50}
             />
-            <div className="flex flex-row items-center justify-center gap-4 md:flex-row md:gap-8">
+            <div className="flex flex-row items-center justify-center gap-4 md:flex-row md:gap-16">
               <Image
                 src="/images/partners/ic_ipfs.png"
                 alt="IPFS"
@@ -45,7 +45,7 @@ const PartnersSection = () => {
           </div>
         </div>
         <div className="flex flex-col items-center gap-8">
-          <h2 className="text-passiveLight font-title text-2xl md:text-3xl">
+          <h2 className="text-passiveLight font-title text-2xl opacity-65 md:text-2xl">
             Backed by
           </h2>
           <div className="flex flex-col gap-6">

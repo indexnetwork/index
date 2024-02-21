@@ -10,9 +10,11 @@ const FeatureSection1 = () => {
             <h2 className="text-secondary text-3xl font-bold md:text-5xl">
               Decentralized <br /> Semantic Index
             </h2>
-            <p className="md:text-lg">
-              Index allows to create truly personalised and autonomous discovery
-              experiences across the web
+            <p className="md:w-[75%] md:text-lg">
+              Index stores data on a decentralized knowledge graph, making it
+              queryable in natural language. By storing vector embeddings on the
+              same graph, Index introduces a new open layer for information
+              discovery.
             </p>
             <a className="text-secondary" href="#">
               Learn More
@@ -31,7 +33,7 @@ const FeatureSection1 = () => {
               <Abstract variant={1} />
             </div>
             <div className="flex flex-col gap-6">
-              <h3 className="font-bold">Composable</h3>
+              <h3 className="text-lg font-bold">Composable</h3>
               <p>
                 Index any kind of data to an open and decentralized knowledge
                 graph to make it composable with blockchain backed privacy.
@@ -43,7 +45,7 @@ const FeatureSection1 = () => {
               <Abstract variant={2} />
             </div>
             <div className="flex flex-col gap-6">
-              <h3 className="font-bold">Semantic</h3>
+              <h3 className="text-lg font-bold">Semantic</h3>
               <p>
                 Generate & store your vector embeddings, make your data
                 discoverable in an open network.
@@ -55,7 +57,7 @@ const FeatureSection1 = () => {
               <Abstract variant={3} />
             </div>
             <div className="flex flex-col gap-6">
-              <h3 className="font-bold">Generative</h3>
+              <h3 className="text-lg font-bold">Generative</h3>
               <p>
                 Store, share, and discover verifiable generative information.
               </p>

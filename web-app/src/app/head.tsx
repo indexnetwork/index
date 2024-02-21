@@ -4,25 +4,28 @@ export default function PageHead() {
   return (
     <Head>
       <link rel="shortcut icon" href="/favicon-white.png" />
-      <title>
-        Index Network | The human bridge between context and content.
-      </title>
+      <title>Index Network | Composable Discovery Protocol</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta
         name="title"
-        content="Index Network | The human bridge between context and content."
+        content="Index Network | Composable Discovery Protocol"
       />
-      <meta name="description" content="Create composable discovery engines." />
+      <meta
+        name="description"
+        content="Index allows to create truly personalised and autonomous
+      discovery experiences across the web"
+      />
 
       <meta property="twitter:card" content="summary_large_image" />
       <meta property="twitter:url" content="https://index.network" />
       <meta
         property="twitter:title"
-        content="Index Network | The human bridge between context and content."
+        content="Index Network | Composable Discovery Protocol"
       />
       <meta
         property="twitter:description"
-        content="Create composable discovery engines."
+        content="Index allows to create truly personalised and autonomous
+        discovery experiences across the web"
       />
       <meta
         property="twitter:image"

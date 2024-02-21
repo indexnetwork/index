@@ -4,27 +4,28 @@ import Input from "components/base/Input";
 import Flex from "components/layout/base/Grid/Flex";
 import { useState } from "react";
 import LandingSection from "../LandingSection";
+import toast from "react-hot-toast";
 
 const LandingSection7 = () => {
   const [email, setEmail] = useState("");
 
   const handleSubscribe = async (e: React.FormEvent<HTMLFormElement>) => {
-    // e.preventDefault();
-    // if (!email) {
-    //   toast.error("Please enter a valid email address");
-    //   return;
-    // }
-    // try {
-    //   await toast.promise(api.subscribeToNewsletter(email), {
-    //     loading: "Subscribing...",
-    //     success: "Subscribed!",
-    //     error: (err) => `${err}`,
-    //   });
-    // } catch (error) {
-    //   return;
-    // } finally {
-    //   setEmail("");
-    // }
+    e.preventDefault();
+    if (!email) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+    try {
+      await toast.promise(api.subscribeToNewsletter(email), {
+        loading: "Subscribing...",
+        success: "Subscribed!",
+        error: (err) => `${err}`,
+      });
+    } catch (error) {
+      return;
+    } finally {
+      setEmail("");
+    }
   };
 
   return (
