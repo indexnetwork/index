@@ -10,9 +10,11 @@ const FeatureSection2 = () => {
             <h2 className="text-secondary text-3xl font-bold md:text-5xl">
               Composable <br /> Discovery Protocol
             </h2>
-            <p className="md:text-lg">
-              Index allows to create truly personalised and autonomous discovery
-              experiences across the web
+            <p className="md:w-[75%] md:text-lg">
+              The composable discovery protocol of Index allows users to query
+              multiple indexes together. This enables users to have an
+              integrated discovery experience, ensuring responses are both
+              personalized and trusted.
             </p>
             <a className="text-secondary" href="#">
               Learn More
@@ -31,10 +33,10 @@ const FeatureSection2 = () => {
               <Abstract variant={4} />
             </div>
             <div className="flex flex-col gap-6">
-              <h3 className="font-bold">Multi-index queries</h3>
+              <h3 className="text-lg font-bold">Multi-index queries</h3>
               <p>
                 Compose natural language based questions and get knowledge
-                linked responses from multiple sources
+                linked responses from multiple sources.
               </p>
             </div>
           </div>
@@ -43,7 +45,7 @@ const FeatureSection2 = () => {
               <Abstract variant={5} />
             </div>
             <div className="flex flex-col gap-6">
-              <h3 className="font-bold">Real-time listening</h3>
+              <h3 className="text-lg font-bold">Real-time listening</h3>
               <p>
                 Subscribe to contexts like "tell me if something new happens
                 about quantum materials
