@@ -2,6 +2,7 @@ name: Web App Build & Deploy
 on:
   push:
     branches:
+    - mainnet
     - testnet
     - dev
     paths:
