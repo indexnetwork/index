@@ -13,7 +13,7 @@ export default function PageHead() {
       <meta
         name="description"
         content="Index allows to create truly personalised and autonomous
-      discovery experiences across the web"
+      discovery experiences across the web."
       />
 
       <meta property="twitter:card" content="summary_large_image" />
@@ -25,7 +25,7 @@ export default function PageHead() {
       <meta
         property="twitter:description"
         content="Index allows to create truly personalised and autonomous
-        discovery experiences across the web"
+        discovery experiences across the web."
       />
       <meta
         property="twitter:image"
