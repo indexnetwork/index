@@ -21,7 +21,7 @@ if(process.env.NODE_ENV !== 'production'){
 // Index Item (C)
 export const createIndexItemEvent = async (id) => {
 
-    logger.info("Step [0]: createIndexItemEvent trigger for id:", id)
+    logger.info(`Step [0]: createIndexItemEvent trigger for id: ${id}`)
 
     const itemService = new ItemService()
     const indexItem = await itemService.getIndexItemById(id, false);
@@ -31,7 +31,7 @@ export const createIndexItemEvent = async (id) => {
         const indexSession = await getPKPSessionForIndexer(indexItem.index);
         await indexSession.did.authenticate();
 
-        Logger.debug("Step [0]: Indexer session created for index:", indexItem.index.id)
+        logger.info("Step [0]: Indexer session created for index:", indexItem.index.id)
 
         if (indexItem.item.content) {
 
@@ -49,13 +49,13 @@ export const createIndexItemEvent = async (id) => {
                 "description": "Default document embeddings",
             });
     
-            logger.info("Step [0]: EmbeddingEvent trigger successfull for id:", embedding.id);
+            logger.info(`Step [0]: EmbeddingEvent trigger successfull for id: ${embedding.id}`);
         }
 
         logger.warn('Step [0]: No content found, createIndexItem event incomplete')
 
     } catch (e) {
-        logger.error(`Step [0]: Indexer createIndexItemEvent error: ${e.message}`);
+        logger.error(`Step [0]: Indexer createIndexItemEvent error: ${JSON.stringify(e.message)}`);
     }
 
 }
@@ -125,21 +125,19 @@ export const updateIndexItemEvent = async (id) => {
         }
 
     } catch (e) {
-        logger.error(`Step [1]: Indexer updateIndexItemEvent with error: ${e.message}`);
+        logger.error(`Step [1]: Indexer updateIndexItemEvent with error: ${JSON.stringify(e.message)}`);
     }
 }
 
 export const updateWebPageEvent = async (id) => {
 
-    logger.info(`Step [2]: `)
+    logger.info(`Step [2]: UpdateWebPageEvent trigger for id: ${id}`)
 
     const webPage = new WebPageService()
     const webPageItem = await webPage.getWebPageById(id, false);
 
     try {
         
-        Logger.info("Step [2]: UpdateWebPageEvent trigger for id:", id)
-
         if (webPageItem && webPageItem.content) {
 
             const itemSession = new ItemService()
@@ -147,7 +145,7 @@ export const updateWebPageEvent = async (id) => {
             
             for (let indexItem of indexItems.items) {
                 
-                logger.info("Step [2]: IndexItem UpdateEvent trigger for id:", indexItem.id)
+                logger.info(`Step [2]: IndexItem UpdateEvent trigger for id: ${indexItem.id}`)
 
                 const indexSession = await getPKPSessionForIndexer(indexItem.index);
 
@@ -157,7 +155,7 @@ export const updateWebPageEvent = async (id) => {
                     content: webPageItem.content
                 })
 
-                logger.info("Step [2]: Embedding created for indexItem:", indexItem.id, "with vector:", embeddingResponse.data.vector?.length)
+                logger.info(`Step [2]: Embedding created for indexItem: ${indexItem.id} with vector lenght ${embeddingResponse.data.vector?.length}`)
                 
                 const embedding = await embeddingService.createEmbedding({
                     "indexId": indexItem.index.id,
@@ -169,7 +167,7 @@ export const updateWebPageEvent = async (id) => {
                 });
 
         
-                logger.info("Step [2]: EmbeddingEvent trigger successfull for id:", embedding.id);
+                logger.info(`Step [2]: EmbeddingEvent trigger successfull for id: ${embedding.id}`);
 
                 // Cache updated questions to reddis
                 try {
@@ -177,24 +175,24 @@ export const updateWebPageEvent = async (id) => {
                     let response = await axios.get(`${process.env.LLM_INDEXER_HOST}/chat/generate?indexId=${req.params.id}`)
                     redis.set(`questions:${req.params.id}`, JSON.stringify(response.data), { EX: 86400 } );
 
-                    Logger.info("Step [2]: Questions updated for index:", req.params.id, "with", response.data.length, "questions")
+                    logger.info(`Step [2]: Questions for index ${req.params.id} updated in reddis with ${response.data.length} questions`)
 
                 } catch (error) {
-                    logger.warn("Step [2]: Error at updating questions for index", req.param.id, "with", error.message);
+                    logger.warn(`Step [2]: Questions for index ${req.params.id} not updated in reddis with error: ${JSON.stringify(error.message)}`)
                 }
 
             }
         }
 
     } catch (e) {
-        logger.error("Step [2]: Indexer updateWebPageEvent with error:", e.message);
+        logger.error(`Step [2]: Indexer updateWebPageEvent with error: ${JSON.stringify(e.message)}`);
     }
 
 }
 
 export const createEmbeddingEvent = async (id) => {
 
-    logger.info("Step [3]: createEmbeddingEvent is triggered for id:", id)
+    logger.info(`Step [3]: createEmbeddingEvent trigger for id: ${id}`)
 
     const embeddingService = new EmbeddingService()
     const embedding = await embeddingService.getEmbeddingById(id);
@@ -231,7 +229,7 @@ export const createEmbeddingEvent = async (id) => {
         const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/index?indexId=${embedding.item.id}`, payload)
         logger.info(`Step [3]: IndexItem ${payload.webPageId} with ${payload.webPageUrl} Indexed with it's content and embeddings`)
     } catch (e) {
-        logger.error("Step [3]: Indexer createEmbeddingEvent with error:", e.message);
+        logger.error(`Step [3]: Indexer createEmbeddingEvent with error: ${JSON.stringify(e.message)}`);
     }
 }
 
