@@ -1,9 +1,7 @@
 import Button from "@/components/new/Button";
-import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 
 const HeroSection = () => {
-  const { connect } = useAuth();
   const router = useRouter();
 
   return (
@@ -31,7 +29,7 @@ const HeroSection = () => {
             discovery experiences across the web
           </p>
           <div className="flex gap-4">
-            <Button onClick={connect}>Connect</Button>
+            {/* <Button onClick={connect}>Connect</Button> */}
             <Button
               variant="outline"
               onClick={() => {

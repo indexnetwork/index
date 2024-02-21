@@ -28,13 +28,13 @@ const SubscribeSection = () => {
 
   return (
     <section>
-      <div className="flex flex-col items-center justify-center gap-8 py-16 text-center md:py-32">
+      <div className="flex flex-col items-center justify-center gap-8 py-16 text-center md:py-24">
         <h2 className="font-title text-3xl">
           Stay up to date with our newsletter
         </h2>
         <div className="rounded-sm border">
           <input
-            className=" bg-transparent px-4 py-2"
+            className="bg-transparent px-4 py-2"
             value={email}
             onChange={(e: any) => setEmail(e.target.value)}
             placeholder="Email"

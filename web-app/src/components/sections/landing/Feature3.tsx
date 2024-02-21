@@ -15,7 +15,10 @@ const FeatureSection3 = () => {
               and facilitates the composition of autonomous agents, bringing
               together a variety of economic models and methods.
             </p>
-            <a className="text-secondary" href="#">
+            <a
+              className="text-secondary"
+              href="https://docs.index.network/docs/api-reference/agents"
+            >
               Learn More
             </a>
           </div>

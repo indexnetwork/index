@@ -1,9 +1,9 @@
-import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import Button from "./Button";
 
 const AppHeader = () => {
-  const { connect } = useAuth();
+  const router = useRouter();
 
   return (
     <header className="app-header">
@@ -14,7 +14,13 @@ const AppHeader = () => {
           src="/images/logo-full-white.svg"
           alt="index network"
         />
-        <Button onClick={connect}>Apply for Beta</Button>
+        <Button
+          onClick={() => {
+            router.push("https://sjxy3b643r8.typeform.com/to/phuRF52O");
+          }}
+        >
+          Apply for Beta
+        </Button>
       </div>
     </header>
   );
