@@ -1,17 +1,16 @@
 "use client";
 
+import FeatureSection1 from "@/components/sections/landing/Feature1";
+import FeatureSection2 from "@/components/sections/landing/Feature2";
+import FeatureSection3 from "@/components/sections/landing/Feature3";
+import HeroSection from "@/components/sections/landing/Hero";
+import PartnersSection from "@/components/sections/landing/Partners";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
-import Flex from "components/layout/base/Grid/Flex";
-import AppHeader from "components/layout/site/AppHeader";
-import LandingSection1 from "components/site/landing/LandingSection1";
-import LandingSection1v2 from "components/site/landing/LandingSection1v2";
-import LandingSection2 from "components/site/landing/LandingSection2";
-import LandingSection3 from "components/site/landing/LandingSection3";
-import LandingSection4 from "components/site/landing/LandingSection4";
-import LandingSection5 from "components/site/landing/LandingSection5";
-import LandingSection7 from "components/site/landing/LandingSection7";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import "./globals.css";
+import AppHeader from "@/components/new/AppHeader";
+import FooterSection from "@/components/sections/landing/Footer";
 
 const Landing = () => {
   const router = useRouter();
@@ -25,16 +24,17 @@ const Landing = () => {
   }, [status, session, router]);
 
   return (
-    <Flex flexdirection="column" alignitems="center">
+    <div className="bg-mainDark text-primary font-primary min-h-screen">
       <AppHeader />
-      <LandingSection1 />
-      <LandingSection1v2 />
-      <LandingSection2 />
-      <LandingSection3 />
-      <LandingSection4 />
-      <LandingSection5 />
-      <LandingSection7 />
-    </Flex>
+      <HeroSection />
+      <PartnersSection />
+      <div className="flex flex-col gap-16 md:gap-32">
+        <FeatureSection1 />
+        <FeatureSection2 />
+        <FeatureSection3 />
+      </div>
+      <FooterSection />
+    </div>
   );
 };
 export default Landing;

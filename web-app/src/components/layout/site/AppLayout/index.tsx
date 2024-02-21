@@ -17,7 +17,6 @@ export const AppLayout = ({ children }: AppLayoutProps) => (
       <PlausibleProvider domain="index.network">
         <AppContextProvider>
           {children}
-
           <Toaster />
         </AppContextProvider>
       </PlausibleProvider>
