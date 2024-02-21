@@ -1,5 +1,5 @@
 import { AppLayout } from "components/layout/site/AppLayout";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -8,8 +8,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://index.network"),
   title: "Index Network | Composable Discovery Protocol",
   description:
-    "Index allows to create truly personalised and autonomous discovery experiences across the web.",
-  viewport: "width=device-width, initial-scale=1",
+    "Index allows to create truly personalised and autonomous discovery experiences across the web",
   referrer: "origin-when-cross-origin",
   icons: [
     { rel: "shortcut icon", url: "/favicon-white.png" },
@@ -32,6 +31,11 @@ export const metadata: Metadata = {
     url: "https://index.network",
     images: "https://index.network/images/bridge.jpg",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
