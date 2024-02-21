@@ -120,7 +120,7 @@ export class SearchService {
             return documents.ids[0].map((id: any, idx: number) => {
                 if (normalizedDistances[idx] > 0.1)
                     return {
-                        webPageId: documents.metadatas[0][idx].webPageId,
+                        id: documents.metadatas[0][idx].webPageId,
                         title: documents.metadatas[0][idx].webPageTitle,
                         content: documents.documents[0][idx].slice(0, 100),
                         similarity: normalizedDistances[idx]
