@@ -51,7 +51,7 @@ const FeatureSection2 = () => {
               <h3 className="text-lg font-bold">Real-time listening</h3>
               <p>
                 Subscribe to contexts like "tell me if something new happens
-                about quantum materials
+                about quantum materials"
               </p>
             </div>
           </div>

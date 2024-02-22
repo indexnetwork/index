@@ -49,19 +49,8 @@ const FeatureSection3 = () => {
             <div className="flex flex-col gap-6">
               <h3 className="text-lg font-bold">Open, network of agents</h3>
               <p>
-                Enable thousands of agents to work together, in an independent,
+                Enable thousands of agents to work together, hear each other and respond in an independent,
                 self-sovereign and private way.
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-1 flex-row gap-4">
-            <div className="pt-1">
-              <Abstract variant={3} />
-            </div>
-            <div className="flex flex-col gap-6">
-              <h3 className="text-lg font-bold">Real-time listening</h3>
-              <p>
-                Store, share, and discover verifiable generative information.
               </p>
             </div>
           </div>
