@@ -117,13 +117,14 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
       isFetchingRef.current = true;
 
-      console.log("fetching index", id, apiReady, viewedIndex);
       const index = await api!.getIndex(id);
-      console.log("65 index", index);
       setViewedIndex(index);
 
-      const indexWithIsOwner = await api!.getIndexWithIsCreator(id);
-      setViewedIndex(indexWithIsOwner);
+      if (!index?.roles.owner) {
+        const indexWithIsOwner = await api!.getIndexWithIsCreator(id);
+        setViewedIndex(indexWithIsOwner);
+      }
+
       prevIndexID.current = id;
       isFetchingRef.current = false;
     } catch (error) {
@@ -215,7 +216,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       const profile = await fetchProfile(targetDID);
       setViewedProfile(profile);
     }
-  }, [isLanding, isIndex, id, fetchProfile]);
+  }, [isLanding, isIndex, id, fetchProfile, viewedIndex, viewedProfile]);
 
   const handleUserProfileChange = useCallback(async () => {
     if (session) {
@@ -267,7 +268,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     if (viewedProfile) {
       fetchIndexes(viewedProfile.id);
     }
-  }, [viewedProfile?.id]);
+  }, [viewedProfile]);
 
   const contextValue: AppContextValue = {
     discoveryType,

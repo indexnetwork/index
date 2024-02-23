@@ -1,8 +1,16 @@
 import Button from "@/components/new/Button";
-import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 
 const HeroSection = () => {
   const router = useRouter();
+  const query = useSearchParams();
+  const { connect } = useAuth();
+
+  const allowed = useMemo(() => {
+    return query.get("allowed") === "true";
+  }, [query.get("allowed")]);
 
   return (
     <section className="relative">
@@ -29,7 +37,7 @@ const HeroSection = () => {
             discovery experiences across the web
           </p>
           <div className="flex gap-4">
-            {/* <Button onClick={connect}>Connect</Button> */}
+            {allowed && <Button onClick={connect}>Connect</Button>}
             <Button
               variant="outline"
               onClick={() => {
