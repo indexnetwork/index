@@ -26,7 +26,7 @@ const CreatorSettings = () => {
   const creators = useMemo(
     () =>
       conditions
-        .filter((condition: any) => condition.tag === "creators")
+        .filter((condition: any) => condition.tag === "creator")
         .map((c: any) => c.value) as any,
     [conditions],
   );
