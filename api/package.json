@@ -22,7 +22,7 @@
     "@lit-protocol/uint8arrays": "3.2.1",
     "@mailchimp/mailchimp_marketing": "^3.0.80",
     "@pinata/sdk": "^2.1.0",
-    "@sentry/node": "^7.101.1",
+    "@sentry/node": "^7.102.1",
     "@sentry/profiling-node": "^7.101.1",
     "aws-sdk": "^2.1327.0",
     "cid": "multiformats/cid",
