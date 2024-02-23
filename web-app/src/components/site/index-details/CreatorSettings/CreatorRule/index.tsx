@@ -57,7 +57,7 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) =>
                       (rule?.contractAddress &&
                         maskAddress(rule?.contractAddress))}
                   </Header>
-                  <Flex alignitems={"center"}>
+                  <Flex>
                     <Text
                       fontFamily={"Freizeit"}
                       fontWeight={500}
