@@ -13,7 +13,7 @@ const Button: React.FC<ButtonProps> = ({
 }) => {
   // Base styles
   const baseStyles =
-    "px-4 py-2 font-medium text-base rounded focus:outline-none focus:ring-2 focus:ring-offset-2";
+    "px-4 font-secondary leading-none py-2 font-medium text-base rounded-sm focus:outline-none focus:ring-2 focus:ring-offset-2";
 
   // Variant-specific styles
   const variantStyles = {

@@ -261,7 +261,6 @@ export const getPKPSession = async (session, index) => {
       capacityDelegationAuthSig,
     });
 
-
 		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
 		const resp = await litNodeClient.executeJs({
 			ipfsId: signerFunctionV0,

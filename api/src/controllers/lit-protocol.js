@@ -17,6 +17,7 @@ import { getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet } fr
 
 const enrichConditions = async (conditions) => {
 
+
     conditions = await Promise.all(conditions.map( async (c) => {
 
         let { value, tag } = c;
@@ -123,12 +124,13 @@ export const getAction = async (req, res, next) => {
             return res.json(enrichedConditions)
         });
 
-        const litAction = await fetch(`https://indexas.infura-ipfs.io/ipfs/${cid}`);
+        const litAction = await fetch(`https://ipfs.index.network/ipfs/${cid}?pinataGatewayToken=${process.env.PINATA_IPFS_GATEWAY_KEY}`);
         let litActionStr = await litAction.text();
         litActionStr = `const ACTION_CALL_MODE="read"; ${litActionStr}`;
         await runner.run(litActionStr);
 
     } catch (err) {
+        console.log(err)
         return res.json({"error": "No action found"});
     }
 

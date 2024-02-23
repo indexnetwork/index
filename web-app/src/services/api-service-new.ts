@@ -30,7 +30,7 @@ const API_ENDPOINTS = {
   NFT_METADATA: "/nft",
   ENS: "/ens",
   ZAPIER_TEST_LOGIN: "/zapier/test_login",
-  SUBSCRIBE_TO_NEWSLETTER: "/subscribe",
+  SUBSCRIBE_TO_NEWSLETTER: "/site/subscribe",
 };
 
 export interface LitActionConditions {}
@@ -282,6 +282,22 @@ class ApiService {
       return data;
     } catch (err) {
       return null;
+    }
+  }
+
+  async subscribeToNewsletter(email: string): Promise<any> {
+    try {
+      const { data } = await this.apiAxios.post(
+        `${API_ENDPOINTS.SUBSCRIBE_TO_NEWSLETTER}`,
+        { email },
+      );
+      return data;
+    } catch (err: any) {
+      const errorMessage =
+        err.response && err.response.data && err.response.data.message
+          ? err.response.data.message
+          : err.message;
+      throw new Error(errorMessage);
     }
   }
 }

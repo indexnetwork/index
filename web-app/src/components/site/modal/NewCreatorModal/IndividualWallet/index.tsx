@@ -40,7 +40,7 @@ const IndividualWallet: React.FC<IndividualWalletOptionsProps> = ({
         if (!addressResponse || !addressResponse.walletAddress) {
           errors.walletAddress = "Invalid ENS name";
         } else {
-          formik.setFieldValue("walletAddress", values.walletAddress, false);
+          formik.setFieldValue("walletAddress", addressResponse.walletAddress, false);
         }
       } else if (!isValidContractAddress(values.walletAddress)) {
         errors.walletAddress = "Invalid address";

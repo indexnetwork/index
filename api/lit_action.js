@@ -9,7 +9,6 @@
   // lit_actions/src/session.action.ts
   var getCreatorConditions = (transform=true) => {
     let conditionsArray = __REPLACE_THIS_AS_CONDITIONS_ARRAY__;
-
     if(conditionsArray.length < 1){
       return [];
     }

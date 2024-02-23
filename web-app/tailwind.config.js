@@ -18,6 +18,7 @@ module.exports = {
         passiveDark: "#0D0D0D",
       },
       fontFamily: {
+        title: ["Roquefort", "sans-serif"],
         primary: ["Inter", "sans-serif"],
         secondary: ["Freizeit", "sans-serif"],
       },
