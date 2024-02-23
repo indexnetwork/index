@@ -22,7 +22,7 @@ import { SiweMessage } from "@didtools/cacao";
 import { getAddress } from "@ethersproject/address";
 
 const config = {
-	litNetwork: "cayenne",
+	litNetwork: "habanero",
 	domain: "index.network",
 };
 
@@ -169,7 +169,7 @@ export const getPKPSession = async (session, index) => {
 	try{
 		const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 			litNetwork: config.litNetwork,
-			debug: false,
+			debug: true,
 		});
 		await litNodeClient.connect();
 		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
