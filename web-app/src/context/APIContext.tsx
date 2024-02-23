@@ -16,18 +16,18 @@ export const APIProvider: FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const { session, status } = useAuth();
-  const [apiService, setApiServie] = useState<ApiService>(
-    ApiService.getInstance(),
-  );
+  const [apiService] = useState<ApiService>(ApiService.getInstance());
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    console.log("APIProvider: status", status, session);
     if (status === AuthStatus.CONNECTED && session) {
       apiService!.setSession(session);
       setReady(true);
     }
 
     if (status === AuthStatus.NOT_CONNECTED) {
+      console.log("APIProvider: not connected");
       setReady(true);
     }
   }, [apiService, session, status]);

@@ -15,7 +15,7 @@ import CreatorRule from "./CreatorRule";
 
 const CreatorSettings = () => {
   const { isOwner } = useRole();
-  const { viewedIndex, setViewedIndex, createConditions } = useApp();
+  const { viewedIndex, createConditions } = useApp();
 
   const { api, ready: apiReady } = useApi();
   const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
@@ -26,36 +26,10 @@ const CreatorSettings = () => {
   const creators = useMemo(
     () =>
       conditions
-        .filter(
-          (condition: any) => condition.tag === "creators" || "semanticIndex",
-        )
+        .filter((condition: any) => condition.tag === "creators")
         .map((c: any) => c.value) as any,
     [conditions],
   );
-
-  // const handleActionChange = useCallback(
-  //   async ({ cid }: CreatorAction) => {
-  //     if (!viewedIndex || !apiReady) return;
-
-  //     debugger;
-  //     try {
-  //       // There's a risk here.
-  //       // If the user refreshes the page before the transaction is mined, the UI will show the old value.
-  //       await litService.writeAuthMethods({
-  //         cid,
-  //         signerPublicKey: viewedIndex.signerPublicKey!,
-  //         signerFunction: viewedIndex.signerFunction!,
-  //       });
-  //       const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
-  //         signerFunction: cid,
-  //       });
-  //       setViewedIndex(updatedIndex);
-  //     } catch (error) {
-  //       console.error("Error creating rule", error);
-  //     }
-  //   },
-  //   [api, viewedIndex, apiReady],
-  // );
 
   const loadActions = useCallback(async () => {
     if (!apiReady || !viewedIndex) return;

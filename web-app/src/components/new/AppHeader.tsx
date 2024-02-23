@@ -1,9 +1,17 @@
+import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 import Button from "./Button";
 
 const AppHeader = () => {
   const router = useRouter();
+  const query = useSearchParams();
+  const { connect } = useAuth();
+
+  const allowed = useMemo(() => {
+    return query.get("allowed") === "true";
+  }, [query.get("allowed")]);
 
   return (
     <header className="app-header">
@@ -14,13 +22,17 @@ const AppHeader = () => {
           src="/images/logo-full-white.svg"
           alt="index network"
         />
-        <Button
-          onClick={() => {
-            router.push("https://sjxy3b643r8.typeform.com/to/phuRF52O");
-          }}
-        >
-          Apply for Beta
-        </Button>
+        {allowed ? (
+          <Button onClick={connect}>Connect</Button>
+        ) : (
+          <Button
+            onClick={() => {
+              router.push("https://sjxy3b643r8.typeform.com/to/phuRF52O");
+            }}
+          >
+            Apply for Beta
+          </Button>
+        )}
       </div>
     </header>
   );
