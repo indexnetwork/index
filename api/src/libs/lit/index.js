@@ -317,8 +317,7 @@ export const getRolesFromSession = (session) => {
 
 	const owner = authorizedModels.has(definition.models.Index.id);
 
-	const creator = authorizedModels.has(definition.models.Index.id)
-		&& authorizedModels.has(definition.models.IndexItem.id)
+	const creator = authorizedModels.has(definition.models.IndexItem.id)
 		&& authorizedModels.has(definition.models.Embedding.id);
 
 	return {
