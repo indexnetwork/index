@@ -6,7 +6,10 @@ import axios from 'axios';
 const BASE_URL = 'https://nft.api.infura.io';
 import { chains } from '../types/chains.js';
 
-import { ethers } from 'ethers'
+import { encodeBase64, ethers } from 'ethers'
+
+import Moralis from 'moralis';
+
 
 const ethProvider = new ethers.InfuraProvider("mainnet")
 
@@ -46,28 +49,52 @@ export const getWalletByENS = async (ens) => {
 };
 export const getCollectionMetadataApi = async (chainName, tokenAddress) => {
     const chain = chains[chainName];
+
+
     try {
-        const response = await axios.get(`${BASE_URL}/networks/${chain.chainId}/nfts/${tokenAddress}`, {
-            headers: {
-                'Authorization': `Basic ${getAuthorizationHeader()}`,
-            },
-        });
-        return response.data;
-    } catch (error) {
-        //throw new Error('Failed to fetch collection metadata');
+      const hexChain = '0x' + chain.chainId.toString(16);;
+      const response = await Moralis.EvmApi.nft.getNFTContractMetadata({
+        "chain": hexChain,
+        "address": tokenAddress
+      });
+
+      if(response && response.raw && response.raw.token_address) {
+        return {
+          symbol: response.raw.symbol,
+          name: response.raw.name,
+          token: response.raw.token_address,
+          tokenType: response.raw.contract_type
+        }
+      }
+    } catch (e) {
+      console.error(e);
     }
+
+
+
 };
 
 export const getNftMetadataApi = async (chainName, tokenAddress, tokenId, resyncMetadata = false) => {
-    const chain = chains[chainName];
     try {
-        const response = await axios.get(`${BASE_URL}/networks/${chain.chainId}/nfts/${tokenAddress}/tokens/${tokenId}?resyncMetadata=${resyncMetadata}`, {
-            headers: {
-                'Authorization': `Basic ${getAuthorizationHeader()}`,
-            },
+        const chain = chains[chainName];
+        const hexChain = '0x' + chain.chainId.toString(16);
+
+        const response = await Moralis.EvmApi.nft.getNFTMetadata({
+          "chain": hexChain,
+          "address": tokenAddress,
+          "normalizeMetadata": true,
+          "tokenId": tokenId
         });
-        return response.data;
+
+        return {
+          metadata: {
+            name: response.raw.name,
+            image: response.raw.normalized_metadata.image
+          }
+        };
+
     } catch (error) {
+      console.log(error)
         //throw new Error('Failed to fetch NFT metadata');
     }
 };
@@ -77,7 +104,12 @@ export const getCollectionMetadataHandler = async (req, res) => {
     const { chainName, tokenAddress } = req.params;
     try {
         const metadata = await getCollectionMetadataApi(chainName, tokenAddress);
-        res.json(metadata);
+        if(metadata){
+          res.json(metadata);
+        }else{
+          res.status(404).json({ error: 'Contract not found' });
+        }
+
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -92,8 +124,9 @@ export const getNftMetadataHandler = async (req, res) => {
             return res.status(404).json({ error: 'Contract not found' });
         }
         const tokenData = await getNftMetadataApi(chainName, tokenAddress, tokenId, resyncMetadata);
+
         if(tokenData){
-            contract.token = tokenData.metadata;
+            contract.token = tokenData.token_id;
         }
         res.json(contract);
     } catch (error) {

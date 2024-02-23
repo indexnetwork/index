@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
-
+import Moralis from 'moralis';
 import express from 'express';
 import Joi from 'joi';
 import * as ejv from 'express-joi-validation';
@@ -465,6 +465,10 @@ app.use(errorMiddleware);
 
 const start = async () => {
   await redis.connect();
+
+  await Moralis.start({
+    apiKey: process.env.MORALIS_API_KEY
+  });
 
   app.use(Sentry.Handlers.errorHandler());
   app.listen(port, async () => {
