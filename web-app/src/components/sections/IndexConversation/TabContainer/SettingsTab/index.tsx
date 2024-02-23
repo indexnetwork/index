@@ -78,11 +78,9 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
 
       await createConditions(newConditions);
       setSecretKey(btoa(JSON.stringify(authSig)));
+      setStep("done");
     } catch (e) {
       console.error("Error creating rule", e);
-      setSecretKey("Something went wrong, please try again.");
-    } finally {
-      setStep("done");
     }
   }, []);
 

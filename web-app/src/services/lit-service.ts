@@ -1,7 +1,7 @@
-import { LitContracts } from "@lit-protocol/contracts-sdk";
-import { CID } from "multiformats/cid";
 import { SiweMessage } from "@didtools/cacao";
+import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { ethers } from "ethers";
+import { CID } from "multiformats/cid";
 import { appConfig } from "../config";
 
 class LitService {
