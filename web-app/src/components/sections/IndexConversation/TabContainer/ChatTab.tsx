@@ -30,7 +30,7 @@ export default function ChatTabSection() {
         style={{
           display: "flex",
           overflowY: "auto",
-          justifyContent: "center",
+          justifyContent: "stretch",
           alignItems: "center",
           maxHeight: "calc(-30rem + 100dvh)",
         }}
