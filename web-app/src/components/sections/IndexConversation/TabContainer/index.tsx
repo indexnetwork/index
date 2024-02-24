@@ -2,8 +2,6 @@ import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
 import Col from "@/components/layout/base/Grid/Col";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
-import { useApi } from "@/context/APIContext";
-import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import { useCallback, useRef, useState } from "react";
 import AccessControlTab from "./AccessControlTab";
@@ -30,29 +28,7 @@ const TAB_TITLES = {
 
 export default function TabContainer() {
   const [tabKey, setTabKey] = useState<string>(TabKey.Chat);
-  const { isOwner, isCreator } = useRole();
-  const { viewedIndex, setViewedIndex } = useApp();
-  const { api, ready: apiReady } = useApi();
-  const fetchRef = useRef(false);
-
-  // const fetchIsCreator = useCallback(async () => {
-  //   if (!apiReady || !viewedIndex || fetchRef.current) return;
-  //   fetchRef.current = true;
-  //   try {
-  //     const result = await api!.getIndexWithIsOwner(viewedIndex.id);
-  //     if (!result) throw new Error("result is undefined");
-
-  //     setViewedIndex(result);
-  //   } catch (error) {
-  //     console.error("Failed to fetch creator status", error);
-  //   } finally {
-  //     fetchRef.current = false;
-  //   }
-  // }, [apiReady]);
-
-  // useEffect(() => {
-  //   fetchIsCreator();
-  // }, [fetchIsCreator]);
+  const { isOwner } = useRole();
 
   const renderTabContent = useCallback(() => {
     switch (tabKey) {
