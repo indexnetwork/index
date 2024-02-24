@@ -270,7 +270,7 @@ export const getPKPSession = async (session, index) => {
 				chain: "ethereum", // polygon
 				publicKey: index.signerPublicKey,
 				didKey: didKey.id,
-				nonce: randomString(10),
+				nonce: randomString(8),
 				domain: config.domain,
 				sigName: "sig1",
 			},
