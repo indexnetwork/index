@@ -14,6 +14,7 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import {
   ComponentProps,
   FC,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -148,9 +149,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
     },
   });
 
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, [bottomRef]);
 
   useEffect(() => {
     scrollToBottom();
