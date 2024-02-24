@@ -14,7 +14,7 @@ export default function UserConversationSection() {
     <div
       style={{
         display: "flex",
-        justifyContent: "center",
+        justifyContent: "stretch",
         alignItems: "center",
         flex: 1,
         overflowY: "auto",
