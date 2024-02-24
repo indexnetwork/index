@@ -57,7 +57,12 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) =>
                       (rule?.contractAddress &&
                         maskAddress(rule?.contractAddress))}
                   </Header>
-                  <Flex>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
                     <Text
                       fontFamily={"Freizeit"}
                       fontWeight={500}
@@ -81,7 +86,7 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) =>
                     >
                       <IconCopy />
                     </Button>
-                  </Flex>
+                  </div>
                 </Col>
               </Flex>
             </Row>
