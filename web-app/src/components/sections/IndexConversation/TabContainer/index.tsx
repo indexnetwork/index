@@ -3,7 +3,7 @@ import TabPane from "@/components/base/Tabs/TabPane";
 import Col from "@/components/layout/base/Grid/Col";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import { useRole } from "@/hooks/useRole";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
 import CreatorsTab from "./CreatorsTab";
