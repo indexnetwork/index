@@ -15,7 +15,7 @@ export default function UserConversationSection() {
       style={{
         display: "flex",
         justifyContent: "stretch",
-        alignItems: "center",
+        alignItems: "start",
         flex: 1,
         overflowY: "auto",
         maxHeight: "calc(100dvh - 12em)",

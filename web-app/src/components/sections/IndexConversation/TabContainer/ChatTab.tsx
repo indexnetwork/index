@@ -31,7 +31,7 @@ export default function ChatTabSection() {
           display: "flex",
           overflowY: "auto",
           justifyContent: "stretch",
-          alignItems: "center",
+          alignItems: "start",
           maxHeight: "calc(-30rem + 100dvh)",
         }}
       >
