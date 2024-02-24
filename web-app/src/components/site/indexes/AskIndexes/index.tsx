@@ -11,7 +11,14 @@ import AskInput from "components/base/AskInput";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { ComponentProps, FC, useMemo, useState } from "react";
+import {
+  ComponentProps,
+  FC,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "react-hot-toast";
 import { API_ENDPOINTS } from "utils/constants";
 import { maskDID } from "utils/helper";
@@ -41,6 +48,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
   const [editInput, setEditInput] = useState<string>("");
+
+  const bottomRef = useRef<null | HTMLDivElement>(null);
 
   const sectionIndexes = useMemo(() => {
     if (leftTabKey === IndexListTabKey.ALL) {
@@ -139,6 +148,14 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
     },
   });
 
+  const scrollToBottom = () => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isLoading]);
+
   if (sectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
   }
@@ -169,6 +186,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
                   handleSaveEdit={handleSaveEdit}
                   editingIndex={editingIndex}
                 />
+                <div ref={bottomRef} />
                 <ChatScrollAnchor trackVisibility={isLoading} />
               </>
             ) : (
