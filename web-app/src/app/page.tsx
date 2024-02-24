@@ -10,7 +10,7 @@ import PartnersSection from "@/components/sections/landing/Partners";
 import SubscribeSection from "@/components/sections/landing/Subscribe";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import "./globals.css";
 
 const Landing = () => {
@@ -25,18 +25,20 @@ const Landing = () => {
   }, [status, session, router]);
 
   return (
-    <div className="bg-mainDark text-primary font-primary min-h-screen">
-      <AppHeader />
-      <HeroSection />
-      <PartnersSection />
-      <div className="mb-16 flex flex-col gap-24 md:mb-32 md:gap-48">
-        <FeatureSection1 />
-        <FeatureSection2 />
-        <FeatureSection3 />
+    <Suspense>
+      <div className="bg-mainDark text-primary font-primary min-h-screen">
+        <AppHeader />
+        <HeroSection />
+        <PartnersSection />
+        <div className="mb-16 flex flex-col gap-24 md:mb-32 md:gap-48">
+          <FeatureSection1 />
+          <FeatureSection2 />
+          <FeatureSection3 />
+        </div>
+        <SubscribeSection />
+        <FooterSection />
       </div>
-      <SubscribeSection />
-      <FooterSection />
-    </div>
+    </Suspense>
   );
 };
 export default Landing;
