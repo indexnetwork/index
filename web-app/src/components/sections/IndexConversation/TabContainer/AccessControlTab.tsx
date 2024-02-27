@@ -1,9 +1,15 @@
-import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import Soon from "@/components/site/indexes/Soon";
 
 export default function AccessControlTabSection() {
   return (
-    <FlexRow justify="center" align="center" fullHeight>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
       <div
         style={{
           paddingTop: "4rem",
@@ -11,6 +17,6 @@ export default function AccessControlTabSection() {
       >
         <Soon section={"access_control"}></Soon>
       </div>
-    </FlexRow>
+    </div>
   );
 }
