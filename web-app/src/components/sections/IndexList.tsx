@@ -35,6 +35,8 @@ const IndexListSection: FC = () => {
       setLeftTabKey(tabKey);
       if (tabKey !== IndexListTabKey.ALL) {
         router.push(`/${viewedProfile?.id}?${TAB_QUERY}=${tabKey}`);
+      } else {
+        router.push(`/${viewedProfile?.id}`);
       }
     },
     [setLeftTabKey, router, viewedProfile, isIndex],
