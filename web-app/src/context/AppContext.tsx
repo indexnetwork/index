@@ -24,13 +24,13 @@ type AppContextProviderProps = {
 
 export enum IndexListTabKey {
   ALL = "all",
-  OWNER = "owner",
+  OWNED = "owned",
   STARRED = "starred",
 }
 
 export interface AppContextValue {
   indexes: Indexes[];
-  sectionIndexes: Indexes[];
+  leftSectionIndexes: Indexes[];
   loading: boolean;
   discoveryType: DiscoveryType;
   setIndexes: (indexes: Indexes[]) => void;
@@ -94,11 +94,11 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
 
-  const sectionIndexes = useMemo(() => {
+  const leftSectionIndexes = useMemo(() => {
     if (leftTabKey === IndexListTabKey.ALL) {
       return indexes;
     }
-    if (leftTabKey === IndexListTabKey.OWNER) {
+    if (leftTabKey === IndexListTabKey.OWNED) {
       return indexes.filter((i) => i.did.owned);
     }
     if (leftTabKey === IndexListTabKey.STARRED) {
@@ -288,7 +288,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const contextValue: AppContextValue = {
     discoveryType,
     indexes,
-    sectionIndexes,
+    leftSectionIndexes,
     setIndexes,
     fetchIndexes,
     setCreateModalVisible,
