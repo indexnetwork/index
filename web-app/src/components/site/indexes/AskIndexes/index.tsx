@@ -40,7 +40,7 @@ export interface MessageWithIndex extends Message {
 }
 
 const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
-  const { viewedProfile, indexes: indexesFromApp, leftTabKey } = useApp();
+  const { viewedProfile, sectionIndexes, leftTabKey } = useApp();
 
   const { session } = useAuth();
   const { viewedIndex } = useApp();
@@ -52,18 +52,18 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
 
   const bottomRef = useRef<null | HTMLDivElement>(null);
 
-  const sectionIndexes = useMemo(() => {
-    if (leftTabKey === IndexListTabKey.ALL) {
-      return indexesFromApp;
-    }
-    if (leftTabKey === IndexListTabKey.OWNER) {
-      return indexesFromApp.filter((i) => i.did.owned);
-    }
-    if (leftTabKey === IndexListTabKey.STARRED) {
-      return indexesFromApp.filter((i) => i.did.starred);
-    }
-    return [];
-  }, [indexesFromApp, leftTabKey]);
+  // const sectionIndexes = useMemo(() => {
+  //   if (leftTabKey === IndexListTabKey.ALL) {
+  //     return indexesFromApp;
+  //   }
+  //   if (leftTabKey === IndexListTabKey.OWNER) {
+  //     return indexesFromApp.filter((i) => i.did.owned);
+  //   }
+  //   if (leftTabKey === IndexListTabKey.STARRED) {
+  //     return indexesFromApp.filter((i) => i.did.starred);
+  //   }
+  //   return [];
+  // }, [indexesFromApp, leftTabKey]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
@@ -174,6 +174,15 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
           height: "100%",
         }}
       >
+        {/* <p>
+          {sectionIndexes
+            .map((i) => i.id.slice(i.id.length - 6, i.id.length))
+            .join("|")}
+        </p> */}
+        <p>
+          {indexIds &&
+            indexIds.map((i) => i.slice(i.length - 6, i.length)).join("|")}
+        </p>
         <FlexRow wrap={true} align={"start"} style={{ flex: "1 1 auto" }}>
           <Col className="idxflex-grow-1">
             {messages.length ? (

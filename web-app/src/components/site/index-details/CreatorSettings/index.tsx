@@ -129,7 +129,7 @@ const CreatorSettings = () => {
                 <br />
               </>
             )}
-            Creators can add items, add tags to theirs and delete them.
+            Creators can add and remove items.
           </Text>
         </Col>
       </Row>

@@ -10,6 +10,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -27,20 +28,19 @@ export enum IndexListTabKey {
   STARRED = "starred",
 }
 
-type TabKey = string;
-
 export interface AppContextValue {
   indexes: Indexes[];
+  sectionIndexes: Indexes[];
   loading: boolean;
   discoveryType: DiscoveryType;
   setIndexes: (indexes: Indexes[]) => void;
   fetchIndexes: (did: string) => void;
   setCreateModalVisible: (visible: boolean) => void;
   setTransactionApprovalWaiting: (visible: boolean) => void;
-  leftTabKey: TabKey;
-  setLeftTabKey: (key: TabKey) => void;
-  rightTabKey: TabKey;
-  setRightTabKey: (key: TabKey) => void;
+  leftTabKey: IndexListTabKey;
+  setLeftTabKey: (key: IndexListTabKey) => void;
+  rightTabKey: string;
+  setRightTabKey: (key: string) => void;
   leftSidebarOpen: boolean;
   setLeftSidebarOpen: (visible: boolean) => void;
   rightSidebarOpen: boolean;
@@ -82,8 +82,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
-  const [rightTabKey, setRightTabKey] = useState<TabKey>("history");
-  const [leftTabKey, setLeftTabKey] = useState<TabKey>("all");
+  const [rightTabKey, setRightTabKey] = useState<string>("history");
+  const [leftTabKey, setLeftTabKey] = useState<IndexListTabKey>(
+    IndexListTabKey.ALL,
+  );
   const [loading, setLoading] = useState(false);
   const [chatID, setChatID] = useState<string | undefined>(undefined);
 
@@ -91,6 +93,19 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const isFetchingRef = useRef(false);
 
   const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
+
+  const sectionIndexes = useMemo(() => {
+    if (leftTabKey === IndexListTabKey.ALL) {
+      return indexes;
+    }
+    if (leftTabKey === IndexListTabKey.OWNER) {
+      return indexes.filter((i) => i.did.owned);
+    }
+    if (leftTabKey === IndexListTabKey.STARRED) {
+      return indexes.filter((i) => i.did.starred);
+    }
+    return [];
+  }, [indexes, leftTabKey]);
 
   const fetchIndexes = useCallback(
     async (did: string) => {
@@ -273,6 +288,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const contextValue: AppContextValue = {
     discoveryType,
     indexes,
+    sectionIndexes,
     setIndexes,
     fetchIndexes,
     setCreateModalVisible,

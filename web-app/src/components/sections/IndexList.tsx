@@ -8,14 +8,15 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import IndexItem from "components/site/indexes/IndexItem";
 import { useRouteParams } from "hooks/useRouteParams";
 import { useRouter } from "next/navigation";
-import { FC, useCallback, useEffect, useMemo, useRef } from "react";
+import { FC, useCallback, useEffect, useRef } from "react";
 import { Indexes } from "types/entity";
 
 const IndexListSection: FC = () => {
   const { id, isIndex } = useRouteParams();
   const router = useRouter();
 
-  const { indexes, setLeftTabKey, leftTabKey, viewedProfile } = useApp();
+  const { indexes, sectionIndexes, setLeftTabKey, leftTabKey, viewedProfile } =
+    useApp();
 
   const prevProfileID = useRef(viewedProfile?.id);
 
@@ -28,19 +29,6 @@ const IndexListSection: FC = () => {
     },
     [setLeftTabKey],
   );
-
-  const sectionIndexes = useMemo(() => {
-    if (leftTabKey === IndexListTabKey.ALL) {
-      return indexes;
-    }
-    if (leftTabKey === IndexListTabKey.OWNER) {
-      return indexes.filter((i) => i.did.owned);
-    }
-    if (leftTabKey === IndexListTabKey.STARRED) {
-      return indexes.filter((i) => i.did.starred);
-    }
-    return [];
-  }, [indexes, leftTabKey]);
 
   useEffect(() => {
     if (viewedProfile?.id !== prevProfileID.current) {
