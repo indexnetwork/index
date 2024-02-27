@@ -216,7 +216,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       const profile = await fetchProfile(targetDID);
       setViewedProfile(profile);
     }
-  }, [isLanding, isIndex, id, fetchProfile, viewedIndex, viewedProfile]);
+  }, [isLanding, isIndex, id, fetchProfile, viewedIndex]);
 
   const handleUserProfileChange = useCallback(async () => {
     if (session) {
