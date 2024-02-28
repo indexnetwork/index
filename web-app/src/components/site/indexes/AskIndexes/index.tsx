@@ -1,4 +1,4 @@
-import { IndexListTabKey, useApp } from "@/context/AppContext";
+import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { useChat, type Message } from "ai/react";
@@ -16,7 +16,6 @@ import {
   FC,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -29,6 +28,7 @@ export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
   id?: string;
 }
+
 export interface AskIndexesProps {
   chatID: string;
   did?: string;
@@ -40,7 +40,7 @@ export interface MessageWithIndex extends Message {
 }
 
 const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
-  const { viewedProfile, indexes: indexesFromApp, leftTabKey } = useApp();
+  const { viewedProfile, leftSectionIndexes, leftTabKey } = useApp();
 
   const { session } = useAuth();
   const { viewedIndex } = useApp();
@@ -51,19 +51,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
   const [editInput, setEditInput] = useState<string>("");
 
   const bottomRef = useRef<null | HTMLDivElement>(null);
-
-  const sectionIndexes = useMemo(() => {
-    if (leftTabKey === IndexListTabKey.ALL) {
-      return indexesFromApp;
-    }
-    if (leftTabKey === IndexListTabKey.OWNER) {
-      return indexesFromApp.filter((i) => i.did.owned);
-    }
-    if (leftTabKey === IndexListTabKey.STARRED) {
-      return indexesFromApp.filter((i) => i.did.starred);
-    }
-    return [];
-  }, [indexesFromApp, leftTabKey]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
@@ -98,7 +85,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
 
     if (session && viewedProfile?.id === session.did.parent) {
       const sections = {
-        owner: "indexes owned by you",
+        owned: "indexes owned by you",
         starred: "indexes starred by you",
         all: "all your indexes",
       } as any;
@@ -107,7 +94,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
 
     if (viewedProfile?.id) {
       const sections = {
-        owner: "indexes owned by",
+        owned: "indexes owned by",
         starred: "indexes starred by",
         all: "all indexes of",
       } as any;
@@ -157,7 +144,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
     scrollToBottom();
   }, [messages, isLoading]);
 
-  if (sectionIndexes.length === 0) {
+  if (leftSectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
   }
 

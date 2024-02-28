@@ -4,7 +4,7 @@ import { useRouteParams } from "hooks/useRouteParams";
 
 export default function UserConversationSection() {
   const { id } = useRouteParams();
-  const { chatID } = useApp();
+  const { chatID, leftSectionIndexes } = useApp();
 
   if (!chatID || !id) {
     return null;
@@ -21,7 +21,11 @@ export default function UserConversationSection() {
         maxHeight: "calc(100dvh - 12em)",
       }}
     >
-      <AskIndexes chatID={chatID} did={id} />
+      <AskIndexes
+        indexIds={leftSectionIndexes.map((i) => i.id)}
+        chatID={chatID}
+        did={id}
+      />
     </div>
   );
 }

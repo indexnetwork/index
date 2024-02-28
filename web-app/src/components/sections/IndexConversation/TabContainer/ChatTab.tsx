@@ -17,6 +17,7 @@ export default function ChatTabSection() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
+          paddingBottom: "24rem",
         }}
       >
         <LoadingSection />
@@ -24,7 +25,7 @@ export default function ChatTabSection() {
     );
   }
 
-  if (itemsState.items.length > 0) {
+  if (itemsState.items.length > 0 && viewedIndex) {
     return chatID ? (
       <div
         style={{
@@ -38,7 +39,7 @@ export default function ChatTabSection() {
         <AskIndexes
           did={viewedIndex?.ownerDID.id}
           chatID={chatID}
-          indexIds={[viewedIndex?.id!]}
+          indexIds={[viewedIndex?.id]}
         />
       </div>
     ) : null;
