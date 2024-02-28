@@ -1,7 +1,7 @@
 export const appConfig = {
   baseUrl: "https://index.network/",
   apiUrl: "https://dev.index.network/api", // TODO: handle better
-  ipfsProxy: "https://ipfs.index.network/ipfs",
+  ipfsProxy: "https://ipfs.io/ipfs",
   ipfsInfura: "http://localhost:3001/avatar",
   defaultCID: "Qma1fQKSYtcGZ2vJ7CHEY9B4gd967V3cX5Bfmfwp19FjDP", // Empty.
   litNetwork: "habanero" as
