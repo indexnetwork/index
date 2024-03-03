@@ -37,7 +37,7 @@ export default function ChatTabSection() {
         }}
       >
         <AskIndexes
-          did={viewedIndex?.ownerDID.id}
+          // did={viewedIndex?.ownerDID.id}
           chatID={chatID}
           indexIds={[viewedIndex?.id]}
         />

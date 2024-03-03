@@ -161,6 +161,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
           height: "100%",
         }}
       >
+        <p>{indexIds?.map((i) => i.slice(i.length - 5, i.length))}</p>
         <FlexRow wrap={true} align={"start"} style={{ flex: "1 1 auto" }}>
           <Col className="idxflex-grow-1">
             {messages.length ? (

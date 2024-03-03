@@ -1926,6 +1926,14 @@
   version "3.2.1"
   resolved "https://registry.yarnpkg.com/@lit-protocol/types/-/types-3.2.1.tgz#b0e63988663a98d06a6fcbdb9b0694e7b10ada98"
   integrity sha512-fnPtXTfvXqU2dvyaT4wnBb31V3B3EaZQfueKbHziloif8N2nX8ApJd0X/v2fae5yzuXcPaCfC9oyIUsQIJIQ+g==
+  dependencies:
+    "@lit-protocol/accs-schemas" "0.0.6"
+    "@lit-protocol/auth-helpers" "3.2.1"
+    ethers "^5.7.1"
+    jszip "^3.10.1"
+    siwe "^2.0.5"
+    siwe-recap "0.0.2-alpha.0"
+    tslib "^2.3.0"
 
 "@lit-protocol/uint8arrays@3.2.1":
   version "3.2.1"

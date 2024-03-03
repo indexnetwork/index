@@ -29,8 +29,6 @@ const NewCreatorModal = ({
     title: "",
   });
 
-  const [loading, setLoading] = useState(false);
-
   const handleFormState = async (value: string) => {
     setActiveForm(value);
   };

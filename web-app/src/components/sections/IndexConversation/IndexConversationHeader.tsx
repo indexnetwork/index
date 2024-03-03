@@ -14,6 +14,7 @@ import IndexTitleInput from "components/site/input/IndexTitleInput";
 import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import moment from "moment";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FC, useCallback, useState } from "react";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
@@ -22,6 +23,8 @@ export const IndexConversationHeader: FC = () => {
   const { isOwner } = useRole();
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
+  const router = useRouter();
+
   const [titleLoading, setTitleLoading] = useState(false);
   const {
     viewedIndex,
@@ -75,17 +78,21 @@ export const IndexConversationHeader: FC = () => {
           };
         } else {
           await api!.ownIndex(session!.did.parent, viewedIndex.id, value);
-          updatedIndex = {
-            ...viewedIndex,
-            did: { ...viewedIndex.did, owned: value },
-          };
+          if (value) {
+            updatedIndex = {
+              ...viewedIndex,
+              did: { ...viewedIndex.did, owned: value },
+            };
+            setViewedIndex(updatedIndex);
+          } else {
+            router.push("/" + viewedProfile.id);
+          }
         }
       } catch (error) {
         console.error("Error updating index", error);
         return;
       }
 
-      setViewedIndex(updatedIndex);
       fetchIndexes(viewedProfile.id);
     },
     [api, session, viewedIndex, apiReady, setViewedIndex, indexes, setIndexes],

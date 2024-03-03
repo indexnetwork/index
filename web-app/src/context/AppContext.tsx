@@ -14,6 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
+import toast from "react-hot-toast";
 import { AccessControlCondition, Indexes, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { v4 as uuidv4 } from "uuid";
@@ -108,7 +109,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, [indexes, leftTabKey]);
 
   const fetchIndexes = useCallback(
-    async (did: string) => {
+    async (did: string): Promise<void> => {
       if (!apiReady) return;
       try {
         const fetchedIndexes = await api!.getAllIndexes(did);
@@ -124,7 +125,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     [apiReady],
   );
 
-  const fetchIndex = useCallback(async () => {
+  const fetchIndex = useCallback(async (): Promise<void> => {
     try {
       if (!apiReady || !id || !isIndex) return;
       if (viewedIndex?.id === id) return;
@@ -163,9 +164,11 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
           throw new Error("API didn't return a doc");
         }
         setIndexes((prevIndexes) => [doc, ...prevIndexes]);
+        toast.success("Index created successfully");
         router.push(`/${doc.id}`);
       } catch (err) {
         console.error("Couldn't create index", err);
+        toast.error("Couldn't create index");
       } finally {
         setTransactionApprovalWaiting(false);
       }
