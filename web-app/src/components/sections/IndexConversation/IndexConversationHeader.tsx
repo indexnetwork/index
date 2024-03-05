@@ -92,7 +92,7 @@ export const IndexConversationHeader: FC = () => {
             };
             setViewedIndex(updatedIndex);
           } else {
-            router.push("/" + viewedProfile.id);
+            router.push(`/${viewedProfile.id}`);
           }
           toast.success(
             `Index ${value ? "added to" : "removed from"} your indexes list`,

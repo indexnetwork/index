@@ -169,11 +169,11 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         router.push(`/${doc.id}`);
       } catch (err: any) {
         let message = "";
-        if (err?.code == -32603) {
+        if (err?.code === -32603) {
           message = "Not enough balance";
         }
         console.error("Couldn't create index", err);
-        toast.error("Couldn't create index " + message);
+        toast.error(`Couldn't create index ${message}`);
       } finally {
         setTransactionApprovalWaiting(false);
       }
