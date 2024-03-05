@@ -120,6 +120,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         setIndexes(sortedIndexes);
       } catch (error) {
         console.error("Error fetching indexes", error);
+        toast.error("Error fetching indexes, please refresh the page");
       }
     },
     [apiReady],
@@ -145,7 +146,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       isFetchingRef.current = false;
     } catch (error) {
       console.error("Error fetching index", error);
-      // Handle error appropriately
+      toast.error("Error fetching index, please refresh the page");
     }
   }, [id, viewedIndex, isIndex, apiReady]);
 
@@ -166,9 +167,13 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         setIndexes((prevIndexes) => [doc, ...prevIndexes]);
         toast.success("Index created successfully");
         router.push(`/${doc.id}`);
-      } catch (err) {
+      } catch (err: any) {
+        let message = "";
+        if (err?.code == -32603) {
+          message = "Not enough balance";
+        }
         console.error("Couldn't create index", err);
-        toast.error("Couldn't create index");
+        toast.error("Couldn't create index " + message);
       } finally {
         setTransactionApprovalWaiting(false);
       }
@@ -210,7 +215,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         return profile;
       } catch (error) {
         console.error("Error fetching profile", error);
-        // Handle error appropriately
+        toast.error("Error fetching profile, please refresh the page");
       }
     },
     [apiReady],

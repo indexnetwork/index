@@ -60,15 +60,6 @@ export default function IndexItemsTabSection() {
     [fetchIndexItems],
   );
 
-  // Function to chunk the array of URLs
-  // const chunkArray = (arr: string[], size: number) => {
-  //   // create arr.length/size times size length chunks
-  //   return arr.reduce(
-  //     (acc, _, i) => (i % size ? acc : [...acc, arr.slice(i, i + size)]),
-  //     [] as string[][],
-  //   );
-  // };
-
   const processUrlsInBatches = async (urls: string[], processUrl: any) => {
     let currentIndex = 0;
 
@@ -137,9 +128,11 @@ export default function IndexItemsTabSection() {
             items: itemsState.items.filter((i) => i.node.id !== item.node.id),
             cursor: itemsState.cursor,
           });
+          toast.success("Item deleted successfully");
         })
         .catch((error) => {
           console.error("Error deleting item", error);
+          toast.error("Error deleting item");
         })
         .finally(() => setLoading(false));
     },

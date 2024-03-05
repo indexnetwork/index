@@ -101,22 +101,18 @@ class ApiService {
   }
 
   async uploadAvatar(file: File): Promise<{ cid: CID } | null> {
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const { data } = await this.apiAxios.post<{ cid: CID }>(
-        API_ENDPOINTS.UPLOAD_AVATAR,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
+    const formData = new FormData();
+    formData.append("file", file);
+    const { data } = await this.apiAxios.post<{ cid: CID }>(
+      API_ENDPOINTS.UPLOAD_AVATAR,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
         },
-      );
-      return data;
-    } catch (err) {
-      return null;
-    }
+      },
+    );
+    return data;
   }
 
   async getIndex(indexId: string): Promise<Indexes | undefined> {

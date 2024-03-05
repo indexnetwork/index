@@ -16,6 +16,7 @@ import moment from "moment";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FC, useCallback, useState } from "react";
+import toast from "react-hot-toast";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
 
@@ -55,8 +56,10 @@ export const IndexConversationHeader: FC = () => {
         console.log("updatedIndexes", updatedIndexes);
 
         setIndexes(updatedIndexes);
+        toast.success("Index title updated");
       } catch (error) {
         console.error("Error updating index", error);
+        toast.error("Error updating index");
       } finally {
         setTitleLoading(false);
       }
@@ -76,6 +79,10 @@ export const IndexConversationHeader: FC = () => {
             ...viewedIndex,
             did: { ...viewedIndex.did, starred: value },
           };
+          setViewedIndex(updatedIndex);
+          toast.success(
+            `Index ${value ? "added to" : "removed from"} starred indexes list`,
+          );
         } else {
           await api!.ownIndex(session!.did.parent, viewedIndex.id, value);
           if (value) {
@@ -87,9 +94,13 @@ export const IndexConversationHeader: FC = () => {
           } else {
             router.push("/" + viewedProfile.id);
           }
+          toast.success(
+            `Index ${value ? "added to" : "removed from"} your indexes list`,
+          );
         }
       } catch (error) {
         console.error("Error updating index", error);
+        toast.error("Error updating index");
         return;
       }
 
