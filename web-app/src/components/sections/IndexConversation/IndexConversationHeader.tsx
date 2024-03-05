@@ -14,7 +14,9 @@ import IndexTitleInput from "components/site/input/IndexTitleInput";
 import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import moment from "moment";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FC, useCallback, useState } from "react";
+import toast from "react-hot-toast";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
 
@@ -22,6 +24,8 @@ export const IndexConversationHeader: FC = () => {
   const { isOwner } = useRole();
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
+  const router = useRouter();
+
   const [titleLoading, setTitleLoading] = useState(false);
   const {
     viewedIndex,
@@ -52,8 +56,10 @@ export const IndexConversationHeader: FC = () => {
         console.log("updatedIndexes", updatedIndexes);
 
         setIndexes(updatedIndexes);
+        toast.success("Index title updated");
       } catch (error) {
         console.error("Error updating index", error);
+        toast.error("Error updating index");
       } finally {
         setTitleLoading(false);
       }
@@ -73,19 +79,31 @@ export const IndexConversationHeader: FC = () => {
             ...viewedIndex,
             did: { ...viewedIndex.did, starred: value },
           };
+          setViewedIndex(updatedIndex);
+          toast.success(
+            `Index ${value ? "added to" : "removed from"} starred indexes list`,
+          );
         } else {
           await api!.ownIndex(session!.did.parent, viewedIndex.id, value);
-          updatedIndex = {
-            ...viewedIndex,
-            did: { ...viewedIndex.did, owned: value },
-          };
+          if (value) {
+            updatedIndex = {
+              ...viewedIndex,
+              did: { ...viewedIndex.did, owned: value },
+            };
+            setViewedIndex(updatedIndex);
+          } else {
+            router.push("/" + viewedProfile.id);
+          }
+          toast.success(
+            `Index ${value ? "added to" : "removed from"} your indexes list`,
+          );
         }
       } catch (error) {
         console.error("Error updating index", error);
+        toast.error("Error updating index");
         return;
       }
 
-      setViewedIndex(updatedIndex);
       fetchIndexes(viewedProfile.id);
     },
     [api, session, viewedIndex, apiReady, setViewedIndex, indexes, setIndexes],

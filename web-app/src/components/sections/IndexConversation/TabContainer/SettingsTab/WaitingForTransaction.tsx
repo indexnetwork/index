@@ -53,10 +53,10 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
         </Button>
         <Button
           theme="primary"
-          type="submit"
           size="lg"
-          className="mt-7 pl-8 pr-8"
-          onClick={onSubmit}
+          className="pl-6 pr-6"
+          loading={true}
+          disabled={true}
         >
           Loading
         </Button>

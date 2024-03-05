@@ -22,7 +22,7 @@ export default function UserConversationSection() {
       }}
     >
       <AskIndexes
-        indexIds={leftSectionIndexes.map((i) => i.id)}
+        // indexIds={leftSectionIndexes.map((i) => i.id)}
         chatID={chatID}
         did={id}
       />

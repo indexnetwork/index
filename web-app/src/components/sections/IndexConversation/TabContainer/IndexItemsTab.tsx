@@ -8,9 +8,12 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import { IndexItem } from "@/types/entity";
-import { filterValidUrls } from "@/utils/helper";
+import { filterValidUrls, removeDuplicates } from "@/utils/helper";
 import { useCallback, useEffect, useState } from "react";
 import { useIndexConversation } from "../IndexConversationContext";
+import toast from "react-hot-toast";
+
+const CONCURRENCY_LIMIT = 10;
 
 export default function IndexItemsTabSection() {
   const {
@@ -30,17 +33,19 @@ export default function IndexItemsTabSection() {
   const { viewedIndex } = useApp();
 
   useEffect(() => {
-    if (!addedItem) return;
-    console.log("addedItem", addedItem, progress);
-    setItemsState({
-      items: [addedItem, ...itemsState.items],
-      cursor: itemsState.cursor,
-    });
+    if (addedItem) {
+      console.log("addedItem", addedItem, progress);
+      setItemsState({
+        items: [addedItem, ...itemsState.items],
+        cursor: itemsState.cursor,
+      });
+    }
 
     setProgress({
       ...progress,
       current: progress.current + 1,
     });
+
     if (progress.current === progress.total) {
       setLoading(false);
       setProgress({ current: 0, total: 0 });
@@ -55,15 +60,42 @@ export default function IndexItemsTabSection() {
     [fetchIndexItems],
   );
 
+  const processUrlsInBatches = async (urls: string[], processUrl: any) => {
+    let currentIndex = 0;
+
+    const executeNextBatch = async () => {
+      if (currentIndex >= urls.length) return;
+
+      // Determine the next batch of URLs to process
+      const batch = urls.slice(currentIndex, currentIndex + CONCURRENCY_LIMIT);
+      currentIndex += CONCURRENCY_LIMIT;
+
+      // Process the current batch
+      await Promise.allSettled(batch.map(processUrl));
+
+      // Execute the next batch
+      await executeNextBatch();
+    };
+
+    await executeNextBatch();
+  };
+
   const handleAddItem = useCallback(
     async (inputUrls: string[]) => {
       if (!apiReady || !viewedIndex) return;
 
-      const urls = filterValidUrls(inputUrls);
-      setProgress({ current: 1, total: urls.length });
+      // add only unique and valid URLs
+      const filteredUrls = filterValidUrls(inputUrls);
+      const uniqueUrls = removeDuplicates(filteredUrls);
+      const urls = removeDuplicates(
+        uniqueUrls,
+        itemsState.items.map((i) => i.node.url),
+      );
 
       setLoading(true);
-      urls.forEach(async (url) => {
+      setProgress({ current: 0, total: urls.length });
+
+      await processUrlsInBatches(urls, async (url: string) => {
         try {
           const createdLink = await api!.crawlLink(url);
           if (!createdLink) return;
@@ -72,13 +104,15 @@ export default function IndexItemsTabSection() {
             viewedIndex.id,
             createdLink.id,
           );
-          if (!createdItem) return;
 
           setAddedItem(createdItem);
         } catch (error) {
-          console.error("Error adding link", error);
+          console.error("Error adding item", error);
+          toast.error("Error adding item: " + url);
         }
       });
+
+      setLoading(false);
     },
     [api, viewedIndex, apiReady],
   );
@@ -94,9 +128,11 @@ export default function IndexItemsTabSection() {
             items: itemsState.items.filter((i) => i.node.id !== item.node.id),
             cursor: itemsState.cursor,
           });
+          toast.success("Item deleted successfully");
         })
         .catch((error) => {
           console.error("Error deleting item", error);
+          toast.error("Error deleting item");
         })
         .finally(() => setLoading(false));
     },

@@ -134,6 +134,10 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
         toast.error(response.statusText);
       }
     },
+    onError(error) {
+      console.error("Error loading chat messages", error);
+      toast.error("Cannot load chat messages");
+    },
   });
 
   const scrollToBottom = useCallback(() => {

@@ -109,3 +109,10 @@ const isValidUrl = (url: string) => {
 };
 
 export const filterValidUrls = (urls: string[]) => urls.filter(isValidUrl);
+
+export const removeDuplicates = (arr1: string[], arr2?: string[]) => {
+  if (!arr2 || arr2.length === 0) {
+    return arr1.filter((value, index) => arr1.indexOf(value) === index);
+  }
+  return arr1.filter((item) => !arr2.includes(item));
+};

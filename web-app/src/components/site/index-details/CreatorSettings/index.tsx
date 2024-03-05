@@ -10,6 +10,7 @@ import Row from "components/layout/base/Grid/Row";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
 import { useRole } from "hooks/useRole";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { AccessControlCondition } from "types/entity";
 import CreatorRule from "./CreatorRule";
 
@@ -57,8 +58,10 @@ const CreatorSettings = () => {
         ) as AccessControlCondition[];
 
         await createConditions(newConditions);
+        toast.success("Creator removed successfully");
       } catch (error) {
-        console.error("Error removing rule", error);
+        console.error("Error removing creator", error);
+        toast.error("Error removing creator, please try again.");
       } finally {
         setTransactionApprovalWaiting(false);
       }
@@ -82,8 +85,10 @@ const CreatorSettings = () => {
           ...deepCopyOfConditions,
         ] as AccessControlCondition[];
         await createConditions(newConditions);
+        toast.success("Creator added successfully");
       } catch (error) {
-        console.error("Error creating rule", error);
+        console.error("Error creating creator", error);
+        toast.error("Error creating creator");
       } finally {
         setTransactionApprovalWaiting(false);
       }
