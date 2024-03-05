@@ -87,10 +87,10 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
         } catch (err: any) {
           console.error(err);
           let message = "";
-          if (err.response.status == 413) {
+          if (err.response.status === 413) {
             message = "Image size is too large";
           }
-          toast.error("Failed to upload image: " + message);
+          toast.error(`Failed to upload image: ${message}`);
         }
       } else {
         setImage(undefined);

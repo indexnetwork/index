@@ -10,8 +10,8 @@ import { useRole } from "@/hooks/useRole";
 import { IndexItem } from "@/types/entity";
 import { filterValidUrls, removeDuplicates } from "@/utils/helper";
 import { useCallback, useEffect, useState } from "react";
-import { useIndexConversation } from "../IndexConversationContext";
 import toast from "react-hot-toast";
+import { useIndexConversation } from "../IndexConversationContext";
 
 const CONCURRENCY_LIMIT = 10;
 
@@ -108,7 +108,7 @@ export default function IndexItemsTabSection() {
           setAddedItem(createdItem);
         } catch (error) {
           console.error("Error adding item", error);
-          toast.error("Error adding item: " + url);
+          toast.error(`Error adding item: ${url}`);
         }
       });
 
