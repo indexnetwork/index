@@ -578,3 +578,95 @@ paths:
           description: Profile updated successfully
         "400":
           description: Invalid request
+  /addCreator:
+    post:
+      summary: Add a new Creator to an Index
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accessCondition:
+                  type: object
+                  properties:
+                    chain:
+                      type: string
+                      enum:
+                        - "ethereum"
+                    returnValueTest:
+                      type: object
+                      properties:
+                        comparator:
+                          type: string
+                          enum:
+                            - "="
+                        value:
+                          type: string
+                  required:
+                    - chain
+                    - returnValueTest
+                signerPublicKey:
+                  type: string
+                signerFunction:
+                  type: string
+              required:
+                - accessCondition
+                - signerPublicKey
+                - signerFunction
+      responses:
+        "200":
+          description: Creator successfully added
+        "400":
+          description: Invalid input
+        "401":
+          description: Authentication error
+        "500":
+          description: Server error
+  /removeCreator:
+    post:
+      summary: Remove a Creator from an Index
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accessCondition:
+                  type: object
+                  properties:
+                    chain:
+                      type: string
+                      enum:
+                        - "ethereum"
+                    returnValueTest:
+                      type: object
+                      properties:
+                        comparator:
+                          type: string
+                          enum:
+                            - "="
+                        value:
+                          type: string
+                  required:
+                    - chain
+                    - returnValueTest
+                signerPublicKey:
+                  type: string
+                signerFunction:
+                  type: string
+              required:
+                - accessCondition
+                - signerPublicKey
+                - signerFunction
+      responses:
+        "200":
+          description: Creator successfully removed
+        "400":
+          description: Invalid input
+        "401":
+          description: Authentication error
+        "500":
+          description: Server error
