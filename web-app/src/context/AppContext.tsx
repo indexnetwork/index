@@ -160,6 +160,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       setTransactionApprovalWaiting(true);
       try {
         if (!apiReady) return;
+
+        console.log("Creating handlecreate index in appcontext");
         const doc = await api!.createIndex(title);
         if (!doc) {
           throw new Error("API didn't return a doc");
@@ -170,10 +172,13 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       } catch (err: any) {
         let message = "";
         if (err?.code === -32603) {
-          message = "Not enough balance";
+          message = ": Not enough balance";
         }
-        console.error("Couldn't create index", err);
-        toast.error(`Couldn't create index ${message}`);
+        if (err?.code === "ACTION_REJECTED") {
+          message = ": Action rejected";
+        }
+        console.error("Couldn't create index", err.code);
+        toast.error(`Couldn't create index${message}`);
       } finally {
         setTransactionApprovalWaiting(false);
       }
@@ -331,22 +336,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   };
 
   return (
-    <AppContext.Provider value={contextValue}>
-      {children}
-      {/* {transactionApprovalWaiting && (
-        <ConfirmTransaction
-          handleCancel={handleTransactionCancel}
-          visible={transactionApprovalWaiting}
-        />
-      )}
-      {createModalVisible && (
-        <CreateModal
-          visible={createModalVisible}
-          onClose={() => setCreateModalVisible(false)}
-          onCreate={handleCreate}
-        />
-      )} */}
-    </AppContext.Provider>
+    <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>
   );
 };
 

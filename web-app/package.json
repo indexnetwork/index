@@ -60,7 +60,6 @@
     "moment": "^2.29.3",
     "multiformats": "^12.1.1",
     "next": "^14.0.3",
-    "next-i18next": "^15.0.0",
     "next-intl": "^3.5.1",
     "next-plausible": "^3.11.3",
     "pino-pretty": "^10.3.1",

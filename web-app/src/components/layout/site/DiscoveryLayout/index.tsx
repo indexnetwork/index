@@ -36,7 +36,12 @@ const DiscoveryLayout = ({ children }: DiscoveryLayoutProps) => {
   };
 
   return (
-    <div>
+    <div
+      style={{
+        maxHeight: "100dvh",
+        overflow: "hidden",
+      }}
+    >
       <AppHeader />
       <Container fluid className={"app-container"}>
         {(rightSidebarOpen || leftSidebarOpen) && (
