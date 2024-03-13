@@ -28,7 +28,7 @@ Sentry.init({
   profilesSampleRate: 1.0,
 });
 
-const ceramicFirehose = new EventSource(`${CERAMIC_HOST}/api/v0/feed/aggregation/documents`)
+const ceramicFirehose = new EventSource(`${process.env.CERAMIC_HOST}/api/v0/feed/aggregation/documents`)
 
 const redis = RedisClient.getInstance();
 
