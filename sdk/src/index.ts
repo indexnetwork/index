@@ -6,14 +6,18 @@ import { CID } from "multiformats";
 
 type ApiResponse<T> = Promise<T>;
 
-function randomString(length: number) {
-  var result = "";
-  var characters =
+function randomString(length: number): string {
+  const characters =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  var charactersLength = characters.length;
-  for (var i = 0; i < length; i++) {
-    result += characters.charAt(Math.floor(Math.random() * charactersLength));
+  const charactersLength = characters.length;
+  const bytes = randomBytes(length);
+
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    const byte = bytes[i] % charactersLength;
+    result += characters.charAt(byte);
   }
+
   return result;
 }
 
@@ -41,7 +45,7 @@ interface IUser {
   id: string;
   name?: string;
   bio?: string;
-  avatar?: CID; // Assuming CID is correctly imported from 'multiformats'
+  avatar?: CID;
   createdAt?: string;
   updatedAt?: string;
 }
