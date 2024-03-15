@@ -1,13 +1,12 @@
-import Text from "components/base/Text";
-import Modal, { ModalProps } from "components/base/Modal";
-import React, { useState } from "react";
-import Col from "components/layout/base/Grid/Col";
-import Header from "components/base/Header";
-import Flex from "components/layout/base/Grid/Flex";
-import Input from "components/base/Input";
 import Button from "components/base/Button";
-import { useTranslation } from "next-i18next";
+import Header from "components/base/Header";
+import Input from "components/base/Input";
+import Modal, { ModalProps } from "components/base/Modal";
+import Text from "components/base/Text";
+import Col from "components/layout/base/Grid/Col";
+import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
+import React, { useState } from "react";
 
 export interface CreateModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {
@@ -15,8 +14,6 @@ export interface CreateModalProps
 }
 
 const CreateModal = ({ onCreate, ...modalProps }: CreateModalProps) => {
-  const { t } = useTranslation(["pages"]);
-
   const handleClose = () => {
     modalProps.onClose?.();
   };

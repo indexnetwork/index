@@ -24,9 +24,6 @@ const API_ENDPOINTS = {
   LIT_ACTIONS: "/lit_actions",
   CRAWL: "/web2/webpage/crawl",
   ADD_INDEX_ITEM: "/items",
-  CRAWL_CONTENT: "/links/crawl-content",
-  FIND_CONTENT: "/links/find-content",
-  SYNC_CONTENT: "/links/sync-content",
   NFT_METADATA: "/nft",
   ENS: "/ens",
   ZAPIER_TEST_LOGIN: "/zapier/test_login",
@@ -195,9 +192,6 @@ class ApiService {
 
   async getItems(indexId: string, queryParams: GetItemQueryParams = {}) {
     let url = API_ENDPOINTS.GET_ITEMS.replace(":indexId", indexId);
-    // queryParams = {
-    //   cursor: "eyJ0eXBlIjoiY29udGVudCIsImlkIjoia2p6bDZrY3ltN3c4eWE1dGZ4dTk3djEweHNoMWQwNmh6a2h5MGl0ZzQ0ajBrcGxhbWNzMGNjbm51cGE2MGhzIiwidmFsdWUiOnsiY3JlYXRlZEF0IjoiMjAyNC0wMi0wMVQxMjo0NDoyMi40NThaIn19",
-    // };
     if (queryParams) {
       const formattedQuery = Object.entries(queryParams)
         .map(([key, value]) => `${key}=${value}`)

@@ -1,0 +1,30 @@
+{
+  "name": "index-client",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.27",
+    "prettier": "^3.2.5",
+    "tslib": "^2.6.2",
+    "typescript": "^4.7.2"
+  },
+  "dependencies": {
+    "@babel/preset-env": "^7.24.0",
+    "@didtools/cacao": "^3.0.1",
+    "crypto-browserify": "^3.12.0",
+    "did-session": "^3.1.0",
+    "ethers": "^6.11.1",
+    "multiformats": "^13.1.0",
+    "node-polyfill-webpack-plugin": "^3.0.0",
+    "stream-browserify": "^3.0.0",
+    "ts-loader": "^9.5.1"
+  },
+  "exports": "./dist/index.js"
+}

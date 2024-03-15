@@ -21,8 +21,16 @@ import {
 } from "react";
 import { toast } from "react-hot-toast";
 import { API_ENDPOINTS } from "utils/constants";
-import { maskDID } from "utils/helper";
+import { maskDID, shuffleArray } from "utils/helper";
 import NoIndexes from "../NoIndexes";
+
+// TODO: remove this
+const exampleMessages = [
+  "Highlight any paradigm shifts in my indexes that might challenge previous knowledge.",
+  "Collate any overlaps between X index and practices in Y company.",
+  "Based on recent developments, predict the next major changes for the discovery ecosystem",
+  "List all updates from my discovery network",
+];
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -49,8 +57,13 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
   const [editInput, setEditInput] = useState<string>("");
+  const [defaultQuestions, setDefaultQuestions] = useState<string[]>([]);
 
   const bottomRef = useRef<null | HTMLDivElement>(null);
+
+  useEffect(() => {
+    setDefaultQuestions(shuffleArray(exampleMessages));
+  }, []);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
@@ -187,6 +200,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}
                   indexIds={indexIds}
+                  defaultQuestions={defaultQuestions}
                 />
               </Flex>
             )}
