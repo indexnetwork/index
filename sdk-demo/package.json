@@ -3,5 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@indexnetwork/sdk": "^0.0.2"
+  }
 }
