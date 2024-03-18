@@ -1,107 +1,43 @@
 import { Cacao, SiweMessage } from "@didtools/cacao";
+import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { randomBytes } from "crypto";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
-import { Wallet } from "ethers";
-import { CID } from "multiformats";
+import { JsonRpcProvider, Wallet } from "ethers";
+import { CID } from "multiformats/cid";
+import IndexConfig from "./config.js";
+import {
+  ICreatorAction,
+  IGetItemQueryParams,
+  IIndex,
+  ILink,
+  ILitActionConditions,
+  IUser,
+  IUserProfileUpdateParams,
+} from "./types.js";
+import { randomString } from "./util.js";
 
 type ApiResponse<T> = Promise<T>;
-
-function randomString(length: number): string {
-  const characters =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  const charactersLength = characters.length;
-  const bytes = randomBytes(length);
-
-  let result = "";
-  for (let i = 0; i < length; i++) {
-    const byte = bytes[i] % charactersLength;
-    result += characters.charAt(byte);
-  }
-
-  return result;
-}
-
-interface IIndex {
-  id: string;
-  title: string;
-  signerFunction: string;
-  signerPublicKey: string;
-  did: {
-    owned: boolean;
-    starred: boolean;
-  };
-  roles: {
-    owner: boolean;
-    creator: boolean;
-  };
-  ownerDID: IUser;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string;
-  links: ILink[];
-}
-
-interface IUser {
-  id: string;
-  name?: string;
-  bio?: string;
-  avatar?: CID;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-interface ILink {
-  id: string;
-  indexId?: string;
-  indexerDID?: string;
-  content?: string;
-  title?: string;
-  url?: string;
-  description?: string;
-  language?: string;
-  favicon?: string;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string;
-  images?: string[];
-  favorite?: boolean;
-  tags?: string[];
-}
-
-interface ILitActionConditions {
-  chain: string;
-  method: string;
-  standardContractType: string;
-  contractAddress: string;
-  conditionType: string;
-  parameters: string[];
-  returnValueTest: object;
-}
-
-interface ICreatorAction {
-  cid: string;
-}
-
-interface IGetItemQueryParams {
-  limit?: number;
-  cursor?: string;
-  query?: string;
-}
-
-interface IUserProfileUpdateParams {
-  name?: string;
-  bio?: string;
-  avatar?: string;
-}
 
 export default class IndexClient {
   private baseUrl: string;
   private session?: string;
   private network?: string;
+  private privateKey?: string;
+  private domain: string;
 
-  constructor(network?: string) {
-    this.baseUrl = "https://dev.index.network/api";
+  constructor({
+    domain,
+    privateKey,
+    network,
+  }: {
+    domain: string;
+    privateKey: string;
+    network?: string;
+  }) {
+    this.baseUrl = IndexConfig.apiURL;
     this.network = network || "ethereum";
+    this.domain = domain;
+    this.privateKey = privateKey;
   }
 
   private async request<T>(
@@ -124,20 +60,15 @@ export default class IndexClient {
     return response.json() as Promise<T>;
   }
 
-  public async authenticate({
-    session,
-    domain,
-  }: {
-    session?: string;
-    domain: string;
-  }): Promise<void> {
-    if (session) {
-      this.session = session;
-      return;
+  public async authenticate(): Promise<void> {
+    if (!this.privateKey || !this.domain) {
+      throw new Error("Private key and domain is required to authenticate");
     }
 
-    // Generate Ethereum Wallet: Create a new Ethereum wallet and retrieve its address.
-    const wallet = Wallet.createRandom();
+    const wallet = new Wallet(
+      this.privateKey,
+      new JsonRpcProvider(IndexConfig.litProtocolRPCProviderURL),
+    );
     const address = wallet.address;
 
     // DID Key Generation: Develop a DID key using a random seed
@@ -149,7 +80,7 @@ export default class IndexClient {
 
     // Create a SIWE message for authentication.
     const siweMessage = new SiweMessage({
-      domain,
+      domain: this.domain,
       address,
       statement: "Give this application access to some of your data on Ceramic",
       uri: didKey.id,
@@ -236,12 +167,15 @@ export default class IndexClient {
     });
   }
 
-  public createIndex(
-    title: string,
-    signerPublicKey: string,
-    signerFunction: string,
-  ): ApiResponse<IIndex> {
-    const body = { title, signerPublicKey, signerFunction };
+  public async createIndex(title: string): ApiResponse<IIndex> {
+    const { pkpPublicKey } = await this.mintPKP();
+
+    const body = {
+      title,
+      signerPublicKey: pkpPublicKey,
+      signerFunction: IndexConfig.defaultCID,
+    };
+
     return this.request(`/indexes`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -323,5 +257,53 @@ export default class IndexClient {
 
   public async resolveENS(ensName: string): ApiResponse<any> {
     return this.request(`/ens/${ensName}`, { method: "GET" });
+  }
+
+  async mintPKP() {
+    if (!this.privateKey) {
+      throw new Error("Private key is required to mint PKP");
+    }
+
+    const litContracts = new LitContracts({
+      network: IndexConfig.litNetwork,
+      privateKey: this.privateKey,
+    });
+    await litContracts.connect();
+
+    const signerFunctionV0 = CID.parse(IndexConfig.defaultCID)
+      .toV0()
+      .toString();
+    const acid = litContracts.utils.getBytesFromMultihash(signerFunctionV0);
+
+    const mintCost = await litContracts.pkpNftContract.read.mintCost();
+
+    const mint =
+      (await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
+        2,
+        [2],
+        [acid],
+        ["0x"],
+        [[BigInt(1)]],
+        true,
+        false,
+        {
+          value: mintCost,
+        },
+      )) as any;
+
+    const wait = await mint.wait();
+
+    const tokenIdFromEvent = wait?.logs
+      ? wait.logs[0].topics[1]
+      : wait?.logs[0].topics[1];
+    const tokenIdNumber = BigInt(tokenIdFromEvent).toString();
+    const pkpPublicKey =
+      await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
+
+    return {
+      tokenIdFromEvent,
+      tokenIdNumber,
+      pkpPublicKey,
+    };
   }
 }
