@@ -1,5 +1,5 @@
 {
-  "name": "index-client",
+  "name": "sdk",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -16,15 +16,12 @@
     "typescript": "^4.7.2"
   },
   "dependencies": {
-    "@babel/preset-env": "^7.24.0",
     "@didtools/cacao": "^3.0.1",
-    "crypto-browserify": "^3.12.0",
+    "@lit-protocol/contracts-sdk": "^3.2.1",
+    "cid": "multiformats/cid",
     "did-session": "^3.1.0",
     "ethers": "^6.11.1",
-    "multiformats": "^13.1.0",
-    "node-polyfill-webpack-plugin": "^3.0.0",
-    "stream-browserify": "^3.0.0",
-    "ts-loader": "^9.5.1"
+    "multiformats": "^13.1.0"
   },
   "exports": "./dist/index.js"
 }
