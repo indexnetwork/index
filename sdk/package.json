@@ -1,6 +1,5 @@
 {
-  "name": "sdk",
-  "private": true,
+  "name": "@indexnetwork/sdk",
   "version": "0.0.1",
   "type": "module",
   "main": "dist/index.js",
