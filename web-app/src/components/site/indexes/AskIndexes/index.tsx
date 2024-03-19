@@ -23,6 +23,7 @@ import { toast } from "react-hot-toast";
 import { API_ENDPOINTS } from "utils/constants";
 import { maskDID, shuffleArray } from "utils/helper";
 import NoIndexes from "../NoIndexes";
+import { useApi } from "@/context/APIContext";
 
 // TODO: remove this
 const exampleMessages = [
@@ -52,7 +53,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
 
   const { session } = useAuth();
   const { viewedIndex } = useApp();
-  const { isIndex } = useRouteParams();
+  const { isIndex, id } = useRouteParams();
+  const { ready: apiReady, api } = useApi();
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
@@ -61,9 +63,19 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
 
   const bottomRef = useRef<null | HTMLDivElement>(null);
 
+  const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
+    if (!apiReady || !isIndex) return;
+    try {
+      const defaultQuestions = await api!.getDefaultQuestionsOfIndex(id);
+      setDefaultQuestions(defaultQuestions);
+    } catch (error) {
+      console.error("Error fetching default questions", error);
+    }
+  }, [apiReady]);
+
   useEffect(() => {
-    setDefaultQuestions(shuffleArray(exampleMessages));
-  }, []);
+    fetchDefaultQuestions();
+  }, [fetchDefaultQuestions]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
