@@ -1,3 +1,4 @@
+import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
@@ -21,17 +22,8 @@ import {
 } from "react";
 import { toast } from "react-hot-toast";
 import { API_ENDPOINTS } from "utils/constants";
-import { maskDID, shuffleArray } from "utils/helper";
+import { maskDID } from "utils/helper";
 import NoIndexes from "../NoIndexes";
-import { useApi } from "@/context/APIContext";
-
-// TODO: remove this
-const exampleMessages = [
-  "Highlight any paradigm shifts in my indexes that might challenge previous knowledge.",
-  "Collate any overlaps between X index and practices in Y company.",
-  "Based on recent developments, predict the next major changes for the discovery ecosystem",
-  "List all updates from my discovery network",
-];
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -66,12 +58,12 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
   const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
     if (!apiReady || !isIndex) return;
     try {
-      const defaultQuestions = await api!.getDefaultQuestionsOfIndex(id);
-      setDefaultQuestions(defaultQuestions);
+      const questions = await api!.getDefaultQuestionsOfIndex(id);
+      setDefaultQuestions(questions);
     } catch (error) {
       console.error("Error fetching default questions", error);
     }
-  }, [apiReady]);
+  }, [apiReady, api, id, isIndex]);
 
   useEffect(() => {
     fetchDefaultQuestions();
