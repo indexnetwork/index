@@ -183,6 +183,33 @@ paths:
       responses:
         "200":
           description: Index deleted
+  /index/{indexId}/questions:
+    get:
+      summary: Get default questions of an Index
+      operationId: getDefaultQuestionsOfIndex
+      parameters:
+        - name: indexId
+          in: path
+          required: true
+          description: Unique identifier of the Index
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successfully retrieved default questions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  questions:
+                    type: array
+                    items:
+                      type: string
+        "404":
+          description: Index not found
+        "500":
+          description: Server error
   /indexes:
     post:
       summary: Create index
@@ -551,8 +578,6 @@ paths:
   /profile:
     patch:
       summary: Update profile information
-      security:
-        - BearerAuth: []
       requestBody:
         required: true
         content:

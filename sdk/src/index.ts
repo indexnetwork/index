@@ -27,17 +27,23 @@ export default class IndexClient {
 
   constructor({
     domain,
+    session,
     privateKey,
     network,
   }: {
     domain: string;
-    privateKey: string;
+    session?: string;
+    privateKey?: string;
     network?: string;
   }) {
     this.baseUrl = IndexConfig.apiURL;
     this.network = network || "ethereum";
     this.domain = domain;
-    this.privateKey = privateKey;
+    if (session) {
+      this.session = session;
+    } else {
+      this.privateKey = privateKey;
+    }
   }
 
   private async request<T>(
@@ -61,6 +67,8 @@ export default class IndexClient {
   }
 
   public async authenticate(): Promise<void> {
+    if (this.session) return;
+
     if (!this.privateKey || !this.domain) {
       throw new Error("Private key and domain is required to authenticate");
     }

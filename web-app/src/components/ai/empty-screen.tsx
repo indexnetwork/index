@@ -32,15 +32,13 @@ export function EmptyScreen({
       </div>
       <div className="example-messages-empty-screen">
         {indexIds && indexIds.length > 0
-          ? defaultQuestions
-              ?.slice(0, 2)
-              .map((message, i) => (
-                <ExampleMessageBox
-                  key={i}
-                  message={message}
-                  setInput={setInput}
-                />
-              ))
+          ? defaultQuestions?.map((message, i) => (
+              <ExampleMessageBox
+                key={i}
+                message={message}
+                setInput={setInput}
+              />
+            ))
           : defaultQuestions?.map((message, i) => (
               <ExampleMessageBox
                 key={i}

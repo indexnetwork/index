@@ -9,6 +9,7 @@ import litService from "./lit-service";
 const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",
   INDEXES: "/indexes/:id",
+  DEFAULT_QUESTIONS_OF_INDEX: "/indexes/:id/questions",
   GET_ALL_INDEXES: "/dids/:did/indexes",
   CREATE_INDEX: "/indexes",
   UPDATE_INDEX: "/indexes/:id",
@@ -116,6 +117,16 @@ class ApiService {
     const url = API_ENDPOINTS.INDEXES.replace(":id", indexId);
     const { data } = await this.apiAxios.get<Indexes>(url);
     return data as Indexes;
+  }
+
+  async getDefaultQuestionsOfIndex(indexId: string): Promise<string[]> {
+    const url = API_ENDPOINTS.DEFAULT_QUESTIONS_OF_INDEX.replace(
+      ":id",
+      indexId,
+    );
+    const { data } = await this.apiAxios.get<{ questions: string[] }>(url);
+    console.log("in api", data.questions);
+    return data.questions;
   }
 
   async getIndexWithIsCreator(indexId: string): Promise<Indexes | undefined> {
