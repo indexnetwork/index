@@ -8,6 +8,7 @@ import RedisClient from '../../clients/redis.js';
 import { DIDService } from "../../services/did.js";
 import { definition } from "../../types/merged-runtime.js";
 import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
+import { LitContracts } from '@lit-protocol/contracts-sdk';
 
 import { DID } from "dids";
 import { randomBytes, randomString } from "@stablelib/random";
@@ -25,6 +26,9 @@ const config = {
 	domain: process.env.DOMAIN,
 };
 
+const litContracts = new LitContracts({
+    network: config.litNetwork,
+});
 const redis = RedisClient.getInstance();
 
 export const getPkpPublicKey = async (tokenId) => {
