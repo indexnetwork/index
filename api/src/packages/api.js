@@ -52,7 +52,7 @@ import * as zapierController from "../controllers/zapier.js";
 
 import * as siteController from "../controllers/site.js";
 
-import * as infuraController from "../controllers/infura.js";
+import * as metaController from "../controllers/meta.js";
 
 import {
   authenticateMiddleware,
@@ -424,13 +424,13 @@ app.post('/lit_actions/', validator.body(Joi.array().items(Joi.object({
 //Todo refactor later.
 app.get(
   "/nft/:chainName/:tokenAddress",
-  infuraController.getCollectionMetadataHandler,
+  metaController.getCollectionMetadataHandler,
 );
 app.get(
   "/nft/:chainName/:tokenAddress/:tokenId",
-  infuraController.getNftMetadataHandler,
+  metaController.getNftMetadataHandler,
 );
-app.get("/ens/:ensName", infuraController.getWalletByENSHandler);
+app.get("/ens/:ensName", metaController.getWalletByENSHandler);
 
 app.post(
   "/profile/upload_avatar",
