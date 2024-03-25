@@ -13,7 +13,7 @@ import { Readable } from "stream";
 
 //import { Index } from '../protocol.ts';
 
-import { getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet } from '../controllers/infura.js';
+import { getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet } from '../controllers/meta.js';
 
 const enrichConditions = async (conditions) => {
 

@@ -6,7 +6,7 @@ class LitNodeClientSingleton {
     if (!LitNodeClientSingleton.instance) {
       // Inline configuration
       const config = {
-        litNetwork: 'habanero',
+        litNetwork: process.env.LIT_NETWORK,
         debug: true,
       };
 

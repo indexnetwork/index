@@ -2,21 +2,15 @@ import dotenv from 'dotenv'
 if(process.env.NODE_ENV !== 'production'){
     dotenv.config()
 }
-import axios from 'axios';
-const BASE_URL = 'https://nft.api.infura.io';
+
 import { chains } from '../types/chains.js';
 
-import { encodeBase64, ethers } from 'ethers'
+import { ethers } from 'ethers'
 
 import Moralis from 'moralis';
 
 
 const ethProvider = new ethers.InfuraProvider("mainnet")
-
-const getAuthorizationHeader = () => {
-    return Buffer.from(`${process.env.INFURA_API_KEY}:${process.env.INFURA_API_KEY_SECRET}`)
-        .toString('base64')
-}
 
 export const getAvatar = async (ensName) => {
     try {
