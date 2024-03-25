@@ -32,7 +32,7 @@ Sentry.init({
 // Configuration
 const config = {
     litNetwork: process.env.LIT_NETWORK,
-    domain: 'index.network',
+    domain: process.env.DOMAIN,
     daysUntilUTCMidnightExpiration: 30,
     debug: !!process.env.DEBUG || false,
 };

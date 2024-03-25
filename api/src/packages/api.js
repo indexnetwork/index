@@ -67,7 +67,7 @@ import {
   isDID,
   isStreamID,
 } from "../types/validators.js";
-import { ItemService } from "../services/item.js";
+
 
 app.use(express.json());
 

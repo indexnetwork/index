@@ -22,7 +22,7 @@ import { getAddress } from "@ethersproject/address";
 
 const config = {
 	litNetwork: process.env.LIT_NETWORK,
-	domain: process.env_DOMAIN,
+	domain: process.env.DOMAIN,
 };
 
 const redis = RedisClient.getInstance();
@@ -141,7 +141,6 @@ export const getPKPSession = async (session, index) => {
 	if(!session.did.authenticated){
 		throw new Error("Unauthenticated DID");
 	}
-
 
 	let sessionCacheKey = false;
 
