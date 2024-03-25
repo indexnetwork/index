@@ -41,6 +41,8 @@ const config = {
 const redis = RedisClient.getInstance();
 const ethProvider = new ethers.JsonRpcProvider(process.env.LIT_PROTOCOL_RPC_PROVIDER);
 const indexerWallet = new ethers.Wallet(process.env.INDEXER_WALLET_PRIVATE_KEY, ethProvider);
+
+console.log(`Wallet address: ${indexerWallet.address}`)
 const litContracts = new LitContracts({
     network: config.litNetwork,
     privateKey: indexerWallet.privateKey,

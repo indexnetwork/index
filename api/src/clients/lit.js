@@ -8,6 +8,7 @@ class LitNodeClientSingleton {
       const config = {
         litNetwork: process.env.LIT_NETWORK,
         debug: true,
+        checkNodeAttestation: false,
       };
 
       this.client = new LitJsSdk.LitNodeClientNodeJs(config);
