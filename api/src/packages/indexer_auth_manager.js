@@ -34,6 +34,8 @@ const config = {
     litNetwork: process.env.LIT_NETWORK,
     domain: process.env.DOMAIN,
     daysUntilUTCMidnightExpiration: 30,
+    requestsPerSecond: 100,
+    checkNodeAttestation: false,
     debug: !!process.env.DEBUG || false,
 };
 
@@ -49,16 +51,18 @@ const litContracts = new LitContracts({
 });
 const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
     litNetwork: config.litNetwork,
-    checkNodeAttestation: false,
+    checkNodeAttestation: config.checkNodeAttestation,
     debug: config.debug,
 });
+
+const thirtyDaysLater = new Date(Date.now() + 1000 * 60 * 60 * 24 * config.daysUntilUTCMidnightExpiration)
 
 // Functions
 async function mintNewCapacityToken() {
     console.log('Minting new capacity token...');
     const { capacityTokenIdStr } = await litContracts.mintCapacityCreditsNFT({
-        requestsPerSecond: 100,
-        daysUntilUTCMidnightExpiration: 30,
+        requestsPerSecond: config.requestsPerSecond,
+        daysUntilUTCMidnightExpiration: config.daysUntilUTCMidnightExpiration,
     });
     console.log(`New capacity token minted: ${capacityTokenIdStr}`);
     return capacityTokenIdStr;
@@ -119,11 +123,11 @@ async function generateAndStoreAuthSigs(capacityTokenId) {
     const { capacityDelegationAuthSig } = await litNodeClient.createCapacityDelegationAuthSig({
         dAppOwnerWallet: indexerWallet,
         capacityTokenId: capacityTokenId,
-        expiration: new Date(Date.now() + 1000 * 60 * 60 * 24 * config.daysUntilUTCMidnightExpiration).toISOString(),
+        expiration: thirtyDaysLater.toISOString(),
     });
 
     const dAppSessionSigs = await litNodeClient.getSessionSigs({
-        expiration: new Date(Date.now() + 1000 * 60 * 60 * 24 * config.daysUntilUTCMidnightExpiration).toISOString(),
+        expiration: thirtyDaysLater.toISOString(),
         chain: 'ethereum',
         resourceAbilityRequests: [{ resource: new LitPKPResource('*'), ability: LitAbility.PKPSigning }],
         authNeededCallback: authNeededCallback,
@@ -174,9 +178,6 @@ async function refreshIndexerDIDSession () {
   const didKey = await createDIDKey(keySeed);
 
   const now = new Date();
-  const twentyFiveDaysLater = new Date(
-    now.getTime() + 25 * 24 * 60 * 60 * 1000,
-  );
 
   const siweMessage = new SiweMessage({
     domain: process.env.DOMAIN,
@@ -187,7 +188,7 @@ async function refreshIndexerDIDSession () {
     chainId: "1",
     nonce: randomString(10),
     issuedAt: now.toISOString(),
-    expirationTime: twentyFiveDaysLater.toISOString(),
+    expirationTime: thirtyDaysLater.toISOString(),
     resources: ["ceramic://*"],
   });
 

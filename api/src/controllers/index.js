@@ -47,7 +47,7 @@ export const createIndex = async (req, res, next) =>  {
         }
 
         //Cache pkp session after index creation.
-        const sessionCacheKey = `${pkpSession.did.parent}:${newIndex.id}:${newIndex.signerFunction}`
+        const sessionCacheKey = `${req.session.did.parent}:${newIndex.id}:${newIndex.signerFunction}`
         await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
 
         const didService = new DIDService().setSession(req.session); //Personal
