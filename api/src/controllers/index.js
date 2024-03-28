@@ -71,6 +71,11 @@ export const updateIndex = async (req, res, next) => {
 
         const indexService = new IndexService();
         const index = await indexService.getIndexById(req.params.id);
+
+        if(req.body.signerFunction){
+          index.signerFunction = req.body.signerFunction;
+        }
+
         const pkpSession = await getPKPSession(req.session, index);
 
         const newIndex = await indexService
