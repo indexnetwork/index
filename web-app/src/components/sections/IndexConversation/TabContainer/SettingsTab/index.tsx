@@ -8,6 +8,7 @@ import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import toast from "react-hot-toast";
 import SettingsModal, { SettingsModalStep } from "./SettingsModal";
 
 export interface IndexSettingsTabSectionProps {}
@@ -33,13 +34,12 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
     loadActionRef.current = true;
 
     const litActions = await api!.getLITAction(viewedIndex.signerFunction);
-    console.log("litActions", litActions);
     if (litActions && litActions.length > 0) {
       setConditions(litActions as any);
     }
 
     loadActionRef.current = false;
-  }, [apiReady, viewedIndex]);
+  }, [api, apiReady, viewedIndex]);
 
   useEffect(() => {
     loadKeys();
@@ -60,7 +60,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
         value: {
           contractAddress: "",
           standardContractType: "",
-          chain: 1,
+          chain: "ethereum",
           method: "",
           parameters: [":userAddress"],
           returnValueTest: {
@@ -81,36 +81,42 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
       setStep("done");
     } catch (e) {
       console.error("Error creating rule", e);
+      toast.error("Error creating key");
+      setShowModal(false);
     }
-  }, []);
+  }, [conditions, createConditions]);
 
   const handleRemove = useCallback(
-    async (i: number) => {
+    async (key: string) => {
       if (!apiReady) return;
       setShowModal(true);
 
       try {
         const deepCopyOfConditions = JSON.parse(JSON.stringify(conditions));
 
-        const newConditions = [
-          ...deepCopyOfConditions.slice(0, i),
-          ...deepCopyOfConditions.slice(i + 1),
-        ];
+        console.log("in remove deepCopyOfConditions", deepCopyOfConditions);
+        const newConditions = deepCopyOfConditions.filter(
+          (c: any) => c.value.metadata.walletAddress !== key,
+        );
+
+        console.log("in remove", newConditions);
         await createConditions(newConditions);
+        toast.success("Key removed");
+        setShowModal(false);
       } catch (error) {
         console.error("Error removing rule", error);
-      } finally {
-        setStep("done");
+        setShowModal(false);
+        toast.error("Error removing key");
       }
     },
-    [apiReady],
+    [apiReady, conditions, createConditions],
   );
 
   const onDone = useCallback(() => {
     setShowModal(false);
     setStep("waiting");
     setSecretKey(undefined);
-  }, [apiKeys, secretKey]);
+  }, []);
 
   return (
     <>

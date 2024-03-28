@@ -256,6 +256,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
       if (!apiReady || !viewedIndex || conditions.length === 0) return;
+      console.log("conditions in api:", conditions);
 
       const newAction = await api!.postLITAction(conditions);
 
