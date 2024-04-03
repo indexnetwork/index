@@ -21,7 +21,7 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
       }}
     >
       <div className="">
-        <h2>Waiting for transaction</h2>
+        {/* <h2>Waiting for transaction</h2> */}
         <p>
           Please wait while the transaction is being processed. This may take a
           few minutes.
@@ -45,7 +45,7 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
       >
         <Button
           onClick={onCancel}
-          className="mt-7 pl-8 pr-8 "
+          className="pl-6 pr-6"
           size="lg"
           theme="clear"
         >
