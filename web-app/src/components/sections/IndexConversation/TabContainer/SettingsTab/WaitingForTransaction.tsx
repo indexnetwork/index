@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Button from "@/components/base/Button";
 import { FC } from "react";
 
@@ -9,7 +8,6 @@ interface WaitingForTransactionProps {
 
 const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
   onCancel,
-  onSubmit,
 }) => (
   <div>
     <div
@@ -21,19 +19,32 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
       }}
     >
       <div className="">
-        {/* <h2>Waiting for transaction</h2> */}
         <p>
           Please wait while the transaction is being processed. This may take a
           few minutes.
         </p>
       </div>
-      <div>
-        <Image
-          width={"160"}
-          height={"160"}
-          src={"/images/waiting.png"}
-          alt="waiting"
-        />
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: "2rem 0",
+        }}
+      >
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className={"p-0"}
+          style={{
+            width: "60%",
+            margin: "auto",
+          }}
+        >
+          <source src="/video/loadingPerspective.mp4" type="video/mp4" />
+        </video>
       </div>
 
       <div

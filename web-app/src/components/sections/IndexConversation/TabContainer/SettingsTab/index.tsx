@@ -187,7 +187,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
                   background: "none",
                   border: "1px solid #E2E8F0",
                   color: "#1E293B",
-                  padding: "0.5rem",
+                  padding: "6px 8px",
                   borderRadius: "2px",
                   fontWeight: 500,
                   width: "fit-content",
@@ -277,13 +277,13 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
                   background: "none",
                   border: "1px solid #E2E8F0",
                   color: "#1E293B",
-                  padding: "0.5rem",
+                  padding: "6px 8px",
                   borderRadius: "2px",
                   fontWeight: 500,
                   width: "fit-content",
                   whiteSpace: "nowrap",
                 }}
-                href="https://www.zapier.com"
+                href="https://zapier.com/apps/index-network/integrations"
               >
                 Configure on Zapier
               </a>
