@@ -180,10 +180,20 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
           display: "flex",
           flexDirection: "column",
           height: "100%",
+          width: "100%",
+          alignItems: "stretch",
         }}
       >
         <FlexRow wrap={true} align={"start"} style={{ flex: "1 1 auto" }}>
-          <Col className="idxflex-grow-1">
+          <Col
+            className="idxflex-grow-1"
+            style={{
+              display: "flex",
+              height: "100%",
+              justifyContent: "stretch",
+              width: "100%",
+            }}
+          >
             {messages.length ? (
               <>
                 <ChatList
@@ -199,7 +209,15 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
                 <ChatScrollAnchor trackVisibility={isLoading} />
               </>
             ) : (
-              <Flex className="px-8">
+              <Flex
+                className="px-8"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 <EmptyScreen
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}

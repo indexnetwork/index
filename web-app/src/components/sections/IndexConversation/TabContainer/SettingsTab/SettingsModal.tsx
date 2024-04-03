@@ -30,7 +30,23 @@ const SettingsModal: FC<SettingsModalProps> = ({
         return <></>;
     }
   };
-  return visible && <Modal visible={visible} body={renderStep()} />;
+
+  let header;
+  if (step === "waiting") {
+    header = <h2>Waiting for transaction</h2>;
+  } else if (step === "done") {
+    header = <h2>Save your key</h2>;
+  }
+  return (
+    visible && (
+      <Modal
+        onClose={onCancel}
+        header={header}
+        visible={visible}
+        body={renderStep()}
+      />
+    )
+  );
 };
 
 export default SettingsModal;

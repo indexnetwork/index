@@ -17,7 +17,7 @@ const SaveYourKey: FC<SaveYourKeyProps> = ({ secretKey, onDone }) => (
       gap: "1.5rem",
     }}
   >
-    <h2>Save Your Key</h2>
+    {/* <h2>Save Your Key</h2> */}
     <div
       style={{
         display: "flex",
