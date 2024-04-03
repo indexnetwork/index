@@ -283,6 +283,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
                   width: "fit-content",
                   whiteSpace: "nowrap",
                 }}
+                target="_blank"
                 href="https://zapier.com/apps/index-network/integrations"
               >
                 Configure on Zapier
