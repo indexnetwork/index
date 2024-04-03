@@ -70,7 +70,7 @@ const Input = ({
           type={type === "password" && showPw ? "text" : type}
           className={"input__input"}
           style={{
-            fontSize: "1.4rem",
+            // fontSize: "1.4rem",
             padding: "0",
             margin: "0",
           }}
