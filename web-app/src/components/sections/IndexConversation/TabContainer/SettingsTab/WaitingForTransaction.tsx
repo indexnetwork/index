@@ -18,18 +18,12 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
         flexDirection: "column",
       }}
     >
-      <div className="">
-        <p>
-          Please wait while the transaction is being processed. This may take a
-          few minutes.
-        </p>
-      </div>
       <div
         style={{
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
-          padding: "2rem 0",
+          padding: "0 0 2.4rem 0",
         }}
       >
         <video

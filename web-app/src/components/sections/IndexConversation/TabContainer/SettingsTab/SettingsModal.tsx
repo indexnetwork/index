@@ -33,9 +33,27 @@ const SettingsModal: FC<SettingsModalProps> = ({
 
   let header;
   if (step === "waiting") {
-    header = <h2>Waiting for transaction</h2>;
+    header = (
+      <div>
+        <h2>Waiting for transaction</h2>
+        <p>
+          Please wait while the transaction is being processed. This may take a
+          few minutes.
+        </p>
+      </div>
+    );
   } else if (step === "done") {
-    header = <h2>Save your key</h2>;
+    header = (
+      <div>
+        <h2>Save your key</h2>
+        <p>
+          Keep your secret key in a secure and reachable place. Remember, for
+          your safety,{" "}
+          <b>you can't retrieve it once you navigate away from this page.</b>
+          Should you misplace it, you'll have to create a new one.
+        </p>
+      </div>
+    );
   }
   return (
     visible && (
