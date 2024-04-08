@@ -175,7 +175,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
                     }}
                     onClick={() => handleRemove(key)}
                   >
-                    <IconTrash width={"1rem"} height={"1rem"} />
+                    <IconTrash width={"1.4rem"} height={"1.4rem"} />
                   </button>
                 </div>
               ))}
