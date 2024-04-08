@@ -24,6 +24,7 @@ const SaveYourKey: FC<SaveYourKeyProps> = ({ secretKey, onDone }) => (
         flexDirection: "column",
         alignItems: "start",
         gap: "2rem",
+        width: "100%",
       }}
     >
       <div

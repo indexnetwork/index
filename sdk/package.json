@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/sdk",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@didtools/cacao": "^3.0.1",
-    "@lit-protocol/contracts-sdk": "^3.2.1",
+    "@lit-protocol/contracts-sdk": "^4.1.1",
     "cid": "multiformats/cid",
     "did-session": "^3.1.0",
     "ethers": "^6.11.1",

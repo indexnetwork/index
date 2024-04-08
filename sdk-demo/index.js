@@ -1,7 +1,7 @@
 import IndexClient from "@indexnetwork/sdk";
 
 const session = "";
-const did = "did:pkh:eip155:1:0x37CFc48C7f6Ff771f05a442F16674ab2757d0ed5";
+const did = "";
 
 const privateKey = "";
 
@@ -13,7 +13,7 @@ async function main() {
       privateKey,
     });
 
-    indexClient.authenticate();
+    await indexClient.authenticate();
 
     // const indexes = await indexClient.getAllIndexes(did);
     // console.log(indexes);
@@ -27,16 +27,17 @@ async function main() {
       const newIndex = await indexClient.createIndex(title);
       console.log("New Index:", newIndex);
 
-      // const itemId = await indexClient.crawlLink(
-      //   "https://www.paulgraham.com/articles.html",
-      // );
-      // console.log("Crawled Item:", itemId);
+      const item = await indexClient.crawlLink(
+        "https://www.paulgraham.com/articles.html",
+      );
+      console.log("Crawled Item:", item);
 
-      // const addedItem = await indexClient.addItemToIndex(newIndex.id, itemId);
-      // console.log("Added Item to Index:", addedItem);
+      console.log();
+      const addedItem = await indexClient.addItemToIndex(newIndex.id, item.id);
+      console.log("Added Item to Index:", addedItem);
 
-      // const fetchedIndex = await indexClient.getIndex(newIndex.id);
-      // console.log("Fetched Index:", fetchedIndex);
+      const fetchedIndex = await indexClient.getIndex(newIndex.id);
+      console.log("Fetched Index:", fetchedIndex);
     } catch (err) {
       console.error("Error creating index:", err);
     }
