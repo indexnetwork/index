@@ -84,7 +84,7 @@ export default class IndexClient {
     const didKey = await createDIDKey(keySeed);
 
     const now = new Date();
-    const threeMonthsLater = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    const oneMonthLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     // Create a SIWE message for authentication.
     const siweMessage = new SiweMessage({
@@ -96,7 +96,7 @@ export default class IndexClient {
       chainId: "1",
       nonce: randomString(10),
       issuedAt: now.toISOString(),
-      expirationTime: threeMonthsLater.toISOString(),
+      expirationTime: oneMonthLater.toISOString(),
       resources: ["ceramic://*"],
     });
 
