@@ -44,6 +44,7 @@ const redis = RedisClient.getInstance();
 const ethProvider = new ethers.JsonRpcProvider(process.env.LIT_PROTOCOL_RPC_PROVIDER);
 const indexerWallet = new ethers.Wallet(process.env.INDEXER_WALLET_PRIVATE_KEY, ethProvider);
 
+
 console.log(`Wallet address: ${indexerWallet.address}`)
 const litContracts = new LitContracts({
     network: config.litNetwork,
@@ -56,6 +57,22 @@ const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 });
 
 const thirtyDaysLater = new Date(Date.now() + 1000 * 60 * 60 * 24 * config.daysUntilUTCMidnightExpiration)
+
+async function debugToken () {
+    const tidi  = "96645445544485389961814591100091903924604248875832041960326334704668847840587";
+    await litContracts.connect()
+    const authMethods = await litContracts.pkpPermissionsContract.read.getPermittedAuthMethods(tidi );
+
+    console.log("lit.authMethods", authMethods)
+    const scopes = await litContracts.pkpPermissionsContract.read.getPermittedAuthMethodScopes(
+        tidi,
+        authMethods[2].authMethodType,
+        authMethods[2].id,
+        3
+    );
+    console.log("lit.scopes", scopes)
+
+}
 
 // Functions
 async function mintNewCapacityToken() {
@@ -212,4 +229,4 @@ async function run () {
   process.exit(0)
 }
 
-run()
+debugToken()

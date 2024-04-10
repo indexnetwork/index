@@ -243,11 +243,8 @@ class ApiService {
   async createIndex(
     title: string = DEFAULT_CREATE_INDEX_TITLE,
   ): Promise<Indexes> {
-    const { pkpPublicKey } = await litService.mintPKP();
-
     const body = {
       title,
-      signerPublicKey: pkpPublicKey,
       signerFunction: appConfig.defaultCID,
     };
 

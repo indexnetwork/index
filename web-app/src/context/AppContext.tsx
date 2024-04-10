@@ -260,12 +260,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
       const newAction = await api!.postLITAction(conditions);
 
-      await litService.writeAuthMethods({
-        prevCID: viewedIndex?.signerFunction,
-        signerPublicKey: viewedIndex?.signerPublicKey,
-        newCID: newAction.cid,
-      });
-
       const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
         signerFunction: newAction.cid,
       });

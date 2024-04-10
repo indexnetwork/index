@@ -174,10 +174,6 @@ app.post(
   validator.body(
     Joi.object({
       title: Joi.string().required(),
-      signerPublicKey: Joi.custom(
-        isPKPPublicKey,
-        "LIT PKP Public Key",
-      ).optional(),
       signerFunction: Joi.custom(isCID, "IPFS CID").optional(),
     }),
   ),

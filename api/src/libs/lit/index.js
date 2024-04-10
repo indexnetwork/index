@@ -1,25 +1,29 @@
-import u8a from '@lit-protocol/uint8arrays';
 import { keccak256 } from "@ethersproject/keccak256";
-import { ethers } from "ethers";
+import u8a from '@lit-protocol/uint8arrays';
 import elliptic from "elliptic";
+import { ethers } from "ethers";
 const ec = new elliptic.ec("secp256k1");
 
+import { LitAbility, LitActionResource } from '@lit-protocol/auth-helpers';
+import { LitContracts } from '@lit-protocol/contracts-sdk';
+import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
 import RedisClient from '../../clients/redis.js';
 import { DIDService } from "../../services/did.js";
+import { getAuthSigFromDIDSession } from "../../utils/helpers.js";
+
 import { definition } from "../../types/merged-runtime.js";
-import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
-import { LitContracts } from '@lit-protocol/contracts-sdk';
 
-import { DID } from "dids";
-import { randomBytes, randomString } from "@stablelib/random";
-import { Cacao } from "@didtools/cacao";
-import { getResolver } from "key-did-resolver";
-import { createDIDCacao, DIDSession } from "did-session";
-import { Ed25519Provider } from "key-did-provider-ed25519";
-import { CID } from 'multiformats/cid';
-import { SiweMessage } from "@didtools/cacao";
+import { Cacao, SiweMessage } from "@didtools/cacao";
 import { getAddress } from "@ethersproject/address";
-
+import { AuthMethodType } from '@lit-protocol/constants';
+import { PKPEthersWallet } from "@lit-protocol/pkp-ethers";
+import { randomBytes, randomString } from "@stablelib/random";
+import { DIDSession, createDIDCacao } from "did-session";
+import { DID } from "dids";
+import { Ed25519Provider } from "key-did-provider-ed25519";
+import { getResolver } from "key-did-resolver";
+import { CID } from 'multiformats/cid';
+import { sendLit } from "./send_lit.js";
 
 const config = {
 	litNetwork: process.env.LIT_NETWORK,
@@ -28,11 +32,20 @@ const config = {
 
 const litContracts = new LitContracts({
     network: config.litNetwork,
+    privateKey: process.env.INDEXER_WALLET_PRIVATE_KEY,
+});
+
+const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
+	litNetwork: process.env.LIT_NETWORK,
+	debug: !!process.env.DEBUG || false,
+	checkNodeAttestation: false,
 });
 const redis = RedisClient.getInstance();
 
 export const getPkpPublicKey = async (tokenId) => {
-	await litContracts.connect();
+  if(!litContracts.connected){
+    await litContracts.connect();
+  }
 	const pkpPublicKey = await litContracts.pkpNftContract.read.getPubkey(tokenId);
 	return pkpPublicKey
 }
@@ -48,7 +61,9 @@ export const getOwner = async (pkpPubKey) => {
 	const tokenId = BigInt(pubKeyHash);
 
 
-	await litContracts.connect();
+  if(!litContracts.connected){
+    await litContracts.connect();
+  }
 
 	const address = await litContracts.pkpNftContract.read.ownerOf(tokenId);
 	await redis.hSet(`pkp:owner`, pkpPubKey, address);
@@ -133,14 +148,115 @@ export const getPKPSessionForIndexer = async(index) => {
   return pkpSession;
 }
 
-export const getPKPSession = async (session, index) => {
+export const writeAuthMethods = async ({ userAuthSig, signerPublicKey, prevCID, newCID}) => {
 
-  const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
-		litNetwork: process.env.LIT_NETWORK,
-		debug: !!process.env.DEBUG || false,
-		checkNodeAttestation: false,
-	});
-	await litNodeClient.connect();
+  try {
+
+    const pkpWallet = new PKPEthersWallet({
+      litNetwork: config.litNetwork,
+      controllerAuthSig: userAuthSig,
+      pkpPubKey: signerPublicKey,
+      rpc: "https://chain-rpc.litprotocol.com/http",
+    });
+    await pkpWallet.init();
+
+    const contractSigner = new LitContracts({
+      network: config.litNetwork,
+      signer: pkpWallet,
+      debug: true
+    });
+
+    await contractSigner.connect();
+
+    const prevCIDV0 = CID.parse(prevCID).toV0().toString();
+    const pubKeyHash = ethers.keccak256(signerPublicKey);
+    const tokenId = BigInt(pubKeyHash);
+    const newCollabAction = contractSigner.utils.getBytesFromMultihash(newCID);
+    const previousCollabAction =
+      litContracts.utils.getBytesFromMultihash(prevCIDV0);
+
+    const signed = await contractSigner.pkpPermissionsContract.write.batchAddRemoveAuthMethods(
+      tokenId,
+      [2],
+      [newCollabAction],
+      ["0x"],
+      [[BigInt(1)]],
+      [2],
+      [previousCollabAction], {
+        gasPrice: ethers.parseUnits("0.001", "gwei"),
+        gasLimit: 400000
+      }
+    );
+    console.log(signed, "Signed!")
+  } catch (error) {
+    console.error(error);
+    throw new Error("Error writing auth methods");
+  }
+}
+export const mintPKP = async (ownerAddress, actionCID) => {
+
+  if(!litContracts.connected){
+    await litContracts.connect();
+  }
+
+  const signerFunctionV0 = CID.parse(actionCID).toV0().toString();
+  const acid = litContracts.utils.getBytesFromMultihash(signerFunctionV0);
+
+  const mintCost = await litContracts.pkpNftContract.read.mintCost();
+  const mint =
+    (await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
+      2,
+      [AuthMethodType.EthWallet, AuthMethodType.LitAction],
+      [ownerAddress, acid],
+      ["0x", "0x"],
+      [[BigInt(1)], [BigInt(1)]],
+      true,
+      true,
+      {
+        value: mintCost,
+      },
+    ));
+  const wait = await mint.wait();
+
+  /* eslint-disable */
+  const tokenIdFromEvent = wait?.logs
+    ? wait.logs[0].topics[1]
+    : wait?.logs[0].topics[1];
+  const tokenIdNumber = BigInt(tokenIdFromEvent).toString();
+  const pkpPublicKey =
+    await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
+
+  const pubKeyToAddr = await import('ethereum-public-key-to-address');
+  sendLit(pubKeyToAddr.default(pkpPublicKey), "0.0001") //Run in the background
+
+  console.log(mint, "Minted and loaded!");
+
+  //
+  /*
+  const authMethods = await litContracts.pkpPermissionsContract.read.getPermittedAuthMethods(tokenIdFromEvent );
+
+  console.log("lit.authMethods", authMethods[0])
+  const scopes = await litContracts.pkpPermissionsContract.read.getPermittedAuthMethodScopes(
+      tokenIdFromEvent,
+      authMethods[0].authMethodType,
+      authMethods[0].id,
+      3
+  );
+  console.log("lit.scopes", scopes)
+   */
+
+  console.log(
+    `superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
+  );
+
+  return {
+    tokenIdFromEvent,
+    tokenIdNumber,
+    pkpPublicKey,
+  };
+}
+
+export const getPKPSession = async (session, index) => {
 
 	if(!session.did.authenticated){
 		throw new Error("Unauthenticated DID");
@@ -165,19 +281,14 @@ export const getPKPSession = async (session, index) => {
 		}
   }
 
-
-	const userAuthSig = {
-		signedMessage: SiweMessage.fromCacao(session.cacao).toMessage(),
-		address: getAddress(session.did.parent.split(":").pop()),
-		derivedVia: "web3.eth.personal.sign",
-		sig: session.cacao.s.s,
-	};
+	const userAuthSig = getAuthSigFromDIDSession(session)
 
 	const keySeed = randomBytes(32);
 	const didProvider = new Ed25519Provider(keySeed);
 	// @ts-ignore
 	const didKey = new DID({ provider:didProvider, resolver: getResolver() });
 	await didKey.authenticate();
+
 
 	try {
 

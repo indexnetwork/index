@@ -54,7 +54,7 @@ export const faucet = async (req, res, next) => {
     const privateKey = process.env.FAUCET_PRIVATE_KEY
 
     // Amount to send in LIT
-    const amount = web3.utils.toWei('0.01', 'ether'); // 0.1 LIT, adjusted for 18 decimals
+    const amount = web3.utils.toWei('0.0001', 'ether'); // 0.1 LIT, adjusted for 18 decimals
 
     // Transaction details
     const transaction = {

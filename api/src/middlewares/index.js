@@ -44,6 +44,7 @@ export const authenticateMiddleware = async (req, res, next) => {
         }
 
     } catch (e){
+      console.log(e)
         console.log("Authorization error", e);
     }
 
