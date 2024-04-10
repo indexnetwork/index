@@ -1,7 +1,6 @@
 import { useApi } from "@/context/APIContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
-import litService from "@/services/lit-service";
 import { DiscoveryType } from "@/types";
 import { useRouter } from "next/navigation";
 import {

@@ -4,7 +4,6 @@ import { DIDSession } from "did-session";
 import { Indexes, Link, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { CID } from "multiformats";
-import litService from "./lit-service";
 
 const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",
