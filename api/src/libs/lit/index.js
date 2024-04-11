@@ -256,7 +256,7 @@ export const mintPKP = async (ownerAddress, actionCID) => {
 
 export const getPKPSession = async (session, index) => {
 
-  if(litNodeClient.ready){
+  if(!litNodeClient.ready){
     await litNodeClient.connect();
   }
 	if(!session.did.authenticated){
