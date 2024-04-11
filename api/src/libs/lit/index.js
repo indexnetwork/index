@@ -4,7 +4,6 @@ import elliptic from "elliptic";
 import { ethers } from "ethers";
 const ec = new elliptic.ec("secp256k1");
 
-import { LitAbility, LitActionResource } from '@lit-protocol/auth-helpers';
 import { LitContracts } from '@lit-protocol/contracts-sdk';
 import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
 import RedisClient from '../../clients/redis.js';
@@ -13,8 +12,7 @@ import { getAuthSigFromDIDSession } from "../../utils/helpers.js";
 
 import { definition } from "../../types/merged-runtime.js";
 
-import { Cacao, SiweMessage } from "@didtools/cacao";
-import { getAddress } from "@ethersproject/address";
+import { Cacao } from "@didtools/cacao";
 import { AuthMethodType } from '@lit-protocol/constants';
 import { PKPEthersWallet } from "@lit-protocol/pkp-ethers";
 import { randomBytes, randomString } from "@stablelib/random";
@@ -258,6 +256,9 @@ export const mintPKP = async (ownerAddress, actionCID) => {
 
 export const getPKPSession = async (session, index) => {
 
+  if(litNodeClient.ready){
+    await litNodeClient.connect();
+  }
 	if(!session.did.authenticated){
 		throw new Error("Unauthenticated DID");
 	}
