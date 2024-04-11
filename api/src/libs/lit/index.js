@@ -256,9 +256,6 @@ export const mintPKP = async (ownerAddress, actionCID) => {
 
 export const getPKPSession = async (session, index) => {
 
-  if(!litNodeClient.ready){
-    await litNodeClient.connect();
-  }
 	if(!session.did.authenticated){
 		throw new Error("Unauthenticated DID");
 	}
@@ -300,6 +297,11 @@ export const getPKPSession = async (session, index) => {
 		const dAppSessionSigs = JSON.parse(dAppSessionSigsResponse);
 
 		const signerFunctionV0 = CID.parse(index.signerFunction).toV0().toString();
+
+    if(!litNodeClient.ready){
+      await litNodeClient.connect();
+    }
+
 		const resp = await litNodeClient.executeJs({
 			ipfsId: signerFunctionV0,
 			sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
