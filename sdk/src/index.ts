@@ -176,11 +176,9 @@ export default class IndexClient {
   }
 
   public async createIndex(title: string): ApiResponse<IIndex> {
-    const { pkpPublicKey } = await this.mintPKP();
 
     const body = {
       title,
-      signerPublicKey: pkpPublicKey,
       signerFunction: IndexConfig.defaultCID,
     };
 
