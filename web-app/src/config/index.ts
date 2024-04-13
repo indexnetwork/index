@@ -3,7 +3,7 @@ export const appConfig = {
   apiUrl: "https://dev.index.network/api", // TODO: handle better
   ipfsProxy: "https://ipfs.io/ipfs",
   ipfsInfura: "http://localhost:3001/avatar",
-  defaultCID: "Qma1fQKSYtcGZ2vJ7CHEY9B4gd967V3cX5Bfmfwp19FjDP", // Empty.
+  defaultCID: "Qmayic4Fyp6gUFnrEfzhuHnAEe7BUBAsUe1AaVJdCn21a4", // Empty.
   litNetwork: "habanero" as
     | "cayenne"
     | "custom"

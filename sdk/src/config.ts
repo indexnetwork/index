@@ -1,5 +1,5 @@
 const IndexConfig = {
-  defaultCID: "Qma1fQKSYtcGZ2vJ7CHEY9B4gd967V3cX5Bfmfwp19FjDP",
+  defaultCID: "Qmayic4Fyp6gUFnrEfzhuHnAEe7BUBAsUe1AaVJdCn21a4",
   litNetwork: "habanero" as
     | "cayenne"
     | "custom"
