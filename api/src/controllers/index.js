@@ -50,7 +50,7 @@ export const createIndex = async (req, res, next) =>  {
         const pkpSession = await getPKPSession(req.session, indexParams);
 
         const indexService = new IndexService().setSession(pkpSession); //PKP
-        const newIndex = await indexService.createIndex(indexParams);
+        let newIndex = await indexService.createIndex(indexParams);
         if(!newIndex){
           return res.status(500).json({ error: "Create index error" });
         }
@@ -61,6 +61,8 @@ export const createIndex = async (req, res, next) =>  {
 
         const didService = new DIDService().setSession(req.session); //Personal
         const newIndexDID = await didService.addIndex(newIndex.id, "owned");
+        newIndex = await indexService.getIndexById(newIndex.id);
+
         newIndex.did = {
             owned: true,
             starred: false

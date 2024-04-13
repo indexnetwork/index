@@ -34,7 +34,7 @@ const litContracts = new LitContracts({
 });
 
 const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
-	litNetwork: process.env.LIT_NETWORK,
+	litNetwork: config.litNetwork,
 	debug: !!process.env.DEBUG || false,
 	checkNodeAttestation: false,
 });
@@ -69,17 +69,16 @@ export const getOwner = async (pkpPubKey) => {
     return address;
 }
 
-export const getOwnerProfile = async (pkpPubKey) => {
-
-	const owner = await getOwner(pkpPubKey); //Make it through composeDB
+export const getOwnerProfile = async (id) => {
 
 	const didService = new DIDService()
-	const profile = await didService.getProfile(`did:pkh:eip155:1:${owner}`)
 
-	if(profile){
-		return profile;
+	const owner = await didService.getOwner(id);
+	console.log(owner)
+	if(owner && owner.controllerDID && owner.controllerDID.id){
+	  return owner;
 	}else{
-		return { id: `did:pkh:eip155:1:${owner}` }
+	 return { id: `did:pkh:eip155:1:0` }
 	}
 }
 
