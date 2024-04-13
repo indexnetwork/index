@@ -1,57 +1,105 @@
 // This is an auto-generated file, do not edit manually
 export const definition = {
     "models": {
+        "DIDIndex": {
+            "interface": false,
+            "implements": [],
+            "id": "kjzl6hvfrbw6c6g36kssoddbzk5s540ztc7yh9rgx54hi42xfyislxasbtllj2j",
+            "accountRelation": {"type": "set", "fields": ["indexId", "type"]}
+        },
+        "Embedding": {
+            "interface": false,
+            "implements": [],
+            "id": "kjzl6hvfrbw6cb2id6b5saxxyt032ts652ctnwxuv5nfu0p50pycxoj4vrtd2qh",
+            "accountRelation": {"type": "list"}
+        },
         "Index": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
+            "id": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
             "accountRelation": {"type": "list"}
         },
         "IndexItem": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c66p7dxhk35uass66v2q42b2sdbaw7smitphfv60y9tux4obxu4",
-            "accountRelation": {"type": "list"}
-        },
-        "Embedding": {
-            "interface": false,
-            "implements": [],
-            "id": "kjzl6hvfrbw6c5wx4eb9mmw2su1q7y4m65wd8m887ulubbfn5iawpy6ukprq4va",
-            "accountRelation": {"type": "list"}
-        },
-        "WebPage": {
-            "interface": false,
-            "implements": [],
-            "id": "kjzl6hvfrbw6c5ehmhlme25mhizo670ro6jeu6h50m9fqnie4phkqy9vip8w8t0",
-            "accountRelation": {"type": "list"}
-        },
-        "DIDIndex": {
-            "interface": false,
-            "implements": [],
-            "id": "kjzl6hvfrbw6c7wlj08gruhq6gkatb8heg07btxzzeotumzpkftsnmxrf51l0b0",
+            "id": "kjzl6hvfrbw6cbbyu8ftr6aredftfq6xrww6h8lscajvgow0f0kygs8r8n1my40",
             "accountRelation": {"type": "list"}
         },
         "Profile": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c6a1qzykoqwu191lnpci1z6kp7ww18dycm9ono1r37un63my1hd",
+            "id": "kjzl6hvfrbw6cb3ih99fy9ljt2ttycr213yyyxtu31fuoqbo1j78hj5zghz98v7",
             "accountRelation": {"type": "single"}
+        },
+        "WebPage": {
+            "interface": false,
+            "implements": [],
+            "id": "kjzl6hvfrbw6c53ph1hmntvlpxcgyugwb115m3r2fodtovr5ez5qr2mj7put276",
+            "accountRelation": {"type": "list"}
         }
     },
     "objects": {
+        "DIDIndex": {
+            "type": {"type": "string", "required": true, "immutable": true, "indexed": true},
+            "indexId": {"type": "streamid", "required": true, "immutable": true, "indexed": true},
+            "createdAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
+            "deletedAt": {"type": "datetime", "required": false, "immutable": false, "indexed": true},
+            "updatedAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
+            "index": {
+                "type": "view",
+                "viewType": "relation",
+                "relation": {
+                    "source": "document",
+                    "model": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
+                    "property": "indexId"
+                }
+            },
+            "controllerDID": {"type": "view", "viewType": "documentAccount"}
+        },
+        "Embedding": {
+            "itemId": {"type": "streamid", "required": true, "immutable": false},
+            "vector": {
+                "type": "list",
+                "required": true,
+                "immutable": false,
+                "item": {"type": "float", "required": true, "immutable": false}
+            },
+            "context": {"type": "string", "required": false, "immutable": false},
+            "indexId": {"type": "streamid", "required": true, "immutable": false, "indexed": true},
+            "category": {"type": "string", "required": true, "immutable": false, "indexed": true},
+            "createdAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
+            "deletedAt": {"type": "datetime", "required": false, "immutable": false},
+            "modelName": {"type": "string", "required": true, "immutable": false, "indexed": true},
+            "updatedAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
+            "description": {"type": "string", "required": true, "immutable": false},
+            "item": {
+                "type": "view",
+                "viewType": "relation",
+                "relation": {"source": "document", "model": null, "property": "itemId"}
+            },
+            "index": {
+                "type": "view",
+                "viewType": "relation",
+                "relation": {
+                    "source": "document",
+                    "model": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
+                    "property": "indexId"
+                }
+            }
+        },
         "Index": {
-            "title": {"type": "string", "required": true},
-            "createdAt": {"type": "datetime", "required": true, "indexed": true},
-            "deletedAt": {"type": "datetime", "required": false},
-            "updatedAt": {"type": "datetime", "required": true, "indexed": true},
-            "signerFunction": {"type": "cid", "required": false},
-            "signerPublicKey": {"type": "string", "required": false, "indexed": true},
+            "title": {"type": "string", "required": true, "immutable": false},
+            "createdAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
+            "deletedAt": {"type": "datetime", "required": false, "immutable": false},
+            "updatedAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
+            "signerFunction": {"type": "cid", "required": false, "immutable": false},
+            "signerPublicKey": {"type": "string", "required": false, "immutable": false, "indexed": true},
             "items": {
                 "type": "view",
                 "viewType": "relation",
                 "relation": {
                     "source": "queryConnection",
-                    "model": "kjzl6hvfrbw6c66p7dxhk35uass66v2q42b2sdbaw7smitphfv60y9tux4obxu4",
+                    "model": "kjzl6hvfrbw6cbbyu8ftr6aredftfq6xrww6h8lscajvgow0f0kygs8r8n1my40",
                     "property": "indexId"
                 }
             },
@@ -60,17 +108,17 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "queryConnection",
-                    "model": "kjzl6hvfrbw6c7wlj08gruhq6gkatb8heg07btxzzeotumzpkftsnmxrf51l0b0",
+                    "model": "kjzl6hvfrbw6c6g36kssoddbzk5s540ztc7yh9rgx54hi42xfyislxasbtllj2j",
                     "property": "indexId"
                 }
             }
         },
         "IndexItem": {
-            "itemId": {"type": "streamid", "required": true, "indexed": true},
-            "indexId": {"type": "streamid", "required": true, "indexed": true},
-            "createdAt": {"type": "datetime", "required": true, "indexed": true},
-            "deletedAt": {"type": "datetime", "required": false, "indexed": true},
-            "updatedAt": {"type": "datetime", "required": true, "indexed": true},
+            "itemId": {"type": "streamid", "required": true, "immutable": false, "indexed": true},
+            "indexId": {"type": "streamid", "required": true, "immutable": false, "indexed": true},
+            "createdAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
+            "deletedAt": {"type": "datetime", "required": false, "immutable": false, "indexed": true},
+            "updatedAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
             "item": {
                 "type": "view",
                 "viewType": "relation",
@@ -81,80 +129,38 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "document",
-                    "model": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
+                    "model": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
                     "property": "indexId"
                 }
             }
-        },
-        "Embedding": {
-            "itemId": {"type": "streamid", "required": true, "indexed": true},
-            "vector": {"type": "list", "required": true, "item": {"type": "float", "required": true}},
-            "context": {"type": "string", "required": false},
-            "indexId": {"type": "streamid", "required": true, "indexed": true},
-            "category": {"type": "string", "required": true, "indexed": true},
-            "createdAt": {"type": "datetime", "required": true, "indexed": true},
-            "deletedAt": {"type": "datetime", "required": false, "indexed": true},
-            "modelName": {"type": "string", "required": true, "indexed": true},
-            "updatedAt": {"type": "datetime", "required": true, "indexed": true},
-            "description": {"type": "string", "required": true},
-            "item": {
-                "type": "view",
-                "viewType": "relation",
-                "relation": {"source": "document", "model": null, "property": "itemId"}
-            },
-            "index": {
-                "type": "view",
-                "viewType": "relation",
-                "relation": {
-                    "source": "document",
-                    "model": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
-                    "property": "indexId"
-                }
-            }
-        },
-        "WebPage": {
-            "url": {"type": "uri", "required": true},
-            "title": {"type": "string", "required": false},
-            "content": {"type": "string", "required": false},
-            "favicon": {"type": "string", "required": false},
-            "createdAt": {"type": "datetime", "required": true},
-            "deletedAt": {"type": "datetime", "required": false},
-            "updatedAt": {"type": "datetime", "required": true}
-        },
-        "DIDIndex": {
-            "type": {"type": "string", "required": false, "indexed": true},
-            "indexId": {"type": "streamid", "required": true, "indexed": true},
-            "createdAt": {"type": "datetime", "required": true, "indexed": true},
-            "deletedAt": {"type": "datetime", "required": false, "indexed": true},
-            "updatedAt": {"type": "datetime", "required": true, "indexed": true},
-            "index": {
-                "type": "view",
-                "viewType": "relation",
-                "relation": {
-                    "source": "document",
-                    "model": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
-                    "property": "indexId"
-                }
-            },
-            "controllerDID": {"type": "view", "viewType": "documentAccount"}
         },
         "Profile": {
-            "bio": {"type": "string", "required": false},
-            "name": {"type": "string", "required": false},
-            "avatar": {"type": "cid", "required": false},
-            "createdAt": {"type": "datetime", "required": true},
-            "deletedAt": {"type": "datetime", "required": false},
-            "updatedAt": {"type": "datetime", "required": true},
+            "bio": {"type": "string", "required": false, "immutable": false},
+            "name": {"type": "string", "required": false, "immutable": false},
+            "avatar": {"type": "cid", "required": false, "immutable": false},
+            "createdAt": {"type": "datetime", "required": true, "immutable": false},
+            "deletedAt": {"type": "datetime", "required": false, "immutable": false},
+            "updatedAt": {"type": "datetime", "required": true, "immutable": false},
             "controllerDID": {"type": "view", "viewType": "documentAccount"}
+        },
+        "WebPage": {
+            "url": {"type": "uri", "required": true, "immutable": false},
+            "title": {"type": "string", "required": false, "immutable": false},
+            "content": {"type": "string", "required": false, "immutable": false},
+            "favicon": {"type": "string", "required": false, "immutable": false},
+            "createdAt": {"type": "datetime", "required": true, "immutable": false},
+            "deletedAt": {"type": "datetime", "required": false, "immutable": false},
+            "updatedAt": {"type": "datetime", "required": true, "immutable": false}
         }
     },
     "enums": {},
     "accountData": {
-        "indexList": {"type": "connection", "name": "Index"},
-        "indexItemList": {"type": "connection", "name": "IndexItem"},
-        "embeddingList": {"type": "connection", "name": "Embedding"},
-        "webPageList": {"type": "connection", "name": "WebPage"},
+        "didIndex": {"type": "set", "name": "DIDIndex"},
         "didIndexList": {"type": "connection", "name": "DIDIndex"},
-        "profile": {"type": "node", "name": "Profile"}
+        "embeddingList": {"type": "connection", "name": "Embedding"},
+        "indexItemList": {"type": "connection", "name": "IndexItem"},
+        "indexList": {"type": "connection", "name": "Index"},
+        "profile": {"type": "node", "name": "Profile"},
+        "webPageList": {"type": "connection", "name": "WebPage"}
     }
 }
