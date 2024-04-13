@@ -60,9 +60,9 @@
   };
   var getResources = (isPermittedAddress = false) => {
     const models = {
-      "Index": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
-      "IndexItem": "kjzl6hvfrbw6c66p7dxhk35uass66v2q42b2sdbaw7smitphfv60y9tux4obxu4",
-      "Embedding": "kjzl6hvfrbw6c5wx4eb9mmw2su1q7y4m65wd8m887ulubbfn5iawpy6ukprq4va"
+      "Index": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
+      "IndexItem": "kjzl6hvfrbw6cbbyu8ftr6aredftfq6xrww6h8lscajvgow0f0kygs8r8n1my40",
+      "Embedding": "kjzl6hvfrbw6cb2id6b5saxxyt032ts652ctnwxuv5nfu0p50pycxoj4vrtd2qh"
     };
     return isPermittedAddress ? [models.Index, models.IndexItem, models.Embedding] : [models.IndexItem, models.Embedding];
   };
