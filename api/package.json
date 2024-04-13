@@ -12,7 +12,7 @@
   "dependencies": {
     "@ceramicnetwork/codecs": "^4.2.0",
     "@ceramicnetwork/streamid": "^3.2.0",
-    "@composedb/client": "0.6.0",
+    "@composedb/client": "0.7.1",
     "@cosmjs/amino": "^0.30.1",
     "@cosmjs/crypto": "^0.30.1",
     "@cosmjs/encoding": "^0.30.1",
