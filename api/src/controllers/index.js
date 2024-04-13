@@ -60,7 +60,7 @@ export const createIndex = async (req, res, next) =>  {
         await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
 
         const didService = new DIDService().setSession(req.session); //Personal
-        const newIndexDID = await didService.addIndex(newIndex.id, "owned");
+        const newIndexDID = await didService.setDIDIndex(newIndex.id, "owned");
         newIndex = await indexService.getIndexById(newIndex.id);
 
         newIndex.did = {

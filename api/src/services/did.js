@@ -225,7 +225,7 @@ export class DIDService {
 
     }
 
-    async addIndex(indexId, type) {
+    async setDIDIndex(indexId, type, isDeleted=false) {
 
         if (!this.did) {
             throw new Error("DID not set. Use setDID() to set the did.");
@@ -233,114 +233,54 @@ export class DIDService {
 
         try {
 
-            //Duplicate check, it'll be refactored when ceramic release the set account relations.
-            const existingIndex = await this.getDIDIndexForViewer(indexId, type);
-            if (existingIndex && !existingIndex.deletedAt) {
-                return existingIndex;
-            }
-
-            const content = {
+            let content = {
                 indexId,
                 type,
                 createdAt: getCurrentDateTime(),
                 updatedAt: getCurrentDateTime(),
             };
+
+            if(isDeleted){
+              content.deletedAt = getCurrentDateTime();
+            }
+
             this.client.setDID(this.did);
             const {data, errors} = await this.client.executeQuery(`
-                mutation CreateDIDIndex($input: CreateDIDIndexInput!) {
-                  createDIDIndex(input: $input) {
-                    document {
+              mutation SetDIDIndex($input: SetDIDIndexInput!) {
+                setDIDIndex(input: $input) {
+                  document {
+                    id
+                    type
+                    indexId
+                    createdAt
+                    updatedAt
+                    deletedAt
+                    controllerDID {
                       id
-                      type
-                      indexId
-                      createdAt
-                      updatedAt
-                      deletedAt
-                      controllerDID {
-                        id
-                      }
                     }
                   }
-                }`, {input: {content}});
+                }
+              }`, {input: {content}});
 
             // Handle GraphQL errors
             if (errors) {
-                throw new Error(`Error adding index: ${JSON.stringify(errors)}`);
+                throw new Error(`Error setting DID Index: ${JSON.stringify(errors)}`);
             }
 
             // Validate the data response
-            if (!data || !data.createDIDIndex || !data.createDIDIndex.document) {
+            if (!data || !data.setDIDIndex || !data.setDIDIndex.document) {
                 throw new Error('Invalid response data');
             }
 
             // Return the created index document
-            return data.createDIDIndex.document;
+            return data.setDIDIndex.document;
 
         } catch (error) {
             // Log the error and rethrow it for external handling
-            console.error('Exception occurred in createDIDIndex:', error);
+            console.error('Exception occurred in setDIDIndex:', error);
             throw error;
         }
     }
-
-    async removeIndex(indexId, type) {
-        if (!this.did) {
-            throw new Error("DID not set. Use setDID() to set the did.");
-        }
-
-        try {
-            // Check if the index exists and is not already deleted
-            const existingIndex = await this.getDIDIndexForViewer(indexId, type);
-            if (!existingIndex) {
-                throw new Error('Index does not exist.');
-            }
-
-            if (existingIndex.deletedAt) {
-                throw new Error('Index is already removed from did.');
-            }
-
-            const content = {
-                updatedAt: getCurrentDateTime(),
-                deletedAt: getCurrentDateTime(),
-            };
-            this.client.setDID(this.did);
-            const {data, errors} = await this.client.executeQuery(`
-            mutation UpdateDIDIndex($input: UpdateDIDIndexInput!) {
-                updateDIDIndex(input: $input) {
-                    document {
-                      id
-                      type
-                      indexId
-                      createdAt
-                      updatedAt
-                      deletedAt
-                      controllerDID {
-                        id
-                      }
-                    }
-                }
-            }`, {input: {id: existingIndex.id, content}});
-
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error removing index: ${JSON.stringify(errors)}`);
-            }
-
-            // Validate the data response
-            if (!data || !data.updateDIDIndex || !data.updateDIDIndex.document) {
-                throw new Error('Invalid response data');
-            }
-
-            // Return the updated index document
-            return data.updateDIDIndex.document;
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in removeIndex:', error);
-            throw error;
-        }
-    }
-
 
     async createProfile(params) {
         if (!this.did) {
