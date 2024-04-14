@@ -90,13 +90,13 @@ export const updateIndexItemEvent = async (id) => {
             } else {
                 logger.debug(`Step [1]: IndexItem Delete Failed for id: ${id}`)
             }
-            
+
         } else {
 
             logger.info(`Step [1]: IndexItem UpdateEvent trigger for id: ${id}`)
 
             const updateResponse = await axios.put(
-                `${process.env.LLM_INDEXER_HOST}/indexer/index`, 
+                `${process.env.LLM_INDEXER_HOST}/indexer/index`,
                 {
                     embedding: indexItem.embedding,
                     metadata: {
@@ -106,7 +106,7 @@ export const updateIndexItemEvent = async (id) => {
                         indexUpdatedAt: embedding.index.updatedAt,
                         indexDeletedAt: embedding.index.deletedAt,
                         indexOwnerDID: embedding.index.ownerDID.id,
-                
+
                         webPageId: embedding.item.id,
                         webPageTitle: embedding.item.title,
                         webPageUrl: embedding.item.url,
@@ -116,12 +116,12 @@ export const updateIndexItemEvent = async (id) => {
                         webPageDeletedAt: embedding.item.deletedAt,
                     },
                 });
-    
+
             if (updateResponse.status === 200) {
                 logger.info(`Step [1]: IndexItem Update Success for id: ${id}`)
             } else {
                 logger.warn(`Step [1]: IndexItem Update Failed for id: ${id}`)
-            } 
+            }
         }
 
     } catch (e) {
@@ -137,14 +137,14 @@ export const updateWebPageEvent = async (id) => {
     const webPageItem = await webPage.getWebPageById(id, false);
 
     try {
-        
+
         if (webPageItem && webPageItem.content) {
 
             const itemSession = new ItemService()
             const indexItems = await itemSession.getIndexesByItemId(webPageItem.id, null, 24, false);
-            
+
             for (let indexItem of indexItems.items) {
-                
+
                 logger.info(`Step [2]: IndexItem UpdateEvent trigger for id: ${indexItem.id}`)
 
                 const indexSession = await getPKPSessionForIndexer(indexItem.index);
@@ -156,7 +156,7 @@ export const updateWebPageEvent = async (id) => {
                 })
 
                 logger.info(`Step [2]: Embedding created for indexItem: ${indexItem.id} with vector lenght ${embeddingResponse.data.vector?.length}`)
-                
+
                 const embedding = await embeddingService.createEmbedding({
                     "indexId": indexItem.index.id,
                     "itemId": indexItem.item.id,
@@ -166,19 +166,19 @@ export const updateWebPageEvent = async (id) => {
                     "description": "Default document embeddings",
                 });
 
-        
+
                 logger.info(`Step [2]: EmbeddingEvent trigger successfull for id: ${embedding.id}`);
 
                 // Cache updated questions to reddis
                 try {
 
-                    let response = await axios.get(`${process.env.LLM_INDEXER_HOST}/chat/generate?indexId=${req.params.id}`)
-                    redis.set(`questions:${req.params.id}`, JSON.stringify(response.data), { EX: 86400 } );
+                    let response = await axios.get(`${process.env.LLM_INDEXER_HOST}/chat/generate?indexId=${indexItem.index.id}`)
+                    redis.set(`questions:${indexItem.index.id}`, JSON.stringify(response.data), { EX: 86400 } );
 
-                    logger.info(`Step [2]: Questions for index ${req.params.id} updated in reddis with ${response.data.length} questions`)
+                    logger.info(`Step [2]: Questions for index ${indexItem.index.id} updated in redis with ${response.data.length} questions`)
 
                 } catch (error) {
-                    logger.warn(`Step [2]: Questions for index ${req.params.id} not updated in reddis with error: ${JSON.stringify(error.message)}`)
+                    logger.warn(`Step [2]: Questions for index ${indexItem.index.id} not updated in redis with error: ${JSON.stringify(error.message)}`)
                 }
 
             }
