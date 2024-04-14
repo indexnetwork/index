@@ -4,8 +4,9 @@ on:
     branches:
     - testnet
     - dev
+    - mainnet
     paths:
-    - 'api/**'    
+    - 'api/**'
 jobs:
   main:
     runs-on: ubuntu-latest
