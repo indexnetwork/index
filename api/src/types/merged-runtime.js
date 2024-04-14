@@ -34,7 +34,7 @@ export const definition = {
         "WebPage": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c6y1s4ov3k7pu6id3c568snr5mgvo0h4ptohqypsl5paqftl431",
+            "id": "kjzl6hvfrbw6caza7o25x6kii7el8bzrrureoxq889p4lyz20zyxrw9b2wi4zik",
             "accountRelation": {"type": "list"}
         }
     },
@@ -144,7 +144,7 @@ export const definition = {
             "controllerDID": {"type": "view", "viewType": "documentAccount"}
         },
         "WebPage": {
-            "url": {"type": "uri", "required": true, "immutable": false},
+            "url": {"type": "string", "required": false, "immutable": false},
             "title": {"type": "string", "required": false, "immutable": false},
             "content": {"type": "string", "required": false, "immutable": false},
             "favicon": {"type": "string", "required": false, "immutable": false},
