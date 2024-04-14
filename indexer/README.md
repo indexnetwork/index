@@ -12,6 +12,7 @@
 
 # Indexer
 
+
 This documentation outlines the usage of the API endpoints for a NestJS application featuring two main controllers: Indexer Controller and Chat Controller. Each controller is responsible for handling specific operations within the application, with a total of 8 endpoints described below.
 
 - [Indexer](#indexer)
@@ -53,7 +54,7 @@ yarn start:dev
 
 ```mermaid
 sequenceDiagram
-    
+
     participant ui as Web SDK
     participant api as Index API
     participant consumer as KafkaConsumer
@@ -75,11 +76,11 @@ sequenceDiagram
     indexer->>+api: Return content
 
     api->>-compose: Index document to Ceramic
-    compose->>+consumer: Successfully indexed to Ceramic 
+    compose->>+consumer: Successfully indexed to Ceramic
     consumer->>+api: Able to index Ceramic
     api->>+ui: Succesfully initializes indexing
 
-    
+
     Note left of ui: Embedding
 
     consumer->>+indexer: Request embeddings for indexed document
@@ -94,8 +95,8 @@ sequenceDiagram
     consumer->>+indexer: Index to ChromaDb with the embeddings
     indexer->>+chroma: Index docs with metadata and embeddings
 
-    chroma->>+indexer: Return Success    
-    indexer->>+consumer: Publish Success    
+    chroma->>+indexer: Return Success
+    indexer->>+consumer: Publish Success
 
     Note over ui, unstructured: Discovery Flow
 
@@ -158,7 +159,7 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
 - **Endpoint**: /indexer/embeddings
 - **Description**: Extracts embeddings for the given document using OpenAI embeddings.
 - **Body Parameters**:
-    - `content (string)`: The textual content of the document. 
+    - `content (string)`: The textual content of the document.
 - **Response**: Returns a list of floats representing the embedding vector.
 
 - **Example Usage**
@@ -340,11 +341,11 @@ The Chat Controller handles operations related to generating content based on a 
 - **Method**: `POST`
 - **Endpoint**: ``/chat/stream``
 - **Description**: For a given "question" and "chat_history", generates content for the question.
-- **Body Parameters**: An object containing 
+- **Body Parameters**: An object containing
   * `question (string)`: The string of last chat input
-  
+
   * `chat_history (string)`: The list of input objects from both user and agent with message role and content
-  
+
   * `indexIds (string[])`: The list of id strings to ask
 
 
@@ -448,7 +449,7 @@ Below, you will find detailed descriptions and usage instructions for our three 
 - **Body Parameters**: An object containing
 
   - ``embedding``: The embedding to search.
- 
+
   - ``model``: The embedding model, eg. `text-embedding-ada-002`.
 
   - ``indexIds``: Array of index IDs to search within.
@@ -536,5 +537,5 @@ Below, you will find detailed descriptions and usage instructions for our three 
   #   { "webPageItemId": "sknfljdfd", "similarity": 0.92 },
   #   { "webPageItemId": "mcdafşdş", "similarity": 0.81 },
   #   ......
-  # ] 
+  # ]
   ```

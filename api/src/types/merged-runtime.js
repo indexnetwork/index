@@ -4,37 +4,37 @@ export const definition = {
         "DIDIndex": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c6g36kssoddbzk5s540ztc7yh9rgx54hi42xfyislxasbtllj2j",
+            "id": "kjzl6hvfrbw6c8zxu9h8wq0ycmvknf3rg3v5gm0z1dwlrquruyxnapzye0wuus2",
             "accountRelation": {"type": "set", "fields": ["indexId", "type"]}
         },
         "Embedding": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6cb2id6b5saxxyt032ts652ctnwxuv5nfu0p50pycxoj4vrtd2qh",
+            "id": "kjzl6hvfrbw6c5wj20x3gw3nevmdpwtrkwsmz94ewbakc99qmn29piwe9cs1fo1",
             "accountRelation": {"type": "list"}
         },
         "Index": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
+            "id": "kjzl6hvfrbw6cbcdnrwl793l4o1jkd6gg9gfoe97t32px4tphikbgr3d2s64kcd",
             "accountRelation": {"type": "list"}
         },
         "IndexItem": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6cbbyu8ftr6aredftfq6xrww6h8lscajvgow0f0kygs8r8n1my40",
+            "id": "kjzl6hvfrbw6c8y5uncb93eiyo3immfr80tedl8yv58qkwm5lz0y8tuu00a2u79",
             "accountRelation": {"type": "list"}
         },
         "Profile": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6cb3ih99fy9ljt2ttycr213yyyxtu31fuoqbo1j78hj5zghz98v7",
+            "id": "kjzl6hvfrbw6c52ta9l6qqcvjfdqcf3vys0gvbnq4zwn4k7z2m9bbykz1dic8a6",
             "accountRelation": {"type": "single"}
         },
         "WebPage": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c53ph1hmntvlpxcgyugwb115m3r2fodtovr5ez5qr2mj7put276",
+            "id": "kjzl6hvfrbw6c6y1s4ov3k7pu6id3c568snr5mgvo0h4ptohqypsl5paqftl431",
             "accountRelation": {"type": "list"}
         }
     },
@@ -50,14 +50,14 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "document",
-                    "model": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
+                    "model": "kjzl6hvfrbw6cbcdnrwl793l4o1jkd6gg9gfoe97t32px4tphikbgr3d2s64kcd",
                     "property": "indexId"
                 }
             },
             "controllerDID": {"type": "view", "viewType": "documentAccount"}
         },
         "Embedding": {
-            "itemId": {"type": "streamid", "required": true, "immutable": false},
+            "itemId": {"type": "streamid", "required": true, "immutable": false, "indexed": true},
             "vector": {
                 "type": "list",
                 "required": true,
@@ -68,7 +68,7 @@ export const definition = {
             "indexId": {"type": "streamid", "required": true, "immutable": false, "indexed": true},
             "category": {"type": "string", "required": true, "immutable": false, "indexed": true},
             "createdAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
-            "deletedAt": {"type": "datetime", "required": false, "immutable": false},
+            "deletedAt": {"type": "datetime", "required": false, "immutable": false, "indexed": true},
             "modelName": {"type": "string", "required": true, "immutable": false, "indexed": true},
             "updatedAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
             "description": {"type": "string", "required": true, "immutable": false},
@@ -82,7 +82,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "document",
-                    "model": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
+                    "model": "kjzl6hvfrbw6cbcdnrwl793l4o1jkd6gg9gfoe97t32px4tphikbgr3d2s64kcd",
                     "property": "indexId"
                 }
             }
@@ -90,7 +90,7 @@ export const definition = {
         "Index": {
             "title": {"type": "string", "required": true, "immutable": false},
             "createdAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
-            "deletedAt": {"type": "datetime", "required": false, "immutable": false},
+            "deletedAt": {"type": "datetime", "required": false, "immutable": false, "indexed": true},
             "updatedAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
             "signerFunction": {"type": "cid", "required": false, "immutable": false},
             "signerPublicKey": {"type": "string", "required": false, "immutable": false, "indexed": true},
@@ -99,7 +99,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "queryConnection",
-                    "model": "kjzl6hvfrbw6cbbyu8ftr6aredftfq6xrww6h8lscajvgow0f0kygs8r8n1my40",
+                    "model": "kjzl6hvfrbw6c8y5uncb93eiyo3immfr80tedl8yv58qkwm5lz0y8tuu00a2u79",
                     "property": "indexId"
                 }
             },
@@ -108,7 +108,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "queryConnection",
-                    "model": "kjzl6hvfrbw6c6g36kssoddbzk5s540ztc7yh9rgx54hi42xfyislxasbtllj2j",
+                    "model": "kjzl6hvfrbw6c8zxu9h8wq0ycmvknf3rg3v5gm0z1dwlrquruyxnapzye0wuus2",
                     "property": "indexId"
                 }
             }
@@ -129,7 +129,7 @@ export const definition = {
                 "viewType": "relation",
                 "relation": {
                     "source": "document",
-                    "model": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
+                    "model": "kjzl6hvfrbw6cbcdnrwl793l4o1jkd6gg9gfoe97t32px4tphikbgr3d2s64kcd",
                     "property": "indexId"
                 }
             }
