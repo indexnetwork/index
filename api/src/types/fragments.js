@@ -12,6 +12,7 @@ export const profileFragment = `
   }
 `;
 
+
 export const indexFragment = `
   ... on Index {
     id
@@ -55,7 +56,7 @@ export const indexLinkFragment = `
         id
         controllerDID {
           id
-        }        
+        }
         title
         collabAction
         pkpPublicKey
