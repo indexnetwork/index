@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Button from "@/components/base/Button";
 import { FC } from "react";
 
@@ -9,7 +8,6 @@ interface WaitingForTransactionProps {
 
 const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
   onCancel,
-  onSubmit,
 }) => (
   <div>
     <div
@@ -20,20 +18,27 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
         flexDirection: "column",
       }}
     >
-      <div className="">
-        <h2>Waiting for transaction</h2>
-        <p>
-          Please wait while the transaction is being processed. This may take a
-          few minutes.
-        </p>
-      </div>
-      <div>
-        <Image
-          width={"160"}
-          height={"160"}
-          src={"/images/waiting.png"}
-          alt="waiting"
-        />
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: "0 0 2.4rem 0",
+        }}
+      >
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className={"p-0"}
+          style={{
+            width: "60%",
+            margin: "auto",
+          }}
+        >
+          <source src="/video/loadingPerspective.mp4" type="video/mp4" />
+        </video>
       </div>
 
       <div
@@ -45,7 +50,7 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
       >
         <Button
           onClick={onCancel}
-          className="mt-7 pl-8 pr-8 "
+          className="pl-6 pr-6"
           size="lg"
           theme="clear"
         >
@@ -53,10 +58,10 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
         </Button>
         <Button
           theme="primary"
-          type="submit"
           size="lg"
-          className="mt-7 pl-8 pr-8"
-          onClick={onSubmit}
+          className="pl-6 pr-6"
+          loading={true}
+          disabled={true}
         >
           Loading
         </Button>

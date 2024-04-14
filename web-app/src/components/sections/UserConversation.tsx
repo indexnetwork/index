@@ -15,13 +15,26 @@ export default function UserConversationSection() {
       style={{
         display: "flex",
         justifyContent: "center",
-        alignItems: "center",
-        flex: 1,
-        overflowY: "auto",
-        maxHeight: "calc(100dvh - 12em)",
+        height: "100%",
       }}
     >
-      <AskIndexes chatID={chatID} did={id} />
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "start",
+          flex: 1,
+          overflowY: "auto",
+          maxHeight: "calc(100dvh - 12em)",
+          height: "100%",
+        }}
+      >
+        <AskIndexes
+          // indexIds={leftSectionIndexes.map((i) => i.id)}
+          chatID={chatID}
+          did={id}
+        />
+      </div>
     </div>
   );
 }

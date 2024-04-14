@@ -17,6 +17,7 @@ export default function ChatTabSection() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
+          paddingBottom: "24rem",
         }}
       >
         <LoadingSection />
@@ -24,21 +25,21 @@ export default function ChatTabSection() {
     );
   }
 
-  if (itemsState.items.length > 0) {
+  if (itemsState.items.length > 0 && viewedIndex) {
     return chatID ? (
       <div
         style={{
           display: "flex",
           overflowY: "auto",
-          justifyContent: "center",
-          alignItems: "center",
+          justifyContent: "stretch",
+          alignItems: "start",
           maxHeight: "calc(-30rem + 100dvh)",
         }}
       >
         <AskIndexes
-          did={viewedIndex?.ownerDID.id}
+          // did={viewedIndex?.ownerDID.id}
           chatID={chatID}
-          indexIds={[viewedIndex?.id!]}
+          indexIds={[viewedIndex?.id]}
         />
       </div>
     ) : null;

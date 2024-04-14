@@ -7,46 +7,49 @@ import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import IndexItem from "components/site/indexes/IndexItem";
 import { useRouteParams } from "hooks/useRouteParams";
-import { useRouter } from "next/navigation";
-import { FC, useCallback, useEffect, useMemo, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FC, useCallback, useEffect, useRef } from "react";
 import { Indexes } from "types/entity";
 
-const IndexListSection: FC = () => {
-  const { id, isIndex } = useRouteParams();
-  const router = useRouter();
+const TAB_QUERY = "tab";
 
-  const { indexes, setLeftTabKey, leftTabKey, viewedProfile } = useApp();
+const IndexListSection: FC = () => {
+  const { id, isIndex, isDID } = useRouteParams();
+  const router = useRouter();
+  const query = useSearchParams();
+
+  const {
+    indexes,
+    leftSectionIndexes,
+    setLeftTabKey,
+    leftTabKey,
+    viewedProfile,
+  } = useApp();
 
   const prevProfileID = useRef(viewedProfile?.id);
 
   const handleTabChange = useCallback(
     (tabKey: IndexListTabKey) => {
+      if (!viewedProfile) return;
+
       setLeftTabKey(tabKey);
-      if (isIndex) {
+      if (tabKey !== IndexListTabKey.ALL) {
+        router.push(`/${viewedProfile?.id}?${TAB_QUERY}=${tabKey}`);
+      } else {
         router.push(`/${viewedProfile?.id}`);
       }
     },
-    [setLeftTabKey],
+    [setLeftTabKey, router, viewedProfile, isIndex],
   );
 
-  const sectionIndexes = useMemo(() => {
-    if (leftTabKey === IndexListTabKey.ALL) {
-      return indexes;
-    }
-    if (leftTabKey === IndexListTabKey.OWNER) {
-      return indexes.filter((i) => i.did.owned);
-    }
-    if (leftTabKey === IndexListTabKey.STARRED) {
-      return indexes.filter((i) => i.did.starred);
-    }
-    return [];
-  }, [indexes, leftTabKey]);
-
   useEffect(() => {
-    if (viewedProfile?.id !== prevProfileID.current) {
+    const tab = query.get(TAB_QUERY) as IndexListTabKey;
+    if (tab && isDID) {
+      setLeftTabKey(tab);
+    } else if (viewedProfile?.id !== prevProfileID.current) {
       setLeftTabKey(IndexListTabKey.ALL);
     }
-  }, [viewedProfile?.id, setLeftTabKey]);
+  }, [query, viewedProfile?.id, setLeftTabKey]);
 
   return (
     <>
@@ -65,7 +68,7 @@ const IndexListSection: FC = () => {
             />
             <TabPane
               enabled={true}
-              tabKey={IndexListTabKey.OWNER}
+              tabKey={IndexListTabKey.OWNED}
               total={indexes.filter((i) => i.did.owned).length}
               title={`Owned`}
             />
@@ -79,10 +82,10 @@ const IndexListSection: FC = () => {
         </Col>
       </FlexRow>
       <FlexRow className={"scrollable-area index-list idxflex-grow-1 pr-6"}>
-        {sectionIndexes.length > 0 ? (
+        {leftSectionIndexes.length > 0 ? (
           <div className={"idxflex-grow-1"}>
             <List
-              data={sectionIndexes}
+              data={leftSectionIndexes}
               render={(itm: Indexes) => (
                 <>
                   <IndexItem index={itm} selected={itm.id === id} />

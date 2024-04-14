@@ -54,17 +54,6 @@ const FeatureSection3 = () => {
               </p>
             </div>
           </div>
-          <div className="flex flex-1 flex-row gap-4">
-            <div className="pt-1">
-              <Abstract variant={3} />
-            </div>
-            <div className="flex flex-col gap-6">
-              <h3 className="text-lg font-bold">Real-time listening</h3>
-              <p>
-                Store, share, and discover verifiable generative information.
-              </p>
-            </div>
-          </div>
         </div>
       </div>
     </section>

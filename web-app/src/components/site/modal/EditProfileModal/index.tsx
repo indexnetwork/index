@@ -17,6 +17,7 @@ import { appConfig } from "config";
 import { useFormik } from "formik";
 import { CID } from "multiformats";
 import React, { useCallback, useEffect, useState } from "react";
+import toast from "react-hot-toast";
 import ImageUploading from "react-images-uploading";
 import { Indexes, Users } from "types/entity";
 
@@ -64,8 +65,10 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
         const newProfile = await api!.updateProfile(params);
         setUserProfile(newProfile);
         updateIndexesOwnerProfile(newProfile);
+        toast.success("Profile updated successfully");
       } catch (err) {
         console.log(err);
+        toast.error("Failed to update profile, please try again");
       } finally {
         setLoading(false);
         handleClose();
@@ -77,8 +80,18 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
     async (imageList: any) => {
       if (!apiReady) return;
       if (imageList.length > 0) {
-        const res = await api!.uploadAvatar(imageList[0].file);
-        res && setImage(res.cid);
+        try {
+          const res = await api!.uploadAvatar(imageList[0].file);
+          res && setImage(res.cid);
+          toast.success("Image uploaded successfully");
+        } catch (err: any) {
+          console.error(err);
+          let message = "";
+          if (err.response.status === 413) {
+            message = "Image size is too large";
+          }
+          toast.error(`Failed to upload image: ${message}`);
+        }
       } else {
         setImage(undefined);
       }

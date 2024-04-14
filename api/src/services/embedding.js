@@ -58,7 +58,7 @@ export class EmbeddingService {
                     id
                     title
                     signerPublicKey
-                    signerFunction      
+                    signerFunction
                     createdAt
                     updatedAt
                     deletedAt
@@ -76,7 +76,7 @@ export class EmbeddingService {
                 throw new Error('Invalid response data');
             }
             try{
-                data.node.index.ownerDID = await getOwnerProfile(data.node.index.signerPublicKey);
+                data.node.index.ownerDID = await getOwnerProfile(data.node.index.id);
             } catch(e) {
                 console.log("Error fetching profile", e)
             }
@@ -267,5 +267,3 @@ export class EmbeddingService {
     }
 
 }
-
-

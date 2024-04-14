@@ -8,7 +8,6 @@ import RadioGroup from "components/base/RadioGroup";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { useTranslation } from "next-i18next";
 import React, { useRef } from "react";
 
 export interface FilterPopupProps {
@@ -16,8 +15,6 @@ export interface FilterPopupProps {
 }
 
 const FilterPopup = ({ children }: FilterPopupProps) => {
-  const { t } = useTranslation(["common", "components"]);
-
   const popup = useRef<PopupHandles>(null);
 
   const handleApply = () => {
@@ -36,80 +33,73 @@ const FilterPopup = ({ children }: FilterPopupProps) => {
       content={
         <FlexRow className="px-4 py-6" rowSpacing={3} colSpacing={2}>
           <Col xs={12}>
-            <Collapse title={t("components:filterMenu.menuTypeTtl")} key="type">
+            <Collapse title="TYPE" key="type">
               <FlexRow>
                 <Col xs={6}>
-                  <Checkbox title={t("components:filterMenu.optArticle")} />
+                  <Checkbox title="Article" />
                 </Col>
                 <Col xs={6}>
-                  <Checkbox title={t("components:filterMenu.optVideo")} />
+                  <Checkbox title="Video" />
                 </Col>
                 <Col xs={6}>
-                  <Checkbox title={t("components:filterMenu.optImage")} />
+                  <Checkbox title="Image" />
                 </Col>
                 <Col xs={6}>
-                  <Checkbox title={t("components:filterMenu.optCustom")} />
+                  <Checkbox title="Custom" />
                 </Col>
               </FlexRow>
             </Collapse>
           </Col>
           <Col xs={12}>
-            <Collapse
-              title={t("components:filterMenu.menuPublishTtl")}
-              key="publish"
-              collapsed
-            >
+            <Collapse title="PUBLISH DATE" key="publish" collapsed>
               <RadioGroup
                 items={[
                   {
                     value: "today",
-                    title: t("common:today"),
+                    title: "Today",
                   },
                   {
                     value: "week",
-                    title: t("common:thisWeek"),
+                    title: "This Week",
                   },
                   {
                     value: "month",
-                    title: t("common:thisMonth"),
+                    title: "This Month",
                   },
                   {
                     value: "year",
-                    title: t("common:thisYear"),
+                    title: "This Year",
                   },
                 ]}
               />
             </Collapse>
           </Col>
           <Col xs={12}>
-            <Collapse
-              title={t("components:filterMenu.menuUploadTtl")}
-              key="upload"
-            >
+            <Collapse title="UPLOAD DATE" key="upload">
               <RadioGroup
                 items={[
                   {
                     value: "today",
-                    title: t("common:today"),
+                    title: "Today",
                   },
                   {
                     value: "week",
-                    title: t("common:thisWeek"),
+                    title: "This Week",
                   },
                   {
                     value: "month",
-                    title: t("common:thisMonth"),
+                    title: "This Month",
                   },
                   {
                     value: "year",
-                    title: t("common:thisYear"),
+                    title: "This Year",
                   },
                 ]}
               />
             </Collapse>
           </Col>
           <Col xs={12} className="mb-3">
-            <Collapse title={t("components:filterMenu.menuTagTtl")} key="tag">
+            <Collapse title="TAG" key="tag">
               <Flex flexdirection="column">
                 <Input
                   inputSize="xs"
@@ -142,12 +132,12 @@ const FilterPopup = ({ children }: FilterPopupProps) => {
           </Col>
           <Col xs={6}>
             <Button size="xs" block theme="clear" onClick={handleClear}>
-              {t("common:clear")}
+              Clear
             </Button>
           </Col>
           <Col xs={6}>
             <Button size="xs" block onClick={handleApply}>
-              {t("common:apply")}
+              Apply
             </Button>
           </Col>
         </FlexRow>

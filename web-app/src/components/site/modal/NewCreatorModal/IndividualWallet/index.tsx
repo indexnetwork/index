@@ -1,18 +1,18 @@
-import React from "react";
-import Text from "components/base/Text";
-import Flex from "components/layout/base/Grid/Flex";
-import Col from "components/layout/base/Grid/Col";
-import FlexRow from "components/layout/base/Grid/FlexRow";
+import { useApi } from "@/context/APIContext";
+import Button from "components/base/Button";
 import Input from "components/base/Input";
 import Select from "components/base/Select";
 import Option from "components/base/Select/Option";
-import Button from "components/base/Button";
+import Text from "components/base/Text";
+import Col from "components/layout/base/Grid/Col";
+import Flex from "components/layout/base/Grid/Flex";
+import FlexRow from "components/layout/base/Grid/FlexRow";
 import Row from "components/layout/base/Grid/Row";
-import { AccessControlCondition } from "types/entity";
 import { appConfig } from "config";
 import { useFormik } from "formik";
+import React from "react";
+import { AccessControlCondition } from "types/entity";
 import { isValidContractAddress } from "utils/helper";
-import { useApi } from "@/context/APIContext";
 
 interface IndividualWalletOptionsProps {
   handleBack: () => void;
@@ -40,7 +40,11 @@ const IndividualWallet: React.FC<IndividualWalletOptionsProps> = ({
         if (!addressResponse || !addressResponse.walletAddress) {
           errors.walletAddress = "Invalid ENS name";
         } else {
-          formik.setFieldValue("walletAddress", values.walletAddress, false);
+          formik.setFieldValue(
+            "walletAddress",
+            addressResponse.walletAddress,
+            false,
+          );
         }
       } else if (!isValidContractAddress(values.walletAddress)) {
         errors.walletAddress = "Invalid address";

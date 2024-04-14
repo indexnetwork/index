@@ -16,6 +16,12 @@ const Discovery = () => {
   useEffect(() => {
     console.log("discoveryType in page.tsx:", discoveryType, id);
     console.log("indexes in page.tsx:", indexes);
+
+    // if (typeof window !== "undefined") {
+    //   window.ethereum.on("message", (message: any) => {
+    //     console.log("eth: ", message);
+    //   });
+    // }
   }, [id, discoveryType, indexes]);
 
   return (

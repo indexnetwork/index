@@ -63,7 +63,13 @@ export function ChatMessage({
       <Col className="idxflex-grow-1 mx-5" style={{ overflow: "auto" }}>
         <div style={{ overflowWrap: "break-word" }}>
           {editingMessage?.id && index === editingIndex ? (
-            <Flex alignitems="center" flexdirection="row">
+            <Flex
+              alignitems="center"
+              flexdirection="row"
+              style={{
+                marginBottom: "14px",
+              }}
+            >
               <Input
                 autoFocus
                 style={{

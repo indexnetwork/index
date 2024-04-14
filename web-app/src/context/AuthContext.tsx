@@ -8,6 +8,7 @@ import { getAddress } from "@ethersproject/address";
 import { randomBytes, randomString } from "@stablelib/random";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import React, { useCallback, useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 declare global {
   interface Window {
@@ -66,12 +67,6 @@ export const AuthProvider = ({ children }: any) => {
     handleInitialCheck();
   }, [handleInitialCheck]);
 
-  // DEBUG
-  // useEffect(() => {
-  //   if (!session) return;
-  //   console.log("Session changed", session);
-  // }, [session]);
-
   const disconnect = useCallback(() => {
     localStorage.removeItem(SESSION_KEY);
     setSession(undefined);
@@ -80,19 +75,16 @@ export const AuthProvider = ({ children }: any) => {
   const checkSession = useCallback(async (): Promise<boolean> => {
     if (session && session?.isExpired) {
       setStatus(AuthStatus.CONNECTED);
-      console.log("Session already exists and is valid");
       return true;
     }
 
     const sessionStr = localStorage.getItem(SESSION_KEY);
     if (!sessionStr) {
-      console.log("No session found in local storage");
       setStatus(AuthStatus.NOT_CONNECTED);
       return false;
     }
 
     const existingSession = await DIDSession.fromSession(sessionStr);
-    console.log("Existing session", existingSession);
     setSession(existingSession);
     setStatus(AuthStatus.CONNECTED);
     return !existingSession.isExpired;
@@ -173,9 +165,11 @@ export const AuthProvider = ({ children }: any) => {
       console.log("Session is valid, connecting...");
 
       setStatus(AuthStatus.CONNECTED);
+      toast.success("Successfully connected to your wallet.");
     } catch (err) {
       console.error("Error during authentication process:", err);
       setStatus(AuthStatus.FAILED);
+      toast.error("Failed to connect to your wallet. Please try again.");
     }
   }, [status, checkSession, startSession]);
 

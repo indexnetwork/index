@@ -38,9 +38,9 @@ const ConfirmTransaction = ({ handleCancel, ...modalProps }: any) => {
       }
       header={
         <>
-          <Header level={2}>Waiting for transaction confirmation</Header>
+          <Header level={2}>Waiting for network confirmation</Header>
           <Text className={"mt-4"} element={"p"}>
-            Please confirm the transaction with your connected wallet.
+          Please wait for a few seconds.
           </Text>
         </>
       }

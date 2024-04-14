@@ -4,11 +4,11 @@ import { DIDSession } from "did-session";
 import { Indexes, Link, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { CID } from "multiformats";
-import litService from "./lit-service";
 
 const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",
   INDEXES: "/indexes/:id",
+  DEFAULT_QUESTIONS_OF_INDEX: "/indexes/:id/questions",
   GET_ALL_INDEXES: "/dids/:did/indexes",
   CREATE_INDEX: "/indexes",
   UPDATE_INDEX: "/indexes/:id",
@@ -24,9 +24,6 @@ const API_ENDPOINTS = {
   LIT_ACTIONS: "/lit_actions",
   CRAWL: "/web2/webpage/crawl",
   ADD_INDEX_ITEM: "/items",
-  CRAWL_CONTENT: "/links/crawl-content",
-  FIND_CONTENT: "/links/find-content",
-  SYNC_CONTENT: "/links/sync-content",
   NFT_METADATA: "/nft",
   ENS: "/ens",
   ZAPIER_TEST_LOGIN: "/zapier/test_login",
@@ -101,28 +98,34 @@ class ApiService {
   }
 
   async uploadAvatar(file: File): Promise<{ cid: CID } | null> {
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const { data } = await this.apiAxios.post<{ cid: CID }>(
-        API_ENDPOINTS.UPLOAD_AVATAR,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
+    const formData = new FormData();
+    formData.append("file", file);
+    const { data } = await this.apiAxios.post<{ cid: CID }>(
+      API_ENDPOINTS.UPLOAD_AVATAR,
+      formData,
+      {
+        headers: {
+          "Content-Type": "multipart/form-data",
         },
-      );
-      return data;
-    } catch (err) {
-      return null;
-    }
+      },
+    );
+    return data;
   }
 
   async getIndex(indexId: string): Promise<Indexes | undefined> {
     const url = API_ENDPOINTS.INDEXES.replace(":id", indexId);
     const { data } = await this.apiAxios.get<Indexes>(url);
     return data as Indexes;
+  }
+
+  async getDefaultQuestionsOfIndex(indexId: string): Promise<string[]> {
+    const url = API_ENDPOINTS.DEFAULT_QUESTIONS_OF_INDEX.replace(
+      ":id",
+      indexId,
+    );
+    const { data } = await this.apiAxios.get<{ questions: string[] }>(url);
+    console.log("in api", data.questions);
+    return data.questions;
   }
 
   async getIndexWithIsCreator(indexId: string): Promise<Indexes | undefined> {
@@ -199,9 +202,6 @@ class ApiService {
 
   async getItems(indexId: string, queryParams: GetItemQueryParams = {}) {
     let url = API_ENDPOINTS.GET_ITEMS.replace(":indexId", indexId);
-    // queryParams = {
-    //   cursor: "eyJ0eXBlIjoiY29udGVudCIsImlkIjoia2p6bDZrY3ltN3c4eWE1dGZ4dTk3djEweHNoMWQwNmh6a2h5MGl0ZzQ0ajBrcGxhbWNzMGNjbm51cGE2MGhzIiwidmFsdWUiOnsiY3JlYXRlZEF0IjoiMjAyNC0wMi0wMVQxMjo0NDoyMi40NThaIn19",
-    // };
     if (queryParams) {
       const formattedQuery = Object.entries(queryParams)
         .map(([key, value]) => `${key}=${value}`)
@@ -242,11 +242,8 @@ class ApiService {
   async createIndex(
     title: string = DEFAULT_CREATE_INDEX_TITLE,
   ): Promise<Indexes> {
-    const { pkpPublicKey } = await litService.mintPKP();
-
     const body = {
       title,
-      signerPublicKey: pkpPublicKey,
       signerFunction: appConfig.defaultCID,
     };
 

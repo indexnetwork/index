@@ -17,21 +17,16 @@ const SaveYourKey: FC<SaveYourKeyProps> = ({ secretKey, onDone }) => (
       gap: "1.5rem",
     }}
   >
-    <h2>Save Your Key</h2>
+    {/* <h2>Save Your Key</h2> */}
     <div
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: "start",
         gap: "2rem",
+        width: "100%",
       }}
     >
-      <p>
-        Keep your secret key in a secure and reachable place. Remember, for your
-        safety,{" "}
-        <b>you can't retrieve it once you navigate away from this page.</b>
-        Should you misplace it, you'll have to create a new one.
-      </p>
       <div
         style={{
           display: "flex",

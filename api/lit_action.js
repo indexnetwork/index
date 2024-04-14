@@ -7,8 +7,23 @@
 "use strict";
 (() => {
   // lit_actions/src/session.action.ts
-  var getCreatorConditions = () => {
-    return __REPLACE_THIS_AS_CONDITIONS_ARRAY__;
+  var getCreatorConditions = (transform=true) => {
+    let conditionsArray = __REPLACE_THIS_AS_CONDITIONS_ARRAY__;
+    if(conditionsArray.length < 1){
+      return [];
+    }
+
+    if(!transform){
+      return conditionsArray
+    }
+
+    return conditionsArray
+      .map(c => c.value)
+      .flatMap((v, i) => i < conditionsArray.length - 1 ? [v, {"operator": "or"}] : [v])
+      .map(v => {
+        delete v.metadata
+        return v
+      })
   };
   var toSiweMessage = (message) => {
     const header = `${message.domain} wants you to sign in with your Ethereum account:`;
@@ -45,21 +60,21 @@
   };
   var getResources = (isPermittedAddress = false) => {
     const models = {
-      "Index": "kjzl6hvfrbw6c6wr91bqjojw1znltqso445kevew3hiywjl1ior4fga60arj9xo",
-      "IndexItem": "kjzl6hvfrbw6c66p7dxhk35uass66v2q42b2sdbaw7smitphfv60y9tux4obxu4",
-      "Embedding": "kjzl6hvfrbw6c5wx4eb9mmw2su1q7y4m65wd8m887ulubbfn5iawpy6ukprq4va"
+      "Index": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
+      "IndexItem": "kjzl6hvfrbw6cbbyu8ftr6aredftfq6xrww6h8lscajvgow0f0kygs8r8n1my40",
+      "Embedding": "kjzl6hvfrbw6cb2id6b5saxxyt032ts652ctnwxuv5nfu0p50pycxoj4vrtd2qh"
     };
     return isPermittedAddress ? [models.Index, models.IndexItem, models.Embedding] : [models.IndexItem, models.Embedding];
   };
   var go = async () => {
     if (typeof ACTION_CALL_MODE !== "undefined") {
-      console.log(JSON.stringify(getCreatorConditions()));
+      console.log(JSON.stringify(getCreatorConditions(false)));
       return;
     }
     const context = { isPermittedAddress: false, isCreator: false, siweMessage: false };
     const pkpTokenId = Lit.Actions.pubkeyToTokenId({ publicKey });
     const pkpAddress = ethers.utils.computeAddress(publicKey).toLowerCase();
-    const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: Lit.Auth.authSigAddress });
+    const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: authSig.address });
     context.isPermittedAddress = isPermittedAddress;
     const conditions = getCreatorConditions();
     let isCreator = false;
@@ -88,6 +103,7 @@
         publicKey,
         sigName
       });
+      context.litAuth = Lit.Auth;
       context.siweMessage = siweMessage;
       LitActions.setResponse({
         response: JSON.stringify({

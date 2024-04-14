@@ -69,6 +69,32 @@ export class QueryRequestDTO {
         
 }
 
+export class AutocompleteRequestDTO {
+
+    @ApiProperty({
+        description: 'Question to ask',
+        example: 'Audio models',
+    })
+    @IsString()
+    query: string;
+
+    @ApiProperty({
+        description: 'Index id to execute the query on',
+        example: 'id_1'
+    })
+    @IsString()
+    indexId: string;
+
+    @ApiProperty({
+        description: 'number of suggestions to return',
+        example: 5
+    })
+    @IsNumber()
+    @Min(1)
+    @Max(100)
+    n: number;
+}
+
 
 export class SearchRequestDTO {
 

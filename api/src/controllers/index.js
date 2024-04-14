@@ -1,8 +1,10 @@
-import { IndexService } from "../services/index.js";
-import { DIDService } from "../services/did.js";
-import {getPKPSession, getRolesFromSession} from "../libs/lit/index.js";
+import { getAddress } from "@ethersproject/address";
 import axios from "axios";
 import RedisClient from '../clients/redis.js';
+import { getPKPSession, getRolesFromSession, mintPKP, writeAuthMethods } from "../libs/lit/index.js";
+import { getAuthSigFromDIDSession } from "../utils/helpers.js";
+import { DIDService } from "../services/did.js";
+import { IndexService } from "../services/index.js";
 
 const redis = RedisClient.getInstance();
 
@@ -38,13 +40,29 @@ export const getIndexById = async (req, res, next) => {
 export const createIndex = async (req, res, next) =>  {
     try {
 
-        const pkpSession = await getPKPSession(req.session, req.body);
+        const indexParams = req.body;
+
+        const ownerWallet = req.session.did.parent.split(":").pop();
+        const newPKP = await mintPKP(ownerWallet, req.body.signerFunction);
+        console.log("Superlog" , newPKP)
+        indexParams.signerPublicKey = newPKP.pkpPublicKey;
+
+        const pkpSession = await getPKPSession(req.session, indexParams);
 
         const indexService = new IndexService().setSession(pkpSession); //PKP
-        const newIndex = await indexService.createIndex(req.body);
+        let newIndex = await indexService.createIndex(indexParams);
+        if(!newIndex){
+          return res.status(500).json({ error: "Create index error" });
+        }
+
+        //Cache pkp session after index creation.
+        const sessionCacheKey = `${req.session.did.parent}:${newIndex.id}:${newIndex.signerFunction}`
+        await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
 
         const didService = new DIDService().setSession(req.session); //Personal
-        const newIndexDID = await didService.addIndex(newIndex.id, "owned");
+        const newIndexDID = await didService.setDIDIndex(newIndex.id, "owned");
+        newIndex = await indexService.getIndexById(newIndex.id);
+
         newIndex.did = {
             owned: true,
             starred: false
@@ -63,14 +81,31 @@ export const updateIndex = async (req, res, next) => {
     try {
 
         const indexService = new IndexService();
-        const index = await indexService.getIndexById(req.params.id);
+        let index = await indexService.getIndexById(req.params.id);
+
+        if(req.body.signerFunction){
+
+          const userAuthSig = getAuthSigFromDIDSession(req.session)
+          const vals = await writeAuthMethods({
+            userAuthSig: userAuthSig,
+            signerPublicKey: index?.signerPublicKey,
+            prevCID: index.signerFunction,
+            newCID: req.body.signerFunction,
+          });
+          console.log(vals)
+
+          console.log("updated!");
+          index.signerFunction = req.body.signerFunction;
+        }
+
         const pkpSession = await getPKPSession(req.session, index);
 
         const newIndex = await indexService
             .setSession(pkpSession)
             .updateIndex(req.params.id, req.body);
 
-        res.status(200).json(newIndex);
+        return await getIndexById(req, res, next);
+
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

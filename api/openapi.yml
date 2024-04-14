@@ -1,0 +1,697 @@
+openapi: 3.0.0
+info:
+  title: Index and Embedding API
+  version: 1.0.0
+servers:
+  - url: "https://dev.index.network/api"
+  - url: "http://api.env-dev"
+paths:
+  /dids/{did}/indexes:
+    get:
+      summary: Get indexes by DID
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Decentralized Identifier
+      responses:
+        "200":
+          description: Successful operation
+  /dids/{did}/indexes/{type}:
+    get:
+      summary: Get indexes by DID and Relation Type
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Decentralized Identifier
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [own, star]
+          description: Index type
+      responses:
+        "200":
+          description: Successful operation
+  /dids/{did}/indexes/{indexId}/{type}:
+    put:
+      summary: Add index to DID
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Decentralized Identifier
+        - name: indexId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Index ID
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [own, star]
+          description: Index type
+      responses:
+        "200":
+          description: Successful operation
+    delete:
+      summary: Remove index from DID
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Decentralized Identifier
+        - name: indexId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Index ID
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [own, star]
+          description: Index type
+      responses:
+        "200":
+          description: Successful operation
+  /dids/{did}/profile:
+    patch:
+      summary: Create or update DID profile
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Decentralized Identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                bio:
+                  type: string
+                avatar:
+                  type: string
+              oneOf:
+                - required: [name]
+                - required: [bio]
+                - required: [avatar]
+      responses:
+        "200":
+          description: Profile updated
+    get:
+      summary: Get DID profile
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Decentralized Identifier
+      responses:
+        "200":
+          description: Successful operation
+  /indexes/{id}:
+    get:
+      summary: Get index by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Index ID
+      responses:
+        "200":
+          description: Successful operation
+    patch:
+      summary: Update index
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Index ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                signerFunction:
+                  type: string
+              oneOf:
+                - required: [title]
+                - required: [signerFunction]
+      responses:
+        "200":
+          description: Index updated
+    delete:
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Index ID
+      summary: Delete index
+      responses:
+        "200":
+          description: Index deleted
+  /index/{indexId}/questions:
+    get:
+      summary: Get default questions of an Index
+      operationId: getDefaultQuestionsOfIndex
+      parameters:
+        - name: indexId
+          in: path
+          required: true
+          description: Unique identifier of the Index
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Successfully retrieved default questions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  questions:
+                    type: array
+                    items:
+                      type: string
+        "404":
+          description: Index not found
+        "500":
+          description: Server error
+  /indexes:
+    post:
+      summary: Create index
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                signerPublicKey:
+                  type: string
+                signerFunction:
+                  type: string
+      responses:
+        "201":
+          description: Index created
+  /indexes/{indexId}/items:
+    get:
+      summary: List items in an index
+      parameters:
+        - name: indexId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Index ID
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 24
+      responses:
+        "200":
+          description: Successful operation
+  /indexes/{indexId}/items/{itemId}:
+    post:
+      summary: Add item to index
+      parameters:
+        - name: indexId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Index ID
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Item ID
+      responses:
+        "201":
+          description: Item added
+    delete:
+      summary: Remove item from index
+      parameters:
+        - name: indexId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Index ID
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Item ID
+      responses:
+        "200":
+          description: Item removed
+  /embeddings:
+    get:
+      summary: List embeddings
+      parameters:
+        - in: query
+          name: indexId
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: itemId
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: modelName
+          schema:
+            type: string
+          required: false
+        - in: query
+          name: categories
+          schema:
+            type: array
+            items:
+              type: string
+          required: false
+        - in: query
+          name: skip
+          schema:
+            type: integer
+          required: false
+        - in: query
+          name: take
+          schema:
+            type: integer
+          required: false
+      responses:
+        "200":
+          description: List of embeddings
+    post:
+      summary: Create embedding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                indexId:
+                  type: string
+                itemId:
+                  type: string
+                modelName:
+                  type: string
+                category:
+                  type: string
+                context:
+                  type: string
+                vector:
+                  type: array
+                  items:
+                    type: number
+                description:
+                  type: string
+      responses:
+        "201":
+          description: Embedding created
+    patch:
+      summary: Update embedding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                indexId:
+                  type: string
+                itemId:
+                  type: string
+                modelName:
+                  type: string
+                category:
+                  type: string
+                context:
+                  type: string
+                vector:
+                  type: array
+                  items:
+                    type: number
+                description:
+                  type: string
+      responses:
+        "200":
+          description: Embedding updated
+    delete:
+      summary: Delete embedding
+      responses:
+        "200":
+          description: Embedding deleted
+  /discovery/query:
+    post:
+      summary: Query
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                indexIds:
+                  type: array
+                  items:
+                    type: string
+                query:
+                  type: string
+                page:
+                  type: integer
+                  default: 1
+                skip:
+                  type: integer
+                  default: 0
+                filters:
+                  type: object
+                  properties:
+                    indexCreatedAt:
+                      type: object
+                      properties:
+                        $gte:
+                          type: string
+                          format: date-time
+                model:
+                  type: string
+                sort:
+                  type: string
+                desc:
+                  type: boolean
+              required:
+                - indexIds
+                - query
+      responses:
+        "200":
+          description: Query Result
+  /discovery/listen:
+    post:
+      summary: Semantic Listener
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                indexIds:
+                  type: array
+                  items:
+                    type: string
+                query:
+                  type: string
+                page:
+                  type: integer
+                  default: 1
+                skip:
+                  type: integer
+                  default: 0
+                filters:
+                  type: object
+                  properties:
+                    indexCreatedAt:
+                      type: object
+                      properties:
+                        $gte:
+                          type: string
+                          format: date-time
+                model:
+                  type: string
+                sort:
+                  type: string
+                desc:
+                  type: boolean
+              required:
+                - indexIds
+                - query
+      responses:
+        "200":
+          description: OK
+          content:
+            application/stream+json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+  /discovery/chat:
+    post:
+      summary: Post chat data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: Unique identifier for the chat.
+                messages:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of messages.
+                did:
+                  type: string
+                  nullable: true
+                  description: Optional decentralized identifier.
+                type:
+                  type: string
+                  enum: [owned, starred]
+                  nullable: true
+                  description: Type of the chat, valid if 'did' is provided.
+                indexIds:
+                  type: array
+                  items:
+                    type: string
+                  nullable: true
+                  description: Optional array of index identifiers.
+              required:
+                - id
+                - messages
+              oneOf:
+                - required:
+                    - did
+                - required:
+                    - indexIds
+      responses:
+        "200":
+          description: Successful response with streamed answer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                    description: Status of the response.
+                  data:
+                    type: object
+                    properties:
+                      answer:
+                        type: string
+                        description: Streamed answer to the question.
+                example:
+                  status: success
+                  data:
+                    answer: "This is the streamed answer to your question."
+        "400":
+          description: Invalid request
+  /profile/upload_avatar:
+    post:
+      summary: Upload avatar image
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Image file for avatar
+      responses:
+        "200":
+          description: Avatar uploaded successfully
+        "400":
+          description: Invalid request
+  /profile:
+    patch:
+      summary: Update profile information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Name of the user
+                bio:
+                  type: string
+                  description: Biography of the user
+                avatar:
+                  type: string
+                  description: CID of the avatar image
+              required:
+                - name
+                - bio
+                - avatar
+      responses:
+        "200":
+          description: Profile updated successfully
+        "400":
+          description: Invalid request
+  /addCreator:
+    post:
+      summary: Add a new Creator to an Index
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accessCondition:
+                  type: object
+                  properties:
+                    chain:
+                      type: string
+                      enum:
+                        - "ethereum"
+                    returnValueTest:
+                      type: object
+                      properties:
+                        comparator:
+                          type: string
+                          enum:
+                            - "="
+                        value:
+                          type: string
+                  required:
+                    - chain
+                    - returnValueTest
+                signerPublicKey:
+                  type: string
+                signerFunction:
+                  type: string
+              required:
+                - accessCondition
+                - signerPublicKey
+                - signerFunction
+      responses:
+        "200":
+          description: Creator successfully added
+        "400":
+          description: Invalid input
+        "401":
+          description: Authentication error
+        "500":
+          description: Server error
+  /removeCreator:
+    post:
+      summary: Remove a Creator from an Index
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accessCondition:
+                  type: object
+                  properties:
+                    chain:
+                      type: string
+                      enum:
+                        - "ethereum"
+                    returnValueTest:
+                      type: object
+                      properties:
+                        comparator:
+                          type: string
+                          enum:
+                            - "="
+                        value:
+                          type: string
+                  required:
+                    - chain
+                    - returnValueTest
+                signerPublicKey:
+                  type: string
+                signerFunction:
+                  type: string
+              required:
+                - accessCondition
+                - signerPublicKey
+                - signerFunction
+      responses:
+        "200":
+          description: Creator successfully removed
+        "400":
+          description: Invalid input
+        "401":
+          description: Authentication error
+        "500":
+          description: Server error

@@ -54,6 +54,7 @@ export class IndexerService {
 
         // Check if the file was written
         if (!status) throw new Error('Failed to download page');
+
         Logger.log(`Downloaded ${url} to ${file_name}`, 'indexerService:crawl');
 
         
@@ -84,6 +85,7 @@ export class IndexerService {
         // Merge the documents
         let content = ''
         for (let doc of docs) {
+            Logger.log(`Extracted ${JSON.stringify(doc)}`, 'indexerService:crawl');
             content = content + '\n' + doc?.pageContent;
         }
 
@@ -103,7 +105,7 @@ export class IndexerService {
      */
     async index(indexId: string, body: IndexRequestBody): Promise<{ message: string }> {
 
-        Logger.log(`Indexing ${body.webPageContent}`, 'indexerService:index');
+        Logger.log(`Indexing ${body.webPageContent?.length} bytes for ${body.webPageUrl}`, 'indexerService:index');
         
         const chromaID = await this.generateChromaID(indexId, body.webPageId);
         
@@ -193,11 +195,11 @@ export class IndexerService {
                     limit: 1,
                 })
 
-                if (res.ids.length === 0) Logger.log('Delete failed, document not found', 'indexerService:delete');
+                if (res.ids.length === 0) Logger.warn('Delete failed, document not found', 'indexerService:delete');
 
                 const response = await this.chromaClient.collection.delete({ ids: [chromaID] }) 
             
-                Logger.log(`Delete Response ${JSON.stringify(response)}`, 'indexerService:delete');
+                Logger.debug(`Delete Response ${JSON.stringify(response)}`, 'indexerService:delete');
                 
                 // if (!response) throw new Error('Delete failed');
 
@@ -216,7 +218,7 @@ export class IndexerService {
 
                 response = await this.chromaClient.collection.delete({ ids: res?.ids })
 
-                // if (!response) throw new Error('Delete failed');
+                if (!response) Logger.warn(`Delete failed for ${res?.ids}`, 'indexerService:delete');
 
                 return {
                     message: `Successfully deleted ${response.ids.length} documents`
@@ -250,11 +252,12 @@ export class IndexerService {
                 openAIApiKey:process.env.OPENAI_API_KEY
             });
 
-            Logger.log(`Embedding ${JSON.stringify(content)}`, 'indexerService:embed');
+            Logger.log(`Creates embedding ${content.length} bytes of content`, 'indexerService:embed');
 
             const embedding = await embeddings.embedDocuments([content]);
 
             Logger.log(`Embedded successfully`, 'indexerService:embed');
+
             return {
                 model: process.env.MODEL_EMBEDDING,
                 vector: embedding[0]

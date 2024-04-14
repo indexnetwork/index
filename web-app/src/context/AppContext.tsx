@@ -1,7 +1,6 @@
 import { useApi } from "@/context/APIContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
-import litService from "@/services/lit-service";
 import { DiscoveryType } from "@/types";
 import { useRouter } from "next/navigation";
 import {
@@ -10,9 +9,11 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import toast from "react-hot-toast";
 import { AccessControlCondition, Indexes, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { v4 as uuidv4 } from "uuid";
@@ -23,24 +24,23 @@ type AppContextProviderProps = {
 
 export enum IndexListTabKey {
   ALL = "all",
-  OWNER = "owner",
+  OWNED = "owned",
   STARRED = "starred",
 }
 
-type TabKey = string;
-
 export interface AppContextValue {
   indexes: Indexes[];
+  leftSectionIndexes: Indexes[];
   loading: boolean;
   discoveryType: DiscoveryType;
   setIndexes: (indexes: Indexes[]) => void;
   fetchIndexes: (did: string) => void;
   setCreateModalVisible: (visible: boolean) => void;
   setTransactionApprovalWaiting: (visible: boolean) => void;
-  leftTabKey: TabKey;
-  setLeftTabKey: (key: TabKey) => void;
-  rightTabKey: TabKey;
-  setRightTabKey: (key: TabKey) => void;
+  leftTabKey: IndexListTabKey;
+  setLeftTabKey: (key: IndexListTabKey) => void;
+  rightTabKey: string;
+  setRightTabKey: (key: string) => void;
   leftSidebarOpen: boolean;
   setLeftSidebarOpen: (visible: boolean) => void;
   rightSidebarOpen: boolean;
@@ -82,8 +82,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     useState(false);
   const [leftSidebarOpen, setLeftSidebarOpen] = useState(false);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
-  const [rightTabKey, setRightTabKey] = useState<TabKey>("history");
-  const [leftTabKey, setLeftTabKey] = useState<TabKey>("all");
+  const [rightTabKey, setRightTabKey] = useState<string>("history");
+  const [leftTabKey, setLeftTabKey] = useState<IndexListTabKey>(
+    IndexListTabKey.ALL,
+  );
   const [loading, setLoading] = useState(false);
   const [chatID, setChatID] = useState<string | undefined>(undefined);
 
@@ -92,8 +94,21 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
 
+  const leftSectionIndexes = useMemo(() => {
+    if (leftTabKey === IndexListTabKey.ALL) {
+      return indexes;
+    }
+    if (leftTabKey === IndexListTabKey.OWNED) {
+      return indexes.filter((i) => i.did.owned);
+    }
+    if (leftTabKey === IndexListTabKey.STARRED) {
+      return indexes.filter((i) => i.did.starred);
+    }
+    return [];
+  }, [indexes, leftTabKey]);
+
   const fetchIndexes = useCallback(
-    async (did: string) => {
+    async (did: string): Promise<void> => {
       if (!apiReady) return;
       try {
         const fetchedIndexes = await api!.getAllIndexes(did);
@@ -104,12 +119,13 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         setIndexes(sortedIndexes);
       } catch (error) {
         console.error("Error fetching indexes", error);
+        toast.error("Error fetching indexes, please refresh the page");
       }
     },
     [apiReady],
   );
 
-  const fetchIndex = useCallback(async () => {
+  const fetchIndex = useCallback(async (): Promise<void> => {
     try {
       if (!apiReady || !id || !isIndex) return;
       if (viewedIndex?.id === id) return;
@@ -117,18 +133,19 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
       isFetchingRef.current = true;
 
-      console.log("fetching index", id, apiReady, viewedIndex);
       const index = await api!.getIndex(id);
-      console.log("65 index", index);
       setViewedIndex(index);
 
-      const indexWithIsOwner = await api!.getIndexWithIsCreator(id);
-      setViewedIndex(indexWithIsOwner);
+      if (!index?.roles.owner) {
+        const indexWithIsOwner = await api!.getIndexWithIsCreator(id);
+        setViewedIndex(indexWithIsOwner);
+      }
+
       prevIndexID.current = id;
       isFetchingRef.current = false;
     } catch (error) {
       console.error("Error fetching index", error);
-      // Handle error appropriately
+      toast.error("Error fetching index, please refresh the page");
     }
   }, [id, viewedIndex, isIndex, apiReady]);
 
@@ -142,14 +159,25 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       setTransactionApprovalWaiting(true);
       try {
         if (!apiReady) return;
+
+        console.log("Creating handlecreate index in appcontext");
         const doc = await api!.createIndex(title);
         if (!doc) {
           throw new Error("API didn't return a doc");
         }
         setIndexes((prevIndexes) => [doc, ...prevIndexes]);
+        toast.success("Index created successfully");
         router.push(`/${doc.id}`);
-      } catch (err) {
-        console.error("Couldn't create index", err);
+      } catch (err: any) {
+        let message = "";
+        if (err?.code === -32603) {
+          message = ": Not enough balance";
+        }
+        if (err?.code === "ACTION_REJECTED") {
+          message = ": Action rejected";
+        }
+        console.error("Couldn't create index", err.code);
+        toast.error(`Couldn't create index${message}`);
       } finally {
         setTransactionApprovalWaiting(false);
       }
@@ -191,7 +219,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         return profile;
       } catch (error) {
         console.error("Error fetching profile", error);
-        // Handle error appropriately
+        toast.error("Error fetching profile, please refresh the page");
       }
     },
     [apiReady],
@@ -215,7 +243,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       const profile = await fetchProfile(targetDID);
       setViewedProfile(profile);
     }
-  }, [isLanding, isIndex, id, fetchProfile]);
+  }, [isLanding, isIndex, id, fetchProfile, viewedIndex]);
 
   const handleUserProfileChange = useCallback(async () => {
     if (session) {
@@ -227,14 +255,9 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
       if (!apiReady || !viewedIndex || conditions.length === 0) return;
+      console.log("conditions in api:", conditions);
 
       const newAction = await api!.postLITAction(conditions);
-
-      await litService.writeAuthMethods({
-        prevCID: viewedIndex?.signerFunction,
-        signerPublicKey: viewedIndex?.signerPublicKey,
-        newCID: newAction.cid,
-      });
 
       const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
         signerFunction: newAction.cid,
@@ -267,11 +290,12 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     if (viewedProfile) {
       fetchIndexes(viewedProfile.id);
     }
-  }, [viewedProfile?.id]);
+  }, [viewedProfile]);
 
   const contextValue: AppContextValue = {
     discoveryType,
     indexes,
+    leftSectionIndexes,
     setIndexes,
     fetchIndexes,
     setCreateModalVisible,
@@ -306,22 +330,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   };
 
   return (
-    <AppContext.Provider value={contextValue}>
-      {children}
-      {/* {transactionApprovalWaiting && (
-        <ConfirmTransaction
-          handleCancel={handleTransactionCancel}
-          visible={transactionApprovalWaiting}
-        />
-      )}
-      {createModalVisible && (
-        <CreateModal
-          visible={createModalVisible}
-          onClose={() => setCreateModalVisible(false)}
-          onCreate={handleCreate}
-        />
-      )} */}
-    </AppContext.Provider>
+    <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>
   );
 };
 

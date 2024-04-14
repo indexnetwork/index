@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
+import toast from "react-hot-toast";
 
 export type IndexItemsState = {
   items: IndexItem[];
@@ -85,6 +86,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         }
       } catch (err: any) {
         console.error("Error fetching index links", err);
+        toast.error("Error fetching index links, try again");
       } finally {
         // setLoading(false);
         fetchingIndexItems.current = false;
@@ -93,10 +95,14 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
     [api, viewedIndex, itemsState.cursor, apiReady],
   );
 
-  useEffect(() => {
-    fetchIndex();
+  const fetchInitial = useCallback(async () => {
+    await fetchIndex();
     fetchIndexItems(true);
-  }, [viewedIndex?.id, fetchIndex, fetchIndexItems]);
+  }, [viewedIndex, fetchIndex, fetchIndexItems]);
+
+  useEffect(() => {
+    fetchInitial();
+  }, [fetchInitial]);
 
   const addItem = useCallback((item: IndexItem) => {
     setItemsState((prevState) => ({

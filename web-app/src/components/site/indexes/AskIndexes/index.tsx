@@ -1,4 +1,5 @@
-import { IndexListTabKey, useApp } from "@/context/AppContext";
+import { useApi } from "@/context/APIContext";
+import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { useChat, type Message } from "ai/react";
@@ -11,7 +12,14 @@ import AskInput from "components/base/AskInput";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { ComponentProps, FC, useMemo, useState } from "react";
+import {
+  ComponentProps,
+  FC,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "react-hot-toast";
 import { API_ENDPOINTS } from "utils/constants";
 import { maskDID } from "utils/helper";
@@ -21,6 +29,7 @@ export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
   id?: string;
 }
+
 export interface AskIndexesProps {
   chatID: string;
   did?: string;
@@ -32,28 +41,33 @@ export interface MessageWithIndex extends Message {
 }
 
 const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
-  const { viewedProfile, indexes: indexesFromApp, leftTabKey } = useApp();
+  const { viewedProfile, leftSectionIndexes, leftTabKey } = useApp();
 
   const { session } = useAuth();
   const { viewedIndex } = useApp();
-  const { isIndex } = useRouteParams();
+  const { isIndex, id } = useRouteParams();
+  const { ready: apiReady, api } = useApi();
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
   const [editInput, setEditInput] = useState<string>("");
+  const [defaultQuestions, setDefaultQuestions] = useState<string[]>([]);
 
-  const sectionIndexes = useMemo(() => {
-    if (leftTabKey === IndexListTabKey.ALL) {
-      return indexesFromApp;
+  const bottomRef = useRef<null | HTMLDivElement>(null);
+
+  const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
+    if (!apiReady || !isIndex) return;
+    try {
+      const questions = await api!.getDefaultQuestionsOfIndex(id);
+      setDefaultQuestions(questions);
+    } catch (error) {
+      console.error("Error fetching default questions", error);
     }
-    if (leftTabKey === IndexListTabKey.OWNER) {
-      return indexesFromApp.filter((i) => i.did.owned);
-    }
-    if (leftTabKey === IndexListTabKey.STARRED) {
-      return indexesFromApp.filter((i) => i.did.starred);
-    }
-    return [];
-  }, [indexesFromApp, leftTabKey]);
+  }, [apiReady, api, id, isIndex]);
+
+  useEffect(() => {
+    fetchDefaultQuestions();
+  }, [fetchDefaultQuestions]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
@@ -88,7 +102,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
 
     if (session && viewedProfile?.id === session.did.parent) {
       const sections = {
-        owner: "indexes owned by you",
+        owned: "indexes owned by you",
         starred: "indexes starred by you",
         all: "all your indexes",
       } as any;
@@ -97,7 +111,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
 
     if (viewedProfile?.id) {
       const sections = {
-        owner: "indexes owned by",
+        owned: "indexes owned by",
         starred: "indexes starred by",
         all: "all indexes of",
       } as any;
@@ -137,9 +151,21 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
         toast.error(response.statusText);
       }
     },
+    onError(error) {
+      console.error("Error loading chat messages", error);
+      toast.error("Cannot load chat messages");
+    },
   });
 
-  if (sectionIndexes.length === 0) {
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [bottomRef]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isLoading]);
+
+  if (leftSectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
   }
 
@@ -154,10 +180,20 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
           display: "flex",
           flexDirection: "column",
           height: "100%",
+          width: "100%",
+          alignItems: "stretch",
         }}
       >
         <FlexRow wrap={true} align={"start"} style={{ flex: "1 1 auto" }}>
-          <Col className="idxflex-grow-1">
+          <Col
+            className="idxflex-grow-1"
+            style={{
+              display: "flex",
+              height: "100%",
+              justifyContent: "stretch",
+              width: "100%",
+            }}
+          >
             {messages.length ? (
               <>
                 <ChatList
@@ -169,14 +205,24 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
                   handleSaveEdit={handleSaveEdit}
                   editingIndex={editingIndex}
                 />
+                <div ref={bottomRef} />
                 <ChatScrollAnchor trackVisibility={isLoading} />
               </>
             ) : (
-              <Flex className="px-8">
+              <Flex
+                className="px-8"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 <EmptyScreen
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}
                   indexIds={indexIds}
+                  defaultQuestions={defaultQuestions}
                 />
               </Flex>
             )}

@@ -12,7 +12,7 @@ import IconSettings from "components/base/Icon/IconSettings";
 import Text from "components/base/Text";
 import Navbar, { NavbarMenu } from "components/layout/base/Navbar";
 import { useRouter } from "next/navigation";
-import React, { useCallback } from "react";
+import { useCallback } from "react";
 
 const AppHeader = () => {
   const { connect, disconnect, status, setStatus } = useAuth();
@@ -43,6 +43,10 @@ const AppHeader = () => {
       console.log(err);
     }
   }, [connect]);
+
+  const handleCreateIndex = useCallback(() => {
+    setCreateModalVisible(true);
+  }, [setCreateModalVisible]);
 
   if (isLanding) {
     return (
@@ -115,9 +119,7 @@ const AppHeader = () => {
         <Button
           style={{ height: "32px" }}
           className="pl-5 pr-5"
-          onClick={() => {
-            setCreateModalVisible(true);
-          }}
+          onClick={handleCreateIndex}
           theme="primary"
         >
           New Index

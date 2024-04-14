@@ -1,6 +1,7 @@
+   #idxModalPortal .modal {
+        z-index: 3;
+        }
 .app-container {
-    max-height: 100dvh;
-    overflow: hidden;
   .sidebar-open-backdrop{
     background: rgba(0,0,0,0.10);
     z-index: 2;

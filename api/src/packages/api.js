@@ -2,16 +2,40 @@ import dotenv from "dotenv";
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
+import Moralis from 'moralis';
+import express from 'express';
+import Joi from 'joi';
+import * as ejv from 'express-joi-validation';
 
-import express from "express";
-import axios from "axios";
-import Joi from "joi";
-import * as ejv from "express-joi-validation";
+import RedisClient  from '../clients/redis.js';
 
-const app = express();
+import * as Sentry from "@sentry/node";
+import { ProfilingIntegration } from "@sentry/profiling-node";
+
+const app = express()
+
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  integrations: [
+    // enable HTTP calls tracing
+    new Sentry.Integrations.Http({ tracing: true }),
+    // enable Express.js middleware tracing
+    new Sentry.Integrations.Express({ app }),
+    new ProfilingIntegration(),
+  ],
+  // Performance Monitoring
+  tracesSampleRate: 1.0, //  Capture 100% of the transactions
+  // Set sampling rate for profiling - this is relative to tracesSampleRate
+  profilesSampleRate: 1.0,
+});
+
+app.use(Sentry.Handlers.requestHandler());
+app.use(Sentry.Handlers.tracingHandler());
+
 const port = process.env.PORT || 3001;
 
-import RedisClient from "../clients/redis.js";
+
 const redis = RedisClient.getInstance();
 
 import * as indexController from "../controllers/index.js";
@@ -28,7 +52,7 @@ import * as zapierController from "../controllers/zapier.js";
 
 import * as siteController from "../controllers/site.js";
 
-import * as infuraController from "../controllers/infura.js";
+import * as metaController from "../controllers/meta.js";
 
 import {
   authenticateMiddleware,
@@ -43,13 +67,14 @@ import {
   isDID,
   isStreamID,
 } from "../types/validators.js";
-import { ItemService } from "../services/item.js";
+
 
 app.use(express.json());
 
 const validator = ejv.createValidator({
   passError: true,
 });
+
 
 // Authenticate
 app.use(authenticateMiddleware);
@@ -149,10 +174,6 @@ app.post(
   validator.body(
     Joi.object({
       title: Joi.string().required(),
-      signerPublicKey: Joi.custom(
-        isPKPPublicKey,
-        "LIT PKP Public Key",
-      ).optional(),
       signerFunction: Joi.custom(isCID, "IPFS CID").optional(),
     }),
   ),
@@ -389,19 +410,23 @@ app.post("/zapier/index_link", zapierController.indexLink);
 app.get("/zapier/auth", zapierController.authenticate);
 
 //Todo refactor later.
-app.get("/lit_actions/:cid", litProtocol.getAction);
-app.post("/lit_actions", litProtocol.postAction);
+app.get('/lit_actions/:cid', litProtocol.getAction);
+app.post('/lit_actions/', validator.body(Joi.array().items(Joi.object({
+  tag: Joi.string().valid('apiKey', 'creator', 'semanticIndex').required(),
+  value: Joi.object().required()
+}))), litProtocol.postAction);
+
 
 //Todo refactor later.
 app.get(
   "/nft/:chainName/:tokenAddress",
-  infuraController.getCollectionMetadataHandler,
+  metaController.getCollectionMetadataHandler,
 );
 app.get(
   "/nft/:chainName/:tokenAddress/:tokenId",
-  infuraController.getNftMetadataHandler,
+  metaController.getNftMetadataHandler,
 );
-app.get("/ens/:ensName", infuraController.getWalletByENSHandler);
+app.get("/ens/:ensName", metaController.getWalletByENSHandler);
 
 app.post(
   "/profile/upload_avatar",
@@ -437,9 +462,13 @@ app.use(errorMiddleware);
 const start = async () => {
   await redis.connect();
 
-  await app.listen(port, async () => {
-    console.log(`Search service listening on port ${port}`);
+  await Moralis.start({
+    apiKey: process.env.MORALIS_API_KEY
   });
-};
 
+  app.use(Sentry.Handlers.errorHandler());
+  app.listen(port, async () => {
+    console.log(`Search service listening on port ${port}`)
+  })
+}
 start();

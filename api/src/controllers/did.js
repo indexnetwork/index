@@ -20,7 +20,7 @@ export const addIndex = async (req, res) => {
   const { indexId } = req.params;
   try {
     const didService = new DIDService().setSession(req.session);
-    const newIndex = await didService.addIndex(indexId, type);
+    const newIndex = await didService.setDIDIndex(indexId, type);
     res.status(201).json(newIndex);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -36,7 +36,7 @@ export const removeIndex = async (req, res, next) => {
   const { indexId } = req.params;
   try {
     const didService = new DIDService().setSession(req.session);
-    const newIndex = await didService.removeIndex(indexId, type);
+    const newIndex = await didService.setDIDIndex(indexId, type, true);
     res.status(200).json(newIndex);
   } catch (error) {
     res.status(500).json({ error: error.message });

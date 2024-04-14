@@ -92,7 +92,7 @@ export class IndexService {
                 index.did = did;
             }
 
-            index.ownerDID = await getOwnerProfile(index.signerPublicKey);
+            index.ownerDID = await getOwnerProfile(index.id);
 
 
 
@@ -143,7 +143,7 @@ export class IndexService {
 
             // Return the created index document
             const createdIndex =  data.createIndex.document;
-            createdIndex.ownerDID = await getOwnerProfile(createdIndex.signerPublicKey);
+            createdIndex.ownerDID = await getOwnerProfile(createdIndex.id);
 
             return createdIndex;
 
@@ -246,5 +246,3 @@ export class IndexService {
         }
     }
 }
-
-

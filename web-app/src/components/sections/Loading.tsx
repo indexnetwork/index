@@ -5,6 +5,7 @@ export default function LoadingSection() {
         display: "flex",
         alignItems: "center",
         flexDirection: "column",
+        justifyContent: "center",
         height: "100%",
         textAlign: "center",
         margin: "auto",

@@ -2,29 +2,16 @@ import IconLightbulb from "components/base/Icon/IconLightbulb";
 import Flex from "components/layout/base/Grid/Flex";
 import Text from "../base/Text";
 
-const exampleMessages = [
-  {
-    message: `Highlight any paradigm shifts in my indexes that might challenge previous knowledge.`,
-  },
-  {
-    message: "Collate any overlaps between X index and practices in Y company.",
-  },
-  {
-    message: `Based on recent developments, predict the next major changes for the discovery ecosystem`,
-  },
-  {
-    message: `List all updates from my discovery network`,
-  },
-];
-
 export function EmptyScreen({
   setInput,
   contextMessage,
   indexIds,
+  defaultQuestions,
 }: {
   setInput: (input: string) => void;
   contextMessage: string;
   indexIds?: string[];
+  defaultQuestions?: string[];
 }) {
   return (
     <Flex
@@ -45,19 +32,17 @@ export function EmptyScreen({
       </div>
       <div className="example-messages-empty-screen">
         {indexIds && indexIds.length > 0
-          ? exampleMessages
-              .slice(0, 2)
-              .map((message, i) => (
-                <ExampleMessageBox
-                  key={i}
-                  message={message.message}
-                  setInput={setInput}
-                />
-              ))
-          : exampleMessages.map((message, i) => (
+          ? defaultQuestions?.map((message, i) => (
               <ExampleMessageBox
                 key={i}
-                message={message.message}
+                message={message}
+                setInput={setInput}
+              />
+            ))
+          : defaultQuestions?.map((message, i) => (
+              <ExampleMessageBox
+                key={i}
+                message={message}
                 setInput={setInput}
               />
             ))}

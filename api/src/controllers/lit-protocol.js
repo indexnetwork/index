@@ -13,83 +13,82 @@ import { Readable } from "stream";
 
 //import { Index } from '../protocol.ts';
 
-import { getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet } from '../controllers/infura.js';
+import { getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet } from '../controllers/meta.js';
 
 const enrichConditions = async (conditions) => {
 
-    conditions = await Promise.all(conditions.map( async (condition) => {
 
-        if(condition.operator === "or"){
-            return condition;
-        }
+    conditions = await Promise.all(conditions.map( async (c) => {
 
-        if(!condition.contractAddress){
-            condition.metadata = {
+        let { value, tag } = c;
+        if(!value.contractAddress){
+            value.metadata = {
                 ruleType: "individualWallet",
-                walletAddress: condition.returnValueTest.value,
-                chain: condition.chain,
+                walletAddress: value.returnValueTest.value,
+                chain: value.chain,
             };
 
-            let profile = await getENSProfileByWallet(condition.returnValueTest.value);
+            let profile = await getENSProfileByWallet(value.returnValueTest.value);
             if(profile){
-                condition.metadata.ensName = profile.ensName;
+                value.metadata.ensName = profile.ensName;
                 if(profile.image){
-                    condition.metadata.image = profile.image;
+                    value.metadata.image = profile.image;
                 }
             }
-            return condition;
+            c.value = value;
+            return c;
         }
 
-        if(condition.standardContractType) {
-            if (condition.standardContractType === "ERC20") {
-                condition.metadata = {
+        if(value.standardContractType) {
+            if (value.standardContractType === "ERC20") {
+                value.metadata = {
                     ruleType: "nftOwner",
-                    chain: condition.chain,
-                    contractAddress: condition.contractAddress,
+                    chain: value.chain,
+                    contractAddress: value.contractAddress,
                 }
-            } else if (condition.standardContractType === "ERC721") {
-                condition.metadata = {
+            } else if (value.standardContractType === "ERC721") {
+                value.metadata = {
                     ruleType: "nftOwner",
-                    chain: condition.chain,
-                    contractAddress: condition.contractAddress,
+                    chain: value.chain,
+                    contractAddress: value.contractAddress,
                 }
-                if (condition.method === "ownerOf") {
-                    condition.metadata.tokenId = condition.parameters[0];
+                if (value.method === "ownerOf") {
+                    value.metadata.tokenId = value.parameters[0];
                 }
-            } else if (condition.standardContractType === "ERC1155") {
-                condition.metadata = {
+            } else if (value.standardContractType === "ERC1155") {
+                value.metadata = {
                     ruleType: "nftOwner",
-                    chain: condition.chain,
-                    contractAddress: condition.contractAddress,
-                    tokenId: condition.parameters[1],
+                    chain: value.chain,
+                    contractAddress: value.contractAddress,
+                    tokenId: value.parameters[1],
                 }
             }
-            let collectionMetadata = await getCollectionMetadataApi(condition.chain, condition.contractAddress);
+            let collectionMetadata = await getCollectionMetadataApi(value.chain, value.contractAddress);
             if(collectionMetadata){
-                condition.metadata.standardContractType = condition.standardContractType;
-                condition.metadata.symbol = collectionMetadata.symbol;
-                if(condition.metadata.tokenId){
-                    let tokenMetadata = await getNftMetadataApi(condition.chain, condition.contractAddress, condition.metadata.tokenId);
+                value.metadata.standardContractType = value.standardContractType;
+                value.metadata.symbol = collectionMetadata.symbol;
+                if(value.metadata.tokenId){
+                    let tokenMetadata = await getNftMetadataApi(value.chain, value.contractAddress, value.metadata.tokenId);
                     if(tokenMetadata){
-                        if(condition.standardContractType === "ERC721"){
-                            condition.metadata.name = `${collectionMetadata.name} - ${tokenMetadata.metadata.name}`;
-                            condition.metadata.image = tokenMetadata.metadata.image;
+                        if(value.standardContractType === "ERC721"){
+                            value.metadata.name = `${collectionMetadata.name} - ${tokenMetadata.metadata.name}`;
+                            value.metadata.image = tokenMetadata.metadata.image;
                         }
-                        if(condition.standardContractType === "ERC1155"){
-                            condition.metadata.name = tokenMetadata.metadata.name;
-                            condition.metadata.image = tokenMetadata.metadata.image;
+                        if(value.standardContractType === "ERC1155"){
+                            value.metadata.name = tokenMetadata.metadata.name;
+                            value.metadata.image = tokenMetadata.metadata.image;
                         }
                     }else{
-                        condition.metadata.name = collectionMetadata.name;
+                        value.metadata.name = collectionMetadata.name;
                     }
                 }else{
-                    condition.metadata.name = collectionMetadata.name
+                    value.metadata.name = collectionMetadata.name
                 }
             }
         }
 
-        return condition;
-
+        c.value = value;
+        return c;
     }));
 
     return conditions;
@@ -125,12 +124,13 @@ export const getAction = async (req, res, next) => {
             return res.json(enrichedConditions)
         });
 
-        const litAction = await fetch(`https://indexas.infura-ipfs.io/ipfs/${cid}`);
+        const litAction = await fetch(`https://ipfs.index.network/ipfs/${cid}?pinataGatewayToken=${process.env.PINATA_IPFS_GATEWAY_KEY}`);
         let litActionStr = await litAction.text();
         litActionStr = `const ACTION_CALL_MODE="read"; ${litActionStr}`;
         await runner.run(litActionStr);
 
     } catch (err) {
+        console.log(err)
         return res.json({"error": "No action found"});
     }
 

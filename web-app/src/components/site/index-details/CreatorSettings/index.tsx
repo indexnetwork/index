@@ -10,12 +10,13 @@ import Row from "components/layout/base/Grid/Row";
 import NewCreatorModal from "components/site/modal/NewCreatorModal";
 import { useRole } from "hooks/useRole";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { AccessControlCondition } from "types/entity";
 import CreatorRule from "./CreatorRule";
 
 const CreatorSettings = () => {
   const { isOwner } = useRole();
-  const { viewedIndex, setViewedIndex, createConditions } = useApp();
+  const { viewedIndex, createConditions } = useApp();
 
   const { api, ready: apiReady } = useApi();
   const [newCreatorModalVisible, setNewCreatorModalVisible] = useState(false);
@@ -26,36 +27,10 @@ const CreatorSettings = () => {
   const creators = useMemo(
     () =>
       conditions
-        .filter(
-          (condition: any) => condition.tag === "creators" || "semanticIndex",
-        )
+        .filter((condition: any) => condition.tag === "creator")
         .map((c: any) => c.value) as any,
     [conditions],
   );
-
-  // const handleActionChange = useCallback(
-  //   async ({ cid }: CreatorAction) => {
-  //     if (!viewedIndex || !apiReady) return;
-
-  //     debugger;
-  //     try {
-  //       // There's a risk here.
-  //       // If the user refreshes the page before the transaction is mined, the UI will show the old value.
-  //       await litService.writeAuthMethods({
-  //         cid,
-  //         signerPublicKey: viewedIndex.signerPublicKey!,
-  //         signerFunction: viewedIndex.signerFunction!,
-  //       });
-  //       const updatedIndex = await api!.updateIndex(viewedIndex?.id, {
-  //         signerFunction: cid,
-  //       });
-  //       setViewedIndex(updatedIndex);
-  //     } catch (error) {
-  //       console.error("Error creating rule", error);
-  //     }
-  //   },
-  //   [api, viewedIndex, apiReady],
-  // );
 
   const loadActions = useCallback(async () => {
     if (!apiReady || !viewedIndex) return;
@@ -83,8 +58,10 @@ const CreatorSettings = () => {
         ) as AccessControlCondition[];
 
         await createConditions(newConditions);
+        toast.success("Creator removed successfully");
       } catch (error) {
-        console.error("Error removing rule", error);
+        console.error("Error removing creator", error);
+        toast.error("Error removing creator, please try again.");
       } finally {
         setTransactionApprovalWaiting(false);
       }
@@ -108,8 +85,10 @@ const CreatorSettings = () => {
           ...deepCopyOfConditions,
         ] as AccessControlCondition[];
         await createConditions(newConditions);
+        toast.success("Creator added successfully");
       } catch (error) {
-        console.error("Error creating rule", error);
+        console.error("Error creating creator", error);
+        toast.error("Error creating creator");
       } finally {
         setTransactionApprovalWaiting(false);
       }
@@ -155,7 +134,7 @@ const CreatorSettings = () => {
                 <br />
               </>
             )}
-            Creators can add items, add tags to theirs and delete them.
+            Creators can add and remove items.
           </Text>
         </Col>
       </Row>

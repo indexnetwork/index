@@ -3,7 +3,6 @@ import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
 import IconTrash from "components/base/Icon/IconTrash";
 import Text from "components/base/Text";
 import Flex from "components/layout/base/Grid/Flex";
-import { useTranslation } from "next-i18next";
 import React from "react";
 
 export interface IndexDetailItemPopupProps {
@@ -14,7 +13,6 @@ const IndexDetailItemPopup = ({
   children,
   onDelete,
 }: IndexDetailItemPopupProps) => {
-  const { t } = useTranslation("common");
   const handleDelete = () => {
     onDelete && onDelete();
   };
@@ -28,7 +26,7 @@ const IndexDetailItemPopup = ({
             <IconTrash width={12} height="auto" className="icon-error" />
             <Text className="ml-3" element="span" size="sm" theme="error">
               {" "}
-              {t("delete")}
+              Delete
             </Text>
           </Flex>
         </DropdownMenuItem>
