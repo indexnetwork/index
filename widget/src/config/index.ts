@@ -26,7 +26,7 @@ export const appConfig: AppConfig = {
   website: "https://index.network",
   version: "1",
   description: "Chat with your indexes, easy as pie.",
-  apiUrl: "https://dev.index.network",
+  apiUrl: "https://index.network",
   ipfsGateway: "https://indexas.infura-ipfs.io/ipfs",
   ipfsProxy: "https://ipfs.io/ipfs",
   ipfsInfura: "http://localhost:3001/avatar",

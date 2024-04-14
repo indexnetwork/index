@@ -6,7 +6,7 @@ const IndexConfig = {
     | "localhost"
     | "manzano"
     | "habanero",
-  apiURL: "https://dev.index.network/api",
+  apiURL: "https://index.network/api",
   litProtocolRPCProviderURL: "https://chain-rpc.litprotocol.com/http",
 };
 

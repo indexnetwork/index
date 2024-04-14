@@ -107,7 +107,7 @@ const ChatBody: FC<ChatBodyProps> = ({ chatID, did, indexIds }) => {
     },
   ];
 
-  const apiUrl = `https://dev.index.network/api/discovery/chat`;
+  const apiUrl = `https://index.network/api/discovery/chat`;
   const initialMessages: Message[] = [];
   const {
     messages,

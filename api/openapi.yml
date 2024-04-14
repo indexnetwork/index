@@ -3,7 +3,7 @@ info:
   title: Index and Embedding API
   version: 1.0.0
 servers:
-  - url: "https://dev.index.network/api"
+  - url: "https://index.network/api"
   - url: "http://api.env-dev"
 paths:
   /dids/{did}/indexes:
