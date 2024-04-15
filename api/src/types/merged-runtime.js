@@ -57,7 +57,7 @@ export const definition = {
             "controllerDID": {"type": "view", "viewType": "documentAccount"}
         },
         "Embedding": {
-            "itemId": {"type": "streamid", "required": true, "immutable": false},
+            "itemId": {"type": "streamid", "required": true, "immutable": false, "indexed": true},
             "vector": {
                 "type": "list",
                 "required": true,
