@@ -2,18 +2,17 @@ import dotenv from "dotenv";
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
-import Moralis from 'moralis';
-import express from 'express';
-import Joi from 'joi';
-import * as ejv from 'express-joi-validation';
+import Moralis from "moralis";
+import express from "express";
+import Joi from "joi";
+import * as ejv from "express-joi-validation";
 
-import RedisClient  from '../clients/redis.js';
+import RedisClient from "../clients/redis.js";
 
 import * as Sentry from "@sentry/node";
 import { ProfilingIntegration } from "@sentry/profiling-node";
 
-const app = express()
-
+const app = express();
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
@@ -34,7 +33,6 @@ app.use(Sentry.Handlers.requestHandler());
 app.use(Sentry.Handlers.tracingHandler());
 
 const port = process.env.PORT || 3001;
-
 
 const redis = RedisClient.getInstance();
 
@@ -68,13 +66,11 @@ import {
   isStreamID,
 } from "../types/validators.js";
 
-
 app.use(express.json());
 
 const validator = ejv.createValidator({
   passError: true,
 });
-
 
 // Authenticate
 app.use(authenticateMiddleware);
@@ -410,12 +406,21 @@ app.post("/zapier/index_link", zapierController.indexLink);
 app.get("/zapier/auth", zapierController.authenticate);
 
 //Todo refactor later.
-app.get('/lit_actions/:cid', litProtocol.getAction);
-app.post('/lit_actions/', validator.body(Joi.array().items(Joi.object({
-  tag: Joi.string().valid('apiKey', 'creator', 'semanticIndex').required(),
-  value: Joi.object().required()
-}))), litProtocol.postAction);
-
+app.get("/lit_actions/:cid", litProtocol.getAction);
+app.post(
+  "/lit_actions/",
+  validator.body(
+    Joi.array().items(
+      Joi.object({
+        tag: Joi.string()
+          .valid("apiKey", "creator", "semanticIndex")
+          .required(),
+        value: Joi.object().required(),
+      }),
+    ),
+  ),
+  litProtocol.postAction,
+);
 
 //Todo refactor later.
 app.get(
@@ -463,12 +468,12 @@ const start = async () => {
   await redis.connect();
 
   await Moralis.start({
-    apiKey: process.env.MORALIS_API_KEY
+    apiKey: process.env.MORALIS_API_KEY,
   });
 
   app.use(Sentry.Handlers.errorHandler());
   app.listen(port, async () => {
-    console.log(`Search service listening on port ${port}`)
-  })
-}
+    console.log(`Search service listening on port ${port}`);
+  });
+};
 start();
