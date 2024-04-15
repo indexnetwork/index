@@ -448,10 +448,10 @@
     "@ethersproject/properties" "^5.7.0"
     "@ethersproject/strings" "^5.7.0"
 
-"@indexnetwork/sdk@0.0.5":
-  version "0.0.5"
-  resolved "https://registry.yarnpkg.com/@indexnetwork/sdk/-/sdk-0.0.5.tgz#60b4be0755bbeafdbe6ad35c2b24e9c37293804d"
-  integrity sha512-cK0tHy2rGvjhqj5tuTzR4wuZiTG6SbftWJlbUUZ87DEZrcV36hhWMkzpQYkgAhI3rpV8/O25z5a+TqlaabdzzA==
+"@indexnetwork/sdk@0.0.7":
+  version "0.0.7"
+  resolved "https://registry.yarnpkg.com/@indexnetwork/sdk/-/sdk-0.0.7.tgz#47fd2152467a54d83cc8e9a4328ad1f1c1887f24"
+  integrity sha512-eMkv6wJiUnAZE2G3Hc0rShSaOsikK8fTJ9JDkf91zjGO7R58TR5xxTG3T/a63EmQm01Mhmp2j11hTdYWKd2ojA==
   dependencies:
     "@didtools/cacao" "^3.0.1"
     "@lit-protocol/contracts-sdk" "^4.1.1"

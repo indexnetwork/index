@@ -211,6 +211,7 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
                           rows={5}
                           name="bio"
                           inputSize={"lg"}
+                          className="mt-3"
                           placeholder="Tell your story"
                           onChange={formik.handleChange}
                           value={formik.values.bio}
