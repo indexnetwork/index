@@ -30,6 +30,7 @@ const AppHeader = () => {
     try {
       disconnect();
       setStatus(AuthStatus.DISCONNECTED);
+      sessionStorage.removeItem("isReloaded");
       router.push("/");
     } catch (err) {
       console.log(err);
