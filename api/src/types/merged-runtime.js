@@ -34,7 +34,7 @@ export const definition = {
         "WebPage": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6c53ph1hmntvlpxcgyugwb115m3r2fodtovr5ez5qr2mj7put276",
+            "id": "kjzl6hvfrbw6cbc4u4xfdq85bg8oo8w8z2acvhj7rd48atkzlrz59w2cljiw5lx",
             "accountRelation": {"type": "list"}
         }
     },
@@ -68,7 +68,7 @@ export const definition = {
             "indexId": {"type": "streamid", "required": true, "immutable": false, "indexed": true},
             "category": {"type": "string", "required": true, "immutable": false, "indexed": true},
             "createdAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
-            "deletedAt": {"type": "datetime", "required": false, "immutable": false},
+            "deletedAt": {"type": "datetime", "required": false, "immutable": false, "indexed": true},
             "modelName": {"type": "string", "required": true, "immutable": false, "indexed": true},
             "updatedAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
             "description": {"type": "string", "required": true, "immutable": false},
@@ -90,7 +90,7 @@ export const definition = {
         "Index": {
             "title": {"type": "string", "required": true, "immutable": false},
             "createdAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
-            "deletedAt": {"type": "datetime", "required": false, "immutable": false},
+            "deletedAt": {"type": "datetime", "required": false, "immutable": false, "indexed": true},
             "updatedAt": {"type": "datetime", "required": true, "immutable": false, "indexed": true},
             "signerFunction": {"type": "cid", "required": false, "immutable": false},
             "signerPublicKey": {"type": "string", "required": false, "immutable": false, "indexed": true},
@@ -144,7 +144,7 @@ export const definition = {
             "controllerDID": {"type": "view", "viewType": "documentAccount"}
         },
         "WebPage": {
-            "url": {"type": "uri", "required": true, "immutable": false},
+            "url": {"type": "string", "required": true, "immutable": false},
             "title": {"type": "string", "required": false, "immutable": false},
             "content": {"type": "string", "required": false, "immutable": false},
             "favicon": {"type": "string", "required": false, "immutable": false},
