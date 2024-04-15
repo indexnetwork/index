@@ -2,6 +2,7 @@ import { Embeddings } from "@langchain/core/embeddings";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import { IsUrl, Matches, MaxLength, MinLength, Validate, ValidateNested } from "class-validator";
+import exp from "constants";
 
 
 export enum  MIME_TYPE {
@@ -40,6 +41,24 @@ export enum MetadataFields {
     'webPageUpdatedAt'='webPageUpdatedAt',
     'webPageDeletedAt'='webPageDeletedAt',
     'vector' = 'vector'
+}
+
+
+export class IndexRequestBody {
+    
+    @ApiProperty({
+        description: 'Id of the index',
+        example: '',
+    })
+    @Type(() => String)
+    // @Matches(/^[a-zA-Z0-9]+$/) // TODO: Write appropriate regex
+    indexId: string;
+
+    @ApiPropertyOptional({
+        description: 'Embedding of the document',
+        default: null
+    })
+    embedding: [number[]] | null;
 }
 
 
@@ -119,107 +138,6 @@ export class IndexItemDeleteQuery extends IndexDeleteQuery {
     // @Matches(/^[a-zA-Z0-9]+$/) // TODO: Write appropriate regex
     indexItemId: string;
 
-}
-
-export class IndexRequestBody {
-
-    @ApiProperty({
-        description: 'Index title',
-        example: 'test',
-    })
-    @Type(() => String)
-    @MinLength(1)
-    @MaxLength(100)
-    indexTitle: string;
-
-    @ApiProperty({
-        description: 'Date of index creation',
-        example: 'test',
-    })
-    @Type(() => Date)
-    indexCreatedAt: Date;
-
-    @ApiProperty({
-        description: 'Date of last update of the index',
-        example: 'test',
-    })
-    @Type(() => Date)
-    indexUpdatedAt: Date;
-
-    @ApiProperty({
-        description: 'DID Info of the index owner',
-        example: ''
-    })
-    @Type(() => String)
-    // @Matches(/^[a-zA-Z0-9]+$/) // TODO: Write appropriate regex
-    indexOwnerDID: string;
-    
-    @ApiPropertyOptional({
-        description: 'Name of the index owner',
-        example: ''
-    })
-    @Type(() => String)
-    indexOwnerName: string | null;
-
-    @ApiPropertyOptional({
-        description: 'Biography of the index owner',
-        example: ''
-    })
-    @Type(() => String)
-    indexOwnerBio: string | null;
-
-    @ApiProperty({
-        description: 'Indexed id of web page',
-        example: ''
-    })
-    @Type(() => String)
-    // @Matches(/^[a-zA-Z0-9]+$/) // TODO: Write appropriate regex
-    webPageId: string;
-
-    @ApiProperty({
-        description: 'Named title of the web page', // Is it named by user or html content
-        example: 'test',
-    })
-    @Type(() => String)
-    @MinLength(1)
-    @MaxLength(100)    
-    webPageTitle: string;
-
-    @ApiProperty({
-        description: 'Url of the indexed web page',
-        example: ''
-    })
-    // @IsUrl()
-    @Type(() => String)
-    webPageUrl: string;
-
-    @ApiProperty({
-        description: 'Web page content',
-        example: ''
-    })
-    @Type(() => String)
-    webPageContent: string | null;
-
-    @ApiProperty({
-        description: 'Date of web page indexing',
-        example: 'test',
-    })
-    @Type(() => Date)
-    webPageCreatedAt: Date;
-
-
-    @ApiProperty({
-        description: 'Date of last update of the indexed web page',
-        example: 'test',
-    })
-    @Type(() => Date)
-    webPageUpdatedAt: Date;
-
-    // TODO: Check input?
-    @ApiProperty({
-        description: 'OpenAI Embedding of the indexed web page content',
-    })
-    vector: number[];
 }
 
 

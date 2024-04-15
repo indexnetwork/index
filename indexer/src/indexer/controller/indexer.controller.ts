@@ -29,7 +29,7 @@ export class IndexerController {
     @Post('/index')
     @ApiQuery({ name: 'indexId', required: true })
     // @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
-    async updateIndex(@Query('indexId') indexId: string, @Body() body: IndexRequestBody) {
+    async updateIndex(@Query('indexId') indexId: string, @Body() body: any) {
         return this.indexerService.index(indexId, body);
     }
 
