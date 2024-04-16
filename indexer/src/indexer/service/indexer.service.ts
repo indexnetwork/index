@@ -4,12 +4,11 @@ import { OpenAIEmbeddings } from '@langchain/openai';
 import { UnstructuredLoader } from 'langchain/document_loaders/fs/unstructured'
 import { JSONLoader } from "langchain/document_loaders/fs/json";
 
-import { IndexRequestBody, IndexUpdateBody } from '../schema/indexer.schema';
+import { IndexDeleteQuery, IndexUpdateBody } from '../schema/indexer.schema';
 import { HttpService } from '@nestjs/axios';
 import * as fs from 'fs';
 import { MIME_TYPE } from '../schema/indexer.schema';
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
-
+import { TokenTextSplitter } from "langchain/text_splitter";
 
 @Injectable()
 export class IndexerService {
@@ -56,7 +55,6 @@ export class IndexerService {
         if (!status) throw new Error('Failed to download page');
 
         Logger.log(`Downloaded ${url} to ${file_name}`, 'indexerService:crawl');
-
         
         // Add an exception for JSON files
         if (MIME_TYPE[content_type] === 'json') {
@@ -85,9 +83,13 @@ export class IndexerService {
         // Merge the documents
         let content = ''
         for (let doc of docs) {
-            Logger.log(`Extracted ${JSON.stringify(doc)}`, 'indexerService:crawl');
-            content = content + '\n' + doc?.pageContent;
+            content = content.concat(doc?.pageContent);
         }
+
+        // Clean the content
+        content = content.replace(/(\r\n|\n|\r)/gm, " ");
+        content = content.replace(/ +/g, " ");
+        content = content.trim();
 
         Logger.log(`Extracted ${content.length} bytes from ${url}`, 'indexerService:crawl');
 
@@ -103,36 +105,63 @@ export class IndexerService {
      * @param body IndexRequestBody
      * @returns Success message
      */
-    async index(indexId: string, body: IndexRequestBody): Promise<{ message: string }> {
+    async index(indexId: string, body: any  ): Promise<{ message: string }> {
 
-        Logger.log(`Indexing ${body.webPageContent?.length} bytes for ${body.webPageUrl}`, 'indexerService:index');
+        Logger.log(`Indexing ${JSON.stringify(body)?.length} bytes`, 'indexerService:index');
         
-        const chromaID = await this.generateChromaID(indexId, body.webPageId);
-        
+        const chromaID = await this.generateChromaID(indexId, body); 
+
         try {
 
-            let metadata = {}
+            let payload = {}
+            
+            const payload_keys = Object.keys(body);
+            
+            let model_type = '';
+            payload_keys.forEach((key) => {
+                if (key.includes('_')){
+                    // Get the model type
+                    model_type = key.split('_')[0];
+                    // Model based keys
+                    let chroma_key = key.split('_')[1];
+                    payload[chroma_key] = body[key];
 
-            const metadata_keys = [
-                "indexId", "indexTitle", "indexCreatedAt", "indexUpdatedAt",
-                "indexOwnerDID", "indexOwnerName", "indexOwnerBio",
-                "webPageId", "webPageTitle", "webPageUrl",
-                "webPageCreatedAt", "webPageUpdatedAt"
-            ];
-
-            metadata_keys.forEach((key) => {
-                metadata[key] = body[key];
+                } else {
+                    // Index based keys
+                    if ( key !== 'vector' ) { payload[key] = body[key]; }
+                }
             });
 
+            payload['model'] = model_type;
+            let pageContent = JSON.stringify(payload)
+            
+            // Reduce the content size for indexing
+            const splitter = new TokenTextSplitter();
+            Logger.log(`Splitting ${pageContent.length} bytes`, 'indexerService:index');    
+            let tokens =  await splitter.splitText(pageContent);
+            if ( tokens.length > 8000 ) { 
+                tokens = tokens.slice(0, 8000) ;
+                Logger.log('Reducing token length', "indexerService:index:tokensLength");
+                pageContent = tokens.join(" ");
+            }
+
+            pageContent = pageContent.replace(/(\r\n|\n|\r)/gm, " ");
+            pageContent = pageContent.replace(/ +/g, " ");
+            pageContent = pageContent.trim();
+
+            Logger.log(`Reduced ${pageContent}`, 'indexerService:index');
+
             const documents = [{
-                pageContent: body.webPageContent ?? '',
-                metadata
+                pageContent,
+                metadata: payload
             }]
 
             const ids = await this.chromaClient.addDocuments(documents, {ids: [chromaID] });
 
+            Logger.log(`Indexed ${JSON.stringify(ids)}`, 'indexerService:index');
+
             return {
-                message: `Successfully indexed ${body.webPageTitle} with id ${ids[0]}`
+                message: `Successfully indexed ${body.indexTitle} with id ${ids[0]}`
             }
 
         } catch (e) {
@@ -256,7 +285,7 @@ export class IndexerService {
 
             const embedding = await embeddings.embedDocuments([content]);
 
-            Logger.log(`Embedded successfully`, 'indexerService:embed');
+            Logger.log(`Embedded successfully, with embed length ${embedding.length}`, 'indexerService:embed');
 
             return {
                 model: process.env.MODEL_EMBEDDING,
@@ -264,14 +293,17 @@ export class IndexerService {
             };
         }
         catch (e) {
-            console.log(e);
+            console.log(e.message);
         }
 
     }
 
-    private async generateChromaID(indexId: string, indexItemId: string): Promise<string> {
-    
-        return indexId + '-' + indexItemId;
+    private async generateChromaID(indexId: string, body: any): Promise<string> {
+        
+        // fix id generation
+
+
+        return indexId + '-';
     }
 
 }

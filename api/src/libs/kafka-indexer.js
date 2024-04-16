@@ -26,6 +26,8 @@ export const createIndexItemEvent = async (id) => {
     const itemService = new ItemService()
     const indexItem = await itemService.getIndexItemById(id, false);
 
+    logger.info(`Step [0]: IndexItem found for id: ${JSON.stringify(indexItem)}`)
+
     try {
 
         const indexSession = await getPKPSessionForIndexer(indexItem.index);
@@ -33,26 +35,27 @@ export const createIndexItemEvent = async (id) => {
 
         logger.info("Step [0]: Indexer session created for index:", indexItem.index.id)
 
-        if (indexItem.item.content) {
-
-            const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
-                content: indexItem.item.content
-            })
-
-            const embeddingService = new EmbeddingService().setSession(indexSession)
-            const embedding = await embeddingService.createEmbedding({
-                "indexId": indexItem.indexId,
-                "itemId": indexItem.itemId,
-                "modelName": embeddingResponse.data.model,
-                "category": "document",
-                "vector": embeddingResponse.data.vector,
-                "description": "Default document embeddings",
-            });
-
-            logger.info(`Step [0]: EmbeddingEvent trigger successfull for id: ${embedding.id}`);
+        // Check if the item is a webpage and has no content then return Exception 
+        if (indexItem.item.__typename === 'WebPage' && indexItem.item.WebPage_content === '') { 
+            logger.warn('Step [0]: No content found, createIndexItem event incomplete')
+            return
         }
+        
+        const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
+            content: indexItem.item.content ?? JSON.stringify(indexItem.item)
+        })
 
-        logger.warn('Step [0]: No content found, createIndexItem event incomplete')
+        const embeddingService = new EmbeddingService().setSession(indexSession)
+        const embedding = await embeddingService.createEmbedding({
+            "indexId": indexItem.indexId,
+            "itemId": indexItem.itemId,
+            "modelName": embeddingResponse.data.model,
+            "category": "document",
+            "vector": embeddingResponse.data.vector,
+            "description": "Default document embeddings",
+        });
+
+        logger.info(`Step [0]: EmbeddingEvent trigger successful for id: ${embedding.id}`);
 
     } catch (e) {
         logger.error(`Step [0]: Indexer createIndexItemEvent error: ${JSON.stringify(e)}`);
@@ -175,7 +178,7 @@ export const updateWebPageEvent = async (id) => {
                     let response = await axios.get(`${process.env.LLM_INDEXER_HOST}/chat/generate?indexId=${indexItem.index.id}`)
                     redis.set(`questions:${indexItem.index.id}`, JSON.stringify(response.data), { EX: 86400 } );
 
-                    logger.info(`Step [2]: Questions for index ${indexItem.index.id} updated in redis with ${response.data.length} questions`)
+                    logger.info(`Step [2]: Questions for index ${indexItem.index.id} updated in redis with ${JSON.stringify(response.data)} questions`)
 
                 } catch (error) {
                     logger.warn(`Step [2]: Questions for index ${indexItem.index.id} not updated in redis with error: ${JSON.stringify(error.message)}`)
@@ -197,6 +200,8 @@ export const createEmbeddingEvent = async (id) => {
     const embeddingService = new EmbeddingService()
     const embedding = await embeddingService.getEmbeddingById(id);
 
+    console.log(embedding)
+
     const payload = {
 
         indexId: embedding.index.id,
@@ -205,18 +210,13 @@ export const createEmbeddingEvent = async (id) => {
         indexUpdatedAt: embedding.index.updatedAt,
         indexDeletedAt: embedding.index.deletedAt,
         indexOwnerDID: embedding.index.ownerDID.id,
-
-        webPageId: embedding.item.id,
-        webPageTitle: embedding.item.title,
-        webPageUrl: embedding.item.url,
-        webPageContent: embedding.item.content,
-        webPageCreatedAt: embedding.item.createdAt,
-        webPageUpdatedAt: embedding.item.updatedAt,
-        webPageDeletedAt: embedding.item.deletedAt,
-
         vector: embedding.vector,
     };
 
+    for (let key of Object.keys(embedding.item)) {
+        if (key === '__typename') continue;
+        payload[key] = embedding.item[key]
+    }
 
     if(embedding.index.ownerDID.name){
         payload.indexOwnerName = embedding.index.ownerDID.name
