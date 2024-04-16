@@ -4,6 +4,12 @@ import moment from "moment";
 
 const getCurrentDateTime = () => moment.utc().toISOString();
 
+const removePrefixFromKeys = (obj, prefix) =>
+    Object.keys(obj).reduce((newObj, key) => ({
+        ...newObj,
+        [key.startsWith(prefix) ? key.slice(prefix.length) : key]: obj[key]
+    }), {});
+
 import {definition} from "../types/merged-runtime.js";
 import {getOwnerProfile} from "../libs/lit/index.js";
 
@@ -26,7 +32,7 @@ export class EmbeddingService {
     async getEmbeddingById(id) {
 
         try {
-            const {data, errors} = await this.client.executeQuery(`
+            let {data, errors} = await this.client.executeQuery(`
             {
               node(id: "${id}") {
                 ... on Embedding {
@@ -156,6 +162,9 @@ export class EmbeddingService {
             } catch(e) {
                 console.log("Error fetching profile", e)
             }
+
+            data.node.item = removePrefixFromKeys(data.node.item, `${data.node.item.__typename}_`);
+
             return data.node;
 
         } catch (error) {

@@ -4,6 +4,12 @@ import moment from "moment";
 
 const getCurrentDateTime = () => moment.utc().toISOString();
 
+const removePrefixFromKeys = (obj, prefix) =>
+    Object.keys(obj).reduce((newObj, key) => ({
+        ...newObj,
+        [key.startsWith(prefix) ? key.slice(prefix.length) : key]: obj[key]
+    }), {});
+
 import {definition} from "../types/merged-runtime.js";
 
 const indexItemFragment = `
@@ -145,7 +151,7 @@ export class ItemService {
     async getIndexItem(indexId, itemId, transformation=true) {
 
         try {
-            const {data, errors} = await this.client.executeQuery(`
+            let {data, errors} = await this.client.executeQuery(`
             query{
               indexItemIndex(first:1, filters: {
                 where: {
@@ -175,6 +181,8 @@ export class ItemService {
                 return null;
             }
 
+            data.indexItemIndex.edges[0].node = removePrefixFromKeys(data.indexItemIndex.edges[0].node, `${data.indexItemIndex.edges[0].node.__typename}_`);
+
             return transformation ? transformIndexItem(data.indexItemIndex.edges[0].node) : data.indexItemIndex.edges[0].node;
 
         } catch (error) {
@@ -183,11 +191,12 @@ export class ItemService {
             throw error;
         }
     }
+
     // Todo make it multimodel later.
     async getIndexItemById(indexItemId, transformation=true) {
 
         try {
-            const {data, errors} = await this.client.executeQuery(`
+            let {data, errors} = await this.client.executeQuery(`
             {
               node(id: "${indexItemId}") {
                 ${indexItemFragment}
@@ -203,6 +212,8 @@ export class ItemService {
                 throw new Error('Invalid response data');
             }
 
+            data.node.item = removePrefixFromKeys(data.node.item, `${data.node.item.__typename}_`);
+
             return transformation ?transformIndexItem(data.node) : data.node;
 
         } catch (error) {
@@ -217,7 +228,7 @@ export class ItemService {
 
             let cursorFilter = cursor ? `after: "${cursor}",` : "";
 
-            const {data, errors} = await this.client.executeQuery(`{
+            let {data, errors} = await this.client.executeQuery(`{
               indexItemIndex(first: ${limit}, ${cursorFilter} filters: {
                 where: {
                   indexId: { equalTo: "${indexId}"},
@@ -250,6 +261,8 @@ export class ItemService {
                     items: [],
                 };
             }
+
+            data.indexItemIndex.edges.map(e => removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`))
 
             return { //Todo fix itemId to id
                 endCursor: data.indexItemIndex.pageInfo.endCursor,
@@ -301,6 +314,7 @@ export class ItemService {
                     items: [],
                 };
             }
+            data.indexItemIndex.edges.map(e => removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`))
 
             return { //Todo fix itemId to id
                 endCursor: data.indexItemIndex.pageInfo.endCursor,
@@ -355,6 +369,8 @@ export class ItemService {
                 };
             }
 
+            data.indexItemIndex.edges.map(e => removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`))
+
             return { //Todo fix itemId to id
                 endCursor: data.indexItemIndex.pageInfo.endCursor,
                 items: data.indexItemIndex.edges.map(e => transform ? transformIndexItem(e.node) : e.node),
@@ -405,6 +421,9 @@ export class ItemService {
             if (!data || !data.createIndexItem || !data.createIndexItem.document || !data.createIndexItem.document.item) {
                 throw new Error('Invalid response data');
             }
+
+            data.createIndexItem.document.item = removePrefixFromKeys(data.createIndexItem.document.item, `${data.createIndexItem.document.item.__typename}_`);
+
 
             return transformIndexItem(data.createIndexItem.document);
 
