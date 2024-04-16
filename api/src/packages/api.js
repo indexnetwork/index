@@ -391,6 +391,12 @@ app.post(
   web2Controller.crawlWebPage,
 );
 
+app.post(
+  "/node/:modelId",
+  authCheckMiddleware,
+  composeDbController.insertDocument,
+);
+
 app.get(
   "/web2/webpage/metadata",
   validator.query(
