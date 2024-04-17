@@ -46,6 +46,9 @@ import * as litProtocol from "../controllers/lit-protocol.js";
 
 import * as fileController from "../controllers/file.js";
 import * as web2Controller from "../controllers/web2.js";
+
+import * as composeDbController from "../controllers/composedb.js";
+
 import * as zapierController from "../controllers/zapier.js";
 
 import * as siteController from "../controllers/site.js";
@@ -399,6 +402,24 @@ app.get(
     }),
   ),
   web2Controller.crawlMetadata,
+);
+
+
+app.get(
+  "/composedb/:modelId/:nodeId",
+  composeDbController.getNodeById,
+);
+
+app.post(
+  "/composedb/:modelId",
+  authCheckMiddleware,
+  composeDbController.createNode,
+);
+
+app.patch(
+  "/composedb/:modelId/:nodeId",
+  authCheckMiddleware,
+  composeDbController.updateNode,
 );
 
 //Todo refactor later.
