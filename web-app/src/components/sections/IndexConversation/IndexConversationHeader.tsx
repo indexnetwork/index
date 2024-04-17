@@ -53,8 +53,6 @@ export const IndexConversationHeader: FC = () => {
           i.id === viewedIndex.id ? { ...i, title: result.title } : i,
         );
 
-        console.log("updatedIndexes", updatedIndexes);
-
         setIndexes(updatedIndexes);
         toast.success("Index title updated");
       } catch (error) {

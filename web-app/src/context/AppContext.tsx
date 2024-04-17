@@ -160,7 +160,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       try {
         if (!apiReady) return;
 
-        console.log("Creating handlecreate index in appcontext");
         const doc = await api!.createIndex(title);
         if (!doc) {
           throw new Error("API didn't return a doc");
@@ -225,26 +224,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     [apiReady],
   );
 
-  const handleProfileChange = useCallback(async () => {
-    if (isLanding) return;
-
-    let targetDID;
-    if (isIndex && !viewedProfile) {
-      if (viewedIndex) {
-        targetDID = viewedIndex?.ownerDID?.id;
-      }
-    }
-
-    if (isDID) {
-      targetDID = id;
-    }
-
-    if (targetDID) {
-      const profile = await fetchProfile(targetDID);
-      setViewedProfile(profile);
-    }
-  }, [isLanding, isIndex, id, fetchProfile, viewedIndex]);
-
   const handleUserProfileChange = useCallback(async () => {
     if (session) {
       const profile = await fetchProfile(session?.did.parent);
@@ -255,7 +234,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
       if (!apiReady || !viewedIndex || conditions.length === 0) return;
-      console.log("conditions in api:", conditions);
 
       const newAction = await api!.postLITAction(conditions);
 
@@ -275,10 +253,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   useEffect(() => {
     handleUserProfileChange();
   }, [handleUserProfileChange]);
-
-  useEffect(() => {
-    handleProfileChange();
-  }, [handleProfileChange]);
 
   useEffect(() => {
     const newChatID = uuidv4();
