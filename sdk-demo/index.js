@@ -177,17 +177,29 @@ async function main() {
       linkedinHandle: "http://a.com",
     };
 
-    // const node = await indexClient.getNodeById(
-    //   "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h",
-    //   "",
-    // );
-
     const createdNode = await indexClient.createNode(
       "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h",
       teamNode,
     );
 
-    console.log("createdNode:", createdNode);
+    console.log("createdNode:", createdNode.id, createdNode.name);
+
+    const node = await indexClient.getNodeById(
+      "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h",
+      createdNode.id,
+    );
+
+    console.log("Get Node:", node.id, node.name);
+
+    teamNode.name = "Updated $STYLE Protocol";
+
+    const updatedNode = await indexClient.updateNode(
+      "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h",
+      createdNode.id,
+      teamNode,
+    );
+
+    console.log("updatedNode:", updatedNode.id, updatedNode.name);
 
     // const did = "";
     // const indexes = await indexClient.getAllIndexes(did);
@@ -196,18 +208,20 @@ async function main() {
     // const profile = await indexClient.getProfile(did);
     // console.log("Profile:", profile);
 
-    // const title = "New Index Title";
-    // const newIndex = await indexClient.createIndex(title);
-    // console.log("New Index:", newIndex);
+    const title = "Team index";
+    const newIndex = await indexClient.createIndex(title);
+    console.log("New Index:", newIndex);
 
     // const item = await indexClient.crawlLink(
     //   "https://www.paulgraham.com/articles.html",
     // );
     // console.log("Crawled Item:", item);
 
-    // console.log();
-    // const addedItem = await indexClient.addItemToIndex(newIndex.id, item.id);
-    // console.log("Added Item to Index:", addedItem);
+    const addedItem = await indexClient.addItemToIndex(
+      newIndex.id,
+      updatedNode.id,
+    );
+    console.log("Added Item to Index:", addedItem);
 
     // const fetchedIndex = await indexClient.getIndex(newIndex.id);
     // console.log("Fetched Index:", fetchedIndex);

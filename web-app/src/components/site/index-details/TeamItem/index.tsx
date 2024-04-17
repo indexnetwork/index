@@ -1,27 +1,26 @@
-import Col from "components/layout/base/Grid/Col";
-import FlexRow from "components/layout/base/Grid/FlexRow";
-import Text from "components/base/Text";
-import React from "react";
 import Button from "components/base/Button";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
-import { useBreakpoint } from "hooks/useBreakpoint";
-import { BREAKPOINTS } from "utils/constants";
+import Text from "components/base/Text";
+import Col from "components/layout/base/Grid/Col";
+import FlexRow from "components/layout/base/Grid/FlexRow";
 import IndexDetailItemPopup from "components/site/popup/IndexDetailItemPopup";
-import { IndexWebPageItem } from "types/entity";
-import moment from "moment";
-import sanitize from "sanitize-html";
+import { useBreakpoint } from "hooks/useBreakpoint";
 import { useRole } from "hooks/useRole";
+import React from "react";
+import sanitize from "sanitize-html";
+import { IndexTeamNodeItem } from "types/entity";
+import { BREAKPOINTS } from "utils/constants";
 import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
-export interface LinkItemProps {
-  item: IndexWebPageItem;
-  onChange?(val: IndexWebPageItem[]): void;
+export interface TeamItemProps {
+  item: IndexTeamNodeItem;
+  onChange?(val: IndexTeamNodeItem[]): void;
   search?: boolean;
   handleRemove?(): void;
 }
 
-const LinkItem: React.FC<LinkItemProps> = ({
+const TeamItem: React.FC<TeamItemProps> = ({
   item,
   search = false,
   handleRemove,
@@ -37,12 +36,12 @@ const LinkItem: React.FC<LinkItemProps> = ({
         <Col xs={12}>
           <FlexRow wrap={false}>
             <Col className="idxflex-grow-1">
-              <a target="_blank" rel="noreferrer" href={node?.url}>
+              <a target="_blank" rel="noreferrer" href={node?.website}>
                 <Text
                   className={cm.title}
                   fontWeight={700}
                   dangerouslySetInnerHTML={{
-                    __html: sanitize(node?.title as string),
+                    __html: sanitize(node?.name as string),
                   }}
                 ></Text>
                 {/* dangerouslySetInnerHTML={{ __html: sanitize((node.highlight && item.highlight["link.title"]) ? item.highlight["link.title"] : node?.title as string) }}></Text> */}
@@ -78,10 +77,10 @@ const LinkItem: React.FC<LinkItemProps> = ({
           </FlexRow>
         </Col>
         <Col xs={12} className="mt-2">
-          <a target="_blank" rel="noreferrer" href={node?.url}>
+          <a target="_blank" rel="noreferrer" href={node?.website}>
             <img
               className="mr-3"
-              src={node?.favicon || "/images/globe.svg"}
+              src={node?.logo || "/images/globe.svg"}
               alt="favicon"
               width={16}
               height={16}
@@ -95,8 +94,7 @@ const LinkItem: React.FC<LinkItemProps> = ({
               }}
             />
             <Text size="sm" theme="disabled">
-              {node?.url?.substring(0, 80)} •{" "}
-              {node?.updatedAt ? moment(node?.updatedAt).format("MMM D") : ""}
+              {node?.website?.substring(0, 80)} • {node?.shortDescription}
             </Text>
           </a>
         </Col>
@@ -135,4 +133,4 @@ const LinkItem: React.FC<LinkItemProps> = ({
     </div>
   );
 };
-export default LinkItem;
+export default TeamItem;

@@ -50,12 +50,25 @@ export type WebNode = {
   deletedAt?: string;
 };
 
+export type TeamNode = {
+  id: string;
+  name: string;
+  logo?: string;
+  website: string;
+  shortDescription?: string;
+};
+
 export type IndexWebPageItem = {
   type: string;
   node: WebNode;
 };
 
-export type IndexItem = IndexWebPageItem;
+export type IndexTeamNodeItem = {
+  type: string;
+  node: TeamNode;
+};
+
+export type IndexItem = IndexWebPageItem | IndexTeamNodeItem;
 
 export type IndexLink = {
   id?: string;
