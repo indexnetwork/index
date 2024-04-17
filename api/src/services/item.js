@@ -10,7 +10,7 @@ const transformIndexItem = (indexItem) => {
         type,
         node: {
             ...rest,
-            indexedAt: indexItem.updatedAt
+            // indexedAt: indexItem.updatedAt
         }
     };
 };
