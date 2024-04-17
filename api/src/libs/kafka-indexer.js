@@ -35,12 +35,12 @@ export const createIndexItemEvent = async (id) => {
 
         logger.info("Step [0]: Indexer session created for index:", indexItem.index.id)
 
-        // Check if the item is a webpage and has no content then return Exception 
-        if (indexItem.item.__typename === 'WebPage' && indexItem.item.WebPage_content === '') { 
+        // Check if the item is a webpage and has no content then return Exception
+        if (indexItem.item.__typename === 'WebPage' && indexItem.item.WebPage_content === '') {
             logger.warn('Step [0]: No content found, createIndexItem event incomplete')
             return
         }
-        
+
         const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
             content: indexItem.item.content ?? JSON.stringify(indexItem.item)
         })
@@ -200,7 +200,7 @@ export const createEmbeddingEvent = async (id) => {
     const embeddingService = new EmbeddingService()
     const embedding = await embeddingService.getEmbeddingById(id);
 
-    console.log(embedding)
+    console.log(embedding, "helyy")
 
     const payload = {
 
@@ -225,9 +225,10 @@ export const createEmbeddingEvent = async (id) => {
         payload.indexOwnerBio = embedding.index.ownerDID.bio
     }
 
+
     try {
         const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/index?indexId=${embedding.index.id}`, payload)
-        logger.info(`Step [3]: IndexItem ${payload.webPageId} with ${payload.webPageUrl} Indexed with it's content and embeddings`)
+        logger.info(`Step [3]: Index ${embedding.indexId} with Item ${embedding.itemId} indexed with it's content and embeddings`)
     } catch (e) {
         logger.error(`Step [3]: Indexer createEmbeddingEvent with error: ${JSON.stringify(e)}`);
     }

@@ -40,6 +40,8 @@ export const webPageFragment = `
 `;
 
 export const modelBundleFragment = `
+  id
+  __typename
   ... on WebPage {
     WebPage_title: title
     WebPage_favicon: favicon

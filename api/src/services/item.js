@@ -145,7 +145,10 @@ export class ItemService {
                 };
             }
 
-            data.indexItemIndex.edges.map(e => removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`))
+            data.indexItemIndex.edges.map(e => {
+              e.node.item = removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`)
+              return e;
+            })
 
             return { //Todo fix itemId to id
                 endCursor: data.indexItemIndex.pageInfo.endCursor,

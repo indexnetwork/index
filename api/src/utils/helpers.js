@@ -13,12 +13,8 @@ export const getAuthSigFromDIDSession = (session) => {
   };
 }
 
-
-export const removePrefixFromKeys = (obj, prefix) => {
-    return Object.keys(obj).reduce((newObj, key) => {
-        // Check if the key starts with the prefix and adjust it if necessary
-        const newKey = key.startsWith(prefix) ? key.slice(prefix.length) : key;
-        newObj[newKey] = obj[key];  // Assign the value to the possibly adjusted key
-        return newObj;
-    }, {});
-};
+export const removePrefixFromKeys = (obj, prefix) =>
+    Object.keys(obj).reduce((newObj, key) => ({
+        ...newObj,
+        [key.startsWith(prefix) ? key.slice(prefix.length) : key]: obj[key]
+    }), {});

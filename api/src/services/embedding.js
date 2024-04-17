@@ -1,7 +1,7 @@
 import { ComposeClient } from "@composedb/client";
 import { getOwnerProfile } from "../libs/lit/index.js";
 import { removePrefixFromKeys, getCurrentDateTime } from "../utils/helpers.js";
-import { indexItemFragment } from "../types/fragments.js";
+import { indexItemFragment, modelBundleFragment } from "../types/fragments.js";
 import { definition } from "../types/merged-runtime.js";
 
 export class EmbeddingService {
@@ -39,7 +39,7 @@ export class EmbeddingService {
                   updatedAt
                   deletedAt
                   item {
-                    ${indexItemFragment}
+                    ${modelBundleFragment}
                   }
                   index {
                     id
