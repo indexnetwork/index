@@ -88,7 +88,10 @@ export default function IndexItemsTabSection() {
       const uniqueUrls = removeDuplicates(filteredUrls);
       const urls = removeDuplicates(
         uniqueUrls,
-        itemsState.items.map((i) => i.node.url),
+        itemsState.items
+          .filter((i) => i.type === "WebPage")
+          // @ts-ignore
+          .map((i) => i.node.url),
       );
 
       setLoading(true);
