@@ -61,7 +61,7 @@ const LinkInput: React.FC<LinkInputProps> = ({
         className={cc(["link-input__input", `link-input-${size}`])}
         disabled={disabled}
         addOnBefore={
-          <IconAdd style={{ marginRight: "4px" }} width={20} height={20} />
+          <IconAdd style={{ marginRight: "6px" }} width={20} height={20} />
         }
         addOnAfter={
           loading ? (

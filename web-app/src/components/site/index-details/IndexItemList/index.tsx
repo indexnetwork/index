@@ -1,10 +1,11 @@
-import React from "react";
 import List from "components/base/List";
-import InfiniteScroll from "react-infinite-scroller";
-import { IndexItem } from "types/entity";
+import { FC, memo } from "react";
 import { useRole } from "hooks/useRole";
-import LinkItem from "../LinkItem";
+import InfiniteScroll from "react-infinite-scroll-component";
+import { IndexItem } from "types/entity";
+
 import NoLinks from "../../indexes/NoLinks";
+import LinkItem from "../LinkItem";
 
 export interface IndexItemListProps {
   search: string;
@@ -14,9 +15,9 @@ export interface IndexItemListProps {
   loadMore: () => void;
 }
 
-const MemoLinkItem = React.memo(LinkItem);
+const MemoLinkItem = memo(LinkItem);
 
-const IndexItemList: React.VFC<IndexItemListProps> = ({
+const IndexItemList: FC<IndexItemListProps> = ({
   search,
   items,
   hasMore,
@@ -31,18 +32,20 @@ const IndexItemList: React.VFC<IndexItemListProps> = ({
         <NoLinks isOwner={isOwner} tabKey="items" search={search} />
       ) : (
         <InfiniteScroll
-          className="scrollable-area idxflex-grow-1 pb-6"
-          useWindow={false}
           hasMore={hasMore}
-          loadMore={loadMore}
-          marginHeight={50}
+          next={loadMore}
+          dataLength={items.length}
+          height={"calc(100vh - 36rem)"}
+          loader={<div className="loader" key={0}></div>}
         >
           <List
             listClass="index-item-list"
             render={(item: IndexItem) => (
               <MemoLinkItem
                 handleRemove={() => removeItem(item)}
-                search={!!search} item={item} />
+                search={!!search}
+                item={item}
+              />
             )}
             divided
             data={items}

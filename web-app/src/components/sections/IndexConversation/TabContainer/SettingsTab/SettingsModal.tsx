@@ -36,10 +36,7 @@ const SettingsModal: FC<SettingsModalProps> = ({
     header = (
       <div>
         <h2>Waiting for transaction</h2>
-        <p>
-          Please wait while the transaction is being processed. This may take a
-          few minutes.
-        </p>
+        <p>Please wait while the transaction is being processed.</p>
       </div>
     );
   } else if (step === "done") {

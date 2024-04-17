@@ -1,4 +1,3 @@
-import Button from "@/components/base/Button";
 import { FC } from "react";
 
 interface WaitingForTransactionProps {
@@ -41,7 +40,7 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
         </video>
       </div>
 
-      <div
+      {/* <div
         style={{
           display: "flex",
           justifyContent: "space-between",
@@ -65,7 +64,7 @@ const WaitingForTransaction: FC<WaitingForTransactionProps> = ({
         >
           Loading
         </Button>
-      </div>
+      </div> */}
     </div>
   </div>
 );

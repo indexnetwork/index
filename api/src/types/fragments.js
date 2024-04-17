@@ -15,6 +15,7 @@ export const didIndexFragment = `
 export const profileFragment = `
   ... on Profile {
     id
+    bio
     name
     avatar
     createdAt
@@ -116,7 +117,7 @@ export const teamFragment = `
           updatedAt
       }
   }
-`
+`;
 
 export const modelBundleFragment = `
   id
@@ -208,7 +209,6 @@ export const modelBundleFragment = `
   }
 `;
 
-
 export const indexItemFragment = `
   ... on IndexItem {
     id
@@ -232,4 +232,4 @@ export const indexItemFragment = `
       deletedAt
     }
   }
-`
+`;

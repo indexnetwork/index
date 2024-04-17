@@ -8,17 +8,12 @@ import UserConversationSection from "components/sections/UserConversation";
 import { useRouteParams } from "hooks/useRouteParams";
 import { useEffect } from "react";
 import "../../styles/main.scss";
-import { useRouter } from "next/navigation";
 
 const Discovery = () => {
   const { discoveryType, indexes } = useApp();
   const { id } = useRouteParams();
-  const router = useRouter();
 
   useEffect(() => {
-    console.log("discoveryType in page.tsx:", discoveryType, id);
-    console.log("indexes in page.tsx:", indexes);
-
     // if (typeof window !== "undefined") {
     //   window.ethereum.on("message", (message: any) => {
     //     console.log("eth: ", message);
