@@ -39,6 +39,85 @@ export const webPageFragment = `
   }
 `;
 
+export const teamFragment = `
+  ... on Team {
+      logo
+      name
+      teamId
+      members {
+          name
+          image
+          teams {
+              uid
+              name
+              role
+              mainTeam
+              teamLead
+          }
+          skills {
+              title
+          }
+          twitter
+          location
+          mainTeam {
+              uid
+              name
+              role
+              mainTeam
+              teamLead
+          }
+          memberId
+          teamLead
+          openToWork
+          officeHours
+          preferences
+          githubHandle
+          repositories
+          discordHandle
+          linkedinHandle
+          telegramHandle
+          projectContributions {
+              uid
+              role
+              endDate
+              memberUid
+              startDate
+              projectUid
+              description
+              currentProject
+          }
+      }
+      twitter
+      website
+      fundingStage
+      industryTags {
+          uid
+          title
+          createdAt
+          updatedAt
+          definition
+          airtableRecId
+          industryCategoryUid
+      }
+      technologies {
+          uid
+          title
+          createdAt
+          updatedAt
+      }
+      contactMethod
+      linkedinHandle
+      longDescription
+      shortDescription
+      membershipSources {
+          uid
+          title
+          createdAt
+          updatedAt
+      }
+  }
+`
+
 export const modelBundleFragment = `
   id
   __typename
