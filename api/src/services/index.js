@@ -1,11 +1,8 @@
 import {ComposeClient} from "@composedb/client";
 
-import moment from "moment";
-
-const getCurrentDateTime = () => moment.utc().toISOString();
-
+import { getCurrentDateTime } from "../utils/helpers.js";
 import {definition} from "../types/merged-runtime.js";
-import {getOwnerProfile} from "../libs/lit/index.js";
+import { getOwnerProfile } from "../libs/lit/index.js";
 
 export class IndexService {
     constructor() {

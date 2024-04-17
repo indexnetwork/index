@@ -1,17 +1,8 @@
-import {ComposeClient} from "@composedb/client";
-
-import moment from "moment";
-
-const getCurrentDateTime = () => moment.utc().toISOString();
-
-const removePrefixFromKeys = (obj, prefix) =>
-    Object.keys(obj).reduce((newObj, key) => ({
-        ...newObj,
-        [key.startsWith(prefix) ? key.slice(prefix.length) : key]: obj[key]
-    }), {});
-
-import {definition} from "../types/merged-runtime.js";
-import {getOwnerProfile} from "../libs/lit/index.js";
+import { ComposeClient } from "@composedb/client";
+import { getOwnerProfile } from "../libs/lit/index.js";
+import { removePrefixFromKeys, getCurrentDateTime } from "../utils/helpers.js";
+import { indexItemFragment } from "../types/fragments.js";
+import { definition } from "../types/merged-runtime.js";
 
 export class EmbeddingService {
     constructor() {
@@ -48,93 +39,7 @@ export class EmbeddingService {
                   updatedAt
                   deletedAt
                   item {
-                    id
-                    __typename
-                    ... on WebPage {
-                      WebPage_title: title
-                      WebPage_favicon: favicon
-                      WebPage_url: url
-                      WebPage_content: content
-                      WebPage_createdAt: createdAt
-                      WebPage_updatedAt: updatedAt
-                      WebPage_deletedAt: deletedAt
-                    }
-                    ... on Team {
-                        Team_logo: logo
-                        Team_name: name
-                        Team_teamId: teamId
-                        Team_members: members {
-                            name
-                            image
-                            teams {
-                                uid
-                                name
-                                role
-                                mainTeam
-                                teamLead
-                            }
-                            skills {
-                                title
-                            }
-                            twitter
-                            location
-                            mainTeam {
-                                uid
-                                name
-                                role
-                                mainTeam
-                                teamLead
-                            }
-                            memberId
-                            teamLead
-                            openToWork
-                            officeHours
-                            preferences
-                            githubHandle
-                            repositories
-                            discordHandle
-                            linkedinHandle
-                            telegramHandle
-                            projectContributions {
-                                uid
-                                role
-                                endDate
-                                memberUid
-                                startDate
-                                projectUid
-                                description
-                                currentProject
-                            }
-                        }
-                        Team_twitter: twitter
-                        Team_website: website
-                        Team_fundingStage: fundingStage
-                        Team_industryTags: industryTags {
-                            uid
-                            title
-                            createdAt
-                            updatedAt
-                            definition
-                            airtableRecId
-                            industryCategoryUid
-                        }
-                        Team_technologies: technologies {
-                            uid
-                            title
-                            createdAt
-                            updatedAt
-                        }
-                        Team_contactMethod: contactMethod
-                        Team_linkedinHandle: linkedinHandle
-                        Team_longDescription: longDescription
-                        Team_shortDescription: shortDescription
-                        Team_membershipSources: membershipSources {
-                            uid
-                            title
-                            createdAt
-                            updatedAt
-                        }
-                    }
+                    ${indexItemFragment}
                   }
                   index {
                     id

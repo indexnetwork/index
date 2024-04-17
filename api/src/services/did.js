@@ -1,9 +1,7 @@
 import { ComposeClient } from "@composedb/client";
-
-import moment from "moment";
-const getCurrentDateTime = () => moment.utc().toISOString();
-
 import { definition }  from "../types/merged-runtime.js";
+import { profileFragment }  from "../types/fragments.js";
+import { getCurrentDateTime }  from "../utils/helpers.js";
 import { getOwnerProfile } from "../libs/lit/index.js";
 
 export class DIDService {
@@ -39,15 +37,7 @@ export class DIDService {
                       deletedAt
                       controllerDID {
                         profile {
-                          id
-                          name
-                          avatar
-                          createdAt
-                          updatedAt
-                          deletedAt
-                          controllerDID {
-                            id
-                          }
+                          ${profileFragment}
                         }
                       }
                     }
@@ -93,15 +83,7 @@ export class DIDService {
                 didIndexList(first: 1, sorting: {createdAt: DESC}, filters: { where: {type: {equalTo: "${type}"}, indexId: {equalTo: "${indexId}"}}}) {
                   edges {
                     node {
-                      id
-                      type
-                      indexId
-                      createdAt
-                      updatedAt
-                      deletedAt
-                      controllerDID {
-                        id
-                      }
+                      ${didIndexFragment}
                     }
                   }
                 }
@@ -298,16 +280,7 @@ export class DIDService {
                 mutation CreateProfile($input: CreateProfileInput!) {
                     createProfile(input: $input) {
                         document {
-                            id
-                            bio
-                            avatar
-                            name
-                            createdAt
-                            updatedAt
-                            deletedAt
-                            controllerDID{
-                                id
-                            }
+                            ${profileFragment}
                         }
                     }
                 }`, {input: {content}});
@@ -345,16 +318,7 @@ export class DIDService {
                 node(id: "${did}") {
                 ... on CeramicAccount {
                         profile {
-                            id
-                            controllerDID {
-                                id
-                            }
-                            name
-                            bio
-                            avatar
-                            createdAt
-                            updatedAt
-                            deletedAt
+                            ${profileFragment}
                         }
                     }
                 }

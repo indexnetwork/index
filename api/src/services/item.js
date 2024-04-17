@@ -1,124 +1,7 @@
-import {ComposeClient} from "@composedb/client";
-
-import moment from "moment";
-
-const getCurrentDateTime = () => moment.utc().toISOString();
-
-const removePrefixFromKeys = (obj, prefix) =>
-    Object.keys(obj).reduce((newObj, key) => ({
-        ...newObj,
-        [key.startsWith(prefix) ? key.slice(prefix.length) : key]: obj[key]
-    }), {});
-
-import {definition} from "../types/merged-runtime.js";
-
-const indexItemFragment = `
-    ... on IndexItem {
-      id
-      indexId
-      itemId
-      createdAt
-      updatedAt
-      deletedAt
-      item {
-        id
-        __typename
-        ... on WebPage {
-            WebPage_title: title
-            WebPage_favicon: favicon
-            WebPage_url: url
-            WebPage_content: content
-            WebPage_createdAt: createdAt
-            WebPage_updatedAt: updatedAt
-            WebPage_deletedAt: deletedAt
-          }
-          ... on Team {
-              Team_logo: logo
-              Team_name: name
-              Team_teamId: teamId
-              Team_members: members {
-                  name
-                  image
-                  teams {
-                      uid
-                      name
-                      role
-                      mainTeam
-                      teamLead
-                  }
-                  skills {
-                      title
-                  }
-                  twitter
-                  location
-                  mainTeam {
-                      uid
-                      name
-                      role
-                      mainTeam
-                      teamLead
-                  }
-                  memberId
-                  teamLead
-                  openToWork
-                  officeHours
-                  preferences
-                  githubHandle
-                  repositories
-                  discordHandle
-                  linkedinHandle
-                  telegramHandle
-                  projectContributions {
-                      uid
-                      role
-                      endDate
-                      memberUid
-                      startDate
-                      projectUid
-                      description
-                      currentProject
-                  }
-              }
-              Team_twitter: twitter
-              Team_website: website
-              Team_fundingStage: fundingStage
-              Team_industryTags: industryTags {
-                  uid
-                  title
-                  createdAt
-                  updatedAt
-                  definition
-                  airtableRecId
-                  industryCategoryUid
-              }
-              Team_technologies: technologies {
-                  uid
-                  title
-                  createdAt
-                  updatedAt
-              }
-              Team_contactMethod: contactMethod
-              Team_linkedinHandle: linkedinHandle
-              Team_longDescription: longDescription
-              Team_shortDescription: shortDescription
-              Team_membershipSources: membershipSources {
-                  uid
-                  title
-                  createdAt
-                  updatedAt
-              }
-        }
-      }
-      index {
-        id
-        title
-        signerPublicKey
-        signerFunction
-        createdAt
-        updatedAt
-        deletedAt
-      }
-    }`
+import { ComposeClient } from "@composedb/client";
+import { removePrefixFromKeys, getCurrentDateTime } from "../utils/helpers.js";
+import { indexItemFragment } from "../types/fragments.js";
+import { definition } from "../types/merged-runtime.js";
 
 const transformIndexItem = (indexItem) => {
 
@@ -152,7 +35,7 @@ export class ItemService {
 
         try {
             let {data, errors} = await this.client.executeQuery(`
-            query{
+            query {
               indexItemIndex(first:1, filters: {
                 where: {
                   itemId: { equalTo: "${itemId}"},
@@ -419,7 +302,7 @@ export class ItemService {
             // Validate the data response
 
             if (!data || !data.createIndexItem || !data.createIndexItem.document || !data.createIndexItem.document.item) {
-                throw new Error('Invalid response data');
+                throw new Error(['Invalid response data', data]);
             }
 
             data.createIndexItem.document.item = removePrefixFromKeys(data.createIndexItem.document.item, `${data.createIndexItem.document.item.__typename}_`);
