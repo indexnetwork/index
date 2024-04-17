@@ -34,7 +34,6 @@ export default function IndexItemsTabSection() {
 
   useEffect(() => {
     if (addedItem) {
-      console.log("addedItem", addedItem, progress);
       setItemsState({
         items: [addedItem, ...itemsState.items],
         cursor: itemsState.cursor,
@@ -174,23 +173,13 @@ export default function IndexItemsTabSection() {
         </FlexRow>
       )}
 
-      <div
-        key={viewedIndex?.id}
-        className={"scrollable-container mb-4 mt-6"}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          overflowY: "auto",
-          maxHeight: "calc(100vh - 34rem)",
-        }}
-      >
+      <div key={viewedIndex?.id} className={"mb-4 mt-6"}>
         <IndexItemList
           items={itemsState.items}
           search={search}
           hasMore={!!itemsState.cursor}
           removeItem={handleRemove}
-          // loadMore={() => fetchIndexItems(false)}
-          loadMore={() => {}}
+          loadMore={() => fetchIndexItems(false)}
         />
       </div>
     </Flex>

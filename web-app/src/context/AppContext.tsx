@@ -147,7 +147,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       console.error("Error fetching index", error);
       toast.error("Error fetching index, please refresh the page");
     }
-  }, [id, viewedIndex, isIndex, apiReady]);
+  }, [id, viewedIndex, isIndex, apiReady, api]);
 
   const handleTransactionCancel = useCallback(() => {
     setTransactionApprovalWaiting(false);

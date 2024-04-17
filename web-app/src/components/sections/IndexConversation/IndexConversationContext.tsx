@@ -74,7 +74,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         }
 
         const response = await api!.getItems(viewedIndex.id, itemParams);
-
+        console.log(response.endCursor, "endCursor");
         if (response) {
           setItemsState((prevState) => ({
             items:
@@ -98,7 +98,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
   const fetchInitial = useCallback(async () => {
     await fetchIndex();
     fetchIndexItems(true);
-  }, [fetchIndex, fetchIndexItems]);
+  }, [fetchIndex]);
 
   useEffect(() => {
     fetchInitial();

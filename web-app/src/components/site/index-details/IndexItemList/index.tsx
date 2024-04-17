@@ -1,9 +1,8 @@
 import List from "components/base/List";
-import React from "react";
-import InfiniteScroll from "react-infinite-scroller";
+import { FC, memo } from "react";
 import { useRole } from "hooks/useRole";
+import InfiniteScroll from "react-infinite-scroll-component";
 import { IndexItem } from "types/entity";
-// import InfiniteScroll from "react-infinite-scroll-component";
 
 import NoLinks from "../../indexes/NoLinks";
 import LinkItem from "../LinkItem";
@@ -16,9 +15,9 @@ export interface IndexItemListProps {
   loadMore: () => void;
 }
 
-const MemoLinkItem = React.memo(LinkItem);
+const MemoLinkItem = memo(LinkItem);
 
-const IndexItemList: React.FC<IndexItemListProps> = ({
+const IndexItemList: FC<IndexItemListProps> = ({
   search,
   items,
   hasMore,
@@ -26,18 +25,18 @@ const IndexItemList: React.FC<IndexItemListProps> = ({
   removeItem,
 }) => {
   const { isOwner } = useRole();
+
   return (
     <>
       {items.length === 0 ? (
         <NoLinks isOwner={isOwner} tabKey="items" search={search} />
       ) : (
         <InfiniteScroll
-          className="scrollable-area idxflex-grow-1 pb-6"
-          useWindow={false}
           hasMore={hasMore}
-          loadMore={loadMore}
-          marginHeight={50}
-          // loader={<div className="loader" key={0}></div>}
+          next={loadMore}
+          dataLength={items.length}
+          height={"calc(100vh - 36rem)"}
+          loader={<div className="loader" key={0}></div>}
         >
           <List
             listClass="index-item-list"
