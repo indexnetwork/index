@@ -4,7 +4,5 @@
   "main": "index.js",
   "type": "module",
   "license": "MIT",
-  "dependencies": {
-    "@indexnetwork/sdk": "0.0.7"
-  }
+  "dependencies": {}
 }

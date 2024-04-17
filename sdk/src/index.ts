@@ -1,9 +1,7 @@
 import { Cacao, SiweMessage } from "@didtools/cacao";
-import { LitContracts } from "@lit-protocol/contracts-sdk";
 import { randomBytes } from "crypto";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { JsonRpcProvider, Wallet } from "ethers";
-import { CID } from "multiformats/cid";
 import IndexConfig from "./config.js";
 import {
   ICreatorAction,
@@ -176,7 +174,6 @@ export default class IndexClient {
   }
 
   public async createIndex(title: string): ApiResponse<IIndex> {
-
     const body = {
       title,
       signerFunction: IndexConfig.defaultCID,
@@ -265,51 +262,25 @@ export default class IndexClient {
     return this.request(`/ens/${ensName}`, { method: "GET" });
   }
 
-  async mintPKP() {
-    if (!this.privateKey) {
-      throw new Error("Private key is required to mint PKP");
-    }
+  public async getNodeById(modelId: string, nodeId: string): ApiResponse<any> {
+    return this.request(`/composedb/${modelId}/${nodeId}`, { method: "GET" });
+  }
 
-    const litContracts = new LitContracts({
-      network: IndexConfig.litNetwork,
-      privateKey: this.privateKey,
+  public async createNode(modelId: string, nodeData: any): ApiResponse<any> {
+    return this.request(`/composedb/${modelId}`, {
+      method: "POST",
+      body: JSON.stringify(nodeData),
     });
-    await litContracts.connect();
+  }
 
-    const signerFunctionV0 = CID.parse(IndexConfig.defaultCID)
-      .toV0()
-      .toString();
-    const acid = litContracts.utils.getBytesFromMultihash(signerFunctionV0);
-
-    const mintCost = await litContracts.pkpNftContract.read.mintCost();
-
-    const mint =
-      (await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
-        2,
-        [2],
-        [acid],
-        ["0x"],
-        [[BigInt(1)]],
-        true,
-        false,
-        {
-          value: mintCost,
-        },
-      )) as any;
-
-    const wait = await mint.wait();
-
-    const tokenIdFromEvent = wait?.logs
-      ? wait.logs[0].topics[1]
-      : wait?.logs[0].topics[1];
-    const tokenIdNumber = BigInt(tokenIdFromEvent).toString();
-    const pkpPublicKey =
-      await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
-
-    return {
-      tokenIdFromEvent,
-      tokenIdNumber,
-      pkpPublicKey,
-    };
+  public async updateNode(
+    modelId: string,
+    nodeId: string,
+    nodeData: any,
+  ): ApiResponse<any> {
+    return this.request(`/composedb/${modelId}/${nodeId}`, {
+      method: "PATCH",
+      body: JSON.stringify(nodeData),
+    });
   }
 }

@@ -16,8 +16,6 @@
   },
   "dependencies": {
     "@didtools/cacao": "^3.0.1",
-    "@lit-protocol/contracts-sdk": "^4.1.1",
-    "cid": "multiformats/cid",
     "did-session": "^3.1.0",
     "ethers": "^6.11.1",
     "multiformats": "^13.1.0"

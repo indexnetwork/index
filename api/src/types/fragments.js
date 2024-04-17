@@ -42,6 +42,7 @@ export const webPageFragment = `
 
 export const teamFragment = `
   ... on Team {
+      id
       logo
       name
       teamId
