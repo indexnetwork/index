@@ -92,9 +92,7 @@ export const updateIndex = async (req, res, next) => {
             prevCID: index.signerFunction,
             newCID: req.body.signerFunction,
           });
-          console.log(vals)
 
-          console.log("updated!");
           index.signerFunction = req.body.signerFunction;
         }
 
@@ -104,6 +102,7 @@ export const updateIndex = async (req, res, next) => {
             .setSession(pkpSession)
             .updateIndex(req.params.id, req.body);
 
+        req.query.roles = true;
         return await getIndexById(req, res, next);
 
     } catch (error) {

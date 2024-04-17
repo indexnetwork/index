@@ -30,6 +30,7 @@ const config = {
 
 const litContracts = new LitContracts({
     network: config.litNetwork,
+    debug: !!process.env.DEBUG || false,
     privateKey: process.env.INDEXER_WALLET_PRIVATE_KEY,
 });
 
@@ -184,7 +185,7 @@ export const writeAuthMethods = async ({ userAuthSig, signerPublicKey, prevCID, 
         gasLimit: 400000
       }
     );
-    console.log(signed, "Signed!")
+    return signed;
   } catch (error) {
     console.error(error);
     throw new Error("Error writing auth methods");
