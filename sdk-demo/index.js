@@ -1,8 +1,7 @@
 import IndexClient from "@indexnetwork/sdk";
 
 // add your key here
-const privateKey =
-  "bf2d4ae856c8fb6a32b07dc40778800ff9dafabbaaf65e96384866008cd3ef59";
+const privateKey = "";
 
 async function main() {
   try {
@@ -15,7 +14,7 @@ async function main() {
 
     await indexClient.authenticate();
 
-    const teamNode = {
+    const sampleTeamNode = {
       teamId: "cldvnxydg01n5u21kcdgywqa8",
       name: "$STYLE Protocol",
       logo: "https://files.plnetwork.io",
@@ -179,10 +178,10 @@ async function main() {
 
     const createdNode = await indexClient.createNode(
       "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h",
-      teamNode,
+      sampleTeamNode,
     );
 
-    console.log("createdNode:", createdNode.id, createdNode.name);
+    console.log("Created Node:", createdNode.id, createdNode.name);
 
     const node = await indexClient.getNodeById(
       "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h",
@@ -190,16 +189,6 @@ async function main() {
     );
 
     console.log("Get Node:", node.id, node.name);
-
-    teamNode.name = "Updated $STYLE Protocol";
-
-    const updatedNode = await indexClient.updateNode(
-      "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h",
-      createdNode.id,
-      teamNode,
-    );
-
-    console.log("updatedNode:", updatedNode.id, updatedNode.name);
 
     // const did = "";
     // const indexes = await indexClient.getAllIndexes(did);
@@ -219,7 +208,7 @@ async function main() {
 
     const addedItem = await indexClient.addItemToIndex(
       newIndex.id,
-      updatedNode.id,
+      createdNode.id,
     );
     console.log("Added Item to Index:", addedItem);
 
