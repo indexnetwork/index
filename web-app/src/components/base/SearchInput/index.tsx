@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from "react";
 import debounce from "lodash.debounce";
+import React, { useCallback, useEffect, useState } from "react";
+import IconClose from "../Icon/IconClose";
 import IconSearch from "../Icon/IconSearch";
 import Input, { InputProps } from "../Input";
-import IconClose from "../Icon/IconClose";
 import Spin from "../Spin";
 
 export interface SearchInputProps extends InputProps {
@@ -59,7 +59,15 @@ const SearchInput = ({
     <Input
       {...inputProps}
       inputSize={"lg"}
-      addOnBefore={<IconSearch width={20} height={20} />}
+      addOnBefore={
+        <span
+          style={{
+            marginRight: "6px",
+          }}
+        >
+          <IconSearch width={20} height={20} />
+        </span>
+      }
       addOnAfter={
         loading ? (
           <Spin active={true} thickness="light" theme="secondary" />

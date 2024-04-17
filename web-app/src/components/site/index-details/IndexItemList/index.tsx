@@ -1,10 +1,12 @@
-import React from "react";
 import List from "components/base/List";
+import React from "react";
 import InfiniteScroll from "react-infinite-scroller";
-import { IndexItem } from "types/entity";
 import { useRole } from "hooks/useRole";
-import LinkItem from "../LinkItem";
+import { IndexItem } from "types/entity";
+// import InfiniteScroll from "react-infinite-scroll-component";
+
 import NoLinks from "../../indexes/NoLinks";
+import LinkItem from "../LinkItem";
 
 export interface IndexItemListProps {
   search: string;
@@ -16,7 +18,7 @@ export interface IndexItemListProps {
 
 const MemoLinkItem = React.memo(LinkItem);
 
-const IndexItemList: React.VFC<IndexItemListProps> = ({
+const IndexItemList: React.FC<IndexItemListProps> = ({
   search,
   items,
   hasMore,
@@ -24,7 +26,6 @@ const IndexItemList: React.VFC<IndexItemListProps> = ({
   removeItem,
 }) => {
   const { isOwner } = useRole();
-
   return (
     <>
       {items.length === 0 ? (
@@ -36,13 +37,16 @@ const IndexItemList: React.VFC<IndexItemListProps> = ({
           hasMore={hasMore}
           loadMore={loadMore}
           marginHeight={50}
+          // loader={<div className="loader" key={0}></div>}
         >
           <List
             listClass="index-item-list"
             render={(item: IndexItem) => (
               <MemoLinkItem
                 handleRemove={() => removeItem(item)}
-                search={!!search} item={item} />
+                search={!!search}
+                item={item}
+              />
             )}
             divided
             data={items}

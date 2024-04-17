@@ -14,7 +14,7 @@ export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
         textAlign: "center",
         flexDirection: "column",
         alignItems: "center",
-        padding: "4rem 0",
+        padding: "8rem 0 0 0",
       }}
     >
       <Image

@@ -189,7 +189,7 @@ export default function IndexItemsTabSection() {
           search={search}
           hasMore={!!itemsState.cursor}
           removeItem={handleRemove}
-          // loadMore={fetchIndexItems}
+          // loadMore={() => fetchIndexItems(false)}
           loadMore={() => {}}
         />
       </div>

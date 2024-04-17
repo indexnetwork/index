@@ -98,7 +98,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
   const fetchInitial = useCallback(async () => {
     await fetchIndex();
     fetchIndexItems(true);
-  }, [viewedIndex, fetchIndex, fetchIndexItems]);
+  }, [fetchIndex, fetchIndexItems]);
 
   useEffect(() => {
     fetchInitial();
