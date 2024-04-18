@@ -62,10 +62,10 @@
   dependencies:
     codeco "^1.2.0"
 
-"@indexnetwork/sdk@^0.0.8":
-  version "0.0.8"
-  resolved "https://registry.yarnpkg.com/@indexnetwork/sdk/-/sdk-0.0.8.tgz#283e010a8e4fe09331ed805c20153115eba0e975"
-  integrity sha512-W8qfy7uZMwHsq/KnlW1IFmVdJ4pHH65TaSw5kxV2zpXLMW4+oCerLJZieDWzwefcATyEKb4biFXJKnJHPxCnyQ==
+"@indexnetwork/sdk@^0.0.9":
+  version "0.0.9"
+  resolved "https://registry.yarnpkg.com/@indexnetwork/sdk/-/sdk-0.0.9.tgz#40c0358cc0f4e3dfe2068ee5d2b04fa8713ddf2d"
+  integrity sha512-Wfe8ArpVXmse96rnc3T8cWYVuwVAycR7WpAgqudflDMeSbgMoTuxXV4hiDmSue4j9peOgtrgtz/6IqCcHkHolQ==
   dependencies:
     "@didtools/cacao" "^3.0.1"
     did-session "^3.1.0"
@@ -351,6 +351,11 @@ uint8arrays@^5.0.1:
   integrity sha512-6LBuKji28kHjgPJMkQ6GDaBb1lRwIhyOYq6pDGwYMoDPfImE9SkuYENVmR0yu9yGgs2clHUSY9fKDukR+AXfqQ==
   dependencies:
     multiformats "^13.0.0"
+
+uuid@^9.0.1:
+  version "9.0.1"
+  resolved "https://registry.yarnpkg.com/uuid/-/uuid-9.0.1.tgz#e188d4c8853cc722220392c424cd637f32293f30"
+  integrity sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==
 
 varint@^6.0.0:
   version "6.0.0"

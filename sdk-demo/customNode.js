@@ -3,6 +3,9 @@ import IndexClient from "@indexnetwork/sdk";
 // add your key here
 const privateKey = "";
 
+const teamModelId =
+  "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h";
+
 async function main() {
   try {
     // const session = "";
@@ -177,43 +180,24 @@ async function main() {
     };
 
     const createdNode = await indexClient.createNode(
-      "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h",
+      teamModelId,
       sampleTeamNode,
     );
 
     console.log("Created Node:", createdNode.id, createdNode.name);
 
-    const node = await indexClient.getNodeById(
-      "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h",
-      createdNode.id,
-    );
+    const node = await indexClient.getNodeById(teamModelId, createdNode.id);
 
     console.log("Get Node:", node.id, node.name);
 
-    // const did = "";
-    // const indexes = await indexClient.getAllIndexes(did);
-    // console.log(indexes);
-
-    // const profile = await indexClient.getProfile(did);
-    // console.log("Profile:", profile);
-
-    const title = "Team index";
-    const newIndex = await indexClient.createIndex(title);
-    console.log("New Index:", newIndex);
-
-    // const item = await indexClient.crawlLink(
-    //   "https://www.paulgraham.com/articles.html",
-    // );
-    // console.log("Crawled Item:", item);
+    const newIndex = await indexClient.createIndex("Team index");
+    console.log("Created Index:", newIndex);
 
     const addedItem = await indexClient.addItemToIndex(
       newIndex.id,
       createdNode.id,
     );
     console.log("Added Item to Index:", addedItem);
-
-    // const fetchedIndex = await indexClient.getIndex(newIndex.id);
-    // console.log("Fetched Index:", fetchedIndex);
   } catch (err) {
     console.error(err);
   }

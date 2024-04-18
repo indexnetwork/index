@@ -3,6 +3,7 @@ import { randomBytes } from "crypto";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { JsonRpcProvider, Wallet } from "ethers";
 import IndexConfig from "./config.js";
+import { Message } from "./types.js";
 import {
   ICreatorAction,
   IGetItemQueryParams,
@@ -114,6 +115,50 @@ export default class IndexClient {
     this.session = authBearer;
   }
 
+  public async *chat({
+    id,
+    indexes,
+    did,
+    messages,
+  }: {
+    id: string;
+    indexes: string[];
+    did?: string;
+    messages: Message[];
+  }): AsyncGenerator<string, void, undefined> {
+    const response = await fetch(`${this.baseUrl}/discovery/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        messages,
+        id,
+        indexIds: indexes,
+        did,
+      }),
+    });
+
+    if (!response.ok || response.body === null) {
+      throw new Error("Error streaming messages");
+    }
+
+    const reader = response.body.getReader();
+    let decoder = new TextDecoder("utf-8");
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        yield chunk;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
   public getAllIndexes(did: string): ApiResponse<IIndex[]> {
     return this.request(`/dids/${did}/indexes`, { method: "GET" });
   }
@@ -143,7 +188,7 @@ export default class IndexClient {
     });
   }
 
-  public async crawlLink(url: string): ApiResponse<ILink> {
+  public async crawlWebPage(url: string): ApiResponse<ILink> {
     return this.request(`/web2/webpage/crawl`, {
       method: "POST",
       body: JSON.stringify({ url }),
