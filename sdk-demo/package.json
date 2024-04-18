@@ -5,6 +5,7 @@
   "type": "module",
   "license": "MIT",
   "dependencies": {
-    "@indexnetwork/sdk": "^0.0.8"
+    "@indexnetwork/sdk": "^0.0.9",
+    "uuid": "^9.0.1"
   }
 }

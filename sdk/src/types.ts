@@ -72,3 +72,13 @@ export interface IUserProfileUpdateParams {
   bio?: string;
   avatar?: string;
 }
+
+export enum Participant {
+  User = "user",
+  Assistant = "assistant",
+}
+
+export type Message = {
+  content: string;
+  role: Participant;
+};
