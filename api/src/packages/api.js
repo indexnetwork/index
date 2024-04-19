@@ -122,7 +122,7 @@ app.patch(
   validator.body(
     Joi.object({
       name: Joi.string().optional(),
-      bio: Joi.string().empty('').optional(),
+      bio: Joi.string().empty('').empty(['', null]).optional(),
       avatar: Joi.custom(isCID, "Avatar").optional().allow(null),
     }).or("name", "bio", "avatar"),
   ),
