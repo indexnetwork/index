@@ -94,37 +94,6 @@ export const updateIndexItemEvent = async (id) => {
                 logger.debug(`Step [1]: IndexItem Delete Failed for id: ${id}`)
             }
 
-        } else {
-
-            logger.info(`Step [1]: IndexItem UpdateEvent trigger for id: ${id}`)
-
-            const updateResponse = await axios.put(
-                `${process.env.LLM_INDEXER_HOST}/indexer/index`,
-                {
-                    embedding: indexItem.embedding,
-                    metadata: {
-
-                        indexTitle: embedding.index.title,
-                        indexCreatedAt: embedding.index.createdAt,
-                        indexUpdatedAt: embedding.index.updatedAt,
-                        indexDeletedAt: embedding.index.deletedAt,
-                        indexOwnerDID: embedding.index.ownerDID.id,
-
-                        webPageId: embedding.item.id,
-                        webPageTitle: embedding.item.title,
-                        webPageUrl: embedding.item.url,
-                        webPageContent: embedding.item.content,
-                        webPageCreatedAt: embedding.item.createdAt,
-                        webPageUpdatedAt: embedding.item.updatedAt,
-                        webPageDeletedAt: embedding.item.deletedAt,
-                    },
-                });
-
-            if (updateResponse.status === 200) {
-                logger.info(`Step [1]: IndexItem Update Success for id: ${id}`)
-            } else {
-                logger.warn(`Step [1]: IndexItem Update Failed for id: ${id}`)
-            }
         }
 
     } catch (e) {
@@ -200,7 +169,6 @@ export const createEmbeddingEvent = async (id) => {
     const embeddingService = new EmbeddingService()
     const embedding = await embeddingService.getEmbeddingById(id);
 
-    console.log(embedding, "helyy")
 
     const payload = {
 

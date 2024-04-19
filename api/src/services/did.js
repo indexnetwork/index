@@ -36,6 +36,7 @@ export class DIDService {
                       updatedAt
                       deletedAt
                       controllerDID {
+                        id
                         profile {
                           ${profileFragment}
                         }
@@ -59,8 +60,17 @@ export class DIDService {
             if (data.dIDIndexIndex.edges.length === 0) {
                 return null;
             }
-
-            return data.dIDIndexIndex.edges[0].node.controllerDID.profile;
+            let profile = {};
+            if (data.dIDIndexIndex.edges[0].node.controllerDID.profile !== null) {
+              profile = data.dIDIndexIndex.edges[0].node.controllerDID.profile;
+              profile.id = profile.controllerDID.id;
+              delete profile.controllerDID;
+              return profile;
+            } else {
+              return {
+                id: data.dIDIndexIndex.edges[0].node.controllerDID.id
+              }
+            }
 
         } catch (error) {
             // Log the error and rethrow it for external handling

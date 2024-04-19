@@ -75,8 +75,7 @@ export const getOwnerProfile = async (id) => {
 	const didService = new DIDService()
 
 	const owner = await didService.getOwner(id);
-	console.log(owner)
-	if(owner && owner.controllerDID && owner.controllerDID.id){
+	if(owner && owner.id){
 	  return owner;
 	}else{
 	 return { id: `did:pkh:eip155:1:0` }

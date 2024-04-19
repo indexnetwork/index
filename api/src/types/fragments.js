@@ -14,7 +14,6 @@ export const didIndexFragment = `
 
 export const profileFragment = `
   ... on Profile {
-    id
     bio
     name
     avatar
