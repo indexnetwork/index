@@ -122,7 +122,7 @@ app.patch(
   validator.body(
     Joi.object({
       name: Joi.string().optional(),
-      bio: Joi.string().empty('').empty(['', null]).optional(),
+      bio: Joi.string().empty(["", null]).optional(),
       avatar: Joi.custom(isCID, "Avatar").optional().allow(null),
     }).or("name", "bio", "avatar"),
   ),
@@ -404,11 +404,7 @@ app.get(
   web2Controller.crawlMetadata,
 );
 
-
-app.get(
-  "/composedb/:modelId/:nodeId",
-  composeDbController.getNodeById,
-);
+app.get("/composedb/:modelId/:nodeId", composeDbController.getNodeById);
 
 app.post(
   "/composedb/:modelId",
