@@ -82,8 +82,18 @@ export class RetrievalQuestionInput {
         }
     })
     input: { question: string, chat_history: [] };
-    
+
+    @ApiPropertyOptional({
+        description: 'Model arguments',
+        example: {
+            temperature: 0.0,
+            maxTokens: 1000,
+            maxRetries: 5
+        }
+    })
+    model_args: any;
 }   
+
 
 
 

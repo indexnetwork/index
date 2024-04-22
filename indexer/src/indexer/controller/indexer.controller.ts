@@ -40,7 +40,6 @@ export class IndexerController {
         return this.indexerService.delete(indexId, null);
     }
 
-
     // INDEX ITEM-WISE OPERATIONS
 
     @Put('/item')

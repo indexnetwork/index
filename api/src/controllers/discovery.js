@@ -3,7 +3,7 @@ import { DIDService } from '../services/did.js';
 
 export const chat = async (req, res, next) => {
 
-  const { id, messages, indexIds, did, type } = req.body;
+  const { id, messages, indexIds, did, type, ...rest } = req.body;
   let reqIndexIds = [];
   if(did){
     const didService = new DIDService();
@@ -17,7 +17,10 @@ export const chat = async (req, res, next) => {
       indexIds: reqIndexIds,
       input: {
         question: messages.at(-1).content,
-        chat_history: [...messages.slice(0, -1)]
+        chat_history: [...messages.slice(0, -1)],
+      },
+      model_args: {
+        ...rest
       }
     }
     let resp = await axios.post(

@@ -346,6 +346,10 @@ app.post(
       id: Joi.string().required(),
       messages: Joi.array().required(),
       did: Joi.string().optional(),
+      temperature: Joi.number().optional(),
+      avg_log_prob: Joi.number().optional(),
+      maxTokens: Joi.number().optional(),
+      maxRetries: Joi.number().optional(),
       type: Joi.when("did", {
         is: Joi.exist(),
         then: Joi.string().valid("owned", "starred").optional(),

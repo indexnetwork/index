@@ -16,8 +16,11 @@
   },
   "dependencies": {
     "@didtools/cacao": "^3.0.1",
+    "@langchain/community": "^0.0.50",
+    "chromadb": "^1.8.1",
     "did-session": "^3.1.0",
     "ethers": "^6.11.1",
+    "langchain": "^0.1.34",
     "multiformats": "^13.1.0"
   },
   "exports": "./dist/index.js"

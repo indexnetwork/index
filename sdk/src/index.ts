@@ -23,17 +23,21 @@ export default class IndexClient {
   private network?: string;
   private privateKey?: string;
   private domain: string;
+  private chroma: any;
+  private options?: { useChroma: boolean };
 
   constructor({
     domain,
     session,
     privateKey,
     network,
+    options
   }: {
     domain: string;
     session?: string;
     privateKey?: string;
     network?: string;
+    options?: { useChroma: boolean };
   }) {
     this.baseUrl = IndexConfig.apiURL;
     this.network = network || "ethereum";
@@ -43,6 +47,10 @@ export default class IndexClient {
     } else {
       this.privateKey = privateKey;
     }
+  }
+  
+  private async initChroma() { 
+    if (!this.session) { throw new Error('Session is required to initialize Chroma'); }
   }
 
   private async request<T>(
@@ -113,6 +121,8 @@ export default class IndexClient {
     const authBearer = newSession.serialize();
 
     this.session = authBearer;
+
+    this.initChroma();
   }
 
   public async *chat({
