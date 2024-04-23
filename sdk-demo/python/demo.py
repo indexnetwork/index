@@ -2,7 +2,9 @@ import os
 from indexclient import IndexClient
 
 client = IndexClient("index.network", private_key=os.getenv('PRIVATE_KEY'), network="ethereum")
-client.authenticate()
+session = ""
+
+client.authenticate(session) # TODO: remove this
 did = "did:pkh:eip155:1:0x0D73c72676D7250eeAe1a3a35cfB2f361FC0CcF7"
 # indexes = client.get_all_indexes(did)
 # print(indexes)
