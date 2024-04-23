@@ -1,15 +1,12 @@
 import IndexClient from "@indexnetwork/sdk";
 
-// add your key here
-const privateKey = "";
-
 async function main() {
   try {
     // const session = "";
     const indexClient = new IndexClient({
       domain: "index.network",
       network: "ethereum",
-      privateKey, // or session
+      privateKey: process.env.PRIVATE_KEY, // or session
     });
 
     await indexClient.authenticate();

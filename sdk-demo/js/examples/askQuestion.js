@@ -2,9 +2,6 @@ import IndexClient from "@indexnetwork/sdk";
 import readline from "readline";
 import { v4 as uuidv4 } from "uuid";
 
-// add your key here
-const privateKey = "";
-
 const indexId =
   "kjzl6kcym7w8y9sr5qn9o2zg771h0rgv0phmy9hg5lti7w8neoj4ujxdok7skhk";
 
@@ -14,12 +11,12 @@ async function main() {
     const indexClient = new IndexClient({
       domain: "index.network",
       network: "ethereum",
-      privateKey, // or session
+      privateKey: process.env.PRIVATE_KEY, // or session
     });
 
     await indexClient.authenticate();
 
-    const question = "What is $STYLE Protocol?";
+    const question = "What are my indexes. list in json";
 
     console.clear();
     let response = "";
@@ -31,7 +28,8 @@ async function main() {
           role: "user",
         },
       ],
-      indexes: [indexId],
+      // indexes: [indexId],
+      did: "did:pkh:eip155:1:0x0D73c72676D7250eeAe1a3a35cfB2f361FC0CcF7",
     })) {
       readline.cursorTo(process.stdout, 0, 1);
       readline.clearLine(process.stdout, 0);
