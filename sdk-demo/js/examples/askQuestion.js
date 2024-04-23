@@ -16,7 +16,7 @@ async function main() {
 
     await indexClient.authenticate();
 
-    const question = "What are my indexes. list in json";
+    const question = "What is $STYLE Protocol?";
 
     console.clear();
     let response = "";
