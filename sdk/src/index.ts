@@ -1,9 +1,12 @@
 import { Cacao, SiweMessage } from "@didtools/cacao";
+import { OpenAIEmbeddings } from "@langchain/openai";
 import { randomBytes } from "crypto";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { JsonRpcProvider, Wallet } from "ethers";
 import IndexConfig from "./config.js";
 import { Message } from "./types.js";
+
+import IndexVectorStore from "./lib/chroma.js";
 import {
   ICreatorAction,
   IGetItemQueryParams,
@@ -31,7 +34,7 @@ export default class IndexClient {
     session,
     privateKey,
     network,
-    options
+    options,
   }: {
     domain: string;
     session?: string;
@@ -48,9 +51,25 @@ export default class IndexClient {
       this.privateKey = privateKey;
     }
   }
-  
-  private async initChroma() { 
-    if (!this.session) { throw new Error('Session is required to initialize Chroma'); }
+
+  private async initChroma() {
+    if (!this.session) {
+      throw new Error("Session is required to initialize Chroma");
+    }
+  }
+
+  private async getVectorStore({
+    embeddings,
+    args,
+  }: {
+    embeddings: OpenAIEmbeddings;
+    args: any;
+  }) {
+    return IndexVectorStore.fromExistingCollection(embeddings, {
+      collectionName: "chroma-indexer",
+      url: IndexConfig.indexChromaURL,
+      ...args,
+    });
   }
 
   private async request<T>(
@@ -86,14 +105,12 @@ export default class IndexClient {
     );
     const address = wallet.address;
 
-    // DID Key Generation: Develop a DID key using a random seed
     const keySeed = randomBytes(32);
     const didKey = await createDIDKey(keySeed);
 
     const now = new Date();
     const oneMonthLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-    // Create a SIWE message for authentication.
     const siweMessage = new SiweMessage({
       domain: this.domain,
       address,
@@ -107,17 +124,14 @@ export default class IndexClient {
       resources: ["ceramic://*"],
     });
 
-    // Sign the SIWE message with the wallet's private key.
     const signature = await wallet.signMessage(siweMessage.toMessage());
 
     siweMessage.signature = signature;
 
-    // Create a new session using the CACAO, key seed, and DID.
     const cacao = Cacao.fromSiweMessage(siweMessage);
     const did = await createDIDCacao(didKey, cacao);
     const newSession = new DIDSession({ cacao, keySeed, did });
 
-    // Here is our authorization token.
     const authBearer = newSession.serialize();
 
     this.session = authBearer;
