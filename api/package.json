@@ -19,7 +19,7 @@
     "@didtools/cacao": "^3.0.1",
     "@elastic/elasticsearch": "^8.6.0",
     "@ethersproject/keccak256": "^5.7.0",
-    "@lit-protocol/contracts-sdk": "4.1.1",
+    "@lit-protocol/contracts-sdk": "5.0.0",
     "@lit-protocol/lit-node-client-nodejs": "4.1.1",
     "@lit-protocol/pkp-ethers": "^4.2.0",
     "@lit-protocol/uint8arrays": "4.1.1",
