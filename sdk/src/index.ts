@@ -105,8 +105,13 @@ export default class IndexClient {
     );
     const address = wallet.address;
 
-    const keySeed = randomBytes(32);
+    // const keySeed = randomBytes(32);
+    const keySeed = Buffer.from(
+      "jCYbroMufNEUqlm/cHjhtXGOWLi3wzQECgqBnZ9kT7I=",
+      "base64",
+    );
     const didKey = await createDIDKey(keySeed);
+    console.log("didKey", didKey);
 
     const now = new Date();
     const oneMonthLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -118,21 +123,29 @@ export default class IndexClient {
       uri: didKey.id,
       version: "1",
       chainId: "1",
-      nonce: randomString(10),
-      issuedAt: now.toISOString(),
-      expirationTime: oneMonthLater.toISOString(),
+      // nonce: randomString(10),
+      nonce: "vEFr20hq5k",
+      issuedAt: "2024-04-24T15:45:48.460Z",
+      expirationTime: "2024-05-24T15:45:48.460Z",
       resources: ["ceramic://*"],
     });
 
     const signature = await wallet.signMessage(siweMessage.toMessage());
 
     siweMessage.signature = signature;
+    console.log("siweMesage", siweMessage);
+    console.log("keySeed", keySeed.toString("base64"));
+
+    // const session = indexClient.auth(siweMessage, keySeed);
 
     const cacao = Cacao.fromSiweMessage(siweMessage);
     const did = await createDIDCacao(didKey, cacao);
     const newSession = new DIDSession({ cacao, keySeed, did });
-
     const authBearer = newSession.serialize();
+
+    console.log("newSession auth", newSession.did.authenticated);
+    console.log("newSession", newSession.serialize());
+    console.log("newSession", newSession.authorizations);
 
     this.session = authBearer;
 
@@ -252,6 +265,7 @@ export default class IndexClient {
       method: "POST",
       body: JSON.stringify(body),
     });
+    // return { mocked: true } as any;
   }
 
   public async addItemToIndex(
