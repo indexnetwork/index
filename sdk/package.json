@@ -17,6 +17,7 @@
   "dependencies": {
     "@didtools/cacao": "^3.0.1",
     "@langchain/community": "^0.0.50",
+    "@langchain/openai": "^0.0.28",
     "chromadb": "^1.8.1",
     "did-session": "^3.1.0",
     "ethers": "^6.11.1",

@@ -1,8 +1,5 @@
 import IndexClient from "@indexnetwork/sdk";
 
-// add your key here
-const privateKey = "";
-
 const teamModelId =
   "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h";
 
@@ -12,7 +9,7 @@ async function main() {
     const indexClient = new IndexClient({
       domain: "index.network",
       network: "ethereum",
-      privateKey, // or session
+      privateKey: process.env.PRIVATE_KEY, // or session
     });
 
     await indexClient.authenticate();
@@ -183,11 +180,9 @@ async function main() {
       teamModelId,
       sampleTeamNode,
     );
-
     console.log("Created Node:", createdNode.id, createdNode.name);
 
     const node = await indexClient.getNodeById(teamModelId, createdNode.id);
-
     console.log("Get Node:", node.id, node.name);
 
     const newIndex = await indexClient.createIndex("Team index");

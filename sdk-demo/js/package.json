@@ -6,6 +6,7 @@
   "license": "MIT",
   "dependencies": {
     "@indexnetwork/sdk": "^0.0.9",
+    "@langchain/openai": "^0.0.28",
     "uuid": "^9.0.1"
   }
 }

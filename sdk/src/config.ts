@@ -8,6 +8,7 @@ const IndexConfig = {
     | "habanero",
   apiURL: "https://dev.index.network/api",
   litProtocolRPCProviderURL: "https://chain-rpc.litprotocol.com/http",
+  indexChromaURL: "http://chroma-chromadb.env-dev:8000", // TODO: Update this
 };
 
 export default IndexConfig;
