@@ -1,6 +1,0 @@
-venv
-demo.py
-build
-dist
-*.egg-info
-.env

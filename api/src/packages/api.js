@@ -54,7 +54,6 @@ import * as zapierController from "../controllers/zapier.js";
 import * as siteController from "../controllers/site.js";
 
 import * as metaController from "../controllers/meta.js";
-import * as sessionController from "../controllers/session.js";
 
 import {
   authenticateMiddleware,
@@ -481,16 +480,6 @@ app.get(
     }),
   ),
   siteController.faucet,
-);
-
-app.post(
-  "/session",
-  validator.body(
-    Joi.object({
-      siweMessage: Joi.any().required(),
-    }),
-  ),
-  sessionController.createSession,
 );
 
 // Validators
