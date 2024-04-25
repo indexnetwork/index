@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://index.network"),
-  title: "Index Network | Composable Discovery Protocol",
+  title: "Index Network | Discovery Protocol",
   description:
     "Index allows to create truly personalised and autonomous discovery experiences across the web",
   referrer: "origin-when-cross-origin",
@@ -19,13 +19,13 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     creator: "@indexnetwork_",
     site: "https://index.network",
-    title: "Index Network | Composable Discovery Protocol",
+    title: "Index Network | Discovery Protocol",
     description:
       "Index allows to create truly personalised and autonomous discovery experiences across the web.",
     images: ["https://index.network/images/bridge.jpg"],
   },
   openGraph: {
-    title: "Index Network | Composable Discovery Protocol",
+    title: "Index Network | Discovery Protocol",
     description:
       "Index allows to create truly personalised and autonomous discovery experiences across the web.",
     url: "https://index.network",

@@ -30,7 +30,7 @@ const HeroSection = () => {
 
         <div className="font-secondary z-10 flex flex-col items-center justify-center gap-4 px-8 text-center lg:w-[700px] lg:items-end lg:px-0 lg:pr-6 lg:text-end">
           <h1 className="font-title text-3xl md:text-6xl">
-            Composable Discovery Protocol
+            Discovery Protocol
           </h1>
           <p className="text-base md:text-xl">
             Index allows to create truly personalised and <br /> autonomous

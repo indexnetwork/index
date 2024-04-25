@@ -36,6 +36,9 @@ const FooterSection = () => {
           <div className="flex flex-col gap-4">
             <h3>Social</h3>
             <ul className="flex flex-col gap-4 opacity-65">
+              <a href="https://mirror.xyz/indexnetwork.eth">
+                <li>Blog</li>
+              </a>
               <a href="https://twitter.com/indexnetwork_">
                 <li>Twitter</li>
               </a>
