@@ -1,0 +1,14 @@
+{
+  "name": "lib",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "build": "bun build ./src/index.js --compile --minify --outfile ./bin/session.bin"
+  },
+  "dependencies": {
+    "@didtools/cacao": "^3.0.1",
+    "did-session": "^3.1.0"
+  }
+}
