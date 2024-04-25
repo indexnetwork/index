@@ -1,4 +1,4 @@
-import { Cacao, SiweMessage } from "@didtools/cacao";
+import { SiweMessage } from "@didtools/cacao";
 
 export const formatSiweMessage = (siweMessageStr) => {
   const siweMessage = new SiweMessage(JSON.parse(siweMessageStr));
