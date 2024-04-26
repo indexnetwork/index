@@ -34,7 +34,7 @@ export const definition = {
         "Team": {
             "interface": false,
             "implements": [],
-            "id": "kjzl6hvfrbw6cb9d3i74xp3iuooxhw04k3pumj6zyzxlvkvzyd6qaus3jihej7h",
+            "id": "kjzl6hvfrbw6ca6xtfmaftlm4ebo2gims63lxyha5omrz4k6ruvhxzijhse6ge0",
             "accountRelation": {"type": "list"}
         },
         "WebPage": {
@@ -150,7 +150,7 @@ export const definition = {
             "controllerDID": {"type": "view", "viewType": "documentAccount"}
         },
         "Team": {
-            "logo": {"type": "uri", "required": true, "immutable": false},
+            "logo": {"type": "string", "required": false, "immutable": false},
             "name": {"type": "string", "required": true, "immutable": false},
             "teamId": {"type": "string", "required": true, "immutable": false},
             "members": {
@@ -166,7 +166,7 @@ export const definition = {
                 }
             },
             "twitter": {"type": "string", "required": false, "immutable": false},
-            "website": {"type": "uri", "required": true, "immutable": false},
+            "website": {"type": "string", "required": false, "immutable": false},
             "fundingStage": {"type": "string", "required": false, "immutable": false},
             "industryTags": {
                 "type": "list",
@@ -192,8 +192,8 @@ export const definition = {
                     "immutable": false
                 }
             },
-            "contactMethod": {"type": "uri", "required": true, "immutable": false},
-            "linkedinHandle": {"type": "uri", "required": true, "immutable": false},
+            "contactMethod": {"type": "string", "required": false, "immutable": false},
+            "linkedinHandle": {"type": "string", "required": false, "immutable": false},
             "longDescription": {"type": "string", "required": false, "immutable": false},
             "shortDescription": {"type": "string", "required": false, "immutable": false},
             "membershipSources": {
@@ -220,7 +220,7 @@ export const definition = {
         },
         "TeamMember": {
             "name": {"type": "string", "required": true, "immutable": false},
-            "image": {"type": "uri", "required": true, "immutable": false},
+            "image": {"type": "string", "required": false, "immutable": false},
             "teams": {
                 "type": "list",
                 "required": false,
@@ -251,7 +251,7 @@ export const definition = {
                 "type": "reference",
                 "refType": "object",
                 "refName": "TeamRole",
-                "required": true,
+                "required": false,
                 "immutable": false
             },
             "memberId": {"type": "string", "required": true, "immutable": false},
@@ -267,7 +267,7 @@ export const definition = {
                 "item": {"type": "string", "required": false, "immutable": false}
             },
             "discordHandle": {"type": "string", "required": false, "immutable": false},
-            "linkedinHandle": {"type": "uri", "required": true, "immutable": false},
+            "linkedinHandle": {"type": "string", "required": false, "immutable": false},
             "telegramHandle": {"type": "string", "required": false, "immutable": false},
             "projectContributions": {
                 "type": "list",
