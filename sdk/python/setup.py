@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
   name='indexnetwork-sdk',
-  version='0.0.1',
+  version='0.0.2',
   description='Index Network SDK',
   long_description="Index Network Client SDK",
   long_description_content_type='text/markdown',
