@@ -10,7 +10,7 @@ import { ethers } from 'ethers'
 import Moralis from 'moralis';
 
 
-const ethProvider = new ethers.InfuraProvider("mainnet")
+const ethProvider = new ethers.providers.InfuraProvider("mainnet")
 
 export const getAvatar = async (ensName) => {
     try {

@@ -36,12 +36,12 @@ const config = {
     daysUntilUTCMidnightExpiration: 30,
     requestsPerSecond: 100,
     checkNodeAttestation: false,
-    debug: !!process.env.DEBUG || false,
+    debug: true //!!process.env.DEBUG || false,
 };
 
 // Global instances
 const redis = RedisClient.getInstance();
-const ethProvider = new ethers.JsonRpcProvider(process.env.LIT_PROTOCOL_RPC_PROVIDER);
+const ethProvider = new ethers.providers.JsonRpcProvider(process.env.LIT_PROTOCOL_RPC_PROVIDER);
 const indexerWallet = new ethers.Wallet(process.env.INDEXER_WALLET_PRIVATE_KEY, ethProvider);
 
 
@@ -59,15 +59,23 @@ const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
 const thirtyDaysLater = new Date(Date.now() + 1000 * 60 * 60 * 24 * config.daysUntilUTCMidnightExpiration)
 
 async function debugToken () {
-    const tidi  = "96645445544485389961814591100091903924604248875832041960326334704668847840587";
+    const tidi  = "34377241974961642340404714166684286561436613709573157488149117101353173877163";
     await litContracts.connect()
     const authMethods = await litContracts.pkpPermissionsContract.read.getPermittedAuthMethods(tidi );
 
-    console.log("lit.authMethods", authMethods)
+    var buffer = Buffer.from('QmTWwFrDoVRgxNS6dfYjzquLu5etLDS5VgAe4e3ET332so')
+    var hex = buffer.toString('hex')
+    console.log(hex)
+
+    const isPermittedAction = await litContracts.pkpPermissionsContractUtils.read.isPermittedAction(
+        tidi,
+         'QmTWwFrDoVRgxNS6dfYjzquLu5etLDS5VgAe4e3ET332so'
+    )
+    console.log("lit.authMethods", isPermittedAction)
     const scopes = await litContracts.pkpPermissionsContract.read.getPermittedAuthMethodScopes(
         tidi,
-        authMethods[2].authMethodType,
-        authMethods[2].id,
+        authMethods[1].authMethodType,
+        authMethods[1].id,
         3
     );
     console.log("lit.scopes", scopes)
@@ -152,6 +160,7 @@ async function generateAndStoreAuthSigs(capacityTokenId) {
     });
 
     await redis.set(`lit:${config.litNetwork}:capacityTokenId`, capacityTokenId);
+    await redis.set(`lit:${config.litNetwork}:capacityDelegationAuthSig`, JSON.stringify(capacityDelegationAuthSig));
     await redis.set(`lit:${config.litNetwork}:dAppSessionSigs`, JSON.stringify(dAppSessionSigs));
 
     console.log('Authorization signatures generated and stored.');

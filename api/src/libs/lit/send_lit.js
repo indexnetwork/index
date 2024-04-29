@@ -1,4 +1,5 @@
-import { JsonRpcProvider, Wallet } from "ethers";
+import { ethers } from "ethers";
+
 import Web3 from "web3";
 
 export const sendLit = async (to, amount) => {
@@ -14,9 +15,9 @@ export const sendLit = async (to, amount) => {
   } catch (error) {
       return res.status(400).json({ success: false, message: "Faucet failed" });
   }
-  const wallet = new Wallet(
+  const wallet = new ethers.Wallet(
     process.env.INDEXER_WALLET_PRIVATE_KEY,
-    new JsonRpcProvider(process.env.LIT_PROTOCOL_RPC_PROVIDER),
+    new ethers.providers.JsonRpcProvider(process.env.LIT_PROTOCOL_RPC_PROVIDER),
   );
   // Your account address and private key
 
