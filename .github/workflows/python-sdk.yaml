@@ -30,6 +30,7 @@ jobs:
         run: python -m build
 
       - name: Publish package to PyPI
+        working-directory: sdk/python
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
