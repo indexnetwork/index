@@ -15,18 +15,12 @@ const PartnersSection = () => {
           <h2 className="text-passiveLight font-title text-2xl opacity-65 md:text-2xl">
             Partners and Allies
           </h2>
-          <div className="flex flex-col items-center gap-6 md:flex-row md:gap-16">
-            <Image
-              src="/images/partners/ic_ceramic.png"
-              alt="Ceramic Network"
-              width={240}
-              height={50}
-            />
-            <div className="flex flex-row items-center justify-center gap-4 md:flex-row md:gap-16">
+          <div className="flex flex-col gap-6 md:gap-8">
+            <div className="flex flex-col items-center justify-center gap-6 md:flex-row md:gap-48 md:mb-4 ">
               <Image
-                src="/images/partners/ic_ipfs.png"
-                alt="IPFS"
-                width={117}
+                src="/images/partners/ic_ceramic.png"
+                alt="Ceramic Network"
+                width={240}
                 height={50}
               />
               <Image
@@ -35,13 +29,40 @@ const PartnersSection = () => {
                 width={41}
                 height={30}
               />
+              <Image
+                src="/images/partners/ic_fluence.png"
+                alt="IPFS"
+                width={117}
+                height={50}
+              />
             </div>
-            <Image
-              src="/images/partners/ic_intuition.png"
-              alt="Intuition"
-              width={183}
-              height={80}
-            />
+
+            <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-[108px]">
+              <Image
+                src="/images/partners/ic_olas.png"
+                alt="Intuition"
+                width={90}
+                height={50}
+              />
+              <Image
+                src="/images/partners/ic_disco.png"
+                alt="Intuition"
+                width={50}
+                height={50}
+              />
+              <Image
+                src="/images/partners/ic_verax.png"
+                alt="Intuition"
+                width={132}
+                height={50}
+              />
+              <Image
+                src="/images/partners/ic_intuition.png"
+                alt="Intuition"
+                width={183}
+                height={50}
+              />
+            </div>
           </div>
         </div>
         <div className="flex flex-col items-center gap-8">
