@@ -44,6 +44,7 @@
     "fetch": "^1.1.0",
     "global": "^4.4.0",
     "http-errors": "~1.6.3",
+    "http-proxy-middleware": "^3.0.0",
     "jade": "^1.11.0",
     "joi": "^17.8.3",
     "lodash": "^4.17.21",

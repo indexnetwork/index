@@ -11,6 +11,9 @@ import RedisClient from "../clients/redis.js";
 
 import * as Sentry from "@sentry/node";
 import { ProfilingIntegration } from "@sentry/profiling-node";
+import { createProxyMiddleware  } from 'http-proxy-middleware';
+
+
 
 const app = express();
 
@@ -61,6 +64,7 @@ import {
   authCheckMiddleware,
 } from "../middlewares/index.js";
 
+
 import {
   isImage,
   isPKPPublicKey,
@@ -77,6 +81,7 @@ const validator = ejv.createValidator({
 
 // Authenticate
 app.use(authenticateMiddleware);
+
 
 // DIDs
 app.get(
@@ -482,6 +487,15 @@ app.get(
   siteController.faucet,
 );
 
+app.use(
+  '/chroma',
+  createProxyMiddleware({
+    target: process.env.CHROMA_API_URL,
+    changeOrigin: true,
+  }),
+);
+
+
 // Validators
 app.use(errorMiddleware);
 
@@ -492,7 +506,6 @@ const start = async () => {
     apiKey: process.env.MORALIS_API_KEY,
   });
 
-  app.use(Sentry.Handlers.errorHandler());
   app.listen(port, async () => {
     console.log(`Search service listening on port ${port}`);
   });

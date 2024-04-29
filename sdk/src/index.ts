@@ -67,7 +67,7 @@ export default class IndexClient {
   }) {
     return IndexVectorStore.fromExistingCollection(embeddings, {
       collectionName: "chroma-indexer",
-      url: IndexConfig.indexChromaURL,
+      path: IndexConfig.indexChromaURL,
       ...args,
     });
   }

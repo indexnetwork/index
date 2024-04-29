@@ -1,36 +1,57 @@
-import IndexClient from "@indexnetwork/sdk";
-import { OpenAIEmbeddings } from "@langchain/openai";
+// import IndexClient from "@indexnetwork/sdk";
+import { ChromaClient } from 'chromadb'
+import { OpenAIEmbeddingFunction } from 'chromadb'
+
+
 
 const indexId =
   "kjzl6kcym7w8y9sr5qn9o2zg771h0rgv0phmy9hg5lti7w8neoj4ujxdok7skhk";
 
 async function main() {
   try {
-    const indexClient = new IndexClient({
-      domain: "index.network",
-      network: "ethereum",
-      privateKey: process.env.PRIVATE_KEY,
-    });
 
-    await indexClient.authenticate();
+    const client = new ChromaClient({
+        path: "http://localhost:8000/chroma",
+        // auth: "chromadb.auth.basic_authn.BasicAuthClientProvider"
+    })
 
-    const vectorStore = await indexClient.getVectorStore({
-      embeddings: new OpenAIEmbeddings(),
-      args: {
-        temperature: 0.0,
-      },
-    });
+    const embeddingFunction = new OpenAIEmbeddingFunction({
+        openai_api_key: process.env.OPENAI_API_KEY,
+        openai_model: "text-embedding-ada-002",
+      })
 
-    const query = "What is $STYLE Protocol?";
-    const filters = {
-      indexId: {
-        $in: [indexId],
-      },
-    };
+    const embeddings = await embeddingFunction.generate(["What is $STYLE Protocol?"]);
 
-    const results = await vectorStore.similaritySearch(query, 5, filters);
+    const collection = await client.getCollection({
+        name: "chroma-indexer", 
+        embeddingFunction: embeddingFunction,
+    })
+  
+    try {
 
-    console.log(results);
+      const peek = await collection.peek({limit: 10})
+      
+      console.log('Peek', peek)
+
+      let docs = await collection.query({
+        queryEmbeddings: embeddings,
+        nResults: 10,
+        include: ["embeddings", "metadatas", "documents"],
+      });
+
+      console.log('Docs', docs)
+
+    } catch (err) {
+
+      console.log('ERROR', err);
+
+    }
+
+    // curl --header "Content-Type: application/json" \
+    //      --request POST \
+    //      --data '{ "limit": 10 }' \
+    //      http://chroma-chromadb.env-dev:8000/api/v1/collections/fc19e960-9077-4978-8c23-a2cd9f026458/get
+
     /*
         [
           WebPage {
