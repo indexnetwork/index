@@ -1,13 +1,14 @@
+import os
 from setuptools import setup, find_packages
 
 setup(
   name='indexnetwork-sdk',
   version='0.0.1',
-  description='Index Client SDK',
-  long_description=open('README.md').read(),
+  description='Index Network SDK',
+  long_description="Index Network Client SDK",
   long_description_content_type='text/markdown',
   author='Index',
-  author_email='serhat@index.network',
+  author_email='accounts@index.network',
   url='https://github.com/indexnetwork/index',
   packages=find_packages(),
   install_requires=[

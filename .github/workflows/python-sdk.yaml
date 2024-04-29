@@ -27,7 +27,7 @@ jobs:
           pip install build twine
 
       - name: Build the package
-        run: python -m build
+        run: python -m build sdk/python
 
       - name: Publish package to PyPI
         working-directory: sdk/python
