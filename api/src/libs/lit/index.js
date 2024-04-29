@@ -177,7 +177,7 @@ export const writeAuthMethods = async ({
     const litContracts = new LitContracts({
       network: config.litNetwork,
       signer: signer,
-      debug: true,
+      debug: false,
     });
 
 
@@ -312,7 +312,7 @@ export const mintPKP = async (ownerAddress, actionCID) => {
   const litContracts = new LitContracts({
     network: config.litNetwork,
     signer: signer,
-    debug: true,
+    debug: false,
   });
   if (!litContracts.connected) {
     await litContracts.connect();
@@ -350,25 +350,12 @@ export const mintPKP = async (ownerAddress, actionCID) => {
       tokenIdNumber,
       signerFunctionV0
   )
-  console.log("namikella", isPermittedAction)
+
   const pubKeyToAddr = await import("ethereum-public-key-to-address");
   sendLit(pubKeyToAddr.default(pkpPublicKey), "0.0001"); //Run in the background
 
   console.log(mint, "Minted and loaded!");
 
-  //
-  /*
-  const authMethods = await litContracts.pkpPermissionsContract.read.getPermittedAuthMethods(tokenIdFromEvent );
-
-  console.log("lit.authMethods", authMethods[0])
-  const scopes = await litContracts.pkpPermissionsContract.read.getPermittedAuthMethodScopes(
-      tokenIdFromEvent,
-      authMethods[0].authMethodType,
-      authMethods[0].id,
-      3
-  );
-  console.log("lit.scopes", scopes)
-   */
 
   console.log(
     `superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
