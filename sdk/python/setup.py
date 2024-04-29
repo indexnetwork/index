@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
   name='indexnetwork-sdk',
-  version='0.0.2',
+  version='0.0.3',
   description='Index Network SDK',
   long_description="Index Network Client SDK",
   long_description_content_type='text/markdown',
@@ -11,6 +11,10 @@ setup(
   author_email='accounts@index.network',
   url='https://github.com/indexnetwork/index',
   packages=find_packages(),
+  include_package_data=True,
+  package_data={
+      "indexnetwork_sdk": ["bin/session.bin"],
+  },
   install_requires=[
     'abnf',
     'aiohttp',

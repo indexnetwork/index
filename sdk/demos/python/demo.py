@@ -4,7 +4,7 @@ from web3 import Web3
 # print("os.getenv('PRIVATE_KEY')", os.getenv('PRIVATE_KEY'))
 
 web3 = Web3()
-wallet = web3.eth.account.from_key("")
+wallet = web3.eth.account.from_key("bf2d4ae856c8fb6a32b07dc40778800ff9dafabbaaf65e96384866008cd3ef59")
 client = IndexClient(domain="index.network", wallet=wallet, network="ethereum")
 # client = IndexClient("index.network", private_key=os.getenv('PRIVATE_KEY'), network="ethereum")
 
