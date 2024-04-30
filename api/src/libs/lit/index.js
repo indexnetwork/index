@@ -30,8 +30,6 @@ const config = {
 const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
   litNetwork: config.litNetwork,
   debug: true,
-  connectTimeout: 6000,
-  retryTolerance: { timeout: 6000, maxRetryCount: 10, interval: 100 },
   checkNodeAttestation: true,
 });
 
@@ -228,7 +226,7 @@ export const writeAuthMethods = async ({
         [previousCollabAction]
       );
 
-    await transaction.wait()
+    //await transaction.wait()
 
     console.log("broadcast txn result:", JSON.stringify(transaction));
     return true;
@@ -242,16 +240,13 @@ export const writeAuthMethods = async ({
 };
 
 
-
-export const getPkpPublicKey = async (tokenId) => {
-  if (!litContracts.connected) {
-    await litContracts.connect();
-  }
-  const pkpPublicKey =
-    await litContracts.pkpNftContract.read.getPubkey(tokenId);
-  return pkpPublicKey;
-};
 export const getOwner = async (pkpPubKey) => {
+
+  const litContracts = new LitContracts({
+    network: config.litNetwork,
+    debug: false,
+  });
+
   let existing = await redis.hGet(`pkp:owner`, pkpPubKey);
   if (existing) {
     return existing;
@@ -364,7 +359,7 @@ export const mintPKP = async (ownerAddress, actionCID) => {
         value: mintCost,
       },
     );
-  const wait = await mint.wait();
+  const wait = await mint.wait(1);
 
 
   /* eslint-disable */
