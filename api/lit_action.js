@@ -111,7 +111,7 @@
       }
       const context = { isPermittedAddress: false, isCreator: false, siweMessage: false, signList: signList.getPKPSession };
       console.time("pubkeyToTokenId");
-      //const pkpTokenId = Lit.Actions.pubkeyToTokenId({ publicKey });
+      const pkpTokenId = Lit.Actions.pubkeyToTokenId({ publicKey });
       timers.pubkeyToTokenId = console.timeEnd("pubkeyToTokenId");
       //It'll also fail if authsig is malformed.
       const conditions = getCreatorConditions();
