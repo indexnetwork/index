@@ -84,7 +84,6 @@ export const updateIndex = async (req, res, next) => {
         let index = await indexService.getIndexById(req.params.id);
 
         if(req.body.signerFunction){
-
           const userAuthSig = getAuthSigFromDIDSession(req.session)
           const vals = await writeAuthMethods({
             userAuthSig: userAuthSig,
@@ -92,15 +91,25 @@ export const updateIndex = async (req, res, next) => {
             prevCID: index.signerFunction,
             newCID: req.body.signerFunction,
           });
-
-          index.signerFunction = req.body.signerFunction;
+          if(vals){
+            index.signerFunction = req.body.signerFunction;
+          }else{
+              res.status(500).json({ error: "Unauthorized" });
+          }
         }
 
+        //sign with executejs (transaction imzasi, session imzasi)
+        //broadcast transaction
+        //wait transaction (skip) (3-5s)
+        //update index (fast)
+        //get indexById
         const pkpSession = await getPKPSession(req.session, index);
 
         const newIndex = await indexService
             .setSession(pkpSession)
             .updateIndex(req.params.id, req.body);
+
+        return res.status(200).json(newIndex);
 
         req.query.roles = true;
         return await getIndexById(req, res, next);

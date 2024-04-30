@@ -1,5 +1,6 @@
 "use strict";
 (() => {
+
   // lit_actions/src/session.action.ts
   var getCreatorConditions = (transform=true) => {
     let conditionsArray = __REPLACE_THIS_AS_CONDITIONS_ARRAY__;
@@ -61,6 +62,28 @@
     };
     return isPermittedAddress ? [models.Index, models.IndexItem, models.Embedding] : [models.IndexItem, models.Embedding];
   };
+
+  var getPKPSessionMessage = (publicKey, isPermittedAddress, didKey, domain, nonce) => {
+
+    const pkpAddress = ethers.utils.computeAddress(publicKey).toLowerCase();
+
+    const now = /* @__PURE__ */ new Date();
+    now.setUTCHours(0, 0, 0, 0);
+    const twentyFiveDaysLater = new Date(now.getTime() + 25 * 24 * 60 * 60 * 1e3);
+    const siweMessage = {
+      domain,
+      address: pkpAddress,
+      statement: "Give this application access to some of your data on Ceramic",
+      uri: didKey,
+      version: "1",
+      chainId: "1",
+      nonce,
+      issuedAt: now.toISOString(),
+      expirationTime: twentyFiveDaysLater.toISOString(),
+      resources: getResources(isPermittedAddress).map((m) => `ceramic://*?model=${m}`)
+    };
+    return siweMessage;
+  }
   var go = async () => {
 
     try {
@@ -68,9 +91,8 @@
         console.log(JSON.stringify(getCreatorConditions(false)));
         return;
       }
-      const context = { isPermittedAddress: false, isCreator: false, siweMessage: false };
+      const context = { isPermittedAddress: false, isCreator: false, siweMessage: false, signList: signList.getPKPSession };
       const pkpTokenId = Lit.Actions.pubkeyToTokenId({ publicKey });
-      const pkpAddress = ethers.utils.computeAddress(publicKey).toLowerCase();
       //It'll also fail if authsig is malformed.
       const conditions = getCreatorConditions();
       let isCreator = false;
@@ -82,61 +104,49 @@
       const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: authSig.address });
       context.isPermittedAddress = isPermittedAddress;
 
-      if (typeof functionToRun !== "undefined" && functionToRun === "getPKPSession") {
-        if(isPermittedAddress){
-          const sigShare = await LitActions.signEcdsa({
-            toSign: messageToSign,
-            publicKey,
-            sigName
-          });
 
-          LitActions.setResponse({
-            response: JSON.stringify({
-              error: false,
-              context: JSON.stringify(context)
-            })
-          });
+      let signatures = [];
+
+      for (const functionToRun of Object.keys(signList)) {
+        const op = signList[functionToRun];
+
+        if (functionToRun === "signTransaction") {
+          if (isPermittedAddress) {
+            const sigShare = await LitActions.signEcdsa({
+              toSign: op.messageToSign,
+              publicKey,
+              sigName: functionToRun
+            });
+            signatures.push(sigShare);
+          }
         }
-      } else if (isPermittedAddress || isCreator) {
-        const now = /* @__PURE__ */ new Date();
-        now.setUTCHours(0, 0, 0, 0);
-        const twentyFiveDaysLater = new Date(now.getTime() + 25 * 24 * 60 * 60 * 1e3);
-        const siweMessage = {
-          domain,
-          address: pkpAddress,
-          statement: "Give this application access to some of your data on Ceramic",
-          uri: didKey,
-          version: "1",
-          chainId: "1",
-          nonce,
-          issuedAt: now.toISOString(),
-          expirationTime: twentyFiveDaysLater.toISOString(),
-          resources: getResources(isPermittedAddress).map((m) => `ceramic://*?model=${m}`)
-        };
-        const sigShare = await LitActions.ethPersonalSignMessageEcdsa({
-          message: toSiweMessage(siweMessage),
-          publicKey,
-          sigName
-        });
-        context.litAuth = Lit.Auth;
-        context.siweMessage = siweMessage;
-        LitActions.setResponse({
-          response: JSON.stringify({
-            error: false,
-            context: JSON.stringify(context)
-          })
-        });
-      } else {
-        LitActions.setResponse({
-          response: JSON.stringify({
-            code: 401,
-            context: JSON.stringify(context)
-          })
-        });
+
+        if (functionToRun === "getPKPSession") {
+          if (isPermittedAddress || isCreator) {
+            const siwePayload = getPKPSessionMessage(publicKey, isPermittedAddress, op.didKey, op.domain, nonce);
+            context.siweMessage = siwePayload;
+            const sigShare = await LitActions.ethPersonalSignMessageEcdsa({
+              message: toSiweMessage(siwePayload),
+              publicKey,
+              sigName: functionToRun
+            });
+            signatures.push(sigShare);
+          }
+        }
       }
-    } catch (e){
-      console.log(e)
-    }
-  };
+
+      const sigShares = signatures;
+
+      LitActions.setResponse({
+        response: JSON.stringify({
+          error: false,
+          context: JSON.stringify(context)
+        })
+      });
+  } catch (e){
+    console.error(e);
+  }
+
+}
   go();
 })();

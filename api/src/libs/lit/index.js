@@ -30,7 +30,9 @@ const config = {
 const litNodeClient = new LitJsSdk.LitNodeClientNodeJs({
   litNetwork: config.litNetwork,
   debug: true,
-  checkNodeAttestation: false,
+  connectTimeout: 6000,
+  retryTolerance: { timeout: 6000, maxRetryCount: 10, interval: 100 },
+  checkNodeAttestation: true,
 });
 
 const redis = RedisClient.getInstance();
@@ -101,24 +103,49 @@ class PKPSigner extends ethers.Signer {
       const serializedTx = ethers.utils.serializeTransaction(tx);
       const unsignedTxn = ethers.utils.keccak256(serializedTx);
 
-      params.jsParams.messageToSign = ethers.utils.arrayify(unsignedTxn);
+      //if(params.jsParams.signList[0].chain === "ethereum") {])
+      if(params.jsParams.signList.signTransaction){
+        params.jsParams.signList.signTransaction.messageToSign = ethers.utils.arrayify(unsignedTxn);
+      }
+
+      if(params.jsParams.signList.getPKPSession){
+        const didKeyBack = params.jsParams.signList.getPKPSession.didKey;
+        params.jsParams.signList.getPKPSession.didKey = params.jsParams.signList.getPKPSession.didKey.id.toString();
+      }
+
       const resp = await this.litNodeClient.executeJs(params);
 
-      if (!resp.signatures || !resp.signatures.sig1) {
+      if (!resp.signatures) {
         throw new Error("No signature returned");
       }
-      console.log(resp.signatures.sig1)
-      const signature = resp.signatures.sig1.signature;
-    /*
-      const sigo = ethers.utils.joinSignature({
-        r: `0x${signature.r}`,
-        s: `0x${signature.s}`,
-        v: signature.recid,
-      });
-      */
 
+      console.log("charlie", resp)
+      if(resp.signatures.getPKPSession){
 
-      return ethers.utils.serializeTransaction(tx, signature);
+        const { siweMessage } = JSON.parse(resp.response.context);
+        const sessionSignature = resp.signatures.getPKPSession; // TODO Handle.
+
+        siweMessage.signature = ethers.utils.joinSignature({
+          r: `0x${sessionSignature.r}`,
+          s: `0x${sessionSignature.s}`,
+          v: sessionSignature.recid,
+        });
+
+        const cacao = Cacao.fromSiweMessage(siweMessage);
+
+        const did = await createDIDCacao(didKeyBack, cacao);
+        const pkpSession = new DIDSession({ cacao, keySeed, did });
+
+        if (sessionCacheKey) {
+          await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
+        }
+      }
+
+      if(resp.signatures.signTransaction){
+        const signature = resp.signatures.signTransaction.signature;
+        return ethers.utils.serializeTransaction(tx, signature);
+      }
+
     });
   }
 
@@ -164,13 +191,12 @@ export const writeAuthMethods = async ({
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
       jsParams: {
         authSig: userAuthSig, // for conditions control. to identify authenticated user.
-        chain: "ethereum", // polygon
         publicKey: signerPublicKey,
-        sigName: "sig1",
-        //domain: "index.network",
-        //didKey: didKey.id,
+        chain: "ethereum", // polygon
         nonce: randomString(12),
-        functionToRun: "getPKPSession",
+        signList: {
+          signTransaction: {},
+        }
       },
     })
 
@@ -205,6 +231,9 @@ export const writeAuthMethods = async ({
     await transaction.wait()
 
     console.log("broadcast txn result:", JSON.stringify(transaction));
+    return true;
+
+
 
   } catch (error) {
     console.error(error);
@@ -419,26 +448,25 @@ export const getPKPSession = async (session, index) => {
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
       jsParams: {
         authSig: userAuthSig, // for conditions control. to identify authenticated user.
-        chain: "ethereum", // polygon
         publicKey: index.signerPublicKey,
-        sigName: "sig1",
-        didKey: didKey.id,
         nonce: randomString(12),
-        domain: config.domain,
+        chain: "ethereum", // polygon
+        signList: {
+          getPKPSession: {
+            didKey: didKey.id,
+            domain: config.domain,
+          }
+        }
       },
     });
 
-    const { error } = resp.response; // TODO Handle.
-    if (error) {
-      throw new Error("LIT Node Client Error");
-    }
 
-    if (!resp.signatures || !resp.signatures.sig1) {
+    if (!resp.signatures || !resp.signatures.getPKPSession) {
       throw new Error("No signature returned");
     }
 
     const { siweMessage } = JSON.parse(resp.response.context);
-    const signature = resp.signatures.sig1; // TODO Handle.
+    const signature = resp.signatures.getPKPSession; // TODO Handle.
 
     siweMessage.signature = ethers.utils.joinSignature({
       r: `0x${signature.r}`,
