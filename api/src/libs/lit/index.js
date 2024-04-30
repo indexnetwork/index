@@ -361,7 +361,6 @@ export const mintPKP = async (ownerAddress, actionCID) => {
     );
   const wait = await mint.wait(1);
 
-
   /* eslint-disable */
   const tokenIdFromEvent = wait?.logs
     ? wait.logs[0].topics[1]
@@ -370,15 +369,11 @@ export const mintPKP = async (ownerAddress, actionCID) => {
   const pkpPublicKey =
     await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
 
-  const isPermittedAction = await litContracts.pkpPermissionsContractUtils.read.isPermittedAction(
-      tokenIdNumber,
-      signerFunctionV0
-  )
 
   const pubKeyToAddr = await import("ethereum-public-key-to-address");
   sendLit(pubKeyToAddr.default(pkpPublicKey), "0.0001"); //Run in the background
 
-  console.log(mint, "Minted and loaded!");
+  console.log("Minted and loaded!");
 
 
   console.log(

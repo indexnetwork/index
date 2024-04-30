@@ -156,6 +156,29 @@ export class IndexService {
             throw new Error("DID not set. Use setDID() to set the did.");
         }
 
+        let didPayload = "";
+
+        if (this.did) {
+            didPayload = `did(first:10, account: "${this.did.parent}", filters: {
+                where: {
+                    deletedAt: {isNull: true}
+                }
+            }) {
+                edges {
+                    node {
+                        id
+                        type
+                        controllerDID {
+                            id
+                        }
+                        createdAt
+                        updatedAt
+                        deletedAt
+                    }
+                }
+            }`
+        }
+
         try {
             const content = {
                 ...params,
@@ -173,6 +196,7 @@ export class IndexService {
                             createdAt
                             updatedAt
                             deletedAt
+                            ${didPayload}
                         }
                     }
                 }`, {input: {id, content}});
@@ -187,8 +211,24 @@ export class IndexService {
                 throw new Error('Invalid response data');
             }
 
+            const index =  data.updateIndex.document;
+
+            if(index.did && index.did.edges && index.did.edges.length > 0){
+                const did = { starred: false, owned: false };
+                index.did.edges.forEach((edge) => {
+                    if(edge.node.type === "owned"){
+                        did.owned = edge.node.deletedAt === null;
+                    }
+                    if(edge.node.type === "starred"){
+                        did.starred = edge.node.deletedAt === null;
+                    }
+                });
+                index.did = did;
+            }
+
+            index.ownerDID = await getOwnerProfile(index.id);
             // Return the created index document
-            return data.updateIndex.document;
+            return index;
 
         } catch (error) {
             // Log the error and rethrow it for external handling

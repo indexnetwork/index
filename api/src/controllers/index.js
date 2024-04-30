@@ -39,17 +39,22 @@ export const getIndexById = async (req, res, next) => {
 }
 export const createIndex = async (req, res, next) =>  {
     try {
-
+        let timers = {};
+        console.time("createIndex")
         const indexParams = req.body;
 
         const ownerWallet = req.session.did.parent.split(":").pop();
+
+        console.time("mintPKP")
         const newPKP = await mintPKP(ownerWallet, req.body.signerFunction);
-        console.log("Superlog" , newPKP)
+        timers.mintPKP = console.timeEnd("mintPKP")
         indexParams.signerPublicKey = newPKP.pkpPublicKey;
 
+        console.time("getPKPSession")
         const pkpSession = await getPKPSession(req.session, indexParams);
-
+        timers.getPKPSession = console.timeEnd("getPKPSession")
         const indexService = new IndexService().setSession(pkpSession); //PKP
+
         let newIndex = await indexService.createIndex(indexParams);
         if(!newIndex){
           return res.status(500).json({ error: "Create index error" });
@@ -72,6 +77,8 @@ export const createIndex = async (req, res, next) =>  {
           creator: true
         }
 
+        timers.createIndex = console.timeEnd("createIndex")
+        console.log(timers)
         res.status(201).json(newIndex);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -109,10 +116,12 @@ export const updateIndex = async (req, res, next) => {
             .setSession(pkpSession)
             .updateIndex(req.params.id, req.body);
 
-        return res.status(200).json(newIndex);
+        if(pkpSession){
+          const userRoles =  getRolesFromSession(pkpSession);
+          Object.assign(newIndex, {roles: userRoles});
+        }
 
-        req.query.roles = true;
-        return await getIndexById(req, res, next);
+        return res.status(200).json(newIndex);
 
     } catch (error) {
         res.status(500).json({ error: error.message });

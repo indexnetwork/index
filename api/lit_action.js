@@ -4,6 +4,24 @@
   // lit_actions/src/session.action.ts
   var getCreatorConditions = (transform=true) => {
     let conditionsArray = __REPLACE_THIS_AS_CONDITIONS_ARRAY__;
+    /*[
+           {
+              "tag":"semanticIndex",
+              "value":{
+                 "contractAddress":"",
+                 "standardContractType":"",
+                 "chain":"ethereum",
+                 "method":"",
+                 "parameters":[
+                    ":userAddress"
+                 ],
+                 "returnValueTest":{
+                    "comparator":"=",
+                    "value":"1a2c093f4963d20c550e95aaa726096230c400a3"
+                 }
+              }
+           }
+        ];*/
     if(conditionsArray.length < 1){
       return [];
     }
@@ -85,31 +103,35 @@
     return siweMessage;
   }
   var go = async () => {
-
+    const timers = {};
     try {
       if (typeof ACTION_CALL_MODE !== "undefined") {
         console.log(JSON.stringify(getCreatorConditions(false)));
         return;
       }
       const context = { isPermittedAddress: false, isCreator: false, siweMessage: false, signList: signList.getPKPSession };
-      const pkpTokenId = Lit.Actions.pubkeyToTokenId({ publicKey });
+      console.time("pubkeyToTokenId");
+      //const pkpTokenId = Lit.Actions.pubkeyToTokenId({ publicKey });
+      timers.pubkeyToTokenId = console.timeEnd("pubkeyToTokenId");
       //It'll also fail if authsig is malformed.
       const conditions = getCreatorConditions();
       let isCreator = false;
       if (conditions.length > 0) {
-        isCreator = await Lit.Actions.checkConditions({ conditions, authSig, chain });
+        isCreator = Lit.Actions.checkConditions({ conditions, authSig, chain });
         context.isCreator = isCreator;
       }
 
+      console.time("isPermittedAddress");
       const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: authSig.address });
       context.isPermittedAddress = isPermittedAddress;
-
+      timers.isPermittedAddress = console.timeEnd("isPermittedAddress");
 
       let signatures = [];
 
       for (const functionToRun of Object.keys(signList)) {
         const op = signList[functionToRun];
 
+        console.time("signTransaction");
         if (functionToRun === "signTransaction") {
           if (isPermittedAddress) {
             const sigShare = await LitActions.signEcdsa({
@@ -120,7 +142,9 @@
             signatures.push(sigShare);
           }
         }
+        timers.signTransaction = console.timeEnd("signTransaction");
 
+        console.time("getPKPSession");
         if (functionToRun === "getPKPSession") {
           if (isPermittedAddress || isCreator) {
             const siwePayload = getPKPSessionMessage(publicKey, isPermittedAddress, op.didKey, op.domain, nonce);
@@ -133,7 +157,10 @@
             signatures.push(sigShare);
           }
         }
+        timers.getPKPSession = console.timeEnd("getPKPSession");
       }
+
+      context.timers = timers;
 
       const sigShares = signatures;
 
