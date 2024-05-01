@@ -214,7 +214,7 @@ export class ItemService {
         }
     }
 
-    async getIndexItemsByIds(itemIds, cursor=null, limit= 240, transform=true) {
+    async getIndexItemsByIds(itemIds, cursor=null, limit= 240) {
         try {
 
             let cursorFilter = cursor ? `after: "${cursor}",` : "";
@@ -255,11 +255,14 @@ export class ItemService {
                 };
             }
 
-            data.indexItemIndex.edges.map(e => removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`))
+            data.indexItemIndex.edges.map(e => {
+              e.node.item = removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`)
+              return e;
+            })
 
             return { //Todo fix itemId to id
                 endCursor: data.indexItemIndex.pageInfo.endCursor,
-                items: data.indexItemIndex.edges.map(e => transform ? transformIndexItem(e.node) : e.node),
+                items: data.indexItemIndex.edges.map(e => transformIndexItem(e.node)),
             }
 
         } catch (error) {

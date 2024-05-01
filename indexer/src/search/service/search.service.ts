@@ -35,7 +35,7 @@ export class SearchService {
         --------
         String: ${body.query}
         --------
-        Content: 
+        Content:
         ${context.slice(0, 10000)}
         `
 
@@ -51,7 +51,7 @@ export class SearchService {
         });
 
         const suggestions = completion.choices[0].message.content.split('\n').map((suggestion: string) => suggestion.replace(/^\d+\.\s/g, '') );
-        
+
         return {
             suggestions: suggestions
         }
@@ -61,12 +61,12 @@ export class SearchService {
      * @description Suggest a list of documents for a given query and index
      * Currently, the service uses the OpenAI GPT-4 model to generate suggestions and then retrieves the documents from the ChromaDB
      * The ranking of the documents is based on the similarity of the expanded query from suggestions and the document
-     * 
-     * @param body 
-     * @returns 
+     *
+     * @param body
+     * @returns
      */
     async query(body: QueryRequestDTO): Promise<any> {
-        
+
         Logger.log( `Processing ${JSON.stringify(body)}`, 'chatService:query')
 
         try {
@@ -77,19 +77,19 @@ export class SearchService {
 
             // Calculate time to suggestions
             const start_exp = new Date().getTime();
-            
+
             const expandedQuery = await this.autocomplete({
                 indexId: body.indexIds[0],
                 n: 3,
                 query: body.query
             });
-            
+
 
             const end_exp = new Date().getTime();
             const time = end_exp - start_exp;
 
             Logger.log(`Retrieved suggestion list ${JSON.stringify(expandedQuery, null, 2)} in ${time}ms`, 'chatService:query');
-            
+
 
             const start_retrieve = new Date().getTime();
 
@@ -116,19 +116,17 @@ export class SearchService {
             const end_retrieve = new Date().getTime();
 
             Logger.log(`Retrieved documents in ${end_retrieve - start_retrieve}ms`, 'chatService:query');
-            
+
             return documents.ids[0].map((id: any, idx: number) => {
                 if (normalizedDistances[idx] > 0.1)
                     return {
-                        id: documents.metadatas[0][idx].webPageId,
-                        title: documents.metadatas[0][idx].webPageTitle,
-                        content: documents.documents[0][idx].slice(0, 100),
+                        id: documents.metadatas[0][idx].id,
                         similarity: normalizedDistances[idx]
                     }
             })
             .filter((doc: any) => doc)
             .slice((body.page - 1) * body.limit, body.page * body.limit)
-        
+
         } catch (e) {
             Logger.log(`Cannot process ${body.query} ${e}`, 'chatService:query:error'); throw new HttpException(`Cannot process ${body.query}`, HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -138,9 +136,9 @@ export class SearchService {
     /**
      * @description Stream a question to the agent with a chat history
      * @ignore
-     * 
+     *
      * @param body
-     * @returns 
+     * @returns
      */
     async search(body: SearchRequestDTO) {
 
@@ -150,7 +148,7 @@ export class SearchService {
                 nResults: 10,
                 where: body.filters,
             })
-            
+
         } catch (e) {
             Logger.log(`Cannot process`, 'chatService:search:error'); throw new HttpException(`Cannot process`, HttpStatus.INTERNAL_SERVER_ERROR);
         }

@@ -19,9 +19,10 @@ export const listItems = async (req, res, next) => {
             let res = await axios.post(
               `${process.env.LLM_INDEXER_HOST}/search/query`,
               searchRequest)
-            if(res.data.items.length > 0){
+
+            if(res.data.length > 0){
                 const itemService = new ItemService()
-                response = await itemService.getIndexItemsByIds(res.data.items.map(i => i.id), null, 240, true)
+                response = await itemService.getIndexItemsByIds(res.data.map(i => i.id), null, 240)
             }
           } catch (error) {
             return res.status(400).json({ error: error.message });
