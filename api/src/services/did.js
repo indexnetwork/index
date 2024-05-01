@@ -26,7 +26,7 @@ export class DIDService {
         try {
             const {data, errors} = await this.client.executeQuery(`
               query{
-                dIDIndexIndex(first: 1, sorting: {createdAt: DESC}, filters: { where: {type: {equalTo: "owned"}, indexId: {equalTo: "${indexId}"}}}) {
+                dIDIndexIndex(first: 1, sorting: {createdAt: DESC}, filters: { where: {deletedAt: {isNull: true}, type: {equalTo: "owned"}, indexId: {equalTo: "${indexId}"}}}) {
                   edges {
                     node {
                       id
@@ -200,7 +200,7 @@ export class DIDService {
                 Object.values(indexes)
                     .filter(i => i.did.owned || i.did.starred)
                     .map(async (i) => {
-                        const ownerDID = await getOwnerProfile(i.id);
+                        const ownerDID = await getOwnerProfile(i);
                         return { ...i, ownerDID };
                     })
                     .sort((a, b) => {

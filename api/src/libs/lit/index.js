@@ -19,6 +19,7 @@ import { getResolver } from "key-did-resolver";
 import { CID } from "multiformats/cid";
 import { sendLit } from "./send_lit.js";
 import {joinSignature} from "ethers/lib/utils.js";
+import { IndexService } from "../../services/index.js";
 
 const provider = new ethers.providers.JsonRpcProvider("https://chain-rpc.litprotocol.com/http", 175177);
 
@@ -105,19 +106,19 @@ class PKPSigner extends ethers.Signer {
       if(params.jsParams.signList.signTransaction){
         params.jsParams.signList.signTransaction.messageToSign = ethers.utils.arrayify(unsignedTxn);
       }
-
+      /*
       if(params.jsParams.signList.getPKPSession){
         const didKeyBack = params.jsParams.signList.getPKPSession.didKey;
         params.jsParams.signList.getPKPSession.didKey = params.jsParams.signList.getPKPSession.didKey.id.toString();
       }
+       */
 
       const resp = await this.litNodeClient.executeJs(params);
 
       if (!resp.signatures) {
         throw new Error("No signature returned");
       }
-
-      console.log("charlie", resp)
+    /*
       if(resp.signatures.getPKPSession){
 
         const { siweMessage } = JSON.parse(resp.response.context);
@@ -134,10 +135,8 @@ class PKPSigner extends ethers.Signer {
         const did = await createDIDCacao(didKeyBack, cacao);
         const pkpSession = new DIDSession({ cacao, keySeed, did });
 
-        if (sessionCacheKey) {
-          await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
-        }
       }
+      */
 
       if(resp.signatures.signTransaction){
         const signature = resp.signatures.signTransaction.signature;
@@ -240,6 +239,81 @@ export const writeAuthMethods = async ({
 };
 
 
+export const transferOwnership = async ({
+  userAuthSig,
+  signerPublicKey,
+  signerFunction,
+  previousOwner,
+  newOwner,
+}) => {
+  try {
+
+    const dAppSessionSigsResponse = await redis.get(
+      `lit:${config.litNetwork}:dAppSessionSigs`,
+    );
+    if (!dAppSessionSigsResponse) {
+      throw new Error("No session signatures found");
+    }
+    const dAppSessionSigs = JSON.parse(dAppSessionSigsResponse);
+    const signerFunctionV0 = CID.parse(signerFunction).toV0().toString();
+
+    if (!litNodeClient.ready) {
+      await litNodeClient.connect();
+    }
+    const from = ethers.utils.computeAddress(signerPublicKey).toLowerCase();
+
+    const signer = new PKPSigner(from, litNodeClient, provider , {
+      ipfsId: signerFunctionV0,
+      sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
+      jsParams: {
+        authSig: userAuthSig, // for conditions control. to identify authenticated user.
+        publicKey: signerPublicKey,
+        chain: "ethereum", // polygon
+        nonce: randomString(12),
+        signList: {
+          signTransaction: {},
+        }
+      },
+    })
+
+    const litContracts = new LitContracts({
+      network: config.litNetwork,
+      signer: signer,
+      debug: false,
+    });
+
+    await litContracts.connect();
+
+    const pubKeyHash = ethers.utils.keccak256(signerPublicKey);
+    const tokenId = BigInt(pubKeyHash);
+
+    const transaction =
+      await litContracts.pkpPermissionsContract.write.batchAddRemoveAuthMethods(
+        tokenId,
+        [1],
+        [newOwner],
+        ["0x"],
+        [[BigInt(1)]],
+        [1],
+        [previousOwner]
+      );
+
+    const res = await transaction.wait(3)
+
+    console.log("broadcast txn result:", JSON.stringify(transaction));
+    if(res){
+      return true;
+    }
+    return false;
+
+
+  } catch (error) {
+    console.error(error);
+    throw new Error("Error writing auth methods");
+  }
+};
+
+
 export const getOwner = async (pkpPubKey) => {
 
   const litContracts = new LitContracts({
@@ -252,27 +326,31 @@ export const getOwner = async (pkpPubKey) => {
     return existing;
   }
 
-  const pubKeyHash = ethers.keccak256(pkpPubKey);
+  const pubKeyHash = ethers.utils.keccak256(pkpPubKey);
+  const pkpAddress = ethers.utils.computeAddress(pkpPubKey).toLowerCase();
   const tokenId = BigInt(pubKeyHash);
 
   if (!litContracts.connected) {
     await litContracts.connect();
   }
 
-  const address = await litContracts.pkpNftContract.read.ownerOf(tokenId);
+  const addressList = await litContracts.pkpPermissionsContractUtils.read.getPermittedAddresses(tokenId);
+  const address = addressList.filter(a => a.toLowerCase() !== pkpAddress.toLowerCase())[0]
+
   await redis.hSet(`pkp:owner`, pkpPubKey, address);
 
   return address;
 };
-export const getOwnerProfile = async (id) => {
+export const getOwnerProfile = async (index) => {
   const didService = new DIDService();
-
-  const owner = await didService.getOwner(id);
+  const owner = await didService.getOwner(index.id);
   if (owner && owner.id) {
     return owner;
   } else {
-    return { id: `did:pkh:eip155:1:0` };
+    const ownerAddr = await getOwner(index.signerPublicKey);
+    return { id: `did:pkh:eip155:1:${ownerAddr}` };
   }
+
 };
 export const encodeDIDWithLit = (pkpPubKey) => {
   pkpPubKey = pkpPubKey.replace("0x", "");
@@ -391,11 +469,12 @@ export const getPKPSession = async (session, index) => {
   if (!session.did.authenticated) {
     throw new Error("Unauthenticated DID");
   }
+  const owner = await getOwner(index.signerPublicKey);
 
   let sessionCacheKey = false;
 
   if (index.id && index.signerFunction) {
-    sessionCacheKey = `${session.did.parent}:${index.id}:${index.signerFunction}`;
+    sessionCacheKey = `${session.did.parent}:${owner}:${index.id}:${index.signerFunction}`;
     const existingSessionStr = await redis.hGet("sessions", sessionCacheKey);
     if (existingSessionStr) {
       try {

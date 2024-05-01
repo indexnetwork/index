@@ -196,6 +196,22 @@ app.patch(
   indexController.updateIndex,
 );
 
+app.patch(
+  "/indexes/:id/transfer",
+  authCheckMiddleware,
+  validator.body(
+    Joi.object({
+      newOwner: Joi.custom(isDID, "DID").required(),
+    }).or("newOwner"),
+  ),
+  validator.params(
+    Joi.object({
+      id: Joi.custom(isStreamID, "Index ID").required(),
+    }),
+  ),
+  indexController.transferIndex,
+);
+
 app.delete(
   "/indexes/:id",
   authCheckMiddleware,

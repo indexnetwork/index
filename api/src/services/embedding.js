@@ -63,7 +63,7 @@ export class EmbeddingService {
                 throw new Error('Invalid response data');
             }
             try{
-                data.node.index.ownerDID = await getOwnerProfile(data.node.index.id);
+                data.node.index.ownerDID = await getOwnerProfile(data.node.index);
             } catch(e) {
                 console.log("Error fetching profile", e)
             }
