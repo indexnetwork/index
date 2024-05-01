@@ -89,7 +89,7 @@ const simpleRequestLogger = (proxyServer, options) => {
 app.use(
   '/chroma',
   createProxyMiddleware({
-    target: process.env.CHROMA_API_URL,
+    target: process.env.CHROMA_URL,
     changeOrigin: true,
     plugins: [simpleRequestLogger],
   }),
