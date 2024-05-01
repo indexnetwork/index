@@ -3,6 +3,7 @@ import { WebPageService } from "../services/webpage.js";
 import { ItemService } from "../services/item.js";
 import { IndexService } from "../services/index.js";
 import { getPKPSession } from "../libs/lit/index.js";
+import { DIDSession } from 'did-session';
 
 export const indexWebPage = async (req, res, next) => {
 
@@ -10,7 +11,13 @@ export const indexWebPage = async (req, res, next) => {
     const sessionStr = Buffer.from(req.headers.authorization, "base64").toString("utf8");
     const auth = JSON.parse(sessionStr);
 
-    const pkpSession = await getPKPSession(auth.session, auth.indexId);
+    const indexService = new IndexService()
+    const index = await indexService.getIndexById(auth.indexId)
+
+    const zapierSession = await DIDSession.fromSession(auth.session);
+
+    const pkpSession = await getPKPSession(zapierSession, index);
+
     const webPageService = new WebPageService().setSession(pkpSession);
     const itemService = new ItemService().setSession(pkpSession);
 

@@ -428,7 +428,7 @@ app.post("/zapier/index/webpage",  validator.body(
     title: Joi.string().required(),
     favicon: Joi.string().optional(),
     url: Joi.string().uri().required(),
-    content: Joi.string().required(),
+    content: Joi.string().optional(),
   }),
 ), zapierController.indexWebPage);
 app.get("/zapier/auth", zapierController.authenticate);
