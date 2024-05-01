@@ -55,7 +55,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   const handleCreate = useCallback(async () => {
     setShowModal(true);
     try {
-      const authSig = await litService.getRandomAuthSig();
+      const didSession = await litService.getRandomDIDSession();
       const condition = {
         tag: "apiKey",
         value: {
@@ -66,7 +66,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
           parameters: [":userAddress"],
           returnValueTest: {
             comparator: "=",
-            value: authSig.address,
+            value: didSession.address,
           },
         },
       } as any;
@@ -78,7 +78,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
       const newConditions = [condition, ...deepCopyOfConditions];
 
       await createConditions(newConditions);
-      setSecretKey(btoa(JSON.stringify(authSig)));
+      setSecretKey(didSession.session);
       setStep("done");
     } catch (e) {
       console.error("Error creating rule", e);
