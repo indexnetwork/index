@@ -58,18 +58,31 @@ export default class IndexClient {
     }
   }
 
-  private async getVectorStore({
+  public async getVectorStore({
     embeddings,
-    args,
+    sources,
+    filters,
   }: {
     embeddings: OpenAIEmbeddings;
-    args: any;
+    sources: string[];
+    filters: object;
   }) {
-    return IndexVectorStore.fromExistingCollection(embeddings, {
-      collectionName: "chroma-indexer",
-      url: IndexConfig.indexChromaURL,
-      ...args,
-    });
+    
+    console.log('IndexConfig.indexChromaURL', IndexConfig.indexChromaURL)
+
+    return IndexVectorStore.fromExistingCollection(
+      embeddings, // new OpenAIEmbeddings({ openAIApiKey: apiKey, modelName: process.env.MODEL_EMBEDDING }),
+      {
+        collectionName: "chroma-indexer",
+        url: IndexConfig.indexChromaURL,
+        // filter: {
+        //   where: {
+        //     indexId: { $in: sources },
+        //     ...filters,
+        //   }
+        // }
+      }
+    );
   }
 
   private async request<T>(
@@ -348,3 +361,5 @@ export default class IndexClient {
     });
   }
 }
+
+export { IndexVectorStore, IndexConfig };

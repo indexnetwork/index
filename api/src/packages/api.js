@@ -11,6 +11,7 @@ import RedisClient from "../clients/redis.js";
 
 import * as Sentry from "@sentry/node";
 import { ProfilingIntegration } from "@sentry/profiling-node";
+import { createProxyMiddleware  } from 'http-proxy-middleware';
 
 const app = express();
 
@@ -69,7 +70,7 @@ import {
   isStreamID,
 } from "../types/validators.js";
 
-app.use(express.json());
+app.use(/^\/(?!chroma).*/, express.json());
 
 const validator = ejv.createValidator({
   passError: true,
@@ -77,6 +78,22 @@ const validator = ejv.createValidator({
 
 // Authenticate
 app.use(authenticateMiddleware);
+
+const simpleRequestLogger = (proxyServer, options) => {
+  proxyServer.on('proxyReq', (proxyReq, req, res) => {
+    console.log(`[HPM] [${req.method}] ${req.url}`); // outputs: [HPM] GET /users
+  });
+};
+
+// Chroma Proxy
+app.use(
+  '/chroma',
+  createProxyMiddleware({
+    target: process.env.CHROMA_API_URL,
+    changeOrigin: true,
+    plugins: [simpleRequestLogger],
+  }),
+);
 
 // DIDs
 app.get(

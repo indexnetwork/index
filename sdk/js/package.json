@@ -16,13 +16,15 @@
   },
   "dependencies": {
     "@didtools/cacao": "^3.0.1",
-    "@langchain/community": "^0.0.50",
-    "@langchain/openai": "^0.0.28",
-    "chromadb": "^1.8.1",
+    "@langchain/community": "^0.0.53",
     "did-session": "^3.1.0",
-    "ethers": "^6.11.1",
-    "langchain": "^0.1.34",
-    "multiformats": "^13.1.0"
+    "multiformats": "^13.1.0",
+    "@langchain/openai": "^0.0.28",
+    "ethers": "^6.12.0",
+    "uuid": "^9.0.1",
+    "chromadb": "^1.8.1",
+    "langchain": "^0.1.36",
+    "openai": "^4.38.5"
   },
   "exports": "./dist/index.js"
 }
