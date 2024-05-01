@@ -28,7 +28,7 @@ export class SearchService {
             }
         })
 
-        const context = docs.metadatas.map((doc: any) => doc.webPageTitle).join('\n');
+        const context = JSON.stringify(docs.metadatas[0])
         // const context = docs.documents.join('');
         const message = `
         Provide a list of ${body.n} suggestions for autocompleting containing max 3-4 words have the string and content below:
