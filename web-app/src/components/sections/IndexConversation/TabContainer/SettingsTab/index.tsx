@@ -1,7 +1,7 @@
 import { IconTrash } from "@/components/ai/ui/icons";
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
-import litService from "@/services/lit-service";
+import didService from "@/services/did-service";
 import { AccessControlCondition } from "@/types/entity";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
@@ -55,7 +55,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   const handleCreate = useCallback(async () => {
     setShowModal(true);
     try {
-      const didSession = await litService.getRandomDIDSession();
+      const sessionResponse = await didService.getRandomDIDSession(viewedIndex!.id);
       const condition = {
         tag: "apiKey",
         value: {
@@ -66,7 +66,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
           parameters: [":userAddress"],
           returnValueTest: {
             comparator: "=",
-            value: didSession.address,
+            value: sessionResponse.address,
           },
         },
       } as any;
@@ -78,7 +78,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
       const newConditions = [condition, ...deepCopyOfConditions];
 
       await createConditions(newConditions);
-      setSecretKey(didSession.session);
+      setSecretKey(btoa(JSON.stringify(sessionResponse)));
       setStep("done");
     } catch (e) {
       console.error("Error creating rule", e);

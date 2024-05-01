@@ -423,7 +423,14 @@ app.patch(
 );
 
 //Todo refactor later.
-app.post("/zapier/index_link", zapierController.indexLink);
+app.post("/zapier/index/webpage",  validator.body(
+  Joi.object({
+    title: Joi.string().required(),
+    favicon: Joi.string().optional(),
+    url: Joi.string().uri().required(),
+    content: Joi.string().required(),
+  }),
+), zapierController.indexWebPage);
 app.get("/zapier/auth", zapierController.authenticate);
 
 //Todo refactor later.

@@ -6,8 +6,8 @@ import { ethers } from "ethers";
 import { Ed25519Provider } from "key-did-provider-ed25519";
 import { getResolver } from "key-did-resolver";
 
-class LitService {
-  async getRandomDIDSession() {
+class DIDService {
+  async getRandomDIDSession(indexId: string) {
     const wallet = ethers.Wallet.createRandom();
 
     const domain = "index.network";
@@ -38,6 +38,7 @@ class LitService {
     return {
       address: wallet.address,
       session: didSession.serialize(),
+      indexId,
     }
     /*
     const authSig = {
@@ -54,5 +55,5 @@ class LitService {
     JSON.parse(localStorage.getItem("authSig")!);
   }
 }
-const litService = new LitService();
-export default litService;
+const didService = new DIDService();
+export default didService;
