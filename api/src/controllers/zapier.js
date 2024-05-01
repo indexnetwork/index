@@ -4,6 +4,7 @@ import { ItemService } from "../services/item.js";
 import { IndexService } from "../services/index.js";
 import { getPKPSession } from "../libs/lit/index.js";
 import { DIDSession } from 'did-session';
+import axios from "axios";
 
 export const indexWebPage = async (req, res, next) => {
 
@@ -17,8 +18,7 @@ export const indexWebPage = async (req, res, next) => {
     const zapierSession = await DIDSession.fromSession(auth.session);
 
     const pkpSession = await getPKPSession(zapierSession, index);
-
-    const webPageService = new WebPageService().setSession(pkpSession);
+    const webPageService = new WebPageService().setSession(zapierSession);
     const itemService = new ItemService().setSession(pkpSession);
 
     if(!params.title || !params.favicon){

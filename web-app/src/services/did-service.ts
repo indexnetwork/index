@@ -1,5 +1,5 @@
 import { Cacao, SiweMessage } from "@didtools/cacao";
-import { randomBytes } from "@stablelib/random";
+import { randomBytes, randomString } from "@stablelib/random";
 import { DID } from "dids";
 import { DIDSession, createDIDCacao } from "did-session";
 import { ethers } from "ethers";
@@ -10,26 +10,33 @@ class DIDService {
   async getRandomDIDSession(indexId: string) {
     const wallet = ethers.Wallet.createRandom();
 
-    const domain = "index.network";
-    const origin = "https://index.network";
-    const statement = "API Token for indexes.";
-    const siweMessage = new SiweMessage({
-      domain,
-      address: wallet.address,
-      statement,
-      uri: origin,
-      version: "1",
-      chainId: "1",
-    });
-    const messageToSign = siweMessage.toMessage();
-
-    siweMessage.signature = await wallet.signMessage(messageToSign);
-
     const keySeed = randomBytes(32);
     const didProvider = new Ed25519Provider(keySeed);
     // @ts-ignore
     const didKey = new DID({ provider: didProvider, resolver: getResolver() });
     await didKey.authenticate();
+
+    const now = new Date(Date.now());
+    const thirtyDaysLater = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
+
+    const domain = "index.network";
+
+    const siweMessage = new SiweMessage({
+      domain,
+      address: wallet.address,
+      statement: "Give this application access to some of your data on Ceramic",
+      uri: didKey.id,
+      version: "1",
+      chainId: "1",
+      nonce: randomString(10),
+      issuedAt: now.toISOString(),
+      expirationTime: thirtyDaysLater.toISOString(),
+      resources: ["ceramic://*"],
+    });
+    const messageToSign = siweMessage.toMessage();
+
+    siweMessage.signature = await wallet.signMessage(messageToSign);
+
     const cacao = Cacao.fromSiweMessage(siweMessage);
 
     const did = await createDIDCacao(didKey, cacao);
@@ -39,7 +46,7 @@ class DIDService {
       address: wallet.address,
       session: didSession.serialize(),
       indexId,
-    }
+    };
     /*
     const authSig = {
       sig: signature,
