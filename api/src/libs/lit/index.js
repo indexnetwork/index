@@ -298,7 +298,7 @@ export const transferOwnership = async ({
         [previousOwner]
       );
 
-    const res = await transaction.wait(3)
+    const res = await transaction.wait(1)
 
     console.log("broadcast txn result:", JSON.stringify(transaction));
     if(res){
@@ -428,7 +428,7 @@ export const mintPKP = async (ownerAddress, actionCID) => {
     await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
       2,
       [AuthMethodType.EthWallet, AuthMethodType.LitAction],
-      [ownerAddress, acid],
+      [ownerAddress.toLowerCase(), acid],
       ["0x", "0x"],
       [[BigInt(1)], [BigInt(1)]],
       true,

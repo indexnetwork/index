@@ -1,7 +1,7 @@
 import { getAddress } from "@ethersproject/address";
 import axios from "axios";
 import RedisClient from '../clients/redis.js';
-import { getOwner, getPKPSession, getRolesFromSession, mintPKP, transferOwnership, writeAuthMethods } from "../libs/lit/index.js";
+import {  getPKPSession, getRolesFromSession, mintPKP, transferOwnership, writeAuthMethods } from "../libs/lit/index.js";
 import { getAuthSigFromDIDSession } from "../utils/helpers.js";
 import { DIDService } from "../services/did.js";
 import { IndexService } from "../services/index.js";
@@ -142,8 +142,8 @@ export const transferIndex = async (req, res, next) => {
           userAuthSig: userAuthSig,
           signerPublicKey: index?.signerPublicKey,
           signerFunction: index.signerFunction,
-          previousOwner: previousOwner,
-          newOwner: newOwnerWallet,
+          previousOwner: previousOwner.toLowerCase(),
+          newOwner: newOwnerWallet.toLowerCase(),
         });
 
         if(vals){
