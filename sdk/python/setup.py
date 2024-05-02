@@ -5,7 +5,7 @@ setup(
   name='indexnetwork-sdk',
   version='0.0.3',
   description='Index Network SDK',
-  long_description="Index Network Client SDK",
+  long_description=open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'README.MD')).read(),
   long_description_content_type='text/markdown',
   author='Index',
   author_email='accounts@index.network',
