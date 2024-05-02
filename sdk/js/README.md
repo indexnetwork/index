@@ -37,8 +37,11 @@ import IndexClient from "@indexnetwork/sdk";
 Create an instance of `IndexClient`:
 
 ```typescript
+// Init your wallet
+const wallet = new Wallet(process.env.PRIVATE_KEY);
+
 const indexClient = new IndexClient({
-  privateKey: "0xc45...a5",
+  wallet,
   domain: "index.network",
   network: "ethereum", // provide your network
 });
@@ -47,7 +50,7 @@ const indexClient = new IndexClient({
 For authentication, you need a `DIDSession`. You can either sign in using a wallet or pass an existing session. Check [Authentication](../api-reference/identity/authentication.md) for details explanation on how to initiate a session.
 
 ```typescript
-indexClient.authenticate();
+await indexClient.authenticate();
 ```
 
 We're almost ready. Now, let's create an Index, with a title.
@@ -66,18 +69,24 @@ const webPageId = await indexClient.createWebPage({
   url: "http://www.paulgraham.com/publishing.html",
 });
 
-await indexClient.addIndexItem(indexId, webPageId);
+await indexClient.addItemToIndex(indexId, webPageId);
 ```
 
 Your index is now ready for interaction! Querying the index is straightforward:
 
 ```typescript
-const queryResponse = await indexClient.query({
-  query: "summarize",
-  indexes: [indexId], // you can add all the indexes of a user as well
+const queryResponse = await indexClient.chat({
+  id: uuidv4(), // Provide a unique chat id for the query
+  messages: [
+    {
+      content: "How do you evaluate a startup?",
+      role: "user",
+    },
+  ],
+  indexes: [indexId], // You can add all the indexes of a user as well
 });
 
-console.log("Query response:", queryResponse);
+console.log(queryResponse);
 ```
 
 The response should look something like this:
