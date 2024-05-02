@@ -13,22 +13,9 @@ const Discovery = () => {
   const { discoveryType, indexes } = useApp();
   const { id } = useRouteParams();
 
-  useEffect(() => {
-    // if (typeof window !== "undefined") {
-    //   window.ethereum.on("message", (message: any) => {
-    //     console.log("eth: ", message);
-    //   });
-    // }
-  }, [id, discoveryType, indexes]);
-
   // TODO: that's a workaround, remove later
   useEffect(() => {
-    const isReloaded = sessionStorage.getItem("isReloaded");
-    if (!isReloaded) {
-      sessionStorage.setItem("isReloaded", "true");
-
-      window.location.reload();
-    }
+    document.querySelectorAll(`link[href*="/_next/static/css/app/page.css"]`).forEach((e) => e.remove());
   }, []);
 
   return (

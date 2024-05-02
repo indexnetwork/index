@@ -24,6 +24,10 @@ const Landing = () => {
     }
   }, [status, session, router]);
 
+  useEffect(() => {
+    document.querySelectorAll(`link[href*="/_next/static/css/app/%5Bid%5D/page.css"]`).forEach((e) => e.remove());
+  }, []);
+
   return (
     <Suspense>
       <div className="bg-mainDark text-primary font-primary min-h-screen">
