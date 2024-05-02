@@ -15,7 +15,10 @@ const Discovery = () => {
 
   // TODO: that's a workaround, remove later
   useEffect(() => {
-    document.querySelectorAll(`link[href*="/_next/static/css/app/page.css"]`).forEach((e) => e.remove());
+    const nextStyles = document.querySelectorAll("[data-precedence]");
+    if (nextStyles.length === 3) {
+      document.querySelectorAll("[data-precedence]")[1].remove();
+    }
   }, []);
 
   return (
