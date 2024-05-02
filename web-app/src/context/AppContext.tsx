@@ -225,11 +225,21 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   );
 
   const handleUserProfileChange = useCallback(async () => {
-    if (session) {
-      const profile = await fetchProfile(session?.did.parent);
-      setUserProfile(profile);
+    if (isLanding) return;
+    let targetDID;
+    if (isIndex && !viewedProfile) {
+      if (viewedIndex) {
+        targetDID = viewedIndex?.ownerDID?.id;
+      }
     }
-  }, [session, fetchProfile]);
+    if (isDID) {
+      targetDID = id;
+    }
+    if (targetDID) {
+      const profile = await fetchProfile(targetDID);
+      setViewedProfile(profile);
+    }
+  }, [isLanding, isIndex, id, fetchProfile, viewedIndex]);
 
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
