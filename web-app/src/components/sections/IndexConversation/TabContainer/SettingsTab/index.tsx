@@ -55,7 +55,9 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   const handleCreate = useCallback(async () => {
     setShowModal(true);
     try {
-      const sessionResponse = await didService.getRandomDIDSession(viewedIndex!.id);
+      const sessionResponse = await didService.getRandomDIDSession(
+        viewedIndex!.id,
+      );
       const condition = {
         tag: "apiKey",
         value: {
