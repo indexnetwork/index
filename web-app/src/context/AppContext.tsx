@@ -116,13 +116,14 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
           (a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         );
+        console.log("fetchedIndexes", fetchedIndexes);
         setIndexes(sortedIndexes);
       } catch (error) {
         console.error("Error fetching indexes", error);
         toast.error("Error fetching indexes, please refresh the page");
       }
     },
-    [apiReady],
+    [apiReady, api],
   );
 
   const fetchIndex = useCallback(async (): Promise<void> => {
@@ -226,20 +227,24 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   const handleUserProfileChange = useCallback(async () => {
     if (isLanding) return;
+    if (viewedProfile) return;
+
     let targetDID;
     if (isIndex && !viewedProfile) {
       if (viewedIndex) {
         targetDID = viewedIndex?.ownerDID?.id;
       }
     }
+
     if (isDID) {
       targetDID = id;
     }
+
     if (targetDID) {
       const profile = await fetchProfile(targetDID);
       setViewedProfile(profile);
     }
-  }, [isLanding, isIndex, id, fetchProfile, viewedIndex]);
+  }, [isLanding, isIndex, id, fetchProfile, isDID, viewedProfile, viewedIndex]);
 
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
@@ -274,7 +279,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     if (viewedProfile) {
       fetchIndexes(viewedProfile.id);
     }
-  }, [viewedProfile]);
+  }, [viewedProfile, fetchIndexes]);
 
   const contextValue: AppContextValue = {
     discoveryType,

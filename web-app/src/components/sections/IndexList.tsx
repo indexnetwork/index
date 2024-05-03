@@ -14,7 +14,7 @@ import { Indexes } from "types/entity";
 const TAB_QUERY = "tab";
 
 const IndexListSection: FC = () => {
-  const { id, isIndex, isDID } = useRouteParams();
+  const { id, isDID } = useRouteParams();
   const router = useRouter();
   const query = useSearchParams();
 
@@ -39,7 +39,7 @@ const IndexListSection: FC = () => {
         router.push(`/${viewedProfile?.id}`);
       }
     },
-    [setLeftTabKey, router, viewedProfile, isIndex],
+    [setLeftTabKey, router, viewedProfile],
   );
 
   useEffect(() => {
@@ -49,7 +49,7 @@ const IndexListSection: FC = () => {
     } else if (viewedProfile?.id !== prevProfileID.current) {
       setLeftTabKey(IndexListTabKey.ALL);
     }
-  }, [query, viewedProfile?.id, setLeftTabKey]);
+  }, [isDID, query, viewedProfile?.id, setLeftTabKey]);
 
   return (
     <>
