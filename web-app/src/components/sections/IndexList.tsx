@@ -69,20 +69,20 @@ const IndexListSection: FC = () => {
             <TabPane
               enabled={true}
               tabKey={IndexListTabKey.OWNED}
-              total={indexes.filter((i) => i.did.owned).length}
+              total={indexes ? indexes.filter((i) => i.did.owned).length : 0}
               title={`Owned`}
             />
             <TabPane
               enabled={true}
               tabKey={IndexListTabKey.STARRED}
-              total={indexes.filter((i) => i.did.starred).length}
+              total={indexes ? indexes.filter((i) => i.did.starred).length : 0}
               title={`Starred`}
             />
           </Tabs>
         </Col>
       </FlexRow>
       <FlexRow className={"scrollable-area index-list idxflex-grow-1 pr-6"}>
-        {leftSectionIndexes.length > 0 ? (
+        {leftSectionIndexes && leftSectionIndexes.length > 0 ? (
           <div className={"idxflex-grow-1"}>
             <List
               data={leftSectionIndexes}

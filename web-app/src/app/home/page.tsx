@@ -24,14 +24,6 @@ const Landing = () => {
     }
   }, [status, session, router]);
 
-  // TODO: that's a workaround, remove later
-  useEffect(() => {
-    const nextStyles = document.querySelectorAll("[data-precedence]");
-    if (nextStyles.length === 3) {
-      document.querySelectorAll("[data-precedence]")[1].remove();
-    }
-  }, []);
-
   return (
     <Suspense>
       <div className="bg-mainDark text-primary font-primary min-h-screen">
