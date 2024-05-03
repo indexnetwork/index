@@ -116,7 +116,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
           (a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         );
-        console.log("fetchedIndexes", fetchedIndexes);
         setIndexes(sortedIndexes);
       } catch (error) {
         console.error("Error fetching indexes", error);
@@ -222,12 +221,23 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         toast.error("Error fetching profile, please refresh the page");
       }
     },
-    [apiReady],
+    [apiReady, api],
   );
+
+  const handleUserProfile = useCallback(async () => {
+    if (session) {
+      const profile = await fetchProfile(session.id);
+      setUserProfile(profile);
+    }
+  }, [fetchProfile, session]);
+
+  useEffect(() => {
+    handleUserProfile();
+  }, [handleUserProfile]);
 
   const handleUserProfileChange = useCallback(async () => {
     if (isLanding) return;
-    if (viewedProfile) return;
+    if (viewedProfile && isIndex) return;
 
     let targetDID;
     if (isIndex && !viewedProfile) {
@@ -244,7 +254,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       const profile = await fetchProfile(targetDID);
       setViewedProfile(profile);
     }
-  }, [isLanding, isIndex, id, fetchProfile, isDID, viewedProfile, viewedIndex]);
+  }, [isLanding, isIndex, id, fetchProfile, isDID, session, viewedIndex]); // eslint-disable-line
 
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
@@ -262,8 +272,12 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   );
 
   useEffect(() => {
-    setViewedProfile(userProfile);
-  }, [userProfile]);
+    if (session) {
+      if (id === session?.id) {
+        setViewedProfile(userProfile);
+      }
+    }
+  }, [userProfile, session, id]);
 
   useEffect(() => {
     handleUserProfileChange();

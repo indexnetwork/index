@@ -175,12 +175,14 @@ const AppHeader = () => {
             </>
           }
         >
-          <Avatar
-            size={32}
-            user={userProfile}
-            className="site-navbar__avatar"
-            hoverable
-          />
+          <div>
+            <Avatar
+              size={32}
+              user={userProfile}
+              className="site-navbar__avatar"
+              hoverable
+            />
+          </div>
         </Dropdown>
       </NavbarMenu>
     </Navbar>
