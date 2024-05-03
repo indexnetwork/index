@@ -47,9 +47,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        {/* <Suspense> */}
-        <AppLayout>{children}</AppLayout>
-        {/* </Suspense> */}
+        <Suspense>
+          <AppLayout>{children}</AppLayout>
+        </Suspense>
       </body>
     </html>
   );
