@@ -122,7 +122,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         toast.error("Error fetching indexes, please refresh the page");
       }
     },
-    [apiReady],
+    [apiReady, api],
   );
 
   const fetchIndex = useCallback(async (): Promise<void> => {
@@ -221,15 +221,40 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         toast.error("Error fetching profile, please refresh the page");
       }
     },
-    [apiReady],
+    [apiReady, api],
   );
 
-  const handleUserProfileChange = useCallback(async () => {
+  const handleUserProfile = useCallback(async () => {
     if (session) {
-      const profile = await fetchProfile(session?.did.parent);
+      const profile = await fetchProfile(session.id);
       setUserProfile(profile);
     }
-  }, [session, fetchProfile]);
+  }, [fetchProfile, session]);
+
+  useEffect(() => {
+    handleUserProfile();
+  }, [handleUserProfile]);
+
+  const handleUserProfileChange = useCallback(async () => {
+    if (isLanding) return;
+    if (viewedProfile && isIndex) return;
+
+    let targetDID;
+    if (isIndex && !viewedProfile) {
+      if (viewedIndex) {
+        targetDID = viewedIndex?.ownerDID?.id;
+      }
+    }
+
+    if (isDID) {
+      targetDID = id;
+    }
+
+    if (targetDID) {
+      const profile = await fetchProfile(targetDID);
+      setViewedProfile(profile);
+    }
+  }, [isLanding, isIndex, id, fetchProfile, isDID, session, viewedIndex]); // eslint-disable-line
 
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
@@ -247,8 +272,12 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   );
 
   useEffect(() => {
-    setViewedProfile(userProfile);
-  }, [userProfile]);
+    if (session) {
+      if (id === session?.id) {
+        setViewedProfile(userProfile);
+      }
+    }
+  }, [userProfile, session, id]);
 
   useEffect(() => {
     handleUserProfileChange();
@@ -264,7 +293,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     if (viewedProfile) {
       fetchIndexes(viewedProfile.id);
     }
-  }, [viewedProfile]);
+  }, [viewedProfile, fetchIndexes]);
 
   const contextValue: AppContextValue = {
     discoveryType,
