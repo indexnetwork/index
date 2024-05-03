@@ -42,7 +42,7 @@ const Avatar = ({
     if (!isSSR() && randomColor) {
       setColor(generateRandomColor());
     }
-  }, [randomColor]);
+  }, []);
 
   function getClassName() {
     const classes = ["avatar", `avatar-${shape}`];
