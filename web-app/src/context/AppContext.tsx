@@ -237,24 +237,20 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   const handleUserProfileChange = useCallback(async () => {
     if (isLanding) return;
-    if (viewedProfile && isIndex) return;
-
     let targetDID;
     if (isIndex && !viewedProfile) {
       if (viewedIndex) {
         targetDID = viewedIndex?.ownerDID?.id;
       }
     }
-
     if (isDID) {
       targetDID = id;
     }
-
     if (targetDID) {
       const profile = await fetchProfile(targetDID);
       setViewedProfile(profile);
     }
-  }, [isLanding, isIndex, id, fetchProfile, isDID, session, viewedIndex]); // eslint-disable-line
+  }, [isLanding, isIndex, id, fetchProfile, viewedIndex]);
 
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
