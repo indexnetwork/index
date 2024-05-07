@@ -34,9 +34,7 @@ const Landing = () => {
       len++;
     }
 
-    console.log("nextStyles", nextStyles);
     if (nextStyles.length === len) {
-      console.log("nextStyles", nextStyles);
       nextStyles[len - 1].remove();
     }
 
