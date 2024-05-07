@@ -273,7 +273,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   useEffect(() => {
     if (session) {
-      if (id === session?.id) {
+      if (viewedProfile?.id === session.id) {
         setViewedProfile(userProfile);
       }
     }
