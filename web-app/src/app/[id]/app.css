@@ -1,3 +1,26 @@
+:root {
+  --main: #0f172a;
+  --white: #fff;
+  --gray-1: #f1f5f9;
+  --gray-2: #e2e8f0;
+  --gray-3: #cbd5e1;
+  --gray-4: #94a3b8;
+  --gray-5: #475569;
+  --gray-6: #1e293b;
+  --gray-7: #f8fafc;
+  --twitter-blue: #4a99e9;
+  --blue: #0054e6;
+  --landing: #f4f7f6;
+  --spacing-1: 0.5rem;
+  --spacing-2: 0.8rem;
+  --spacing-3: 1rem;
+  --spacing-4: 1.2rem;
+  --spacing-5: 1.6rem;
+  --spacing-6: 2.4rem;
+  --spacing-7: 3.2rem;
+  --spacing-8: 3.6rem;
+}
+
 html#app {
   font-size: 10px;
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
@@ -44,29 +67,6 @@ html#app {
   .style_title__pqDBL {
     font-family: Freizeit !important;
     font-size: 16px;
-  }
-
-  :root {
-    --main: #0f172a;
-    --white: #fff;
-    --gray-1: #f1f5f9;
-    --gray-2: #e2e8f0;
-    --gray-3: #cbd5e1;
-    --gray-4: #94a3b8;
-    --gray-5: #475569;
-    --gray-6: #1e293b;
-    --gray-7: #f8fafc;
-    --twitter-blue: #4a99e9;
-    --blue: #0054e6;
-    --landing: #f4f7f6;
-    --spacing-1: 0.5rem;
-    --spacing-2: 0.8rem;
-    --spacing-3: 1rem;
-    --spacing-4: 1.2rem;
-    --spacing-5: 1.6rem;
-    --spacing-6: 2.4rem;
-    --spacing-7: 3.2rem;
-    --spacing-8: 3.6rem;
   }
 
   @keyframes flexSlideIn {

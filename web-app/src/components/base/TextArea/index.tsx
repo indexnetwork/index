@@ -31,6 +31,7 @@ const TextArea = forwardRef<
       disabled,
       readOnly,
       type,
+      style,
       block = true,
       ghost = false,
       inputSize = "md",
@@ -61,6 +62,7 @@ const TextArea = forwardRef<
           readOnly ? "textarea-readonly" : "",
           className,
         ])}
+        style={style}
       >
         {addOnBefore}
         <TextareaAutosize

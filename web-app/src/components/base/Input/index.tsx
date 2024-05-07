@@ -60,6 +60,9 @@ const Input = ({
           addOnAfter ? "input-add-on-after" : "",
           className,
         ])}
+        style={{
+          display: "flex",
+        }}
       >
         {addOnBefore}
         <input
