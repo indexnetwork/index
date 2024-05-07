@@ -2,7 +2,6 @@ import { AppLayout } from "components/layout/site/AppLayout";
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { headers } from "next/headers";
-import { useRouter } from "next/navigation";
 
 const inter = Inter({ subsets: ["latin"] });
 
