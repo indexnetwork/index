@@ -5,20 +5,18 @@ import { DiscoveryType } from "@/types";
 import DiscoveryLayout from "components/layout/site/DiscoveryLayout";
 import IndexConversationSection from "components/sections/IndexConversation";
 import UserConversationSection from "components/sections/UserConversation";
-import { useRouteParams } from "hooks/useRouteParams";
-import "../../styles/main.scss";
+import "./app.css";
 import { useEffect } from "react";
 
 const Discovery = () => {
-  const { discoveryType, indexes } = useApp();
-  const { id } = useRouteParams();
+  const { discoveryType } = useApp();
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       if (window.location.pathname !== "/") {
-        document.getElementsByTagName("body")[0].removeAttribute("id");
+        document.getElementsByTagName("html")[0].setAttribute("id", "app");
       } else {
-        document.getElementsByTagName("body")[0].setAttribute("id", "landing");
+        document.getElementsByTagName("html")[0].setAttribute("id", "landing");
       }
     }
   }, []);
