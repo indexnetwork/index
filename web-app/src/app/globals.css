@@ -1,7 +1,3 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 @font-face {
   font-family: Freizeit;
   src: url("/fonts/Freizeit-Regular.woff2") format("woff2");
