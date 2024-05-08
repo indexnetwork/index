@@ -465,7 +465,58 @@ export const mintPKP = async (ownerAddress, actionCID) => {
   };
 };
 
+const delay = async (ms) => {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+const sessionConcurrencyLimit = async (sessionCacheKey, retriesLeft = 20, interval = 3000, expirationTime = 100) => {
+  // Base case: stop retrying if no retries are left
+  if (retriesLeft <= 0) {
+    console.log("Concurrency limit: no more retries and free to go now");
+    await redis.del(`sessions:ops:${sessionCacheKey}`);
+    return;
+  }
+
+  const sessionStr = await redis.hGet("sessions", sessionCacheKey);
+
+  if (sessionStr) {
+    console.log(`Concurrency limit: ${sessionCacheKey} is ready. No need anymore`)
+    return;
+  }
+  // Attempt to acquire a lock by using GETSET
+  const previousValue = await redis.getSet(`sessions:ops:${sessionCacheKey}`, "1");
+  console.log("Concurrency limit: previousValue", previousValue);
+
+  // If the key already had a value (previousValue is not null), retry after the specified interval
+  if (previousValue !== null) {
+    console.log("Concurrency limit: already processing, retrying later");
+    await delay(interval);
+    await sessionConcurrencyLimit(sessionCacheKey, retriesLeft - 1, interval, expirationTime);
+  } else {
+    // If the key was empty, set expiration and continue
+    console.log("Concurrency limit: is free to process new session");
+    await redis.expire(`sessions:ops:${sessionCacheKey}`, expirationTime); // Expiry time in seconds
+    return `Success: ${sessionCacheKey} is ready.`;
+  }
+};
+
+const fetchAndAuthenticateSession = async (key) => {
+  try {
+    const sessionStr = await redis.hGet("sessions", key);
+    if (sessionStr) {
+      const didSession = await DIDSession.fromSession(sessionStr);
+      await didSession.did.authenticate();
+      return didSession;
+    }
+  } catch (error) {
+    console.warn(error); // Log the error for visibility
+    await redis.hDel("sessions", key); // Remove invalid/expired session
+  }
+  return null; // Return null if session is missing or couldn't authenticate
+};
+
 export const getPKPSession = async (session, index) => {
+
+
   if (!session.did.authenticated) {
     throw new Error("Unauthenticated DID");
   }
@@ -475,19 +526,22 @@ export const getPKPSession = async (session, index) => {
 
   if (index.id && index.signerFunction) {
     sessionCacheKey = `${session.did.parent}:${owner}:${index.id}:${index.signerFunction}`;
-    const existingSessionStr = await redis.hGet("sessions", sessionCacheKey);
-    if (existingSessionStr) {
-      try {
-        const didSession = await DIDSession.fromSession(existingSessionStr);
-        await didSession.did.authenticate();
-        return didSession;
-      } catch (error) {
-        //Expired or invalid session, remove cache.
-        console.warn(error);
-        await redis.hDel("sessions", sessionCacheKey);
-      }
+  }
+
+  if (sessionCacheKey) {
+
+    let didSession = await fetchAndAuthenticateSession(sessionCacheKey);
+    if (!didSession) {
+      // Apply concurrency limit and retry fetching the session
+      await sessionConcurrencyLimit(sessionCacheKey, 20, 3000);
+      didSession = await fetchAndAuthenticateSession(sessionCacheKey);
+    }
+
+    if (didSession) {
+      return didSession
     }
   }
+
 
   const userAuthSig = getAuthSigFromDIDSession(session);
 
@@ -550,11 +604,13 @@ export const getPKPSession = async (session, index) => {
 
     if (sessionCacheKey) {
       await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
+      await redis.del(`sessions:ops:${sessionCacheKey}`);
     }
 
     await pkpSession.did.authenticate();
     return pkpSession;
   } catch (e) {
+    await redis.del(`sessions:ops:${sessionCacheKey}`);
     console.log("Error", e);
   }
 };

@@ -127,7 +127,7 @@ export const updateWebPageEvent = async (id) => {
                     content: webPageItem.content
                 })
 
-                logger.info(`Step [2]: Embedding created for indexItem: ${indexItem.id} with vector lenght ${embeddingResponse.data.vector?.length}`)
+                logger.info(`Step [2]: Embedding created for indexItem: ${indexItem.id} with vector length ${embeddingResponse.data.vector?.length}`)
 
                 const embedding = await embeddingService.createEmbedding({
                     "indexId": indexItem.index.id,
