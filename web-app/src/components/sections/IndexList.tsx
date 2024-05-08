@@ -65,7 +65,7 @@ const IndexListSection: FC = () => {
           owned: false,
           starred: true,
         },
-        id: "kjzl6kcym7w8yafrp3hqje2ko2f9c2pwlfy6si90c081wcjl1b6mwzal2l3dzcv",
+        id: "did:pkh:eip155:1:0xA9271CAD3d22d67A11e126E4DCbc0410563c0beA",
         title: "yenibitane",
         signerPublicKey:
           "0x04538d6f1f03a4a221b94059410dace631c56e5612c8b4d97713124d29d20317d795232f91e19d8c83bf10c993ef80879b0f87e84b5e1aa3cf080d9db576467b36",
@@ -1889,12 +1889,9 @@ const IndexListSection: FC = () => {
 
   const handleClick = useCallback(
     (id: any) => {
-      fetchIndex(id);
+      // fetchIndex(id);
       // router.replace(`/${id}`, { scroll: false });
-      router.push(
-        `/did:pkh:eip155:1:0xA9271CAD3d22d67A11e126E4DCbc0410563c0beA`,
-        { scroll: false },
-      );
+      router.push(`/${id}`, { scroll: false });
       console.log("clicked", isDID, isIndex);
     },
     [isDID, isIndex, router],
