@@ -1,3 +1,20 @@
+@keyframes flexSlideIn {
+  to {
+    flex-basis: 100%;
+    max-width: 100%;
+  }
+}
+
+@keyframes spinner {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(1turn);
+  }
+}
+
 :root {
   --main: #0f172a;
   --white: #fff;
@@ -67,23 +84,6 @@ html#app {
   .style_title__pqDBL {
     font-family: Freizeit !important;
     font-size: 16px;
-  }
-
-  @keyframes flexSlideIn {
-    to {
-      flex-basis: 100%;
-      max-width: 100%;
-    }
-  }
-
-  @keyframes spinner {
-    0% {
-      transform: rotate(0deg);
-    }
-
-    to {
-      transform: rotate(1turn);
-    }
   }
 
   article,

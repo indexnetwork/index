@@ -2,8 +2,10 @@ import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
 import Col from "@/components/layout/base/Grid/Col";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
+import { useOrderedFetch } from "@/hooks/useOrderedFetch";
 import { useRole } from "@/hooks/useRole";
-import { useCallback, useState } from "react";
+import { useRouteParams } from "@/hooks/useRouteParams";
+import { useCallback, useEffect, useState } from "react";
 import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
 import CreatorsTab from "./CreatorsTab";
@@ -29,6 +31,13 @@ const TAB_TITLES = {
 export default function TabContainer() {
   const [tabKey, setTabKey] = useState<string>(TabKey.Chat);
   const { isOwner } = useRole();
+
+  const { id } = useRouteParams();
+  const { fetchDataForNewRoute } = useOrderedFetch();
+
+  useEffect(() => {
+    fetchDataForNewRoute(id);
+  }, []);
 
   const renderTabContent = useCallback(() => {
     switch (tabKey) {

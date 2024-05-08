@@ -19,12 +19,14 @@ import { FC, useCallback, useState } from "react";
 import toast from "react-hot-toast";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
+import { useIndexConversation } from "./IndexConversationContext";
 
 export const IndexConversationHeader: FC = () => {
   const { isOwner } = useRole();
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
   const router = useRouter();
+  const { loading: indexLoading } = useIndexConversation();
 
   const [titleLoading, setTitleLoading] = useState(false);
   const {
@@ -156,7 +158,7 @@ export const IndexConversationHeader: FC = () => {
               defaultValue={viewedIndex?.title || ""}
               onChange={handleTitleChange}
               disabled={!isOwner}
-              loading={titleLoading}
+              loading={titleLoading || indexLoading}
             />
           </LoadingText>
         </Col>

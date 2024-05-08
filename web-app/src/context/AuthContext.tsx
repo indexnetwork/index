@@ -91,8 +91,6 @@ export const AuthProvider = ({ children }: any) => {
   }, [session]);
 
   const startSession = useCallback(async (): Promise<void> => {
-
-  console.log("heleloy")
     const ethProvider = window.ethereum;
 
     if (ethProvider.chainId !== appConfig.testNetwork.chainId) {
@@ -101,7 +99,6 @@ export const AuthProvider = ({ children }: any) => {
         throw new Error("Network error.");
         }*/
     }
-
 
     // request ethereum accounts.
     const addresses = await ethProvider.enable({

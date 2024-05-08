@@ -2,15 +2,14 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { GetItemQueryParams } from "@/services/api-service-new";
 import { IndexItem } from "@/types/entity";
+import { CancelTokenSource } from "axios";
 import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useRef,
   useState,
 } from "react";
-import toast from "react-hot-toast";
 
 export type IndexItemsState = {
   items: IndexItem[];
@@ -20,7 +19,18 @@ export type IndexItemsState = {
 type IndexConversationContextType = {
   itemsState: IndexItemsState;
   setItemsState: (state: IndexItemsState) => void;
-  fetchIndexItems: (resetCursor?: boolean, params?: GetItemQueryParams) => void;
+  fetchIndexItems: (
+    id: string,
+    {
+      cancelSource,
+      resetCursor,
+      params,
+    }: {
+      cancelSource?: CancelTokenSource;
+      resetCursor?: boolean;
+      params?: GetItemQueryParams;
+    },
+  ) => Promise<void>;
   loading: boolean;
   setLoading: (loading: boolean) => void;
   addItem: (item: IndexItem) => void;
@@ -55,9 +65,20 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
   const fetchingIndexItems = useRef(false);
 
   const fetchIndexItems = useCallback(
-    async (resetCursor = false, params: GetItemQueryParams = {}) => {
-      if (!apiReady || !viewedIndex) return;
-      if (fetchingIndexItems.current) return;
+    async (
+      indexId: string,
+      {
+        cancelSource,
+        resetCursor,
+        params,
+      }: {
+        cancelSource?: CancelTokenSource;
+        resetCursor?: boolean;
+        params?: GetItemQueryParams;
+      } = {},
+    ): Promise<void> => {
+      if (!apiReady) return;
+      // if (fetchingIndexItems.current) return;
 
       fetchingIndexItems.current = true;
 
@@ -73,8 +94,11 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
           itemParams.query = params.query;
         }
 
-        const response = await api!.getItems(viewedIndex.id, itemParams);
-        console.log(response.endCursor, "endCursor");
+        // if (viewedIndex.id !== id) return;
+        const response = await api!.getItems(indexId, {
+          queryParams: itemParams,
+          cancelSource,
+        });
         if (response) {
           setItemsState((prevState) => ({
             items:
@@ -86,7 +110,6 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         }
       } catch (err: any) {
         console.error("Error fetching index links", err);
-        toast.error("Error fetching index links, try again");
       } finally {
         // setLoading(false);
         fetchingIndexItems.current = false;
@@ -94,15 +117,6 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
     },
     [api, viewedIndex, itemsState.cursor, apiReady],
   );
-
-  const fetchInitial = useCallback(async () => {
-    await fetchIndex();
-    fetchIndexItems(true);
-  }, [fetchIndex]);
-
-  useEffect(() => {
-    fetchInitial();
-  }, [fetchInitial]);
 
   const addItem = useCallback((item: IndexItem) => {
     setItemsState((prevState) => ({
@@ -119,7 +133,8 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
   }, []);
 
   const loadMoreItems = useCallback(() => {
-    fetchIndexItems();
+    if (!viewedIndex) return;
+    fetchIndexItems(viewedIndex.id);
   }, [fetchIndexItems]);
 
   return (

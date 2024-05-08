@@ -1,4 +1,4 @@
-import axios, { AxiosInstance } from "axios";
+import axios, { AxiosInstance, CancelTokenSource } from "axios";
 import { appConfig } from "config";
 import { DIDSession } from "did-session";
 import { Indexes, Link, Users } from "types/entity";
@@ -70,7 +70,6 @@ class ApiService {
   }
 
   public setSession(session: DIDSession) {
-    console.log("41 setSession", session);
     this.session = session;
     this.apiAxios.defaults.headers.Authorization = `Bearer ${session.serialize()}`;
   }
@@ -112,9 +111,14 @@ class ApiService {
     return data;
   }
 
-  async getIndex(indexId: string): Promise<Indexes | undefined> {
+  async getIndex(
+    indexId: string,
+    { cancelSource }: { cancelSource?: CancelTokenSource },
+  ): Promise<Indexes | undefined> {
     const url = API_ENDPOINTS.INDEXES.replace(":id", indexId);
-    const { data } = await this.apiAxios.get<Indexes>(url);
+    const { data } = await this.apiAxios.get<Indexes>(url, {
+      cancelToken: cancelSource?.token,
+    });
     return data as Indexes;
   }
 
@@ -124,15 +128,19 @@ class ApiService {
       indexId,
     );
     const { data } = await this.apiAxios.get<{ questions: string[] }>(url);
-    console.log("in api", data.questions);
     return data.questions;
   }
 
-  async getIndexWithIsCreator(indexId: string): Promise<Indexes | undefined> {
+  async getIndexWithIsCreator(
+    indexId: string,
+    { cancelSource }: { cancelSource?: CancelTokenSource },
+  ): Promise<Indexes | undefined> {
     const url = API_ENDPOINTS.INDEXES.replace(":id", indexId).concat(
       "?roles=true",
     );
-    const { data } = await this.apiAxios.get<Indexes>(url);
+    const { data } = await this.apiAxios.get<Indexes>(url, {
+      cancelToken: cancelSource?.token,
+    });
     return data as Indexes;
   }
 
@@ -200,7 +208,13 @@ class ApiService {
     return data;
   }
 
-  async getItems(indexId: string, queryParams: GetItemQueryParams = {}) {
+  async getItems(
+    indexId: string,
+    {
+      queryParams = {},
+      cancelSource,
+    }: { queryParams: GetItemQueryParams; cancelSource?: CancelTokenSource },
+  ) {
     let url = API_ENDPOINTS.GET_ITEMS.replace(":indexId", indexId);
     if (queryParams) {
       const formattedQuery = Object.entries(queryParams)
@@ -208,7 +222,9 @@ class ApiService {
         .join("&");
       url = `${url}?${new URLSearchParams(formattedQuery)}`;
     }
-    const { data } = await this.apiAxios.get(url);
+    const { data } = await this.apiAxios.get(url, {
+      cancelToken: cancelSource?.token,
+    });
     return data;
   }
 

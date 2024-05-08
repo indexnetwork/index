@@ -97,12 +97,10 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
       try {
         const deepCopyOfConditions = JSON.parse(JSON.stringify(conditions));
 
-        console.log("in remove deepCopyOfConditions", deepCopyOfConditions);
         const newConditions = deepCopyOfConditions.filter(
           (c: any) => c.value.metadata.walletAddress !== key,
         );
 
-        console.log("in remove", newConditions);
         await createConditions(newConditions);
         toast.success("Key removed");
         setShowModal(false);
