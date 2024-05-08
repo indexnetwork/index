@@ -17,7 +17,18 @@ export const AppLayout = ({ children }: AppLayoutProps) => (
       <PlausibleProvider domain="index.network">
         <AppContextProvider>
           {children}
-          <Toaster />
+          <Toaster
+            toastOptions={{
+              className: "",
+              duration: 500000,
+              style: {
+                // border: "1px solid #713200",
+                padding: "16px",
+                borderRadius: "4px",
+                // color: "#713200",
+              },
+            }}
+          />
         </AppContextProvider>
       </PlausibleProvider>
     </APIProvider>

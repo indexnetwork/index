@@ -1,4 +1,4 @@
-import { FC, ReactElement, useRef } from "react";
+import { FC, ReactElement, memo, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 import cc from "classcat";
 import ListItem from "./ListItem";
@@ -22,8 +22,8 @@ const List: FC<ListProps> = ({
 
   return (
     <ul className={cc(["list", listClass || ""])}>
-      {data
-        && data.map((item, index) => (
+      {data &&
+        data.map((item, index) => (
           <ListItem
             key={`listItem${index}-${containerId}`}
             className={cc([itemContainerClass || ""])}
@@ -38,4 +38,4 @@ const List: FC<ListProps> = ({
   );
 };
 
-export default List;
+export default memo(List);

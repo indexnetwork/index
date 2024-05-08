@@ -27,8 +27,15 @@ const Landing = () => {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const htmlID = document
+        .getElementsByTagName("html")[0]
+        .getAttribute("id");
+
       if (window.location.pathname === "/") {
-        document.getElementsByTagName("html")[0].setAttribute("id", "landing");
+        htmlID !== "landing" &&
+          document
+            .getElementsByTagName("html")[0]
+            .setAttribute("id", "landing");
       } else {
         document.getElementsByTagName("html")[0].setAttribute("id", "app");
       }

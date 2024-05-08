@@ -56,7 +56,7 @@ export interface AppContextValue {
   viewedIndex: Indexes | undefined;
   setViewedIndex: (index: Indexes | undefined) => void;
   fetchProfile: (did: string) => void;
-  fetchIndex: () => void;
+  fetchIndex: () => Promise<void>;
   handleCreate: (title: string) => Promise<void>;
   handleTransactionCancel: () => void;
   chatID: string | undefined;
@@ -89,7 +89,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [loading, setLoading] = useState(false);
   const [chatID, setChatID] = useState<string | undefined>(undefined);
 
-  const prevIndexID = useRef(id);
   const isFetchingRef = useRef(false);
 
   const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
@@ -122,32 +121,42 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         toast.error("Error fetching indexes, please refresh the page");
       }
     },
-    [apiReady, api],
+    [apiReady],
   );
 
   const fetchIndex = useCallback(async (): Promise<void> => {
     try {
-      if (!apiReady || !id || !isIndex) return;
-      if (viewedIndex?.id === id) return;
+      // Uncomment and modify these checks as needed
+      // if (!apiReady || !id || !isIndex) return;
+      // if (viewedIndex?.id === id) return;
+
+      console.log("id changed", isFetchingRef);
+
       if (isFetchingRef.current) return;
 
       isFetchingRef.current = true;
 
+      console.log("before api call");
       const index = await api!.getIndex(id);
+      console.log("after api call");
+      console.log("777", index);
       setViewedIndex(index);
 
+      // Check for ownership and fetch creator details if needed
       if (!index?.roles.owner) {
-        const indexWithIsOwner = await api!.getIndexWithIsCreator(id);
-        setViewedIndex(indexWithIsOwner);
+        const res = await api!.getIndexWithIsCreator(id);
+        if (res && res?.id === viewedIndex?.id) {
+          setViewedIndex(res);
+        }
       }
-
-      prevIndexID.current = id;
-      isFetchingRef.current = false;
     } catch (error) {
       console.error("Error fetching index", error);
       toast.error("Error fetching index, please refresh the page");
+    } finally {
+      // Ensure this always executes to reset the fetching state
+      isFetchingRef.current = false;
     }
-  }, [id, viewedIndex, isIndex, apiReady, api]);
+  }, [id, isIndex, apiReady, api]);
 
   const handleTransactionCancel = useCallback(() => {
     setTransactionApprovalWaiting(false);
@@ -290,7 +299,11 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, [id]);
 
   useEffect(() => {
-    if (viewedProfile) {
+    if (
+      (viewedProfile && viewedProfile?.id !== viewedIndex?.ownerDID?.id) ||
+      (viewedProfile && indexes.length === 0)
+    ) {
+      console.log("fetching indexes");
       fetchIndexes(viewedProfile.id);
     }
   }, [viewedProfile, fetchIndexes]);

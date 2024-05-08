@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { memo, useEffect, useState } from "react";
 import { generateRandomColor, isSSR } from "utils/helper";
 import { ShapeType } from "types";
 import { Users } from "types/entity";
@@ -107,4 +107,4 @@ const Avatar = ({
   );
 };
 
-export default Avatar;
+export default memo(Avatar);

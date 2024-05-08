@@ -8,7 +8,7 @@ import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Link from "next/link";
-import { FC } from "react";
+import { FC, memo } from "react";
 import sanitize from "sanitize-html";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
@@ -54,4 +54,4 @@ const IndexItem: FC<IndexItemProps> = ({ index, selected, onClick }) => (
     </FlexRow>
   </Link>
 );
-export default IndexItem;
+export default memo(IndexItem);

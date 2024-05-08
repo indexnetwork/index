@@ -1,7 +1,7 @@
 import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 import Button from "./Button";
 
 const AppHeader = () => {
@@ -38,4 +38,4 @@ const AppHeader = () => {
   );
 };
 
-export default AppHeader;
+export default memo(AppHeader);

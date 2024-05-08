@@ -1,12 +1,13 @@
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
+import { useRouteParams } from "@/hooks/useRouteParams";
 import { GetItemQueryParams } from "@/services/api-service-new";
 import { IndexItem } from "@/types/entity";
 import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
+  // useEffect,
   useRef,
   useState,
 } from "react";
@@ -49,6 +50,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
   });
   const [loading, setLoading] = useState(false);
 
+  const { id } = useRouteParams();
   const { api, ready: apiReady } = useApi();
   const { viewedIndex, fetchIndex } = useApp();
 
@@ -74,7 +76,6 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         }
 
         const response = await api!.getItems(viewedIndex.id, itemParams);
-        console.log(response.endCursor, "endCursor");
         if (response) {
           setItemsState((prevState) => ({
             items:
@@ -95,14 +96,13 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
     [api, viewedIndex, itemsState.cursor, apiReady],
   );
 
-  const fetchInitial = useCallback(async () => {
-    await fetchIndex();
-    fetchIndexItems(true);
-  }, [fetchIndex]);
-
-  useEffect(() => {
-    fetchInitial();
-  }, [fetchInitial]);
+  // useEffect(() => {
+  //   console.log("here77");
+  //   fetchIndex().then(() => {
+  //     console.log("here88");
+  //     fetchIndexItems(true);
+  //   });
+  // }, [fetchIndex]); // eslint-disable-line
 
   const addItem = useCallback((item: IndexItem) => {
     setItemsState((prevState) => ({

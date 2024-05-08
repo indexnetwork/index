@@ -91,8 +91,7 @@ export const AuthProvider = ({ children }: any) => {
   }, [session]);
 
   const startSession = useCallback(async (): Promise<void> => {
-
-  console.log("heleloy")
+    console.log("heleloy");
     const ethProvider = window.ethereum;
 
     if (ethProvider.chainId !== appConfig.testNetwork.chainId) {
@@ -101,7 +100,6 @@ export const AuthProvider = ({ children }: any) => {
         throw new Error("Network error.");
         }*/
     }
-
 
     // request ethereum accounts.
     const addresses = await ethProvider.enable({
@@ -168,7 +166,7 @@ export const AuthProvider = ({ children }: any) => {
 
       console.log("Session is valid, connecting...");
 
-      setStatus(AuthStatus.CONNECTED);
+      // setStatus(AuthStatus.CONNECTED);
       toast.success("Successfully connected to your wallet.");
     } catch (err) {
       console.error("Error during authentication process:", err);

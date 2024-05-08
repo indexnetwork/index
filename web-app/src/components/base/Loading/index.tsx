@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, memo } from "react";
 
 type LoadingTextProps = {
   val: any;
@@ -14,22 +14,22 @@ const LoadingText: React.FC<LoadingTextProps> = ({
   if (val !== undefined) {
     return <>{children}</>;
   }
-    return (
-      <>
-        {loadingComponent || (
-          <>
-            <div
-              style={{
-                width: "8em",
-                background: "var(--gray-2)",
-                height: "1.25em",
-                margin: " 0",
-              }}
-            />
-          </>
-        )}
-      </>
-    );
+  return (
+    <>
+      {loadingComponent || (
+        <>
+          <div
+            style={{
+              width: "8em",
+              background: "var(--gray-2)",
+              height: "1.25em",
+              margin: " 0",
+            }}
+          />
+        </>
+      )}
+    </>
+  );
 };
 
-export default LoadingText;
+export default memo(LoadingText);
