@@ -1,4 +1,5 @@
 import Spin from "@/components/base/Spin";
+import WaitBetaModal from "@/components/site/modal/WaitBetaModal";
 import { useApp } from "@/context/AppContext";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
@@ -12,12 +13,13 @@ import IconSettings from "components/base/Icon/IconSettings";
 import Text from "components/base/Text";
 import Navbar, { NavbarMenu } from "components/layout/base/Navbar";
 import { useRouter } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 const AppHeader = () => {
   const { connect, disconnect, status, setStatus } = useAuth();
   const router = useRouter();
   const { isLanding } = useRouteParams();
+  const [modalVisible, setModalVisible] = useState(false);
   const {
     setCreateModalVisible,
     rightSidebarOpen,
@@ -30,7 +32,6 @@ const AppHeader = () => {
     try {
       disconnect();
       setStatus(AuthStatus.DISCONNECTED);
-      sessionStorage.removeItem("isReloaded");
       router.push("/");
     } catch (err) {
       console.log(err);
@@ -39,6 +40,16 @@ const AppHeader = () => {
 
   const handleConnect = useCallback(async () => {
     try {
+      if (window !== undefined) {
+        const allowed = localStorage.getItem("allowed");
+
+        console.log("allowed", allowed);
+        if (!allowed) {
+          setModalVisible(true);
+          return;
+        }
+      }
+
       await connect();
     } catch (err) {
       console.log(err);
@@ -65,43 +76,52 @@ const AppHeader = () => {
 
   if (status !== AuthStatus.CONNECTED) {
     return (
-      <Navbar logoSize="mini" className="site-navbar">
-        <NavbarMenu placement="right">
-          {status === AuthStatus.LOADING ? (
-            <div
-              style={{
-                background: "var(--gray-6)",
-                padding: ".5em 1em",
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-            >
+      <>
+        {modalVisible && (
+          <WaitBetaModal
+            visible={modalVisible}
+            onClose={() => setModalVisible(false)}
+            onCreate={() => {}}
+          />
+        )}
+        <Navbar logoSize="mini" className="site-navbar">
+          <NavbarMenu placement="right">
+            {status === AuthStatus.LOADING ? (
               <div
                 style={{
-                  paddingLeft: ".5em",
-                  paddingRight: "1em",
+                  background: "var(--gray-6)",
+                  padding: ".5em 1em",
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
                 }}
               >
-                <Spin active={true} thickness="light" theme="secondary" />
+                <div
+                  style={{
+                    paddingLeft: ".5em",
+                    paddingRight: "1em",
+                  }}
+                >
+                  <Spin active={true} thickness="light" theme="secondary" />
+                </div>
+                <p
+                  style={{
+                    padding: "0",
+                    margin: "0",
+                    color: "#fff",
+                  }}
+                >
+                  Connecting...
+                </p>
               </div>
-              <p
-                style={{
-                  padding: "0",
-                  margin: "0",
-                  color: "#fff",
-                }}
-              >
-                Connecting...
-              </p>
-            </div>
-          ) : (
-            <Button theme="primary" onClick={handleConnect}>
-              Connect Wallet
-            </Button>
-          )}
-        </NavbarMenu>
-      </Navbar>
+            ) : (
+              <Button theme="primary" onClick={handleConnect}>
+                Connect Wallet
+              </Button>
+            )}
+          </NavbarMenu>
+        </Navbar>
+      </>
     );
   }
 

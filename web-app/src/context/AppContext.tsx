@@ -56,7 +56,7 @@ export interface AppContextValue {
   viewedIndex: Indexes | undefined;
   setViewedIndex: (index: Indexes | undefined) => void;
   fetchProfile: (did: string) => void;
-  fetchIndex: () => void;
+  fetchIndex: () => Promise<void>;
   handleCreate: (title: string) => Promise<void>;
   handleTransactionCancel: () => void;
   chatID: string | undefined;
