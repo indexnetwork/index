@@ -98,7 +98,7 @@ const WaitBetaModal = ({ onCreate, ...modalProps }: WaitBetaModalProps) => {
           <Col pullRight>
             <Button
               onClick={() => {
-                router.push("https://sjxy3b643r8.typeform.com/to/phuRF52O");
+                window.open("https://sjxy3b643r8.typeform.com/to/phuRF52O");
               }}
               theme="primary"
               size="lg"
