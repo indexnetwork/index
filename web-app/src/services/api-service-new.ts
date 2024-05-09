@@ -70,7 +70,6 @@ class ApiService {
   }
 
   public setSession(session: DIDSession) {
-    console.log("41 setSession", session);
     this.session = session;
     this.apiAxios.defaults.headers.Authorization = `Bearer ${session.serialize()}`;
   }
@@ -129,7 +128,6 @@ class ApiService {
       indexId,
     );
     const { data } = await this.apiAxios.get<{ questions: string[] }>(url);
-    console.log("in api", data.questions);
     return data.questions;
   }
 

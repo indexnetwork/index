@@ -64,7 +64,7 @@ export interface AppContextValue {
     }: {
       cancelSource?: CancelTokenSource;
     },
-  ) => Promise<void>;
+  ) => Promise<any>;
   fetchIndexWithCreator: (
     indexId: string,
     {
@@ -149,7 +149,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       }: {
         cancelSource?: CancelTokenSource;
       },
-    ): Promise<void> => {
+    ): Promise<any> => {
       try {
         if (!apiReady || !isIndex) return;
         // if (viewedIndex?.id === id) return;
@@ -157,12 +157,11 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
         isFetchingRef.current = true;
 
-        console.log("00 fetch index", viewedIndex?.id, indexId);
         const index = await api!.getIndex(indexId, { cancelSource });
         setViewedIndex(index);
-        console.log("00 fetch index", viewedIndex?.id, indexId);
 
         isFetchingRef.current = false;
+        return index;
       } catch (error) {
         console.error("Error fetching index", error);
         toast.error("Error fetching index, please refresh the page");
@@ -182,7 +181,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     ): Promise<void> => {
       try {
         if (!apiReady) return;
-        console.log("333 fetch index with creator", viewedIndex?.id, indexId);
         if (!viewedIndex?.roles.owner) {
           const indexWithIsOwner = await api!.getIndexWithIsCreator(indexId, {
             cancelSource,
@@ -290,6 +288,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     if (isIndex && !viewedProfile) {
       if (viewedIndex) {
         targetDID = viewedIndex?.ownerDID?.id;
+      } else {
+        const fetchedIndex = await fetchIndex(id, {});
+        targetDID = fetchedIndex?.ownerDID?.id;
+        fetchIndexes(targetDID);
       }
     }
 
@@ -337,11 +339,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, [id]);
 
   useEffect(() => {
-    console.log("ttt", viewedIndex?.id, viewedProfile?.id);
     if (viewedProfile) {
       fetchIndexes(viewedProfile.id);
     }
-  }, [viewedProfile, fetchIndexes, viewedIndex]);
+  }, [viewedProfile, fetchIndexes]);
 
   const contextValue: AppContextValue = {
     discoveryType,

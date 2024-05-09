@@ -67,7 +67,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
 
   const fetchIndexItems = useCallback(
     async (
-      id: string,
+      indexId: string,
       {
         cancelSource,
         resetCursor,
@@ -78,7 +78,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         params?: GetItemQueryParams;
       } = {},
     ) => {
-      if (!apiReady || !viewedIndex) return;
+      if (!apiReady) return;
       // if (fetchingIndexItems.current) return;
 
       fetchingIndexItems.current = true;
@@ -95,15 +95,12 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
           itemParams.query = params.query;
         }
 
-        console.log("fetching index items", id);
-
         // if (viewedIndex.id !== id) return;
-        const response = await api!.getItems(id, {
+        const response = await api!.getItems(indexId, {
           queryParams: itemParams,
           cancelSource,
         });
         if (response) {
-          console.log(new Date(), viewedIndex.id, id);
           setItemsState((prevState) => ({
             items:
               resetCursor || itemParams.query

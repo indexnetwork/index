@@ -17,7 +17,6 @@ export const useOrderedFetch = () => {
       cancelSourceRef.current = axios.CancelToken.source();
       setLoading(true);
 
-      console.log("77 Fetching data for new route:", id);
       try {
         await fetchIndex(id, { cancelSource: cancelSourceRef.current });
 

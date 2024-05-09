@@ -15,7 +15,6 @@ const NoLinks: React.FC<NoLinksProps> = ({
   isOwner = false,
   tabKey,
 }) => {
-  console.log("NoLinks", search, isOwner, tabKey);
   const { viewedIndex } = useApp();
   return (
     <>
