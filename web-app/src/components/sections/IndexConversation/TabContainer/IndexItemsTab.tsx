@@ -53,8 +53,12 @@ export default function IndexItemsTabSection() {
 
   const handleSearch = useCallback(
     (searchQuery: string) => {
+      if (!viewedIndex) return;
       setSearch(searchQuery);
-      fetchIndexItems(true, { query: searchQuery });
+      fetchIndexItems(viewedIndex?.id, {
+        resetCursor: true,
+        // query: searchQuery,
+      });
     },
     [fetchIndexItems],
   );
@@ -182,7 +186,10 @@ export default function IndexItemsTabSection() {
           search={search}
           hasMore={!!itemsState.cursor}
           removeItem={handleRemove}
-          loadMore={() => fetchIndexItems(false)}
+          loadMore={() =>
+            viewedIndex &&
+            fetchIndexItems(viewedIndex?.id, { resetCursor: false })
+          }
         />
       </div>
     </Flex>

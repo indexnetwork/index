@@ -1,12 +1,7 @@
 import Button from "components/base/Button";
 import Header from "components/base/Header";
 import Modal, { ModalProps } from "components/base/Modal";
-import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
-import Flex from "components/layout/base/Grid/Flex";
-import FlexRow from "components/layout/base/Grid/FlexRow";
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export interface WaitBetaModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {
@@ -14,23 +9,8 @@ export interface WaitBetaModalProps
 }
 
 const WaitBetaModal = ({ onCreate, ...modalProps }: WaitBetaModalProps) => {
-  const router = useRouter();
   const handleClose = () => {
     modalProps.onClose?.();
-  };
-  const handleEnter = (e: any) => {
-    if (e && (e.code === "Enter" || e.code === "NumpadEnter")) {
-      onCreate?.(title);
-    }
-  };
-
-  const [title, setTitle] = useState<string>("");
-
-  const handleChange: React.ChangeEventHandler<HTMLInputElement> = ({
-    target,
-  }) => {
-    const { value } = target;
-    setTitle(value);
   };
 
   return (

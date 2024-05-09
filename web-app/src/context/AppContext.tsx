@@ -147,7 +147,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       {
         cancelSource,
       }: {
-        cancelSource: CancelTokenSource;
+        cancelSource?: CancelTokenSource;
       },
     ): Promise<void> => {
       try {
@@ -177,7 +177,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       {
         cancelSource,
       }: {
-        cancelSource: CancelTokenSource;
+        cancelSource?: CancelTokenSource;
       },
     ): Promise<void> => {
       try {
