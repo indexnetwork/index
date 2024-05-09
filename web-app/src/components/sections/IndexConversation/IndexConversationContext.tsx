@@ -7,7 +7,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useRef,
   useState,
 } from "react";
@@ -31,7 +30,7 @@ type IndexConversationContextType = {
       resetCursor?: boolean;
       params?: GetItemQueryParams;
     },
-  ) => void;
+  ) => Promise<void>;
   loading: boolean;
   setLoading: (loading: boolean) => void;
   addItem: (item: IndexItem) => void;
@@ -77,7 +76,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         resetCursor?: boolean;
         params?: GetItemQueryParams;
       } = {},
-    ) => {
+    ): Promise<void> => {
       if (!apiReady) return;
       // if (fetchingIndexItems.current) return;
 
@@ -118,22 +117,6 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
     },
     [api, viewedIndex, itemsState.cursor, apiReady],
   );
-
-  // const fetchInitial = useCallback(async () => {
-  //   await fetchIndex();
-  //   fetchIndexItems(true);
-  // }, [fetchIndex]);
-
-  // useEffect(() => {
-  //   fetchInitial();
-  // }, [fetchInitial]);
-  //
-  useEffect(() => {
-    // fetchIndex(viewedIndex?.id).then(() => {
-    //   fetchIndexItems(viewedIndex.id, true);
-    // });
-    // fetchIndex();
-  }, [fetchIndex, viewedIndex]); // eslint-disable-line
 
   const addItem = useCallback((item: IndexItem) => {
     setItemsState((prevState) => ({

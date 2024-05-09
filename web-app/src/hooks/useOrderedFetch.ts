@@ -1,12 +1,11 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useApp } from "@/context/AppContext";
 import { useIndexConversation } from "@/components/sections/IndexConversation/IndexConversationContext";
 import axios, { CancelTokenSource } from "axios";
 
 export const useOrderedFetch = () => {
-  const { fetchIndex, setViewedIndex, fetchIndexWithCreator } = useApp();
-  const { fetchIndexItems } = useIndexConversation();
-  const [loading, setLoading] = useState(false);
+  const { fetchIndex, fetchIndexWithCreator } = useApp();
+  const { fetchIndexItems, setLoading } = useIndexConversation();
   const cancelSourceRef = useRef<CancelTokenSource | null>(null);
 
   const fetchDataForNewRoute = useCallback(
@@ -15,26 +14,25 @@ export const useOrderedFetch = () => {
         cancelSourceRef.current.cancel("Operation canceled due to new request");
       }
       cancelSourceRef.current = axios.CancelToken.source();
+      const cancelSource = cancelSourceRef.current;
+
       setLoading(true);
 
       try {
-        await fetchIndex(id, { cancelSource: cancelSourceRef.current });
-
-        await fetchIndexItems(id, { cancelSource: cancelSourceRef.current });
-
-        fetchIndexWithCreator(id, {
-          cancelSource: cancelSourceRef.current,
-        });
+        await fetchIndex(id, { cancelSource });
+        await fetchIndexItems(id, { cancelSource });
+        await fetchIndexWithCreator(id, { cancelSource });
       } catch (err: any) {
-        console.error("Error in ordered fetching:", err);
-        if (err.name !== "AbortError") {
+        if (axios.isCancel(err)) {
+          console.warn("Request was canceled:", err.message);
+        } else {
           console.error("Error in ordered fetching:", err);
         }
       } finally {
         setLoading(false);
       }
     },
-    [fetchIndex, fetchIndexItems, setViewedIndex],
+    [fetchIndex, fetchIndexWithCreator, fetchIndexItems, setLoading],
   );
 
   useEffect(() => {
@@ -47,6 +45,5 @@ export const useOrderedFetch = () => {
 
   return {
     fetchDataForNewRoute,
-    loading,
   };
 };
