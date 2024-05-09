@@ -187,9 +187,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
           const indexWithIsOwner = await api!.getIndexWithIsCreator(indexId, {
             cancelSource,
           });
-          if (viewedIndex?.id === id) {
-            setViewedIndex(indexWithIsOwner);
-          }
+          setViewedIndex(indexWithIsOwner);
         }
       } catch (error) {
         console.error("Error fetching index", error);
@@ -339,10 +337,11 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, [id]);
 
   useEffect(() => {
+    console.log("ttt", viewedIndex?.id, viewedProfile?.id);
     if (viewedProfile) {
       fetchIndexes(viewedProfile.id);
     }
-  }, [viewedProfile, fetchIndexes]);
+  }, [viewedProfile, fetchIndexes, viewedIndex]);
 
   const contextValue: AppContextValue = {
     discoveryType,
