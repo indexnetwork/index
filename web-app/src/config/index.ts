@@ -1,6 +1,6 @@
 export const appConfig = {
   baseUrl: "https://index.network/",
-  apiUrl: "https://dev.index.network/api", // TODO: handle better
+  apiUrl: "https://index.network/api", // TODO: handle better
   ipfsProxy: "https://ipfs.io/ipfs",
   ipfsInfura: "http://localhost:3001/avatar",
   defaultCID: "QmcXwZyPKsV4jUhUecTTCdrHnf3YfdmKUXzNqC2mvHEZej", // Empty.
