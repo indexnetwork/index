@@ -1,5 +1,4 @@
 import moment from "moment";
-import { appConfig } from "config";
 
 export function copyToClipboard(str?: string) {
   if (navigator && navigator.clipboard) {
@@ -71,7 +70,6 @@ export const setDates = <
   obj.updatedAt = date;
   return obj;
 };
-
 
 export const switchNetwork = async (chainId: string) => {
   try {

@@ -1,6 +1,5 @@
 "use client";
 
-import { appConfig } from "@/config";
 import { normalizeAccountId } from "@ceramicnetwork/common";
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { getAccountId } from "@didtools/pkh-ethereum";
