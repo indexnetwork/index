@@ -31,6 +31,18 @@ type IndexConversationContextType = {
       params?: GetItemQueryParams;
     },
   ) => Promise<void>;
+  fetchMoreIndexItems: (
+    id: string,
+    {
+      cancelSource,
+      resetCursor,
+      params,
+    }: {
+      cancelSource?: CancelTokenSource;
+      resetCursor?: boolean;
+      params?: GetItemQueryParams;
+    },
+  ) => Promise<void>;
   loading: boolean;
   setLoading: (loading: boolean) => void;
   addItem: (item: IndexItem) => void;
@@ -78,7 +90,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
       } = {},
     ): Promise<void> => {
       if (!apiReady) return;
-      // if (fetchingIndexItems.current) return;
+      if (fetchingIndexItems.current) return;
 
       fetchingIndexItems.current = true;
 
@@ -99,14 +111,15 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
           queryParams: itemParams,
           cancelSource,
         });
+
         if (response) {
-          setItemsState((prevState) => ({
+          setItemsState({
             items:
               resetCursor || itemParams.query
                 ? response.items
-                : [...prevState.items, ...response.items],
+                : [...itemsState.items, ...response.items],
             cursor: response.endCursor,
-          }));
+          });
         }
       } catch (err: any) {
         console.error("Error fetching index links", err);
@@ -115,7 +128,65 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         fetchingIndexItems.current = false;
       }
     },
-    [api, viewedIndex, itemsState.cursor, apiReady],
+    [api, apiReady],
+  );
+
+  const fetchMoreIndexItems = useCallback(
+    async (
+      indexId: string,
+      {
+        cancelSource,
+        resetCursor,
+        params,
+      }: {
+        cancelSource?: CancelTokenSource;
+        resetCursor?: boolean;
+        params?: GetItemQueryParams;
+      } = {},
+    ): Promise<void> => {
+      if (!apiReady) return;
+      if (fetchingIndexItems.current) return;
+
+      fetchingIndexItems.current = true;
+
+      // setLoading(true);
+      try {
+        const itemParams: GetItemQueryParams = {};
+
+        if (!resetCursor && itemsState?.cursor) {
+          itemParams.cursor = itemsState.cursor;
+        }
+
+        if (params?.query) {
+          itemParams.query = params.query;
+        }
+
+        // if (viewedIndex.id !== id) return;
+        const response = await api!.getItems(indexId, {
+          queryParams: itemParams,
+          cancelSource,
+        });
+
+        if (response) {
+          setItemsState((prevState) => {
+            const newState = {
+              items:
+                resetCursor || itemParams.query
+                  ? response.items
+                  : [...prevState.items, ...response.items],
+              cursor: response.endCursor || prevState.cursor,
+            };
+            return newState;
+          });
+        }
+      } catch (err: any) {
+        console.error("Error fetching index links", err);
+      } finally {
+        // setLoading(false);
+        fetchingIndexItems.current = false;
+      }
+    },
+    [api, apiReady, itemsState],
   );
 
   const addItem = useCallback((item: IndexItem) => {
@@ -134,8 +205,8 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
 
   const loadMoreItems = useCallback(() => {
     if (!viewedIndex) return;
-    fetchIndexItems(viewedIndex.id);
-  }, [fetchIndexItems]);
+    fetchMoreIndexItems(viewedIndex.id);
+  }, [fetchMoreIndexItems]);
 
   return (
     <IndexConversationContext.Provider
@@ -148,6 +219,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         setItemsState,
         setLoading,
         fetchIndexItems,
+        fetchMoreIndexItems,
       }}
     >
       {children}
