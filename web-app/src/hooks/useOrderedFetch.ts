@@ -15,9 +15,7 @@ export const useOrderedFetch = () => {
       if (cancelSourceRef.current) {
         cancelSourceRef.current.cancel("Operation canceled due to new request");
       }
-
       if (!apiReady) return;
-
       cancelSourceRef.current = axios.CancelToken.source();
       const cancelSource = cancelSourceRef.current;
 
