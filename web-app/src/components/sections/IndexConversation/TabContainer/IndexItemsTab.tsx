@@ -22,6 +22,7 @@ export default function IndexItemsTabSection() {
     loading,
     setLoading,
     fetchIndexItems,
+    fetchMoreIndexItems,
     // loadMoreItems,
   } = useIndexConversation();
   const { isCreator } = useRole();
@@ -188,7 +189,7 @@ export default function IndexItemsTabSection() {
           removeItem={handleRemove}
           loadMore={() =>
             viewedIndex &&
-            fetchIndexItems(viewedIndex?.id, { resetCursor: false })
+            fetchMoreIndexItems(viewedIndex?.id, { resetCursor: false })
           }
         />
       </div>

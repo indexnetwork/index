@@ -37,7 +37,7 @@ export default function TabContainer() {
 
   useEffect(() => {
     fetchDataForNewRoute(id);
-  }, []);
+  }, [fetchDataForNewRoute]);
 
   const renderTabContent = useCallback(() => {
     switch (tabKey) {
