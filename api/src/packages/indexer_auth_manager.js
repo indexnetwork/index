@@ -201,7 +201,6 @@ async function scheduleTokenRefresh() {
 async function generateDefaultLitActions() {
 
   const wallet = new Wallet(process.env.INDEXER_WALLET_PRIVATE_KEY);
-  const pubKey = wallet.address.replace('0x', '');
 
   const defaultConditions = [
       {
@@ -216,7 +215,7 @@ async function generateDefaultLitActions() {
             ],
             "returnValueTest":{
               "comparator":"=",
-              "value": pubKey
+              "value": wallet.address
             }
         }
       }
