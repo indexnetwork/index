@@ -11,7 +11,7 @@ const FeatureSection = () => {
               Decentralized <br /> Semantic Index
             </h2>
             <p className="md:text-lg">
-              Index allows to create truly personalised and autonomous discovery
+              Index allow you to create truly personalised and autonomous discovery
               experiences across the web
             </p>
             <a className="text-secondary" href="#">

@@ -39,7 +39,7 @@ const LandingSection1 = () => {
               style={{ fontSize: "2.4rem", lineHeight: "1.50" }}
               className={cc([cm.descLine, "mr-lg-10 pr-lg-10 mb-6", "mb-sm-7"])}
             >
-              Index Network helps you to create composable discovery engines.
+              Index allow you to create truly personalised and autonomous discovery experiences across the web
             </Text>
             <Button theme="primary" onClick={handleConnect}>
               Connect Wallet

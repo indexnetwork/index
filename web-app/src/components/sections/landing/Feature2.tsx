@@ -11,7 +11,7 @@ const FeatureSection2 = () => {
               Composable <br /> Discovery Protocol
             </h2>
             <p className="md:w-[75%] md:text-lg">
-              The composable discovery protocol of Index allows users to query
+              The discovery protocol of Index allows users to query
               multiple indexes together. This enables users to have an
               integrated discovery experience, ensuring responses are both
               personalized and trusted.
@@ -24,7 +24,7 @@ const FeatureSection2 = () => {
             </a>
           </div>
           <Image
-            alt="Composable Discovery Protocol"
+            alt="Discovery Protocol"
             src="/images/features/2.webp"
             width={516}
             height={389}
