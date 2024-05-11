@@ -1,7 +1,10 @@
 import {ComposeClient} from "@composedb/client";
 
-import {definition} from "../types/merged-runtime.js";
 import { webPageFragment, teamFragment } from "../types/fragments.js";
+import { getTypeDefinitions } from "../utils/helpers.js";
+
+
+const { definition } = getTypeDefinitions()
 
 const fragments = {
   [definition.models.WebPage.id]: { fragment: webPageFragment, name: "WebPage" },

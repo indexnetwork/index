@@ -1,10 +1,9 @@
 import {ComposeClient} from "@composedb/client";
 
-import { getCurrentDateTime } from "../utils/helpers.js";
+import { getCurrentDateTime, getTypeDefinitions } from "../utils/helpers.js";
 import { webPageFragment } from "../types/fragments.js";
 
-import {definition} from "../types/merged-runtime.js";
-
+const { definition } = getTypeDefinitions()
 
 
 export class WebPageService {

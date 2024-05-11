@@ -1,8 +1,9 @@
 import { ComposeClient } from "@composedb/client";
-import { definition }  from "../types/merged-runtime.js";
 import { profileFragment }  from "../types/fragments.js";
-import { getCurrentDateTime }  from "../utils/helpers.js";
+import { getCurrentDateTime, getTypeDefinitions }  from "../utils/helpers.js";
 import { getOwnerProfile } from "../libs/lit/index.js";
+
+const { definition } = getTypeDefinitions()
 
 export class DIDService {
     constructor() {

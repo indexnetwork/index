@@ -3,7 +3,7 @@ if(process.env.NODE_ENV !== 'production'){
     dotenv.config()
 }
 
-import { definition } from "../types/merged-runtime.js";
+
 
 import RedisClient from '../clients/redis.js';
 
@@ -15,7 +15,9 @@ import { ProfilingIntegration } from "@sentry/profiling-node";
 import { EventSource  } from "cross-eventsource";
 import { JsonAsString, AggregationDocument } from '@ceramicnetwork/codecs';
 import { decode } from "codeco";
+import { getTypeDefinitions } from '../utils/helpers.js';
 
+const { definition } = getTypeDefinitions()
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
