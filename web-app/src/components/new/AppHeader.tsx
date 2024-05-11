@@ -14,9 +14,9 @@ const AppHeader = () => {
   const [allowed, setAllowed] = useState(false);
 
   useEffect(() => {
-    const allowedQueryParam = query.get("EnterTheVoid");
+    const allowedQueryParam = query.get("surf");
 
-    if (allowedQueryParam === "yes") {
+    if (allowedQueryParam === "yesplease") {
       localStorage.setItem("allowed", "true");
       setAllowed(true);
     } else {
