@@ -289,9 +289,12 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       if (viewedIndex) {
         targetDID = viewedIndex?.ownerDID?.id;
       } else {
-        const fetchedIndex = await fetchIndex(id, {});
-        targetDID = fetchedIndex?.ownerDID?.id;
-        fetchIndexes(targetDID);
+        fetchIndex(id, {}).then((index) => {
+          if (index) {
+            targetDID = index?.ownerDID?.id;
+            fetchIndexes(targetDID);
+          }
+        });
       }
     }
 
