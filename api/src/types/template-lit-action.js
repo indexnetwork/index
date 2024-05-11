@@ -97,7 +97,7 @@
       const conditions = getCreatorConditions();
       let isCreator = false;
       if (conditions.length > 0) {
-        isCreator = Lit.Actions.checkConditions({ conditions, authSig: userAuthSig, chain });
+        isCreator = await Lit.Actions.checkConditions({ conditions, authSig: userAuthSig, chain });
         context.isCreator = isCreator;
       }
 
