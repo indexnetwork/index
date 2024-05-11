@@ -21,7 +21,7 @@ import {joinSignature, getTypeDefinitions } from "ethers/lib/utils.js";
 
 const provider = new ethers.providers.JsonRpcProvider("https://chain-rpc.litprotocol.com/http", 175177);
 
-const { definition } = getTypeDefinitions()
+const definition = getTypeDefinitions()
 
 const config = {
   litNetwork: process.env.LIT_NETWORK,

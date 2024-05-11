@@ -1,10 +1,15 @@
 import { SiweMessage } from "@didtools/cacao";
 import { getAddress } from "@ethersproject/address";
 import moment from "moment";
+import fs from 'fs/promises';
 
+import {definition as definitionDev} from "../types/merged-runtime-dev.js";
+import {definition as definitionMainnet} from "../types/merged-runtime-mainnet.js";
 
-import definitionDev from "../types/merged-runtime-dev.js";
-import definitionMainnet from "../types/merged-runtime-mainnet.js";
+import  pinataSDK from '@pinata/sdk';
+
+import { Readable } from "stream";
+
 
 export const getCurrentDateTime = () => moment.utc().toISOString();
 
@@ -36,3 +41,33 @@ export const getTypeDefinitions = () => {
       return definitionDev;
   }
 };
+
+export const generateLITAction = async (conditions) => {
+
+  let actionStr = await fs.readFile(`src/types/template-lit-action.js`, 'utf8');
+
+    actionStr = actionStr.replace('__REPLACE_THIS_AS_CONDITIONS_ARRAY__', JSON.stringify(conditions));
+
+    const definition = getTypeDefinitions()
+
+    const models = JSON.stringify({
+      "Index": definition.models.Index.id,
+      "IndexItem": definition.models.IndexItem.id,
+      "Embedding": definition.models.Embedding.id
+    })
+
+    actionStr = actionStr.replace('__REPLACE_THIS_AS_MODELS_OBJECT__', models);
+
+    const pinata = new pinataSDK({ pinataJWTKey: process.env.PINATA_JWT_KEY});
+
+    const buffer = Buffer.from(actionStr, "utf8");
+		const stream = Readable.from(buffer);
+
+		stream.path = "string.txt";
+
+		const resp = await pinata.pinFileToIPFS(stream,{
+		  pinataMetadata: { name: "signerFunction" }
+		})
+		return resp.IpfsHash
+
+}

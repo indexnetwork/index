@@ -3,7 +3,7 @@ import {ComposeClient} from "@composedb/client";
 import { getCurrentDateTime, getTypeDefinitions } from "../utils/helpers.js";
 import { webPageFragment } from "../types/fragments.js";
 
-const { definition } = getTypeDefinitions()
+const definition = getTypeDefinitions()
 
 
 export class WebPageService {

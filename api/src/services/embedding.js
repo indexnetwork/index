@@ -4,7 +4,7 @@ import { removePrefixFromKeys, getCurrentDateTime, getTypeDefinitions } from "..
 import { indexItemFragment, modelBundleFragment } from "../types/fragments.js";
 
 
-const { definition } = getTypeDefinitions()
+const definition = getTypeDefinitions()
 export class EmbeddingService {
     constructor() {
         this.client = new ComposeClient({

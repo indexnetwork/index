@@ -4,7 +4,7 @@ import { webPageFragment, teamFragment } from "../types/fragments.js";
 import { getTypeDefinitions } from "../utils/helpers.js";
 
 
-const { definition } = getTypeDefinitions()
+const definition = getTypeDefinitions()
 
 const fragments = {
   [definition.models.WebPage.id]: { fragment: webPageFragment, name: "WebPage" },

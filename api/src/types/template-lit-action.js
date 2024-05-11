@@ -4,24 +4,7 @@
   // lit_actions/src/session.action.ts
   var getCreatorConditions = (transform=true) => {
     let conditionsArray = __REPLACE_THIS_AS_CONDITIONS_ARRAY__;
-    /*[
-           {
-              "tag":"semanticIndex",
-              "value":{
-                 "contractAddress":"",
-                 "standardContractType":"",
-                 "chain":"ethereum",
-                 "method":"",
-                 "parameters":[
-                    ":userAddress"
-                 ],
-                 "returnValueTest":{
-                    "comparator":"=",
-                    "value":"1a2c093f4963d20c550e95aaa726096230c400a3"
-                 }
-              }
-           }
-        ];*/
+
     if(conditionsArray.length < 1){
       return [];
     }
@@ -73,11 +56,7 @@
   };
 
   var getResources = (isPermittedAddress = false) => {
-    const models = {
-      "Index": "kjzl6hvfrbw6c9uou8ahg7iiwpdxy3xytuop7qz1cggory3uer1r2ozwucsrpfo",
-      "IndexItem": "kjzl6hvfrbw6cbbyu8ftr6aredftfq6xrww6h8lscajvgow0f0kygs8r8n1my40",
-      "Embedding": "kjzl6hvfrbw6cb2id6b5saxxyt032ts652ctnwxuv5nfu0p50pycxoj4vrtd2qh"
-    };
+    const models = __REPLACE_THIS_AS_MODELS_OBJECT__;
     return isPermittedAddress ? [models.Index, models.IndexItem, models.Embedding] : [models.IndexItem, models.Embedding];
   };
 

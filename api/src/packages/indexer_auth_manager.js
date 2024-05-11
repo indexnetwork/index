@@ -8,17 +8,17 @@ if (process.env.NODE_ENV !== 'production') {
     dotenv.config();
 }
 
-import { ethers } from 'ethers';
+import { Wallet, ethers } from 'ethers';
 import * as LitJsSdk from '@lit-protocol/lit-node-client-nodejs';
 import { LitContracts } from '@lit-protocol/contracts-sdk';
 import { LitAbility, LitPKPResource, LitActionResource } from '@lit-protocol/auth-helpers';
 
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { Cacao, SiweMessage } from "@didtools/cacao";
-import { EthereumWebAuth, getAccountId } from '@didtools/pkh-ethereum'
 import { randomBytes, randomString } from "@stablelib/random";
 
 import RedisClient from '../clients/redis.js';
+import { generateLITAction } from '../utils/helpers.js';
 
 
 // Sentry initialization for error tracking and performance monitoring
@@ -198,6 +198,33 @@ async function scheduleTokenRefresh() {
     }
 }
 
+async function generateDefaultLitActions() {
+
+  const wallet = new Wallet(process.env.INDEXER_WALLET_PRIVATE_KEY);
+  const pubKey = wallet.address.replace('0x', '');
+
+  const defaultConditions = [
+      {
+        "tag":"semanticIndex",
+        "value":{
+            "contractAddress":"",
+            "standardContractType":"",
+            "chain":"ethereum",
+            "method":"",
+            "parameters":[
+              ":userAddress"
+            ],
+            "returnValueTest":{
+              "comparator":"=",
+              "value": pubKey
+            }
+        }
+      }
+  ]
+  const defaultCID = await generateLITAction(defaultConditions)
+  console.log("Default CID", defaultCID)
+}
+
 async function refreshIndexerDIDSession () {
 
   const keySeed = randomBytes(32);
@@ -238,4 +265,4 @@ async function run () {
   process.exit(0)
 }
 
-debugToken()
+generateDefaultLitActions()

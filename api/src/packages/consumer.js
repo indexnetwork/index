@@ -17,7 +17,7 @@ import { JsonAsString, AggregationDocument } from '@ceramicnetwork/codecs';
 import { decode } from "codeco";
 import { getTypeDefinitions } from '../utils/helpers.js';
 
-const { definition } = getTypeDefinitions()
+const definition = getTypeDefinitions()
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,

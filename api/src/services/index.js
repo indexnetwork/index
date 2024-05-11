@@ -4,7 +4,7 @@ import { getCurrentDateTime, getTypeDefinitions } from "../utils/helpers.js";
 
 import { getOwnerProfile } from "../libs/lit/index.js";
 
-const { definition } = getTypeDefinitions()
+const definition = getTypeDefinitions()
 
 export class IndexService {
     constructor() {
