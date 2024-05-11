@@ -187,7 +187,7 @@ export const writeAuthMethods = async ({
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
       jsParams: {
-        authSig: userAuthSig, // for conditions control. to identify authenticated user.
+        userAuthSig: userAuthSig, // for conditions control. to identify authenticated user.
         publicKey: signerPublicKey,
         chain: "ethereum", // polygon
         nonce: randomString(12),
@@ -266,7 +266,7 @@ export const transferOwnership = async ({
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
       jsParams: {
-        authSig: userAuthSig, // for conditions control. to identify authenticated user.
+        userAuthSig: userAuthSig, // for conditions control. to identify authenticated user.
         publicKey: signerPublicKey,
         chain: "ethereum", // polygon
         nonce: randomString(12),
@@ -570,7 +570,7 @@ export const getPKPSession = async (session, index) => {
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
       jsParams: {
-        authSig: userAuthSig, // for conditions control. to identify authenticated user.
+        userAuthSig: userAuthSig, // for conditions control. to identify authenticated user.
         publicKey: index.signerPublicKey,
         nonce: randomString(12),
         chain: "ethereum", // polygon

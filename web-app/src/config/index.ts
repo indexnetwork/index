@@ -2,7 +2,7 @@ export const appConfig = {
   baseUrl: "https://dev.index.network/",
   apiUrl: "https://dev.index.network/api", // TODO: handle better
   ipfsProxy: "https://ipfs.io/ipfs",
-  defaultCID: "QmQRfZFc5H2rSLugtT4nMPZTvb2MK8gW7T7nxA22ChhKst", // Empty.
+  defaultCID: "QmTnEgo5JY44Kk4rR9F7RoUb7fPw4xmbiW6Eqzs8aTg1jp", // Empty.
   chains: {
     ethereum: {
       value: "ethereum",

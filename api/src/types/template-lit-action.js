@@ -88,7 +88,8 @@
         console.log(JSON.stringify(getCreatorConditions(false)));
         return;
       }
-      const context = { isPermittedAddress: false, isCreator: false, siweMessage: false, signList: signList.getPKPSession };
+      const context = { userAuthSig: false, isPermittedAddress: false, isCreator: false, siweMessage: false, signList: signList.getPKPSession };
+      context.userAuthSig = userAuthSig;
       console.time("pubkeyToTokenId");
       const pkpTokenId = Lit.Actions.pubkeyToTokenId({ publicKey });
       timers.pubkeyToTokenId = console.timeEnd("pubkeyToTokenId");
@@ -96,12 +97,12 @@
       const conditions = getCreatorConditions();
       let isCreator = false;
       if (conditions.length > 0) {
-        isCreator = Lit.Actions.checkConditions({ conditions, authSig, chain });
+        isCreator = Lit.Actions.checkConditions({ conditions, authSig: userAuthSig, chain });
         context.isCreator = isCreator;
       }
 
       console.time("isPermittedAddress");
-      const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: authSig.address });
+      const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: userAuthSig.address });
       context.isPermittedAddress = isPermittedAddress;
       timers.isPermittedAddress = console.timeEnd("isPermittedAddress");
 
