@@ -14,7 +14,7 @@ import { Indexes } from "types/entity";
 const TAB_QUERY = "tab";
 
 const IndexListSection: FC = () => {
-  const { id, isIndex, isDID } = useRouteParams();
+  const { id, isDID } = useRouteParams();
   const router = useRouter();
   const query = useSearchParams();
 
@@ -39,7 +39,7 @@ const IndexListSection: FC = () => {
         router.push(`/${viewedProfile?.id}`);
       }
     },
-    [setLeftTabKey, router, viewedProfile, isIndex],
+    [setLeftTabKey, router, viewedProfile],
   );
 
   useEffect(() => {
@@ -49,7 +49,7 @@ const IndexListSection: FC = () => {
     } else if (viewedProfile?.id !== prevProfileID.current) {
       setLeftTabKey(IndexListTabKey.ALL);
     }
-  }, [query, viewedProfile?.id, setLeftTabKey]);
+  }, [isDID, query, viewedProfile?.id, setLeftTabKey]);
 
   return (
     <>
@@ -69,20 +69,20 @@ const IndexListSection: FC = () => {
             <TabPane
               enabled={true}
               tabKey={IndexListTabKey.OWNED}
-              total={indexes.filter((i) => i.did.owned).length}
+              total={indexes ? indexes.filter((i) => i.did.owned).length : 0}
               title={`Owned`}
             />
             <TabPane
               enabled={true}
               tabKey={IndexListTabKey.STARRED}
-              total={indexes.filter((i) => i.did.starred).length}
+              total={indexes ? indexes.filter((i) => i.did.starred).length : 0}
               title={`Starred`}
             />
           </Tabs>
         </Col>
       </FlexRow>
       <FlexRow className={"scrollable-area index-list idxflex-grow-1 pr-6"}>
-        {leftSectionIndexes.length > 0 ? (
+        {leftSectionIndexes && leftSectionIndexes.length > 0 ? (
           <div className={"idxflex-grow-1"}>
             <List
               data={leftSectionIndexes}

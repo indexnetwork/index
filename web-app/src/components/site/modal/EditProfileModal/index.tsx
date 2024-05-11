@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import ImageUploading from "react-images-uploading";
 import { Indexes, Users } from "types/entity";
+import Image from "next/image";
 
 export interface EditProfileModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {}
@@ -148,10 +149,12 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
                             {image ? (
                               <>
                                 <div className="img-upload-img">
-                                  <img
+                                  <Image
+                                    width="80"
+                                    height="80"
                                     className="img-upload-img__img"
                                     src={`${appConfig.ipfsProxy}/${image.toString()}`}
-                                    alt="profile_img"
+                                    alt="Profile Image"
                                   />
                                 </div>
                                 <div
@@ -211,6 +214,7 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
                           rows={5}
                           name="bio"
                           inputSize={"lg"}
+                          className="mt-3"
                           placeholder="Tell your story"
                           onChange={formik.handleChange}
                           value={formik.values.bio}

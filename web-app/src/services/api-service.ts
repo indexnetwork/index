@@ -3,7 +3,7 @@
 // import { Indexes, IndexLink, Link, UserIndex, Users } from "types/entity";
 // import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 // import { CID } from "multiformats";
-// import LitService from "services/lit-service";
+// import DIDService from "services/did-service";
 // import { DIDSession } from "did-session";
 
 // export type HighlightType<T = {}> = T & {

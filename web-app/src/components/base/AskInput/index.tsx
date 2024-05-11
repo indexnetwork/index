@@ -41,11 +41,12 @@ const AskInput = ({
         onKeyDown={onKeyDown}
         onChange={(e) => setInput(e.target.value)}
         inputSize={"md"}
+        style={{
+          display: "flex",
+        }}
         addOnAfter={
           <IconSend
-            className={
-				input.length > 0 ? "typing" : "add-on-after-icon"
-            }
+            className={input.length > 0 ? "typing" : "add-on-after-icon"}
             cursor="pointer"
             onClick={async () => {
               if (!input?.trim()) {

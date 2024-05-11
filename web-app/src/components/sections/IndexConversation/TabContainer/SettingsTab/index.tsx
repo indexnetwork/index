@@ -1,7 +1,7 @@
 import { IconTrash } from "@/components/ai/ui/icons";
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
-import litService from "@/services/lit-service";
+import didService from "@/services/did-service";
 import { AccessControlCondition } from "@/types/entity";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
@@ -55,7 +55,9 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   const handleCreate = useCallback(async () => {
     setShowModal(true);
     try {
-      const authSig = await litService.getRandomAuthSig();
+      const sessionResponse = await didService.getRandomDIDSession(
+        viewedIndex!.id,
+      );
       const condition = {
         tag: "apiKey",
         value: {
@@ -66,7 +68,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
           parameters: [":userAddress"],
           returnValueTest: {
             comparator: "=",
-            value: authSig.address,
+            value: sessionResponse.address,
           },
         },
       } as any;
@@ -78,7 +80,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
       const newConditions = [condition, ...deepCopyOfConditions];
 
       await createConditions(newConditions);
-      setSecretKey(btoa(JSON.stringify(authSig)));
+      setSecretKey(btoa(JSON.stringify(sessionResponse)));
       setStep("done");
     } catch (e) {
       console.error("Error creating rule", e);
@@ -95,12 +97,10 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
       try {
         const deepCopyOfConditions = JSON.parse(JSON.stringify(conditions));
 
-        console.log("in remove deepCopyOfConditions", deepCopyOfConditions);
         const newConditions = deepCopyOfConditions.filter(
           (c: any) => c.value.metadata.walletAddress !== key,
         );
 
-        console.log("in remove", newConditions);
         await createConditions(newConditions);
         toast.success("Key removed");
         setShowModal(false);

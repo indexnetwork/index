@@ -36,10 +36,7 @@ const SettingsModal: FC<SettingsModalProps> = ({
     header = (
       <div>
         <h2>Waiting for transaction</h2>
-        <p>
-          Please wait while the transaction is being processed. This may take a
-          few minutes.
-        </p>
+        <p>Please wait while the transaction is being processed.</p>
       </div>
     );
   } else if (step === "done") {
@@ -50,7 +47,7 @@ const SettingsModal: FC<SettingsModalProps> = ({
           Keep your secret key in a secure and reachable place. Remember, for
           your safety,{" "}
           <b>you can't retrieve it once you navigate away from this page.</b>
-          Should you misplace it, you'll have to create a new one.
+           You can always create a new one if you lost it.
         </p>
       </div>
     );

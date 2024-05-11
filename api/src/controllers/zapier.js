@@ -1,35 +1,51 @@
-import { DIDSession } from "did-session";
 import { getMetadata } from '../libs/crawl.js'
-import { isValidURL } from "../types/validators.js";
 import { WebPageService } from "../services/webpage.js";
 import { ItemService } from "../services/item.js";
 import { IndexService } from "../services/index.js";
+import { getPKPSession } from "../libs/lit/index.js";
+import { DIDSession } from 'did-session';
+import axios from "axios";
 
-export const indexLink = async (req, res, next) => {
+export const indexWebPage = async (req, res, next) => {
 
+    let params = req.body;
     const sessionStr = Buffer.from(req.headers.authorization, "base64").toString("utf8");
     const auth = JSON.parse(sessionStr);
-    const payload = req.body;
-    if(!payload.url || !isValidURL(payload.url)){
-        return res.json({error: "No valid URL provided"});
+
+    const indexService = new IndexService()
+    const index = await indexService.getIndexById(auth.indexId)
+
+    const zapierSession = await DIDSession.fromSession(auth.session);
+
+    const pkpSession = await getPKPSession(zapierSession, index);
+    const webPageService = new WebPageService().setSession(zapierSession);
+    const itemService = new ItemService().setSession(pkpSession);
+
+    if(!params.title || !params.favicon){
+      const metaData = await getMetadata(params.url)
+      if(metaData.title){
+        params.title = metaData.title
+      }
+      if(metaData.favicon){
+        params.favicon = metaData.favicon
+      }
     }
 
-    let linkData = await getMetadata(payload.url);
-    if (payload.content) linkData.content = payload.content;
-    if (payload.title) linkData.title = payload.title;
-    //TODO Refactor new client
-    //Create user owned webpage object.
-    const personalSesssion = await DIDSession.fromSession(auth.session.personal);
-    await personalSesssion.did.authenticate();
+    if(!params.content){
+      try{
+          const crawlResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/crawl`, {
+              url: params.url
+          })
+          if (crawlResponse && crawlResponse.data && crawlResponse.data.content) {
+              params = { content: crawlResponse.data.content, ... params }
+          }
+      } catch(e) {
+          console.log("Crawling error", req.body.url, e)
+      }
+    }
 
-    const webPageService = new WebPageService().setSession(personalSesssion);
-    const webPage = await webPageService.createWebPage(payload);
+    const webPage = await webPageService.createWebPage(params);
 
-    //Index webpage object.
-    const indexSession = await DIDSession.fromSession(auth.session.index);
-    await indexSession.did.authenticate();
-
-    const itemService = new ItemService().setSession(indexSession);
     const item = await itemService.addItem(auth.indexId, webPage.id);
 
     return res.json(item);
@@ -44,5 +60,3 @@ export const authenticate = async (req, res, next) => {
     const index = await indexService.getIndexById(auth.indexId)
     return res.json(index);
 };
-
-

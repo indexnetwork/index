@@ -1,11 +1,8 @@
 import {ComposeClient} from "@composedb/client";
 
-import moment from "moment";
-
-const getCurrentDateTime = () => moment.utc().toISOString();
-
+import { getCurrentDateTime } from "../utils/helpers.js";
 import {definition} from "../types/merged-runtime.js";
-import {getOwnerProfile} from "../libs/lit/index.js";
+import { getOwnerProfile } from "../libs/lit/index.js";
 
 export class IndexService {
     constructor() {
@@ -92,7 +89,7 @@ export class IndexService {
                 index.did = did;
             }
 
-            index.ownerDID = await getOwnerProfile(index.id);
+            index.ownerDID = await getOwnerProfile(index);
 
 
 
@@ -143,7 +140,7 @@ export class IndexService {
 
             // Return the created index document
             const createdIndex =  data.createIndex.document;
-            createdIndex.ownerDID = await getOwnerProfile(createdIndex.id);
+            createdIndex.ownerDID = await getOwnerProfile(createdIndex);
 
             return createdIndex;
 
@@ -157,6 +154,29 @@ export class IndexService {
     async updateIndex(id, params) {
         if (!this.did) {
             throw new Error("DID not set. Use setDID() to set the did.");
+        }
+
+        let didPayload = "";
+
+        if (this.did) {
+            didPayload = `did(first:10, account: "${this.did.parent}", filters: {
+                where: {
+                    deletedAt: {isNull: true}
+                }
+            }) {
+                edges {
+                    node {
+                        id
+                        type
+                        controllerDID {
+                            id
+                        }
+                        createdAt
+                        updatedAt
+                        deletedAt
+                    }
+                }
+            }`
         }
 
         try {
@@ -176,6 +196,7 @@ export class IndexService {
                             createdAt
                             updatedAt
                             deletedAt
+                            ${didPayload}
                         }
                     }
                 }`, {input: {id, content}});
@@ -190,8 +211,24 @@ export class IndexService {
                 throw new Error('Invalid response data');
             }
 
+            const index =  data.updateIndex.document;
+
+            if(index.did && index.did.edges && index.did.edges.length > 0){
+                const did = { starred: false, owned: false };
+                index.did.edges.forEach((edge) => {
+                    if(edge.node.type === "owned"){
+                        did.owned = edge.node.deletedAt === null;
+                    }
+                    if(edge.node.type === "starred"){
+                        did.starred = edge.node.deletedAt === null;
+                    }
+                });
+                index.did = did;
+            }
+
+            index.ownerDID = await getOwnerProfile(index);
             // Return the created index document
-            return data.updateIndex.document;
+            return index;
 
         } catch (error) {
             // Log the error and rethrow it for external handling

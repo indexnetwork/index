@@ -5,24 +5,21 @@ import { DiscoveryType } from "@/types";
 import DiscoveryLayout from "components/layout/site/DiscoveryLayout";
 import IndexConversationSection from "components/sections/IndexConversation";
 import UserConversationSection from "components/sections/UserConversation";
-import { useRouteParams } from "hooks/useRouteParams";
+import "./app.css";
 import { useEffect } from "react";
-import "../../styles/main.scss";
 
 const Discovery = () => {
-  const { discoveryType, indexes } = useApp();
-  const { id } = useRouteParams();
+  const { discoveryType } = useApp();
 
   useEffect(() => {
-    console.log("discoveryType in page.tsx:", discoveryType, id);
-    console.log("indexes in page.tsx:", indexes);
-
-    // if (typeof window !== "undefined") {
-    //   window.ethereum.on("message", (message: any) => {
-    //     console.log("eth: ", message);
-    //   });
-    // }
-  }, [id, discoveryType, indexes]);
+    if (typeof window !== "undefined") {
+      if (window.location.pathname !== "/") {
+        document.getElementsByTagName("html")[0].setAttribute("id", "app");
+      } else {
+        document.getElementsByTagName("html")[0].setAttribute("id", "landing");
+      }
+    }
+  }, []);
 
   return (
     <DiscoveryLayout>

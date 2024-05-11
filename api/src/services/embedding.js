@@ -1,11 +1,8 @@
-import {ComposeClient} from "@composedb/client";
-
-import moment from "moment";
-
-const getCurrentDateTime = () => moment.utc().toISOString();
-
-import {definition} from "../types/merged-runtime.js";
-import {getOwnerProfile} from "../libs/lit/index.js";
+import { ComposeClient } from "@composedb/client";
+import { getOwnerProfile } from "../libs/lit/index.js";
+import { removePrefixFromKeys, getCurrentDateTime } from "../utils/helpers.js";
+import { indexItemFragment, modelBundleFragment } from "../types/fragments.js";
+import { definition } from "../types/merged-runtime.js";
 
 export class EmbeddingService {
     constructor() {
@@ -26,7 +23,7 @@ export class EmbeddingService {
     async getEmbeddingById(id) {
 
         try {
-            const {data, errors} = await this.client.executeQuery(`
+            let {data, errors} = await this.client.executeQuery(`
             {
               node(id: "${id}") {
                 ... on Embedding {
@@ -42,17 +39,7 @@ export class EmbeddingService {
                   updatedAt
                   deletedAt
                   item {
-                    id
-                    __typename
-                    ... on WebPage {
-                      title
-                      favicon
-                      url
-                      content
-                      createdAt
-                      updatedAt
-                      deletedAt
-                    }
+                    ${modelBundleFragment}
                   }
                   index {
                     id
@@ -76,10 +63,13 @@ export class EmbeddingService {
                 throw new Error('Invalid response data');
             }
             try{
-                data.node.index.ownerDID = await getOwnerProfile(data.node.index.id);
+                data.node.index.ownerDID = await getOwnerProfile(data.node.index);
             } catch(e) {
                 console.log("Error fetching profile", e)
             }
+
+            data.node.item = removePrefixFromKeys(data.node.item, `${data.node.item.__typename}_`);
+
             return data.node;
 
         } catch (error) {

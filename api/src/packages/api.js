@@ -2,18 +2,18 @@ import dotenv from "dotenv";
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
-import Moralis from 'moralis';
-import express from 'express';
-import Joi from 'joi';
-import * as ejv from 'express-joi-validation';
+import Moralis from "moralis";
+import express from "express";
+import Joi from "joi";
+import * as ejv from "express-joi-validation";
 
-import RedisClient  from '../clients/redis.js';
+import RedisClient from "../clients/redis.js";
 
 import * as Sentry from "@sentry/node";
 import { ProfilingIntegration } from "@sentry/profiling-node";
+import { createProxyMiddleware  } from 'http-proxy-middleware';
 
-const app = express()
-
+const app = express();
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
@@ -35,7 +35,6 @@ app.use(Sentry.Handlers.tracingHandler());
 
 const port = process.env.PORT || 3001;
 
-
 const redis = RedisClient.getInstance();
 
 import * as indexController from "../controllers/index.js";
@@ -48,6 +47,9 @@ import * as litProtocol from "../controllers/lit-protocol.js";
 
 import * as fileController from "../controllers/file.js";
 import * as web2Controller from "../controllers/web2.js";
+
+import * as composeDbController from "../controllers/composedb.js";
+
 import * as zapierController from "../controllers/zapier.js";
 
 import * as siteController from "../controllers/site.js";
@@ -68,16 +70,30 @@ import {
   isStreamID,
 } from "../types/validators.js";
 
-
-app.use(express.json());
+app.use(/^\/(?!chroma).*/, express.json());
 
 const validator = ejv.createValidator({
   passError: true,
 });
 
-
 // Authenticate
 app.use(authenticateMiddleware);
+
+const simpleRequestLogger = (proxyServer, options) => {
+  proxyServer.on('proxyReq', (proxyReq, req, res) => {
+    console.log(`[HPM] [${req.method}] ${req.url}`); // outputs: [HPM] GET /users
+  });
+};
+
+// Chroma Proxy
+app.use(
+  '/chroma',
+  createProxyMiddleware({
+    target: process.env.CHROMA_URL,
+    changeOrigin: true,
+    plugins: [simpleRequestLogger],
+  }),
+);
 
 // DIDs
 app.get(
@@ -123,7 +139,7 @@ app.patch(
   validator.body(
     Joi.object({
       name: Joi.string().optional(),
-      bio: Joi.string().optional(),
+      bio: Joi.string().empty(["", null]).optional(),
       avatar: Joi.custom(isCID, "Avatar").optional().allow(null),
     }).or("name", "bio", "avatar"),
   ),
@@ -195,6 +211,22 @@ app.patch(
     }),
   ),
   indexController.updateIndex,
+);
+
+app.patch(
+  "/indexes/:id/transfer",
+  authCheckMiddleware,
+  validator.body(
+    Joi.object({
+      newOwner: Joi.custom(isDID, "DID").required(),
+    }).or("newOwner"),
+  ),
+  validator.params(
+    Joi.object({
+      id: Joi.custom(isStreamID, "Index ID").required(),
+    }),
+  ),
+  indexController.transferIndex,
 );
 
 app.delete(
@@ -347,6 +379,10 @@ app.post(
       id: Joi.string().required(),
       messages: Joi.array().required(),
       did: Joi.string().optional(),
+      temperature: Joi.number().optional(),
+      avg_log_prob: Joi.number().optional(),
+      maxTokens: Joi.number().optional(),
+      maxRetries: Joi.number().optional(),
       type: Joi.when("did", {
         is: Joi.exist(),
         then: Joi.string().valid("owned", "starred").optional(),
@@ -405,17 +441,47 @@ app.get(
   web2Controller.crawlMetadata,
 );
 
+app.get("/composedb/:modelId/:nodeId", composeDbController.getNodeById);
+
+app.post(
+  "/composedb/:modelId",
+  authCheckMiddleware,
+  composeDbController.createNode,
+);
+
+app.patch(
+  "/composedb/:modelId/:nodeId",
+  authCheckMiddleware,
+  composeDbController.updateNode,
+);
+
 //Todo refactor later.
-app.post("/zapier/index_link", zapierController.indexLink);
+app.post("/zapier/index/webpage",  validator.body(
+  Joi.object({
+    title: Joi.string().required(),
+    favicon: Joi.string().optional(),
+    url: Joi.string().uri().required(),
+    content: Joi.string().optional(),
+  }),
+), zapierController.indexWebPage);
 app.get("/zapier/auth", zapierController.authenticate);
 
 //Todo refactor later.
-app.get('/lit_actions/:cid', litProtocol.getAction);
-app.post('/lit_actions/', validator.body(Joi.array().items(Joi.object({
-  tag: Joi.string().valid('apiKey', 'creator', 'semanticIndex').required(),
-  value: Joi.object().required()
-}))), litProtocol.postAction);
-
+app.get("/lit_actions/:cid", litProtocol.getAction);
+app.post(
+  "/lit_actions/",
+  validator.body(
+    Joi.array().items(
+      Joi.object({
+        tag: Joi.string()
+          .valid("apiKey", "creator", "semanticIndex")
+          .required(),
+        value: Joi.object().required(),
+      }),
+    ),
+  ),
+  litProtocol.postAction,
+);
 
 //Todo refactor later.
 app.get(
@@ -463,12 +529,12 @@ const start = async () => {
   await redis.connect();
 
   await Moralis.start({
-    apiKey: process.env.MORALIS_API_KEY
+    apiKey: process.env.MORALIS_API_KEY,
   });
 
   app.use(Sentry.Handlers.errorHandler());
   app.listen(port, async () => {
-    console.log(`Search service listening on port ${port}`)
-  })
-}
+    console.log(`Search service listening on port ${port}`);
+  });
+};
 start();

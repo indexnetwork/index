@@ -22,6 +22,7 @@ export default function IndexItemsTabSection() {
     loading,
     setLoading,
     fetchIndexItems,
+    fetchMoreIndexItems,
     // loadMoreItems,
   } = useIndexConversation();
   const { isCreator } = useRole();
@@ -34,7 +35,6 @@ export default function IndexItemsTabSection() {
 
   useEffect(() => {
     if (addedItem) {
-      console.log("addedItem", addedItem, progress);
       setItemsState({
         items: [addedItem, ...itemsState.items],
         cursor: itemsState.cursor,
@@ -54,8 +54,12 @@ export default function IndexItemsTabSection() {
 
   const handleSearch = useCallback(
     (searchQuery: string) => {
+      if (!viewedIndex) return;
       setSearch(searchQuery);
-      fetchIndexItems(true, { query: searchQuery });
+      fetchIndexItems(viewedIndex?.id, {
+        resetCursor: true,
+        // query: searchQuery,
+      });
     },
     [fetchIndexItems],
   );
@@ -89,7 +93,10 @@ export default function IndexItemsTabSection() {
       const uniqueUrls = removeDuplicates(filteredUrls);
       const urls = removeDuplicates(
         uniqueUrls,
-        itemsState.items.map((i) => i.node.url),
+        itemsState.items
+          .filter((i) => i.type === "WebPage")
+          // @ts-ignore
+          .map((i) => i.node.url),
       );
 
       setLoading(true);
@@ -174,23 +181,16 @@ export default function IndexItemsTabSection() {
         </FlexRow>
       )}
 
-      <div
-        key={viewedIndex?.id}
-        className={"scrollable-container mb-4 mt-6"}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          overflowY: "auto",
-          maxHeight: "calc(100vh - 34rem)",
-        }}
-      >
+      <div key={viewedIndex?.id} className={"mb-4 mt-6"}>
         <IndexItemList
           items={itemsState.items}
           search={search}
           hasMore={!!itemsState.cursor}
           removeItem={handleRemove}
-          // loadMore={fetchIndexItems}
-          loadMore={() => {}}
+          loadMore={() =>
+            viewedIndex &&
+            fetchMoreIndexItems(viewedIndex?.id, { resetCursor: false })
+          }
         />
       </div>
     </Flex>

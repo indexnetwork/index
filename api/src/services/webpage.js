@@ -1,20 +1,11 @@
 import {ComposeClient} from "@composedb/client";
 
-import moment from "moment";
-
-const getCurrentDateTime = () => moment.utc().toISOString();
+import { getCurrentDateTime } from "../utils/helpers.js";
+import { webPageFragment } from "../types/fragments.js";
 
 import {definition} from "../types/merged-runtime.js";
 
-const webPageFragment = `
-  id
-  title
-  favicon
-  url
-  content
-  createdAt
-  updatedAt
-  deletedAt`
+
 
 export class WebPageService {
     constructor() {
@@ -48,7 +39,7 @@ export class WebPageService {
                 mutation CreateWebPage($input: CreateWebPageInput!) {
                     createWebPage(input: $input) {
                         document {
-                            ${webPageFragment}
+                          ${webPageFragment}
                         }
                     }
                 }`, {input: {content}});
@@ -119,9 +110,7 @@ export class WebPageService {
             const {data, errors} = await this.client.executeQuery(`
             {
               node(id: "${webPageId}") {
-                ... on WebPage {
                 ${webPageFragment}
-                }
               }
             }`);
 

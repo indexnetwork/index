@@ -7,7 +7,7 @@ import IconContextMenu from "components/base/Icon/IconContextMenu";
 import { useBreakpoint } from "hooks/useBreakpoint";
 import { BREAKPOINTS } from "utils/constants";
 import IndexDetailItemPopup from "components/site/popup/IndexDetailItemPopup";
-import { IndexItem } from "types/entity";
+import { IndexWebPageItem } from "types/entity";
 import moment from "moment";
 import sanitize from "sanitize-html";
 import { useRole } from "hooks/useRole";
@@ -15,8 +15,8 @@ import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
 export interface LinkItemProps {
-  item: IndexItem;
-  onChange?(val: IndexItem[]): void;
+  item: IndexWebPageItem;
+  onChange?(val: IndexWebPageItem[]): void;
   search?: boolean;
   handleRemove?(): void;
 }

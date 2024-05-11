@@ -30,7 +30,7 @@ export class ChatService {
 
         try {
             // Initialize the agent
-            const chain: RunnableSequence = await this.agentClient.createAgentChain(body.chain_type, body.indexIds, body.model_type);
+            const chain: RunnableSequence = await this.agentClient.createAgentChain(body.chain_type, body.indexIds, body.model_type, body?.model_args);
 
             // Invoke the agent
             const stream = await chain.stream({ 
@@ -59,7 +59,7 @@ export class ChatService {
             }
         });
 
-        Logger.log(`Retrieved ${JSON.stringify(response)} documents`, 'chatService:generate')
+        Logger.log(`Retrieved ${response.ids.length} documents`, 'chatService:generate')
 
         Logger.log(`Retrieved ${response.documents.length} documents`, 'chatService:generate')
 

@@ -1,26 +1,8 @@
 export const appConfig = {
-  baseUrl: "https://index.network/",
-  apiUrl: "https://index.network/api", // TODO: handle better
+  baseUrl: "https://dev.index.network/",
+  apiUrl: "https://dev.index.network/api", // TODO: handle better
   ipfsProxy: "https://ipfs.io/ipfs",
-  ipfsInfura: "http://localhost:3001/avatar",
-  defaultCID: "QmeKXjYLVR3fYnviJygXFD735i95Rxm8xGGEekQ4Mf5xEa", // Empty.
-  litNetwork: "habanero" as
-    | "cayenne"
-    | "custom"
-    | "localhost"
-    | "manzano"
-    | "habanero",
-  testNetwork: {
-    chainId: "0x2ac49",
-    chainName: "Chronicle - Lit Protocol Testnet",
-    nativeCurrency: {
-      name: "LIT",
-      symbol: "LIT",
-      decimals: 18,
-    },
-    rpcUrls: ["https://chain-rpc.litprotocol.com/http"],
-    blockExplorerUrls: ["https://chain.litprotocol.com"],
-  },
+  defaultCID: "QmcXwZyPKsV4jUhUecTTCdrHnf3YfdmKUXzNqC2mvHEZej", // Empty.
   chains: {
     ethereum: {
       value: "ethereum",

@@ -66,7 +66,7 @@ const CreatorSettings = () => {
         setTransactionApprovalWaiting(false);
       }
     },
-    [apiReady],
+    [apiReady, conditions],
   );
 
   const handleCreate = useCallback(

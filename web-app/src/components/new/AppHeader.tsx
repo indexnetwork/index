@@ -1,7 +1,9 @@
+"use client";
+
 import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useState, useEffect } from "react";
 import Button from "./Button";
 
 const AppHeader = () => {
@@ -9,9 +11,20 @@ const AppHeader = () => {
   const query = useSearchParams();
   const { connect } = useAuth();
 
-  const allowed = useMemo(() => {
-    return query.get("allowed") === "true";
-  }, [query.get("allowed")]);
+  const [allowed, setAllowed] = useState(false);
+
+  useEffect(() => {
+    const allowedQueryParam = query.get("EnterTheVoid");
+
+    if (allowedQueryParam === "yes") {
+      localStorage.setItem("allowed", "true");
+      setAllowed(true);
+    } else {
+      // Fallback to local storage
+      const storedAllowed = localStorage.getItem("allowed") === "true";
+      setAllowed(storedAllowed);
+    }
+  }, [query]);
 
   return (
     <header className="app-header">

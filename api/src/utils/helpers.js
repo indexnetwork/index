@@ -1,5 +1,8 @@
 import { SiweMessage } from "@didtools/cacao";
 import { getAddress } from "@ethersproject/address";
+import moment from "moment";
+
+export const getCurrentDateTime = () => moment.utc().toISOString();
 
 export const getAuthSigFromDIDSession = (session) => {
   return {
@@ -9,3 +12,9 @@ export const getAuthSigFromDIDSession = (session) => {
   	sig: session.cacao.s.s,
   };
 }
+
+export const removePrefixFromKeys = (obj, prefix) =>
+    Object.keys(obj).reduce((newObj, key) => ({
+        ...newObj,
+        [key.startsWith(prefix) ? key.slice(prefix.length) : key]: obj[key]
+    }), {});

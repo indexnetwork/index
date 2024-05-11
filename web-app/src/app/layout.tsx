@@ -1,6 +1,7 @@
 import { AppLayout } from "components/layout/site/AppLayout";
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { headers } from "next/headers";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -43,8 +44,20 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const heads = headers();
+  const pathname = heads.get("x-url");
+
+  let page = "landing";
+  if (pathname) {
+    const urlObj1 = new URL(pathname);
+
+    if (urlObj1.pathname !== "/") {
+      page = "app";
+    }
+  }
+
   return (
-    <html lang="en">
+    <html lang="en" id={page}>
       <body className={inter.className}>
         <AppLayout>{children}</AppLayout>
       </body>

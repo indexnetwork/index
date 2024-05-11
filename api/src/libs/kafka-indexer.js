@@ -26,6 +26,8 @@ export const createIndexItemEvent = async (id) => {
     const itemService = new ItemService()
     const indexItem = await itemService.getIndexItemById(id, false);
 
+    logger.info(`Step [0]: IndexItem found for id: ${JSON.stringify(indexItem)}`)
+
     try {
 
         const indexSession = await getPKPSessionForIndexer(indexItem.index);
@@ -33,29 +35,30 @@ export const createIndexItemEvent = async (id) => {
 
         logger.info("Step [0]: Indexer session created for index:", indexItem.index.id)
 
-        if (indexItem.item.content) {
-
-            const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
-                content: indexItem.item.content
-            })
-    
-            const embeddingService = new EmbeddingService().setSession(indexSession)
-            const embedding = await embeddingService.createEmbedding({
-                "indexId": indexItem.indexId,
-                "itemId": indexItem.itemId,
-                "modelName": embeddingResponse.data.model,
-                "category": "document",
-                "vector": embeddingResponse.data.vector,
-                "description": "Default document embeddings",
-            });
-    
-            logger.info(`Step [0]: EmbeddingEvent trigger successfull for id: ${embedding.id}`);
+        // Check if the item is a webpage and has no content then return Exception
+        if (indexItem.item.__typename === 'WebPage' && indexItem.item.WebPage_content === '') {
+            logger.warn('Step [0]: No content found, createIndexItem event incomplete')
+            return
         }
 
-        logger.warn('Step [0]: No content found, createIndexItem event incomplete')
+        const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
+            content: indexItem.item.content ?? JSON.stringify(indexItem.item)
+        })
+
+        const embeddingService = new EmbeddingService().setSession(indexSession)
+        const embedding = await embeddingService.createEmbedding({
+            "indexId": indexItem.indexId,
+            "itemId": indexItem.itemId,
+            "modelName": embeddingResponse.data.model,
+            "category": "document",
+            "vector": embeddingResponse.data.vector,
+            "description": "Default document embeddings",
+        });
+
+        logger.info(`Step [0]: EmbeddingEvent trigger successful for id: ${embedding.id}`);
 
     } catch (e) {
-        logger.error(`Step [0]: Indexer createIndexItemEvent error: ${JSON.stringify(e.message)}`);
+        logger.error(`Step [0]: Indexer createIndexItemEvent error: ${JSON.stringify(e)}`);
     }
 
 }
@@ -76,52 +79,21 @@ export const updateIndexItemEvent = async (id) => {
         logger.info(`Step [1]: Indexer session created for index: ${indexItem.index.id}`)
 
         const updateURL = `${process.env.LLM_INDEXER_HOST}/indexer/item?indexId=${indexItem.indexId}&indexItemId=${indexItem.itemId}`
-        
-        if (indexItem.deletedAt !== null) { 
+
+        if (indexItem.deletedAt !== null) {
 
             logger.info(`Step [1]: IndexItem DeleteEvent trigger for id: ${id}`)
 
             const deleteResponse = await axios.delete(updateURL);
 
             // logger.info("IndexItem Delete Response", deleteResponse)
-            
+
             if (deleteResponse.status === 200) {
                 logger.info(`Step [1]: IndexItem Delete Success for id: ${id}`)
             } else {
                 logger.debug(`Step [1]: IndexItem Delete Failed for id: ${id}`)
             }
 
-        } else {
-
-            logger.info(`Step [1]: IndexItem UpdateEvent trigger for id: ${id}`)
-
-            const updateResponse = await axios.put(
-                `${process.env.LLM_INDEXER_HOST}/indexer/index`,
-                {
-                    embedding: indexItem.embedding,
-                    metadata: {
-
-                        indexTitle: embedding.index.title,
-                        indexCreatedAt: embedding.index.createdAt,
-                        indexUpdatedAt: embedding.index.updatedAt,
-                        indexDeletedAt: embedding.index.deletedAt,
-                        indexOwnerDID: embedding.index.ownerDID.id,
-
-                        webPageId: embedding.item.id,
-                        webPageTitle: embedding.item.title,
-                        webPageUrl: embedding.item.url,
-                        webPageContent: embedding.item.content,
-                        webPageCreatedAt: embedding.item.createdAt,
-                        webPageUpdatedAt: embedding.item.updatedAt,
-                        webPageDeletedAt: embedding.item.deletedAt,
-                    },
-                });
-
-            if (updateResponse.status === 200) {
-                logger.info(`Step [1]: IndexItem Update Success for id: ${id}`)
-            } else {
-                logger.warn(`Step [1]: IndexItem Update Failed for id: ${id}`)
-            }
         }
 
     } catch (e) {
@@ -175,7 +147,7 @@ export const updateWebPageEvent = async (id) => {
                     let response = await axios.get(`${process.env.LLM_INDEXER_HOST}/chat/generate?indexId=${indexItem.index.id}`)
                     redis.set(`questions:${indexItem.index.id}`, JSON.stringify(response.data), { EX: 86400 } );
 
-                    logger.info(`Step [2]: Questions for index ${indexItem.index.id} updated in redis with ${response.data.length} questions`)
+                    logger.info(`Step [2]: Questions for index ${indexItem.index.id} updated in redis with ${JSON.stringify(response.data)} questions`)
 
                 } catch (error) {
                     logger.warn(`Step [2]: Questions for index ${indexItem.index.id} not updated in redis with error: ${JSON.stringify(error.message)}`)
@@ -197,6 +169,7 @@ export const createEmbeddingEvent = async (id) => {
     const embeddingService = new EmbeddingService()
     const embedding = await embeddingService.getEmbeddingById(id);
 
+
     const payload = {
 
         indexId: embedding.index.id,
@@ -205,18 +178,13 @@ export const createEmbeddingEvent = async (id) => {
         indexUpdatedAt: embedding.index.updatedAt,
         indexDeletedAt: embedding.index.deletedAt,
         indexOwnerDID: embedding.index.ownerDID.id,
-
-        webPageId: embedding.item.id,
-        webPageTitle: embedding.item.title,
-        webPageUrl: embedding.item.url,
-        webPageContent: embedding.item.content,
-        webPageCreatedAt: embedding.item.createdAt,
-        webPageUpdatedAt: embedding.item.updatedAt,
-        webPageDeletedAt: embedding.item.deletedAt,
-
         vector: embedding.vector,
     };
 
+    for (let key of Object.keys(embedding.item)) {
+        if (key === '__typename') continue;
+        payload[key] = embedding.item[key]
+    }
 
     if(embedding.index.ownerDID.name){
         payload.indexOwnerName = embedding.index.ownerDID.name
@@ -225,11 +193,12 @@ export const createEmbeddingEvent = async (id) => {
         payload.indexOwnerBio = embedding.index.ownerDID.bio
     }
 
+
     try {
-        const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/index?indexId=${embedding.item.id}`, payload)
-        logger.info(`Step [3]: IndexItem ${payload.webPageId} with ${payload.webPageUrl} Indexed with it's content and embeddings`)
+        const indexResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/index?indexId=${embedding.index.id}`, payload)
+        logger.info(`Step [3]: Index ${embedding.indexId} with Item ${embedding.itemId} indexed with it's content and embeddings`)
     } catch (e) {
-        logger.error(`Step [3]: Indexer createEmbeddingEvent with error: ${JSON.stringify(e.message)}`);
+        logger.error(`Step [3]: Indexer createEmbeddingEvent with error: ${JSON.stringify(e)}`);
     }
 }
 

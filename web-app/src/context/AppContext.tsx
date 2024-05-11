@@ -17,6 +17,7 @@ import toast from "react-hot-toast";
 import { AccessControlCondition, Indexes, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { v4 as uuidv4 } from "uuid";
+import { CancelTokenSource } from "axios";
 
 type AppContextProviderProps = {
   children: ReactNode;
@@ -56,7 +57,22 @@ export interface AppContextValue {
   viewedIndex: Indexes | undefined;
   setViewedIndex: (index: Indexes | undefined) => void;
   fetchProfile: (did: string) => void;
-  fetchIndex: () => void;
+  fetchIndex: (
+    indexId: string,
+    {
+      cancelSource,
+    }: {
+      cancelSource?: CancelTokenSource;
+    },
+  ) => Promise<any>;
+  fetchIndexWithCreator: (
+    indexId: string,
+    {
+      cancelSource,
+    }: {
+      cancelSource?: CancelTokenSource;
+    },
+  ) => Promise<void>;
   handleCreate: (title: string) => Promise<void>;
   handleTransactionCancel: () => void;
   chatID: string | undefined;
@@ -122,32 +138,61 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         toast.error("Error fetching indexes, please refresh the page");
       }
     },
-    [apiReady],
+    [apiReady, api],
   );
 
-  const fetchIndex = useCallback(async (): Promise<void> => {
-    try {
-      if (!apiReady || !id || !isIndex) return;
-      if (viewedIndex?.id === id) return;
-      if (isFetchingRef.current) return;
+  const fetchIndex = useCallback(
+    async (
+      indexId: string,
+      {
+        cancelSource,
+      }: {
+        cancelSource?: CancelTokenSource;
+      },
+    ): Promise<any> => {
+      try {
+        if (!apiReady || !isIndex) return;
+        // if (viewedIndex?.id === id) return;
+        if (isFetchingRef.current) return;
 
-      isFetchingRef.current = true;
+        isFetchingRef.current = true;
 
-      const index = await api!.getIndex(id);
-      setViewedIndex(index);
+        const index = await api!.getIndex(indexId, { cancelSource });
+        setViewedIndex(index);
 
-      if (!index?.roles.owner) {
-        const indexWithIsOwner = await api!.getIndexWithIsCreator(id);
-        setViewedIndex(indexWithIsOwner);
+        isFetchingRef.current = false;
+        return index;
+      } catch (error) {
+        console.error("Error fetching index", error);
+        toast.error("Error fetching index, please refresh the page");
       }
+    },
+    [isIndex, apiReady, api],
+  );
 
-      prevIndexID.current = id;
-      isFetchingRef.current = false;
-    } catch (error) {
-      console.error("Error fetching index", error);
-      toast.error("Error fetching index, please refresh the page");
-    }
-  }, [id, viewedIndex, isIndex, apiReady]);
+  const fetchIndexWithCreator = useCallback(
+    async (
+      indexId: string,
+      {
+        cancelSource,
+      }: {
+        cancelSource?: CancelTokenSource;
+      },
+    ): Promise<void> => {
+      try {
+        if (!apiReady) return;
+        if (!viewedIndex?.roles.owner) {
+          const indexWithIsOwner = await api!.getIndexWithIsCreator(indexId, {
+            cancelSource,
+          });
+          setViewedIndex(indexWithIsOwner);
+        }
+      } catch (error) {
+        console.error("Error fetching index", error);
+      }
+    },
+    [apiReady, api],
+  );
 
   const handleTransactionCancel = useCallback(() => {
     setTransactionApprovalWaiting(false);
@@ -160,7 +205,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       try {
         if (!apiReady) return;
 
-        console.log("Creating handlecreate index in appcontext");
         const doc = await api!.createIndex(title);
         if (!doc) {
           throw new Error("API didn't return a doc");
@@ -222,16 +266,32 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         toast.error("Error fetching profile, please refresh the page");
       }
     },
-    [apiReady],
+    [apiReady, api],
   );
 
-  const handleProfileChange = useCallback(async () => {
+  const handleUserProfile = useCallback(async () => {
+    if (session) {
+      const profile = await fetchProfile(session.id);
+      setUserProfile(profile);
+    }
+  }, [fetchProfile, session]);
+
+  useEffect(() => {
+    handleUserProfile();
+  }, [handleUserProfile]);
+
+  const handleUserProfileChange = useCallback(async () => {
     if (isLanding) return;
+    if (viewedProfile && isIndex) return;
 
     let targetDID;
     if (isIndex && !viewedProfile) {
       if (viewedIndex) {
         targetDID = viewedIndex?.ownerDID?.id;
+      } else {
+        const fetchedIndex = await fetchIndex(id, {});
+        targetDID = fetchedIndex?.ownerDID?.id;
+        fetchIndexes(targetDID);
       }
     }
 
@@ -243,19 +303,11 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       const profile = await fetchProfile(targetDID);
       setViewedProfile(profile);
     }
-  }, [isLanding, isIndex, id, fetchProfile, viewedIndex]);
-
-  const handleUserProfileChange = useCallback(async () => {
-    if (session) {
-      const profile = await fetchProfile(session?.did.parent);
-      setUserProfile(profile);
-    }
-  }, [session, fetchProfile]);
+  }, [isLanding, isIndex, id, fetchProfile, isDID, session, viewedIndex]); // eslint-disable-line
 
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
       if (!apiReady || !viewedIndex || conditions.length === 0) return;
-      console.log("conditions in api:", conditions);
 
       const newAction = await api!.postLITAction(conditions);
 
@@ -269,16 +321,16 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   );
 
   useEffect(() => {
-    setViewedProfile(userProfile);
-  }, [userProfile]);
+    if (session) {
+      if (viewedProfile?.id === session.id) {
+        setViewedProfile(userProfile);
+      }
+    }
+  }, [userProfile, session, id]);
 
   useEffect(() => {
     handleUserProfileChange();
   }, [handleUserProfileChange]);
-
-  useEffect(() => {
-    handleProfileChange();
-  }, [handleProfileChange]);
 
   useEffect(() => {
     const newChatID = uuidv4();
@@ -290,7 +342,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     if (viewedProfile) {
       fetchIndexes(viewedProfile.id);
     }
-  }, [viewedProfile]);
+  }, [viewedProfile, fetchIndexes]);
 
   const contextValue: AppContextValue = {
     discoveryType,
@@ -320,6 +372,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     updateIndex,
     fetchProfile,
     fetchIndex,
+    fetchIndexWithCreator,
     handleCreate,
     loading,
     handleTransactionCancel,

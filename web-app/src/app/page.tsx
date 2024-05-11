@@ -12,6 +12,7 @@ import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import "./globals.css";
+import "./landing.css";
 
 const Landing = () => {
   const router = useRouter();
@@ -24,9 +25,19 @@ const Landing = () => {
     }
   }, [status, session, router]);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (window.location.pathname === "/") {
+        document.getElementsByTagName("html")[0].setAttribute("id", "landing");
+      } else {
+        document.getElementsByTagName("html")[0].setAttribute("id", "app");
+      }
+    }
+  }, []);
+
   return (
     <Suspense>
-      <div className="bg-mainDark text-primary font-primary min-h-screen">
+      <div className="min-h-screen bg-mainDark font-primary text-primary">
         <AppHeader />
         <HeroSection />
         <PartnersSection />

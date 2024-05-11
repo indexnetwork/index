@@ -1,6 +1,5 @@
 "use client";
 
-import { appConfig } from "@/config";
 import { normalizeAccountId } from "@ceramicnetwork/common";
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { getAccountId } from "@didtools/pkh-ethereum";
@@ -93,12 +92,13 @@ export const AuthProvider = ({ children }: any) => {
   const startSession = useCallback(async (): Promise<void> => {
     const ethProvider = window.ethereum;
 
-    if (ethProvider.chainId !== appConfig.testNetwork.chainId) {
-      /*const switchRes = await switchTestNetwork();
+    // if (ethProvider.chainId !== appConfig.testNetwork.chainId) {
+    /*const switchRes = await switchTestNetwork();
       if (!switchRes) {
         throw new Error("Network error.");
         }*/
-    }
+    // }
+
     // request ethereum accounts.
     const addresses = await ethProvider.enable({
       method: "eth_requestAccounts",

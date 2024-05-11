@@ -8,7 +8,6 @@ const customFormat = printf(({ level, message, timestamp, stack }) => {
 });
 
 const formatLevel = (info => {
-    console.log(info)
     info.level = info.level.toUpperCase()
     return info;
 });

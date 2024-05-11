@@ -1,5 +1,4 @@
 import moment from "moment";
-import { appConfig } from "config";
 
 export function copyToClipboard(str?: string) {
   if (navigator && navigator.clipboard) {
@@ -72,29 +71,15 @@ export const setDates = <
   return obj;
 };
 
-export const addTestNetwork = async () => {
-  const params = [appConfig.testNetwork];
-  try {
-    await window.ethereum.request({
-      method: "wallet_addEthereumChain",
-      params,
-    });
-    return true;
-  } catch (e) {
-    return false; // Reject to add
-  }
-};
-
-export const switchTestNetwork = async () => {
+export const switchNetwork = async (chainId: string) => {
   try {
     await window.ethereum.request({
       method: "wallet_switchEthereumChain",
-      params: [{ chainId: appConfig.testNetwork.chainId }],
+      params: [{ chainId }],
     });
     return true;
   } catch (e: any) {
     if (e.code === 4001) return false; // Reject to switch
-    return await addTestNetwork(); // Network not found
   }
 };
 export const getCurrentDateTime = () => moment.utc().toISOString();
