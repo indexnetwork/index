@@ -11,10 +11,10 @@ const FeatureSection2 = () => {
               Composable <br /> Discovery Protocol
             </h2>
             <p className="md:w-[75%] md:text-lg">
-              The discovery protocol of Index allows users to query multiple
-              indexes together. This enables users to have an integrated
-              discovery experience, ensuring responses are both personalized and
-              trusted.
+              The discovery protocol of Index allows users to query
+              multiple indexes together. This enables users to have an
+              integrated discovery experience, ensuring responses are both
+              personalized and trusted.
             </p>
             <a
               className="text-secondary"

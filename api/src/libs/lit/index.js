@@ -7,8 +7,7 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
 import RedisClient from "../../clients/redis.js";
 import { DIDService } from "../../services/did.js";
-import { getAuthSigFromDIDSession } from "../../utils/helpers.js";
-import { definition } from "../../types/merged-runtime.js";
+import { getAuthSigFromDIDSession, getTypeDefinitions } from "../../utils/helpers.js";
 import { Cacao } from "@didtools/cacao";
 import { AuthMethodType } from "@lit-protocol/constants";
 import { randomBytes, randomString } from "@stablelib/random";
@@ -18,10 +17,11 @@ import { Ed25519Provider } from "key-did-provider-ed25519";
 import { getResolver } from "key-did-resolver";
 import { CID } from "multiformats/cid";
 import { sendLit } from "./send_lit.js";
-import {joinSignature} from "ethers/lib/utils.js";
-import { IndexService } from "../../services/index.js";
+import {joinSignature } from "ethers/lib/utils.js";
 
 const provider = new ethers.providers.JsonRpcProvider("https://chain-rpc.litprotocol.com/http", 175177);
+
+const definition = getTypeDefinitions()
 
 const config = {
   litNetwork: process.env.LIT_NETWORK,
@@ -187,7 +187,7 @@ export const writeAuthMethods = async ({
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
       jsParams: {
-        authSig: userAuthSig, // for conditions control. to identify authenticated user.
+        userAuthSig: userAuthSig, // for conditions control. to identify authenticated user.
         publicKey: signerPublicKey,
         chain: "ethereum", // polygon
         nonce: randomString(12),
@@ -266,7 +266,7 @@ export const transferOwnership = async ({
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
       jsParams: {
-        authSig: userAuthSig, // for conditions control. to identify authenticated user.
+        userAuthSig: userAuthSig, // for conditions control. to identify authenticated user.
         publicKey: signerPublicKey,
         chain: "ethereum", // polygon
         nonce: randomString(12),
@@ -570,7 +570,7 @@ export const getPKPSession = async (session, index) => {
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
       jsParams: {
-        authSig: userAuthSig, // for conditions control. to identify authenticated user.
+        userAuthSig: userAuthSig, // for conditions control. to identify authenticated user.
         publicKey: index.signerPublicKey,
         nonce: randomString(12),
         chain: "ethereum", // polygon

@@ -1,7 +1,8 @@
 import { ComposeClient } from "@composedb/client";
-import { removePrefixFromKeys, getCurrentDateTime } from "../utils/helpers.js";
+import { removePrefixFromKeys, getCurrentDateTime, getTypeDefinitions } from "../utils/helpers.js";
 import { indexItemFragment } from "../types/fragments.js";
-import { definition } from "../types/merged-runtime.js";
+
+const definition = getTypeDefinitions()
 
 const transformIndexItem = (indexItem) => {
 

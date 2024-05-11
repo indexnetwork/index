@@ -1,22 +1,12 @@
-import fs from 'fs/promises';
-
 import { NodeVM } from 'vm2';
 import { TextEncoder, TextDecoder } from "util";
-
-
 import RedisClient from '../clients/redis.js';
 const redis = RedisClient.getInstance();
-import  pinataSDK from '@pinata/sdk';
-
-import { Readable } from "stream";
-
-
-//import { Index } from '../protocol.ts';
 
 import { getNftMetadataApi, getCollectionMetadataApi, getENSProfileByWallet } from '../controllers/meta.js';
+import { generateLITAction } from '../utils/helpers.js';
 
 const enrichConditions = async (conditions) => {
-
 
     conditions = await Promise.all(conditions.map( async (c) => {
 
@@ -137,21 +127,9 @@ export const getAction = async (req, res, next) => {
 };
 export const postAction = async (req, res, next) => {
 
-    let actionStr = await fs.readFile('lit_action.js', 'utf8');
-    actionStr = actionStr.replace('__REPLACE_THIS_AS_CONDITIONS_ARRAY__', JSON.stringify(req.body));
-
-    const pinata = new pinataSDK({ pinataJWTKey: process.env.PINATA_JWT_KEY});
-
-    const buffer = Buffer.from(actionStr, "utf8");
-		const stream = Readable.from(buffer);
-
-		stream.path = "string.txt";
-
-		const resp = await pinata.pinFileToIPFS(stream,{
-		  pinataMetadata: { name: "signerFunction" }
-		})
+  const generatedCID = await generateLITAction(req.body)
 
 		return res.json({
-		  cid: resp.IpfsHash
+		  cid: generatedCID
 		})
 };

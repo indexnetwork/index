@@ -4,24 +4,7 @@
   // lit_actions/src/session.action.ts
   var getCreatorConditions = (transform=true) => {
     let conditionsArray = __REPLACE_THIS_AS_CONDITIONS_ARRAY__;
-    /*[
-           {
-              "tag":"semanticIndex",
-              "value":{
-                 "contractAddress":"",
-                 "standardContractType":"",
-                 "chain":"ethereum",
-                 "method":"",
-                 "parameters":[
-                    ":userAddress"
-                 ],
-                 "returnValueTest":{
-                    "comparator":"=",
-                    "value":"1a2c093f4963d20c550e95aaa726096230c400a3"
-                 }
-              }
-           }
-        ];*/
+
     if(conditionsArray.length < 1){
       return [];
     }
@@ -73,11 +56,7 @@
   };
 
   var getResources = (isPermittedAddress = false) => {
-    const models = {
-      "Index": "kjzl6hvfrbw6cbcdnrwl793l4o1jkd6gg9gfoe97t32px4tphikbgr3d2s64kcd",
-      "IndexItem": "kjzl6hvfrbw6c8y5uncb93eiyo3immfr80tedl8yv58qkwm5lz0y8tuu00a2u79",
-      "Embedding": "kjzl6hvfrbw6c5wj20x3gw3nevmdpwtrkwsmz94ewbakc99qmn29piwe9cs1fo1"
-    };
+    const models = __REPLACE_THIS_AS_MODELS_OBJECT__;
     return isPermittedAddress ? [models.Index, models.IndexItem, models.Embedding] : [models.IndexItem, models.Embedding];
   };
 
@@ -109,7 +88,8 @@
         console.log(JSON.stringify(getCreatorConditions(false)));
         return;
       }
-      const context = { isPermittedAddress: false, isCreator: false, siweMessage: false, signList: signList.getPKPSession };
+      const context = { userAuthSig: false, isPermittedAddress: false, isCreator: false, siweMessage: false, signList: signList.getPKPSession };
+      context.userAuthSig = userAuthSig;
       console.time("pubkeyToTokenId");
       const pkpTokenId = Lit.Actions.pubkeyToTokenId({ publicKey });
       timers.pubkeyToTokenId = console.timeEnd("pubkeyToTokenId");
@@ -117,12 +97,12 @@
       const conditions = getCreatorConditions();
       let isCreator = false;
       if (conditions.length > 0) {
-        isCreator = Lit.Actions.checkConditions({ conditions, authSig, chain });
+        isCreator = await Lit.Actions.checkConditions({ conditions, authSig: userAuthSig, chain });
         context.isCreator = isCreator;
       }
 
       console.time("isPermittedAddress");
-      const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: authSig.address });
+      const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: userAuthSig.address });
       context.isPermittedAddress = isPermittedAddress;
       timers.isPermittedAddress = console.timeEnd("isPermittedAddress");
 

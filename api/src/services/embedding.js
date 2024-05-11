@@ -1,9 +1,10 @@
 import { ComposeClient } from "@composedb/client";
 import { getOwnerProfile } from "../libs/lit/index.js";
-import { removePrefixFromKeys, getCurrentDateTime } from "../utils/helpers.js";
+import { removePrefixFromKeys, getCurrentDateTime, getTypeDefinitions } from "../utils/helpers.js";
 import { indexItemFragment, modelBundleFragment } from "../types/fragments.js";
-import { definition } from "../types/merged-runtime.js";
 
+
+const definition = getTypeDefinitions()
 export class EmbeddingService {
     constructor() {
         this.client = new ComposeClient({

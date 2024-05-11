@@ -6,10 +6,13 @@ export default function PageHead() {
       <link rel="shortcut icon" href="/favicon-white.png" />
       <title>Index Network | Discovery Protocol</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <meta name="title" content="Index Network | Discovery Protocol" />
+      <meta
+        name="title"
+        content="Index Network | Discovery Protocol"
+      />
       <meta
         name="description"
-        content="Index allows to create truly personalised and autonomous
+        content="Index allow you to create truly personalised and autonomous
       discovery experiences across the web."
       />
 
@@ -21,7 +24,7 @@ export default function PageHead() {
       />
       <meta
         property="twitter:description"
-        content="Index allows to create truly personalised and autonomous
+        content="Index allow you to create truly personalised and autonomous
         discovery experiences across the web."
       />
       <meta

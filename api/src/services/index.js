@@ -1,8 +1,10 @@
 import {ComposeClient} from "@composedb/client";
 
-import { getCurrentDateTime } from "../utils/helpers.js";
-import {definition} from "../types/merged-runtime.js";
+import { getCurrentDateTime, getTypeDefinitions } from "../utils/helpers.js";
+
 import { getOwnerProfile } from "../libs/lit/index.js";
+
+const definition = getTypeDefinitions()
 
 export class IndexService {
     constructor() {
