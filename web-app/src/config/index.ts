@@ -1,6 +1,6 @@
 export const appConfig = {
-  baseUrl: "https://dev.index.network/",
-  apiUrl: "https://dev.index.network/api", // TODO: handle better
+  baseUrl: "https://index.network/",
+  apiUrl: "https://index.network/api", // TODO: handle better
   ipfsProxy: "https://ipfs.io/ipfs",
   defaultCID: "QmTAQgaWZHTFHL9dMSBn6i9E1FMUQkV5WE9vNbAV4xtkKa", // Empty.
   chains: {
