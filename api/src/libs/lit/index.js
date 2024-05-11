@@ -7,7 +7,7 @@ import { LitContracts } from "@lit-protocol/contracts-sdk";
 import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
 import RedisClient from "../../clients/redis.js";
 import { DIDService } from "../../services/did.js";
-import { getAuthSigFromDIDSession } from "../../utils/helpers.js";
+import { getAuthSigFromDIDSession, getTypeDefinitions } from "../../utils/helpers.js";
 import { Cacao } from "@didtools/cacao";
 import { AuthMethodType } from "@lit-protocol/constants";
 import { randomBytes, randomString } from "@stablelib/random";
@@ -17,7 +17,7 @@ import { Ed25519Provider } from "key-did-provider-ed25519";
 import { getResolver } from "key-did-resolver";
 import { CID } from "multiformats/cid";
 import { sendLit } from "./send_lit.js";
-import {joinSignature, getTypeDefinitions } from "ethers/lib/utils.js";
+import {joinSignature } from "ethers/lib/utils.js";
 
 const provider = new ethers.providers.JsonRpcProvider("https://chain-rpc.litprotocol.com/http", 175177);
 
