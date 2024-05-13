@@ -31,7 +31,6 @@
     "cid": "multiformats/cid",
     "codeco": "^1.2.1",
     "cookie-parser": "~1.4.6",
-    "cors": "^2.8.5",
     "cross-eventsource": "^1.0.0",
     "debug": "~2.6.9",
     "did-session": "^2.1.2",

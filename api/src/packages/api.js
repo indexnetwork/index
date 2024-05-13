@@ -3,7 +3,6 @@ import Moralis from "moralis";
 import express from "express";
 import Joi from "joi";
 import * as ejv from "express-joi-validation";
-import cors from "cors";
 
 import RedisClient from "../clients/redis.js";
 
@@ -15,7 +14,6 @@ const app = express();
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
-  app.use(cors()); // local dev
 }
 
 Sentry.init({
@@ -533,7 +531,7 @@ app.get(
 app.use(errorMiddleware);
 
 const start = async () => {
-  console.log("Starting search service...", port);
+  console.log("Starting API ...", port);
   await redis.connect();
 
   await Moralis.start({
@@ -542,7 +540,7 @@ const start = async () => {
 
   app.use(Sentry.Handlers.errorHandler());
   app.listen(port, async () => {
-    console.log(`Search service listening on port ${port}`);
+    console.log(`API listening on port ${port}`);
   });
 };
 start();
