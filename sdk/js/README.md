@@ -12,7 +12,7 @@
 
 # Quick start
 
-Index Network API allows you to interact with our platform and build products leveraging our services. Below, you will find detailed information about the available endpoints, their purposes, and how to use them.
+Index is a discovery protocol that functions as a decentralized search engine which offers an open layer for discovery. As the first decentralized semantic index which leverages Web3 and AI to eliminate the need for intermediaries for finding knowledge, products and like-minded people through direct, composable discovery across peers.
 
 You can either use the API directly or the client available. Here is a quick start to discover it.
 
