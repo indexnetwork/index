@@ -10,7 +10,7 @@ export const DEFAULT_CREATE_INDEX_TITLE = "Untitled Index";
 export const DEFAULT_CREATE_LINK_TITLE = "Untitled Link";
 
 export const API_ENDPOINTS = {
-  CHAT_STREAM: "/discovery/chat",
+  CHAT_STREAM: "discovery/chat",
   INDEXES: "/indexes",
   GET_ALL_INDEXES: "/dids/:id/indexes",
   GET_PROFILE: "/dids/:id/profile",

@@ -122,7 +122,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
     return `indexes`;
   };
 
-  const apiUrl = `https://dev.index.network/api${API_ENDPOINTS.CHAT_STREAM}`;
+  const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/${API_ENDPOINTS.CHAT_STREAM}`;
   const initialMessages: Message[] = [];
   const {
     messages,

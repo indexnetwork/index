@@ -6,7 +6,7 @@ from dataclasses import asdict
 import requests
 from siwe.siwe import VersionEnum
 from .config import IndexConfig
-from .types import User, Link
+from .index_types import User, Link
 from .utils import create_siwe_message, get_signature, prepare_siwe_message, random_string, siwe_message_to_json, to_iso_format
 from web3 import Web3
 from datetime import datetime, timedelta
@@ -19,12 +19,15 @@ from enum import Enum
 
 class IndexClient:
     def __init__(self, domain, session=None, private_key=None, wallet=None, network="ethereum"):
-      self.base_url = IndexConfig.API_URL
       self.session = session
       self.private_key = private_key
       self.domain = domain
-      self.network = network
       self.wallet = wallet
+      self.network = network
+      if self.network == "mainnet":
+        self.base_url = "https://index.network/api"
+      else:
+        self.base_url = "https://dev.index.network/api"
 
     def call_did(self, method, params):
       base_path = os.path.dirname(os.path.abspath(__file__))
@@ -113,11 +116,14 @@ class IndexClient:
         query_string = ""
       return self._request(f"/indexes/{index_id}/items?{query_string}", "GET")
 
-    def create_index(self, title):
+    def create_index(self, title, signer_function=None):
       body = {
         "title": title,
-        "signerFunction": IndexConfig.DEFAULT_CID
       }
+
+      if signer_function:
+        body["signer_function"] = signer_function
+
       return self._request("/indexes", "POST", body)
 
     def add_item_to_index(self, index_id, item_id):

@@ -2,20 +2,19 @@ name: Web App Build & Deploy
 on:
   push:
     branches:
-    - mainnet
-    - testnet
-    - dev
+      - mainnet
+      - testnet
+      - dev
     paths:
-    - 'web-app/**'
+      - "web-app/**"
 jobs:
   main:
     runs-on: ubuntu-latest
     steps:
-
       - name: Install kubectl
         uses: azure/setup-kubectl@v2.0
         with:
-          version: 'v1.23.6' # default is latest stable
+          version: "v1.23.6" # default is latest stable
         id: install
 
       - name: Configure AWS credentials
@@ -35,9 +34,9 @@ jobs:
       - name: Set kubectl context
         uses: azure/k8s-set-context@v3
         with:
-           method: kubeconfig
-           kubeconfig: ${{ secrets.KUBECONFIG }}
-           context: microk8s
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+          context: microk8s
 
       - name: Check k8s connection
         run: kubectl get pods
@@ -51,6 +50,16 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@v2
 
+        # Set environment variables dynamically based on the branch
+      - name: Set Environment Variables
+        id: set-env
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/mainnet" ]; then
+            echo "API_URL=https://index.network/api" >> $GITHUB_ENV
+          else
+            echo "API_URL=https://dev.index.network/api" >> $GITHUB_ENV
+          fi
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
 
@@ -63,7 +72,7 @@ jobs:
           DOCKER_TAG: indexnetwork/web3-web-app:${{ steps.build-time.outputs.time }}
           DOCKER_REGISTRY: 236785930124.dkr.ecr.us-east-1.amazonaws.com
         run: |
-          docker build -t $DOCKER_TAG .
+          docker build --build-arg API_URL=${API_URL} -t $DOCKER_TAG .
           docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
           docker push $DOCKER_REGISTRY/$DOCKER_TAG
           docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexnetwork/web3-web-app:latest-${GITHUB_REF#refs/heads/}

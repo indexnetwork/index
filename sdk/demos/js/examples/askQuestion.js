@@ -7,8 +7,7 @@ async function main() {
   try {
     const wallet = new Wallet(process.env.PRIVATE_KEY);
     const indexClient = new IndexClient({
-      domain: "index.network",
-      network: "ethereum",
+      network: "dev", // or mainnet
       wallet, // or session
     });
 

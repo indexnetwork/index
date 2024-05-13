@@ -19,12 +19,14 @@ import { randomString } from "./util.js";
 
 type ApiResponse<T> = Promise<T>;
 
+type IndexNetworkType = "mainnet" | "dev";
+
 export default class IndexClient {
   private baseUrl: string;
   private session?: string;
-  private network?: string;
+  private network?: IndexNetworkType;
   private wallet?: Wallet;
-  private domain: string;
+  private domain?: string;
   private chroma: any;
   private options?: { useChroma: boolean };
 
@@ -39,12 +41,16 @@ export default class IndexClient {
     session?: string;
     privateKey?: string;
     wallet?: Wallet;
-    network?: string;
+    network?: IndexNetworkType;
     options?: { useChroma: boolean };
   }) {
-    this.baseUrl = IndexConfig.apiURL;
-    this.network = network || "ethereum";
-    this.domain = domain;
+    this.network = network || "dev";
+    if (this.network === "mainnet") {
+      this.baseUrl = "https://index.network/api";
+    } else {
+      this.baseUrl = "https://dev.index.network/api";
+    }
+    this.domain = domain || "index.network";
     if (session) {
       this.session = session;
     } else {
@@ -67,21 +73,24 @@ export default class IndexClient {
     sources: string[];
     filters: object;
   }) {
-    
-    console.log('IndexConfig.indexChromaURL', IndexConfig.indexChromaURL)
+    let indexChromaURL = "https://dev.index.network:8000/chroma";
+
+    if (this.network === "mainnet") {
+      indexChromaURL = "https://index.network:8000/chroma";
+    }
 
     return IndexVectorStore.fromExistingCollection(
       embeddings, // new OpenAIEmbeddings({ openAIApiKey: apiKey, modelName: process.env.MODEL_EMBEDDING }),
       {
         collectionName: "chroma-indexer",
-        url: IndexConfig.indexChromaURL,
+        url: indexChromaURL,
         // filter: {
         //   where: {
         //     indexId: { $in: sources },
         //     ...filters,
         //   }
         // }
-      }
+      },
     );
   }
 
@@ -249,10 +258,13 @@ export default class IndexClient {
     });
   }
 
-  public async createIndex(title: string): ApiResponse<IIndex> {
+  public async createIndex(
+    title: string,
+    signerFunction?: string,
+  ): ApiResponse<IIndex> {
     const body = {
       title,
-      signerFunction: IndexConfig.defaultCID,
+      signerFunction,
     };
 
     return this.request(`/indexes`, {

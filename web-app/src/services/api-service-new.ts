@@ -55,7 +55,7 @@ class ApiService {
 
   private constructor() {
     this.apiAxios = axios.create({
-      baseURL: appConfig.apiUrl,
+      baseURL: `${process.env.NEXT_PUBLIC_API_URL}`,
       headers: {
         "Content-Type": "application/json",
       },
@@ -260,7 +260,6 @@ class ApiService {
   ): Promise<Indexes> {
     const body = {
       title,
-      signerFunction: appConfig.defaultCID,
     };
 
     const url = API_ENDPOINTS.CREATE_INDEX;
