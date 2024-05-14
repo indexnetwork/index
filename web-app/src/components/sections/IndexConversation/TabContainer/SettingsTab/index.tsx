@@ -8,8 +8,10 @@ import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Image from "next/image";
+import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { CodeSnippetsWithTabs } from "./CodeSnippets";
 import SettingsModal, { SettingsModalStep } from "./SettingsModal";
 
 export interface IndexSettingsTabSectionProps {}
@@ -120,7 +122,13 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   }, []);
 
   return (
-    <>
+    <div
+      style={{
+        overflow: "scroll",
+        height: "79dvh",
+        paddingBottom: "6rem",
+      }}
+    >
       <SettingsModal
         step={step}
         onCancel={handleCancel}
@@ -196,6 +204,45 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
               >
                 Create new key
               </button>
+            </div>
+          </div>
+        </Col>
+      </FlexRow>
+      <FlexRow className={"mt-8"}>
+        <Col
+          xs={12}
+          style={{
+            marginBottom: "16px",
+          }}
+        >
+          <Header>Use Your Own Agent</Header>
+        </Col>
+        <Col xs={8}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "1.25rem",
+            }}
+          >
+            <Text className={"mb-4"} theme={"primary"} size="md">
+              Here you'll find code examples to help you seamlessly integrate
+              Index into your applications using Node.js, and Python.
+              <br />
+              <br />
+              For more information, jump to{" "}
+              <Link href="https://docs.index.network" target="_blank">
+                documentation
+              </Link>
+              . Happy coding!
+            </Text>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <CodeSnippetsWithTabs />
             </div>
           </div>
         </Col>
@@ -292,7 +339,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
           </div>
         </Col>
       </FlexRow>
-    </>
+    </div>
   );
 };
 

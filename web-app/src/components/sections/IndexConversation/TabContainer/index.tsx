@@ -25,7 +25,7 @@ const TAB_TITLES = {
   [TabKey.Index]: "Index",
   [TabKey.Creators]: "Creators",
   [TabKey.AccessControl]: "Access Control",
-  [TabKey.Settings]: "Settings",
+  [TabKey.Settings]: "Developers",
 };
 
 export default function TabContainer() {
