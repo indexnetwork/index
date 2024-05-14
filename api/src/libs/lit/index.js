@@ -2,12 +2,15 @@ import { ethers } from "ethers";
 import u8a from "@lit-protocol/uint8arrays";
 import elliptic from "elliptic";
 const ec = new elliptic.ec("secp256k1");
-import {  resolveProperties } from '@ethersproject/properties';
+import { resolveProperties } from "@ethersproject/properties";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
 import RedisClient from "../../clients/redis.js";
 import { DIDService } from "../../services/did.js";
-import { getAuthSigFromDIDSession, getTypeDefinitions } from "../../utils/helpers.js";
+import {
+  getAuthSigFromDIDSession,
+  getTypeDefinitions,
+} from "../../utils/helpers.js";
 import { Cacao } from "@didtools/cacao";
 import { AuthMethodType } from "@lit-protocol/constants";
 import { randomBytes, randomString } from "@stablelib/random";
@@ -17,11 +20,13 @@ import { Ed25519Provider } from "key-did-provider-ed25519";
 import { getResolver } from "key-did-resolver";
 import { CID } from "multiformats/cid";
 import { sendLit } from "./send_lit.js";
-import {joinSignature } from "ethers/lib/utils.js";
 
-const provider = new ethers.providers.JsonRpcProvider("https://chain-rpc.litprotocol.com/http", 175177);
+const provider = new ethers.providers.JsonRpcProvider(
+  "https://chain-rpc.litprotocol.com/http",
+  175177,
+);
 
-const definition = getTypeDefinitions()
+const definition = getTypeDefinitions();
 
 const config = {
   litNetwork: process.env.LIT_NETWORK,
@@ -38,14 +43,12 @@ const redis = RedisClient.getInstance();
 
 class PKPSigner extends ethers.Signer {
   constructor(address, litNodeClient, rpcProvider, actionParams) {
-
     super(address);
 
     this.actionParams = actionParams;
     this.provider = rpcProvider;
     this.litNodeClient = litNodeClient;
     this.address = address;
-
   }
 
   async getAddress() {
@@ -53,8 +56,6 @@ class PKPSigner extends ethers.Signer {
   }
 
   async signTransaction(transaction) {
-
-
     const addr = await this.getAddress();
 
     if (this.manualGasPrice) {
@@ -74,37 +75,37 @@ class PKPSigner extends ethers.Signer {
     }
 
     try {
-      if (!transaction['gasLimit']) {
+      if (!transaction["gasLimit"]) {
         transaction.gasLimit = await this.provider.estimateGas(transaction);
       }
 
-      if (!transaction['nonce']) {
+      if (!transaction["nonce"]) {
         transaction.nonce = await this.provider.getTransactionCount(addr);
       }
 
-      if (!transaction['chainId']) {
+      if (!transaction["chainId"]) {
         transaction.chainId = (await this.provider.getNetwork()).chainId;
       }
 
-      if (!transaction['gasPrice']) {
+      if (!transaction["gasPrice"]) {
         transaction.gasPrice = await this.getGasPrice();
       }
     } catch (err) {
-      console.log(err)
+      console.log(err);
     }
 
     return resolveProperties(transaction).then(async (tx) => {
-
-      let params =  this.actionParams;
-      await litNodeClient.connect()
+      let params = this.actionParams;
+      await litNodeClient.connect();
 
       delete tx.from;
       const serializedTx = ethers.utils.serializeTransaction(tx);
       const unsignedTxn = ethers.utils.keccak256(serializedTx);
 
       //if(params.jsParams.signList[0].chain === "ethereum") {])
-      if(params.jsParams.signList.signTransaction){
-        params.jsParams.signList.signTransaction.messageToSign = ethers.utils.arrayify(unsignedTxn);
+      if (params.jsParams.signList.signTransaction) {
+        params.jsParams.signList.signTransaction.messageToSign =
+          ethers.utils.arrayify(unsignedTxn);
       }
       /*
       if(params.jsParams.signList.getPKPSession){
@@ -118,7 +119,7 @@ class PKPSigner extends ethers.Signer {
       if (!resp.signatures) {
         throw new Error("No signature returned");
       }
-    /*
+      /*
       if(resp.signatures.getPKPSession){
 
         const { siweMessage } = JSON.parse(resp.response.context);
@@ -138,21 +139,18 @@ class PKPSigner extends ethers.Signer {
       }
       */
 
-      if(resp.signatures.signTransaction){
+      if (resp.signatures.signTransaction) {
         const signature = resp.signatures.signTransaction.signature;
         return ethers.utils.serializeTransaction(tx, signature);
       }
-
     });
   }
 
   async sendTransaction(transaction) {
-
     const signedTransaction = await this.signTransaction(transaction);
     return this.provider.sendTransaction(signedTransaction);
   }
 }
-
 
 export const writeAuthMethods = async ({
   userAuthSig,
@@ -161,8 +159,6 @@ export const writeAuthMethods = async ({
   newCID,
 }) => {
   try {
-
-
     const dAppSessionSigsResponse = await redis.get(
       `lit:${config.litNetwork}:dAppSessionSigs`,
     );
@@ -183,7 +179,7 @@ export const writeAuthMethods = async ({
     const didKey = new DID({ provider: didProvider, resolver: getResolver() });
     await didKey.authenticate();
 
-    const signer = new PKPSigner(from, litNodeClient, provider , {
+    const signer = new PKPSigner(from, litNodeClient, provider, {
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
       jsParams: {
@@ -193,16 +189,15 @@ export const writeAuthMethods = async ({
         nonce: randomString(12),
         signList: {
           signTransaction: {},
-        }
+        },
       },
-    })
+    });
 
     const litContracts = new LitContracts({
       network: config.litNetwork,
       signer: signer,
       debug: false,
     });
-
 
     await litContracts.connect();
 
@@ -213,7 +208,6 @@ export const writeAuthMethods = async ({
     const previousCollabAction =
       litContracts.utils.getBytesFromMultihash(prevCIDV0);
 
-
     const transaction =
       await litContracts.pkpPermissionsContract.write.batchAddRemoveAuthMethods(
         tokenId,
@@ -222,22 +216,18 @@ export const writeAuthMethods = async ({
         ["0x"],
         [[BigInt(1)]],
         [2],
-        [previousCollabAction]
+        [previousCollabAction],
       );
 
     //await transaction.wait()
 
     console.log("broadcast txn result:", JSON.stringify(transaction));
     return true;
-
-
-
   } catch (error) {
     console.error(error);
     throw new Error("Error writing auth methods");
   }
 };
-
 
 export const transferOwnership = async ({
   userAuthSig,
@@ -247,7 +237,6 @@ export const transferOwnership = async ({
   newOwner,
 }) => {
   try {
-
     const dAppSessionSigsResponse = await redis.get(
       `lit:${config.litNetwork}:dAppSessionSigs`,
     );
@@ -262,7 +251,7 @@ export const transferOwnership = async ({
     }
     const from = ethers.utils.computeAddress(signerPublicKey).toLowerCase();
 
-    const signer = new PKPSigner(from, litNodeClient, provider , {
+    const signer = new PKPSigner(from, litNodeClient, provider, {
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
       jsParams: {
@@ -272,9 +261,9 @@ export const transferOwnership = async ({
         nonce: randomString(12),
         signList: {
           signTransaction: {},
-        }
+        },
       },
-    })
+    });
 
     const litContracts = new LitContracts({
       network: config.litNetwork,
@@ -295,27 +284,23 @@ export const transferOwnership = async ({
         ["0x"],
         [[BigInt(1)]],
         [1],
-        [previousOwner]
+        [previousOwner],
       );
 
-    const res = await transaction.wait(1)
+    const res = await transaction.wait(1);
 
     console.log("broadcast txn result:", JSON.stringify(transaction));
-    if(res){
+    if (res) {
       return true;
     }
     return false;
-
-
   } catch (error) {
     console.error(error);
     throw new Error("Error writing auth methods");
   }
 };
 
-
 export const getOwner = async (pkpPubKey) => {
-
   const litContracts = new LitContracts({
     network: config.litNetwork,
     debug: false,
@@ -334,8 +319,13 @@ export const getOwner = async (pkpPubKey) => {
     await litContracts.connect();
   }
 
-  const addressList = await litContracts.pkpPermissionsContractUtils.read.getPermittedAddresses(tokenId);
-  const address = addressList.filter(a => a.toLowerCase() !== pkpAddress.toLowerCase())[0]
+  const addressList =
+    await litContracts.pkpPermissionsContractUtils.read.getPermittedAddresses(
+      tokenId,
+    );
+  const address = addressList.filter(
+    (a) => a.toLowerCase() !== pkpAddress.toLowerCase(),
+  )[0];
 
   await redis.hSet(`pkp:owner`, pkpPubKey, address);
 
@@ -350,7 +340,6 @@ export const getOwnerProfile = async (index) => {
     const ownerAddr = await getOwner(index.signerPublicKey);
     return { id: `did:pkh:eip155:1:${ownerAddr}` };
   }
-
 };
 export const encodeDIDWithLit = (pkpPubKey) => {
   pkpPubKey = pkpPubKey.replace("0x", "");
@@ -408,8 +397,10 @@ export const getPKPSessionForIndexer = async (index) => {
 };
 
 export const mintPKP = async (ownerAddress, actionCID) => {
-
-  const signer = new ethers.Wallet(process.env.INDEXER_WALLET_PRIVATE_KEY, provider)
+  const signer = new ethers.Wallet(
+    process.env.INDEXER_WALLET_PRIVATE_KEY,
+    provider,
+  );
 
   const litContracts = new LitContracts({
     network: config.litNetwork,
@@ -447,12 +438,10 @@ export const mintPKP = async (ownerAddress, actionCID) => {
   const pkpPublicKey =
     await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
 
-
   const pubKeyToAddr = await import("ethereum-public-key-to-address");
   sendLit(pubKeyToAddr.default(pkpPublicKey), "0.0001"); //Run in the background
 
   console.log("Minted and loaded!");
-
 
   console.log(
     `superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
@@ -466,9 +455,14 @@ export const mintPKP = async (ownerAddress, actionCID) => {
 };
 
 const delay = async (ms) => {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-const sessionConcurrencyLimit = async (sessionCacheKey, retriesLeft = 20, interval = 3000, expirationTime = 100) => {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+};
+const sessionConcurrencyLimit = async (
+  sessionCacheKey,
+  retriesLeft = 20,
+  interval = 3000,
+  expirationTime = 100,
+) => {
   // Base case: stop retrying if no retries are left
   if (retriesLeft <= 0) {
     console.log("Concurrency limit: no more retries and free to go now");
@@ -479,18 +473,28 @@ const sessionConcurrencyLimit = async (sessionCacheKey, retriesLeft = 20, interv
   const sessionStr = await redis.hGet("sessions", sessionCacheKey);
 
   if (sessionStr) {
-    console.log(`Concurrency limit: ${sessionCacheKey} is ready. No need anymore`)
+    console.log(
+      `Concurrency limit: ${sessionCacheKey} is ready. No need anymore`,
+    );
     return;
   }
   // Attempt to acquire a lock by using GETSET
-  const previousValue = await redis.getSet(`sessions:ops:${sessionCacheKey}`, "1");
+  const previousValue = await redis.getSet(
+    `sessions:ops:${sessionCacheKey}`,
+    "1",
+  );
   console.log("Concurrency limit: previousValue", previousValue);
 
   // If the key already had a value (previousValue is not null), retry after the specified interval
   if (previousValue !== null) {
     console.log("Concurrency limit: already processing, retrying later");
     await delay(interval);
-    await sessionConcurrencyLimit(sessionCacheKey, retriesLeft - 1, interval, expirationTime);
+    await sessionConcurrencyLimit(
+      sessionCacheKey,
+      retriesLeft - 1,
+      interval,
+      expirationTime,
+    );
   } else {
     // If the key was empty, set expiration and continue
     console.log("Concurrency limit: is free to process new session");
@@ -515,8 +519,6 @@ const fetchAndAuthenticateSession = async (key) => {
 };
 
 export const getPKPSession = async (session, index) => {
-
-
   if (!session.did.authenticated) {
     throw new Error("Unauthenticated DID");
   }
@@ -529,7 +531,6 @@ export const getPKPSession = async (session, index) => {
   }
 
   if (sessionCacheKey) {
-
     let didSession = await fetchAndAuthenticateSession(sessionCacheKey);
     if (!didSession) {
       // Apply concurrency limit and retry fetching the session
@@ -538,10 +539,9 @@ export const getPKPSession = async (session, index) => {
     }
 
     if (didSession) {
-      return didSession
+      return didSession;
     }
   }
-
 
   const userAuthSig = getAuthSigFromDIDSession(session);
 
@@ -578,11 +578,10 @@ export const getPKPSession = async (session, index) => {
           getPKPSession: {
             didKey: didKey.id,
             domain: config.domain,
-          }
-        }
+          },
+        },
       },
     });
-
 
     if (!resp.signatures || !resp.signatures.getPKPSession) {
       throw new Error("No signature returned");

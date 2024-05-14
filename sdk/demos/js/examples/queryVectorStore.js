@@ -10,11 +10,9 @@ const indexId =
 
 async function main() {
   try {
-
     const wallet = new Wallet(process.env.PRIVATE_KEY);
     const indexClient = new IndexClient({
-      domain: "index.network",
-      network: "ethereum",
+      network: "dev", // or mainnet
       wallet, // or session
     });
 
@@ -25,52 +23,50 @@ async function main() {
         openai_api_key: process.env.OPENAI_API_KEY,
         openai_model: "text-embedding-ada-002",
       }),
-      sources: [indexId]
-    })
+      sources: [indexId],
+    });
 
     /* Run vector store search */
     const question = "What is $STYLE Protocol?";
     const res = await vectorStore.similaritySearch(question, 1);
-    console.log('Retieved Documents', JSON.stringify(res, null, 3)) 
+    console.log("Retieved Documents", JSON.stringify(res, null, 3));
 
     /* Create a QA chain */
-    const model = new ChatOpenAI({ 
-      apiKey: process.env.OPENAI_API_KEY, 
-      model: "gpt-3.5-turbo"
-    })
+    const model = new ChatOpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      model: "gpt-3.5-turbo",
+    });
 
     const chain = ConversationalRetrievalQAChain.fromLLM(
       model,
-      vectorStore.asRetriever()
+      vectorStore.asRetriever(),
     );
 
     /* Ask it a question */
     const qa_res = await chain.invoke({ question, chat_history: [] });
-    console.log('Chat response:', JSON.stringify(qa_res, null, 3));
+    console.log("Chat response:", JSON.stringify(qa_res, null, 3));
 
     /* Read-Only Functionality */
     // These functions are read-only and will not work in the current version of the SDK
     try {
-
       // Add a document to the vector store
-      await vectorStore.addDocuments({ 
-        id: "doc1", 
-        text: "This is a test document", 
+      await vectorStore.addDocuments({
+        id: "doc1",
+        text: "This is a test document",
         metadata: {
           field_1: "value_1",
-        }
-      })
+        },
+      });
     } catch (err) {
-      console.error('Add functionality is omitted with error:', err);
-    }
-    
-    try {
-      // Delete a document from the vector store
-      await vectorStore.delete(["doc1"])
-    } catch (err) {
-      console.error('Delete functionality is omitted with error:', err);
+      console.error("Add functionality is omitted with error:", err);
     }
 
+    try {
+      // Delete a document from the vector store
+      await vectorStore.delete(["doc1"]);
+    } catch (err) {
+      console.error("Delete functionality is omitted with error:", err);
+    }
   } catch (err) {
     console.error(err);
   }

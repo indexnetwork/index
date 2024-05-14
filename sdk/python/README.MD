@@ -8,8 +8,7 @@
 </p>
 # Index Network Python SDK
 
-The Index Network allows you to interact with our platform and build products leveraging our services. Below, you will find detailed information on how to use them.
-
+Index is a discovery protocol that functions as a decentralized search engine which offers an open layer for discovery. As the first decentralized semantic index which leverages Web3 and AI to eliminate the need for intermediaries for finding knowledge, products and like-minded people through direct, composable discovery across peers.
 Here's a quick start guide.
 
 ## Using the Index Network Python SDK
@@ -17,7 +16,7 @@ Here's a quick start guide.
 The Index Network offers a Python SDK to facilitate various operations on our platform. This guide will walk you through setting up the SDK, authenticating, creating an Index, and adding an Item to it and finally interacting with it.
 
 
-### Installation
+### Installation
 
 First, install the indexnetwork-sdk package via pip:
 
