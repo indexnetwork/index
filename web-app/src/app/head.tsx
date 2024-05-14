@@ -12,7 +12,7 @@ export default function PageHead() {
       />
       <meta
         name="description"
-        content="Index allow you to create truly personalised and autonomous
+        content="Index allows you to create truly personalised and autonomous
       discovery experiences across the web."
       />
 
@@ -24,7 +24,7 @@ export default function PageHead() {
       />
       <meta
         property="twitter:description"
-        content="Index allow you to create truly personalised and autonomous
+        content="Index allows you to create truly personalised and autonomous
         discovery experiences across the web."
       />
       <meta

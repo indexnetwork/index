@@ -17,7 +17,6 @@ export default function ChatTabSection() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          paddingBottom: "24rem",
         }}
       >
         <LoadingSection />

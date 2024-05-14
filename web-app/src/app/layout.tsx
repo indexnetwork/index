@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://index.network"),
   title: "Index Network | Discovery Protocol",
   description:
-    "Index allow you to create truly personalised and autonomous discovery experiences across the web",
+    "Index allows you to create truly personalised and autonomous discovery experiences across the web",
   referrer: "origin-when-cross-origin",
   icons: [
     { rel: "shortcut icon", url: "/favicon-white.png" },
@@ -22,13 +22,13 @@ export const metadata: Metadata = {
     site: "https://index.network",
     title: "Index Network | Discovery Protocol",
     description:
-      "Index allow you to create truly personalised and autonomous discovery experiences across the web.",
+      "Index allows you to create truly personalised and autonomous discovery experiences across the web.",
     images: ["https://index.network/images/bridge.jpg"],
   },
   openGraph: {
     title: "Index Network | Discovery Protocol",
     description:
-      "Index allow you to create truly personalised and autonomous discovery experiences across the web.",
+      "Index allows you to create truly personalised and autonomous discovery experiences across the web.",
     url: "https://index.network",
     images: "https://index.network/images/bridge.jpg",
   },

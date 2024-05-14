@@ -18,7 +18,6 @@
 .react-tabs__tab--selected {
   border-bottom: 2px solid #000;
   font-weight: 600;
-  z-index: 99;
 }
 
 .react-tabs__tab:focus {
