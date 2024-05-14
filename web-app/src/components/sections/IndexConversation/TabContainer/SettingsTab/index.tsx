@@ -11,7 +11,7 @@ import Image from "next/image";
 import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { CodeSnippetsWithTabs } from "./CodeSnippets";
+import { CodeSnippetReact, CodeSnippetsWithTabs } from "./CodeSnippets";
 import SettingsModal, { SettingsModalStep } from "./SettingsModal";
 
 export interface IndexSettingsTabSectionProps {}
@@ -215,7 +215,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
             marginBottom: "16px",
           }}
         >
-          <Header>Use Your Own Agent</Header>
+          <Header>Use your own Agent</Header>
         </Col>
         <Col xs={8}>
           <div
@@ -243,6 +243,40 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
               }}
             >
               <CodeSnippetsWithTabs />
+            </div>
+          </div>
+        </Col>
+      </FlexRow>
+      <FlexRow className={"mt-8"}>
+        <Col
+          xs={12}
+          style={{
+            marginBottom: "16px",
+          }}
+        >
+          <Header>Integrate into your App</Header>
+        </Col>
+        <Col xs={8}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "1.25rem",
+            }}
+          >
+            <Text className={"mb-2"} theme={"primary"} size="md">
+              Embed your indexes into your application or website using the{" "}
+              <Link href="https://docs.index.network" target="_blank">
+                React library
+              </Link>
+            </Text>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <CodeSnippetReact />
             </div>
           </div>
         </Col>
