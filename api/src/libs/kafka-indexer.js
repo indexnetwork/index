@@ -101,6 +101,16 @@ export const updateIndexItemEvent = async (id) => {
     }
 }
 
+
+async function updateQuestions(indexItem) {
+    try {
+        let response = await axios.get(`${process.env.LLM_INDEXER_HOST}/chat/generate?indexId=${indexItem.index.id}`);
+        await redis.set(`questions:${indexItem.index.id}`, JSON.stringify(response.data), 'EX', 86400);
+    } catch (error) {
+        console.error('Error fetching or caching data:', error);
+    }
+}
+
 export const updateWebPageEvent = async (id) => {
 
     logger.info(`Step [2]: UpdateWebPageEvent trigger for id: ${id}`)
@@ -139,19 +149,8 @@ export const updateWebPageEvent = async (id) => {
                 });
 
 
+                updateQuestions(indexItem)
                 logger.info(`Step [2]: EmbeddingEvent trigger successfull for id: ${embedding.id}`);
-
-                // Cache updated questions to reddis
-                try {
-
-                    let response = await axios.get(`${process.env.LLM_INDEXER_HOST}/chat/generate?indexId=${indexItem.index.id}`)
-                    redis.set(`questions:${indexItem.index.id}`, JSON.stringify(response.data), { EX: 86400 } );
-
-                    logger.info(`Step [2]: Questions for index ${indexItem.index.id} updated in redis with ${JSON.stringify(response.data)} questions`)
-
-                } catch (error) {
-                    logger.warn(`Step [2]: Questions for index ${indexItem.index.id} not updated in redis with error: ${JSON.stringify(error.message)}`)
-                }
 
             }
         }

@@ -7,12 +7,12 @@
     </a>
 </h1>
 <p align="center">
-  <i align="center">Create and monetize interoperable discovery engines. 🚀</i>
+  <i align="center">Discovery Protocol 🚀</i>
 </p>
 
 # Quick start
 
-Index is a discovery protocol that functions as a decentralized search engine which offers an open layer for discovery. As the first decentralized semantic index which leverages Web3 and AI to eliminate the need for intermediaries for finding knowledge, products and like-minded people through direct, composable discovery across peers.
+Index is a discovery protocol that eliminates the need for intermediaries in finding knowledge, products, and like-minded people through direct, composable discovery across the web. As the first decentralized semantic index, it leverages Web3 and AI and offers an open layer for discovery.
 
 You can either use the API directly or the client available. Here is a quick start to discover it.
 
