@@ -8,7 +8,7 @@ export default function ChatTabSection() {
   const { viewedIndex, viewedProfile, chatID } = useApp();
   const { itemsState, loading: indexLoading } = useIndexConversation();
 
-  if (indexLoading) {
+  if (!indexLoading) {
     return (
       <div
         style={{
@@ -17,7 +17,6 @@ export default function ChatTabSection() {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          paddingBottom: "24rem",
         }}
       >
         <LoadingSection />
