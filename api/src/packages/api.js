@@ -1,7 +1,4 @@
 import dotenv from "dotenv";
-if (process.env.NODE_ENV !== "production") {
-  dotenv.config();
-}
 import Moralis from "moralis";
 import express from "express";
 import Joi from "joi";
@@ -11,9 +8,13 @@ import RedisClient from "../clients/redis.js";
 
 import * as Sentry from "@sentry/node";
 import { ProfilingIntegration } from "@sentry/profiling-node";
-import { createProxyMiddleware  } from 'http-proxy-middleware';
+import { createProxyMiddleware } from "http-proxy-middleware";
 
 const app = express();
+
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+}
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
@@ -80,14 +81,14 @@ const validator = ejv.createValidator({
 app.use(authenticateMiddleware);
 
 const simpleRequestLogger = (proxyServer, options) => {
-  proxyServer.on('proxyReq', (proxyReq, req, res) => {
+  proxyServer.on("proxyReq", (proxyReq, req, res) => {
     console.log(`[HPM] [${req.method}] ${req.url}`); // outputs: [HPM] GET /users
   });
 };
 
 // Chroma Proxy
 app.use(
-  '/chroma',
+  "/chroma",
   createProxyMiddleware({
     target: process.env.CHROMA_URL,
     changeOrigin: true,
@@ -456,14 +457,18 @@ app.patch(
 );
 
 //Todo refactor later.
-app.post("/zapier/index/webpage",  validator.body(
-  Joi.object({
-    title: Joi.string().required(),
-    favicon: Joi.string().optional(),
-    url: Joi.string().uri().required(),
-    content: Joi.string().optional(),
-  }),
-), zapierController.indexWebPage);
+app.post(
+  "/zapier/index/webpage",
+  validator.body(
+    Joi.object({
+      title: Joi.string().required(),
+      favicon: Joi.string().optional(),
+      url: Joi.string().uri().required(),
+      content: Joi.string().optional(),
+    }),
+  ),
+  zapierController.indexWebPage,
+);
 app.get("/zapier/auth", zapierController.authenticate);
 
 //Todo refactor later.
@@ -526,6 +531,7 @@ app.get(
 app.use(errorMiddleware);
 
 const start = async () => {
+  console.log("Starting API ...", port);
   await redis.connect();
 
   await Moralis.start({
@@ -534,7 +540,7 @@ const start = async () => {
 
   app.use(Sentry.Handlers.errorHandler());
   app.listen(port, async () => {
-    console.log(`Search service listening on port ${port}`);
+    console.log(`API listening on port ${port}`);
   });
 };
 start();

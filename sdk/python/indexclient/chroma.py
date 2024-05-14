@@ -25,10 +25,10 @@ class IndexChroma(Chroma):
 
         # Initialize OpenAIEmbeddings object
 
-        embeddings = OpenAIEmbeddings(model="text-embedding-ada-002", 
+        embeddings = OpenAIEmbeddings(model="text-embedding-ada-002",
                                       openai_api_key="YOUR_API_KEY")
-            
-        vectorstore = IndexChroma(embedding_function=embeddings)   
+
+        vectorstore = IndexChroma(embedding_function=embeddings)
         ```
 
     * Query the network
@@ -38,7 +38,7 @@ class IndexChroma(Chroma):
         response = vectorstore.query("What is the capital of France?")
         print(response)
         ```
-    
+
     * Also you can use with LangChain as follows:
 
         ```python
@@ -64,33 +64,36 @@ class IndexChroma(Chroma):
         )
 
         rag_chain.invoke("What is $STYLE Protocol?")
-    
-     
+
+
     """
 
     def __init__(self, embedding_function: OpenAIEmbeddings):
-        
+        chroma_path = "https://dev.index.network:8000/chroma"
+        if self.network == "mainnet":
+            chroma_path = "https://index.network:8000/chroma"
+
         # Initialize chroma client
         self.client = chromadb.HttpClient(
-                            settings=Settings(  
-                                chroma_server_api_default_path=IndexConfig.CHROMA_PATH,
+                            settings=Settings(
+                                chroma_server_api_default_path=chroma_path,
                                 anonymized_telemetry=False,
                                 allow_reset=True
                         ))
 
-        super().__init__(client=self.client, 
-                         embedding_function=embedding_function, 
+        super().__init__(client=self.client,
+                         embedding_function=embedding_function,
                          collection_name=IndexConfig.CHROMA_COLLECTION)
 
-    
+
     @override
     def add_documents(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. Use indexClient.addItemToIndex method instead')
-    
+
     @override
     def add_texts(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. Use indexClient.addItemToIndex method instead')
-    
+
     @override
     def add_text(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. Use indexClient.addItemToIndex method instead')
@@ -98,23 +101,23 @@ class IndexChroma(Chroma):
     @override
     def from_documents(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. Use indexClient.addItemToIndex method instead')
-    
+
     @override
     def from_texts(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. Use indexClient.addItemToIndex method instead')
-    
+
     @override
     def from_text(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. Use indexClient.addItemToIndex method instead')
-     
+
     @override
     def afrom_documents(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. Use indexClient.addItemToIndex method instead')
-    
+
     @override
     def afrom_texts(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. Use indexClient.addItemToIndex method instead')
-    
+
     @override
     def adelete(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. use indexClient instead')
@@ -122,15 +125,15 @@ class IndexChroma(Chroma):
     @override
     def delete(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. use indexClient instead')
-    
+
     @override
     def delete_collection(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. use indexClient instead')
-    
+
     @override
     def update_documents(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. use indexClient instead')
-    
+
     @override
     def update_document(self) -> None:
         raise Warning('Readonly Chroma does not support this operation. use indexClient instead')
