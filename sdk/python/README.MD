@@ -6,6 +6,8 @@
 <p align="center">
   <i align="center">Discovery Protocol 🚀</i>
 </p>
+
+
 # Index Network Python SDK
 
 Index is a discovery protocol that functions as a decentralized search engine which offers an open layer for discovery. As the first decentralized semantic index which leverages Web3 and AI to eliminate the need for intermediaries for finding knowledge, products and like-minded people through direct, composable discovery across peers.
