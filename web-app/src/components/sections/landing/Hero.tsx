@@ -33,7 +33,7 @@ const HeroSection = () => {
             Discovery Protocol
           </h1>
           <p className="text-base md:text-xl">
-            Index allow you to create truly personalised and <br /> autonomous
+            Index allows you to create truly personalised and <br /> autonomous
             discovery experiences across the web
           </p>
           <div className="flex gap-4">
