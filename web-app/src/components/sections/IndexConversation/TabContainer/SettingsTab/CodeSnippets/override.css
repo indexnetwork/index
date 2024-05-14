@@ -1,0 +1,34 @@
+.react-tabs__tab {
+  border: none;
+}
+
+.react-tabs__tab p {
+  padding: 4px 0;
+  margin: 0;
+}
+
+.react-tabs__tab p::after {
+  display: none;
+}
+
+.react-tabs__tab-list {
+  border-bottom: none;
+}
+
+.react-tabs__tab--selected {
+  border-bottom: 2px solid #000;
+  font-weight: 600;
+  z-index: 99;
+}
+
+.react-tabs__tab:focus {
+  outline: inherit;
+}
+
+.react-tabs__tab:hover {
+  cursor: pointer;
+}
+
+.react-tabs__tab:focus:after {
+  content: none;
+}
