@@ -1,5 +1,4 @@
 import axios, { AxiosInstance, CancelTokenSource } from "axios";
-import { appConfig } from "config";
 import { DIDSession } from "did-session";
 import { Indexes, Link, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";

@@ -1,4 +1,3 @@
-import { appConfig } from "config";
 import { useEffect, useMemo, useRef, useState } from "react";
 import socketIoClient, { Socket } from "socket.io-client";
 import { LinkContentResult } from "types/entity";
