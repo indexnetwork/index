@@ -4,7 +4,7 @@
     </a>
 </h1>
 <p align="center">
-  <i align="center">Create and monetize interoperable discovery engines. 🚀</i>
+  <i align="center">Discovery Protocol 🚀</i>
 </p>
 # Index Network Python SDK
 
