@@ -8,7 +8,7 @@ export default function ChatTabSection() {
   const { viewedIndex, viewedProfile, chatID } = useApp();
   const { itemsState, loading: indexLoading } = useIndexConversation();
 
-  if (!indexLoading) {
+  if (indexLoading) {
     return (
       <div
         style={{
