@@ -3,6 +3,7 @@ import { atomOneLight } from "react-syntax-highlighter/dist/esm/styles/hljs";
 import { Tab, TabList, TabPanel, Tabs } from "react-tabs";
 import "react-tabs/style/react-tabs.css";
 import "./override.css";
+import { useRouteParams } from "@/hooks/useRouteParams";
 
 const CodeSnippetJS = () => {
   const codeString = `import IndexClient from "@indexnetwork/sdk";
@@ -27,6 +28,7 @@ const vectorStore = await indexClient.getVectorStore({
     </SyntaxHighlighter>
   );
 };
+
 const CodeSnippetPython = () => {
   const codeString = `from indexclient.chroma import IndexChroma
 from langchain_mistralai import MistralAIEmbeddings
@@ -43,18 +45,22 @@ vectorstore = IndexChroma(embedding_function=embeddings)`;
   );
 };
 
-const items = [
-  {
-    key: "1",
-    label: "Node.js",
-    children: <CodeSnippetJS />,
-  },
-  {
-    key: "2",
-    label: "Python",
-    children: <CodeSnippetPython />,
-  },
-];
+const CodeSnippetReact = () => {
+  const { id } = useRouteParams();
+  const codeString1 = `yarn add @indexnetwork/ui`;
+  const codeString2 = `import { IndexChat } from '@indexnetwork/ui';\n\n<IndexChat sources=["${id}"] />`;
+
+  return (
+    <div>
+      <SyntaxHighlighter language="bash" style={atomOneLight}>
+        {codeString1}
+      </SyntaxHighlighter>
+      <SyntaxHighlighter language="javascript" style={atomOneLight}>
+        {codeString2}
+      </SyntaxHighlighter>
+    </div>
+  );
+};
 
 export const CodeSnippetsWithTabs = () => {
   return (
@@ -77,3 +83,5 @@ export const CodeSnippetsWithTabs = () => {
     </Tabs>
   );
 };
+
+export { CodeSnippetReact };

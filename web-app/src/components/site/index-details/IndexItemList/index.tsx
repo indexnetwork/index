@@ -37,7 +37,7 @@ const IndexItemList: FC<IndexItemListProps> = ({
           hasMore={hasMore}
           next={loadMore}
           dataLength={items.length}
-          height={"calc(100vh - 36rem)"}
+          height={"calc(100dvh - 34rem)"}
           loader={<div className="loader" key={0}></div>}
         >
           <List
