@@ -11,6 +11,7 @@ export interface AvatarProps
   > {
   size?: number;
   user?: Users;
+  rounded?: boolean;
   creatorRule?: any;
   shape?: ShapeType;
   hoverable?: boolean;
@@ -27,6 +28,7 @@ const Avatar = ({
   children,
   className,
   style,
+  rounded,
   bgColor,
   shape = "circle",
   hoverable = false,
@@ -34,7 +36,7 @@ const Avatar = ({
   ...divProps
 }: AvatarProps) => {
   const maxLetters = size > 32 ? 4 : 2;
-  const [color, setColor] = useState<string>(bgColor || "var(--main)");
+  const [color, setColor] = useState<string>(bgColor || "#000");
   const getFontSize = () => size * (1 / maxLetters);
   useEffect(() => {
     if (!isSSR() && randomColor) {
@@ -46,24 +48,29 @@ const Avatar = ({
     <div
       {...divProps}
       className={cc([
-        "avatar",
-        `avatar-${shape}`,
-        hoverable ? "avatar-hoverable" : "",
+        "flex",
+        "items-center",
+        "justify-center",
+        rounded ? "rounded-full" : "rounded",
         className || "",
       ])}
       style={{
         ...style,
         width: size,
         height: size,
+        color: "#fff",
         lineHeight: `${size}px`,
         fontSize: getFontSize(),
-
-        backgroundColor: color,
+        backgroundColor: user?.avatar ? "none" : color,
       }}
     >
       {user ? (
         user.avatar ? (
-          <img src={`${user.avatar}`} alt="profile_img" />
+          <img
+            src={`${user.avatar}`}
+            alt="profile_img"
+            className={rounded ? "rounded-full" : ""}
+          />
         ) : user.name ? (
           user.name!.substring(0, 1).toUpperCase()
         ) : user.id ? (
@@ -76,7 +83,11 @@ const Avatar = ({
         )
       ) : creatorRule ? (
         creatorRule.image ? (
-          <img src={creatorRule.image} alt="profile_img" />
+          <img
+            src={creatorRule.image}
+            alt="profile_img"
+            className={rounded ? "rounded-full" : ""}
+          />
         ) : (
           (creatorRule.symbol || creatorRule.ensName)
             ?.substring(0, 4)

@@ -1,27 +1,32 @@
 interface TipBoxProps {
   content: string;
-  icon: JSX.Element;
+  // icon: JSX.Element;
   onClick: () => void;
   style?: React.CSSProperties;
 }
 
-export const TipBox: React.FC<TipBoxProps> = ({ content, icon, onClick, style }) => {
+export const TipBox: React.FC<TipBoxProps> = ({
+  content,
+  // icon,
+  onClick,
+  style,
+}) => {
   return (
     <div
       className="transition-shadow duration-300 ease-in-out
-       hover:shadow-md text-primary bg-pale border-default cursor-pointer flex gap-2 p-4 rounded border"
+       hover:shadow-md text-primary bg-pale border-default cursor-pointer flex gap-2 p-3 rounded border"
       onClick={onClick}
       style={style}
     >
-      <div className='w-6 h-6'>{icon}</div>
-      <p className="text-sm font-medium">{content}</p>
+      {/* <div className="w-6 h-6">{icon}</div> */}
+      <p className="text-xs font-medium opacity-70">{content}</p>
     </div>
   );
 };
 
 export interface TipBoxData {
   content: string;
-  icon: JSX.Element;
+  // icon: JSX.Element;
 }
 
 interface TipContainerProps {
@@ -39,7 +44,7 @@ export const TipContainer: React.FC<TipContainerProps> = ({
         <TipBox
           key={index}
           content={tBox.content}
-          icon={tBox.icon}
+          // icon={tBox.icon}
           onClick={() => onTipBoxClick(tBox)}
         />
       ))}

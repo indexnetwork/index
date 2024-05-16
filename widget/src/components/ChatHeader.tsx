@@ -2,20 +2,16 @@ import Icons from "@/assets/icon";
 import { useIndexChat } from "@/contexts/ChatContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import Button from "./ui/Button";
+import Avatar from "./ui/Avatar";
 
 const ChatHeader: React.FC = () => {
-  const {
-    isWalletConnected,
-    setIsWalletConnected,
-    isLoading,
-    messages,
-    clearMessages,
-  } = useIndexChat();
+  const { session, connectWallet, isLoading, messages, clearMessages } =
+    useIndexChat();
   const { darkMode, toggleDarkMode } = useTheme();
-  const { userProfile } = useIndexChat();
+  const { viewedProfile, userProfile } = useIndexChat();
 
   const onConnectWallet = () => {
-    setIsWalletConnected(true);
+    connectWallet();
   };
 
   const onToggleDarkMode = () => {
@@ -28,12 +24,12 @@ const ChatHeader: React.FC = () => {
   };
 
   return (
-    <header className="flex items-center justify-between self-stretch overflow-y-scroll">
-      <div className="flex cursor-pointer items-center justify-center gap-2 rounded-[30px] bg-orange-600 px-3 py-2">
-        <Icons.Ceramic className="h-4 w-4 rounded-sm" />
+    <header className="flex items-center justify-between self-stretch overflow-y-scroll py-2">
+      <div className="flex cursor-pointer items-center justify-center gap-2 rounded-[30px] bg-grey-300 px-3 py-2">
+        <Avatar user={viewedProfile} size={28} rounded />
         <p className="font-secondary whitespace-nowrap text-sm font-bold leading-3">
-          Ceramic Network
-          <span className="font-primary text-xs font-light">(6)</span>
+          {viewedProfile?.name}
+          {/* <span className="font-primary text-xs font-light">(6)</span> */}
         </p>
       </div>
 
@@ -47,7 +43,7 @@ const ChatHeader: React.FC = () => {
             Reset
           </Button>
         )}
-        {/* {!isWalletConnected && (
+        {!session && (
           <Button
             // type="primary"
             onClick={onConnectWallet}
@@ -55,12 +51,8 @@ const ChatHeader: React.FC = () => {
           >
             Connect wallet
           </Button>
-        )} */}
-        <img
-          alt="User Avatar"
-          className="h-8 w-8 rounded-sm"
-          src={userProfile?.avatar as any}
-        />
+        )}
+        {session && <Avatar user={userProfile} size={28} />}
         <button
           onClick={onToggleDarkMode}
           aria-label="toggle-dark-mode"

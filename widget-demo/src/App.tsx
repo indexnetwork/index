@@ -156,9 +156,11 @@ function App() {
 
             <div>
               <IndexChat
-                id="kjzl6kcym7w8y67xydanh9kdvtjnah7nmfupslu1nioj0b2ca7ry688y6w5ky27"
+                sources={[
+                  "kjzl6kcym7w8y6rf31ljq3867je1l4vhw426g9e13dk2m3516z7yccz3x47t3l4",
+                ]}
                 style={{
-                  darkMode: true,
+                  darkMode: false,
                   // theme: customTheme,
                 }}
               />
