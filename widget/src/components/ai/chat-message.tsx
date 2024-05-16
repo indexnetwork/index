@@ -1,4 +1,3 @@
-import AssistantAvatar from "@/assets/image/av_system.svg";
 import AnonUser from "@/assets/image/ic_nowallet-light.svg";
 import { ChatMessageActions } from "@/components/ai/chat-message-actions";
 import { MemoizedReactMarkdown } from "@/components/ai/markdown";
@@ -36,8 +35,6 @@ export function ChatMessage({
 }: ChatMessageProps) {
   const { userProfile, viewedProfile, session } = useIndexChat();
 
-  console.log("message", message);
-
   return (
     <div
       style={{
@@ -48,6 +45,7 @@ export function ChatMessage({
         flexWrap: "nowrap",
         fontSize: "0.875rem",
       }}
+      className="group"
       // className="chat-message py-5"
     >
       {/* <div> */}
@@ -80,7 +78,7 @@ export function ChatMessage({
         // </div>
       )}
       {/* </div> */}
-      <div className="" style={{ overflow: "auto" }}>
+      <div className="" style={{ overflow: "auto", width: "82%" }}>
         <div style={{ overflowWrap: "break-word" }}>
           {editingMessage?.id && index === editingIndex ? (
             <div
@@ -168,7 +166,7 @@ export function ChatMessage({
           )}
         </div>
       </div>
-      <div>
+      <div className="group-hover:flex hidden flex-col">
         {editingMessage?.id && index === editingIndex ? (
           <div
             style={{

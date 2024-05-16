@@ -11,8 +11,7 @@
   "dependencies": {
     "@babel/runtime": "^7.24.1",
     "@types/react-syntax-highlighter": "^15.5.11",
-    "react-syntax-highlighter": "^15.5.0",
-    "@indexnetwork/ui": "file:../widget"
+    "react-syntax-highlighter": "^15.5.0"
   },
   "devDependencies": {
     "@babel/core": "^7.24.3",

@@ -130,7 +130,7 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
               <span className="sr-only hidden">Download</span>
             </Button>
             <Button onClick={onCopy} className="p-1">
-              {!isCopied ? (
+              {isCopied ? (
                 <IconCheck style={{ opacity: 0.5 }} width={20} height={20} />
               ) : (
                 <IconCopy style={{ opacity: 0.5 }} width={20} height={20} />
