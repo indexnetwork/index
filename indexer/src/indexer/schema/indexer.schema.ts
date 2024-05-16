@@ -26,24 +26,6 @@ export enum  MIME_TYPE {
     'application/json'='json'
 }
 
-export enum MetadataFields {
-    'indexId'= 'indexId',
-    'indexTitle'= 'indexTitle',
-    'indexCreatedAt'= 'indexCreatedAt',
-    'indexUpdatedAt'= 'indexUpdatedAt',
-    'indexDeletedAt'= 'indexDeletedAt',
-    'indexOwnerDID'= 'indexOwnerDID',
-    'webPageId'='webPageId',
-    'webPageTitle'='webPageTitle',
-    'webPageUrl'='webPageUrl',
-    'webPageContent'='webPageContent',
-    'webPageCreatedAt'='webPageCreatedAt',
-    'webPageUpdatedAt'='webPageUpdatedAt',
-    'webPageDeletedAt'='webPageDeletedAt',
-    'vector' = 'vector'
-}
-
-
 export class IndexRequestBody {
     
     @ApiProperty({
@@ -70,6 +52,7 @@ export class CrawlRequestBody {
     })
     @IsUrl()
     url: string;
+    
 }
 
 export class IndexUpdateQuery {

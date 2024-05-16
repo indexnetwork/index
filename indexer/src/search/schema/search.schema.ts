@@ -51,7 +51,7 @@ export class QueryRequestDTO {
 
     @ApiPropertyOptional({ 
         description: 'Sort the documents by a field',
-        example: 'webPageUpdatedAt'
+        example: 'UpdatedAt'
     })
     sort: string;
 
@@ -136,7 +136,7 @@ export class SearchRequestDTO {
 
     @ApiPropertyOptional({ 
         description: 'Sort the documents by a field',
-        example: 'webPageUpdatedAt'
+        example: 'UpdatedAt'
     })
     sort: string;
 

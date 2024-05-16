@@ -8,6 +8,7 @@ import { IndexDeleteQuery, IndexUpdateBody } from '../schema/indexer.schema';
 import { HttpService } from '@nestjs/axios';
 import * as fs from 'fs';
 import { MIME_TYPE } from '../schema/indexer.schema';
+import notionCrawler from "notion-crawler";
 import { TokenTextSplitter } from "langchain/text_splitter";
 
 @Injectable()
@@ -25,6 +26,29 @@ export class IndexerService {
      * @returns Web page content
      */
     async crawl(url: string): Promise<{ url: string; content: string; }>{
+
+        if (url.includes('notion')) {
+
+            let rootNotionPageId = url.split('-').at(-1);
+            // strip numbers in the beginning of rootNotionPageId
+            rootNotionPageId = rootNotionPageId.replace(/^\d+/, '');
+
+            Logger.log(`Crawling ${rootNotionPageId}`, 'indexerService:crawlNotion');
+
+            const { pageBlocks, notionPageIdToSlugMapper, pageMap } = await notionCrawler(
+                rootNotionPageId,
+            );
+
+            Logger.log(`Crawled ${url} with ${pageBlocks.length} blocks`, 'indexerService:crawlNotion');
+            Logger.log(`${JSON.stringify(pageBlocks)}`, 'indexerService:crawlnotion');
+            Logger.log(`${JSON.stringify(notionPageIdToSlugMapper)}`, 'indexerService:crawlnotion');
+            Logger.log(`${JSON.stringify(pageMap)}`, 'indexerService:crawlnotion');
+            
+            return {
+                url: url,
+                content: pageBlocks.join(' ')
+            };
+        }
 
         const response = await this.httpService.axiosRef({
             url: url,
@@ -78,7 +102,7 @@ export class IndexerService {
         const docs = await loader.load();
         
         // Delete the file
-        fs.unlinkSync(file_name);
+        // fs.unlinkSync(file_name);
 
         // Merge the documents
         let content = ''
@@ -301,9 +325,9 @@ export class IndexerService {
     private async generateChromaID(indexId: string, body: any): Promise<string> {
         
         // fix id generation
+        const randseq = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 
-
-        return indexId + '-';
+        return indexId + '-' + randseq;
     }
 
 }
