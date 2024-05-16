@@ -73,10 +73,10 @@ export default class IndexClient {
     sources: string[];
     filters: object;
   }) {
-    let indexChromaURL = "https://dev.index.network:8000/chroma";
+    let indexChromaURL = "https://dev.index.network/api/chroma";
 
     if (this.network === "mainnet") {
-      indexChromaURL = "https://index.network:8000/chroma";
+      indexChromaURL = "https://index.network/api/chroma";
     }
 
     return IndexVectorStore.fromExistingCollection(
@@ -84,12 +84,6 @@ export default class IndexClient {
       {
         collectionName: "chroma-indexer",
         url: indexChromaURL,
-        // filter: {
-        //   where: {
-        //     indexId: { $in: sources },
-        //     ...filters,
-        //   }
-        // }
       },
     );
   }
