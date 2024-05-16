@@ -68,17 +68,18 @@ class IndexChroma(Chroma):
 
     """
 
-    def __init__(self, embedding_function: OpenAIEmbeddings):
-        chroma_path = "https://dev.index.network:8000/chroma"
+    def __init__(self, network, embedding_function: OpenAIEmbeddings):
+        self.network = network
+        chroma_path = "https://dev.index.network/api/chroma"
         if self.network == "mainnet":
-            chroma_path = "https://index.network:8000/chroma"
+            chroma_path = "https://index.network/api/chroma"
 
         # Initialize chroma client
         self.client = chromadb.HttpClient(
-                            settings=Settings(
-                                chroma_server_api_default_path=chroma_path,
-                                anonymized_telemetry=False,
-                                allow_reset=True
+                        host=chroma_path, 
+                        settings=Settings(
+                            anonymized_telemetry=False,
+                            allow_reset=True
                         ))
 
         super().__init__(client=self.client,
