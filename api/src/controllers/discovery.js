@@ -29,7 +29,7 @@ const flattenSources = async (sources) => {
 };
 
 export const chat = async (req, res, next) => {
-  const { id, messages, sources, type, ...rest } = req.body;
+  const { id, messages, sources, ...rest } = req.body;
 
   const reqIndexIds = await flattenSources(sources);
 
