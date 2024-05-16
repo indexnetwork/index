@@ -5,12 +5,14 @@
   "license": "MIT",
   "scripts": {
     "start": "webpack serve --mode development",
-    "build": "webpack --mode production"
+    "build": "webpack --mode production",
+    "watch": "webpack --mode development --watch"
   },
   "dependencies": {
     "@babel/runtime": "^7.24.1",
     "@types/react-syntax-highlighter": "^15.5.11",
-    "react-syntax-highlighter": "^15.5.0"
+    "react-syntax-highlighter": "^15.5.0",
+    "@indexnetwork/ui": "file:../widget"
   },
   "devDependencies": {
     "@babel/core": "^7.24.3",

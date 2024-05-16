@@ -14,6 +14,7 @@ import {
   FC,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -22,6 +23,8 @@ import { maskDID } from "@/utils";
 import BodyPlaceholder from "./BodyPlaceholder";
 import Icon from "@/assets/icon";
 import { useTheme } from "@/contexts/ThemeContext";
+import { appConfig } from "@/config";
+import { useIndexChat } from "@/contexts/ChatContext";
 // import NoIndexes from "../NoIndexes";
 
 export interface ChatProps extends ComponentProps<"div"> {
@@ -29,45 +32,48 @@ export interface ChatProps extends ComponentProps<"div"> {
   id?: string;
 }
 
-export interface ChatBodyProps {
-  chatID: string;
-  did?: string;
-  indexIds?: string[];
-}
-
 export interface MessageWithIndex extends Message {
   index?: number;
 }
 
-const ChatBody: FC<ChatBodyProps> = ({ chatID, did, indexIds }) => {
+const ChatBody = () => {
   // const { viewedProfile, leftSectionIndexes, leftTabKey } = useApp();
 
   // const { session } = useAuth();
   // const { viewedIndex } = useApp();
   // const { isIndex, id } = useRouteParams();
-  // const { ready: apiReady, api } = useApi();
+  const { defaultQuestions, sources, chatID } = useIndexChat();
   const { darkMode } = useTheme();
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
   const [editInput, setEditInput] = useState<string>("");
-  const [defaultQuestions, setDefaultQuestions] = useState<string[]>([]);
 
   const bottomRef = useRef<null | HTMLDivElement>(null);
 
-  const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
-    // if (!apiReady || !isIndex) return;
-    try {
-      // const questions = await api!.getDefaultQuestionsOfIndex(id);
-      // setDefaultQuestions(questions);
-    } catch (error) {
-      console.error("Error fetching default questions", error);
-    }
+  const tipBoxes = useMemo(() => {
+    return defaultQuestions.map((q) => ({
+      content: q,
+    }));
   }, []);
 
-  useEffect(() => {
-    fetchDefaultQuestions();
-  }, [fetchDefaultQuestions]);
+  if (!sources) {
+    return <>No sources provided</>;
+  }
+
+  // const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
+  //   // if (!apiReady || !isIndex) return;
+  //   try {
+  //     const questions = await api!.getDefaultQuestionsOfIndex(sources);
+  //     setDefaultQuestions(questions);
+  //   } catch (error) {
+  //     console.error("Error fetching default questions", error);
+  //   }
+  // }, []);
+
+  // useEffect(() => {
+  //   fetchDefaultQuestions();
+  // }, [fetchDefaultQuestions]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
@@ -88,27 +94,39 @@ const ChatBody: FC<ChatBodyProps> = ({ chatID, did, indexIds }) => {
       setEditingMessage(undefined);
       setEditInput("");
       await append({
-        id: chatID,
+        id: chatID, // TODO: handle better
         content: newMessage.content,
         role: "user",
       });
     }
   };
 
-  const tipBoxes = [
-    {
-      content:
-        "What are the best practices for scaling a ComposeDB application?",
-      icon: <Icon.LightBulb />,
-    },
-    {
-      content: "How can I integrate Ceramic Network with Lit Protocol?",
-      icon: <Icon.LightBulb />,
-    },
-  ];
+  // const tipBoxes = [
+  //   {
+  //     content:
+  //       "What are the best practices for scaling a ComposeDB application?",
+  //     icon: <Icon.LightBulb />,
+  //   },
+  //   {
+  //     content: "How can I integrate Ceramic Network with Lit Protocol?",
+  //     icon: <Icon.LightBulb />,
+  //   },
+  // ];
 
-  const apiUrl = `https://dev.index.network/api/discovery/chat`;
+  const apiUrl = `${appConfig.apiUrl}/api/discovery/chat`;
   const initialMessages: Message[] = [];
+  let body;
+  if (sources[0].includes("did")) {
+    body = {
+      id: chatID,
+      did: sources[0],
+    };
+  } else {
+    body = {
+      id: chatID,
+      indexIds: sources,
+    };
+  }
   const {
     messages,
     append,
@@ -122,11 +140,7 @@ const ChatBody: FC<ChatBodyProps> = ({ chatID, did, indexIds }) => {
     api: apiUrl,
     initialMessages,
     id: chatID,
-    body: {
-      id: chatID,
-      did,
-      indexIds,
-    },
+    body,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       // Authorization: `Bearer ${session?.serialize()}`,

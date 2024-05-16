@@ -11,6 +11,7 @@ import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { IconCheck, IconCopy, IconDownload } from "@/components/ai/ui/icons";
 import Button from "@/components/ui/Button";
 import Text from "@/components/ui/Text";
+import "./codeblock.css";
 
 interface Props {
   language: string;
@@ -112,7 +113,7 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
             }}
             className={"mt-3"}
           >
-            <Text theme="gray6" size={"md"}>
+            <Text theme="white" size={"md"}>
               {language}
             </Text>
           </div>
@@ -121,14 +122,19 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
           <div
             style={{
               display: "flex",
+              gap: "0.25rem",
             }}
           >
-            <Button onClick={downloadAsFile}>
-              <IconDownload />
+            <Button onClick={downloadAsFile} className="p-1">
+              <IconDownload style={{ opacity: 0.5 }} />
               <span className="sr-only hidden">Download</span>
             </Button>
-            <Button onClick={onCopy}>
-              {isCopied ? <IconCheck /> : <IconCopy />}
+            <Button onClick={onCopy} className="p-1">
+              {!isCopied ? (
+                <IconCheck style={{ opacity: 0.5 }} width={20} height={20} />
+              ) : (
+                <IconCopy style={{ opacity: 0.5 }} width={20} height={20} />
+              )}
               <span className="sr-only hidden">Copy code</span>
             </Button>
           </div>
@@ -147,7 +153,7 @@ const CodeBlock: FC<Props> = memo(({ language, value }) => {
         }}
         codeTagProps={{
           style: {
-            fontSize: "1.2rem",
+            fontSize: "0.875rem",
             fontFamily: "var(--font-mono)",
           },
         }}

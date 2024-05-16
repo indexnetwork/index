@@ -1,4 +1,5 @@
-import AssistantAvatar from "@/assets/image/av_system.png";
+import AssistantAvatar from "@/assets/image/av_system.svg";
+import AnonUser from "@/assets/image/ic_nowallet-light.svg";
 import { ChatMessageActions } from "@/components/ai/chat-message-actions";
 import { MemoizedReactMarkdown } from "@/components/ai/markdown";
 import { CodeBlock } from "@/components/ai/ui/codeblock";
@@ -33,7 +34,9 @@ export function ChatMessage({
   index,
   editingIndex,
 }: ChatMessageProps) {
-  const { userProfile } = useIndexChat();
+  const { userProfile, viewedProfile, session } = useIndexChat();
+
+  console.log("message", message);
 
   return (
     <div
@@ -43,13 +46,23 @@ export function ChatMessage({
         gap: "1rem",
         alignItems: "start",
         flexWrap: "nowrap",
+        fontSize: "0.875rem",
       }}
       // className="chat-message py-5"
     >
       {/* <div> */}
       {message.role === "user" ? (
-        <Avatar size={24} user={userProfile as Users} />
+        session ? (
+          <Avatar size={24} user={userProfile as Users} />
+        ) : (
+          <img
+            src={AnonUser}
+            className="h-6 w-6 rounded-sm"
+            alt="User Avatar"
+          />
+        )
       ) : (
+        // <Avatar size={24} user={viewedProfile as Users} />
         // <div
         //   style={{
         //     border: "1px solid #E2E8F0",
@@ -59,9 +72,9 @@ export function ChatMessage({
         // >
         // <div className={`flex items-start gap-3`}>
         <img
-          src={AssistantAvatar}
+          src={viewedProfile?.avatar as any}
           className="h-6 w-6 rounded-sm"
-          alt="hugging face logo"
+          alt="Assistant Avatar"
         />
         // </div>
         // </div>
@@ -116,11 +129,8 @@ export function ChatMessage({
                     </p>
                   );
                 },
-                // @ts-ignore
                 code({ inline, className, children, ...props }) {
-                  // @ts-ignore
                   if (children.length) {
-                    // @ts-ignore
                     if (children[0] === "▍") {
                       return (
                         <span className="mt-1 animate-pulse cursor-default">
@@ -128,7 +138,7 @@ export function ChatMessage({
                         </span>
                       );
                     }
-                    // @ts-ignore
+
                     children[0] = (children[0] as string).replace("`▍`", "▍");
                   }
 
@@ -179,6 +189,9 @@ export function ChatMessage({
           </div>
         ) : (
           <ChatMessageActions
+            style={{
+              marginTop: "-0.5rem",
+            }}
             message={message}
             handleEditClick={handleEditClick}
             index={index}

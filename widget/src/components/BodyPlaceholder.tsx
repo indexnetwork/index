@@ -1,6 +1,7 @@
 import { TipBoxData, TipContainer } from "./ui/TipBox";
 import Cover from "@/assets/image/cover.png";
 import CoverDark from "@/assets/image/cover-dark.png";
+import { useIndexChat } from "@/contexts/ChatContext";
 
 interface BodyPlaceholderProps {
   darkMode: boolean;
@@ -13,6 +14,7 @@ const BodyPlaceholder: React.FC<BodyPlaceholderProps> = ({
   sendMessage,
   tipBoxes,
 }) => {
+  const { session } = useIndexChat();
   return (
     <div
       aria-label="chat-body-placeholder"
@@ -27,9 +29,11 @@ const BodyPlaceholder: React.FC<BodyPlaceholderProps> = ({
           <div className="font-secondary text-center text-xl font-bold">
             Chat with Ceramic Network
           </div>
-          <div className="self-stretch text-center text-xs font-normal ">
-            You can include your indexes by connecting your wallet
-          </div>
+          {!session && (
+            <div className="self-stretch text-center text-xs font-normal ">
+              Include your indexes in the conversation by connecting your wallet
+            </div>
+          )}
         </div>
       </div>
       <TipContainer

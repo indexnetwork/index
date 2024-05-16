@@ -1,16 +1,16 @@
-import { ChatProvider } from './contexts/ChatContext';
-import { ThemeProvider, ThemeProps } from '@/contexts/ThemeContext';
-import Initializer from '@/components/Initializer';
+import { ChatProvider } from "./contexts/ChatContext";
+import { ThemeProvider, ThemeProps } from "@/contexts/ThemeContext";
+import Initializer from "@/components/Initializer";
 
 interface IndexChatProps {
-  id: string;
+  sources: string[];
   style?: ThemeProps;
 }
 
-const IndexChat: React.FC<IndexChatProps> = ({ id, style }) => {
+const IndexChat: React.FC<IndexChatProps> = ({ sources, style }) => {
   return (
     <ThemeProvider style={style}>
-      <ChatProvider id={id}>
+      <ChatProvider sources={sources}>
         <Initializer />
       </ChatProvider>
     </ThemeProvider>
