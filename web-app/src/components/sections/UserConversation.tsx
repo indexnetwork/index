@@ -29,11 +29,7 @@ export default function UserConversationSection() {
           height: "100%",
         }}
       >
-        <AskIndexes
-          // indexIds={leftSectionIndexes.map((i) => i.id)}
-          chatID={chatID}
-          did={id}
-        />
+        <AskIndexes chatID={chatID} sources={[id]} />
       </div>
     </div>
   );
