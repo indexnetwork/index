@@ -1,3 +1,5 @@
+import { twMerge } from "tailwind-merge";
+
 interface BaseButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   children: React.ReactNode;
@@ -10,7 +12,9 @@ const BaseButton: React.FC<BaseButtonProps> = ({
 }) => {
   return (
     <button
-      className={`border-default bg-pale text-primary whitespace-nowrap rounded-sm border p-2 text-center text-sm font-medium leading-3 ${className}`}
+      className={twMerge(
+        `border-default bg-pale text-primary whitespace-nowrap rounded-sm border p-2 text-center text-sm font-medium leading-3 ${className}`,
+      )}
       {...props}
     >
       {children}

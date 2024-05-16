@@ -9,12 +9,7 @@ const ChatContainer: React.FC = () => {
   return (
     <ThemedContainer>
       <ChatHeader />
-      <ChatBody
-        indexIds={[
-          "kjzl6kcym7w8yastd4ylcp2tbfxh5ftbasgzlwbsw1i4zbk86l81ebrnumzzkek",
-        ]}
-        chatID="lol"
-      />
+      <ChatBody />
       {/* <AskInput /> */}
       <PoweredBy website={appConfig.website} />
     </ThemedContainer>

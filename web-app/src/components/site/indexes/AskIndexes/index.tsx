@@ -32,15 +32,14 @@ export interface ChatProps extends ComponentProps<"div"> {
 
 export interface AskIndexesProps {
   chatID: string;
-  did?: string;
-  indexIds?: string[];
+  sources?: string[];
 }
 
 export interface MessageWithIndex extends Message {
   index?: number;
 }
 
-const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
+const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   const { viewedProfile, leftSectionIndexes, leftTabKey } = useApp();
 
   const { session } = useAuth();
@@ -139,8 +138,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
     id: chatID,
     body: {
       id: chatID,
-      did,
-      indexIds,
+      sources,
     },
     headers: {
       "Content-Type": "application/json; charset=utf-8",
@@ -174,7 +172,12 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
       <Flex
         id={chatID}
         key={chatID}
-        className={indexIds ? "px-0 pt-7" : "px-md-10 px-0 px-4 pt-7"}
+        className={
+          sources &&
+          sources?.filter((source) => !source.includes("did:")).length > 0
+            ? "px-0 pt-7"
+            : "px-md-10 px-4 pt-7"
+        }
         flexdirection={"column"}
         style={{
           display: "flex",
@@ -222,7 +225,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, did, indexIds }) => {
                 <EmptyScreen
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}
-                  indexIds={indexIds}
+                  indexIds={sources?.filter(
+                    (source) => !source.includes("did:"),
+                  )}
                   defaultQuestions={defaultQuestions}
                 />
               </Flex>

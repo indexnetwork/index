@@ -1,17 +1,38 @@
-import axios from 'axios';
-import { DIDService } from '../services/did.js';
+import axios from "axios";
+import { DIDService } from "../services/did.js";
+
+const flattenSources = async (sources) => {
+  const didService = new DIDService();
+
+  const sourcePromises = sources.map(async (source) => {
+    if (source.includes("did:")) {
+      // TODO: check better
+      const did = source.split("/")[0];
+
+      let type;
+      if (source.includes("/index/starred")) {
+        type = "starred";
+      } else if (source.includes("/index/owned")) {
+        type = "owned";
+      }
+
+      return didService
+        .getIndexes(did, type)
+        .then((indexes) => indexes.map((i) => i.id));
+    } else {
+      return Promise.resolve([source]);
+    }
+  });
+
+  const results = await Promise.all(sourcePromises);
+  return results.flat();
+};
 
 export const chat = async (req, res, next) => {
+  const { id, messages, sources, ...rest } = req.body;
 
-  const { id, messages, indexIds, did, type, ...rest } = req.body;
-  let reqIndexIds = [];
-  if(did){
-    const didService = new DIDService();
-    const indexes = await didService.getIndexes(did, type);
-    reqIndexIds = indexes.map(i => i.id)
-  }else {
-    reqIndexIds = indexIds
-  }
+  const reqIndexIds = await flattenSources(sources);
+
   try {
     const chatRequest = {
       indexIds: reqIndexIds,
@@ -20,21 +41,22 @@ export const chat = async (req, res, next) => {
         chat_history: [...messages.slice(0, -1)],
       },
       model_args: {
-        ...rest
-      }
-    }
+        ...rest,
+      },
+    };
     let resp = await axios.post(
       `${process.env.LLM_INDEXER_HOST}/chat/stream`,
       chatRequest,
       {
-        responseType: 'stream'
-      })
+        responseType: "stream",
+      },
+    );
     res.set(resp.headers);
     resp.data.pipe(res);
   } catch (error) {
     // Handle the exception
-    console.error('An error occurred:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error("An error occurred:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -46,19 +68,20 @@ export const search = async (req, res, next) => {
       page: req.body.page || 1,
       limit: req.body.limit || 10,
       filters: req.body.filters || [],
-    }
+    };
 
     let resp = await axios.post(
       `${process.env.LLM_INDEXER_HOST}/search/query`,
       searchRequest,
       {
-        responseType: 'stream'
-      })
+        responseType: "stream",
+      },
+    );
     res.set(resp.headers);
     resp.data.pipe(res);
   } catch (error) {
     // Handle the exception
-    console.error('An error occurred:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error("An error occurred:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };

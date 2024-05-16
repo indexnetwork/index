@@ -1,6 +1,8 @@
+import { DIDSession } from "did-session";
+
 export interface ApiServiceConfig {
   baseUrl: string;
-  id: string;
+  session?: DIDSession | undefined;
 }
 
 export interface FetchIndexResponse {
