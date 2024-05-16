@@ -38,6 +38,7 @@
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.6",
     "langchain": "^0.1.5",
+    "notion-crawler": "^0.0.9",
     "openai": "^4.28.0",
     "peggy": "^3.0.2",
     "reflect-metadata": "^0.1.13",
