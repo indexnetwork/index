@@ -35,11 +35,7 @@ export default function ChatTabSection() {
           maxHeight: "calc(-30rem + 100dvh)",
         }}
       >
-        <AskIndexes
-          // did={viewedIndex?.ownerDID.id}
-          chatID={chatID}
-          indexIds={[viewedIndex?.id]}
-        />
+        <AskIndexes chatID={chatID} sources={[viewedIndex?.id]} />
       </div>
     ) : null;
   }
