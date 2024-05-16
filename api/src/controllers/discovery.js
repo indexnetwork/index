@@ -1,6 +1,11 @@
 import axios from "axios";
 import { DIDService } from "../services/did.js";
 
+import RedisClient from "../clients/redis.js";
+
+const redis = RedisClient.getInstance();
+
+
 const flattenSources = async (sources) => {
   const didService = new DIDService();
 
@@ -20,7 +25,12 @@ const flattenSources = async (sources) => {
         .getIndexes(did, type)
         .then((indexes) => indexes.map((i) => i.id));
     } else {
-      return Promise.resolve([source]);
+      const result = [source];
+      const subIndexes = await redis.hKeys(`index:${source}:subIndexes`);
+      if (subIndexes.length > 0) {
+          result.push(...subIndexes);
+      }
+      return Promise.resolve(result);
     }
   });
 

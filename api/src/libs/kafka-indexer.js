@@ -41,6 +41,14 @@ export const createIndexItemEvent = async (id) => {
             return
         }
 
+        if (indexItem.item.__typename === 'Index') {
+            await redis.hSet(`index:${indexItem.indexId}:subIndexes`, indexItem.itemId, 1);
+            // Todo update this when ceramic announces easy model upgrades. Or write a bulk update for IndexItem model.
+            // We can do that anon. Very easy. We should just replace indexitem model but not embeddings and index.
+            logger.info('Step [0]: Do not create embeddings for index model. Just cache it.')
+            return
+        }
+
         const embeddingResponse = await axios.post(`${process.env.LLM_INDEXER_HOST}/indexer/embeddings`, {
             content: indexItem.item.content ?? JSON.stringify(indexItem.item)
         })
