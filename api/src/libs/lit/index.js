@@ -26,8 +26,6 @@ const provider = new ethers.providers.JsonRpcProvider(
   175177,
 );
 
-const definition = getTypeDefinitions();
-
 const config = {
   litNetwork: process.env.LIT_NETWORK,
   domain: process.env.DOMAIN,
@@ -615,6 +613,8 @@ export const getPKPSession = async (session, index) => {
 };
 
 export const getRolesFromSession = (session) => {
+  const definition = getTypeDefinitions();
+
   const authorizedModels = new Set(
     session.cacao.p.resources.map((r) => r.replace("ceramic://*?model=", "")),
   );
