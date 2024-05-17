@@ -42,8 +42,7 @@ const wallet = new Wallet(process.env.PRIVATE_KEY);
 
 const indexClient = new IndexClient({
   wallet,
-  domain: "index.network",
-  network: "ethereum", // provide your network
+  network: "dev", // or mainnet
 });
 ```
 
@@ -64,8 +63,7 @@ const indexId = await indexClient.createIndex({
 Voilà, now you have a truly decentralized index to interact with! Though it's empty, which means we need to create and add an [`Item`](../api-reference/indexing/item.md) into it so we can interact. Let's do that.
 
 ```typescript
-const webPageId = await indexClient.createWebPage({
-  title: "Post medium publishing",
+const webPageId = await indexClient.crawlWebPage({
   url: "http://www.paulgraham.com/publishing.html",
 });
 
@@ -83,7 +81,7 @@ const queryResponse = await indexClient.chat({
       role: "user",
     },
   ],
-  indexes: [indexId], // You can add all the indexes of a user as well
+  sources: [indexId], // You can add all the indexes of a user as well
 });
 
 console.log(queryResponse);
