@@ -39,6 +39,16 @@ export const webPageFragment = `
   }
 `;
 
+export const indexFragment = `
+  ... on Index {
+    id
+    title
+    createdAt
+    updatedAt
+    deletedAt
+  }
+`;
+
 export const teamFragment = `
   ... on Team {
       id
@@ -122,6 +132,13 @@ export const teamFragment = `
 export const modelBundleFragment = `
   id
   __typename
+  ... on Index {
+    Index_id: id
+    Index_title: title
+    Index_createdAt: createdAt
+    Index_updatedAt: updatedAt
+    Index_deletedAt: deletedAt
+  }
   ... on WebPage {
     WebPage_title: title
     WebPage_favicon: favicon
