@@ -159,16 +159,6 @@ app.get(
   didController.getProfileByDID,
 );
 
-app.get(
-  "/indexes/:id/questions",
-  validator.params(
-    Joi.object({
-      id: Joi.custom(isStreamID, "Index ID").required(),
-    }),
-  ),
-  indexController.getQuestions,
-);
-
 // Indexes
 app.get(
   "/indexes/:id",
@@ -387,6 +377,16 @@ app.post(
     }),
   ),
   discoveryController.chat,
+);
+
+app.post(
+  "/discovery/questions",
+  validator.body(
+    Joi.object({
+      sources: Joi.array().items(Joi.string()).required(),
+    }),
+  ),
+  discoveryController.questions,
 );
 
 app.post(

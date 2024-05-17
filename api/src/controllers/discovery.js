@@ -1,42 +1,11 @@
 import axios from "axios";
-import { DIDService } from "../services/did.js";
+
+import { ethers } from "ethers";
 
 import RedisClient from "../clients/redis.js";
+import { flattenSources } from "../utils/helpers.js";
 
 const redis = RedisClient.getInstance();
-
-
-const flattenSources = async (sources) => {
-  const didService = new DIDService();
-
-  const sourcePromises = sources.map(async (source) => {
-    if (source.includes("did:")) {
-      // TODO: check better
-      const did = source.split("/")[0];
-
-      let type;
-      if (source.includes("/index/starred")) {
-        type = "starred";
-      } else if (source.includes("/index/owned")) {
-        type = "owned";
-      }
-
-      return didService
-        .getIndexes(did, type)
-        .then((indexes) => indexes.map((i) => i.id));
-    } else {
-      const result = [source];
-      const subIndexes = await redis.hKeys(`index:${source}:subIndexes`);
-      if (subIndexes.length > 0) {
-          result.push(...subIndexes);
-      }
-      return Promise.resolve(result);
-    }
-  });
-
-  const results = await Promise.all(sourcePromises);
-  return results.flat();
-};
 
 export const chat = async (req, res, next) => {
   const { id, messages, sources, ...rest } = req.body;
@@ -93,5 +62,41 @@ export const search = async (req, res, next) => {
     // Handle the exception
     console.error("An error occurred:", error);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const questions = async (req, res, next) => {
+  try {
+    console.log(`mala`);
+    const { sources } = req.body;
+
+    const reqIndexIds = await flattenSources(sources);
+
+    const sourcesHash = ethers.utils.keccak256(
+      ethers.utils.toUtf8Bytes(JSON.stringify(reqIndexIds)),
+    );
+
+    const questionCache = await redis.get(`questions:${sourcesHash}`);
+
+    if (questionCache) {
+      return res.status(200).json(JSON.parse(questionCache));
+    }
+
+    try {
+      let response = await axios.post(
+        `${process.env.LLM_INDEXER_HOST}/chat/questions`,
+        {
+          indexIds: reqIndexIds,
+        },
+      );
+      redis.set(`questions:${sourcesHash}`, JSON.stringify(response.data), {
+        EX: 86400,
+      });
+      res.status(200).json(response.data);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 };

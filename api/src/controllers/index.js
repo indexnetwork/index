@@ -1,5 +1,3 @@
-import { getAddress } from "@ethersproject/address";
-import axios from "axios";
 import RedisClient from "../clients/redis.js";
 import {
   getPKPSession,
@@ -178,35 +176,6 @@ export const deleteIndex = async (req, res, next) => {
       .deleteIndex(req.params.id);
 
     res.status(200).json(deletedIndex);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-export const getQuestions = async (req, res, next) => {
-  try {
-    const indexService = new IndexService();
-    const index = await indexService.getIndexById(req.params.id);
-    if (!index) {
-      return res.status(404).json({ error: "Index not found" });
-    }
-
-    const question_cache = await redis.get(`questions:${req.params.id}`);
-
-    if (question_cache) {
-      return res.status(200).json(JSON.parse(question_cache));
-    }
-
-    try {
-      let response = await axios.get(
-        `${process.env.LLM_INDEXER_HOST}/chat/generate?indexId=${req.params.id}`,
-      );
-      redis.set(`questions:${req.params.id}`, JSON.stringify(response.data), {
-        EX: 86400,
-      });
-      res.status(200).json(response.data);
-    } catch (error) {
-      return res.status(400).json({ error: error.message });
-    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
