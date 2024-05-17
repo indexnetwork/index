@@ -24,7 +24,7 @@ export class ApiService {
       body: JSON.stringify({
         messages,
         id: chatID,
-        indexes: sources,
+        sources,
       }),
     });
 
@@ -69,6 +69,17 @@ export class ApiService {
       const err = await response.json();
       throw err;
     }
+    return response.json();
+  }
+
+  async fetchAllIndexes(did: string): Promise<FetchIndexResponse[]> {
+    const response = await fetch(`${this.baseUrl}/api/dids/${did}/indexes`);
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw err;
+    }
+
     return response.json();
   }
 

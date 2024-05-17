@@ -5,6 +5,7 @@ import { CodeBlock } from "@/components/ai/ui/codeblock";
 import { IconCheck, IconClose } from "@/components/ai/ui/icons";
 import Avatar from "@/components/ui/Avatar";
 import Button from "@/components/ui/Button";
+import { appConfig } from "@/config";
 import { useIndexChat } from "@/contexts/ChatContext";
 import { Users } from "@/types/entity";
 import { Message } from "ai";
@@ -60,24 +61,12 @@ export function ChatMessage({
           />
         )
       ) : (
-        // <Avatar size={24} user={viewedProfile as Users} />
-        // <div
-        //   style={{
-        //     border: "1px solid #E2E8F0",
-        //     borderRadius: "2px",
-        //     padding: "1px 3px",
-        //   }}
-        // >
-        // <div className={`flex items-start gap-3`}>
         <img
-          src={viewedProfile?.avatar as any}
+          src={`${appConfig.ipfsGateway}/${viewedProfile?.avatar}`}
           className="h-6 w-6 rounded-sm"
           alt="Assistant Avatar"
         />
-        // </div>
-        // </div>
       )}
-      {/* </div> */}
       <div className="" style={{ overflow: "auto", width: "82%" }}>
         <div style={{ overflowWrap: "break-word" }}>
           {editingMessage?.id && index === editingIndex ? (
@@ -88,21 +77,6 @@ export function ChatMessage({
                 alignItems: "center",
               }}
             >
-              {/* <Input
-                autoFocus
-                style={{
-                  border: "none",
-                  outline: "none",
-                  fontSize: "1.6rem",
-                  marginBottom: "1rem",
-                  marginRight: "1rem",
-                }}
-                ghost
-                value={editInput}
-                onChange={(e) => {
-                  setEditInput(e.target.value);
-                }}
-              /> */}
               <input
                 type="text"
                 className="bg-transparent text-sm focus:border-transparent focus:ring-0"
@@ -119,7 +93,6 @@ export function ChatMessage({
                     <p
                       style={{
                         marginTop: 0,
-                        // fontSize: "1.4rem",
                       }}
                       className="w-full whitespace-break-spaces break-words pb-4 text-sm font-normal"
                     >

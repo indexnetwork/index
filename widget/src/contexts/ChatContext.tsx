@@ -70,7 +70,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [sources, setSources] = useState<string[]>(sourcesInput || []);
   const [defaultQuestions, setDefaultQuestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  // const [isWalletConnected, setIsWalletConnected] = useState<boolean>(false);
   const [status, setStatus] = useState<IndexStatus>(IndexStatus.Init);
   const [userProfile, setUserProfile] = useState<
     ParticipantProfile | undefined
@@ -79,12 +78,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     ParticipantProfile | undefined
   >();
   const [chatID, setChatID] = useState<string>(uuidv4());
-
   const apiService = new ApiService({ baseUrl: appConfig.apiUrl, session });
+
   const fetchProfile = useCallback(
     async (did: string) => {
       const userProfile = await apiService.fetchProfile(did);
-      console.log("userProfile", userProfile);
       setUserProfile(userProfile);
     },
     [session],
@@ -93,6 +91,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   useEffect(() => {
     if (session) {
       fetchProfile(session?.did?.parent);
+      setSources([...sources, session?.did?.parent]);
     }
   }, [session]);
 
@@ -143,18 +142,29 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const initializeChat = async () => {
     try {
-      const indexData = await apiService.fetchIndex(sources[0]);
+      let indexData;
+      if (sources[0].includes("did:")) {
+        const did = sources[0];
+        const viewedProfile = await apiService.fetchProfile(did);
+        setViewedProfile(viewedProfile);
+
+        const indexes = await apiService.fetchAllIndexes(did);
+        indexData = indexes[0];
+      } else {
+        indexData = await apiService.fetchIndex(sources[0]);
+        setViewedProfile({
+          id: indexData.id,
+          name: indexData.ownerDID.name,
+          avatar: indexData.ownerDID.avatar as any,
+          bio: indexData.ownerDID.bio,
+        });
+      }
+
       const defaultQuestions = await apiService.getDefaultQuestionsOfIndex(
-        sources[0],
+        indexData.id,
       );
 
       setDefaultQuestions(defaultQuestions.slice(0, 2));
-      setViewedProfile({
-        id: indexData.id,
-        name: indexData.ownerDID.name,
-        avatar: `${appConfig.ipfsGateway}/${indexData.ownerDID.avatar}` as any,
-        bio: indexData.ownerDID.bio,
-      });
       setStatus(IndexStatus.Success);
     } catch (error) {
       console.error("Error while initializing:", error);
