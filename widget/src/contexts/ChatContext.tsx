@@ -142,16 +142,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const initializeChat = async () => {
     try {
-      let indexData;
       if (sources[0].includes("did:")) {
         const did = sources[0];
         const viewedProfile = await apiService.fetchProfile(did);
         setViewedProfile(viewedProfile);
-
-        const indexes = await apiService.fetchAllIndexes(did);
-        indexData = indexes[0];
       } else {
-        indexData = await apiService.fetchIndex(sources[0]);
+        const indexData = await apiService.fetchIndex(sources[0]);
         setViewedProfile({
           id: indexData.id,
           name: indexData.ownerDID.name,
@@ -160,9 +156,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         });
       }
 
-      const defaultQuestions = await apiService.getDefaultQuestionsOfIndex(
-        indexData.id,
-      );
+      const defaultQuestions =
+        await apiService.getDefaultQuestionsOfIndex(sources);
 
       setDefaultQuestions(defaultQuestions.slice(0, 2));
       setStatus(IndexStatus.Success);

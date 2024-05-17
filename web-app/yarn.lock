@@ -374,6 +374,19 @@
     uint8arrays "^5.0.1"
     varint "^6.0.0"
 
+"@ceramicnetwork/streamid@^4.1.0":
+  version "4.1.0"
+  resolved "https://registry.yarnpkg.com/@ceramicnetwork/streamid/-/streamid-4.1.0.tgz#21ea663f65cf926fb829b76d32804f17b7c839a8"
+  integrity sha512-1f9xio8W1I+ELFEs62rO84B/vbPzEkINDqfbO+0uJAwE8GNLnqQh+ZFnPkW0nbYFqtOqplJHuPNEM84jj/7R8g==
+  dependencies:
+    "@ipld/dag-cbor" "^7.0.0"
+    "@stablelib/sha256" "^1.0.1"
+    cborg "^1.10.2"
+    mapmoize "^1.2.1"
+    multiformats "^13.0.0"
+    uint8arrays "^5.0.1"
+    varint "^6.0.0"
+
 "@ceramicnetwork/transport-postmessage@^0.6.0":
   version "0.6.1"
   resolved "https://registry.yarnpkg.com/@ceramicnetwork/transport-postmessage/-/transport-postmessage-0.6.1.tgz#119f641aee9caaaeb371d177383ec57c2615372f"

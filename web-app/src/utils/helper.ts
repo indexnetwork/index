@@ -1,3 +1,4 @@
+import { StreamID } from "@ceramicnetwork/streamid";
 import moment from "moment";
 
 export function copyToClipboard(str?: string) {
@@ -105,4 +106,13 @@ export const removeDuplicates = (arr1: string[], arr2?: string[]) => {
 export const shuffleArray = (array: any[]) => {
   const shuffled = array.sort(() => Math.random() - 0.5);
   return shuffled;
+};
+
+export const isStreamID = (value: string) => {
+  try {
+    StreamID.fromString(value).toString();
+    return true;
+  } catch (e) {
+    return false;
+  }
 };

@@ -8,7 +8,7 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import { IndexItem } from "@/types/entity";
-import { filterValidUrls, removeDuplicates } from "@/utils/helper";
+import { filterValidUrls, isStreamID, removeDuplicates } from "@/utils/helper";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useIndexConversation } from "../IndexConversationContext";
@@ -23,7 +23,6 @@ export default function IndexItemsTabSection() {
     setLoading,
     fetchIndexItems,
     fetchMoreIndexItems,
-    // loadMoreItems,
   } = useIndexConversation();
   const { isCreator } = useRole();
   const { api, ready: apiReady } = useApi();
@@ -70,14 +69,11 @@ export default function IndexItemsTabSection() {
     const executeNextBatch = async () => {
       if (currentIndex >= urls.length) return;
 
-      // Determine the next batch of URLs to process
       const batch = urls.slice(currentIndex, currentIndex + CONCURRENCY_LIMIT);
       currentIndex += CONCURRENCY_LIMIT;
 
-      // Process the current batch
       await Promise.allSettled(batch.map(processUrl));
 
-      // Execute the next batch
       await executeNextBatch();
     };
 
@@ -85,11 +81,11 @@ export default function IndexItemsTabSection() {
   };
 
   const handleAddItem = useCallback(
-    async (inputUrls: string[]) => {
+    async (inputItems: string[]) => {
       if (!apiReady || !viewedIndex) return;
 
       // add only unique and valid URLs
-      const filteredUrls = filterValidUrls(inputUrls);
+      const filteredUrls = filterValidUrls(inputItems);
       const uniqueUrls = removeDuplicates(filteredUrls);
       const urls = removeDuplicates(
         uniqueUrls,
@@ -99,23 +95,39 @@ export default function IndexItemsTabSection() {
           .map((i) => i.node.url),
       );
 
+      // add only unique and valid indexes
+      const inputIndexIds = inputItems.filter((id) => isStreamID(id));
+      const uniqueIndexIds = removeDuplicates(inputIndexIds);
+      const indexIds = removeDuplicates(
+        uniqueIndexIds,
+        itemsState.items
+          .filter((i) => i.type === "Index")
+          // @ts-ignore
+          .map((i) => i.node.id),
+      );
+
+      const items = [...urls, ...indexIds];
+
+      console.log("items", indexIds);
+
       setLoading(true);
-      setProgress({ current: 0, total: urls.length });
+      setProgress({ current: 0, total: items.length });
 
-      await processUrlsInBatches(urls, async (url: string) => {
+      await processUrlsInBatches(items, async (item: string) => {
         try {
-          const createdLink = await api!.crawlLink(url);
-          if (!createdLink) return;
+          let itemId = item;
 
-          const createdItem = await api!.createItem(
-            viewedIndex.id,
-            createdLink.id,
-          );
+          if (!isStreamID(item)) {
+            const createdLink = await api!.crawlLink(item);
+            itemId = createdLink.id;
+          }
+
+          const createdItem = await api!.createItem(viewedIndex.id, itemId);
 
           setAddedItem(createdItem);
         } catch (error) {
           console.error("Error adding item", error);
-          toast.error(`Error adding item: ${url}`);
+          toast.error(`Error adding item: ${item}`);
         }
       });
 
