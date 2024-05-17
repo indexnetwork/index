@@ -7,19 +7,21 @@ import {
 } from "../types/fragments.js";
 import { getTypeDefinitions } from "../utils/helpers.js";
 
-const definition = getTypeDefinitions();
-
-const fragments = {
-  [definition.models.WebPage.id]: {
-    fragment: webPageFragment,
-    name: "WebPage",
-  },
-  [definition.models.Team.id]: { fragment: teamFragment, name: "Team" },
-  [definition.models.Index.id]: { fragment: indexFragment, name: "Index" },
+const getFragmentMap = () => {
+  const definition = getTypeDefinitions();
+  return {
+    [definition.models.WebPage.id]: {
+      fragment: webPageFragment,
+      name: "WebPage",
+    },
+    [definition.models.Team.id]: { fragment: teamFragment, name: "Team" },
+    [definition.models.Index.id]: { fragment: indexFragment, name: "Index" },
+  };
 };
 
 export class ComposeDBService {
   constructor() {
+    const definition = getTypeDefinitions();
     this.client = new ComposeClient({
       ceramic: process.env.CERAMIC_HOST,
       definition: definition,
@@ -35,6 +37,7 @@ export class ComposeDBService {
   }
 
   async createNode(modelId, params) {
+    const fragments = getFragmentMap();
     const modelFragment = fragments[modelId];
 
     if (!this.did) {
