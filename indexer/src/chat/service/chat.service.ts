@@ -61,7 +61,6 @@ export class ChatService {
   }
 
   async questions(indexIds: string[]) {
-    console.log(`seref`, indexIds);
     const chain =
       await this.agentClient.createQuestionGenerationChain('OpenAI');
     Logger.log(
