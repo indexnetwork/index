@@ -48,10 +48,11 @@ export class ApiService {
     }
   }
 
-  async getDefaultQuestionsOfIndex(indexId: string): Promise<string[]> {
-    const response = await fetch(
-      `${this.baseUrl}/api/indexes/${indexId}/questions`,
-    );
+  async getDefaultQuestionsOfIndex(sources: string[]): Promise<string[]> {
+    const response = await fetch(`${this.baseUrl}/api/discovery/questions`, {
+      method: "POST",
+      body: JSON.stringify({ sources }),
+    });
 
     if (!response.ok) {
       const err = await response.json();

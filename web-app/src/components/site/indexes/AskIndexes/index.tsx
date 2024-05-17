@@ -57,7 +57,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
     if (!apiReady || !isIndex) return;
     try {
-      const questions = await api!.getDefaultQuestionsOfIndex(id);
+      const questions = await api!.getDefaultQuestionsOfIndex([id]);
       setDefaultQuestions(questions);
     } catch (error) {
       console.error("Error fetching default questions", error);

@@ -7,7 +7,7 @@ import { CID } from "multiformats";
 const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",
   INDEXES: "/indexes/:id",
-  DEFAULT_QUESTIONS_OF_INDEX: "/indexes/:id/questions",
+  DEFAULT_QUESTIONS_OF_INDEX: "/discovery/questions",
   GET_ALL_INDEXES: "/dids/:did/indexes",
   CREATE_INDEX: "/indexes",
   UPDATE_INDEX: "/indexes/:id",
@@ -121,12 +121,12 @@ class ApiService {
     return data as Indexes;
   }
 
-  async getDefaultQuestionsOfIndex(indexId: string): Promise<string[]> {
-    const url = API_ENDPOINTS.DEFAULT_QUESTIONS_OF_INDEX.replace(
-      ":id",
-      indexId,
-    );
-    const { data } = await this.apiAxios.get<{ questions: string[] }>(url);
+  async getDefaultQuestionsOfIndex(sources: string[]): Promise<string[]> {
+    const url = API_ENDPOINTS.DEFAULT_QUESTIONS_OF_INDEX;
+    const { data } = await this.apiAxios.post<{ questions: string[] }>(url, {
+      sources,
+    });
+
     return data.questions;
   }
 

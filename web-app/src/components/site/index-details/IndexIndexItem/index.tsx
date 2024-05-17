@@ -6,21 +6,22 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import IndexDetailItemPopup from "components/site/popup/IndexDetailItemPopup";
 import { useBreakpoint } from "hooks/useBreakpoint";
 import { useRole } from "hooks/useRole";
+import moment from "moment";
 import React from "react";
 import sanitize from "sanitize-html";
-import { IndexTeamNodeItem } from "types/entity";
+import { IndexIndexNodeItem } from "types/entity";
 import { BREAKPOINTS } from "utils/constants";
 import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
-export interface TeamItemProps {
-  item: IndexTeamNodeItem;
-  onChange?(val: IndexTeamNodeItem[]): void;
+export interface IndexIndexItemProps {
+  item: IndexIndexNodeItem;
+  onChange?(val: IndexIndexNodeItem[]): void;
   search?: boolean;
   handleRemove?(): void;
 }
 
-const TeamItem: React.FC<TeamItemProps> = ({
+const IndexIndexItem: React.FC<IndexIndexItemProps> = ({
   item,
   search = false,
   handleRemove,
@@ -36,12 +37,31 @@ const TeamItem: React.FC<TeamItemProps> = ({
         <Col xs={12}>
           <FlexRow wrap={false}>
             <Col className="idxflex-grow-1">
-              <a target="_blank" rel="noreferrer" href={node?.website}>
+              <img
+                className="mr-3"
+                src={node?.logo || "/images/ic_index_item.svg"}
+                alt="favicon"
+                width={16}
+                height={16}
+                onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+                  const target = e.target as HTMLImageElement;
+                  target.onerror = null; // Prevents infinite loop in case fallback image also fails
+                  target.src = "/images/globe.svg";
+                }}
+                style={{
+                  verticalAlign: "middle",
+                }}
+              />
+              <a
+                target="_blank"
+                rel="noreferrer"
+                href={`${window.location.origin}/${node?.id}`}
+              >
                 <Text
                   className={cm.title}
                   fontWeight={700}
                   dangerouslySetInnerHTML={{
-                    __html: sanitize(node?.name as string),
+                    __html: sanitize(node?.title as string),
                   }}
                 ></Text>
                 {/* dangerouslySetInnerHTML={{ __html: sanitize((node.highlight && item.highlight["link.title"]) ? item.highlight["link.title"] : node?.title as string) }}></Text> */}
@@ -77,26 +97,11 @@ const TeamItem: React.FC<TeamItemProps> = ({
           </FlexRow>
         </Col>
         <Col xs={12} className="mt-2">
-          <a target="_blank" rel="noreferrer" href={node?.website}>
-            <img
-              className="mr-3"
-              src={node?.logo || "/images/ic_team_index_item.svg"}
-              alt="favicon"
-              width={16}
-              height={16}
-              onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-                const target = e.target as HTMLImageElement;
-                target.onerror = null; // Prevents infinite loop in case fallback image also fails
-                target.src = "/images/globe.svg";
-              }}
-              style={{
-                verticalAlign: "middle",
-              }}
-            />
-            <Text size="sm" theme="disabled">
-              {node?.website?.substring(0, 80)} • {node?.shortDescription}
-            </Text>
-          </a>
+          <Text size="md" theme="gray5">
+            {node?.updatedAt
+              ? `Updated ${moment(new Date(node.updatedAt)).fromNow()}`
+              : ""}
+          </Text>
         </Col>
         {/* {
           search && node.highlight && node.highlight["link.content"] && (
@@ -133,4 +138,4 @@ const TeamItem: React.FC<TeamItemProps> = ({
     </div>
   );
 };
-export default TeamItem;
+export default IndexIndexItem;
