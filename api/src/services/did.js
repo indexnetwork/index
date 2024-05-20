@@ -3,7 +3,6 @@ import { profileFragment } from "../types/fragments.js";
 import { getCurrentDateTime } from "../utils/helpers.js";
 import { IndexService } from "./index.js";
 
-console.log(profileFragment);
 export class DIDService {
   constructor(definition) {
     this.definition = definition;

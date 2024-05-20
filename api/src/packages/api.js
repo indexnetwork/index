@@ -6,8 +6,6 @@ import * as ejv from "express-joi-validation";
 
 import RedisClient from "../clients/redis.js";
 
-import * as Sentry from "@sentry/node";
-import { ProfilingIntegration } from "@sentry/profiling-node";
 import { createProxyMiddleware } from "http-proxy-middleware";
 
 const app = express();
@@ -15,24 +13,6 @@ const app = express();
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
-
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  integrations: [
-    // enable HTTP calls tracing
-    new Sentry.Integrations.Http({ tracing: true }),
-    // enable Express.js middleware tracing
-    new Sentry.Integrations.Express({ app }),
-    new ProfilingIntegration(),
-  ],
-  // Performance Monitoring
-  tracesSampleRate: 1.0, //  Capture 100% of the transactions
-  // Set sampling rate for profiling - this is relative to tracesSampleRate
-  profilesSampleRate: 1.0,
-});
-
-app.use(Sentry.Handlers.requestHandler());
-app.use(Sentry.Handlers.tracingHandler());
 
 const port = process.env.PORT || 3001;
 
@@ -549,7 +529,6 @@ const start = async () => {
     apiKey: process.env.MORALIS_API_KEY,
   });
 
-  app.use(Sentry.Handlers.errorHandler());
   app.listen(port, async () => {
     console.log(`API listening on port ${port}`);
   });
