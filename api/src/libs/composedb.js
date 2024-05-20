@@ -15,13 +15,20 @@ const ceramic = new CeramicClient(process.env.CERAMIC_HOST);
 
 let server;
 
-const authenticate = async () => {
-  const key = fromString(process.env.CERAMIC_ADMIN_PRIVATE_KEY, "base16");
+const authenticateAdmin = async () => {
+  const ceramicAdminPrivateKey = process.env.CERAMIC_ADMIN_PRIVATE_KEY;
+  if (!ceramicAdminPrivateKey) {
+    return false;
+  }
+  const key = fromString(ceramicAdminPrivateKey, "base16");
   const did = new DID({
     resolver: getResolver(),
     provider: new Ed25519Provider(key),
   });
   await did.authenticate();
+  if (!did.authenticated) {
+    return false;
+  }
   ceramic.did = did;
 };
 
@@ -348,17 +355,33 @@ export const jsonSchemaToGraphQLFragment = (schema, prefix = false) => {
   return `... on ${schema.name} {\n${finalFragment}\n}`;
 };
 
-export const indexNewModel = async (app, modelId) => {
-  await authenticate();
+export const indexNewModel = async (app, modelId, ceramicAdminPrivateKey) => {
+  const indexerCeramic = new CeramicClient(process.env.CERAMIC_HOST);
+  if (!ceramicAdminPrivateKey) {
+    return false;
+  }
+  const key = fromString(ceramicAdminPrivateKey, "base16");
+  const did = new DID({
+    resolver: getResolver(),
+    provider: new Ed25519Provider(key),
+  });
+  await did.authenticate();
+  if (!did.authenticated) {
+    return false;
+  }
+  indexerCeramic.did = did;
+
   await Composite.fromModels({
-    ceramic,
+    ceramic: indexerCeramic,
     models: [modelId],
     index: true,
   });
   await setIndexedModelParams(app);
+
+  return true;
 };
 export const setIndexedModelParams = async (app) => {
-  await authenticate();
+  await authenticateAdmin();
   const models = await ceramic.admin.getIndexedModels();
   const modelList = models.map((m) => m.streamID.toString());
 

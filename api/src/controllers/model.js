@@ -16,7 +16,13 @@ export const deploy = async (req, res, next) => {
     url: process.env.REDIS_CONNECTION_STRING,
   });
   await pubClient.connect();
-  await indexNewModel(req.app, req.params.id);
-  pubClient.publish("newModel", req.params.id);
-  res.json(`OK!`);
+  const indexResult = await indexNewModel(
+    req.app,
+    req.params.id,
+    req.headers.authorization,
+  );
+  if (indexResult) {
+    pubClient.publish("newModel", req.params.id);
+  }
+  res.json(indexResult);
 };
