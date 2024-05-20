@@ -126,12 +126,13 @@ export const updateIndex = async (req, res, next) => {
       .updateIndex(req.params.id, req.body);
 
     if (pkpSession) {
-      const userRoles = getRolesFromSession(pkpSession);
+      const userRoles = getRolesFromSession(pkpSession, definition);
       Object.assign(newIndex, { roles: userRoles });
     }
 
     return res.status(200).json(newIndex);
   } catch (error) {
+    console.log(error);
     res.status(500).json({ error: error.message });
   }
 };
