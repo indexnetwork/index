@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:21.2-alpine
 COPY package*.json ./
 COPY yarn.lock ./
 RUN yarn install
