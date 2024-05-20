@@ -1,17 +1,3 @@
-export const didIndexFragment = `
-  ... on DIDIndex {
-    id
-    type
-    indexId
-    createdAt
-    updatedAt
-    deletedAt
-    controllerDID {
-      id
-    }
-  }
-`;
-
 export const profileFragment = `
   ... on Profile {
     bio
@@ -26,110 +12,7 @@ export const profileFragment = `
   }
 `;
 
-export const webPageFragment = `
-  ... on WebPage {
-    id
-    title
-    favicon
-    url
-    content
-    createdAt
-    updatedAt
-    deletedAt
-  }
-`;
-
-export const indexFragment = `
-  ... on Index {
-    id
-    title
-    createdAt
-    updatedAt
-    deletedAt
-  }
-`;
-
-export const teamFragment = `
-  ... on Team {
-      id
-      logo
-      name
-      teamId
-      members {
-          name
-          image
-          teams {
-              uid
-              name
-              role
-              mainTeam
-              teamLead
-          }
-          skills {
-              title
-          }
-          twitter
-          location
-          mainTeam {
-              uid
-              name
-              role
-              mainTeam
-              teamLead
-          }
-          memberId
-          teamLead
-          openToWork
-          officeHours
-          preferences
-          githubHandle
-          repositories
-          discordHandle
-          linkedinHandle
-          telegramHandle
-          projectContributions {
-              uid
-              role
-              endDate
-              memberUid
-              startDate
-              projectUid
-              description
-              currentProject
-          }
-      }
-      twitter
-      website
-      fundingStage
-      industryTags {
-          uid
-          title
-          createdAt
-          updatedAt
-          definition
-          airtableRecId
-          industryCategoryUid
-      }
-      technologies {
-          uid
-          title
-          createdAt
-          updatedAt
-      }
-      contactMethod
-      linkedinHandle
-      longDescription
-      shortDescription
-      membershipSources {
-          uid
-          title
-          createdAt
-          updatedAt
-      }
-  }
-`;
-
-export const modelBundleFragment = `
+export const appBundleFragment = `
   id
   __typename
   ... on Index {
@@ -152,77 +35,13 @@ export const modelBundleFragment = `
     Team_logo: logo
     Team_name: name
     Team_teamId: teamId
-    Team_members: members {
-        name
-        image
-        teams {
-            uid
-            name
-            role
-            mainTeam
-            teamLead
-        }
-        skills {
-            title
-        }
-        twitter
-        location
-        mainTeam {
-            uid
-            name
-            role
-            mainTeam
-            teamLead
-        }
-        memberId
-        teamLead
-        openToWork
-        officeHours
-        preferences
-        githubHandle
-        repositories
-        discordHandle
-        linkedinHandle
-        telegramHandle
-        projectContributions {
-            uid
-            role
-            endDate
-            memberUid
-            startDate
-            projectUid
-            description
-            currentProject
-        }
-    }
     Team_twitter: twitter
     Team_website: website
     Team_fundingStage: fundingStage
-    Team_industryTags: industryTags {
-        uid
-        title
-        createdAt
-        updatedAt
-        definition
-        airtableRecId
-        industryCategoryUid
-    }
-    Team_technologies: technologies {
-        uid
-        title
-        createdAt
-        updatedAt
-    }
     Team_contactMethod: contactMethod
     Team_linkedinHandle: linkedinHandle
     Team_longDescription: longDescription
     Team_shortDescription: shortDescription
-    Team_membershipSources: membershipSources {
-        uid
-        title
-        createdAt
-        updatedAt
-    }
   }
 `;
 
@@ -237,7 +56,7 @@ export const indexItemFragment = `
     item {
       id
       __typename
-      ${modelBundleFragment}
+      ${appBundleFragment}
     }
     index {
       id

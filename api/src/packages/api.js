@@ -57,11 +57,15 @@ import * as siteController from "../controllers/site.js";
 
 import * as metaController from "../controllers/meta.js";
 
+import * as modelController from "../controllers/model.js";
+
 import {
   authenticateMiddleware,
   errorMiddleware,
   authCheckMiddleware,
 } from "../middlewares/index.js";
+
+import { setIndexedModelParams } from "../libs/composedb.js";
 
 import {
   isImage,
@@ -521,12 +525,25 @@ app.get(
   siteController.faucet,
 );
 
+app.get("/model/info", modelController.info);
+app.post(
+  "/model/index/:id",
+  validator.params(
+    Joi.object({
+      id: Joi.custom(isStreamID, "Model ID").required(),
+    }),
+  ),
+  modelController.deploy,
+);
+
 // Validators
 app.use(errorMiddleware);
 
 const start = async () => {
   console.log("Starting API ...", port);
   await redis.connect();
+
+  await setIndexedModelParams(app);
 
   await Moralis.start({
     apiKey: process.env.MORALIS_API_KEY,

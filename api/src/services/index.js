@@ -1,15 +1,14 @@
 import { ComposeClient } from "@composedb/client";
 
-import { getCurrentDateTime, getTypeDefinitions } from "../utils/helpers.js";
-
-import { getOwnerProfile } from "../libs/lit/index.js";
+import { getCurrentDateTime } from "../utils/helpers.js";
+import { getLitOwner } from "../libs/lit/index.js";
+import { profileFragment } from "../types/fragments.js";
 
 export class IndexService {
-  constructor() {
-    const definition = getTypeDefinitions();
+  constructor(definition) {
     this.client = new ComposeClient({
       ceramic: process.env.CERAMIC_HOST,
-      definition: definition,
+      definition,
     });
     this.did = null;
   }
@@ -88,7 +87,7 @@ export class IndexService {
         index.did = did;
       }
 
-      index.ownerDID = await getOwnerProfile(index);
+      index.ownerDID = await this.getOwnerProfile(index, this);
 
       return index;
     } catch (error) {
@@ -139,7 +138,7 @@ export class IndexService {
 
       // Return the created index document
       const createdIndex = data.createIndex.document;
-      createdIndex.ownerDID = await getOwnerProfile(createdIndex);
+      createdIndex.ownerDID = await this.getOwnerProfile(createdIndex, this);
 
       return createdIndex;
     } catch (error) {
@@ -227,7 +226,7 @@ export class IndexService {
         index.did = did;
       }
 
-      index.ownerDID = await getOwnerProfile(index);
+      index.ownerDID = await this.getOwnerProfile(index, this);
       // Return the created index document
       return index;
     } catch (error) {
@@ -282,6 +281,74 @@ export class IndexService {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in updateIndex:", error);
       throw error;
+    }
+  }
+
+  async getOwner(indexId) {
+    try {
+      const { data, errors } = await this.client.executeQuery(`
+              query{
+                dIDIndexIndex(first: 1, sorting: {createdAt: DESC}, filters: { where: {deletedAt: {isNull: true}, type: {equalTo: "owned"}, indexId: {equalTo: "${indexId}"}}}) {
+                  edges {
+                    node {
+                      id
+                      type
+                      indexId
+                      createdAt
+                      updatedAt
+                      deletedAt
+                      controllerDID {
+                        id
+                        profile {
+                          ${profileFragment}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `);
+
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(
+          `Error getting DIDIndex index: ${JSON.stringify(errors)}`,
+        );
+      }
+
+      // Validate the data response
+      if (!data || !data.dIDIndexIndex || !data.dIDIndexIndex.edges) {
+        throw new Error("Invalid response data");
+      }
+
+      if (data.dIDIndexIndex.edges.length === 0) {
+        return null;
+      }
+      let profile = {};
+      if (data.dIDIndexIndex.edges[0].node.controllerDID.profile !== null) {
+        profile = data.dIDIndexIndex.edges[0].node.controllerDID.profile;
+        profile.id = profile.controllerDID.id;
+        delete profile.controllerDID;
+        return profile;
+      } else {
+        return {
+          id: data.dIDIndexIndex.edges[0].node.controllerDID.id,
+        };
+      }
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in dIDIndexIndex:", error);
+      throw error;
+    }
+  }
+
+  async getOwnerProfile(index) {
+    const owner = await this.getOwner(index.id);
+    if (owner && owner.id) {
+      return owner;
+    } else {
+      const ownerAddr = await getLitOwner(index.signerPublicKey);
+      return { id: `did:pkh:eip155:1:${ownerAddr}` };
     }
   }
 }

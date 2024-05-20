@@ -1,9 +1,5 @@
 import { ComposeClient } from "@composedb/client";
-import {
-  removePrefixFromKeys,
-  getCurrentDateTime,
-  getTypeDefinitions,
-} from "../utils/helpers.js";
+import { removePrefixFromKeys, getCurrentDateTime } from "../utils/helpers.js";
 import { indexItemFragment } from "../types/fragments.js";
 
 const transformIndexItem = (indexItem) => {
@@ -18,11 +14,10 @@ const transformIndexItem = (indexItem) => {
 };
 
 export class ItemService {
-  constructor() {
-    const definition = getTypeDefinitions();
+  constructor(definition) {
     this.client = new ComposeClient({
       ceramic: process.env.CERAMIC_HOST,
-      definition: definition,
+      definition,
     });
     this.did = null;
   }

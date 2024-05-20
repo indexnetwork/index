@@ -6,11 +6,7 @@ import { resolveProperties } from "@ethersproject/properties";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
 import RedisClient from "../../clients/redis.js";
-import { DIDService } from "../../services/did.js";
-import {
-  getAuthSigFromDIDSession,
-  getTypeDefinitions,
-} from "../../utils/helpers.js";
+import { getAuthSigFromDIDSession } from "../../utils/helpers.js";
 import { Cacao } from "@didtools/cacao";
 import { AuthMethodType } from "@lit-protocol/constants";
 import { randomBytes, randomString } from "@stablelib/random";
@@ -298,7 +294,7 @@ export const transferOwnership = async ({
   }
 };
 
-export const getOwner = async (pkpPubKey) => {
+export const getLitOwner = async (pkpPubKey) => {
   const litContracts = new LitContracts({
     network: config.litNetwork,
     debug: false,
@@ -329,16 +325,7 @@ export const getOwner = async (pkpPubKey) => {
 
   return address;
 };
-export const getOwnerProfile = async (index) => {
-  const didService = new DIDService();
-  const owner = await didService.getOwner(index.id);
-  if (owner && owner.id) {
-    return owner;
-  } else {
-    const ownerAddr = await getOwner(index.signerPublicKey);
-    return { id: `did:pkh:eip155:1:${ownerAddr}` };
-  }
-};
+
 export const encodeDIDWithLit = (pkpPubKey) => {
   pkpPubKey = pkpPubKey.replace("0x", "");
 
@@ -520,7 +507,7 @@ export const getPKPSession = async (session, index) => {
   if (!session.did.authenticated) {
     throw new Error("Unauthenticated DID");
   }
-  const owner = await getOwner(index.signerPublicKey);
+  const owner = await getLitOwner(index.signerPublicKey);
 
   let sessionCacheKey = false;
 
@@ -612,9 +599,7 @@ export const getPKPSession = async (session, index) => {
   }
 };
 
-export const getRolesFromSession = (session) => {
-  const definition = getTypeDefinitions();
-
+export const getRolesFromSession = (session, definition) => {
   const authorizedModels = new Set(
     session.cacao.p.resources.map((r) => r.replace("ceramic://*?model=", "")),
   );

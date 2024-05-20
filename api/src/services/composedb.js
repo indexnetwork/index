@@ -1,30 +1,13 @@
 import { ComposeClient } from "@composedb/client";
 
-import {
-  webPageFragment,
-  teamFragment,
-  indexFragment,
-} from "../types/fragments.js";
-import { getTypeDefinitions } from "../utils/helpers.js";
-
-const getFragmentMap = () => {
-  const definition = getTypeDefinitions();
-  return {
-    [definition.models.WebPage.id]: {
-      fragment: webPageFragment,
-      name: "WebPage",
-    },
-    [definition.models.Team.id]: { fragment: teamFragment, name: "Team" },
-    [definition.models.Index.id]: { fragment: indexFragment, name: "Index" },
-  };
-};
-
+/*
+fragment, name */
 export class ComposeDBService {
-  constructor() {
-    const definition = getTypeDefinitions();
+  constructor(definition, modelFragment) {
+    this.modelFragment = modelFragment;
     this.client = new ComposeClient({
       ceramic: process.env.CERAMIC_HOST,
-      definition: definition,
+      definition,
     });
     this.did = null;
   }
@@ -36,25 +19,19 @@ export class ComposeDBService {
     return this;
   }
 
-  async createNode(modelId, params) {
-    const fragments = getFragmentMap();
-    const modelFragment = fragments[modelId];
-
+  async createNode(content) {
     if (!this.did) {
       throw new Error("DID not set. Use setDID() to set the did.");
     }
 
     try {
-      const content = {
-        ...params,
-      };
       this.client.setDID(this.did);
       const { data, errors } = await this.client.executeQuery(
         `
-                mutation CreateNode($input: Create${modelFragment.name}Input!) {
-                    create${modelFragment.name}(input: $input) {
+                mutation CreateNode($input: Create${this.modelFragment.name}Input!) {
+                    create${this.modelFragment.name}(input: $input) {
                         document {
-                            ${modelFragment.fragment}
+                            ${this.modelFragment.fragment}
                         }
                     }
                 }`,
@@ -64,21 +41,21 @@ export class ComposeDBService {
       // Handle GraphQL errors
       if (errors) {
         throw new Error(
-          `Error creating ${modelFragment.name}: ${JSON.stringify(errors)}`,
+          `Error creating ${this.modelFragment.name}: ${JSON.stringify(errors)}`,
         );
       }
 
       // Validate the data response
       if (
         !data ||
-        !data[`create${modelFragment.name}`] ||
-        !data[`create${modelFragment.name}`].document
+        !data[`create${this.modelFragment.name}`] ||
+        !data[`create${this.modelFragment.name}`].document
       ) {
         throw new Error("Invalid response data");
       }
 
       // Return the created webpage document
-      return data[`create${modelFragment.name}`].document;
+      return data[`create${this.modelFragment.name}`].document;
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in createWebPage:", error);
@@ -86,24 +63,19 @@ export class ComposeDBService {
     }
   }
 
-  async updateNode(modelId, id, params) {
-    const modelFragment = fragments[modelId];
-
+  async updateNode(id, content) {
     if (!this.did) {
       throw new Error("DID not set. Use setDID() to set the did.");
     }
 
     try {
-      const content = {
-        ...params,
-      };
       this.client.setDID(this.did);
       const { data, errors } = await this.client.executeQuery(
         `
-                mutation Update${modelFragment.name}($input: Update${modelFragment.name}Input!) {
-                    update${modelFragment.name}(input: $input) {
+                mutation Update${this.modelFragment.name}($input: Update${this.modelFragment.name}Input!) {
+                    update${this.modelFragment.name}(input: $input) {
                         document {
-                            ${modelFragment.fragment}
+                            ${this.modelFragment.fragment}
                         }
                     }
                 }`,
@@ -113,21 +85,21 @@ export class ComposeDBService {
       // Handle GraphQL errors
       if (errors) {
         throw new Error(
-          `Error updating ${modelFragment.name}: ${JSON.stringify(errors)}`,
+          `Error updating ${this.modelFragment.name}: ${JSON.stringify(errors)}`,
         );
       }
 
       // Validate the data response
       if (
         !data ||
-        !data[`update${modelFragment.name}`] ||
-        !data[`update${modelFragment.name}`].document
+        !data[`update${this.modelFragment.name}`] ||
+        !data[`update${this.modelFragment.name}`].document
       ) {
         throw new Error("Invalid response data");
       }
 
       // Return the updated node document
-      return data[`update${modelFragment.name}`].document;
+      return data[`update${this.modelFragment.name}`].document;
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error(
@@ -138,15 +110,13 @@ export class ComposeDBService {
     }
   }
 
-  async getNodeById(modelId, id) {
-    const modelFragment = fragments[modelId];
-    console.log(fragments, modelId);
+  async getNodeById(id) {
     try {
       const { data, errors } = await this.client.executeQuery(`
             {
               node(id: "${id}") {
-                ... on ${modelFragment.name} {
-                  ${modelFragment.fragment}
+                ... on ${this.modelFragment.name} {
+                  ${this.modelFragment.fragment}
                 }
               }
             }`);
@@ -154,7 +124,7 @@ export class ComposeDBService {
       // Handle GraphQL errors
       if (errors) {
         throw new Error(
-          `Error getting ${modelFragment.name}: ${JSON.stringify(errors)}`,
+          `Error getting ${this.modelFragment.name}: ${JSON.stringify(errors)}`,
         );
       }
       // Validate the data response

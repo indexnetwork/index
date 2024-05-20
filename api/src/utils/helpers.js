@@ -3,16 +3,22 @@ import { getAddress } from "@ethersproject/address";
 import moment from "moment";
 import fs from "fs/promises";
 
-import { definition as definitionDev } from "../types/merged-runtime-dev.js";
-import { definition as definitionMainnet } from "../types/merged-runtime-mainnet.js";
-
 import pinataSDK from "@pinata/sdk";
 
 import { Readable } from "stream";
-import { DIDService } from "../services/did.js";
 
 import RedisClient from "../clients/redis.js";
 const redis = RedisClient.getInstance();
+
+export const fetchModelInfo = async () => {
+  try {
+    const modelInfo = await fetch(`${process.env.API_HOST}/model/info`);
+    return modelInfo.json();
+  } catch (e) {
+    console.error("Error fetching model info", e);
+    process.exit(0);
+  }
+};
 
 export const getCurrentDateTime = () => moment.utc().toISOString();
 
@@ -34,28 +40,13 @@ export const removePrefixFromKeys = (obj, prefix) =>
     {},
   );
 
-export const getTypeDefinitions = () => {
-  const environment = process.env.ENVIRONMENT || "dev";
-
-  switch (environment) {
-    case "mainnet":
-      return definitionMainnet;
-    case "dev":
-      return definitionDev;
-    default:
-      return definitionDev;
-  }
-};
-
-export const generateLITAction = async (conditions) => {
+export const generateLITAction = async (conditions, definition) => {
   let actionStr = await fs.readFile(`src/types/template-lit-action.js`, "utf8");
 
   actionStr = actionStr.replace(
     "__REPLACE_THIS_AS_CONDITIONS_ARRAY__",
     JSON.stringify(conditions),
   );
-
-  const definition = getTypeDefinitions();
 
   const models = JSON.stringify({
     Index: definition.models.Index.id,
@@ -78,9 +69,7 @@ export const generateLITAction = async (conditions) => {
   return resp.IpfsHash;
 };
 
-export const flattenSources = async (sources) => {
-  const didService = new DIDService();
-
+export const flattenSources = async (sources, didService) => {
   const sourcePromises = sources.map(async (source) => {
     if (source.includes("did:")) {
       // TODO: check better

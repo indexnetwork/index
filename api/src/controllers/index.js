@@ -13,8 +13,10 @@ import { IndexService } from "../services/index.js";
 const redis = RedisClient.getInstance();
 
 export const getIndexById = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
+
   try {
-    const indexService = new IndexService().setSession(req.session);
+    const indexService = new IndexService(definition).setSession(req.session);
     const index = await indexService.getIndexById(req.params.id);
 
     const { roles } = req.query;
@@ -29,7 +31,7 @@ export const getIndexById = async (req, res, next) => {
       if (roles) {
         const pkpSession = await getPKPSession(req.session, index);
         if (pkpSession) {
-          const userRoles = getRolesFromSession(pkpSession);
+          const userRoles = getRolesFromSession(pkpSession, definition);
           Object.assign(index, { roles: userRoles });
         }
       }
@@ -43,14 +45,14 @@ export const getIndexById = async (req, res, next) => {
   }
 };
 export const createIndex = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
+
   try {
     const indexParams = req.body;
 
     if (!indexParams.signerFunction) {
       indexParams.signerFunction = process.env.DEFAULT_SIGNER_FUNCTION;
     }
-
-    console.log(req.body, indexParams);
 
     const ownerWallet = req.session.did.parent.split(":").pop();
 
@@ -59,8 +61,7 @@ export const createIndex = async (req, res, next) => {
 
     const pkpSession = await getPKPSession(req.session, indexParams);
 
-    console.log(pkpSession.serialize());
-    const indexService = new IndexService().setSession(pkpSession); //PKP
+    const indexService = new IndexService(definition).setSession(pkpSession); //PKP
     let newIndex = await indexService.createIndex(indexParams);
 
     console.log(newIndex);
@@ -70,10 +71,9 @@ export const createIndex = async (req, res, next) => {
 
     //Cache pkp session after index creation.
     const sessionCacheKey = `${req.session.did.parent}:${ownerWallet}:${newIndex.id}:${newIndex.signerFunction}`;
-    console.log("hellodear", sessionCacheKey);
     await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
 
-    const didService = new DIDService().setSession(req.session); //Personal
+    const didService = new DIDService(definition).setSession(req.session); //Personal
     await didService.setDIDIndex(newIndex.id, "owned");
 
     newIndex = await indexService.getIndexById(newIndex.id);
@@ -93,8 +93,9 @@ export const createIndex = async (req, res, next) => {
   }
 };
 export const updateIndex = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
   try {
-    const indexService = new IndexService();
+    const indexService = new IndexService(definition);
     let index = await indexService.getIndexById(req.params.id);
 
     if (req.body.signerFunction) {
@@ -135,8 +136,9 @@ export const updateIndex = async (req, res, next) => {
 };
 
 export const transferIndex = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
   try {
-    const indexService = new IndexService();
+    const indexService = new IndexService(definition);
     let index = await indexService.getIndexById(req.params.id);
 
     const previousOwner = index.ownerDID.id.split(":").pop();
@@ -152,7 +154,7 @@ export const transferIndex = async (req, res, next) => {
     });
 
     if (vals) {
-      const didService = new DIDService().setSession(req.session); //Personal
+      const didService = new DIDService(definition).setSession(req.session); //Personal
       await didService.setDIDIndex(index.id, "owned", true);
       await redis.hDel(`pkp:owner`, index.signerPublicKey);
     } else {
@@ -166,8 +168,9 @@ export const transferIndex = async (req, res, next) => {
 };
 
 export const deleteIndex = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
   try {
-    const indexService = new IndexService();
+    const indexService = new IndexService(definition);
     const index = await indexService.getIndexById(req.params.id);
     const pkpSession = await getPKPSession(req.session, index);
 

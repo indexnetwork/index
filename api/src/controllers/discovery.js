@@ -4,13 +4,16 @@ import { ethers } from "ethers";
 
 import RedisClient from "../clients/redis.js";
 import { flattenSources } from "../utils/helpers.js";
+import { DIDService } from "../services/did.js";
 
 const redis = RedisClient.getInstance();
 
 export const chat = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
   const { id, messages, sources, ...rest } = req.body;
 
-  const reqIndexIds = await flattenSources(sources);
+  const didService = new DIDService(definition);
+  const reqIndexIds = await flattenSources(sources, didService);
 
   try {
     const chatRequest = {
@@ -67,10 +70,11 @@ export const search = async (req, res, next) => {
 
 export const questions = async (req, res, next) => {
   try {
-    console.log(`mala`);
+    const definition = req.app.get("runtimeDefinition");
     const { sources } = req.body;
 
-    const reqIndexIds = await flattenSources(sources);
+    const didService = new DIDService(definition);
+    const reqIndexIds = await flattenSources(sources, didService);
 
     const sourcesHash = ethers.utils.keccak256(
       ethers.utils.toUtf8Bytes(JSON.stringify(reqIndexIds)),

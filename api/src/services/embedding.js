@@ -1,18 +1,13 @@
 import { ComposeClient } from "@composedb/client";
-import { getOwnerProfile } from "../libs/lit/index.js";
-import {
-  removePrefixFromKeys,
-  getCurrentDateTime,
-  getTypeDefinitions,
-} from "../utils/helpers.js";
-import { indexItemFragment, modelBundleFragment } from "../types/fragments.js";
+import { getCurrentDateTime } from "../utils/helpers.js";
+import { IndexService } from "./index.js";
 
 export class EmbeddingService {
-  constructor() {
-    const definition = getTypeDefinitions();
+  constructor(definition) {
+    this.definition = definition;
     this.client = new ComposeClient({
       ceramic: process.env.CERAMIC_HOST,
-      definition: definition,
+      definition,
     });
     this.did = null;
   }
@@ -42,7 +37,8 @@ export class EmbeddingService {
                   updatedAt
                   deletedAt
                   item {
-                    ${modelBundleFragment}
+                    id
+                    __typename
                   }
                   index {
                     id
@@ -66,15 +62,13 @@ export class EmbeddingService {
         throw new Error("Invalid response data");
       }
       try {
-        data.node.index.ownerDID = await getOwnerProfile(data.node.index);
+        const indexService = new IndexService(this.definition);
+        data.node.index.ownerDID = await indexService.getOwnerProfile(
+          data.node.index,
+        );
       } catch (e) {
         console.log("Error fetching profile", e);
       }
-
-      data.node.item = removePrefixFromKeys(
-        data.node.item,
-        `${data.node.item.__typename}_`,
-      );
 
       return data.node;
     } catch (error) {

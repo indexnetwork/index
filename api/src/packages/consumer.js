@@ -5,7 +5,7 @@ if (process.env.NODE_ENV !== "production") {
 
 import RedisClient from "../clients/redis.js";
 
-import * as indexer from "../libs/kafka-indexer.js";
+import Indexer from "../libs/indexer.js";
 
 import * as Sentry from "@sentry/node";
 import { ProfilingIntegration } from "@sentry/profiling-node";
@@ -13,7 +13,8 @@ import { ProfilingIntegration } from "@sentry/profiling-node";
 import { EventSource } from "cross-eventsource";
 import { JsonAsString, AggregationDocument } from "@ceramicnetwork/codecs";
 import { decode } from "codeco";
-import { getTypeDefinitions } from "../utils/helpers.js";
+import { fetchModelInfo } from "../utils/helpers.js";
+import { createClient } from "redis";
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
@@ -30,12 +31,22 @@ const ceramicFirehose = new EventSource(
 
 const redis = RedisClient.getInstance();
 
+const subClient = createClient({
+  url: process.env.REDIS_CONNECTION_STRING,
+});
+
 async function start() {
-  const definition = getTypeDefinitions();
+  await subClient.connect();
+  let { runtimeDefinition, modelFragments } = await fetchModelInfo();
+  subClient.subscribe("newModel", async (id) => {
+    console.log("New model detected, fetching model info", id);
+    ({ runtimeDefinition, modelFragments } = await fetchModelInfo());
+  });
   await redis.connect();
 
   const Codec = JsonAsString.pipe(AggregationDocument);
 
+  const indexer = new Indexer(runtimeDefinition, modelFragments);
   ceramicFirehose.addEventListener("message", async (event) => {
     const parsedData = decode(Codec, event.data);
     const modelId = parsedData.metadata.model.toString();
@@ -46,7 +57,7 @@ async function start() {
 
     try {
       switch (modelId) {
-        case definition.models.IndexItem.id:
+        case runtimeDefinition.models.IndexItem.id:
           switch (op) {
             case "c":
               await indexer.createIndexItemEvent(streamId);
@@ -56,7 +67,7 @@ async function start() {
               break;
           }
           break;
-        case definition.models.WebPage.id:
+        case runtimeDefinition.models.WebPage.id:
           switch (op) {
             case "c":
               // We are not interested in this case.
@@ -67,7 +78,7 @@ async function start() {
               break;
           }
           break;
-        case definition.models.Embedding.id:
+        case runtimeDefinition.models.Embedding.id:
           switch (op) {
             case "c":
               await indexer.createEmbeddingEvent(streamId);
