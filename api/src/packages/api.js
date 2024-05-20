@@ -493,18 +493,6 @@ app.post(
   siteController.subscribe,
 );
 
-app.get(
-  "/site/faucet",
-  validator.query(
-    Joi.object({
-      address: Joi.string()
-        .regex(/^0x[a-fA-F0-9]{40}$/)
-        .required(),
-    }),
-  ),
-  siteController.faucet,
-);
-
 app.get("/model/info", modelController.info);
 app.post(
   "/model/index/:id",
