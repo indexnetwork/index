@@ -89,7 +89,7 @@ export const createIndex = async (req, res, next) => {
 
     res.status(201).json(newIndex);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error });
   }
 };
 export const updateIndex = async (req, res, next) => {
