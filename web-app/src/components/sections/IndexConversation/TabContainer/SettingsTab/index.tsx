@@ -1,6 +1,7 @@
 import { IconTrash } from "@/components/ai/ui/icons";
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
+import { useRole } from "@/hooks/useRole";
 import didService from "@/services/did-service";
 import { AccessControlCondition } from "@/types/entity";
 import Header from "components/base/Header";
@@ -20,6 +21,8 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   const [conditions, setConditions] = useState<AccessControlCondition[]>([]);
   const [secretKey, setSecretKey] = useState<string | undefined>();
   const { api, ready: apiReady } = useApi();
+  const { isOwner } = useRole();
+
   const { viewedIndex, createConditions } = useApp();
   const loadActionRef = React.useRef(false);
 
@@ -136,78 +139,81 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
         secretKey={secretKey}
         visible={showModal}
       />
-      <FlexRow className={"mt-6"}>
-        <Col
-          xs={12}
-          style={{
-            marginBottom: "16px",
-          }}
-        >
-          <Header>API Keys</Header>
-        </Col>
-        <Col xs={8}>
-          <div
+      {isOwner && (
+        <FlexRow className={"mt-6"}>
+          <Col
+            xs={12}
             style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "1.25rem",
+              marginBottom: "16px",
             }}
           >
-            <Text className={"mb-4"} theme={"primary"} size="md">
-              Your secret API keys are listed below. Please note that we do not
-              display your secret API keys again after you generate them.
-            </Text>
+            <Header>API Keys</Header>
+          </Col>
+          <Col xs={8}>
             <div
               style={{
                 display: "flex",
                 flexDirection: "column",
+                gap: "1.25rem",
               }}
             >
-              {apiKeys.map((key: any, i: number) => (
-                <div
-                  key={key}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    padding: "1rem 0 ",
-                    borderBottom:
-                      apiKeys.length - 1 === i ? "none" : "1px solid #E2E8F0",
-                  }}
-                >
-                  <Text> {key}</Text>
-                  <button
-                    style={{
-                      background: "none",
-                      border: "none",
-                    }}
-                    onClick={() => handleRemove(key)}
-                  >
-                    <IconTrash width={"1.4rem"} height={"1.4rem"} />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <div>
-              <button
+              <Text className={"mb-4"} theme={"primary"} size="md">
+                Your secret API keys are listed below. Please note that we do
+                not display your secret API keys again after you generate them.
+              </Text>
+              <div
                 style={{
-                  background: "none",
-                  border: "1px solid #E2E8F0",
-                  color: "#1E293B",
-                  padding: "6px 8px",
-                  borderRadius: "2px",
-                  fontWeight: 500,
-                  width: "fit-content",
+                  display: "flex",
+                  flexDirection: "column",
                 }}
-                onClick={handleCreate}
               >
-                Create new key
-              </button>
+                {apiKeys.map((key: any, i: number) => (
+                  <div
+                    key={key}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "1rem 0 ",
+                      borderBottom:
+                        apiKeys.length - 1 === i ? "none" : "1px solid #E2E8F0",
+                    }}
+                  >
+                    <Text> {key}</Text>
+                    <button
+                      style={{
+                        background: "none",
+                        border: "none",
+                      }}
+                      onClick={() => handleRemove(key)}
+                    >
+                      <IconTrash width={"1.4rem"} height={"1.4rem"} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <button
+                  style={{
+                    background: "none",
+                    border: "1px solid #E2E8F0",
+                    color: "#1E293B",
+                    padding: "6px 8px",
+                    borderRadius: "2px",
+                    fontWeight: 500,
+                    width: "fit-content",
+                  }}
+                  onClick={handleCreate}
+                >
+                  Create new key
+                </button>
+              </div>
             </div>
-          </div>
-        </Col>
-      </FlexRow>
+          </Col>
+        </FlexRow>
+      )}
+
       <FlexRow className={"mt-8"}>
         <Col
           xs={12}
@@ -247,6 +253,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
           </div>
         </Col>
       </FlexRow>
+
       <FlexRow className={"mt-8"}>
         <Col
           xs={12}
@@ -281,98 +288,101 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
           </div>
         </Col>
       </FlexRow>
-      <FlexRow className="mt-8">
-        <Col
-          xs={12}
-          style={{
-            marginBottom: "16px",
-          }}
-        >
-          <Header>Integrations</Header>
-        </Col>
 
-        <Col>
-          <div
+      {isOwner && (
+        <FlexRow className="mt-8">
+          <Col
+            xs={12}
             style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "24px",
+              marginBottom: "16px",
             }}
           >
-            <Text
-              theme={"primary"}
-              size="md"
-              style={{
-                maxWidth: "80%",
-              }}
-            >
-              You can connect Index Network with lots of popular apps easily.
-              This lets you make indexing automatic.
-            </Text>
+            <Header>Integrations</Header>
+          </Col>
+
+          <Col>
             <div
               style={{
                 display: "flex",
-                flexDirection: "row",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: "1.2rem",
-                padding: "16px",
-                border: "1px solid #E2E8F0",
-                borderRadius: "4px",
-                maxWidth: "500px",
+                flexDirection: "column",
+                gap: "24px",
               }}
             >
-              <Image
-                alt="Zapier"
-                src="/images/ic_zapier.svg"
-                width="40"
-                height="40"
-              />
+              <Text
+                theme={"primary"}
+                size="md"
+                style={{
+                  maxWidth: "80%",
+                }}
+              >
+                You can connect Index Network with lots of popular apps easily.
+                This lets you make indexing automatic.
+              </Text>
               <div
                 style={{
                   display: "flex",
-                  gap: "0.25rem",
-                  flexDirection: "column",
-                }}
-              >
-                <p
-                  style={{
-                    margin: "0",
-                  }}
-                >
-                  <b>Zapier</b>
-                </p>
-                <p
-                  style={{
-                    margin: "0",
-                    color: "#475569",
-                    fontSize: "12px",
-                  }}
-                >
-                  Create integrations between Index Network and your favorite
-                  apps using Zapier!{" "}
-                </p>
-              </div>
-              <a
-                style={{
-                  background: "none",
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: "1.2rem",
+                  padding: "16px",
                   border: "1px solid #E2E8F0",
-                  color: "#1E293B",
-                  padding: "6px 8px",
-                  borderRadius: "2px",
-                  fontWeight: 500,
-                  width: "fit-content",
-                  whiteSpace: "nowrap",
+                  borderRadius: "4px",
+                  maxWidth: "500px",
                 }}
-                target="_blank"
-                href="https://zapier.com/apps/index-network/integrations"
               >
-                Configure on Zapier
-              </a>
+                <Image
+                  alt="Zapier"
+                  src="/images/ic_zapier.svg"
+                  width="40"
+                  height="40"
+                />
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "0.25rem",
+                    flexDirection: "column",
+                  }}
+                >
+                  <p
+                    style={{
+                      margin: "0",
+                    }}
+                  >
+                    <b>Zapier</b>
+                  </p>
+                  <p
+                    style={{
+                      margin: "0",
+                      color: "#475569",
+                      fontSize: "12px",
+                    }}
+                  >
+                    Create integrations between Index Network and your favorite
+                    apps using Zapier!{" "}
+                  </p>
+                </div>
+                <a
+                  style={{
+                    background: "none",
+                    border: "1px solid #E2E8F0",
+                    color: "#1E293B",
+                    padding: "6px 8px",
+                    borderRadius: "2px",
+                    fontWeight: 500,
+                    width: "fit-content",
+                    whiteSpace: "nowrap",
+                  }}
+                  target="_blank"
+                  href="https://zapier.com/apps/index-network/integrations"
+                >
+                  Configure on Zapier
+                </a>
+              </div>
             </div>
-          </div>
-        </Col>
-      </FlexRow>
+          </Col>
+        </FlexRow>
+      )}
     </div>
   );
 };
