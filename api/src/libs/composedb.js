@@ -388,12 +388,12 @@ export const setIndexedModelParams = async (app) => {
   const modelFragments = await Promise.all(
     modelList.map(async (m) => {
       const stream = await ceramic.loadStream(m);
-      const fragment = jsonSchemaToGraphQLFragment(stream.content);
+      //const fragment = jsonSchemaToGraphQLFragment(stream.content);
       return {
         id: m,
         name: stream.content.name,
-        fragment,
-        prefixedFragment: jsonSchemaToGraphQLFragment(stream.content, true),
+        //fragment,
+        //prefixedFragment: jsonSchemaToGraphQLFragment(stream.content, true),
       };
     }),
   );
