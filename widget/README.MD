@@ -1,13 +1,10 @@
 <h1 align="center">
-    <a href="https://index.network/#gh-light-mode-only">
+    <a href="https://index.network">
     <img style="width:400px" src="https://index.network/images/IndexNetworkLogo.png">
-    </a>
-    <a href="https://index.network/#gh-dark-mode-only">
-    <img style="width:400px" src="https://index.network/images/IndexNetworkLogo-white.png">
     </a>
 </h1>
 <p align="center">
-  <i align="center">Create and monetize interoperable discovery engines. 🚀</i>
+  <i align="center">Discovery Protocol 🚀</i>
 </p>
 
 <div align="center">
@@ -23,15 +20,17 @@
 
 </div>
 
-# IndexChat
+# Quick Start
 
-IndexChat is a chat UI component specifically designed for interaction within the Index Network. 
+Index is a discovery protocol that eliminates the need for intermediaries in finding knowledge, products, and like-minded people through direct, composable discovery across the web. As the first decentralized semantic index, it leverages Web3 and AI and offers an open layer for discovery.
+
+IndexNetwork UI SDK is a chat UI component specifically designed for interaction within the Index Network.
 
 Super easy to integrate and offers a seamless experience, making it an ideal tool for:
 
-- creators, 
-- communities, 
-- DAOs, 
+- creators,
+- communities,
+- DAOs,
 - brands,
 - researchers, and many more
 
@@ -43,8 +42,7 @@ Let's start building! ⛓️
 
 
 <div>
-<img alt="Demo Screen" style="width:500px" src="demo/ui-light.png#gh-light-mode-only" />
-<img alt="Demo Screen" style="width:500px" src="demo/ui-dark.png#gh-dark-mode-only" />
+<img alt="Demo Screen" style="width:500px" src="https://github.com/indexnetwork/index/blob/dev/widget/demo/ui.png" />
 </div>
 
 
@@ -66,7 +64,7 @@ npm install index-chat
 
 ## Usage
 
-Place `IndexChat` tag into your app with your `index_id`. 
+Place `IndexChat` tag into your app with your sources, both did and index ids.
 
 This code creates a button that handles all the configuration. Now you can click it to start chatting. No extra work is required. 🎉
 
@@ -78,7 +76,7 @@ const App = () => {
   return (
     <div>
       {/* Your components */}
-      <IndexChat id='index_id'  />
+      <IndexChat sources={["index_id"]}  />
     </div>
   );
 };
@@ -89,7 +87,7 @@ export default App;
 
 ## Styling
 
-IndexChat allows you to customize the theme by overriding the defaults for any provided value. Here's an example of how you can set a custom theme:
+IndexChat component allows you to customize the theme by overriding the defaults for any provided value. Here's an example of how you can set a custom theme:
 
 
 ```typescript
@@ -119,7 +117,7 @@ const App = () => {
   return (
     <div>
       {/* Your components */}
-      <IndexChat id='index_id' style={customStyle} />
+      <IndexChat sources={["index_id"]}  style={customStyle} />
     </div>
   );
 };
@@ -136,7 +134,7 @@ import 'index-chat/dist/assets/style/fonts.css';
 
 ## Warnings and Compatibility
 
-Before integrating `index-chat` into your project, please consider the following:
+Before integrating `@indexnetwork/ui` into your project, please consider the following:
 
 
 ### Requirements
