@@ -64,7 +64,7 @@ const LinkInput: React.FC<LinkInputProps> = ({
           <IconAdd style={{ marginRight: "6px" }} width={20} height={20} />
         }
         addOnAfter={
-          loading ? (
+          loading && (
             <>
               {progress &&
                 progress.total! > 1 &&
@@ -76,7 +76,7 @@ const LinkInput: React.FC<LinkInputProps> = ({
                 )}
               <Spin active={true} thickness="light" theme="secondary" />
             </>
-          ) : undefined
+          )
         }
         {...inputProps}
         value={url}

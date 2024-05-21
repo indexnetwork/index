@@ -45,6 +45,8 @@ type IndexConversationContextType = {
   ) => Promise<void>;
   loading: boolean;
   setLoading: (loading: boolean) => void;
+  searchLoading: boolean;
+  setSearchLoading: (loading: boolean) => void;
   addItem: (item: IndexItem) => void;
   removeItem: (itemId: string) => void;
   loadMoreItems: () => void;
@@ -70,6 +72,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
     cursor: undefined,
   });
   const [loading, setLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   const { api, ready: apiReady } = useApi();
   const { viewedIndex, fetchIndex } = useApp();
@@ -94,7 +97,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
 
       fetchingIndexItems.current = true;
 
-      setLoading(true);
+      setSearchLoading(true);
       try {
         const itemParams: GetItemQueryParams = {};
 
@@ -124,7 +127,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
       } catch (err: any) {
         console.error("Error fetching index links", err);
       } finally {
-        setLoading(false);
+        setSearchLoading(false);
         fetchingIndexItems.current = false;
       }
     },
@@ -213,11 +216,13 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
       value={{
         itemsState,
         loading,
+        setLoading,
+        searchLoading,
+        setSearchLoading,
         addItem,
         removeItem,
         loadMoreItems,
         setItemsState,
-        setLoading,
         fetchIndexItems,
         fetchMoreIndexItems,
       }}
