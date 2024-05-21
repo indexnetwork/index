@@ -3,7 +3,6 @@ import TabPane from "@/components/base/Tabs/TabPane";
 import Col from "@/components/layout/base/Grid/Col";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import { useOrderedFetch } from "@/hooks/useOrderedFetch";
-import { useRole } from "@/hooks/useRole";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { useCallback, useEffect, useState } from "react";
 import AccessControlTab from "./AccessControlTab";
@@ -30,7 +29,6 @@ const TAB_TITLES = {
 
 export default function TabContainer() {
   const [tabKey, setTabKey] = useState<string>(TabKey.Chat);
-  const { isOwner } = useRole();
 
   const { id } = useRouteParams();
   const { fetchDataForNewRoute } = useOrderedFetch();
@@ -73,7 +71,7 @@ export default function TabContainer() {
               <TabPane
                 key={key}
                 enabled={true}
-                hidden={key === TabKey.Settings && !isOwner}
+                hidden={false}
                 tabKey={key}
                 title={TAB_TITLES[key]}
               />
