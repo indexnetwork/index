@@ -3,7 +3,6 @@ import React, { useState } from "react";
 import { HeaderSizeType } from "types";
 import cc from "classcat";
 import IconAdd from "components/base/Icon/IconAdd";
-import validator from "validator";
 import Spin from "components/base/Spin";
 import Text from "components/base/Text";
 

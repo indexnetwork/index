@@ -39,7 +39,7 @@ const IndexIndexItem: React.FC<IndexIndexItemProps> = ({
             <Col className="idxflex-grow-1">
               <img
                 className="mr-3"
-                src={node?.logo || "/images/ic_index_item.svg"}
+                src={"/images/ic_index_item.svg"}
                 alt="favicon"
                 width={16}
                 height={16}
