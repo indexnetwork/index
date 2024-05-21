@@ -1,41 +1,37 @@
 import { ComposeClient } from "@composedb/client";
-import { removePrefixFromKeys, getCurrentDateTime, getTypeDefinitions } from "../utils/helpers.js";
+import { removePrefixFromKeys, getCurrentDateTime } from "../utils/helpers.js";
 import { indexItemFragment } from "../types/fragments.js";
 
-const definition = getTypeDefinitions()
-
 const transformIndexItem = (indexItem) => {
-
-    const { __typename: type, indexedAt: _, ...rest } = indexItem.item;
-    return {
-        type,
-        node: {
-            ...rest,
-            // indexedAt: indexItem.updatedAt
-        }
-    };
+  const { __typename: type, indexedAt: _, ...rest } = indexItem.item;
+  return {
+    type,
+    node: {
+      ...rest,
+      // indexedAt: indexItem.updatedAt
+    },
+  };
 };
 
 export class ItemService {
-    constructor() {
-        this.client = new ComposeClient({
-            ceramic: process.env.CERAMIC_HOST,
-            definition: definition,
-        });
-        this.did = null;
+  constructor(definition) {
+    this.client = new ComposeClient({
+      ceramic: process.env.CERAMIC_HOST,
+      definition,
+    });
+    this.did = null;
+  }
+
+  setSession(session) {
+    if (session && session.did.authenticated) {
+      this.did = session.did;
     }
+    return this;
+  }
 
-    setSession(session) {
-        if(session && session.did.authenticated) {
-            this.did = session.did
-        }
-        return this;
-    }
-
-    async getIndexItem(indexId, itemId, transformation=true) {
-
-        try {
-            let {data, errors} = await this.client.executeQuery(`
+  async getIndexItem(indexId, itemId, transformation = true) {
+    try {
+      let { data, errors } = await this.client.executeQuery(`
             query {
               indexItemIndex(first:1, filters: {
                 where: {
@@ -52,67 +48,71 @@ export class ItemService {
               }
             }`);
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
-            }
-            // Validate the data response
-            if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
-                throw new Error('Invalid response data');
-            }
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+      }
+      // Validate the data response
+      if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
+        throw new Error("Invalid response data");
+      }
 
-            if (data.indexItemIndex.edges.length === 0) {
-                return null;
-            }
+      if (data.indexItemIndex.edges.length === 0) {
+        return null;
+      }
 
-            data.indexItemIndex.edges[0].node = removePrefixFromKeys(data.indexItemIndex.edges[0].node, `${data.indexItemIndex.edges[0].node.__typename}_`);
+      data.indexItemIndex.edges[0].node = removePrefixFromKeys(
+        data.indexItemIndex.edges[0].node,
+        `${data.indexItemIndex.edges[0].node.__typename}_`,
+      );
 
-            return transformation ? transformIndexItem(data.indexItemIndex.edges[0].node) : data.indexItemIndex.edges[0].node;
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in getIndexItem:', error);
-            throw error;
-        }
+      return transformation
+        ? transformIndexItem(data.indexItemIndex.edges[0].node)
+        : data.indexItemIndex.edges[0].node;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in getIndexItem:", error);
+      throw error;
     }
+  }
 
-    // Todo make it multimodel later.
-    async getIndexItemById(indexItemId, transformation=true) {
-
-        try {
-            let {data, errors} = await this.client.executeQuery(`
+  // Todo make it multimodel later.
+  async getIndexItemById(indexItemId, transformation = true) {
+    try {
+      let { data, errors } = await this.client.executeQuery(`
             {
               node(id: "${indexItemId}") {
                 ${indexItemFragment}
               }
             }`);
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
-            }
-            // Validate the data response
-            if (!data || !data.node) {
-                throw new Error('Invalid response data');
-            }
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+      }
+      // Validate the data response
+      if (!data || !data.node) {
+        throw new Error("Invalid response data");
+      }
 
-            data.node.item = removePrefixFromKeys(data.node.item, `${data.node.item.__typename}_`);
+      data.node.item = removePrefixFromKeys(
+        data.node.item,
+        `${data.node.item.__typename}_`,
+      );
 
-            return transformation ?transformIndexItem(data.node) : data.node;
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in getIndexItemById:', error);
-            throw error;
-        }
+      return transformation ? transformIndexItem(data.node) : data.node;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in getIndexItemById:", error);
+      throw error;
     }
+  }
 
-    async getIndexItems(indexId, cursor=null, limit= 24) {
-        try {
+  async getIndexItems(indexId, cursor = null, limit = 24) {
+    try {
+      let cursorFilter = cursor ? `after: "${cursor}",` : "";
 
-            let cursorFilter = cursor ? `after: "${cursor}",` : "";
-
-            let {data, errors} = await this.client.executeQuery(`{
+      let { data, errors } = await this.client.executeQuery(`{
               indexItemIndex(first: ${limit}, ${cursorFilter} filters: {
                 where: {
                   indexId: { equalTo: "${indexId}"},
@@ -130,45 +130,52 @@ export class ItemService {
               }
             }`);
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
-            }
-            // Validate the data response
-            if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
-                throw new Error('Invalid response data');
-            }
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+      }
+      // Validate the data response
+      if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
+        throw new Error("Invalid response data");
+      }
 
-            if (data.indexItemIndex.edges.length === 0) {
-                return {
-                    endCursor: null,
-                    items: [],
-                };
-            }
+      if (data.indexItemIndex.edges.length === 0) {
+        return {
+          endCursor: null,
+          items: [],
+        };
+      }
 
-            data.indexItemIndex.edges.map(e => {
-              e.node.item = removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`)
-              return e;
-            })
+      data.indexItemIndex.edges.map((e) => {
+        e.node.item = removePrefixFromKeys(
+          e.node.item,
+          `${e.node.item.__typename}_`,
+        );
+        return e;
+      });
 
-            return { //Todo fix itemId to id
-                endCursor: data.indexItemIndex.pageInfo.endCursor,
-                items: data.indexItemIndex.edges.map(e => transformIndexItem(e.node)),
-            }
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in getIndexItem:', error);
-            throw error;
-        }
+      return {
+        //Todo fix itemId to id
+        endCursor: data.indexItemIndex.pageInfo.endCursor,
+        items: data.indexItemIndex.edges.map((e) => transformIndexItem(e.node)),
+      };
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in getIndexItem:", error);
+      throw error;
     }
+  }
 
-    async getIndexesByItemId(itemId, cursor=null, limit= 24, transform=true) {
-        try {
+  async getIndexesByItemId(
+    itemId,
+    cursor = null,
+    limit = 24,
+    transform = true,
+  ) {
+    try {
+      let cursorFilter = cursor ? `after: "${cursor}",` : "";
 
-            let cursorFilter = cursor ? `after: "${cursor}",` : "";
-
-            const {data, errors} = await this.client.executeQuery(`{
+      const { data, errors } = await this.client.executeQuery(`{
               indexItemIndex(first: ${limit}, ${cursorFilter} filters: {
                 where: {
                   itemId: { equalTo: "${itemId}"},
@@ -186,41 +193,44 @@ export class ItemService {
               }
             }`);
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
-            }
-            // Validate the data response
-            if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
-                throw new Error('Invalid response data');
-            }
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+      }
+      // Validate the data response
+      if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
+        throw new Error("Invalid response data");
+      }
 
-            if (data.indexItemIndex.edges.length === 0) {
-                return {
-                    endCursor: null,
-                    items: [],
-                };
-            }
-            data.indexItemIndex.edges.map(e => removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`))
+      if (data.indexItemIndex.edges.length === 0) {
+        return {
+          endCursor: null,
+          items: [],
+        };
+      }
+      data.indexItemIndex.edges.map((e) =>
+        removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`),
+      );
 
-            return { //Todo fix itemId to id
-                endCursor: data.indexItemIndex.pageInfo.endCursor,
-                items: data.indexItemIndex.edges.map(e => transform ? transformIndexItem(e.node) : e.node),
-            }
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in getIndexItem:', error);
-            throw error;
-        }
+      return {
+        //Todo fix itemId to id
+        endCursor: data.indexItemIndex.pageInfo.endCursor,
+        items: data.indexItemIndex.edges.map((e) =>
+          transform ? transformIndexItem(e.node) : e.node,
+        ),
+      };
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in getIndexItem:", error);
+      throw error;
     }
+  }
 
-    async getIndexItemsByIds(itemIds, cursor=null, limit= 240) {
-        try {
+  async getIndexItemsByIds(itemIds, cursor = null, limit = 240) {
+    try {
+      let cursorFilter = cursor ? `after: "${cursor}",` : "";
 
-            let cursorFilter = cursor ? `after: "${cursor}",` : "";
-
-            const {data, errors} = await this.client.executeQuery(`{
+      const { data, errors } = await this.client.executeQuery(`{
               indexItemIndex(first: ${limit}, ${cursorFilter} filters: {
                 where: {
                   itemId: { in: ["${itemIds.join('","')}"]},
@@ -238,138 +248,146 @@ export class ItemService {
               }
             }`);
 
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+      }
+      // Validate the data response
+      if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
+        throw new Error("Invalid response data");
+      }
 
+      if (data.indexItemIndex.edges.length === 0) {
+        return {
+          endCursor: null,
+          items: [],
+        };
+      }
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
-            }
-            // Validate the data response
-            if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
-                throw new Error('Invalid response data');
-            }
+      data.indexItemIndex.edges.map((e) => {
+        e.node.item = removePrefixFromKeys(
+          e.node.item,
+          `${e.node.item.__typename}_`,
+        );
+        return e;
+      });
 
-            if (data.indexItemIndex.edges.length === 0) {
-                return {
-                    endCursor: null,
-                    items: [],
-                };
-            }
-
-            data.indexItemIndex.edges.map(e => {
-              e.node.item = removePrefixFromKeys(e.node.item, `${e.node.item.__typename}_`)
-              return e;
-            })
-
-            return { //Todo fix itemId to id
-                endCursor: data.indexItemIndex.pageInfo.endCursor,
-                items: data.indexItemIndex.edges.map(e => transformIndexItem(e.node)),
-            }
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in getIndexItem:', error);
-            throw error;
-        }
+      return {
+        //Todo fix itemId to id
+        endCursor: data.indexItemIndex.pageInfo.endCursor,
+        items: data.indexItemIndex.edges.map((e) => transformIndexItem(e.node)),
+      };
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in getIndexItem:", error);
+      throw error;
     }
+  }
 
-    async addItem(indexId, itemId) {
+  async addItem(indexId, itemId) {
+    if (!this.did) {
+      throw new Error("DID not set. Use setDID() to set the did.");
+    }
+    try {
+      const indexItem = await this.getIndexItem(indexId, itemId);
+      if (indexItem) {
+        return indexItem;
+      }
 
-        if (!this.did) {
-            throw new Error("DID not set. Use setDID() to set the did.");
-        }
-        try {
+      const content = {
+        indexId,
+        itemId,
+        createdAt: getCurrentDateTime(),
+        updatedAt: getCurrentDateTime(),
+      };
+      this.client.setDID(this.did);
 
-            const indexItem = await this.getIndexItem(indexId, itemId);
-            if (indexItem) {
-                return indexItem;
-            }
-
-            const content = {
-                indexId,
-                itemId,
-                createdAt: getCurrentDateTime(),
-                updatedAt: getCurrentDateTime(),
-            };
-            this.client.setDID(this.did);
-
-            const {data, errors} = await this.client.executeQuery(`
+      const { data, errors } = await this.client.executeQuery(
+        `
                 mutation CreateIndexItem($input: CreateIndexItemInput!) {
                     createIndexItem(input: $input) {
                         document {
                             ${indexItemFragment}
                         }
                     }
-                }`, {input: {content}});
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error creating item: ${JSON.stringify(errors)}`);
-            }
+                }`,
+        { input: { content } },
+      );
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error creating item: ${JSON.stringify(errors)}`);
+      }
 
-            // Validate the data response
+      // Validate the data response
 
-            if (!data || !data.createIndexItem || !data.createIndexItem.document || !data.createIndexItem.document.item) {
-                throw new Error(['Invalid response data', data]);
-            }
+      if (
+        !data ||
+        !data.createIndexItem ||
+        !data.createIndexItem.document ||
+        !data.createIndexItem.document.item
+      ) {
+        throw new Error(["Invalid response data", data]);
+      }
 
-            data.createIndexItem.document.item = removePrefixFromKeys(data.createIndexItem.document.item, `${data.createIndexItem.document.item.__typename}_`);
+      data.createIndexItem.document.item = removePrefixFromKeys(
+        data.createIndexItem.document.item,
+        `${data.createIndexItem.document.item.__typename}_`,
+      );
 
-
-            return transformIndexItem(data.createIndexItem.document);
-
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in createIndexItem:', error);
-            throw error;
-        }
+      return transformIndexItem(data.createIndexItem.document);
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in createIndexItem:", error);
+      throw error;
     }
+  }
 
-    async removeItem(indexId, itemId) {
-        if (!this.did) {
-            throw new Error("DID not set. Use setDID() to set the did.");
-        }
-        try {
+  async removeItem(indexId, itemId) {
+    if (!this.did) {
+      throw new Error("DID not set. Use setDID() to set the did.");
+    }
+    try {
+      const indexItem = await this.getIndexItem(indexId, itemId, false);
 
-            const indexItem = await this.getIndexItem(indexId, itemId, false);
+      if (!indexItem) {
+        throw new Error("Index item does not exist.");
+      }
+      if (indexItem.deletedAt) {
+        throw new Error("Index item is already deleted.");
+      }
 
-            if (!indexItem) {
-                throw new Error('Index item does not exist.');
-            }
-            if (indexItem.deletedAt) {
-                throw new Error('Index item is already deleted.');
-            }
+      const content = {
+        updatedAt: getCurrentDateTime(),
+        deletedAt: getCurrentDateTime(),
+      };
+      this.client.setDID(this.did);
 
-            const content = {
-                updatedAt: getCurrentDateTime(),
-                deletedAt: getCurrentDateTime(),
-            };
-            this.client.setDID(this.did);
-
-            const {data, errors} = await this.client.executeQuery(`
+      const { data, errors } = await this.client.executeQuery(
+        `
                 mutation UpdateIndexItem($input: UpdateIndexItemInput!) {
                     updateIndexItem(input: $input) {
                         document {
                             ${indexItemFragment}
                         }
                     }
-                }`, {input: {id: indexItem.id, content}});
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error updating item: ${JSON.stringify(errors)}`);
-            }
+                }`,
+        { input: { id: indexItem.id, content } },
+      );
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error updating item: ${JSON.stringify(errors)}`);
+      }
 
-            // Validate the data response
-            if (!data || !data.updateIndexItem || !data.updateIndexItem.document) {
-                throw new Error('Invalid response data');
-            }
+      // Validate the data response
+      if (!data || !data.updateIndexItem || !data.updateIndexItem.document) {
+        throw new Error("Invalid response data");
+      }
 
-            return true; //transformIndexItem(data.updateIndexItem.document);;
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in updateIndexItem:', error);
-            throw error;
-        }
+      return true; //transformIndexItem(data.updateIndexItem.document);;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in updateIndexItem:", error);
+      throw error;
     }
+  }
 }

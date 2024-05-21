@@ -1,34 +1,31 @@
-import {ComposeClient} from "@composedb/client";
+import { ComposeClient } from "@composedb/client";
 
-import { getCurrentDateTime, getTypeDefinitions } from "../utils/helpers.js";
-
-import { getOwnerProfile } from "../libs/lit/index.js";
-
-const definition = getTypeDefinitions()
+import { getCurrentDateTime } from "../utils/helpers.js";
+import { getLitOwner } from "../libs/lit/index.js";
+import { profileFragment } from "../types/fragments.js";
 
 export class IndexService {
-    constructor() {
-        this.client = new ComposeClient({
-            ceramic: process.env.CERAMIC_HOST,
-            definition: definition,
-        });
-        this.did = null;
+  constructor(definition) {
+    this.client = new ComposeClient({
+      ceramic: process.env.CERAMIC_HOST,
+      definition,
+    });
+    this.did = null;
+  }
+
+  setSession(session) {
+    if (session && session.did.authenticated) {
+      this.did = session.did;
     }
+    return this;
+  }
 
-    setSession(session) {
-        if(session && session.did.authenticated) {
-            this.did = session.did
-        }
-        return this;
-    }
+  async getIndexById(id) {
+    try {
+      let didPayload = "";
 
-    async getIndexById(id) {
-
-        try {
-            let didPayload = "";
-
-            if (this.did && this.did.parent) {
-                didPayload = `did(first:10, account: "${this.did.parent}", filters: {
+      if (this.did && this.did.parent) {
+        didPayload = `did(first:10, account: "${this.did.parent}", filters: {
                     where: {
                         deletedAt: {isNull: true}
                     }
@@ -45,10 +42,10 @@ export class IndexService {
                             deletedAt
                         }
                     }
-                }`
-            }
+                }`;
+      }
 
-            const {data, errors} = await this.client.executeQuery(`
+      const { data, errors } = await this.client.executeQuery(`
                 {
                   node(id: "${id}") {
                     id
@@ -65,58 +62,55 @@ export class IndexService {
                   }
                 }`);
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error getting index by id: ${JSON.stringify(errors)}`);
-            }
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error getting index by id: ${JSON.stringify(errors)}`);
+      }
 
-            // Validate the data response
-            if (!data || !data.node) {
-                throw new Error('Invalid response data');
-            }
+      // Validate the data response
+      if (!data || !data.node) {
+        throw new Error("Invalid response data");
+      }
 
+      const index = data.node;
 
-            const index =  data.node;
+      if (index.did && index.did.edges && index.did.edges.length > 0) {
+        const did = { starred: false, owned: false };
+        index.did.edges.forEach((edge) => {
+          if (edge.node.type === "owned") {
+            did.owned = edge.node.deletedAt === null;
+          }
+          if (edge.node.type === "starred") {
+            did.starred = edge.node.deletedAt === null;
+          }
+        });
+        index.did = did;
+      }
 
-            if(index.did && index.did.edges && index.did.edges.length > 0){
-                const did = { starred: false, owned: false };
-                index.did.edges.forEach((edge) => {
-                    if(edge.node.type === "owned"){
-                        did.owned = edge.node.deletedAt === null;
-                    }
-                    if(edge.node.type === "starred"){
-                        did.starred = edge.node.deletedAt === null;
-                    }
-                });
-                index.did = did;
-            }
+      index.ownerDID = await this.getOwnerProfile(index, this);
 
-            index.ownerDID = await getOwnerProfile(index);
+      return index;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in getIndexById:", error);
+      throw error;
+    }
+  }
 
-
-
-            return index;
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in getIndexById:', error);
-            throw error;
-        }
+  async createIndex(params) {
+    if (!this.did) {
+      throw new Error("DID not set. Use setDID() to set the did.");
     }
 
-    async createIndex(params) {
-        if (!this.did) {
-            throw new Error("DID not set. Use setDID() to set the did.");
-        }
-
-        try {
-            const content = {
-                ...params,
-                createdAt: getCurrentDateTime(),
-                updatedAt: getCurrentDateTime(),
-            };
-            this.client.setDID(this.did);
-            const {data, errors} = await this.client.executeQuery(`
+    try {
+      const content = {
+        ...params,
+        createdAt: getCurrentDateTime(),
+        updatedAt: getCurrentDateTime(),
+      };
+      this.client.setDID(this.did);
+      const { data, errors } = await this.client.executeQuery(
+        `
                 mutation CreateIndex($input: CreateIndexInput!) {
                     createIndex(input: $input) {
                         document {
@@ -128,40 +122,41 @@ export class IndexService {
                             updatedAt
                         }
                     }
-                }`, {input: {content}});
+                }`,
+        { input: { content } },
+      );
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error creating index: ${JSON.stringify(errors)}`);
-            }
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error creating index: ${JSON.stringify(errors)}`);
+      }
 
-            // Validate the data response
-            if (!data || !data.createIndex || !data.createIndex.document) {
-                throw new Error('Invalid response data');
-            }
+      // Validate the data response
+      if (!data || !data.createIndex || !data.createIndex.document) {
+        throw new Error("Invalid response data");
+      }
 
-            // Return the created index document
-            const createdIndex =  data.createIndex.document;
-            createdIndex.ownerDID = await getOwnerProfile(createdIndex);
+      // Return the created index document
+      const createdIndex = data.createIndex.document;
+      createdIndex.ownerDID = await this.getOwnerProfile(createdIndex, this);
 
-            return createdIndex;
+      return createdIndex;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in createIndex:", error);
+      throw error;
+    }
+  }
 
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in createIndex:', error);
-            throw error;
-        }
+  async updateIndex(id, params) {
+    if (!this.did) {
+      throw new Error("DID not set. Use setDID() to set the did.");
     }
 
-    async updateIndex(id, params) {
-        if (!this.did) {
-            throw new Error("DID not set. Use setDID() to set the did.");
-        }
+    let didPayload = "";
 
-        let didPayload = "";
-
-        if (this.did) {
-            didPayload = `did(first:10, account: "${this.did.parent}", filters: {
+    if (this.did) {
+      didPayload = `did(first:10, account: "${this.did.parent}", filters: {
                 where: {
                     deletedAt: {isNull: true}
                 }
@@ -178,16 +173,17 @@ export class IndexService {
                         deletedAt
                     }
                 }
-            }`
-        }
+            }`;
+    }
 
-        try {
-            const content = {
-                ...params,
-                updatedAt: getCurrentDateTime(),
-            };
-            this.client.setDID(this.did);
-            const {data, errors} = await this.client.executeQuery(`
+    try {
+      const content = {
+        ...params,
+        updatedAt: getCurrentDateTime(),
+      };
+      this.client.setDID(this.did);
+      const { data, errors } = await this.client.executeQuery(
+        `
                 mutation UpdateIndex($input: UpdateIndexInput!) {
                     updateIndex(input: $input) {
                         document {
@@ -201,56 +197,58 @@ export class IndexService {
                             ${didPayload}
                         }
                     }
-                }`, {input: {id, content}});
+                }`,
+        { input: { id, content } },
+      );
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error updating index: ${JSON.stringify(errors)}`);
-            }
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error updating index: ${JSON.stringify(errors)}`);
+      }
 
-            // Validate the data response
-            if (!data || !data.updateIndex || !data.updateIndex.document) {
-                throw new Error('Invalid response data');
-            }
+      // Validate the data response
+      if (!data || !data.updateIndex || !data.updateIndex.document) {
+        throw new Error("Invalid response data");
+      }
 
-            const index =  data.updateIndex.document;
+      const index = data.updateIndex.document;
 
-            if(index.did && index.did.edges && index.did.edges.length > 0){
-                const did = { starred: false, owned: false };
-                index.did.edges.forEach((edge) => {
-                    if(edge.node.type === "owned"){
-                        did.owned = edge.node.deletedAt === null;
-                    }
-                    if(edge.node.type === "starred"){
-                        did.starred = edge.node.deletedAt === null;
-                    }
-                });
-                index.did = did;
-            }
+      if (index.did && index.did.edges && index.did.edges.length > 0) {
+        const did = { starred: false, owned: false };
+        index.did.edges.forEach((edge) => {
+          if (edge.node.type === "owned") {
+            did.owned = edge.node.deletedAt === null;
+          }
+          if (edge.node.type === "starred") {
+            did.starred = edge.node.deletedAt === null;
+          }
+        });
+        index.did = did;
+      }
 
-            index.ownerDID = await getOwnerProfile(index);
-            // Return the created index document
-            return index;
+      index.ownerDID = await this.getOwnerProfile(index, this);
+      // Return the created index document
+      return index;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in updateIndex:", error);
+      throw error;
+    }
+  }
 
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in updateIndex:', error);
-            throw error;
-        }
+  async deleteIndex(id) {
+    if (!this.did) {
+      throw new Error("DID not set. Use setDID() to set the did.");
     }
 
-    async deleteIndex(id) {
-        if (!this.did) {
-            throw new Error("DID not set. Use setDID() to set the did.");
-        }
-
-        try {
-            const content = {
-                updatedAt: getCurrentDateTime(),
-                deletedAt: getCurrentDateTime(),
-            };
-            this.client.setDID(this.did);
-            const {data, errors} = await this.client.executeQuery(`
+    try {
+      const content = {
+        updatedAt: getCurrentDateTime(),
+        deletedAt: getCurrentDateTime(),
+      };
+      this.client.setDID(this.did);
+      const { data, errors } = await this.client.executeQuery(
+        `
                 mutation UpdateIndex($input: UpdateIndexInput!) {
                     updateIndex(input: $input) {
                         document {
@@ -263,25 +261,94 @@ export class IndexService {
                             deletedAt
                         }
                     }
-                }`, {input: {id, content}});
+                }`,
+        { input: { id, content } },
+      );
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error deleting index: ${JSON.stringify(errors)}`);
-            }
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error deleting index: ${JSON.stringify(errors)}`);
+      }
 
-            // Validate the data response
-            if (!data || !data.updateIndex || !data.updateIndex.document) {
-                throw new Error('Invalid response data');
-            }
+      // Validate the data response
+      if (!data || !data.updateIndex || !data.updateIndex.document) {
+        throw new Error("Invalid response data");
+      }
 
-            // Return the created index document
-            return data.updateIndex.document;
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in updateIndex:', error);
-            throw error;
-        }
+      // Return the created index document
+      return data.updateIndex.document;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in updateIndex:", error);
+      throw error;
     }
+  }
+
+  async getOwner(indexId) {
+    try {
+      const { data, errors } = await this.client.executeQuery(`
+              query{
+                dIDIndexIndex(first: 1, sorting: {createdAt: DESC}, filters: { where: {deletedAt: {isNull: true}, type: {equalTo: "owned"}, indexId: {equalTo: "${indexId}"}}}) {
+                  edges {
+                    node {
+                      id
+                      type
+                      indexId
+                      createdAt
+                      updatedAt
+                      deletedAt
+                      controllerDID {
+                        id
+                        profile {
+                          ${profileFragment}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `);
+
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(
+          `Error getting DIDIndex index: ${JSON.stringify(errors)}`,
+        );
+      }
+
+      // Validate the data response
+      if (!data || !data.dIDIndexIndex || !data.dIDIndexIndex.edges) {
+        throw new Error("Invalid response data");
+      }
+
+      if (data.dIDIndexIndex.edges.length === 0) {
+        return null;
+      }
+      let profile = {};
+      if (data.dIDIndexIndex.edges[0].node.controllerDID.profile !== null) {
+        profile = data.dIDIndexIndex.edges[0].node.controllerDID.profile;
+        profile.id = profile.controllerDID.id;
+        delete profile.controllerDID;
+        return profile;
+      } else {
+        return {
+          id: data.dIDIndexIndex.edges[0].node.controllerDID.id,
+        };
+      }
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in dIDIndexIndex:", error);
+      throw error;
+    }
+  }
+
+  async getOwnerProfile(index) {
+    const owner = await this.getOwner(index.id);
+    if (owner && owner.id) {
+      return owner;
+    } else {
+      const ownerAddr = await getLitOwner(index.signerPublicKey);
+      return { id: `did:pkh:eip155:1:${ownerAddr}` };
+    }
+  }
 }

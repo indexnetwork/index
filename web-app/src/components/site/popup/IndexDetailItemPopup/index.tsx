@@ -7,7 +7,7 @@ import React from "react";
 
 export interface IndexDetailItemPopupProps {
   onDelete?(): void;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 const IndexDetailItemPopup = ({
   children,

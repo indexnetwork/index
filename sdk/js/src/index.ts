@@ -151,13 +151,11 @@ export default class IndexClient {
 
   public async *chat({
     id,
-    indexes,
-    did,
+    sources,
     messages,
   }: {
     id: string;
-    indexes: string[];
-    did?: string;
+    sources: string[];
     messages: Message[];
   }): AsyncGenerator<string, void, undefined> {
     const response = await fetch(`${this.baseUrl}/discovery/chat`, {
@@ -168,8 +166,7 @@ export default class IndexClient {
       body: JSON.stringify({
         messages,
         id,
-        indexIds: indexes,
-        did,
+        sources,
       }),
     });
 

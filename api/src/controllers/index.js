@@ -1,5 +1,3 @@
-import { getAddress } from "@ethersproject/address";
-import axios from "axios";
 import RedisClient from "../clients/redis.js";
 import {
   getPKPSession,
@@ -15,8 +13,10 @@ import { IndexService } from "../services/index.js";
 const redis = RedisClient.getInstance();
 
 export const getIndexById = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
+
   try {
-    const indexService = new IndexService().setSession(req.session);
+    const indexService = new IndexService(definition).setSession(req.session);
     const index = await indexService.getIndexById(req.params.id);
 
     const { roles } = req.query;
@@ -31,7 +31,7 @@ export const getIndexById = async (req, res, next) => {
       if (roles) {
         const pkpSession = await getPKPSession(req.session, index);
         if (pkpSession) {
-          const userRoles = getRolesFromSession(pkpSession);
+          const userRoles = getRolesFromSession(pkpSession, definition);
           Object.assign(index, { roles: userRoles });
         }
       }
@@ -45,14 +45,14 @@ export const getIndexById = async (req, res, next) => {
   }
 };
 export const createIndex = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
+
   try {
     const indexParams = req.body;
 
     if (!indexParams.signerFunction) {
       indexParams.signerFunction = process.env.DEFAULT_SIGNER_FUNCTION;
     }
-
-    console.log(req.body, indexParams);
 
     const ownerWallet = req.session.did.parent.split(":").pop();
 
@@ -61,8 +61,7 @@ export const createIndex = async (req, res, next) => {
 
     const pkpSession = await getPKPSession(req.session, indexParams);
 
-    console.log(pkpSession.serialize());
-    const indexService = new IndexService().setSession(pkpSession); //PKP
+    const indexService = new IndexService(definition).setSession(pkpSession); //PKP
     let newIndex = await indexService.createIndex(indexParams);
 
     console.log(newIndex);
@@ -72,10 +71,9 @@ export const createIndex = async (req, res, next) => {
 
     //Cache pkp session after index creation.
     const sessionCacheKey = `${req.session.did.parent}:${ownerWallet}:${newIndex.id}:${newIndex.signerFunction}`;
-    console.log("hellodear", sessionCacheKey);
     await redis.hSet("sessions", sessionCacheKey, pkpSession.serialize());
 
-    const didService = new DIDService().setSession(req.session); //Personal
+    const didService = new DIDService(definition).setSession(req.session); //Personal
     await didService.setDIDIndex(newIndex.id, "owned");
 
     newIndex = await indexService.getIndexById(newIndex.id);
@@ -91,12 +89,14 @@ export const createIndex = async (req, res, next) => {
 
     res.status(201).json(newIndex);
   } catch (error) {
+    console.log(error);
     res.status(500).json({ error: error.message });
   }
 };
 export const updateIndex = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
   try {
-    const indexService = new IndexService();
+    const indexService = new IndexService(definition);
     let index = await indexService.getIndexById(req.params.id);
 
     if (req.body.signerFunction) {
@@ -126,19 +126,21 @@ export const updateIndex = async (req, res, next) => {
       .updateIndex(req.params.id, req.body);
 
     if (pkpSession) {
-      const userRoles = getRolesFromSession(pkpSession);
+      const userRoles = getRolesFromSession(pkpSession, definition);
       Object.assign(newIndex, { roles: userRoles });
     }
 
     return res.status(200).json(newIndex);
   } catch (error) {
+    console.log(error);
     res.status(500).json({ error: error.message });
   }
 };
 
 export const transferIndex = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
   try {
-    const indexService = new IndexService();
+    const indexService = new IndexService(definition);
     let index = await indexService.getIndexById(req.params.id);
 
     const previousOwner = index.ownerDID.id.split(":").pop();
@@ -154,7 +156,7 @@ export const transferIndex = async (req, res, next) => {
     });
 
     if (vals) {
-      const didService = new DIDService().setSession(req.session); //Personal
+      const didService = new DIDService(definition).setSession(req.session); //Personal
       await didService.setDIDIndex(index.id, "owned", true);
       await redis.hDel(`pkp:owner`, index.signerPublicKey);
     } else {
@@ -168,8 +170,9 @@ export const transferIndex = async (req, res, next) => {
 };
 
 export const deleteIndex = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
   try {
-    const indexService = new IndexService();
+    const indexService = new IndexService(definition);
     const index = await indexService.getIndexById(req.params.id);
     const pkpSession = await getPKPSession(req.session, index);
 
@@ -178,35 +181,6 @@ export const deleteIndex = async (req, res, next) => {
       .deleteIndex(req.params.id);
 
     res.status(200).json(deletedIndex);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-export const getQuestions = async (req, res, next) => {
-  try {
-    const indexService = new IndexService();
-    const index = await indexService.getIndexById(req.params.id);
-    if (!index) {
-      return res.status(404).json({ error: "Index not found" });
-    }
-
-    const question_cache = await redis.get(`questions:${req.params.id}`);
-
-    if (question_cache) {
-      return res.status(200).json(JSON.parse(question_cache));
-    }
-
-    try {
-      let response = await axios.get(
-        `${process.env.LLM_INDEXER_HOST}/chat/generate?indexId=${req.params.id}`,
-      );
-      redis.set(`questions:${req.params.id}`, JSON.stringify(response.data), {
-        EX: 86400,
-      });
-      res.status(200).json(response.data);
-    } catch (error) {
-      return res.status(400).json({ error: error.message });
-    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

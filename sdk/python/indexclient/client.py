@@ -126,6 +126,27 @@ class IndexClient:
 
       return self._request("/indexes", "POST", body)
 
+    def chat(self, id, sources, messages):
+      url = f"{self.base_url}/discovery/chat"
+      headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {self.session}",
+      }
+      body = {
+        'messages': messages,
+        'id': id,
+        'sources': sources
+      }
+      response = requests.post(url, headers=headers, data=json.dumps(body), stream=True)
+
+      if response.status_code != 200:
+        raise Exception('Error streaming messages')
+
+      for line in response.iter_lines():
+        if line:
+          decoded_line = line.decode('utf-8')
+          yield decoded_line
+
     def add_item_to_index(self, index_id, item_id):
       return self._request(f"/indexes/{index_id}/items/{item_id}", "POST")
 

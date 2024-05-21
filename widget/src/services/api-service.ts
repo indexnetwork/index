@@ -24,7 +24,7 @@ export class ApiService {
       body: JSON.stringify({
         messages,
         id: chatID,
-        indexes: sources,
+        sources,
       }),
     });
 
@@ -48,10 +48,11 @@ export class ApiService {
     }
   }
 
-  async getDefaultQuestionsOfIndex(indexId: string): Promise<string[]> {
-    const response = await fetch(
-      `${this.baseUrl}/api/indexes/${indexId}/questions`,
-    );
+  async getDefaultQuestionsOfIndex(sources: string[]): Promise<string[]> {
+    const response = await fetch(`${this.baseUrl}/api/discovery/questions`, {
+      method: "POST",
+      body: JSON.stringify({ sources }),
+    });
 
     if (!response.ok) {
       const err = await response.json();
@@ -69,6 +70,17 @@ export class ApiService {
       const err = await response.json();
       throw err;
     }
+    return response.json();
+  }
+
+  async fetchAllIndexes(did: string): Promise<FetchIndexResponse[]> {
+    const response = await fetch(`${this.baseUrl}/api/dids/${did}/indexes`);
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw err;
+    }
+
     return response.json();
   }
 

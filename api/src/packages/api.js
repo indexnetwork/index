@@ -6,8 +6,6 @@ import * as ejv from "express-joi-validation";
 
 import RedisClient from "../clients/redis.js";
 
-import * as Sentry from "@sentry/node";
-import { ProfilingIntegration } from "@sentry/profiling-node";
 import { createProxyMiddleware } from "http-proxy-middleware";
 
 const app = express();
@@ -15,24 +13,6 @@ const app = express();
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
-
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  integrations: [
-    // enable HTTP calls tracing
-    new Sentry.Integrations.Http({ tracing: true }),
-    // enable Express.js middleware tracing
-    new Sentry.Integrations.Express({ app }),
-    new ProfilingIntegration(),
-  ],
-  // Performance Monitoring
-  tracesSampleRate: 1.0, //  Capture 100% of the transactions
-  // Set sampling rate for profiling - this is relative to tracesSampleRate
-  profilesSampleRate: 1.0,
-});
-
-app.use(Sentry.Handlers.requestHandler());
-app.use(Sentry.Handlers.tracingHandler());
 
 const port = process.env.PORT || 3001;
 
@@ -57,11 +37,15 @@ import * as siteController from "../controllers/site.js";
 
 import * as metaController from "../controllers/meta.js";
 
+import * as modelController from "../controllers/model.js";
+
 import {
   authenticateMiddleware,
   errorMiddleware,
   authCheckMiddleware,
 } from "../middlewares/index.js";
+
+import { setIndexedModelParams } from "../libs/composedb.js";
 
 import {
   isImage,
@@ -157,16 +141,6 @@ app.get(
     }),
   ),
   didController.getProfileByDID,
-);
-
-app.get(
-  "/indexes/:id/questions",
-  validator.params(
-    Joi.object({
-      id: Joi.custom(isStreamID, "Index ID").required(),
-    }),
-  ),
-  indexController.getQuestions,
 );
 
 // Indexes
@@ -390,6 +364,16 @@ app.post(
 );
 
 app.post(
+  "/discovery/questions",
+  validator.body(
+    Joi.object({
+      sources: Joi.array().items(Joi.string()).required(),
+    }),
+  ),
+  discoveryController.questions,
+);
+
+app.post(
   "/web2/webpage",
   authCheckMiddleware,
   validator.body(
@@ -509,16 +493,15 @@ app.post(
   siteController.subscribe,
 );
 
-app.get(
-  "/site/faucet",
-  validator.query(
+app.get("/model/info", modelController.info);
+app.post(
+  "/model/index/:id",
+  validator.params(
     Joi.object({
-      address: Joi.string()
-        .regex(/^0x[a-fA-F0-9]{40}$/)
-        .required(),
+      id: Joi.custom(isStreamID, "Model ID").required(),
     }),
   ),
-  siteController.faucet,
+  modelController.deploy,
 );
 
 // Validators
@@ -528,11 +511,12 @@ const start = async () => {
   console.log("Starting API ...", port);
   await redis.connect();
 
+  await setIndexedModelParams(app);
+
   await Moralis.start({
     apiKey: process.env.MORALIS_API_KEY,
   });
 
-  app.use(Sentry.Handlers.errorHandler());
   app.listen(port, async () => {
     console.log(`API listening on port ${port}`);
   });

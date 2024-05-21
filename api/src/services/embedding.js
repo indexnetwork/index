@@ -1,30 +1,27 @@
 import { ComposeClient } from "@composedb/client";
-import { getOwnerProfile } from "../libs/lit/index.js";
-import { removePrefixFromKeys, getCurrentDateTime, getTypeDefinitions } from "../utils/helpers.js";
-import { indexItemFragment, modelBundleFragment } from "../types/fragments.js";
+import { getCurrentDateTime } from "../utils/helpers.js";
+import { IndexService } from "./index.js";
 
-
-const definition = getTypeDefinitions()
 export class EmbeddingService {
-    constructor() {
-        this.client = new ComposeClient({
-            ceramic: process.env.CERAMIC_HOST,
-            definition: definition,
-        });
-        this.did = null;
+  constructor(definition) {
+    this.definition = definition;
+    this.client = new ComposeClient({
+      ceramic: process.env.CERAMIC_HOST,
+      definition,
+    });
+    this.did = null;
+  }
+
+  setSession(session) {
+    if (session && session.did.authenticated) {
+      this.did = session.did;
     }
+    return this;
+  }
 
-    setSession(session) {
-        if(session && session.did.authenticated) {
-            this.did = session.did
-        }
-        return this;
-    }
-
-    async getEmbeddingById(id) {
-
-        try {
-            let {data, errors} = await this.client.executeQuery(`
+  async getEmbeddingById(id) {
+    try {
+      let { data, errors } = await this.client.executeQuery(`
             {
               node(id: "${id}") {
                 ... on Embedding {
@@ -40,7 +37,8 @@ export class EmbeddingService {
                   updatedAt
                   deletedAt
                   item {
-                    ${modelBundleFragment}
+                    id
+                    __typename
                   }
                   index {
                     id
@@ -55,35 +53,34 @@ export class EmbeddingService {
               }
             }`);
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
-            }
-            // Validate the data response
-            if (!data || !data.node) {
-                throw new Error('Invalid response data');
-            }
-            try{
-                data.node.index.ownerDID = await getOwnerProfile(data.node.index);
-            } catch(e) {
-                console.log("Error fetching profile", e)
-            }
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+      }
+      // Validate the data response
+      if (!data || !data.node) {
+        throw new Error("Invalid response data");
+      }
+      try {
+        const indexService = new IndexService(this.definition);
+        data.node.index.ownerDID = await indexService.getOwnerProfile(
+          data.node.index,
+        );
+      } catch (e) {
+        console.log("Error fetching profile", e);
+      }
 
-            data.node.item = removePrefixFromKeys(data.node.item, `${data.node.item.__typename}_`);
-
-            return data.node;
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in getEmbeddingById:', error);
-            throw error;
-        }
+      return data.node;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in getEmbeddingById:", error);
+      throw error;
     }
+  }
 
-    async getEmbedding(indexId, itemId, modelName, category) {
-
-        try {
-            const {data, errors} = await this.client.executeQuery(`
+  async getEmbedding(indexId, itemId, modelName, category) {
+    try {
+      const { data, errors } = await this.client.executeQuery(`
             query{
               embeddingIndex(first:1, filters: {
                 where: {
@@ -112,48 +109,51 @@ export class EmbeddingService {
               }
             }`);
 
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
-            }
-            // Validate the data response
-            if (!data || !data.embeddingIndex || !data.embeddingIndex.edges) {
-                throw new Error('Invalid response data');
-            }
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
+      }
+      // Validate the data response
+      if (!data || !data.embeddingIndex || !data.embeddingIndex.edges) {
+        throw new Error("Invalid response data");
+      }
 
-            if (data.embeddingIndex.edges.length === 0) {
-                return null;
-            }
+      if (data.embeddingIndex.edges.length === 0) {
+        return null;
+      }
 
-            return data.embeddingIndex.edges[0].node;
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in embeddingIndex:', error);
-            throw error;
-        }
+      return data.embeddingIndex.edges[0].node;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in embeddingIndex:", error);
+      throw error;
     }
+  }
 
-    async createEmbedding(params) {
+  async createEmbedding(params) {
+    if (!this.did) {
+      throw new Error("DID not set. Use setDID() to set the did.");
+    }
+    try {
+      const embedding = await this.getEmbedding(
+        params.indexId,
+        params.itemId,
+        params.modelName,
+        params.category,
+      );
+      if (embedding) {
+        return embedding;
+      }
 
-        if (!this.did) {
-            throw new Error("DID not set. Use setDID() to set the did.");
-        }
-        try {
+      const content = {
+        ...params,
+        createdAt: getCurrentDateTime(),
+        updatedAt: getCurrentDateTime(),
+      };
+      this.client.setDID(this.did);
 
-            const embedding = await this.getEmbedding(params.indexId, params.itemId, params.modelName, params.category);
-            if (embedding) {
-                return embedding;
-            }
-
-            const content = {
-                ...params,
-                createdAt: getCurrentDateTime(),
-                updatedAt: getCurrentDateTime(),
-            };
-            this.client.setDID(this.did);
-
-            const {data, errors} = await this.client.executeQuery(`
+      const { data, errors } = await this.client.executeQuery(
+        `
                 mutation CreateEmbedding($input: CreateEmbeddingInput!) {
                     createEmbedding(input: $input) {
                         document {
@@ -170,46 +170,51 @@ export class EmbeddingService {
                             deletedAt
                         }
                     }
-                }`, {input: {content}});
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error creating embedding: ${JSON.stringify(errors)}`);
-            }
+                }`,
+        { input: { content } },
+      );
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error creating embedding: ${JSON.stringify(errors)}`);
+      }
 
-            // Validate the data response
-            if (!data || !data.createEmbedding || !data.createEmbedding.document) {
-                throw new Error('Invalid response data');
-            }
+      // Validate the data response
+      if (!data || !data.createEmbedding || !data.createEmbedding.document) {
+        throw new Error("Invalid response data");
+      }
 
-            // Return the created index document
-            return data.createEmbedding.document;
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in createEmbedding:', error);
-            throw error;
-        }
+      // Return the created index document
+      return data.createEmbedding.document;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in createEmbedding:", error);
+      throw error;
     }
+  }
 
-    async updateEmbedding(params) {
+  async updateEmbedding(params) {
+    if (!this.did) {
+      throw new Error("DID not set. Use setDID() to set the did.");
+    }
+    try {
+      const embedding = await this.getEmbedding(
+        params.indexId,
+        params.itemId,
+        params.modelName,
+        params.category,
+      );
+      if (!embedding) {
+        throw new Error("Embedding does not exist.");
+      }
 
-        if (!this.did) {
-            throw new Error("DID not set. Use setDID() to set the did.");
-        }
-        try {
+      const content = {
+        ...params,
+        updatedAt: getCurrentDateTime(),
+      };
+      this.client.setDID(this.did);
 
-            const embedding = await this.getEmbedding(params.indexId, params.itemId, params.modelName, params.category);
-            if (!embedding) {
-                throw new Error('Embedding does not exist.');
-            }
-
-            const content = {
-                ...params,
-                updatedAt: getCurrentDateTime(),
-            };
-            this.client.setDID(this.did);
-
-            const {data, errors} = await this.client.executeQuery(`
+      const { data, errors } = await this.client.executeQuery(
+        `
                 mutation UpdateEmbedding($input: UpdateEmbeddingInput!) {
                     updateEmbedding(input: $input) {
                         document {
@@ -226,35 +231,34 @@ export class EmbeddingService {
                             deletedAt
                         }
                     }
-                }`, {input: {id: embedding.id, content}});
-            // Handle GraphQL errors
-            if (errors) {
-                throw new Error(`Error updating embedding: ${JSON.stringify(errors)}`);
-            }
+                }`,
+        { input: { id: embedding.id, content } },
+      );
+      // Handle GraphQL errors
+      if (errors) {
+        throw new Error(`Error updating embedding: ${JSON.stringify(errors)}`);
+      }
 
-            // Validate the data response
-            if (!data || !data.updateEmbedding || !data.updateEmbedding.document) {
-                throw new Error('Invalid response data');
-            }
+      // Validate the data response
+      if (!data || !data.updateEmbedding || !data.updateEmbedding.document) {
+        throw new Error("Invalid response data");
+      }
 
-            // Return the created index document
-            return data.updateEmbedding.document;
-
-        } catch (error) {
-            // Log the error and rethrow it for external handling
-            console.error('Exception occurred in updateEmbedding:', error);
-            throw error;
-        }
+      // Return the created index document
+      return data.updateEmbedding.document;
+    } catch (error) {
+      // Log the error and rethrow it for external handling
+      console.error("Exception occurred in updateEmbedding:", error);
+      throw error;
     }
+  }
 
-    async deleteEmbedding(params) {
-
-        const content = {
-            ...params,
-            updatedAt: getCurrentDateTime(),
-            deletedAt: getCurrentDateTime()
-        };
-        return await this.updateEmbedding(content);
-    }
-
+  async deleteEmbedding(params) {
+    const content = {
+      ...params,
+      updatedAt: getCurrentDateTime(),
+      deletedAt: getCurrentDateTime(),
+    };
+    return await this.updateEmbedding(content);
+  }
 }

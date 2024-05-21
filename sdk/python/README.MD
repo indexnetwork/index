@@ -78,7 +78,7 @@ messages = [
     },
 ]
 
-response = client.chat(chat_id, messages, index_id)
+response = client.chat(chat_id, messages, sources=[index_id])
 
 print(response)
 ```

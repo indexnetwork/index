@@ -80,7 +80,7 @@ const TeamItem: React.FC<TeamItemProps> = ({
           <a target="_blank" rel="noreferrer" href={node?.website}>
             <img
               className="mr-3"
-              src={node?.logo || "/images/globe.svg"}
+              src={node?.logo || "/images/ic_team_index_item.svg"}
               alt="favicon"
               width={16}
               height={16}

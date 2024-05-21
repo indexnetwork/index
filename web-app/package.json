@@ -16,6 +16,7 @@
     "@ceramicnetwork/common": "^3.0.4",
     "@ceramicnetwork/http-client": "^3.0.4",
     "@ceramicnetwork/stream-tile": "^3.0.4",
+    "@ceramicnetwork/streamid": "^4.1.0",
     "@composedb/client": "^0.5.2",
     "@composedb/types": "^0.5.1",
     "@didtools/cacao": "^2.0.0",

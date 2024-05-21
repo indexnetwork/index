@@ -3,7 +3,6 @@ import React, { useState } from "react";
 import { HeaderSizeType } from "types";
 import cc from "classcat";
 import IconAdd from "components/base/Icon/IconAdd";
-import validator from "validator";
 import Spin from "components/base/Spin";
 import Text from "components/base/Text";
 
@@ -27,24 +26,25 @@ const LinkInput: React.FC<LinkInputProps> = ({
 }) => {
   const [url, setUrl] = useState("");
   const [showMsg, setShowMsg] = useState(false);
-  const handleBlur: React.FocusEventHandler<HTMLInputElement> = () => {
-    const words = url.split(" ");
-    const links = words.filter((word) => validator.isURL(word));
-    if (links.length > 0) {
+
+  const handleAdd = () => {
+    if (url) {
+      const words = url.split(" ");
+      const links = words.filter((word) => word !== "");
       onItemAdd && onItemAdd(links);
       setUrl("");
     }
+  };
+
+  const handleBlur: React.FocusEventHandler<HTMLInputElement> = () => {
+    handleAdd();
   };
 
   const handleEnter = (e: any) => {
     if (e && (e.code === "Enter" || e.code === "NumpadEnter")) {
       e.preventDefault();
 
-      const words = url.split(" ");
-
-      const links = words.filter((word) => validator.isURL(word));
-      onItemAdd && onItemAdd(links);
-      setUrl("");
+      handleAdd();
     }
   };
 

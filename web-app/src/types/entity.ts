@@ -25,20 +25,6 @@ export type Indexes = {
   links: IndexLink[];
 };
 
-// {
-//   "type": "WebPage",
-//   "node": {
-//       "id": "kjzl6kcym7w8y7fjc89gmnkne7qpdz5ws5ryfji3i8dndjh2wxuii7z1anybovo",
-//       "title": "Post medium publishing",
-//       "favicon": null,
-//       "url": "https://www.paulgraham.com/publishing.html",
-//       "content": null,
-//       "createdAt": "2024-01-17T23:58:51.204Z",
-//       "updatedAt": "2024-01-17T23:58:51.204Z",
-//       "deletedAt": null
-//   }
-// },
-
 export type WebNode = {
   id: string;
   title: string;
@@ -58,6 +44,18 @@ export type TeamNode = {
   shortDescription?: string;
 };
 
+export type IndexIndexNode = {
+  id: string;
+  title: string;
+  updatedAt: string;
+};
+
+export type DefaultIndexNode = {
+  id: string;
+  title: string;
+  updatedAt: string;
+};
+
 export type IndexWebPageItem = {
   type: string;
   node: WebNode;
@@ -68,7 +66,20 @@ export type IndexTeamNodeItem = {
   node: TeamNode;
 };
 
-export type IndexItem = IndexWebPageItem | IndexTeamNodeItem;
+export type IndexIndexNodeItem = {
+  type: string;
+  node: IndexIndexNode;
+};
+export type DefaultIndexNodeItem = {
+  type: string;
+  node: DefaultIndexNode;
+};
+
+export type IndexItem =
+  | IndexWebPageItem
+  | IndexTeamNodeItem
+  | IndexIndexNodeItem
+  | DefaultIndexNodeItem;
 
 export type IndexLink = {
   id?: string;

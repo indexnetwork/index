@@ -157,7 +157,7 @@ function App() {
             <div>
               <IndexChat
                 sources={[
-                  "kjzl6kcym7w8y6rf31ljq3867je1l4vhw426g9e13dk2m3516z7yccz3x47t3l4",
+                  "did:pkh:eip155:1:0x4b30778B5c23751896749d5e25196D5F4F1fb4a1",
                 ]}
                 style={{
                   darkMode: false,

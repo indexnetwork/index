@@ -1,3 +1,4 @@
+import { appConfig } from "@/config";
 import { ShapeType } from "@/types";
 import { Users } from "@/types/entity";
 import { generateRandomColor, isSSR } from "@/utils/helper";
@@ -67,7 +68,7 @@ const Avatar = ({
       {user ? (
         user.avatar ? (
           <img
-            src={`${user.avatar}`}
+            src={`${appConfig.ipfsGateway}/${user.avatar}`}
             alt="profile_img"
             className={rounded ? "rounded-full" : ""}
           />

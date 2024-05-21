@@ -53,13 +53,13 @@ const ChatHeader: React.FC = () => {
           </Button>
         )}
         {session && <Avatar user={userProfile} size={28} />}
-        <button
+        {/* <button
           onClick={onToggleDarkMode}
           aria-label="toggle-dark-mode"
           className="flex items-center rounded p-1"
         >
           {darkMode ? <Icons.Sun /> : <Icons.Moon />}
-        </button>
+        </button> */}
       </div>
     </header>
   );

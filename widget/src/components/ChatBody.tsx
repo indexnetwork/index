@@ -1,17 +1,10 @@
-// import { useApi } from "@/context/APIContext";
-// import { useApp } from "@/context/AppContext";
-// import { useAuth } from "@/context/AuthContext";
-// import { useRouteParams } from "@/hooks/useRouteParams";
 import { useChat, type Message } from "ai/react";
-import { ButtonScrollToBottom } from "@/components/ai/button-scroll-to-bottom";
 import { ChatList } from "@/components/ai/chat-list";
 import { ChatPanel } from "@/components/ai/chat-panel";
 import { ChatScrollAnchor } from "@/components/ai/chat-scroll-anchor";
-import { EmptyScreen } from "@/components/ai/empty-screen";
 import AskInput from "@/components/AskInput";
 import {
   ComponentProps,
-  FC,
   useCallback,
   useEffect,
   useMemo,
@@ -19,13 +12,10 @@ import {
   useState,
 } from "react";
 import { toast } from "react-hot-toast";
-import { maskDID } from "@/utils";
 import BodyPlaceholder from "./BodyPlaceholder";
-import Icon from "@/assets/icon";
 import { useTheme } from "@/contexts/ThemeContext";
 import { appConfig } from "@/config";
 import { useIndexChat } from "@/contexts/ChatContext";
-// import NoIndexes from "../NoIndexes";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -37,11 +27,6 @@ export interface MessageWithIndex extends Message {
 }
 
 const ChatBody = () => {
-  // const { viewedProfile, leftSectionIndexes, leftTabKey } = useApp();
-
-  // const { session } = useAuth();
-  // const { viewedIndex } = useApp();
-  // const { isIndex, id } = useRouteParams();
   const { defaultQuestions, sources, chatID } = useIndexChat();
   const { darkMode } = useTheme();
 
@@ -101,32 +86,8 @@ const ChatBody = () => {
     }
   };
 
-  // const tipBoxes = [
-  //   {
-  //     content:
-  //       "What are the best practices for scaling a ComposeDB application?",
-  //     icon: <Icon.LightBulb />,
-  //   },
-  //   {
-  //     content: "How can I integrate Ceramic Network with Lit Protocol?",
-  //     icon: <Icon.LightBulb />,
-  //   },
-  // ];
-
   const apiUrl = `${appConfig.apiUrl}/api/discovery/chat`;
   const initialMessages: Message[] = [];
-  let body;
-  if (sources[0].includes("did")) {
-    body = {
-      id: chatID,
-      did: sources[0],
-    };
-  } else {
-    body = {
-      id: chatID,
-      indexIds: sources,
-    };
-  }
   const {
     messages,
     append,
@@ -140,7 +101,10 @@ const ChatBody = () => {
     api: apiUrl,
     initialMessages,
     id: chatID,
-    body,
+    body: {
+      id: chatID,
+      sources,
+    },
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       // Authorization: `Bearer ${session?.serialize()}`,
@@ -163,16 +127,6 @@ const ChatBody = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, isLoading]);
-
-  // if (messages.length === 0) {
-  //   return (
-  //     <BodyPlaceholder
-  //       tipBoxes={tipBoxes}
-  //       darkMode={darkMode}
-  //       sendMessage={setInput}
-  //     />
-  //   );
-  // }
 
   return (
     <>
@@ -212,23 +166,6 @@ const ChatBody = () => {
                 <ChatScrollAnchor trackVisibility={isLoading} />
               </div>
             ) : (
-              // <div
-              //   style={{
-              //     display: "flex",
-              //     flexDirection: "column",
-              //     height: "100%",
-              //     justifyContent: "center",
-              //     alignItems: "center",
-              //   }}
-              //   className="px-8"
-              // >
-              //   <EmptyScreen
-              //     contextMessage={getChatContextMessage()}
-              //     setInput={setInput}
-              //     indexIds={indexIds}
-              //     defaultQuestions={defaultQuestions}
-              //   />
-              // </div>
               <BodyPlaceholder
                 tipBoxes={tipBoxes}
                 darkMode={darkMode}
