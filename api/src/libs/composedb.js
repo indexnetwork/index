@@ -380,6 +380,33 @@ export const indexNewModel = async (app, modelId, ceramicAdminPrivateKey) => {
 
   return true;
 };
+
+export const stopIndexingModels = async (
+  app,
+  modelId,
+  ceramicAdminPrivateKey,
+) => {
+  const indexerCeramic = new CeramicClient(process.env.CERAMIC_HOST);
+  if (!ceramicAdminPrivateKey) {
+    return false;
+  }
+  const key = fromString(ceramicAdminPrivateKey, "base16");
+  const did = new DID({
+    resolver: getResolver(),
+    provider: new Ed25519Provider(key),
+  });
+  await did.authenticate();
+  if (!did.authenticated) {
+    return false;
+  }
+  indexerCeramic.did = did;
+
+  const models = await indexerCeramic.admin.stopIndexingModels([modelId]);
+
+  await setIndexedModelParams(app);
+
+  return models;
+};
 export const setIndexedModelParams = async (app) => {
   await authenticateAdmin();
   const models = await ceramic.admin.getIndexedModels();
