@@ -83,7 +83,11 @@ const LinkInput: React.FC<LinkInputProps> = ({
         onBlur={handleBlur}
         onChange={handleChange}
         onKeyDown={handleEnter}
-        placeholder={loading ? "Working on it..." : "Add a link to your index"}
+        placeholder={
+          loading
+            ? "Working on it..."
+            : "Add an item to your indexes (link, index or other streams)"
+        }
       />
       {showMsg && (
         <Text

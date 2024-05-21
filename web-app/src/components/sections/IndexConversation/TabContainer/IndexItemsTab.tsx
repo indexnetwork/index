@@ -57,7 +57,7 @@ export default function IndexItemsTabSection() {
       setSearch(searchQuery);
       fetchIndexItems(viewedIndex?.id, {
         resetCursor: true,
-        // query: searchQuery,
+        params: { query: searchQuery },
       });
     },
     [fetchIndexItems],

@@ -94,7 +94,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
 
       fetchingIndexItems.current = true;
 
-      // setLoading(true);
+      setLoading(true);
       try {
         const itemParams: GetItemQueryParams = {};
 
@@ -124,7 +124,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
       } catch (err: any) {
         console.error("Error fetching index links", err);
       } finally {
-        // setLoading(false);
+        setLoading(false);
         fetchingIndexItems.current = false;
       }
     },

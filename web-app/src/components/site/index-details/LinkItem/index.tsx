@@ -35,7 +35,7 @@ const LinkItem: React.FC<LinkItemProps> = ({
     <div className="index-detail-list-item-wrapper">
       <FlexRow className="index-detail-list-item py-3">
         <Col xs={12}>
-          <FlexRow wrap={false}>
+          <FlexRow wrap={false} style={{ height: "24px" }}>
             <Col className="idxflex-grow-1">
               <a target="_blank" rel="noreferrer" href={node?.url}>
                 <Text
