@@ -504,6 +504,16 @@ app.post(
   modelController.deploy,
 );
 
+app.delete(
+  "/model/index/:id",
+  validator.params(
+    Joi.object({
+      id: Joi.custom(isStreamID, "Model ID").required(),
+    }),
+  ),
+  modelController.remove,
+);
+
 // Validators
 app.use(errorMiddleware);
 
