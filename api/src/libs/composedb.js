@@ -290,18 +290,20 @@ export const jsonSchemaToGraphQLFragment = (schema, prefix = false) => {
   const parentDefs = schema.schema.$defs;
   const prefixName = schema.name;
 
-  schema.schema.$defs.GraphQLDID = {
-    type: "object",
-    title: "GraphQLDID",
-    required: ["id"],
-    properties: {
-      id: {
-        type: "string",
-        maxLength: 100,
+  if (schema.schema.$defs) {
+    schema.schema.$defs.GraphQLDID = {
+      type: "object",
+      title: "GraphQLDID",
+      required: ["id"],
+      properties: {
+        id: {
+          type: "string",
+          maxLength: 100,
+        },
       },
-    },
-    additionalProperties: false,
-  };
+      additionalProperties: false,
+    };
+  }
 
   schema.schema.properties.id = {
     type: "string",
@@ -415,12 +417,12 @@ export const setIndexedModelParams = async (app) => {
   const modelFragments = await Promise.all(
     modelList.map(async (m) => {
       const stream = await ceramic.loadStream(m);
-      //const fragment = jsonSchemaToGraphQLFragment(stream.content);
+      const fragment = jsonSchemaToGraphQLFragment(stream.content);
       return {
         id: m,
         name: stream.content.name,
-        //fragment,
-        //prefixedFragment: jsonSchemaToGraphQLFragment(stream.content, true),
+        fragment,
+        prefixedFragment: jsonSchemaToGraphQLFragment(stream.content, true),
       };
     }),
   );
