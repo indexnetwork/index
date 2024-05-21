@@ -12,6 +12,7 @@ import { filterValidUrls, isStreamID, removeDuplicates } from "@/utils/helper";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useIndexConversation } from "../IndexConversationContext";
+import Spin from "@/components/base/Spin";
 
 const CONCURRENCY_LIMIT = 10;
 
@@ -21,6 +22,7 @@ export default function IndexItemsTabSection() {
     setItemsState,
     loading,
     setLoading,
+    searchLoading,
     fetchIndexItems,
     fetchMoreIndexItems,
   } = useIndexConversation();
@@ -57,7 +59,7 @@ export default function IndexItemsTabSection() {
       setSearch(searchQuery);
       fetchIndexItems(viewedIndex?.id, {
         resetCursor: true,
-        // query: searchQuery,
+        params: { query: searchQuery },
       });
     },
     [fetchIndexItems],
@@ -171,11 +173,11 @@ export default function IndexItemsTabSection() {
       <FlexRow className={"mt-6"}>
         <Col className="idxflex-grow-1">
           <SearchInput
-            // loading={loading}
             onSearch={handleSearch}
             debounceTime={300}
             showClear
             defaultValue={search}
+            loading={searchLoading}
             placeholder="Search in this index"
           />
         </Col>

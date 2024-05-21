@@ -1,5 +1,5 @@
-import IconLightbulb from "components/base/Icon/IconLightbulb";
 import Flex from "components/layout/base/Grid/Flex";
+import Image from "next/image";
 import Text from "../base/Text";
 
 export function EmptyScreen({
@@ -20,7 +20,7 @@ export function EmptyScreen({
       className="container-empty-screen pt-2"
     >
       <div className="inner-container-empty-screen">
-        <img
+        <Image
           src="/images/index-chat-empty-screen.png"
           width={202}
           height={202}
@@ -31,21 +31,11 @@ export function EmptyScreen({
         </Text>
       </div>
       <div className="example-messages-empty-screen">
-        {indexIds && indexIds.length > 0
-          ? defaultQuestions?.map((message, i) => (
-              <ExampleMessageBox
-                key={i}
-                message={message}
-                setInput={setInput}
-              />
-            ))
-          : defaultQuestions?.map((message, i) => (
-              <ExampleMessageBox
-                key={i}
-                message={message}
-                setInput={setInput}
-              />
-            ))}
+        {indexIds &&
+          indexIds.length > 0 &&
+          defaultQuestions?.map((message, i) => (
+            <ExampleMessageBox key={i} message={message} setInput={setInput} />
+          ))}
       </div>
     </Flex>
   );
@@ -62,7 +52,6 @@ const ExampleMessageBox = ({
     onClick={() => setInput(message)}
     className="example-message-box-empty-screen"
   >
-    <IconLightbulb className="icon-empty-screen" />
     <Text className="truncate-text" fontWeight={500}>
       {message}
     </Text>

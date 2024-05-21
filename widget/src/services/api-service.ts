@@ -51,6 +51,9 @@ export class ApiService {
   async getDefaultQuestionsOfIndex(sources: string[]): Promise<string[]> {
     const response = await fetch(`${this.baseUrl}/api/discovery/questions`, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ sources }),
     });
 

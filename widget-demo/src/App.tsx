@@ -27,7 +27,7 @@ function App() {
     },
   };
 
-  const codeString = `import { IndexChat } from '@indexnetwork/ui';\n\n<IndexChat id='your_id'/>`;
+  const codeString = `import { IndexChat } from '@indexnetwork/ui';\n\n<IndexChat sources={['your_id']}/>`;
 
   const IndexIcon: React.FC<any> = ({ title, ...props }) => (
     <svg
@@ -119,8 +119,8 @@ function App() {
               to interact with the web in a context-aware way.
             </p>
             <p>
-              ⛓️ Provide your index id to the <code>IndexChat</code> component.
-              No extra work required.
+              ⛓️ Provide your sources, both did and index ids to the{" "}
+              <code>IndexChat</code> component. No extra work required.
             </p>
             <div
               style={{
