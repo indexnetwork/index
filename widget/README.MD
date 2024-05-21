@@ -59,7 +59,7 @@ Let's start building! ⛓️
 Get the latest package via npm.
 
 ```bash
-npm install index-chat
+yarn add @indexnetwork/ui
 ```
 
 ## Usage
@@ -70,7 +70,7 @@ This code creates a button that handles all the configuration. Now you can click
 
 
 ```typescript
-import IndexChat from 'index-chat';
+import IndexChat from '@indexnetwork/ui';
 
 const App = () => {
   return (
@@ -128,7 +128,7 @@ const App = () => {
 The package uses `Inter` as the primary and `Freizeit` as the secondary font default. If you want to enable them, add the following line to your app.
 
 ```typescript
-import 'index-chat/dist/assets/style/fonts.css';
+import '@indexnetwork/ui/dist/assets/style/fonts.css';
 ```
 
 
@@ -139,13 +139,13 @@ Before integrating `@indexnetwork/ui` into your project, please consider the fol
 
 ### Requirements
 
-- <b>React Version:</b> `index-chat` uses version 18.2.0. Ensure that your project has a compatible version.
+- <b>React Version:</b> `@indexnetwork/ui` uses version 18.2.0. Ensure that your project has a compatible version.
 
 - The jsx option is set to `react-jsx`, which requires React 17+.
 
 - <b>TypeScript Version:</b> The package is built with TypeScript 5.3.3. Projects using an older version might encounter compatibility issues.
 
-- `index-chat` is compiled as a UMD (Universal Module Definition) module. Ensure that your module bundler and environment are compatible with UMD modules.
+- `@indexnetwork/ui` is compiled as a UMD (Universal Module Definition) module. Ensure that your module bundler and environment are compatible with UMD modules.
 
 
 ## Contributing

@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/ui",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Index Network UI SDK",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
