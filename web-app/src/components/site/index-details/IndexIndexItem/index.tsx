@@ -97,7 +97,7 @@ const IndexIndexItem: React.FC<IndexIndexItemProps> = ({
           </FlexRow>
         </Col>
         <Col xs={12} className="mt-2">
-          <Text size="md" theme="gray5">
+          <Text size="sm" theme="disabled">
             {node?.updatedAt
               ? `Updated ${moment(new Date(node.updatedAt)).fromNow()}`
               : ""}

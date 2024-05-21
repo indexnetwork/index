@@ -96,7 +96,9 @@ const LinkItem: React.FC<LinkItemProps> = ({
             />
             <Text size="sm" theme="disabled">
               {node?.url?.substring(0, 80)} •{" "}
-              {node?.updatedAt ? moment(node?.updatedAt).format("MMM D") : ""}
+              {node?.updatedAt
+                ? `Updated ${moment(new Date(node.updatedAt)).fromNow()}`
+                : ""}
             </Text>
           </a>
         </Col>
