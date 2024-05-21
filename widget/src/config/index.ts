@@ -25,7 +25,8 @@ export const appConfig: AppConfig = {
   name: "Index Chat",
   website: "https://index.network",
   version: "1",
-  description: "Chat with your indexes, easy as pie.",
+  description:
+    "Index allows you to create truly personalised and autonomous discovery experiences across the web",
   apiUrl: "https://index.network",
   ipfsGateway: "https://ipfs.io/ipfs",
   ipfsProxy: "https://ipfs.io/ipfs",
