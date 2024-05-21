@@ -24,7 +24,7 @@ export class IndexService {
     try {
       let didPayload = "";
 
-      if (this.did) {
+      if (this.did && this.did.parent) {
         didPayload = `did(first:10, account: "${this.did.parent}", filters: {
                     where: {
                         deletedAt: {isNull: true}
