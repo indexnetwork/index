@@ -21,7 +21,11 @@ const Home: NextPage = () => {
           visible={transactionApprovalWaiting}
         />
       )}
-      <CreateModal visible={true} onCreate={handleCreatePublic} />
+      <CreateModal
+        cancelVisible={false}
+        visible={true}
+        onCreate={handleCreatePublic}
+      />
     </div>
   );
 };

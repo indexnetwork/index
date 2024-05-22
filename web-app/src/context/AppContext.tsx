@@ -153,7 +153,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       },
     ): Promise<any> => {
       try {
-        if (!apiReady || !isIndex || indexId === "undefined") return;
+        if (!apiReady || !isIndex || !indexId) return;
         // if (viewedIndex?.id === id) return;
         if (isFetchingRef.current) return;
 
