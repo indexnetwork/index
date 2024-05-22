@@ -1,5 +1,6 @@
 "use client";
 
+import Freizeit from "@/fonts/loader";
 import cc from "classcat";
 import Avatar from "components/base/Avatar";
 import Header from "components/base/Header";
@@ -46,9 +47,11 @@ const IndexItem: FC<IndexItemProps> = ({ index, selected, onClick }) => (
           </Text>
           <Header
             level={4}
-            className={cm.title}
-            dangerouslySetInnerHTML={{ __html: sanitize(index.title || "") }}
-          ></Header>
+            className={`${cm.title} ${Freizeit.className}`}
+            dangerouslySetInnerHTML={{
+              __html: sanitize(index.title || ""),
+            }}
+          />
         </Flex>
       </Col>
     </FlexRow>

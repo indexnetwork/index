@@ -35,18 +35,27 @@
 }
 
 @font-face {
-  font-family: Freizeit;
-  src: url("/fonts/Freizeit-Regular.woff2") format('woff2');
+  font-family: "Freizeit";
+  src:
+    url("/fonts/Freizeit-Regular.woff2") format("woff2"),
+    url("/fonts/Freizeit-Regular.woff") format("woff"),
+    url("/fonts/Freizeit-Regular.ttf") format("truetype");
+  font-weight: normal;
+  font-style: normal;
 }
 
 @font-face {
-  font-family: Freizeit;
+  font-family: "Freizeit";
+  src:
+    url("/fonts/Freizeit-Bold.woff2") format("woff2"),
+    url("/fonts/Freizeit-Bold.woff") format("woff"),
+    url("/fonts/Freizeit-Bold.ttf") format("truetype");
   font-weight: 700;
-  src: url("/fonts/Freizeit-Bold.woff2") format('woff2');
+  font-style: normal;
 }
 
 @font-face {
   font-family: Roquefort;
   font-weight: 400;
-  src: url("/fonts/Roquefort-Standard.woff2") format('woff2');
+  src: url("/fonts/Roquefort-Standard.woff2") format("woff2");
 }

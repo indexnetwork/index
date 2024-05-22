@@ -12,7 +12,6 @@ import { filterValidUrls, isStreamID, removeDuplicates } from "@/utils/helper";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useIndexConversation } from "../IndexConversationContext";
-import Spin from "@/components/base/Spin";
 
 const CONCURRENCY_LIMIT = 10;
 

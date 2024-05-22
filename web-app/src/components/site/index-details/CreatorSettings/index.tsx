@@ -1,5 +1,6 @@
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
+import Freizeit from "@/fonts/loader";
 import Button from "components/base/Button";
 import Header from "components/base/Header";
 import IconAdd from "components/base/Icon/IconAdd";
@@ -127,7 +128,7 @@ const CreatorSettings = () => {
       </Row>
       <Row className={"mt-0"}>
         <Col xs={10}>
-          <Text fontFamily="freizeit" size={"lg"} fontWeight={500}>
+          <Text size={"lg"} className={Freizeit.className}>
             {isOwner && (
               <>
                 Control write access to your index through NFTs.

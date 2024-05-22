@@ -1,3 +1,4 @@
+import Freizeit from "@/fonts/loader";
 import Flex from "components/layout/base/Grid/Flex";
 import Image from "next/image";
 import Text from "../base/Text";
@@ -26,7 +27,11 @@ export function EmptyScreen({
           height={202}
           alt="Illustration of trees"
         />
-        <Text fontFamily="freizeit" size="xl" className="text" fontWeight={700}>
+        <Text
+          size="xl"
+          className={`${Freizeit.className} text`}
+          fontWeight={700}
+        >
           Your responses will align with {contextMessage}
         </Text>
       </div>

@@ -1,4 +1,5 @@
 import { useApp } from "@/context/AppContext";
+import Freizeit from "@/fonts/loader";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import Button from "components/base/Button";
 import Image from "next/image";
@@ -36,8 +37,8 @@ export default function NoIndexesChat({ isSelfDid }: { isSelfDid?: boolean }) {
           style={{
             display: "flex",
             flexDirection: "column",
-            fontFamily: "freizeit",
           }}
+          className={Freizeit.className}
         >
           <Text size="xl" fontWeight={700}>
             {isSelfDid

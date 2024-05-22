@@ -42,7 +42,7 @@ Let's start building! ⛓️
 
 
 <div>
-<img alt="Demo Screen" style="width:500px" src="https://github.com/indexnetwork/index/blob/dev/widget/demo/ui.png" />
+<img alt="Demo Screen" style="width:500px" src="https://github.com/indexnetwork/index/blob/dev/widget/demo/ui.png?raw=true" />
 </div>
 
 
