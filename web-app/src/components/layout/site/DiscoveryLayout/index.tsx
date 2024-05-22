@@ -73,6 +73,7 @@ const DiscoveryLayout = ({ children }: DiscoveryLayoutProps) => {
       )}
       {transactionApprovalWaiting && (
         <ConfirmTransaction
+          backdropClose={false}
           handleCancel={handleTransactionCancel}
           visible={transactionApprovalWaiting}
         />
