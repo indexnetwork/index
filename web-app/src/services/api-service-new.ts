@@ -73,6 +73,10 @@ class ApiService {
     this.apiAxios.defaults.headers.Authorization = `Bearer ${session.serialize()}`;
   }
 
+  public setSessionToken(token: string) {
+    this.apiAxios.defaults.headers.Authorization = `Bearer ${token}`;
+  }
+
   public getSession() {
     return this.session;
   }
