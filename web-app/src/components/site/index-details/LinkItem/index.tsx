@@ -1,17 +1,17 @@
-import Col from "components/layout/base/Grid/Col";
-import FlexRow from "components/layout/base/Grid/FlexRow";
-import Text from "components/base/Text";
-import React from "react";
+import Freizeit from "@/fonts/loader";
 import Button from "components/base/Button";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
-import { useBreakpoint } from "hooks/useBreakpoint";
-import { BREAKPOINTS } from "utils/constants";
+import Text from "components/base/Text";
+import Col from "components/layout/base/Grid/Col";
+import FlexRow from "components/layout/base/Grid/FlexRow";
 import IndexDetailItemPopup from "components/site/popup/IndexDetailItemPopup";
-import { IndexWebPageItem } from "types/entity";
-import moment from "moment";
-import sanitize from "sanitize-html";
+import { useBreakpoint } from "hooks/useBreakpoint";
 import { useRole } from "hooks/useRole";
-import cm from "./style.module.scss";
+import moment from "moment";
+import React from "react";
+import sanitize from "sanitize-html";
+import { IndexWebPageItem } from "types/entity";
+import { BREAKPOINTS } from "utils/constants";
 
 // TODO: data prop will be Index object
 export interface LinkItemProps {
@@ -39,7 +39,10 @@ const LinkItem: React.FC<LinkItemProps> = ({
             <Col className="idxflex-grow-1">
               <a target="_blank" rel="noreferrer" href={node?.url}>
                 <Text
-                  className={cm.title}
+                  className={Freizeit.className}
+                  style={{
+                    fontSize: "16px",
+                  }}
                   fontWeight={700}
                   dangerouslySetInnerHTML={{
                     __html: sanitize(node?.title as string),

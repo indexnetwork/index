@@ -1,3 +1,5 @@
+import Freizeit from "@/fonts/loader";
+import cc from "classcat";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
 import Header from "components/base/Header";
@@ -30,7 +32,7 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) =>
             flexdirection={"column"}
           >
             <Row>
-              <Text fontFamily="Freizeit" fontWeight={500}>
+              <Text className={Freizeit.className}>
                 {rule.ruleType === "nftOwner"
                   ? rule.standardContractType === "ERC721" && rule.tokenId
                     ? "NFT OWNER"
@@ -64,10 +66,8 @@ const CreatorRule = ({ rule, handleRemove }: CreatorRuleProps) =>
                     }}
                   >
                     <Text
-                      fontFamily={"Freizeit"}
-                      fontWeight={500}
+                      className={cc([Freizeit.className, "mr-1"])}
                       size={"sm"}
-                      className={"mr-1"}
                     >
                       {maskAddress(
                         rule?.walletAddress || rule?.contractAddress,

@@ -3,10 +3,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: '/',
-        destination: '/home',
+        source: "/",
+        destination: "/home",
       },
-    ]
+    ];
   },
   reactStrictMode: false,
   images: {
@@ -22,29 +22,19 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: "/fonts/Freizeit-Bold.woff2",
+        source: "/fonts/:font*",
         headers: [
           {
             key: "Cache-Control",
             value: "public, max-age=31536000, immutable",
           },
-        ],
-      },
-      {
-        source: "/fonts/Freizeit-Regular.woff2",
-        headers: [
           {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
+            key: "Access-Control-Allow-Origin",
+            value: "*",
           },
-        ],
-      },
-      {
-        source: "/fonts/Roquefort-Standard.woff2",
-        headers: [
           {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
+            key: "Access-Control-Allow-Methods",
+            value: "GET, OPTIONS",
           },
         ],
       },

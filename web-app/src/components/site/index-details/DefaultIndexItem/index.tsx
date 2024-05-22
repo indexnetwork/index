@@ -1,3 +1,4 @@
+import Freizeit from "@/fonts/loader";
 import Button from "components/base/Button";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
 import Text from "components/base/Text";
@@ -11,7 +12,6 @@ import React from "react";
 import sanitize from "sanitize-html";
 import { DefaultIndexNodeItem } from "types/entity";
 import { BREAKPOINTS } from "utils/constants";
-import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
 export interface DefaultIndexItemProps {
@@ -53,7 +53,10 @@ const DefaultIndexItem: React.FC<DefaultIndexItemProps> = ({
                 }}
               />
               <Text
-                className={cm.title}
+                className={Freizeit.className}
+                style={{
+                  fontSize: "16px",
+                }}
                 fontWeight={700}
                 dangerouslySetInnerHTML={{
                   __html: sanitize(node?.id as string),
