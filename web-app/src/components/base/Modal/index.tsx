@@ -18,6 +18,7 @@ export interface ModalProps {
   size?: "fit" | InputSizeType;
   mobileBackdropClose?: boolean;
   onClose?(): void;
+  backdropClose?: boolean;
 }
 
 interface GlobalStyleProps {
@@ -42,6 +43,7 @@ const Modal = ({
   size = "fit",
   mobileMaxVh = 70,
   onClose,
+  backdropClose = false,
 }: ModalProps) => {
   const [portal, setPortal] = useState<HTMLDivElement | null>(null);
 
@@ -114,6 +116,10 @@ const Modal = ({
 
   const handleDesktopClose = () => {
     if (isMobile && !mobileBackdropClose) {
+      return;
+    }
+
+    if (!backdropClose) {
       return;
     }
     handleClose();
