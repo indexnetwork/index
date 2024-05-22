@@ -1,3 +1,4 @@
+import Freizeit from "@/fonts/loader";
 import Button from "components/base/Button";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
 import Text from "components/base/Text";
@@ -10,7 +11,6 @@ import React from "react";
 import sanitize from "sanitize-html";
 import { IndexTeamNodeItem } from "types/entity";
 import { BREAKPOINTS } from "utils/constants";
-import cm from "./style.module.scss";
 
 // TODO: data prop will be Index object
 export interface TeamItemProps {
@@ -34,11 +34,14 @@ const TeamItem: React.FC<TeamItemProps> = ({
     <div className="index-detail-list-item-wrapper">
       <FlexRow className="index-detail-list-item py-3">
         <Col xs={12}>
-          <FlexRow wrap={false}>
+          <FlexRow wrap={false} style={{ height: "24px" }}>
             <Col className="idxflex-grow-1">
               <a target="_blank" rel="noreferrer" href={node?.website}>
                 <Text
-                  className={cm.title}
+                  className={Freizeit.className}
+                  style={{
+                    fontSize: "16px",
+                  }}
                   fontWeight={700}
                   dangerouslySetInnerHTML={{
                     __html: sanitize(node?.name as string),

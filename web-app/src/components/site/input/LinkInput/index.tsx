@@ -64,7 +64,7 @@ const LinkInput: React.FC<LinkInputProps> = ({
           <IconAdd style={{ marginRight: "6px" }} width={20} height={20} />
         }
         addOnAfter={
-          loading ? (
+          loading && (
             <>
               {progress &&
                 progress.total! > 1 &&
@@ -76,14 +76,18 @@ const LinkInput: React.FC<LinkInputProps> = ({
                 )}
               <Spin active={true} thickness="light" theme="secondary" />
             </>
-          ) : undefined
+          )
         }
         {...inputProps}
         value={url}
         onBlur={handleBlur}
         onChange={handleChange}
         onKeyDown={handleEnter}
-        placeholder={loading ? "Working on it..." : "Add a link to your index"}
+        placeholder={
+          loading
+            ? "Working on it..."
+            : "Add an item to your indexes (link, index or other streams)"
+        }
       />
       {showMsg && (
         <Text

@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/ui",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "Index Network UI SDK",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,7 +16,6 @@
     "watch": "webpack --mode development --watch"
   },
   "author": "confxsd",
-  "license": "ISC",
   "devDependencies": {
     "@babel/cli": "^7.23.4",
     "@babel/core": "^7.23.6",
