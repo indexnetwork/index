@@ -34,7 +34,7 @@ const NoLinks: React.FC<NoLinksProps> = ({
         <Col className="text-center" centerBlock>
           {search ? (
             <Header level={4}>
-              {`Your search "${search}" did not match any links.`}
+              {`Your search "${search}" did not match any items.`}
             </Header>
           ) : (
             <Header level={4}>
