@@ -33,7 +33,7 @@ export interface AppContextValue {
   indexes: Indexes[];
   leftSectionIndexes: Indexes[];
   loading: boolean;
-  discoveryType: DiscoveryType;
+  discoveryType: DiscoveryType | undefined;
   setIndexes: (indexes: Indexes[]) => void;
   fetchIndexes: (did: string) => void;
   setCreateModalVisible: (visible: boolean) => void;
@@ -74,6 +74,7 @@ export interface AppContextValue {
     },
   ) => Promise<void>;
   handleCreate: (title: string) => Promise<void>;
+  handleCreatePublic: (title: string) => Promise<void>;
   handleTransactionCancel: () => void;
   chatID: string | undefined;
   transactionApprovalWaiting: boolean;
@@ -151,7 +152,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       },
     ): Promise<any> => {
       try {
-        if (!apiReady || !isIndex) return;
+        if (!apiReady || !isIndex || !indexId) return;
         // if (viewedIndex?.id === id) return;
         if (isFetchingRef.current) return;
 
@@ -229,6 +230,39 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     [apiReady, router],
   );
 
+  const handleCreatePublic = useCallback(
+    async (title: string = DEFAULT_CREATE_INDEX_TITLE) => {
+      setTransactionApprovalWaiting(true);
+      try {
+        if (!apiReady) return;
+
+        api?.setSessionToken(
+          "eyJzZXNzaW9uS2V5U2VlZCI6IkM4YjB0SzJBTHNBOWRkLzVSV2tEUGE0ZEpOS3NKR3VyL2UzVXNxRElXU0E9IiwiY2FjYW8iOnsiaCI6eyJ0IjoiZWlwNDM2MSJ9LCJwIjp7ImRvbWFpbiI6ImxvY2FsaG9zdDozMDAwIiwiaWF0IjoiMjAyNC0wNS0yM1QwODoxMToyNC4yMjhaIiwiaXNzIjoiZGlkOnBraDplaXAxNTU6MToweEIxZEI4MTQ3YzZiNWRFMTVENzYyNTY2QzgzYTBjNmJlODc0ODFBN2UiLCJhdWQiOiJkaWQ6a2V5Ono2TWtnSE1VcW9KTDZpVWlSa1pDWXl4eTJZeFFkaEplVFpvckR4QXJhQlRIdTFnVCIsInZlcnNpb24iOiIxIiwibm9uY2UiOiJyUzZuMkoyNjZMIiwiZXhwIjoiMjAyNC0wNi0xN1QwODoxMToyNC4yMjhaIiwic3RhdGVtZW50IjoiR2l2ZSB0aGlzIGFwcGxpY2F0aW9uIGFjY2VzcyB0byBzb21lIG9mIHlvdXIgZGF0YSBvbiBDZXJhbWljIiwicmVzb3VyY2VzIjpbImNlcmFtaWM6Ly8qIl19LCJzIjp7InQiOiJlaXAxOTEiLCJzIjoiMHg1NzkyMmMwMjcwZTcxNmYwMTAwOWNjNzQ1MjM0MzdkMzBhZGM2NzM2NDY3MjAxNTg5NWU2YmRiZGRiNDBlNzc1NDQ4OTU5NmVmYzNhNjhkMGJjZTI0Y2EzYjg1OGFlNzFjODFkZWI2OTZmYjAzN2Q0Y2E5OGIzMjhlNWU3N2ZhZTFiIn19fQ",
+        );
+        const doc = await api!.createIndex(title);
+        if (!doc) {
+          throw new Error("API didn't return a doc");
+        }
+        setIndexes((prevIndexes) => [doc, ...prevIndexes]);
+        toast.success("Index created successfully");
+        router.push(`/${doc.id}`);
+      } catch (err: any) {
+        let message = "";
+        if (err?.code === -32603) {
+          message = ": Not enough balance";
+        }
+        if (err?.code === "ACTION_REJECTED") {
+          message = ": Action rejected";
+        }
+        console.error("Couldn't create index", err);
+        toast.error(`Couldn't create index${message}`);
+      } finally {
+        setTransactionApprovalWaiting(false);
+      }
+    },
+    [apiReady, router],
+  );
+
   const updateIndex = useCallback(
     (index: Indexes) => {
       const updatedIndexes = indexes.map((i) => {
@@ -283,6 +317,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const handleUserProfileChange = useCallback(async () => {
     if (isLanding) return;
     if (viewedProfile && isIndex) return;
+    if (!id) return;
 
     let targetDID;
     if (isIndex && !viewedProfile) {
@@ -383,6 +418,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     chatID,
     transactionApprovalWaiting,
     createConditions,
+    handleCreatePublic,
   };
 
   return (

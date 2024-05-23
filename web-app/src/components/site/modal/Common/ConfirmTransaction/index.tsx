@@ -4,7 +4,11 @@ import Row from "components/layout/base/Grid/Row";
 import Header from "components/base/Header";
 import Flex from "components/layout/base/Grid/Flex";
 
-const ConfirmTransaction = ({ handleCancel, ...modalProps }: any) => {
+const ConfirmTransaction = ({
+  handleCancel,
+  backdropClose,
+  ...modalProps
+}: any) => {
   const handleClose = () => {
     modalProps.onClose?.();
   };
@@ -13,6 +17,7 @@ const ConfirmTransaction = ({ handleCancel, ...modalProps }: any) => {
       {...modalProps}
       size={"fit"}
       destroyOnClose
+      backdropClose={backdropClose}
       body={
         <>
           <Row></Row>

@@ -11,9 +11,14 @@ import React, { useState } from "react";
 export interface CreateModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {
   onCreate: (title: string) => void;
+  cancelVisible?: boolean;
 }
 
-const CreateModal = ({ onCreate, ...modalProps }: CreateModalProps) => {
+const CreateModal = ({
+  onCreate,
+  cancelVisible = true,
+  ...modalProps
+}: CreateModalProps) => {
   const handleClose = () => {
     modalProps.onClose?.();
   };
@@ -62,16 +67,18 @@ const CreateModal = ({ onCreate, ...modalProps }: CreateModalProps) => {
       header={<Header level={2}>Create New Index</Header>}
       footer={
         <>
-          <Col pullLeft>
-            <Button
-              size="lg"
-              className="mt-7 pl-8 pr-8"
-              theme="clear"
-              onClick={handleClose}
-            >
-              Cancel
-            </Button>
-          </Col>
+          {cancelVisible && (
+            <Col pullLeft>
+              <Button
+                size="lg"
+                className="mt-7 pl-8 pr-8"
+                theme="clear"
+                onClick={handleClose}
+              >
+                Cancel
+              </Button>
+            </Col>
+          )}
           <Col pullRight>
             <Button
               disabled={!title}
