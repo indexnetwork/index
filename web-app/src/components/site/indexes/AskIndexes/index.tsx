@@ -24,6 +24,7 @@ import { toast } from "react-hot-toast";
 import { API_ENDPOINTS } from "utils/constants";
 import { maskDID } from "utils/helper";
 import NoIndexes from "../NoIndexes";
+import { CHAT_STARTED, trackEvent } from "@/services/tracker";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -44,7 +45,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
 
   const { session } = useAuth();
   const { viewedIndex } = useApp();
-  const { isIndex, id } = useRouteParams();
+  const { isIndex, id, discoveryType } = useRouteParams();
   const { ready: apiReady, api } = useApi();
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
@@ -256,6 +257,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
                   id: chatID,
                   content: value,
                   role: "user",
+                });
+                trackEvent(CHAT_STARTED, {
+                  type: discoveryType,
                 });
               }}
               isLoading={isLoading}

@@ -12,6 +12,7 @@ import { filterValidUrls, isStreamID, removeDuplicates } from "@/utils/helper";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useIndexConversation } from "../IndexConversationContext";
+import { ITEM_ADDED, trackEvent } from "@/services/tracker";
 
 const CONCURRENCY_LIMIT = 10;
 
@@ -128,6 +129,7 @@ export default function IndexItemsTabSection() {
           const createdItem = await api!.createItem(viewedIndex.id, itemId);
 
           setAddedItem(createdItem);
+          trackEvent(ITEM_ADDED);
         } catch (error) {
           console.error("Error adding item", error);
           toast.error(`Error adding item: ${item}`);

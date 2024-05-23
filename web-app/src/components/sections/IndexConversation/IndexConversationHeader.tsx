@@ -20,6 +20,7 @@ import toast from "react-hot-toast";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
 import { useIndexConversation } from "./IndexConversationContext";
+import { ITEM_STARRED, trackEvent } from "@/services/tracker";
 
 export const IndexConversationHeader: FC = () => {
   const { isOwner } = useRole();
@@ -83,6 +84,7 @@ export const IndexConversationHeader: FC = () => {
           toast.success(
             `Index ${value ? "added to" : "removed from"} starred indexes list`,
           );
+          trackEvent(ITEM_STARRED);
         } else {
           await api!.ownIndex(session!.did.parent, viewedIndex.id, value);
           if (value) {
