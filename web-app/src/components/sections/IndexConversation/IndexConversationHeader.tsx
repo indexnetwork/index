@@ -3,6 +3,7 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRole } from "@/hooks/useRole";
+import { ITEM_STARRED, trackEvent } from "@/services/tracker";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
 import IconStar from "components/base/Icon/IconStar";
@@ -20,7 +21,6 @@ import toast from "react-hot-toast";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
 import { useIndexConversation } from "./IndexConversationContext";
-import { ITEM_STARRED, trackEvent } from "@/services/tracker";
 
 export const IndexConversationHeader: FC = () => {
   const { isOwner } = useRole();

@@ -80,7 +80,6 @@ export default function TabContainer() {
         flex: 1,
         display: "flex",
         height: "100%",
-        overflow: "hidden",
         flexDirection: "column",
       }}
     >

@@ -2,6 +2,7 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import { CHAT_STARTED, trackEvent } from "@/services/tracker";
 import { useChat, type Message } from "ai/react";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { ChatList } from "components/ai/chat-list";
@@ -24,7 +25,6 @@ import { toast } from "react-hot-toast";
 import { API_ENDPOINTS } from "utils/constants";
 import { maskDID } from "utils/helper";
 import NoIndexes from "../NoIndexes";
-import { CHAT_STARTED, trackEvent } from "@/services/tracker";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];

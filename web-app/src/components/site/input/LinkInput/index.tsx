@@ -19,26 +19,28 @@ export interface LinkInputProps extends InputProps {
   };
 }
 
-const Popover = () => {
+const Popover = ({ onClose }: { onClose: () => void }) => {
   return (
     <div
       style={{
         position: "absolute",
-        top: "100%",
+        top: "calc(100% + 2px)",
         right: 0,
         zIndex: 3,
         background: "white",
         border: "1px solid #E2E8F0",
         borderRadius: "4px",
         padding: "20px",
+        boxShadow: "0px 4px 12px 0px rgba(0,0,0,0.2)",
       }}
     >
       <div
         style={{
           position: "absolute",
           top: "-16.5px",
-          right: "12px",
+          right: "10px",
         }}
+        onClick={onClose}
       >
         <Image
           src={"/images/ic_arrow_up.svg"}
@@ -56,6 +58,25 @@ const Popover = () => {
           lineHeight: "17px",
         }}
       >
+        <div
+          style={{
+            position: "absolute",
+            right: "12px",
+            top: "20px",
+            cursor: "pointer",
+          }}
+          onClick={() => {
+            onClose();
+          }}
+        >
+          <Image
+            src={"/images/ic_close.svg"}
+            alt="Image"
+            width={12}
+            height={12}
+            style={{ marginRight: "8px" }}
+          />
+        </div>
         <Header className={Freizeit.className} level={5}>
           What you can index?
         </Header>
@@ -113,7 +134,7 @@ const LinkInput: React.FC<LinkInputProps> = ({
 }) => {
   const [url, setUrl] = useState("");
   const [showMsg, setShowMsg] = useState(false);
-  const [showPopover, setShowPopover] = useState(false);
+  const [showPopover, setShowPopover] = useState(true);
 
   const handleAdd = () => {
     if (url) {
@@ -126,7 +147,6 @@ const LinkInput: React.FC<LinkInputProps> = ({
 
   const handleBlur: React.FocusEventHandler<HTMLInputElement> = () => {
     handleAdd();
-    setShowPopover(false);
   };
 
   const handleEnter = (e: any) => {
@@ -150,7 +170,7 @@ const LinkInput: React.FC<LinkInputProps> = ({
         position: "relative",
       }}
     >
-      {showPopover && <Popover />}
+      {showPopover && <Popover onClose={() => setShowPopover(false)} />}
       <Input
         inputSize="xl"
         className={cc(["link-input__input", `link-input-${size}`])}
@@ -184,7 +204,6 @@ const LinkInput: React.FC<LinkInputProps> = ({
         }
         {...inputProps}
         value={url}
-        onFocus={() => setShowPopover(true)}
         onBlur={handleBlur}
         onChange={handleChange}
         onKeyDown={handleEnter}
