@@ -3,6 +3,7 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRole } from "@/hooks/useRole";
+import { ITEM_STARRED, trackEvent } from "@/services/tracker";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
 import IconStar from "components/base/Icon/IconStar";
@@ -83,6 +84,7 @@ export const IndexConversationHeader: FC = () => {
           toast.success(
             `Index ${value ? "added to" : "removed from"} starred indexes list`,
           );
+          trackEvent(ITEM_STARRED);
         } else {
           await api!.ownIndex(session!.did.parent, viewedIndex.id, value);
           if (value) {
