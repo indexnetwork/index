@@ -18,7 +18,6 @@ import { AccessControlCondition, Indexes, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { v4 as uuidv4 } from "uuid";
 import { CancelTokenSource } from "axios";
-import { DIDSession } from "did-session";
 
 type AppContextProviderProps = {
   children: ReactNode;
@@ -34,7 +33,7 @@ export interface AppContextValue {
   indexes: Indexes[];
   leftSectionIndexes: Indexes[];
   loading: boolean;
-  discoveryType: DiscoveryType;
+  discoveryType: DiscoveryType | undefined;
   setIndexes: (indexes: Indexes[]) => void;
   fetchIndexes: (did: string) => void;
   setCreateModalVisible: (visible: boolean) => void;
@@ -238,7 +237,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         if (!apiReady) return;
 
         api?.setSessionToken(
-          "eyJzZXNzaW9uS2V5U2VlZCI6ImhyVU8yaDJHQi8wUjEwYXcyWDBzSjNrZy9ra0tubkduYVpKcG1INVN1U3M9IiwiY2FjYW8iOnsiaCI6eyJ0IjoiZWlwNDM2MSJ9LCJwIjp7ImRvbWFpbiI6ImxvY2FsaG9zdDozMDAwIiwiaWF0IjoiMjAyNC0wNS0wOVQxMjowMTowOC4wMjhaIiwiaXNzIjoiZGlkOnBraDplaXAxNTU6MToweDBENzNjNzI2NzZENzI1MGVlQWUxYTNhMzVjZkIyZjM2MUZDMENjRjciLCJhdWQiOiJkaWQ6a2V5Ono2TWtudERvZDRkYXg3dnlhOTJ1WEE0R3FOMjhTR05LODZVTkZ2UGdqM1E2eHJCOCIsInZlcnNpb24iOiIxIiwibm9uY2UiOiJkcU5EN0xoZDZMIiwiZXhwIjoiMjAyNC0wNi0wM1QxMjowMTowOC4wMjhaIiwic3RhdGVtZW50IjoiR2l2ZSB0aGlzIGFwcGxpY2F0aW9uIGFjY2VzcyB0byBzb21lIG9mIHlvdXIgZGF0YSBvbiBDZXJhbWljIiwicmVzb3VyY2VzIjpbImNlcmFtaWM6Ly8qIl19LCJzIjp7InQiOiJlaXAxOTEiLCJzIjoiMHg5OWE1MmM5OWFiNzA0YjM1MzdiMzQyYzVjNDM0MWFkMjcwZTk0ZGZjODZkYTJhYTBiOWQ0NjIxNTczOTE2MGEzMDk0YmU5YTEyY2NmZjZmYmM5OTY5YzkxMWU3NTE3MTBhNTVmMDQ0MTIzMGIwM2NkNjIwZjhlZDZiNjc1NTQwNDFjIn19fQ",
+          "eyJzZXNzaW9uS2V5U2VlZCI6IkM4YjB0SzJBTHNBOWRkLzVSV2tEUGE0ZEpOS3NKR3VyL2UzVXNxRElXU0E9IiwiY2FjYW8iOnsiaCI6eyJ0IjoiZWlwNDM2MSJ9LCJwIjp7ImRvbWFpbiI6ImxvY2FsaG9zdDozMDAwIiwiaWF0IjoiMjAyNC0wNS0yM1QwODoxMToyNC4yMjhaIiwiaXNzIjoiZGlkOnBraDplaXAxNTU6MToweEIxZEI4MTQ3YzZiNWRFMTVENzYyNTY2QzgzYTBjNmJlODc0ODFBN2UiLCJhdWQiOiJkaWQ6a2V5Ono2TWtnSE1VcW9KTDZpVWlSa1pDWXl4eTJZeFFkaEplVFpvckR4QXJhQlRIdTFnVCIsInZlcnNpb24iOiIxIiwibm9uY2UiOiJyUzZuMkoyNjZMIiwiZXhwIjoiMjAyNC0wNi0xN1QwODoxMToyNC4yMjhaIiwic3RhdGVtZW50IjoiR2l2ZSB0aGlzIGFwcGxpY2F0aW9uIGFjY2VzcyB0byBzb21lIG9mIHlvdXIgZGF0YSBvbiBDZXJhbWljIiwicmVzb3VyY2VzIjpbImNlcmFtaWM6Ly8qIl19LCJzIjp7InQiOiJlaXAxOTEiLCJzIjoiMHg1NzkyMmMwMjcwZTcxNmYwMTAwOWNjNzQ1MjM0MzdkMzBhZGM2NzM2NDY3MjAxNTg5NWU2YmRiZGRiNDBlNzc1NDQ4OTU5NmVmYzNhNjhkMGJjZTI0Y2EzYjg1OGFlNzFjODFkZWI2OTZmYjAzN2Q0Y2E5OGIzMjhlNWU3N2ZhZTFiIn19fQ",
         );
         const doc = await api!.createIndex(title);
         if (!doc) {
@@ -318,6 +317,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const handleUserProfileChange = useCallback(async () => {
     if (isLanding) return;
     if (viewedProfile && isIndex) return;
+    if (!id) return;
 
     let targetDID;
     if (isIndex && !viewedProfile) {

@@ -34,6 +34,7 @@ export default function TabContainer() {
   const { fetchDataForNewRoute } = useOrderedFetch();
 
   useEffect(() => {
+    if (!id) return;
     fetchDataForNewRoute(id);
   }, [fetchDataForNewRoute]);
 
