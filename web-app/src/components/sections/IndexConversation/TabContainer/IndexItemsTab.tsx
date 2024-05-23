@@ -22,6 +22,8 @@ export default function IndexItemsTabSection() {
     loading,
     setLoading,
     searchLoading,
+    addItemLoading,
+    setAddItemLoading,
     fetchIndexItems,
     fetchMoreIndexItems,
   } = useIndexConversation();
@@ -111,7 +113,7 @@ export default function IndexItemsTabSection() {
 
       console.log("items", indexIds);
 
-      setLoading(true);
+      setAddItemLoading(true);
       setProgress({ current: 0, total: items.length });
 
       await processUrlsInBatches(items, async (item: string) => {
@@ -132,7 +134,7 @@ export default function IndexItemsTabSection() {
         }
       });
 
-      setLoading(false);
+      setAddItemLoading(false);
     },
     [api, viewedIndex, apiReady],
   );
@@ -186,7 +188,7 @@ export default function IndexItemsTabSection() {
         <FlexRow>
           <Col className="idxflex-grow-1 mt-6 pb-0">
             <LinkInput
-              loading={loading}
+              loading={addItemLoading}
               onItemAdd={handleAddItem}
               progress={progress}
             />

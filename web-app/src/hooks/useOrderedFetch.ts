@@ -19,9 +19,9 @@ export const useOrderedFetch = () => {
       cancelSourceRef.current = axios.CancelToken.source();
       const cancelSource = cancelSourceRef.current;
 
-      setLoading(true);
       try {
         await fetchIndex(id, { cancelSource });
+        setLoading(true);
         await fetchIndexItems(id, { cancelSource });
         await fetchIndexWithCreator(id, { cancelSource });
       } catch (err: any) {

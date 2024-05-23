@@ -47,6 +47,8 @@ type IndexConversationContextType = {
   setLoading: (loading: boolean) => void;
   searchLoading: boolean;
   setSearchLoading: (loading: boolean) => void;
+  addItemLoading: boolean;
+  setAddItemLoading: (loading: boolean) => void;
   addItem: (item: IndexItem) => void;
   removeItem: (itemId: string) => void;
   loadMoreItems: () => void;
@@ -73,6 +75,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
   });
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [addItemLoading, setAddItemLoading] = useState(false);
 
   const { api, ready: apiReady } = useApi();
   const { viewedIndex, fetchIndex } = useApp();
@@ -219,6 +222,8 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
         setLoading,
         searchLoading,
         setSearchLoading,
+        addItemLoading,
+        setAddItemLoading,
         addItem,
         removeItem,
         loadMoreItems,
