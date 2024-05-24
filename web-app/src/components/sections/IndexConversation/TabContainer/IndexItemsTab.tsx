@@ -7,6 +7,7 @@ import LinkInput from "@/components/site/input/LinkInput";
 import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
+import { ITEM_ADDED, trackEvent } from "@/services/tracker";
 import { IndexItem } from "@/types/entity";
 import { filterValidUrls, isStreamID, removeDuplicates } from "@/utils/helper";
 import { useCallback, useEffect, useState } from "react";
@@ -22,6 +23,8 @@ export default function IndexItemsTabSection() {
     loading,
     setLoading,
     searchLoading,
+    addItemLoading,
+    setAddItemLoading,
     fetchIndexItems,
     fetchMoreIndexItems,
   } = useIndexConversation();
@@ -109,9 +112,7 @@ export default function IndexItemsTabSection() {
 
       const items = [...urls, ...indexIds];
 
-      console.log("items", indexIds);
-
-      setLoading(true);
+      setAddItemLoading(true);
       setProgress({ current: 0, total: items.length });
 
       await processUrlsInBatches(items, async (item: string) => {
@@ -126,13 +127,14 @@ export default function IndexItemsTabSection() {
           const createdItem = await api!.createItem(viewedIndex.id, itemId);
 
           setAddedItem(createdItem);
+          trackEvent(ITEM_ADDED);
         } catch (error) {
           console.error("Error adding item", error);
           toast.error(`Error adding item: ${item}`);
         }
       });
 
-      setLoading(false);
+      setAddItemLoading(false);
     },
     [api, viewedIndex, apiReady],
   );
@@ -186,7 +188,7 @@ export default function IndexItemsTabSection() {
         <FlexRow>
           <Col className="idxflex-grow-1 mt-6 pb-0">
             <LinkInput
-              loading={loading}
+              loading={addItemLoading}
               onItemAdd={handleAddItem}
               progress={progress}
             />

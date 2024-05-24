@@ -2,9 +2,11 @@ import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
 import Col from "@/components/layout/base/Grid/Col";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
+import { useApp } from "@/context/AppContext";
 import { useOrderedFetch } from "@/hooks/useOrderedFetch";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { useCallback, useEffect, useState } from "react";
+import { useIndexConversation } from "../IndexConversationContext";
 import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
 import CreatorsTab from "./CreatorsTab";
@@ -32,9 +34,26 @@ export default function TabContainer() {
 
   const { id } = useRouteParams();
   const { fetchDataForNewRoute } = useOrderedFetch();
+  const { itemsState, loading } = useIndexConversation();
+  const { viewedIndex } = useApp();
+
+  useEffect(() => {
+    if (!viewedIndex || id !== viewedIndex.id) return;
+
+    if (loading) {
+      return;
+    }
+
+    if (itemsState.items.length === 0) {
+      setTabKey(TabKey.Index);
+    } else {
+      setTabKey(TabKey.Chat);
+    }
+  }, [viewedIndex]);
 
   useEffect(() => {
     if (!id) return;
+
     fetchDataForNewRoute(id);
   }, [fetchDataForNewRoute]);
 
@@ -51,7 +70,7 @@ export default function TabContainer() {
       case TabKey.Settings:
         return <IndexSettingsTab />;
       default:
-        return null;
+        return <ChatTab />;
     }
   }, [tabKey]);
 
@@ -61,7 +80,6 @@ export default function TabContainer() {
         flex: 1,
         display: "flex",
         height: "100%",
-        overflow: "hidden",
         flexDirection: "column",
       }}
     >

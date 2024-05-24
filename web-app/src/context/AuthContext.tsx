@@ -1,5 +1,6 @@
 "use client";
 
+import { WALLET_CONNECTED, trackEvent } from "@/services/tracker";
 import { normalizeAccountId } from "@ceramicnetwork/common";
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { getAccountId } from "@didtools/pkh-ethereum";
@@ -166,6 +167,7 @@ export const AuthProvider = ({ children }: any) => {
 
       setStatus(AuthStatus.CONNECTED);
       toast.success("Successfully connected to your wallet.");
+      trackEvent(WALLET_CONNECTED);
     } catch (err) {
       console.error("Error during authentication process:", err);
       setStatus(AuthStatus.FAILED);

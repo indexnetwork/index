@@ -37,10 +37,5 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-
 .idea/
-
-
-key-did-provider-secp256k1
-
 .yarn

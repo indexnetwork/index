@@ -2,6 +2,7 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import { CHAT_STARTED, trackEvent } from "@/services/tracker";
 import { useChat, type Message } from "ai/react";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { ChatList } from "components/ai/chat-list";
@@ -44,7 +45,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
 
   const { session } = useAuth();
   const { viewedIndex } = useApp();
-  const { isIndex, id } = useRouteParams();
+  const { isIndex, id, discoveryType } = useRouteParams();
   const { ready: apiReady, api } = useApi();
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
@@ -256,6 +257,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
                   id: chatID,
                   content: value,
                   role: "user",
+                });
+                trackEvent(CHAT_STARTED, {
+                  type: discoveryType,
                 });
               }}
               isLoading={isLoading}

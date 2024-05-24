@@ -18,6 +18,7 @@ import { AccessControlCondition, Indexes, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { v4 as uuidv4 } from "uuid";
 import { CancelTokenSource } from "axios";
+import { INDEX_CREATED, trackEvent } from "@/services/tracker";
 
 type AppContextProviderProps = {
   children: ReactNode;
@@ -245,6 +246,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         }
         setIndexes((prevIndexes) => [doc, ...prevIndexes]);
         toast.success("Index created successfully");
+        trackEvent(INDEX_CREATED);
         router.push(`/${doc.id}`);
       } catch (err: any) {
         let message = "";
