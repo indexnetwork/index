@@ -116,3 +116,11 @@ export const isStreamID = (value: string) => {
     return false;
   }
 };
+
+export const shortStr = (str: string, maxLen: number = 80) => {
+  if (str.length > maxLen) {
+    return `${str.substring(0, maxLen)}...`;
+  }
+
+  return str;
+};

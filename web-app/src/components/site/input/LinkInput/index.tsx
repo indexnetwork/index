@@ -1,5 +1,5 @@
 import Input, { InputProps } from "components/base/Input";
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { HeaderSizeType } from "types";
 import cc from "classcat";
 import IconAdd from "components/base/Icon/IconAdd";
@@ -134,7 +134,18 @@ const LinkInput: React.FC<LinkInputProps> = ({
 }) => {
   const [url, setUrl] = useState("");
   const [showMsg, setShowMsg] = useState(false);
-  const [showPopover, setShowPopover] = useState(true);
+  const [showPopover, setShowPopover] = useState(false);
+
+  const isPopoverShowed = useMemo(() => {
+    return localStorage.getItem("popoverShowed") === "true";
+  }, []);
+
+  useEffect(() => {
+    if (!isPopoverShowed) {
+      localStorage.setItem("popoverShowed", "true");
+      setShowPopover(true);
+    }
+  }, []);
 
   const handleAdd = () => {
     if (url) {
