@@ -1,8 +1,9 @@
-import Text from "components/base/Text";
-import Modal from "components/base/Modal";
-import Row from "components/layout/base/Grid/Row";
+import Freizeit from "@/fonts/loader";
 import Header from "components/base/Header";
+import Modal from "components/base/Modal";
+import Text from "components/base/Text";
 import Flex from "components/layout/base/Grid/Flex";
+import Row from "components/layout/base/Grid/Row";
 
 const ConfirmTransaction = ({
   handleCancel,
@@ -45,7 +46,9 @@ const ConfirmTransaction = ({
       }
       header={
         <>
-          <Header level={2}>Waiting for network confirmation</Header>
+          <Header className={Freizeit.className} level={2}>
+            Waiting for network confirmation
+          </Header>
           <Text className={"mt-4"} element={"p"}>
             Please wait for a few seconds.
           </Text>

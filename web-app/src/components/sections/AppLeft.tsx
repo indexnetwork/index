@@ -1,4 +1,5 @@
 import { useApp } from "@/context/AppContext";
+import Freizeit from "@/fonts/loader";
 import cc from "classcat";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
@@ -49,7 +50,10 @@ const AppLeft = () => {
                 <Flex flexdirection={"column"}>
                   <>
                     <LoadingText val={viewedProfile?.name || viewedProfile?.id}>
-                      <Header level={4} className={"mb-1"}>
+                      <Header
+                        level={4}
+                        className={cc(["mb-1", Freizeit.className])}
+                      >
                         {
                           /* eslint-disable */
                           viewedProfile?.name ||

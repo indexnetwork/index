@@ -1,4 +1,5 @@
 import Freizeit from "@/fonts/loader";
+import { shortStr } from "@/utils/helper";
 import Button from "components/base/Button";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
 import Text from "components/base/Text";
@@ -44,7 +45,7 @@ const TeamItem: React.FC<TeamItemProps> = ({
                   }}
                   fontWeight={700}
                   dangerouslySetInnerHTML={{
-                    __html: sanitize(node?.name as string),
+                    __html: sanitize(shortStr(node?.name)),
                   }}
                 ></Text>
                 {/* dangerouslySetInnerHTML={{ __html: sanitize((node.highlight && item.highlight["link.title"]) ? item.highlight["link.title"] : node?.title as string) }}></Text> */}
