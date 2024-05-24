@@ -224,6 +224,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         }
         console.error("Couldn't create index", err.code);
         toast.error(`Couldn't create index${message}`);
+        trackEvent(INDEX_CREATED);
       } finally {
         setTransactionApprovalWaiting(false);
       }
@@ -246,7 +247,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         }
         setIndexes((prevIndexes) => [doc, ...prevIndexes]);
         toast.success("Index created successfully");
-        trackEvent(INDEX_CREATED);
         router.push(`/${doc.id}`);
       } catch (err: any) {
         let message = "";
