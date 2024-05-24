@@ -16,7 +16,6 @@ const trackEvent = (name: string, props?: Record<string, any>) => {
   if (process.env.NEXT_PUBLIC_API_URL === "https://index.network/api") {
     plausible.trackEvent(name, props);
   }
-  plausible.trackEvent(name, props);
 };
 
 export const WALLET_CONNECTED = events.WALLET_CONNECTED;
