@@ -18,6 +18,7 @@
     "@ethersproject/address": "^5.7.0",
     "@ethersproject/keccak256": "^5.7.0",
     "@ethersproject/providers": "^5.6.8",
+    "@lit-protocol/uint8arrays": "^5.1.0",
     "@nanostores/react": "ai/react",
     "@radix-ui/react-alert-dialog": "^1.0.4",
     "@radix-ui/react-dialog": "^1.0.4",
@@ -67,7 +68,7 @@
     "siwe": "^2.1.4",
     "styled-components": "^6.1.1",
     "typescript-memoize": "^1.1.1",
-    "uint8arrays": "^4.0.3",
+    "uint8arrays": "^5.1.0",
     "uuid": "^9.0.0",
     "validator": "^13.7.0",
     "yarn": "^1.22.19"
