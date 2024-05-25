@@ -7,3 +7,5 @@ ceramic/
 conf/
 helpers/
 storage/
+
+.env.*
