@@ -382,61 +382,66 @@ export const getPKPSessionForIndexer = async (index) => {
 };
 
 export const mintPKP = async (ownerAddress, actionCID) => {
-  const signer = new ethers.Wallet(
-    process.env.INDEXER_WALLET_PRIVATE_KEY,
-    provider,
-  );
-
-  const litContracts = new LitContracts({
-    network: config.litNetwork,
-    signer: signer,
-    debug: false,
-  });
-  if (!litContracts.connected) {
-    await litContracts.connect();
-  }
-
-  const signerFunctionV0 = CID.parse(actionCID).toV0().toString();
-  const acid = litContracts.utils.getBytesFromMultihash(signerFunctionV0);
-
-  const mintCost = await litContracts.pkpNftContract.read.mintCost();
-  const mint =
-    await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
-      2,
-      [AuthMethodType.EthWallet, AuthMethodType.LitAction],
-      [ownerAddress.toLowerCase(), acid],
-      ["0x", "0x"],
-      [[BigInt(1)], [BigInt(1)]],
-      true,
-      true,
-      {
-        value: mintCost,
-      },
+  try {
+    const signer = new ethers.Wallet(
+      process.env.INDEXER_WALLET_PRIVATE_KEY,
+      provider,
     );
-  const wait = await mint.wait(1);
 
-  /* eslint-disable */
-  const tokenIdFromEvent = wait?.logs
-    ? wait.logs[0].topics[1]
-    : wait?.logs[0].topics[1];
-  const tokenIdNumber = BigInt(tokenIdFromEvent).toString();
-  const pkpPublicKey =
-    await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
+    const litContracts = new LitContracts({
+      network: config.litNetwork,
+      signer: signer,
+      debug: false,
+    });
+    if (!litContracts.connected) {
+      await litContracts.connect();
+    }
 
-  const pubKeyToAddr = await import("ethereum-public-key-to-address");
-  sendLit(pubKeyToAddr.default(pkpPublicKey), "0.0001"); //Run in the background
+    const signerFunctionV0 = CID.parse(actionCID).toV0().toString();
+    const acid = litContracts.utils.getBytesFromMultihash(signerFunctionV0);
 
-  console.log("Minted and loaded!");
+    const mintCost = await litContracts.pkpNftContract.read.mintCost();
+    console.log(mintCost, `mintcost`);
+    const mint =
+      await litContracts.pkpHelperContract.write.mintNextAndAddAuthMethods(
+        2,
+        [AuthMethodType.EthWallet, AuthMethodType.LitAction],
+        [ownerAddress.toLowerCase(), acid],
+        ["0x", "0x"],
+        [[BigInt(1)], [BigInt(1)]],
+        true,
+        true,
+        {
+          value: mintCost,
+        },
+      );
+    const wait = await mint.wait(1);
+    console.log(wait);
+    /* eslint-disable */
+    const tokenIdFromEvent = wait?.logs
+      ? wait.logs[0].topics[1]
+      : wait?.logs[0].topics[1];
+    const tokenIdNumber = BigInt(tokenIdFromEvent).toString();
+    const pkpPublicKey =
+      await litContracts.pkpNftContract.read.getPubkey(tokenIdFromEvent);
 
-  console.log(
-    `superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
-  );
+    const pubKeyToAddr = await import("ethereum-public-key-to-address");
+    sendLit(pubKeyToAddr.default(pkpPublicKey), "0.0001"); //Run in the background
 
-  return {
-    tokenIdFromEvent,
-    tokenIdNumber,
-    pkpPublicKey,
-  };
+    console.log("Minted and loaded!");
+
+    console.log(
+      `superlog, PKP public key is ${pkpPublicKey} and Token ID is ${tokenIdFromEvent} and Token ID number is ${tokenIdNumber}`,
+    );
+
+    return {
+      tokenIdFromEvent,
+      tokenIdNumber,
+      pkpPublicKey,
+    };
+  } catch (e) {
+    console.log(e);
+  }
 };
 
 const delay = async (ms) => {

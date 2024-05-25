@@ -9,17 +9,19 @@ import { Wallet, ethers } from "ethers";
 import * as LitJsSdk from "@lit-protocol/lit-node-client-nodejs";
 import { LitContracts } from "@lit-protocol/contracts-sdk";
 import {
-  LitAbility,
   LitPKPResource,
   LitActionResource,
+  generateAuthSig,
+  createSiweMessageWithRecaps,
 } from "@lit-protocol/auth-helpers";
+import { LitAbility } from "@lit-protocol/types";
 
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { randomBytes, randomString } from "@stablelib/random";
 
 import RedisClient from "../clients/redis.js";
-import { generateLITAction } from "../utils/helpers.js";
+import { fetchModelInfo, generateLITAction } from "../utils/helpers.js";
 
 // Configuration
 const config = {
@@ -96,71 +98,57 @@ async function mintNewCapacityToken() {
   return capacityTokenIdStr;
 }
 
-async function authNeededCallback({ resources, expiration, uri }) {
-  // you can change this resource to anything you would like to specify
-  const litResource = new LitActionResource("*");
-
-  const recapObject =
-    await litNodeClient.generateSessionCapabilityObjectWithWildcards([
-      litResource,
-    ]);
-
-  recapObject.addCapabilityForResource(
-    litResource,
-    LitAbility.LitActionExecution,
-  );
-
-  const verified = recapObject.verifyCapabilitiesForResource(
-    litResource,
-    LitAbility.LitActionExecution,
-  );
-
-  if (!verified) {
-    throw new Error("Failed to verify capabilities for resource");
-  }
-
-  let siweMessage = new SiweMessage({
-    domain: "index.network", // change to your domain ex: example.app.com
-    address: indexerWallet.address,
-    statement: "Index Network says: ", // configure to what ever you would like
-    uri,
-    version: "1",
-    chainId: "1",
-    expirationTime: expiration,
-    resources,
-  });
-
-  siweMessage = recapObject.addToSiweMessage(siweMessage);
-
-  const messageToSign = siweMessage.toMessage();
-  const signature = await indexerWallet.signMessage(messageToSign);
-
-  const authSig = {
-    sig: signature,
-    derivedVia: "web3.eth.personal.sign",
-    signedMessage: messageToSign,
-    address: indexerWallet.address,
-  };
-
-  return authSig;
-}
-
 async function generateAndStoreAuthSigs(capacityTokenId) {
   console.log("Generating and storing authorization signatures...");
   const { capacityDelegationAuthSig } =
     await litNodeClient.createCapacityDelegationAuthSig({
       dAppOwnerWallet: indexerWallet,
+      delegateeAddresses: [indexerWallet.address],
       capacityTokenId: capacityTokenId,
       expiration: thirtyDaysLater.toISOString(),
     });
+
+  const latestBlockhash = await litNodeClient.getLatestBlockhash();
+  console.log("latestBlockhash:", latestBlockhash);
 
   const dAppSessionSigs = await litNodeClient.getSessionSigs({
     expiration: thirtyDaysLater.toISOString(),
     chain: "ethereum",
     resourceAbilityRequests: [
       { resource: new LitPKPResource("*"), ability: LitAbility.PKPSigning },
+      {
+        resource: new LitActionResource("*"),
+        ability: LitAbility.LitActionExecution,
+      },
     ],
-    authNeededCallback: authNeededCallback,
+    authNeededCallback: async (params) => {
+      if (!params.uri) {
+        throw new Error("uri is required");
+      }
+      if (!params.expiration) {
+        throw new Error("expiration is required");
+      }
+
+      if (!params.resourceAbilityRequests) {
+        throw new Error("resourceAbilityRequests is required");
+      }
+
+      const toSign = await createSiweMessageWithRecaps({
+        uri: params.uri,
+        expiration: params.expiration,
+        resources: params.resourceAbilityRequests,
+        walletAddress: indexerWallet.address,
+        nonce: latestBlockhash,
+        litNodeClient,
+      });
+
+      const authSig = await generateAuthSig({
+        signer: indexerWallet,
+        toSign,
+      });
+
+      return authSig;
+    },
     capacityDelegationAuthSig,
   });
 
@@ -214,6 +202,7 @@ async function scheduleTokenRefresh() {
       console.log("Current capacity token is still valid. No action needed.");
     }
   } catch (error) {
+    console.log(error);
     process.exit(1);
   }
 }
@@ -237,7 +226,12 @@ async function generateDefaultLitActions() {
       },
     },
   ];
-  const defaultCID = await generateLITAction(defaultConditions);
+
+  let { runtimeDefinition } = await fetchModelInfo();
+  const defaultCID = await generateLITAction(
+    defaultConditions,
+    runtimeDefinition,
+  );
   console.log("Default CID", defaultCID);
 }
 
@@ -281,4 +275,4 @@ async function run() {
   process.exit(0);
 }
 
-generateDefaultLitActions();
+run();
