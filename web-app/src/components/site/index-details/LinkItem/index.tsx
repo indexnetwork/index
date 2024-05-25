@@ -1,4 +1,5 @@
 import Freizeit from "@/fonts/loader";
+import { shortStr } from "@/utils/helper";
 import Button from "components/base/Button";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
 import Text from "components/base/Text";
@@ -45,7 +46,7 @@ const LinkItem: React.FC<LinkItemProps> = ({
                   }}
                   fontWeight={700}
                   dangerouslySetInnerHTML={{
-                    __html: sanitize(node?.title as string),
+                    __html: sanitize(shortStr(node?.title, 50)),
                   }}
                 ></Text>
                 {/* dangerouslySetInnerHTML={{ __html: sanitize((node.highlight && item.highlight["link.title"]) ? item.highlight["link.title"] : node?.title as string) }}></Text> */}
@@ -98,7 +99,7 @@ const LinkItem: React.FC<LinkItemProps> = ({
               }}
             />
             <Text size="sm" theme="disabled">
-              {node?.url?.substring(0, 80)} •{" "}
+              {shortStr(node?.title, 60)} •{" "}
               {node?.updatedAt
                 ? `Updated ${moment(new Date(node.updatedAt)).fromNow()}`
                 : ""}

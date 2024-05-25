@@ -171,18 +171,20 @@ export default function IndexItemsTabSection() {
 
   return (
     <Flex flexdirection="column" className="idxflex-grow-1">
-      <FlexRow className={"mt-6"}>
-        <Col className="idxflex-grow-1">
-          <SearchInput
-            onSearch={handleSearch}
-            debounceTime={300}
-            showClear
-            defaultValue={search}
-            loading={searchLoading}
-            placeholder="Search in this index"
-          />
-        </Col>
-      </FlexRow>
+      {itemsState.items.length > 0 && (
+        <FlexRow className={"mt-6"}>
+          <Col className="idxflex-grow-1">
+            <SearchInput
+              onSearch={handleSearch}
+              debounceTime={300}
+              showClear
+              defaultValue={search}
+              loading={searchLoading}
+              placeholder="Search in this index"
+            />
+          </Col>
+        </FlexRow>
+      )}
 
       {isCreator && (
         <FlexRow>

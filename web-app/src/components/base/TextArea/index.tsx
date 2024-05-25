@@ -71,6 +71,10 @@ const TextArea = forwardRef<
           disabled={disabled}
           readOnly={readOnly}
           rows={rows}
+          style={{
+            width: "100%",
+            overflow: "auto",
+          }}
           className={"textarea__textarea"}
         />
         {type === "password" ? renderVisible : addOnAfter}

@@ -147,19 +147,13 @@ class IndexClient:
           decoded_line = line.decode('utf-8')
           yield decoded_line
 
-    def add_item_to_index(self, index_id, item_id):
-      return self._request(f"/indexes/{index_id}/items/{item_id}", "POST")
-
-    def delete_item_from_index(self, index_id, item_id):
-      return self._request(f"/indexes/{index_id}/items/{item_id}", "DELETE")
-
     def get_ens_name_details(self, ens_name):
       return self._request(f"/ens/{ens_name}", "GET")
 
-    def create_item(self, index_id, item):
-      return self._request(f"/indexes/{index_id}/items", "POST", item)
+    def add_item(self, index_id, item):
+      return self._request(f"/indexes/{index_id}/items/{item_id}", "POST")
 
-    def delete_item(self, index_id, item_id):
+    def remove_item(self, index_id, item_id):
       return self._request(f"/indexes/{index_id}/items/{item_id}", "DELETE")
 
     def star_index(self, did, index_id):

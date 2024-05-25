@@ -1,4 +1,5 @@
 import Freizeit from "@/fonts/loader";
+import { shortStr } from "@/utils/helper";
 import Button from "components/base/Button";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
 import Text from "components/base/Text";
@@ -59,7 +60,7 @@ const DefaultIndexItem: React.FC<DefaultIndexItemProps> = ({
                 }}
                 fontWeight={700}
                 dangerouslySetInnerHTML={{
-                  __html: sanitize(node?.id as string),
+                  __html: sanitize(shortStr(node?.id)),
                 }}
               ></Text>
             </Col>
