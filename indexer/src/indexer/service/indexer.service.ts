@@ -1,6 +1,5 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { Chroma } from '@langchain/community/vectorstores/chroma';
-import { OpenAIEmbeddings } from '@langchain/openai';
 import { UnstructuredLoader } from 'langchain/document_loaders/fs/unstructured';
 import { JSONLoader } from 'langchain/document_loaders/fs/json';
 
@@ -9,6 +8,7 @@ import { HttpService } from '@nestjs/axios';
 import * as fs from 'fs';
 import { MIME_TYPE } from '../schema/indexer.schema';
 import { TokenTextSplitter } from 'langchain/text_splitter';
+import { TogetherAIEmbeddings } from '@langchain/community/embeddings/togetherai';
 
 @Injectable()
 export class IndexerService {
@@ -324,9 +324,9 @@ export class IndexerService {
     if (!content) return HttpStatus.OK;
 
     try {
-      const embeddings = new OpenAIEmbeddings({
+      const embeddings = new TogetherAIEmbeddings({
+        apiKey: process.env.TOGETHER_AI_API_KEY,
         modelName: process.env.MODEL_EMBEDDING,
-        openAIApiKey: process.env.OPENAI_API_KEY,
       });
 
       Logger.log(

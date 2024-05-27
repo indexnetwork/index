@@ -16,6 +16,7 @@ import { createClient } from "redis";
 const ceramicFirehose = new EventSource(
   `${process.env.CERAMIC_HOST}/api/v0/feed/aggregation/documents`,
 );
+const Codec = JsonAsString.pipe(AggregationDocument);
 
 const redis = RedisClient.getInstance();
 
@@ -25,16 +26,20 @@ const subClient = createClient({
 
 async function start() {
   await subClient.connect();
+  await redis.connect();
   let { runtimeDefinition, modelFragments } = await fetchModelInfo();
+  let indexer = new Indexer(runtimeDefinition, modelFragments);
   subClient.subscribe("newModel", async (id) => {
     console.log("New model detected, fetching model info", id);
     ({ runtimeDefinition, modelFragments } = await fetchModelInfo());
+    indexer = new Indexer(runtimeDefinition, modelFragments);
   });
-  await redis.connect();
 
-  const Codec = JsonAsString.pipe(AggregationDocument);
+  subClient.subscribe("reIndex", async (id) => {
+    console.log("Reindex an item through external redis subscription.", id);
+    await indexer.createIndexItemEvent(id);
+  });
 
-  const indexer = new Indexer(runtimeDefinition, modelFragments);
   ceramicFirehose.addEventListener("message", async (event) => {
     const parsedData = decode(Codec, event.data);
     const modelId = parsedData.metadata.model.toString();

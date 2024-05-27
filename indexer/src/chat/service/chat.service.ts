@@ -15,7 +15,6 @@ import {
 
 import { Agent } from 'src/app/modules/agent.module';
 import { RunnableSequence } from '@langchain/core/runnables';
-import { OpenAIEmbeddings } from '@langchain/openai';
 
 @Injectable()
 export class ChatService {

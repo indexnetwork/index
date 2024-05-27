@@ -4,8 +4,8 @@
   "scripts": {
     "api": "node  --experimental-specifier-resolution=node  --experimental-fetch src/packages/api.js",
     "dev-api": "nodemon --experimental-fetch src/packages/api.js",
-    "dev-kafka": "nodemon --experimental-fetch src/packages/consumer.js",
-    "kafka-consumer": "node  --experimental-fetch src/packages/consumer.js",
+    "dev-consumer": "nodemon --experimental-fetch src/packages/consumer.js",
+    "consumer": "node  --experimental-fetch src/packages/consumer.js",
     "swagger": "npx swagger-typescript-api -p protocol.yaml -o ./src -n protocol.ts",
     "reIndex": "node  --experimental-fetch src/utils/reIndex.js"
   },
