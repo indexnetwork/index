@@ -36,4 +36,4 @@ lerna-debug.log*
 
 tmp/*
 tmp
-.env
+.env*
