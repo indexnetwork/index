@@ -23,19 +23,23 @@ export class ChatController {
   @ApiBody({ type: RetrievalQuestionInput })
   @Post('/stream')
   async stream(@Body() body: RetrievalQuestionInput, @Res() res: any) {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Content-Encoding', 'none');
+    try {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Content-Encoding', 'none');
 
-    Logger.log(`Processing ${JSON.stringify(body)}`, 'chatController:stream');
-    const stream = await this.chatService.stream(body);
+      Logger.log(`Processing ${JSON.stringify(body)}`, 'chatController:stream');
+      const stream = await this.chatService.stream(body);
 
-    for await (const chunk of stream) {
-      chunk.answer && res.write(chunk.answer);
+      for await (const chunk of stream) {
+        chunk.answer && res.write(chunk.answer);
+      }
+
+      res.end();
+    } catch (e) {
+      console.error(e);
     }
-
-    res.end();
   }
 
   @ApiBody({ type: QuestionGenerationInput })
