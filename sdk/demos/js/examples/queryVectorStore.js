@@ -1,9 +1,8 @@
 import IndexClient from "@indexnetwork/sdk";
 import { IndexVectorStore } from "@indexnetwork/sdk";
 import { Wallet } from "ethers";
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { ConversationalRetrievalQAChain } from "langchain/chains";
-import { TogetherAIEmbeddings } from "@langchain/community/embeddings/togetherai";
 import { exit } from "process";
 
 const indexId =
@@ -20,9 +19,9 @@ async function main() {
     await indexClient.authenticate();
 
     const vectorStore = await indexClient.getVectorStore({
-      embeddings: new TogetherAIEmbeddings({
-        apiKey: process.env.TOGETHER_AI_API_KEY,
-        modelName: process.env.MODEL_EMBEDDING,
+      embeddings: new OpenAIEmbeddings({
+        openai_api_key: process.env.OPENAI_API_KEY,
+        openai_model: "text-embedding-ada-002",
       }),
       sources: [indexId],
     });

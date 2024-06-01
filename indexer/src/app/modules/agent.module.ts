@@ -1,6 +1,4 @@
-import { ChatOpenAI, OpenAI } from '@langchain/openai';
-import { TogetherAIEmbeddings } from '@langchain/community/embeddings/togetherai';
-
+import { ChatOpenAI, OpenAI, OpenAIEmbeddings } from '@langchain/openai';
 import { loadSummarizationChain } from 'langchain/chains';
 import {
   RunnableLambda,
@@ -166,10 +164,7 @@ export class Agent {
     }
 
     const vectorStore = await Chroma.fromExistingCollection(
-      new TogetherAIEmbeddings({
-        apiKey: process.env.TOGETHER_AI_API_KEY,
-        modelName: process.env.MODEL_EMBEDDING,
-      }),
+      new OpenAIEmbeddings({ modelName: process.env.MODEL_EMBEDDING }),
       {
         url: process.env.CHROMA_URL,
         collectionName: process.env.CHROMA_COLLECTION_NAME,

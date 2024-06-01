@@ -1,6 +1,5 @@
 import { Cacao, SiweMessage } from "@didtools/cacao";
-import { TogetherAIEmbeddings } from "@langchain/community/embeddings/togetherai";
-
+import { OpenAIEmbeddings } from "@langchain/openai";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { Wallet, randomBytes } from "ethers";
 import IndexConfig from "./config.js";
@@ -70,7 +69,7 @@ export default class IndexClient {
     sources,
     filters,
   }: {
-    embeddings: TogetherAIEmbeddings;
+    embeddings: OpenAIEmbeddings;
     sources: string[];
     filters: object;
   }) {
@@ -80,10 +79,13 @@ export default class IndexClient {
       indexChromaURL = "https://index.network/api/chroma";
     }
 
-    return IndexVectorStore.fromExistingCollection(embeddings, {
-      collectionName: "chroma-indexer",
-      url: indexChromaURL,
-    });
+    return IndexVectorStore.fromExistingCollection(
+      embeddings, // new OpenAIEmbeddings({ openAIApiKey: apiKey, modelName: process.env.MODEL_EMBEDDING }),
+      {
+        collectionName: "chroma-indexer",
+        url: indexChromaURL,
+      },
+    );
   }
 
   private async request<T>(
