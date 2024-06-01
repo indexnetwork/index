@@ -69,6 +69,16 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     fetchDefaultQuestions();
   }, [fetchDefaultQuestions]);
 
+  const ws = new WebSocket(`ws://localhost:8000/discovery/${chatID}/updates`);
+
+  ws.onmessage = async (event) => {
+    console.log(event)
+    await append({
+      id: chatID,
+      content: event.data,
+      role: "assistant",
+    });
+  };
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
     setEditingIndex(indexOfMessage);

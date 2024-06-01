@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
 import Moralis from "moralis";
 import express from "express";
+import expressWs from "express-ws";
+
 import Joi from "joi";
 import * as ejv from "express-joi-validation";
 
@@ -8,7 +10,7 @@ import RedisClient from "../clients/redis.js";
 
 import { createProxyMiddleware } from "http-proxy-middleware";
 
-const app = express();
+const { app } = expressWs(express());
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
@@ -17,6 +19,7 @@ if (process.env.NODE_ENV !== "production") {
 const port = process.env.PORT || 3001;
 
 const redis = RedisClient.getInstance();
+const pubSubClient = RedisClient.getPubSubInstance();
 
 import * as indexController from "../controllers/index.js";
 import * as itemController from "../controllers/item.js";
@@ -517,9 +520,14 @@ app.delete(
 // Validators
 app.use(errorMiddleware);
 
+//app.get("/discovery/stream", );
+
+app.ws("/discovery/:chatId/updates", discoveryController.updates);
+
 const start = async () => {
   console.log("Starting API ...", port);
   await redis.connect();
+  await pubSubClient.connect()
 
   await setIndexedModelParams(app);
 
