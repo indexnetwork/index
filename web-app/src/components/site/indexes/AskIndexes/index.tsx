@@ -69,8 +69,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     fetchDefaultQuestions();
   }, [fetchDefaultQuestions]);
 
-  const ws = new WebSocket(`ws://localhost:8000/discovery/${chatID}/updates`);
 
+  const socketUrl = `${process.env.NEXT_PUBLIC_API_URL.replace(/^https/, 'ws')}${API_ENDPOINTS.DISCOVERY_UPDATES}`;
+  const ws = new WebSocket(socketUrl);
   ws.onmessage = async (event) => {
     console.log(event);
     await append({
