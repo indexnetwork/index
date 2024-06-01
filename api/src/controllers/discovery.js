@@ -103,15 +103,19 @@ export const updates = async (ws, req) => {
         chat_history: messages,
       },
     };
-    let resp = await axios.post(
-      `${process.env.LLM_INDEXER_HOST}/chat/stream`,
-      chatRequest,
-      {
-        responseType: "text",
-      },
-    );
-    console.log("Update evaluation response", resp.data);
-    ws.send(resp.data);
+    try {
+      let resp = await axios.post(
+        `${process.env.LLM_INDEXER_HOST}/chat/stream`,
+        chatRequest,
+        {
+          responseType: "text",
+        },
+      );
+      console.log("Update evaluation response", resp.data);
+      ws.send(resp.data);
+    } catch (e) {
+      console.log(e)
+    }
   });
 };
 export const search = async (req, res, next) => {
