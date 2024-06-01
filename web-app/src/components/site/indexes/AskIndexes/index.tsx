@@ -72,7 +72,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   const ws = new WebSocket(`ws://localhost:8000/discovery/${chatID}/updates`);
 
   ws.onmessage = async (event) => {
-    console.log(event)
+    console.log(event);
     await append({
       id: chatID,
       content: event.data,
