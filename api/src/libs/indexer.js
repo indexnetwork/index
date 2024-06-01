@@ -49,7 +49,7 @@ class Indexer {
       // Check if the item is a webpage and has no content then return Exception
       if (
         indexItem.item.__typename === "WebPage" &&
-        indexItem.item.WebPage_content === ""
+        (!indexItem.item.WebPage_content || indexItem.item.WebPage_content === "")
       ) {
         logger.warn(
           "Step [0]: No content found, createIndexItem event incomplete",

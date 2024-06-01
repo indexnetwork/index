@@ -70,7 +70,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   }, [fetchDefaultQuestions]);
 
 
-  const socketUrl = `${process.env.NEXT_PUBLIC_API_URL.replace(/^https/, 'ws')}${API_ENDPOINTS.DISCOVERY_UPDATES}`;
+  const socketUrl = `${process.env.NEXT_PUBLIC_API_URL.replace(/^https/, 'ws')}${API_ENDPOINTS.DISCOVERY_UPDATES.replace(":chatID", chatID)}`;
   const ws = new WebSocket(socketUrl);
   ws.onmessage = async (event) => {
     console.log(event);

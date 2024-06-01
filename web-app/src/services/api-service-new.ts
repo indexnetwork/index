@@ -8,7 +8,7 @@ const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",
   INDEXES: "/indexes/:id",
   DEFAULT_QUESTIONS_OF_INDEX: "/discovery/questions",
-  DISCOVERY_UPDATES: "/discovery/:chatId/updates",
+  DISCOVERY_UPDATES: "/discovery/:chatID/updates",
   GET_ALL_INDEXES: "/dids/:did/indexes",
   CREATE_INDEX: "/indexes",
   UPDATE_INDEX: "/indexes/:id",

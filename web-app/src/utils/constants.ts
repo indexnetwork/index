@@ -11,6 +11,7 @@ export const DEFAULT_CREATE_LINK_TITLE = "Untitled Link";
 
 export const API_ENDPOINTS = {
   CHAT_STREAM: "discovery/chat",
+  DISCOVERY_UPDATES: "/discovery/:chatID/updates",
   INDEXES: "/indexes",
   GET_ALL_INDEXES: "/dids/:id/indexes",
   GET_PROFILE: "/dids/:id/profile",
