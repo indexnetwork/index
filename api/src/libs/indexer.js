@@ -49,7 +49,8 @@ class Indexer {
       // Check if the item is a webpage and has no content then return Exception
       if (
         indexItem.item.__typename === "WebPage" &&
-        (!indexItem.item.WebPage_content || indexItem.item.WebPage_content === "")
+        (!indexItem.item.WebPage_content ||
+          indexItem.item.WebPage_content === "")
       ) {
         logger.warn(
           "Step [0]: No content found, createIndexItem event incomplete",
@@ -70,6 +71,8 @@ class Indexer {
         );
         return;
       }
+
+      await this.processAllSubscriptions(indexItem);
 
       const embeddingResponse = await axios.post(
         `${process.env.LLM_INDEXER_HOST}/indexer/embeddings`,
@@ -187,6 +190,8 @@ class Indexer {
             `Step [2]: IndexItem UpdateEvent trigger for id: ${indexItem.id}`,
           );
 
+          await this.processAllSubscriptions(indexItem);
+
           const indexSession = await getPKPSessionForIndexer(indexItem.index);
 
           const embeddingService = new EmbeddingService(
@@ -226,12 +231,8 @@ class Indexer {
     }
   }
 
-  async createEmbeddingEvent(id) {
-    logger.info(`Step [3]: createEmbeddingEvent trigger for id: ${id}`);
-
-    const embeddingService = new EmbeddingService(this.definition);
-    const embedding = await embeddingService.getEmbeddingById(id);
-    const stream = await ceramic.loadStream(embedding.item.id);
+  async processAllSubscriptions(indexItem) {
+    const itemStream = await ceramic.loadStream(indexItem.itemId);
 
     const allSubscriptions = await redis.hGetAll(`subscriptions`);
     for (const [chatId, subscriptionPayload] of Object.entries(
@@ -239,18 +240,68 @@ class Indexer {
     )) {
       // Parse the JSON string to an object
       let subscription = JSON.parse(subscriptionPayload);
-      console.log(embedding.item.id, embedding.index.id, subscription.indexIds);
-      if (subscription.indexIds.indexOf(embedding.index.id) >= 0) {
-        await redis.publish(`newUpdate:${chatId}`, embedding.item.id);
+      console.log(indexItem.item.id, indexItem.index.id, subscription.indexIds);
+      if (subscription.indexIds.indexOf(indexItem.index.id) >= 0) {
+        await this.processSubscription(
+          chatId,
+          subscription,
+          itemStream.content,
+        );
       }
     }
+  }
+  async processSubscription(chatId, subscription, item) {
+    console.log(chatId, item, `newUpdate`);
+    console.log("New update triggered, fetching item data", item.id);
+    const subscriptionResp = await redis.hGet(`subscriptions`, chatId);
+    if (!subscriptionResp) {
+      return;
+    }
+    const { indexIds, messages } = subscription;
+    const chatRequest = {
+      indexIds,
+      input: {
+        question: `
+          Determine if the following information is relevant to the previous conversation.
+          If it is relevant, output a conversation simulating that you received real-time news for the user.
+          Use conversational output format suitable to data model, use bold texts and links when available.
+          Do not mention relevancy check, just share it as an update.
+          If it is not relevant, simply say "NOT_RELEVANT".
+          Information: ${JSON.stringify(item)}
+          `,
+        chat_history: messages,
+      },
+    };
+    try {
+      let resp = await axios.post(
+        `${process.env.LLM_INDEXER_HOST}/chat/stream`,
+        chatRequest,
+        {
+          responseType: "text",
+        },
+      );
+      console.log("Update evaluation response", resp.data);
+      if (resp.data && !resp.data.includes("NOT_RELEVANT")) {
+        await redis.publish(`newUpdate:${chatId}`, resp.data);
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  }
+
+  async createEmbeddingEvent(id) {
+    logger.info(`Step [3]: createEmbeddingEvent trigger for id: ${id}`);
+
+    const embeddingService = new EmbeddingService(this.definition);
+    const embedding = await embeddingService.getEmbeddingById(id);
+    const itemStream = await ceramic.loadStream(embedding.item.id);
+
     const doc = {
-      ...stream.content,
-      id: stream.id.toString(),
-      controllerDID: stream.metadata.controller,
+      ...itemStream.content,
+      id: itemStream.id.toString(),
+      controllerDID: itemStream.metadata.controller,
       modelName: embedding.item.__typename,
     };
-    console.log(doc);
     const payload = {
       indexId: embedding.index.id,
       indexTitle: embedding.index.title,
@@ -273,7 +324,7 @@ class Indexer {
     }
 
     try {
-      const indexResponse = await axios.post(
+      await axios.post(
         `${process.env.LLM_INDEXER_HOST}/indexer/index?indexId=${embedding.index.id}`,
         payload,
       );

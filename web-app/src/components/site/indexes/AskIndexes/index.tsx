@@ -69,16 +69,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     fetchDefaultQuestions();
   }, [fetchDefaultQuestions]);
 
-  const socketUrl = `${process.env.NEXT_PUBLIC_API_URL!.replace(/^https/, "wss")}${API_ENDPOINTS.DISCOVERY_UPDATES.replace(":chatID", chatID)}`;
-  const ws = new WebSocket(socketUrl);
-  ws.onmessage = async (event) => {
-    console.log(event);
-    await append({
-      id: chatID,
-      content: event.data,
-      role: "assistant",
-    });
-  };
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
     setEditingIndex(indexOfMessage);
@@ -174,6 +164,25 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     scrollToBottom();
   }, [messages, isLoading, scrollToBottom]);
 
+  useEffect(() => {
+    const socketUrl = `${process.env.NEXT_PUBLIC_API_URL!.replace(/^https/, "wss")}${API_ENDPOINTS.DISCOVERY_UPDATES.replace(":chatID", chatID)}`;
+    const ws = new WebSocket(socketUrl);
+
+    ws.onmessage = async (event) => {
+      setMessages([
+        ...messages,
+        {
+          id: chatID,
+          content: event.data,
+          role: "assistant",
+        } as Message,
+      ] as Message[]);
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [chatID, setMessages, messages]);
   if (leftSectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
   }
