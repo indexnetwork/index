@@ -153,7 +153,7 @@ export class ItemService {
         );
         return e;
       });
-
+      console.log(data.indexItemIndex.edges);
       return {
         //Todo fix itemId to id
         endCursor: data.indexItemIndex.pageInfo.endCursor,

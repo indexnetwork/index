@@ -14,6 +14,7 @@ import Logger from "../utils/logger.js";
 const logger = Logger.getInstance();
 
 const redis = RedisClient.getInstance();
+
 const ceramic = new CeramicClient(process.env.CERAMIC_HOST);
 
 if (process.env.NODE_ENV !== "production") {
@@ -232,6 +233,17 @@ class Indexer {
     const embedding = await embeddingService.getEmbeddingById(id);
     const stream = await ceramic.loadStream(embedding.item.id);
 
+    const allSubscriptions = await redis.hGetAll(`subscriptions`);
+    for (const [chatId, subscriptionPayload] of Object.entries(
+      allSubscriptions,
+    )) {
+      // Parse the JSON string to an object
+      let subscription = JSON.parse(subscriptionPayload);
+      console.log(embedding.item.id, embedding.index.id, subscription.indexIds);
+      if (subscription.indexIds.indexOf(embedding.index.id) >= 0) {
+        await redis.publish(`newUpdate:${chatId}`, embedding.item.id);
+      }
+    }
     const doc = {
       ...stream.content,
       id: stream.id.toString(),
@@ -265,6 +277,8 @@ class Indexer {
         `${process.env.LLM_INDEXER_HOST}/indexer/index?indexId=${embedding.index.id}`,
         payload,
       );
+
+      // todo send fluence as well.
       logger.info(
         `Step [3]: Index ${embedding.indexId} with Item ${embedding.itemId} indexed with it's content and embeddings`,
       );
