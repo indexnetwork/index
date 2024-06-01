@@ -16,6 +16,7 @@ import {
 import { Agent } from 'src/app/modules/agent.module';
 import { RunnableSequence } from '@langchain/core/runnables';
 import { OpenAIEmbeddings } from '@langchain/openai';
+import { pull } from 'langchain/hub';
 
 @Injectable()
 export class ChatService {
@@ -37,20 +38,33 @@ export class ChatService {
 
     try {
       // Initialize the agent
+
+      const answerPrompt = await pull(
+        body.input.question
+          ? process.env.PROMPT_ANSWER_TAG
+          : process.env.PROMPT_RELEVANCY_CHECK_TAG,
+      );
       const chain: RunnableSequence = await this.agentClient.createAgentChain(
         body.chain_type,
         body.indexIds,
         body.model_type,
         body?.model_args,
+        answerPrompt,
       );
-
+      if (body.input.question) {
+        const stream = await chain.stream({
+          question: body.input.question,
+          chat_history: body.input.chat_history,
+        });
+        return stream;
+      } else if (body.input.information) {
+        const stream = await chain.stream({
+          information: body.input.information,
+          chat_history: body.input.chat_history,
+        });
+        return stream;
+      }
       // Invoke the agent
-      const stream = await chain.stream({
-        question: body.input.question,
-        chat_history: body.input.chat_history,
-      });
-
-      return stream;
     } catch (e) {
       Logger.log(
         `Cannot process ${body.input.question} ${e}`,

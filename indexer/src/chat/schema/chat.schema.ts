@@ -76,7 +76,7 @@ export class RetrievalQuestionInput {
       chat_history: [],
     },
   })
-  input: { question: string; chat_history: [] };
+  input: { question?: string; information?: string; chat_history: [] };
 
   @ApiPropertyOptional({
     description: 'Model arguments',

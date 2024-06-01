@@ -1,6 +1,7 @@
 import { ChatOpenAI, OpenAI, OpenAIEmbeddings } from '@langchain/openai';
 import { loadSummarizationChain } from 'langchain/chains';
 import {
+  RunnableConfig,
   RunnableLambda,
   RunnablePassthrough,
   RunnableSequence,
@@ -42,10 +43,11 @@ export class Agent {
     indexIds: string[],
     model_type: string = 'OpenAI',
     model_args: any,
+    prompt: any,
   ): Promise<any> {
     switch (chain_type) {
       case 'rag-v0':
-        return this.createRAGChain(indexIds, model_type, model_args);
+        return this.createRAGChain(indexIds, model_type, model_args, prompt);
 
       default:
         throw new Error('Chain type not supported');
@@ -133,7 +135,9 @@ export class Agent {
     chroma_indices: string[],
     model_type: string,
     model_args: any = { temperature: 0.0, max_tokens: 1000, max_retries: 4 },
+    prompt: any,
   ): Promise<any> {
+    console.log(prompt);
     // TODO: Add prior filtering for questions such as "What is new today?" (with date filter)
     // TODO: Add self-ask prompt for fact-checking
     const argv = model_args ?? {
@@ -181,8 +185,6 @@ export class Agent {
 
     const retriever = vectorStore.asRetriever();
 
-    const answerPrompt = await pull(process.env.PROMPT_ANSWER_TAG);
-
     const formatChatHistory = (chatHistory: string | string[]) => {
       if (Array.isArray(chatHistory)) {
         const updatedChat = chatHistory
@@ -206,7 +208,9 @@ export class Agent {
         context: RunnableSequence.from([
           {
             docs: async (input) => {
-              const docs = await retriever.getRelevantDocuments(input.question);
+              const docs = await retriever.getRelevantDocuments(
+                input.question || input.information,
+              );
               return docs;
             },
           },
@@ -219,8 +223,10 @@ export class Agent {
           },
         ]),
         question: (input) => {
-          Logger.log(input.question, 'ChatService:answerChain:inputQuestion');
-          return input.question;
+          if (input.question) {
+            Logger.log(input.question, 'ChatService:answerChain:inputQuestion');
+            return input.question;
+          }
         },
         chat_history: (input) => input.chat_history,
       },
@@ -235,16 +241,27 @@ export class Agent {
               return serialized;
             },
             question: (input) => {
-              Logger.log(
-                input.question,
-                'ChatService:answerChain:inputQuestion',
-              );
-              return input.question;
+              if (input.question) {
+                Logger.log(
+                  input.question,
+                  'ChatService:answerChain:inputQuestion',
+                );
+                return input.question;
+              }
             },
-            chat_history: (input) => formatChatHistory(input.chat_history),
+            information: (input) => {
+              if (input.information) {
+                Logger.log(
+                  input.information,
+                  'ChatService:answerChain:inputInformation',
+                );
+                return input.inormation;
+              }
+            },
             relation: (input) => '',
+            chat_history: (input) => formatChatHistory(input.chat_history),
           },
-          answerPrompt as any,
+          prompt as any,
           model,
           new StringOutputParser(),
         ]),

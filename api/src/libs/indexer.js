@@ -261,14 +261,7 @@ class Indexer {
     const chatRequest = {
       indexIds,
       input: {
-        question: `
-          Determine if the following information is relevant to the previous conversation.
-          If it is relevant, output a conversation simulating that you received real-time news for the user.
-          Use conversational output format suitable to data model, use bold texts and links when available.
-          Do not mention relevancy check, just share it as an update.
-          If it is not relevant, simply say "NOT_RELEVANT".
-          Information: ${JSON.stringify(item)}
-          `,
+        information: JSON.stringify(item),
         chat_history: messages,
       },
     };

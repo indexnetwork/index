@@ -182,7 +182,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     return () => {
       ws.close();
     };
-  }, [chatID, setMessages, messages]);
+    // eslint-disable-next-line
+  }, [chatID]);
   if (leftSectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
   }

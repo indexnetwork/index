@@ -69,7 +69,7 @@ export const chat = async (req, res, next) => {
     });
   } catch (error) {
     // Handle the exception
-    console.error("An error occurred:", error);
+    console.error("An error occurred:", error.message);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
