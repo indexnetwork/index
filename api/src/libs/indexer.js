@@ -240,7 +240,7 @@ class Indexer {
     )) {
       // Parse the JSON string to an object
       let subscription = JSON.parse(subscriptionPayload);
-      console.log(indexItem.item.id, indexItem.index.id, subscription.indexIds);
+      //console.log(indexItem.item.id, indexItem.index.id, subscription.indexIds);
       if (subscription.indexIds.indexOf(indexItem.index.id) >= 0) {
         await this.processSubscription(
           chatId,
@@ -251,7 +251,7 @@ class Indexer {
     }
   }
   async processSubscription(chatId, subscription, item) {
-    console.log("New update triggered, fetching item data", chatId, item.id);
+    console.log("New update triggered, fetching item data", chatId, item);
     const subscriptionResp = await redis.hGet(`subscriptions`, chatId);
     if (!subscriptionResp) {
       return;

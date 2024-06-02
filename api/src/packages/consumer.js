@@ -41,6 +41,15 @@ async function start() {
     const modelId = parsedData.metadata.model.toString();
     const streamId = parsedData.commitId.baseID.toString();
     const op = parsedData.eventType === 0 ? "c" : "u";
+    const isProcessed = await redisClient.hIncrBy(
+      `events`,
+      `${modelId}:${streamId}:${op}`,
+      1,
+    );
+    if (isProcessed && isProcessed > 1) {
+      console.log(`Event ${modelId}:${streamId}:${op} already processed`);
+      return;
+    }
 
     try {
       switch (modelId) {
