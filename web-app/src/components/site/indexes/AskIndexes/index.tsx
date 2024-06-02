@@ -13,6 +13,8 @@ import AskInput from "components/base/AskInput";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
+import { nanoid } from "nanoid";
+
 import {
   ComponentProps,
   FC,
@@ -164,26 +166,32 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     scrollToBottom();
   }, [messages, isLoading, scrollToBottom]);
 
+  const wsRef = useRef<WebSocket | null>(null);
   useEffect(() => {
     const socketUrl = `${process.env.NEXT_PUBLIC_API_URL!.replace(/^https/, "wss")}${API_ENDPOINTS.DISCOVERY_UPDATES.replace(":chatID", chatID)}`;
-    const ws = new WebSocket(socketUrl);
-
-    ws.onmessage = async (event) => {
+    wsRef.current = new WebSocket(socketUrl);
+  }, [chatID]);
+  useEffect(() => {
+    if (!wsRef.current) return;
+    wsRef.current.onmessage = (event) => {
+      console.log("Received message from server", messages);
       setMessages([
         ...messages,
         {
-          id: chatID,
+          id: nanoid(),
           content: event.data,
           role: "assistant",
         } as Message,
       ] as Message[]);
-    };
 
-    return () => {
-      ws.close();
+      return () => {
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+      };
     };
-    // eslint-disable-next-line
-  }, [messages, chatID]);
+  }, [chatID, messages, setMessages, wsRef]);
+
   if (leftSectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
   }
