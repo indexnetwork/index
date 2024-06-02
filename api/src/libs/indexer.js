@@ -251,8 +251,7 @@ class Indexer {
     }
   }
   async processSubscription(chatId, subscription, item) {
-    console.log(chatId, item, `newUpdate`);
-    console.log("New update triggered, fetching item data", item.id);
+    console.log("New update triggered, fetching item data", chatId, item.id);
     const subscriptionResp = await redis.hGet(`subscriptions`, chatId);
     if (!subscriptionResp) {
       return;
@@ -273,7 +272,7 @@ class Indexer {
           responseType: "text",
         },
       );
-      console.log("Update evaluation response", resp.data);
+      console.log(`Update evaluation response for ${chatId}`, resp.data);
       if (resp.data && !resp.data.includes("NOT_RELEVANT")) {
         await redis.publish(`newUpdate:${chatId}`, resp.data);
       }

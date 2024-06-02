@@ -42,16 +42,16 @@ async function start() {
     const streamId = parsedData.commitId.baseID.toString();
     const op = parsedData.eventType === 0 ? "c" : "u";
 
-    console.log("New event: ", modelId, streamId, op);
-
     try {
       switch (modelId) {
         case runtimeDefinition.models.IndexItem.id:
           switch (op) {
             case "c":
+              console.log(`IndexItem ${streamId} created`);
               await indexer.createIndexItemEvent(streamId);
               break;
             case "u":
+              console.log(`IndexItem ${streamId} updated`);
               await indexer.updateIndexItemEvent(streamId);
               break;
           }
@@ -63,6 +63,7 @@ async function start() {
               // We'll index objects only if they belong to an index.
               break;
             case "u":
+              console.log(`WebPage ${streamId} updated`);
               await indexer.updateWebPageEvent(streamId);
               break;
           }
@@ -70,9 +71,11 @@ async function start() {
         case runtimeDefinition.models.Embedding.id:
           switch (op) {
             case "c":
+              console.log(`Embedding ${streamId} created`);
               await indexer.createEmbeddingEvent(streamId);
               break;
             case "u":
+              console.log(`Embedding ${streamId} updated`);
               await indexer.updateEmbeddingEvent(streamId);
               break;
           }

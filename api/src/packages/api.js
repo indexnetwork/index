@@ -520,14 +520,12 @@ app.delete(
 // Validators
 app.use(errorMiddleware);
 
-//app.get("/discovery/stream", );
-
 app.ws("/discovery/:chatId/updates", discoveryController.updates);
 
 const start = async () => {
   console.log("Starting API ...", port);
   await redis.connect();
-  await pubSubClient.connect()
+  await pubSubClient.connect();
 
   await setIndexedModelParams(app);
 
