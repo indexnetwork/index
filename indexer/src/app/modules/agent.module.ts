@@ -224,6 +224,7 @@ export class Agent {
         ]),
         question: (input) => input.question,
         information: (input) => input.information,
+        relation: (input) => input.relation,
         chat_history: (input) => input.chat_history,
       },
       {
@@ -238,6 +239,7 @@ export class Agent {
             },
             question: (input) => input.question,
             information: (input) => input.information,
+            relation: (input) => input.relation,
             chat_history: (input) => formatChatHistory(input.chat_history),
           },
           prompt as any,
