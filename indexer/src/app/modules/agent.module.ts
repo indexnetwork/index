@@ -222,12 +222,8 @@ export class Agent {
             },
           },
         ]),
-        question: (input) => {
-          if (input.question) {
-            Logger.log(input.question, 'ChatService:answerChain:inputQuestion');
-            return input.question;
-          }
-        },
+        question: (input) => input.question,
+        information: (input) => input.information,
         chat_history: (input) => input.chat_history,
       },
       {
@@ -240,25 +236,8 @@ export class Agent {
               const serialized = docs_with_metadata.join('\n');
               return serialized;
             },
-            question: (input) => {
-              if (input.question) {
-                Logger.log(
-                  input.question,
-                  'ChatService:answerChain:inputQuestion',
-                );
-                return input.question;
-              }
-            },
-            information: (input) => {
-              if (input.information) {
-                Logger.log(
-                  input.information,
-                  'ChatService:answerChain:inputInformation',
-                );
-                return input.inormation;
-              }
-            },
-            relation: (input) => '',
+            question: (input) => input.question,
+            information: (input) => input.information,
             chat_history: (input) => formatChatHistory(input.chat_history),
           },
           prompt as any,
