@@ -27,6 +27,8 @@ import * as embeddingController from "../controllers/embedding.js";
 import * as didController from "../controllers/did.js";
 import * as discoveryController from "../controllers/discovery.js";
 
+import * as farcasterController from "../controllers/farcaster.js";
+
 import * as litProtocol from "../controllers/lit-protocol.js";
 
 import * as fileController from "../controllers/file.js";
@@ -520,6 +522,7 @@ app.delete(
 // Validators
 app.use(errorMiddleware);
 
+app.post("/farcaster/updates", farcasterController.createCast);
 app.ws("/discovery/:chatId/updates", discoveryController.updates);
 
 const start = async () => {

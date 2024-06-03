@@ -1,10 +1,13 @@
+import { getPKPSession, getPKPSessionForIndexer } from "../libs/lit/index.js";
 import { ComposeDBService } from "../services/composedb.js";
+import { IndexService } from "../services/index.js";
+import { ItemService } from "../services/item.js";
 
-export const createWebPage = async (req, res, next) => {
+export const createCast = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   const modelFragments = req.app.get("modelFragments");
   const castFragment = modelFragments.filter(
-    (fragment) => fragment.name === "FarcasterCast",
+    (fragment) => fragment.name === "Cast",
   )[0];
 
   //todo get fragment
@@ -15,11 +18,22 @@ export const createWebPage = async (req, res, next) => {
     ).setSession(req.session);
 
     const cast = await composeDBService.createNode({
-      ...req.body,
+      ...req.body.data,
     });
 
-    res.status(201).json(cast);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
+
+    const indexId = `kjzl6kcym7w8y97yfoer7bb20k4j3x3jb64t6nk714879q9cqyr3s8kuhpg9b84`
+
+    try {
+      const indexService = new IndexService(definition);
+      const index = await indexService.getIndexById(indexId);
+      const pkpSession = await getPKPSessionForIndexer(index);
+
+      const itemService = new ItemService(definition).setSession(pkpSession);
+      const item = await itemService.addItem(indexId, cast.id);
+
+      res.status(201).json({ cast, item });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  };
