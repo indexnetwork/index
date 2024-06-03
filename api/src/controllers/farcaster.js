@@ -22,11 +22,10 @@ export const createCast = async (req, res, next) => {
     ).setSession(session);
 
     const removeMentionedProfiles = (obj) => {
-      obj.author && delete obj.author.mentioned_profiles;
-      obj.mentioned_profiles &&
-        obj.mentioned_profiles.forEach(
-          (profile) => delete profile.mentioned_profiles,
-        );
+      const cleanBio = (profile) =>
+        profile?.profile?.bio && delete profile.profile.bio.mentioned_profiles;
+      cleanBio(obj.author);
+      obj.mentioned_profiles?.forEach(cleanBio);
       return obj;
     };
 
