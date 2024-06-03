@@ -60,7 +60,7 @@ export class ComposeDBService {
       // Log the error and rethrow it for external handling
       console.error(`Exception occured in create${this.modelFragment.name}`, {
         error,
-        content,
+        input: JSON.stringify(content, null, 2),
       });
       throw error;
     }
