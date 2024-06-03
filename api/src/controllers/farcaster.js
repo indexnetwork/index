@@ -33,7 +33,7 @@ export const createCast = async (req, res, next) => {
     const payload = removeMentionedProfiles(req.body.data);
 
     const cast = await composeDBService.createNode({
-      payload,
+      ...payload,
     });
 
     const indexId = `kjzl6kcym7w8y97yfoer7bb20k4j3x3jb64t6nk714879q9cqyr3s8kuhpg9b84`;
