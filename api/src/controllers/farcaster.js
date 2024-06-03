@@ -12,20 +12,18 @@ export const createCast = async (req, res, next) => {
 
   //todo get fragment
   try {
+    const indexId = `kjzl6kcym7w8y97yfoer7bb20k4j3x3jb64t6nk714879q9cqyr3s8kuhpg9b84`;
+    const indexService = new IndexService(definition);
+    const index = await indexService.getIndexById(indexId);
+    const pkpSession = await getPKPSessionForIndexer(index);
     const composeDBService = new ComposeDBService(
       definition,
       castFragment,
-    ).setSession(req.session);
+    ).setSession(pkpSession);
 
     const cast = await composeDBService.createNode({
       ...req.body.data,
     });
-
-    const indexId = `kjzl6kcym7w8y97yfoer7bb20k4j3x3jb64t6nk714879q9cqyr3s8kuhpg9b84`;
-
-    const indexService = new IndexService(definition);
-    const index = await indexService.getIndexById(indexId);
-    const pkpSession = await getPKPSessionForIndexer(index);
 
     const itemService = new ItemService(definition).setSession(pkpSession);
     const item = await itemService.addItem(indexId, cast.id);
