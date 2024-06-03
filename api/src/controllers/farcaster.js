@@ -1,4 +1,5 @@
-import { getPKPSession, getPKPSessionForIndexer } from "../libs/lit/index.js";
+import { DIDSession } from "did-session";
+import { getPKPSession } from "../libs/lit/index.js";
 import { ComposeDBService } from "../services/composedb.js";
 import { IndexService } from "../services/index.js";
 import { ItemService } from "../services/item.js";
@@ -12,18 +13,22 @@ export const createCast = async (req, res, next) => {
 
   //todo get fragment
   try {
-    const indexId = `kjzl6kcym7w8y97yfoer7bb20k4j3x3jb64t6nk714879q9cqyr3s8kuhpg9b84`;
-    const indexService = new IndexService(definition);
-    const index = await indexService.getIndexById(indexId);
-    const pkpSession = await getPKPSessionForIndexer(index);
+    const session = await DIDSession.fromSession(process.env.FARCASTER_SESSION);
+    const didSession = await session.did.authenticate();
+
     const composeDBService = new ComposeDBService(
       definition,
       castFragment,
-    ).setSession(pkpSession);
+    ).setSession(didSession);
 
     const cast = await composeDBService.createNode({
       ...req.body.data,
     });
+
+    const indexId = `kjzl6kcym7w8y97yfoer7bb20k4j3x3jb64t6nk714879q9cqyr3s8kuhpg9b84`;
+    const indexService = new IndexService(definition);
+    const index = await indexService.getIndexById(indexId);
+    const pkpSession = await getPKPSession(didSession, index);
 
     const itemService = new ItemService(definition).setSession(pkpSession);
     const item = await itemService.addItem(indexId, cast.id);
