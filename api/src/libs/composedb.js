@@ -1,6 +1,7 @@
 import { createHandler } from "@composedb/server";
 import { Composite } from "@composedb/devtools";
 import { createContext, createGraphQLSchema } from "@composedb/runtime";
+import { StreamID } from "@ceramicnetwork/streamid";
 
 import { createServer } from "node:http";
 
@@ -403,8 +404,11 @@ export const stopIndexingModels = async (
   }
   indexerCeramic.did = did;
 
-  const models = await indexerCeramic.admin.stopIndexingModels([modelId]);
+  const modelIdStream = StreamID.fromString(modelId);
 
+  console.log(`Stop!`, modelIdStream);
+  const models = await indexerCeramic.admin.stopIndexingModels([modelIdStream]);
+  console.log(`Stopped!`, await indexerCeramic.admin.getIndexedModels());
   await setIndexedModelParams(app);
 
   return models;

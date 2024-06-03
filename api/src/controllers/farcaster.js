@@ -21,8 +21,19 @@ export const createCast = async (req, res, next) => {
       castFragment,
     ).setSession(session);
 
+    const removeMentionedProfiles = (obj) => {
+      obj.author && delete obj.author.mentioned_profiles;
+      obj.mentioned_profiles &&
+        obj.mentioned_profiles.forEach(
+          (profile) => delete profile.mentioned_profiles,
+        );
+      return obj;
+    };
+
+    const payload = removeMentionedProfiles(req.body.data);
+
     const cast = await composeDBService.createNode({
-      ...req.body.data,
+      payload,
     });
 
     const indexId = `kjzl6kcym7w8y97yfoer7bb20k4j3x3jb64t6nk714879q9cqyr3s8kuhpg9b84`;
