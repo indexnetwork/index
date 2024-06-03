@@ -35,6 +35,6 @@ export const createCast = async (req, res, next) => {
 
     res.status(201).json({ cast, item });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message, input: req.body.data });
   }
 };
