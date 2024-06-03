@@ -14,12 +14,12 @@ export const createCast = async (req, res, next) => {
   //todo get fragment
   try {
     const session = await DIDSession.fromSession(process.env.FARCASTER_SESSION);
-    const didSession = await session.did.authenticate();
+    await session.did.authenticate();
 
     const composeDBService = new ComposeDBService(
       definition,
       castFragment,
-    ).setSession(didSession);
+    ).setSession(session);
 
     const cast = await composeDBService.createNode({
       ...req.body.data,
@@ -28,7 +28,7 @@ export const createCast = async (req, res, next) => {
     const indexId = `kjzl6kcym7w8y97yfoer7bb20k4j3x3jb64t6nk714879q9cqyr3s8kuhpg9b84`;
     const indexService = new IndexService(definition);
     const index = await indexService.getIndexById(indexId);
-    const pkpSession = await getPKPSession(didSession, index);
+    const pkpSession = await getPKPSession(session, index);
 
     const itemService = new ItemService(definition).setSession(pkpSession);
     const item = await itemService.addItem(indexId, cast.id);
