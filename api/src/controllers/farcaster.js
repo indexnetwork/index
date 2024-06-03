@@ -35,7 +35,7 @@ export const createCast = async (req, res, next) => {
       ...payload,
     });
 
-    const indexId = `kjzl6kcym7w8y97yfoer7bb20k4j3x3jb64t6nk714879q9cqyr3s8kuhpg9b84`;
+    const indexId = `kjzl6kcym7w8y6wn1jtlh7ckgoc43sqtgswl4z5jy4xr0lhjpgh402zjlaszt7p`;
     const indexService = new IndexService(definition);
     const index = await indexService.getIndexById(indexId);
     const pkpSession = await getPKPSession(session, index);
