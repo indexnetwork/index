@@ -173,6 +173,12 @@ export const writeAuthMethods = async ({
     const didKey = new DID({ provider: didProvider, resolver: getResolver() });
     await didKey.authenticate();
 
+    const now = new Date();
+    now.setUTCHours(0, 0, 0, 0);
+    const twentyFiveDaysLater = new Date(
+      now.getTime() + 25 * 24 * 60 * 60 * 1e3,
+    );
+
     const signer = new PKPSigner(from, litNodeClient, provider, {
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
@@ -181,6 +187,8 @@ export const writeAuthMethods = async ({
         publicKey: signerPublicKey,
         chain: "ethereum", // polygon
         nonce: randomString(12),
+        currentDateTime: currentDateTime.toISOString(),
+        twentyFiveDaysLater: twentyFiveDaysLater.toISOString(),
         signList: {
           signTransaction: {},
         },
@@ -245,6 +253,12 @@ export const transferOwnership = async ({
     }
     const from = ethers.utils.computeAddress(signerPublicKey).toLowerCase();
 
+    const now = new Date();
+    now.setUTCHours(0, 0, 0, 0);
+    const twentyFiveDaysLater = new Date(
+      now.getTime() + 25 * 24 * 60 * 60 * 1e3,
+    );
+
     const signer = new PKPSigner(from, litNodeClient, provider, {
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
@@ -253,6 +267,8 @@ export const transferOwnership = async ({
         publicKey: signerPublicKey,
         chain: "ethereum", // polygon
         nonce: randomString(12),
+        currentDateTime: now.toISOString(),
+        twentyFiveDaysLater: twentyFiveDaysLater.toISOString(),
         signList: {
           signTransaction: {},
         },
@@ -556,6 +572,12 @@ export const getPKPSession = async (session, index) => {
       await litNodeClient.connect();
     }
 
+    const now = new Date();
+    now.setUTCHours(0, 0, 0, 0);
+    const twentyFiveDaysLater = new Date(
+      now.getTime() + 25 * 24 * 60 * 60 * 1e3,
+    );
+
     const resp = await litNodeClient.executeJs({
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
@@ -563,6 +585,8 @@ export const getPKPSession = async (session, index) => {
         userAuthSig: userAuthSig, // for conditions control. to identify authenticated user.
         publicKey: index.signerPublicKey,
         nonce: randomString(12),
+        currentDateTime: now.toISOString(),
+        twentyFiveDaysLater: twentyFiveDaysLater.toISOString(),
         chain: "ethereum", // polygon
         signList: {
           getPKPSession: {
