@@ -1,7 +1,8 @@
+import { readFile } from "fs/promises";
+
 import { createHandler } from "@composedb/server";
 import { Composite } from "@composedb/devtools";
 import { createContext, createGraphQLSchema } from "@composedb/runtime";
-import { StreamID } from "@ceramicnetwork/streamid";
 
 import { createServer } from "node:http";
 
@@ -404,11 +405,8 @@ export const stopIndexingModels = async (
   }
   indexerCeramic.did = did;
 
-  const modelIdStream = StreamID.fromString(modelId);
+  const models = await indexerCeramic.admin.stopIndexingModels([modelId]);
 
-  console.log(`Stop!`, modelIdStream);
-  const models = await indexerCeramic.admin.stopIndexingModels([modelIdStream]);
-  console.log(`Stopped!`, await indexerCeramic.admin.getIndexedModels());
   await setIndexedModelParams(app);
 
   return models;
@@ -434,12 +432,15 @@ export const setIndexedModelParams = async (app) => {
   const c = await Composite.fromModels({
     ceramic,
     models: modelList,
-    index: false,
+    index: true,
+    commonEmbeds: `all`,
   });
 
-  const runTime = c.toRuntime();
+  const runTime = JSON.parse(
+    await readFile("../api/src/types/runtime-dev.json", "utf8"),
+  );
 
-  defaultRuntime = JSON.stringify(defaultRuntime);
+  defaultRuntime = JSON.stringify(runTime);
   Object.entries(runTime.models).forEach(([modelName, model]) => {
     defaultRuntime = defaultRuntime.replace(
       new RegExp(`Model_${modelName}_ID`, "g"),
@@ -476,6 +477,7 @@ export const setIndexedModelParams = async (app) => {
     ceramic,
     options: { context: createContext({ ceramic }), graphiql: true },
     port,
+    cache: false,
     schema: createGraphQLSchema({
       definition: defaultRuntime,
       readonly: false,

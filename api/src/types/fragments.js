@@ -50,6 +50,7 @@ export const indexItemFragment = `
     id
     indexId
     itemId
+    modelId
     createdAt
     updatedAt
     deletedAt

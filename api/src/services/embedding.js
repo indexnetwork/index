@@ -43,6 +43,9 @@ export class EmbeddingService {
                   index {
                     id
                     title
+                    controllerDID {
+                      id
+                    }
                     signerPublicKey
                     signerFunction
                     createdAt
@@ -63,9 +66,7 @@ export class EmbeddingService {
       }
       try {
         const indexService = new IndexService(this.definition);
-        data.node.index.ownerDID = await indexService.getOwnerProfile(
-          data.node.index,
-        );
+        data.node.index.ownerDID = data.node.index.controllerDID;
       } catch (e) {
         console.log("Error fetching profile", e);
       }

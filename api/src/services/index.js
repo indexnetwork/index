@@ -57,6 +57,15 @@ export class IndexService {
                       createdAt
                       updatedAt
                       deletedAt
+                      controllerDID {
+                        id
+                        profile {
+                          id
+                          name
+                          avatar
+                          bio
+                        }
+                      }
                       ${didPayload}
                     }
                   }
@@ -87,8 +96,9 @@ export class IndexService {
         index.did = did;
       }
 
-      index.ownerDID = await this.getOwnerProfile(index, this);
-
+      index.ownerDID = this.getOwnerProfile(index);
+      delete index.controllerDID;
+      console.log(index.ownerDID);
       return index;
     } catch (error) {
       // Log the error and rethrow it for external handling
@@ -138,7 +148,7 @@ export class IndexService {
 
       // Return the created index document
       const createdIndex = data.createIndex.document;
-      createdIndex.ownerDID = await this.getOwnerProfile(createdIndex, this);
+      createdIndex.ownerDID = createdIndex.controllerDID;
 
       return createdIndex;
     } catch (error) {
@@ -226,7 +236,7 @@ export class IndexService {
         index.did = did;
       }
 
-      index.ownerDID = await this.getOwnerProfile(index, this);
+      index.ownerDID = index.controllerDID;
       // Return the created index document
       return index;
     } catch (error) {
@@ -342,13 +352,13 @@ export class IndexService {
     }
   }
 
-  async getOwnerProfile(index) {
-    const owner = await this.getOwner(index.id);
-    if (owner && owner.id) {
-      return owner;
+  getOwnerProfile(index) {
+    if (index.controllerDID.profile) {
+      const profile = index.controllerDID.profile;
+      profile.id = index.controllerDID.id;
+      return profile;
     } else {
-      const ownerAddr = await getLitOwner(index.signerPublicKey);
-      return { id: `did:pkh:eip155:1:${ownerAddr}` };
+      return { id: index.controllerDID.id };
     }
   }
 }

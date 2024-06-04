@@ -369,7 +369,7 @@ export const walletToDID = (chain, wallet) =>
   `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`;
 
 export const getPKPSessionForIndexer = async (index) => {
-  const indexerSession = await redis.get(`indexer:did:session`);
+  const indexerSession = await redis.hGet(`sessions`, index.id);
   if (!indexerSession) {
     throw new Error("No session signatures found");
   }
@@ -377,8 +377,7 @@ export const getPKPSessionForIndexer = async (index) => {
   const session = await DIDSession.fromSession(indexerSession);
   await session.did.authenticate();
 
-  const pkpSession = await getPKPSession(session, index);
-  return pkpSession;
+  return session;
 };
 
 export const mintPKP = async (ownerAddress, actionCID) => {
@@ -509,6 +508,11 @@ const fetchAndAuthenticateSession = async (key) => {
 };
 
 export const getPKPSession = async (session, index) => {
+  await redis.hSet(`sessions`, index.id, session.serialize());
+  return session;
+};
+
+export const getPKPSessionWithLIT = async (session, index) => {
   if (!session.did.authenticated) {
     throw new Error("Unauthenticated DID");
   }
@@ -605,6 +609,12 @@ export const getPKPSession = async (session, index) => {
 };
 
 export const getRolesFromSession = (session, definition) => {
+  if (session.cacao.p.resources.indexOf("ceramic://*") > -1) {
+    return {
+      owner: true,
+      creator: false,
+    };
+  }
   const authorizedModels = new Set(
     session.cacao.p.resources.map((r) => r.replace("ceramic://*?model=", "")),
   );

@@ -113,6 +113,15 @@ export class DIDService {
                                         createdAt
                                         updatedAt
                                         deletedAt
+                                        controllerDID {
+                                          id
+                                          profile {
+                                            id
+                                            name
+                                            avatar
+                                            bio
+                                          }
+                                        }
                                     }
                                 }
                             }
@@ -159,7 +168,7 @@ export class DIDService {
         Object.values(indexes)
           .filter((i) => i.did.owned || i.did.starred)
           .map(async (i) => {
-            const ownerDID = await indexService.getOwnerProfile(i);
+            const ownerDID = indexService.getOwnerProfile(i);
             return { ...i, ownerDID };
           })
           .sort((a, b) => {

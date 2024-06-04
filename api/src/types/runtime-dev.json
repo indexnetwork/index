@@ -81,7 +81,8 @@
       "deletedAt": {
         "type": "datetime",
         "required": false,
-        "immutable": false
+        "immutable": false,
+        "indexed": true
       },
       "updatedAt": {
         "type": "datetime",
@@ -107,7 +108,8 @@
       "itemId": {
         "type": "streamid",
         "required": true,
-        "immutable": false
+        "immutable": false,
+        "indexed": true
       },
       "vector": {
         "type": "list",
@@ -145,7 +147,8 @@
       "deletedAt": {
         "type": "datetime",
         "required": false,
-        "immutable": false
+        "immutable": false,
+        "indexed": true
       },
       "modelName": {
         "type": "string",
@@ -248,7 +251,8 @@
       "itemId": {
         "type": "streamid",
         "required": true,
-        "immutable": false
+        "immutable": false,
+        "indexed": true
       },
       "indexId": {
         "type": "streamid",
@@ -271,7 +275,8 @@
       "deletedAt": {
         "type": "datetime",
         "required": false,
-        "immutable": false
+        "immutable": false,
+        "indexed": true
       },
       "updatedAt": {
         "type": "datetime",
@@ -326,7 +331,8 @@
       "deletedAt": {
         "type": "datetime",
         "required": false,
-        "immutable": false
+        "immutable": false,
+        "indexed": true
       },
       "updatedAt": {
         "type": "datetime",
