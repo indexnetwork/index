@@ -31,18 +31,6 @@ export const appBundleFragment = `
     WebPage_updatedAt: updatedAt
     WebPage_deletedAt: deletedAt
   }
-  ... on Team {
-    Team_logo: logo
-    Team_name: name
-    Team_teamId: teamId
-    Team_twitter: twitter
-    Team_website: website
-    Team_fundingStage: fundingStage
-    Team_contactMethod: contactMethod
-    Team_linkedinHandle: linkedinHandle
-    Team_longDescription: longDescription
-    Team_shortDescription: shortDescription
-  }
 `;
 
 export const indexItemFragment = `
