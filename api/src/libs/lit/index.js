@@ -90,7 +90,9 @@ class PKPSigner extends ethers.Signer {
 
     return resolveProperties(transaction).then(async (tx) => {
       let params = this.actionParams;
-      await litNodeClient.connect();
+      if (!litNodeClient.ready) {
+        await litNodeClient.connect();
+      }
 
       delete tx.from;
       const serializedTx = ethers.utils.serializeTransaction(tx);
@@ -145,6 +147,17 @@ class PKPSigner extends ethers.Signer {
     return this.provider.sendTransaction(signedTransaction);
   }
 }
+
+const signer = new ethers.Wallet(
+  process.env.INDEXER_WALLET_PRIVATE_KEY,
+  provider,
+);
+
+const litContracts = new LitContracts({
+  network: config.litNetwork,
+  signer: signer,
+  debug: false,
+});
 
 export const writeAuthMethods = async ({
   userAuthSig,
@@ -201,7 +214,9 @@ export const writeAuthMethods = async ({
       debug: false,
     });
 
-    await litContracts.connect();
+    if (!litContracts.connected) {
+      await litContracts.connect();
+    }
 
     const prevCIDV0 = CID.parse(prevCID).toV0().toString();
     const pubKeyHash = ethers.utils.keccak256(signerPublicKey);
@@ -275,19 +290,21 @@ export const transferOwnership = async ({
       },
     });
 
-    const litContracts = new LitContracts({
+    const subContract = new LitContracts({
       network: config.litNetwork,
       signer: signer,
       debug: false,
     });
 
-    await litContracts.connect();
+    if (!subContract.connected) {
+      await subContract.connect();
+    }
 
     const pubKeyHash = ethers.utils.keccak256(signerPublicKey);
     const tokenId = BigInt(pubKeyHash);
 
     const transaction =
-      await litContracts.pkpPermissionsContract.write.batchAddRemoveAuthMethods(
+      await subContract.pkpPermissionsContract.write.batchAddRemoveAuthMethods(
         tokenId,
         [1],
         [newOwner],
@@ -311,11 +328,6 @@ export const transferOwnership = async ({
 };
 
 export const getLitOwner = async (pkpPubKey) => {
-  const litContracts = new LitContracts({
-    network: config.litNetwork,
-    debug: false,
-  });
-
   let existing = await redis.hGet(`pkp:owner`, pkpPubKey);
   if (existing) {
     return existing;
@@ -399,16 +411,6 @@ export const getPKPSessionForIndexer = async (index) => {
 
 export const mintPKP = async (ownerAddress, actionCID) => {
   try {
-    const signer = new ethers.Wallet(
-      process.env.INDEXER_WALLET_PRIVATE_KEY,
-      provider,
-    );
-
-    const litContracts = new LitContracts({
-      network: config.litNetwork,
-      signer: signer,
-      debug: false,
-    });
     if (!litContracts.connected) {
       await litContracts.connect();
     }
