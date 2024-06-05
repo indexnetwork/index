@@ -56,6 +56,16 @@ export type DefaultIndexNode = {
   updatedAt: string;
 };
 
+export type CastIndexNode = {
+  id: string;
+  text: string;
+  thread_hash: string;
+  timestamp: string;
+  author: {
+    username: string;
+  };
+};
+
 export type IndexWebPageItem = {
   type: string;
   node: WebNode;
@@ -70,16 +80,23 @@ export type IndexIndexNodeItem = {
   type: string;
   node: IndexIndexNode;
 };
+
 export type DefaultIndexNodeItem = {
   type: string;
   node: DefaultIndexNode;
+};
+
+export type CastIndexNodeItem = {
+  type: string;
+  node: CastIndexNode;
 };
 
 export type IndexItem =
   | IndexWebPageItem
   | IndexTeamNodeItem
   | IndexIndexNodeItem
-  | DefaultIndexNodeItem;
+  | DefaultIndexNodeItem
+  | CastIndexNodeItem;
 
 export type IndexLink = {
   id?: string;

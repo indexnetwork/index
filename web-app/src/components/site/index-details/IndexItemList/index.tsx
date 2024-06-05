@@ -3,6 +3,7 @@ import { FC, memo } from "react";
 import { useRole } from "hooks/useRole";
 import InfiniteScroll from "react-infinite-scroll-component";
 import {
+  CastIndexNodeItem,
   DefaultIndexNodeItem,
   IndexIndexNodeItem,
   IndexItem,
@@ -15,6 +16,7 @@ import LinkItem from "../LinkItem";
 import TeamItem from "../TeamItem";
 import IndexIndexItem from "../IndexIndexItem";
 import DefaultIndexItem from "../DefaultIndexItem";
+import CastItem from "../CastItem";
 
 export interface IndexItemListProps {
   search: string;
@@ -28,6 +30,7 @@ const MemoLinkItem = memo(LinkItem);
 const MemoTeamItem = memo(TeamItem);
 const MemoIndexItem = memo(IndexIndexItem);
 const MemoDefaultIndexItem = memo(DefaultIndexItem);
+const MemoCastItem = memo(CastItem);
 
 const IndexItemList: FC<IndexItemListProps> = ({
   search,
@@ -65,6 +68,16 @@ const IndexItemList: FC<IndexItemListProps> = ({
           handleRemove={() => removeItem(item)}
           search={!!search}
           item={item as IndexIndexNodeItem}
+        />
+      );
+    }
+
+    if (item.type === "Cast") {
+      return (
+        <MemoCastItem
+          handleRemove={() => removeItem(item)}
+          search={!!search}
+          item={item as CastIndexNodeItem}
         />
       );
     }
