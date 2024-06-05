@@ -10,6 +10,7 @@ import { CeramicClient } from "@ceramicnetwork/http-client";
 import { ethers } from "ethers";
 
 import Logger from "../utils/logger.js";
+import { DIDSession } from "did-session";
 
 const logger = Logger.getInstance();
 
@@ -26,6 +27,18 @@ class Indexer {
     this.definition = definition;
     this.fragments = fragments;
   }
+
+  async getIndexerSession(index) {
+    const indexerSession = await redis.hGet(`sessions`, index.id);
+    if (!indexerSession) {
+      throw new Error("No session signatures found");
+    }
+
+    const session = await DIDSession.fromSession(indexerSession);
+    await session.did.authenticate();
+
+    return session;
+  }
   // Index Item (C)
   async createIndexItemEvent(id) {
     logger.info(`Step [0]: createIndexItemEvent trigger for id: ${id}`);
@@ -38,7 +51,7 @@ class Indexer {
     );
 
     try {
-      const indexSession = await getPKPSessionForIndexer(indexItem.index);
+      const indexSession = await this.getIndexerSession(indexItem.index);
       await indexSession.did.authenticate();
 
       logger.info(

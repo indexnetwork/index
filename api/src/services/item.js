@@ -294,9 +294,14 @@ export class ItemService {
         return indexItem;
       }
 
+      const node = await this.client.context.ceramic.loadStream(itemId);
+      const modelId = node.metadata.model;
+      //const indexItem = await this.get(indexId, itemId);
+
       const content = {
         indexId,
         itemId,
+        modelId,
         createdAt: getCurrentDateTime(),
         updatedAt: getCurrentDateTime(),
       };

@@ -113,6 +113,15 @@ export class DIDService {
                                         createdAt
                                         updatedAt
                                         deletedAt
+                                        controllerDID {
+                                          id
+                                          profile {
+                                            id
+                                            name
+                                            avatar
+                                            bio
+                                          }
+                                        }
                                     }
                                 }
                             }
@@ -155,17 +164,12 @@ export class DIDService {
       }, {});
 
       const indexService = new IndexService(this.definition);
-      return await Promise.all(
-        Object.values(indexes)
-          .filter((i) => i.did.owned || i.did.starred)
-          .map(async (i) => {
-            const ownerDID = await indexService.getOwnerProfile(i);
-            return { ...i, ownerDID };
-          })
-          .sort((a, b) => {
-            return new Date(b.createdAt) - new Date(a.createdAt);
-          }),
-      );
+      return Object.values(indexes)
+        .filter((i) => i.did.owned || i.did.starred)
+        .map(indexService.transformIndex(i))
+        .sort((a, b) => {
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        });
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in createDIDIndex:", error);

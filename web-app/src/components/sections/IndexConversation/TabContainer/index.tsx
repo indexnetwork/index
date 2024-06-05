@@ -9,14 +9,13 @@ import { useCallback, useEffect, useState } from "react";
 import { useIndexConversation } from "../IndexConversationContext";
 import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
-import CreatorsTab from "./CreatorsTab";
 import IndexItemsTab from "./IndexItemsTab";
 import IndexSettingsTab from "./SettingsTab";
 
 enum TabKey {
   Chat = "chat",
   Index = "index",
-  Creators = "creators",
+  // Creators = "creators",
   AccessControl = "access_control",
   Settings = "settings",
 }
@@ -24,7 +23,7 @@ enum TabKey {
 const TAB_TITLES = {
   [TabKey.Chat]: "Chat",
   [TabKey.Index]: "Index",
-  [TabKey.Creators]: "Creators",
+  // [TabKey.Creators]: "Creators",
   [TabKey.AccessControl]: "Access Control",
   [TabKey.Settings]: "Developers",
 };
@@ -63,8 +62,8 @@ export default function TabContainer() {
         return <ChatTab />;
       case TabKey.Index:
         return <IndexItemsTab />;
-      case TabKey.Creators:
-        return <CreatorsTab />;
+      // case TabKey.Creators:
+      //  return <CreatorsTab />;
       case TabKey.AccessControl:
         return <AccessControlTab />;
       case TabKey.Settings:

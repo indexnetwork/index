@@ -46,9 +46,14 @@ async function start() {
       `${modelId}:${streamId}:${op}`,
       1,
     );
+
     if (isProcessed && isProcessed > 1) {
-      console.log(`Event ${modelId}:${streamId}:${op} already processed`);
+      console.log(
+        `Event ${modelId}:${streamId}:${op} already processed ${isProcessed} times. Skipping...`,
+      );
       return;
+    } else {
+      console.log(`Event ${modelId}:${streamId}:${op} is processing...`);
     }
 
     try {
