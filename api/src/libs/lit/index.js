@@ -368,18 +368,6 @@ export const decodeDIDWithLit = (encodedDID) => {
 export const walletToDID = (chain, wallet) =>
   `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`;
 
-export const getPKPSessionForIndexer = async (index) => {
-  const indexerSession = await redis.hGet(`sessions`, index.id);
-  if (!indexerSession) {
-    throw new Error("No session signatures found");
-  }
-
-  const session = await DIDSession.fromSession(indexerSession);
-  await session.did.authenticate();
-
-  return session;
-};
-
 export const mintPKP = async (ownerAddress, actionCID) => {
   try {
     const signer = new ethers.Wallet(

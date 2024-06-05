@@ -64,12 +64,7 @@ export class EmbeddingService {
       if (!data || !data.node) {
         throw new Error("Invalid response data");
       }
-      try {
-        const indexService = new IndexService(this.definition);
-        data.node.index.ownerDID = data.node.index.controllerDID;
-      } catch (e) {
-        console.log("Error fetching profile", e);
-      }
+      data.node.index.ownerDID = data.node.index.controllerDID;
 
       return data.node;
     } catch (error) {

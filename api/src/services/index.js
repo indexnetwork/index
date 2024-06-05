@@ -1,7 +1,6 @@
 import { ComposeClient } from "@composedb/client";
 
 import { getCurrentDateTime } from "../utils/helpers.js";
-import { getLitOwner } from "../libs/lit/index.js";
 import { profileFragment } from "../types/fragments.js";
 
 export class IndexService {
@@ -20,6 +19,24 @@ export class IndexService {
     return this;
   }
 
+  transformIndex(index) {
+    if (index.did && index.did.edges && index.did.edges.length > 0) {
+      const did = { starred: false, owned: false };
+      index.did.edges.forEach((edge) => {
+        if (edge.node.type === "owned") {
+          did.owned = edge.node.deletedAt === null;
+        }
+        if (edge.node.type === "starred") {
+          did.starred = edge.node.deletedAt === null;
+        }
+      });
+      index.did = did;
+    }
+
+    index.ownerDID = this.getOwnerProfile(index);
+    delete index.controllerDID;
+    return index;
+  }
   async getIndexById(id) {
     try {
       let didPayload = "";
@@ -81,25 +98,7 @@ export class IndexService {
         throw new Error("Invalid response data");
       }
 
-      const index = data.node;
-
-      if (index.did && index.did.edges && index.did.edges.length > 0) {
-        const did = { starred: false, owned: false };
-        index.did.edges.forEach((edge) => {
-          if (edge.node.type === "owned") {
-            did.owned = edge.node.deletedAt === null;
-          }
-          if (edge.node.type === "starred") {
-            did.starred = edge.node.deletedAt === null;
-          }
-        });
-        index.did = did;
-      }
-
-      index.ownerDID = this.getOwnerProfile(index);
-      delete index.controllerDID;
-      console.log(index.ownerDID);
-      return index;
+      return this.transformIndex(data.node);
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in getIndexById:", error);
@@ -130,6 +129,15 @@ export class IndexService {
                             signerFunction
                             createdAt
                             updatedAt
+                            controllerDID {
+                              id
+                              profile {
+                                id
+                                name
+                                avatar
+                                bio
+                              }
+                            }
                         }
                     }
                 }`,
@@ -147,10 +155,7 @@ export class IndexService {
       }
 
       // Return the created index document
-      const createdIndex = data.createIndex.document;
-      createdIndex.ownerDID = createdIndex.controllerDID;
-
-      return createdIndex;
+      return this.transformIndex(data.createIndex.document);
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in createIndex:", error);
@@ -204,6 +209,15 @@ export class IndexService {
                             createdAt
                             updatedAt
                             deletedAt
+                            controllerDID {
+                              id
+                              profile {
+                                id
+                                name
+                                avatar
+                                bio
+                              }
+                            }
                             ${didPayload}
                         }
                     }
@@ -221,24 +235,7 @@ export class IndexService {
         throw new Error("Invalid response data");
       }
 
-      const index = data.updateIndex.document;
-
-      if (index.did && index.did.edges && index.did.edges.length > 0) {
-        const did = { starred: false, owned: false };
-        index.did.edges.forEach((edge) => {
-          if (edge.node.type === "owned") {
-            did.owned = edge.node.deletedAt === null;
-          }
-          if (edge.node.type === "starred") {
-            did.starred = edge.node.deletedAt === null;
-          }
-        });
-        index.did = did;
-      }
-
-      index.ownerDID = index.controllerDID;
-      // Return the created index document
-      return index;
+      return this.transformIndex(data.updateIndex.document);
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in updateIndex:", error);
@@ -269,6 +266,15 @@ export class IndexService {
                             createdAt
                             updatedAt
                             deletedAt
+                            controllerDID {
+                              id
+                              profile {
+                                id
+                                name
+                                avatar
+                                bio
+                              }
+                            }
                         }
                     }
                 }`,
@@ -290,64 +296,6 @@ export class IndexService {
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in updateIndex:", error);
-      throw error;
-    }
-  }
-
-  async getOwner(indexId) {
-    try {
-      const { data, errors } = await this.client.executeQuery(`
-              query{
-                dIDIndexIndex(first: 1, sorting: {createdAt: DESC}, filters: { where: {deletedAt: {isNull: true}, type: {equalTo: "owned"}, indexId: {equalTo: "${indexId}"}}}) {
-                  edges {
-                    node {
-                      id
-                      type
-                      indexId
-                      createdAt
-                      updatedAt
-                      deletedAt
-                      controllerDID {
-                        id
-                        profile {
-                          ${profileFragment}
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            `);
-
-      // Handle GraphQL errors
-      if (errors) {
-        throw new Error(
-          `Error getting DIDIndex index: ${JSON.stringify(errors)}`,
-        );
-      }
-
-      // Validate the data response
-      if (!data || !data.dIDIndexIndex || !data.dIDIndexIndex.edges) {
-        throw new Error("Invalid response data");
-      }
-
-      if (data.dIDIndexIndex.edges.length === 0) {
-        return null;
-      }
-      let profile = {};
-      if (data.dIDIndexIndex.edges[0].node.controllerDID.profile !== null) {
-        profile = data.dIDIndexIndex.edges[0].node.controllerDID.profile;
-        profile.id = profile.controllerDID.id;
-        delete profile.controllerDID;
-        return profile;
-      } else {
-        return {
-          id: data.dIDIndexIndex.edges[0].node.controllerDID.id,
-        };
-      }
-    } catch (error) {
-      // Log the error and rethrow it for external handling
-      console.error("Exception occurred in dIDIndexIndex:", error);
       throw error;
     }
   }

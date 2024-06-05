@@ -2,7 +2,6 @@ import { getMetadata } from "../libs/crawl.js";
 import { ComposeDBService } from "../services/composedb.js";
 import { ItemService } from "../services/item.js";
 import { IndexService } from "../services/index.js";
-import { getPKPSession } from "../libs/lit/index.js";
 import { DIDSession } from "did-session";
 import axios from "axios";
 
@@ -24,12 +23,11 @@ export const indexWebPage = async (req, res, next) => {
 
   const zapierSession = await DIDSession.fromSession(auth.session);
 
-  const pkpSession = await getPKPSession(zapierSession, index);
   const composeDBService = new ComposeDBService(
     definition,
     webPageFragment,
   ).setSession(zapierSession);
-  const itemService = new ItemService(definition).setSession(pkpSession);
+  const itemService = new ItemService(definition).setSession(zapierSession);
 
   if (!params.title || !params.favicon) {
     const metaData = await getMetadata(params.url);

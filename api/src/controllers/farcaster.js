@@ -1,7 +1,5 @@
 import { DIDSession } from "did-session";
-import { getPKPSession } from "../libs/lit/index.js";
 import { ComposeDBService } from "../services/composedb.js";
-import { IndexService } from "../services/index.js";
 import { ItemService } from "../services/item.js";
 
 export const createCast = async (req, res, next) => {
@@ -36,11 +34,8 @@ export const createCast = async (req, res, next) => {
     });
 
     const indexId = `kjzl6kcym7w8y6wn1jtlh7ckgoc43sqtgswl4z5jy4xr0lhjpgh402zjlaszt7p`;
-    const indexService = new IndexService(definition);
-    const index = await indexService.getIndexById(indexId);
-    const pkpSession = await getPKPSession(session, index);
 
-    const itemService = new ItemService(definition).setSession(pkpSession);
+    const itemService = new ItemService(definition).setSession(session);
     const item = await itemService.addItem(indexId, cast.id);
 
     res.status(201).json({ cast, item });
