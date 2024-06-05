@@ -170,6 +170,7 @@ let defaultRuntime = {
           property: "indexId",
         },
       },
+      controllerDID: { type: "view", viewType: "documentAccount" },
     },
     Index: {
       title: { type: "string", required: true, immutable: false },
@@ -198,6 +199,7 @@ let defaultRuntime = {
         immutable: false,
         indexed: true,
       },
+      controllerDID: { type: "view", viewType: "documentAccount" },
       items: {
         type: "view",
         viewType: "relation",
@@ -225,6 +227,12 @@ let defaultRuntime = {
         indexed: true,
       },
       indexId: {
+        type: "streamid",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      modelId: {
         type: "streamid",
         required: true,
         immutable: false,
@@ -262,6 +270,7 @@ let defaultRuntime = {
           property: "indexId",
         },
       },
+      controllerDID: { type: "view", viewType: "documentAccount" },
     },
     Profile: {
       bio: { type: "string", required: false, immutable: false },
@@ -436,11 +445,9 @@ export const setIndexedModelParams = async (app) => {
     commonEmbeds: `all`,
   });
 
-  const runTime = JSON.parse(
-    await readFile("../api/src/types/runtime-dev.json", "utf8"),
-  );
+  defaultRuntime = JSON.stringify(defaultRuntime);
 
-  defaultRuntime = JSON.stringify(runTime);
+  const runTime = c.toRuntime();
   Object.entries(runTime.models).forEach(([modelName, model]) => {
     defaultRuntime = defaultRuntime.replace(
       new RegExp(`Model_${modelName}_ID`, "g"),
