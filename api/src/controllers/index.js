@@ -1,6 +1,9 @@
 import { getRolesFromSession } from "../libs/lit/index.js";
 import { DIDService } from "../services/did.js";
 import { IndexService } from "../services/index.js";
+import RedisClient from "../clients/redis.js";
+
+const redis = RedisClient.getInstance();
 
 export const getIndexById = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
@@ -33,6 +36,8 @@ export const createIndex = async (req, res, next) => {
     if (!newIndex) {
       return res.status(500).json({ error: "Create index error" });
     }
+
+    await redis.hSet(`sessions`, newIndex.id, req.session.serialize());
 
     const didService = new DIDService(definition).setSession(req.session); //Personal
     await didService.setDIDIndex(newIndex.id, "owned");
