@@ -3,7 +3,6 @@ import axios from "axios";
 import { ItemService } from "../services/item.js";
 import { ComposeDBService } from "../services/composedb.js";
 import { EmbeddingService } from "../services/embedding.js";
-import { getPKPSessionForIndexer } from "../libs/lit/index.js";
 import RedisClient from "../clients/redis.js";
 import { CeramicClient } from "@ceramicnetwork/http-client";
 
@@ -123,7 +122,7 @@ class Indexer {
     const indexItem = await itemService.getIndexItemById(id, false);
 
     try {
-      const indexSession = await getPKPSessionForIndexer(indexItem.index);
+      const indexSession = await this.getIndexerSession(indexItem.index);
       await indexSession.did.authenticate();
 
       logger.info(
@@ -205,7 +204,7 @@ class Indexer {
 
           await this.processAllSubscriptions(indexItem);
 
-          const indexSession = await getPKPSessionForIndexer(indexItem.index);
+          const indexSession = await this.getIndexerSession(indexItem.index);
 
           const embeddingService = new EmbeddingService(
             this.definition,
