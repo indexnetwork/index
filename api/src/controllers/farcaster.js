@@ -33,7 +33,7 @@ export const createCast = async (req, res, next) => {
       ...payload,
     });
 
-    const indexId = `kjzl6kcym7w8y6wn1jtlh7ckgoc43sqtgswl4z5jy4xr0lhjpgh402zjlaszt7p`;
+    const indexId = `kjzl6kcym7w8ya9ox2ppqrv44frwo971ryv925tammb7ikkfq599dypbfl6nccw`;
 
     const itemService = new ItemService(definition).setSession(session);
     const item = await itemService.addItem(indexId, cast.id);
