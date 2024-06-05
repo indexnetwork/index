@@ -13,7 +13,7 @@ export const getIndexById = async (req, res, next) => {
     const index = await indexService.getIndexById(req.params.id);
 
     if (req.session) {
-      const userRoles = getRolesFromSession(req.session, definition);
+      const userRoles = getRolesFromSession(index, req.session, definition);
       Object.assign(index, { roles: userRoles });
     } else {
       Object.assign(index, { roles: { owner: false, creator: false } });

@@ -622,25 +622,18 @@ export const getPKPSessionWithLIT = async (session, index) => {
   }
 };
 
-export const getRolesFromSession = (session, definition) => {
-  if (session.cacao.p.resources.indexOf("ceramic://*") > -1) {
+export const getRolesFromSession = (index, session, definition) => {
+  if (
+    session.cacao.p.resources.indexOf("ceramic://*") > -1 &&
+    index.ownerDID.id == session.did.parent
+  ) {
     return {
       owner: true,
       creator: false,
     };
   }
-  const authorizedModels = new Set(
-    session.cacao.p.resources.map((r) => r.replace("ceramic://*?model=", "")),
-  );
-
-  const owner = authorizedModels.has(definition.models.Index.id);
-
-  const creator =
-    authorizedModels.has(definition.models.IndexItem.id) &&
-    authorizedModels.has(definition.models.Embedding.id);
-
   return {
-    owner,
-    creator,
+    owner: false,
+    creator: false,
   };
 };
