@@ -166,7 +166,7 @@ export class DIDService {
       const indexService = new IndexService(this.definition);
       return Object.values(indexes)
         .filter((i) => i.did.owned || i.did.starred)
-        .map(indexService.transformIndex(i))
+        .map((i) => indexService.transformIndex(i))
         .sort((a, b) => {
           return new Date(b.createdAt) - new Date(a.createdAt);
         });
