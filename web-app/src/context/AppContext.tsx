@@ -130,11 +130,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       if (!apiReady) return;
       try {
         const fetchedIndexes = await api!.getAllIndexes(did);
-        const sortedIndexes = fetchedIndexes.sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        );
-        setIndexes(sortedIndexes);
+
+        setIndexes(fetchedIndexes);
       } catch (error) {
         console.error("Error fetching indexes", error);
         toast.error("Error fetching indexes, please refresh the page");

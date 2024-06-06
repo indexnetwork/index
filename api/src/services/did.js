@@ -29,7 +29,7 @@ export class DIDService {
       this.client.setDID(this.did);
       const { data, errors } = await this.client.executeQuery(`{
               viewer{
-                didIndexList(first: 1, sorting: {createdAt: DESC}, filters: { where: {type: {equalTo: "${type}"}, indexId: {equalTo: "${indexId}"}}}) {
+                didIndexList(first: 1, sorting: {updatedAt: DESC}, filters: { where: {type: {equalTo: "${type}"}, indexId: {equalTo: "${indexId}"}}}) {
                   edges {
                     node {
                       ... on DIDIndex {
@@ -97,7 +97,7 @@ export class DIDService {
             query{
                 node(id:"${did}") {
                 ... on CeramicAccount{
-                        didIndexList (${didIndexListArguments}, sorting: {createdAt: DESC}) {
+                        didIndexList (${didIndexListArguments}, sorting: {updatedAt: DESC}) {
                             edges {
                                 node {
                                     id
@@ -146,30 +146,36 @@ export class DIDService {
         return [];
       }
 
-      const indexes = data.node.didIndexList.edges.reduce((acc, edge) => {
+      const indexesMap = new Map();
+      const uniqueIndexes = [];
+
+      data.node.didIndexList.edges.forEach((edge) => {
         const indexId = edge.node.index.id;
-        if (!acc[indexId]) {
-          acc[indexId] = {
+
+        if (!indexesMap.has(indexId)) {
+          const newIndex = {
             did: { owned: false, starred: false },
             ...edge.node.index,
           };
+
+          indexesMap.set(indexId, newIndex);
+          uniqueIndexes.push(newIndex);
         }
+
+        const currentIndex = indexesMap.get(indexId);
 
         if (edge.node.type === "owned") {
-          acc[indexId].did.owned = true;
+          currentIndex.did.owned = true;
         } else if (edge.node.type === "starred") {
-          acc[indexId].did.starred = true;
+          currentIndex.did.starred = true;
         }
-        return acc;
-      }, {});
+      });
 
       const indexService = new IndexService(this.definition);
-      return Object.values(indexes)
+      console.log(uniqueIndexes);
+      return uniqueIndexes
         .filter((i) => i.did.owned || i.did.starred)
-        .map((i) => indexService.transformIndex(i))
-        .sort((a, b) => {
-          return new Date(b.createdAt) - new Date(a.createdAt);
-        });
+        .map((i) => indexService.transformIndex(i));
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in createDIDIndex:", error);
