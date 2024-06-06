@@ -85,7 +85,7 @@ export const createCast = async (req, res, next) => {
     const itemService = new ItemService(definition).setSession(session);
     const item = await itemService.addItem(indexId, cast.id);
     console.log({ cast, item, indexId });
-    res.status(201).json({ cast, item, indexId });
+    res.status(201).json({ did: session.did.parent, cast, item, indexId });
   } catch (error) {
     res.status(500).json({ error: error.message, input: req.body.data });
   }
