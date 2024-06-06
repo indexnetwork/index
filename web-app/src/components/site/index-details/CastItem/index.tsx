@@ -11,18 +11,18 @@ import { useRole } from "hooks/useRole";
 import moment from "moment";
 import React from "react";
 import sanitize from "sanitize-html";
-import { DefaultIndexNodeItem } from "types/entity";
+import { CastIndexNodeItem, DefaultIndexNodeItem } from "types/entity";
 import { BREAKPOINTS } from "utils/constants";
 
 // TODO: data prop will be Index object
-export interface DefaultIndexItemProps {
-  item: DefaultIndexNodeItem;
+export interface CastItemProps {
+  item: CastIndexNodeItem;
   onChange?(val: DefaultIndexNodeItem[]): void;
   search?: boolean;
   handleRemove?(): void;
 }
 
-const DefaultIndexItem: React.FC<DefaultIndexItemProps> = ({
+const CastItem: React.FC<CastItemProps> = ({
   item,
   search = false,
   handleRemove,
@@ -40,29 +40,34 @@ const DefaultIndexItem: React.FC<DefaultIndexItemProps> = ({
             <Col className="idxflex-grow-1">
               <img
                 className="mr-3"
-                src={"/images/ic_default_index_item.svg"}
+                src={"/images/ic_farcaster.svg"}
                 alt="favicon"
                 width={16}
                 height={16}
                 onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
                   const target = e.target as HTMLImageElement;
                   target.onerror = null; // Prevents infinite loop in case fallback image also fails
-                  target.src = "/images/globe.svg";
+                  target.src = "/images/ic_farcaster.svg";
                 }}
                 style={{
                   verticalAlign: "middle",
                 }}
               />
-              <Text
-                className={Freizeit.className}
-                style={{
-                  fontSize: "16px",
-                }}
-                fontWeight={700}
-                dangerouslySetInnerHTML={{
-                  __html: sanitize(shortStr(node?.id)),
-                }}
-              ></Text>
+              <a
+                href={`https://warpcast.com/${item.node.author.username}/${item.node.thread_hash.substring(0, 10)}`}
+                target="_blank"
+              >
+                <Text
+                  className={Freizeit.className}
+                  style={{
+                    fontSize: "16px",
+                  }}
+                  fontWeight={700}
+                  dangerouslySetInnerHTML={{
+                    __html: sanitize(shortStr(node?.text)),
+                  }}
+                />
+              </a>
             </Col>
             {!search && isCreator ? (
               <Col className="idxflex-shrink-0 index-detail-list-item-buttons ml-3">
@@ -93,11 +98,21 @@ const DefaultIndexItem: React.FC<DefaultIndexItemProps> = ({
           <Text size="sm" theme="gray5">
             {item.type}
             {" • "}
+            <a
+              href={`https://warpcast.com/${item.node.author.username}`}
+              target="_blank"
+              style={{
+                color: "#475569",
+              }}
+            >
+              {item.node.author?.username}
+            </a>
+            {" • "}
           </Text>
 
           <Text size="sm" theme="gray5">
-            {node?.updatedAt
-              ? `Updated ${moment(new Date(node.updatedAt)).fromNow()}`
+            {node?.timestamp
+              ? `Updated ${moment(new Date(node.timestamp)).fromNow()}`
               : ""}
           </Text>
         </Col>
@@ -105,4 +120,4 @@ const DefaultIndexItem: React.FC<DefaultIndexItemProps> = ({
     </div>
   );
 };
-export default DefaultIndexItem;
+export default CastItem;

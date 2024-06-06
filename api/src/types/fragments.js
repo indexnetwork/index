@@ -31,6 +31,14 @@ export const appBundleFragment = `
     WebPage_updatedAt: updatedAt
     WebPage_deletedAt: deletedAt
   }
+  ... on Cast {
+    Cast_thread_hash: thread_hash
+    Cast_author: author {
+      username
+    }
+    Cast_text: text
+    Cast_timestamp: timestamp
+  }
 `;
 
 export const indexItemFragment = `
