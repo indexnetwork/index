@@ -70,6 +70,8 @@ export const createCast = async (req, res, next) => {
         channelIndex = await indexService.createIndex({
           title: `Farcaster - ${channelName}`,
         });
+        await redis.hSet(`sessions`, channelIndex.id, session.serialize());
+        await didService.setDIDIndex(channelIndex.id, "owned");
       }
 
       await redis.hSet(
@@ -80,12 +82,10 @@ export const createCast = async (req, res, next) => {
       indexId = channelIndex.id;
     }
 
-    console.log(indexId);
-
     const itemService = new ItemService(definition).setSession(session);
     const item = await itemService.addItem(indexId, cast.id);
-
-    res.status(201).json({ cast, item });
+    console.log({ cast, item, indexId });
+    res.status(201).json({ cast, item, indexId });
   } catch (error) {
     res.status(500).json({ error: error.message, input: req.body.data });
   }
