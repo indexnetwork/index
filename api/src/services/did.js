@@ -172,7 +172,7 @@ export class DIDService {
       });
 
       const indexService = new IndexService(this.definition);
-      console.log(uniqueIndexes);
+
       return uniqueIndexes
         .filter((i) => i.did.owned || i.did.starred)
         .map((i) => indexService.transformIndex(i));
