@@ -1,6 +1,12 @@
+import axios from "axios";
 import { DIDSession } from "did-session";
 import { ComposeDBService } from "../services/composedb.js";
 import { ItemService } from "../services/item.js";
+import { DIDService } from "../services/did.js";
+import RedisClient from "../clients/redis.js";
+import { IndexService } from "../services/index.js";
+
+const redis = RedisClient.getInstance();
 
 export const createCast = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
@@ -19,6 +25,10 @@ export const createCast = async (req, res, next) => {
       castFragment,
     ).setSession(session);
 
+    const didService = new DIDService(definition, castFragment).setSession(
+      session,
+    );
+
     const removeMentionedProfiles = (obj) => {
       const cleanBio = (profile) =>
         profile?.profile?.bio && delete profile.profile.bio.mentioned_profiles;
@@ -33,7 +43,44 @@ export const createCast = async (req, res, next) => {
       ...payload,
     });
 
-    const indexId = `kjzl6kcym7w8ya9ox2ppqrv44frwo971ryv925tammb7ikkfq599dypbfl6nccw`;
+    let indexId = await redis.hGet(`farcaster:channels`, payload.parent_url);
+    if (!indexId) {
+      const channelInfo = await axios.get(
+        `https://api.neynar.com/v2/farcaster/channel?id=${payload.parent_url}&type=parent_url&viewer_fid=3`,
+        {
+          headers: {
+            accept: "application/json",
+            api_key: process.env.NEYNAR_API_KEY,
+          },
+        },
+      );
+
+      const channelName = channelInfo.data.channel.name;
+      const didIndexes = await didService.getIndexes(
+        session.did.parent,
+        `owned`,
+      );
+
+      let channelIndex = didIndexes.find(
+        (index) => index.title === `Farcaster - ${channelName}`,
+      );
+
+      if (!channelIndex) {
+        const indexService = new IndexService(definition).setSession(session);
+        channelIndex = await indexService.createIndex({
+          title: `Farcaster - ${channelName}`,
+        });
+      }
+
+      await redis.hSet(
+        `farcaster:channels`,
+        payload.parent_url,
+        channelIndex.id,
+      );
+      indexId = channelIndex.id;
+    }
+
+    console.log(indexId);
 
     const itemService = new ItemService(definition).setSession(session);
     const item = await itemService.addItem(indexId, cast.id);

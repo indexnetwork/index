@@ -287,6 +287,11 @@ class Indexer {
       console.log(`Update evaluation response for ${chatId}`, resp.data);
       if (resp.data && !resp.data.includes("NOT_RELEVANT")) {
         await redis.publish(`newUpdate:${chatId}`, resp.data);
+        await redis.hSet(
+          `subscriptions`,
+          chatId,
+          JSON.stringify({ indexIds, messages: [messages, resp.data] }),
+        );
       }
     } catch (e) {
       console.log(e);
