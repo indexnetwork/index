@@ -13,7 +13,7 @@ setup(
   packages=find_packages(),
   include_package_data=True,
   package_data={
-      "indexnetwork_sdk": ["bin/session.bin"],
+      "indexclient": ["bin/session.bin"],
   },
   install_requires=[
     'abnf',
@@ -79,6 +79,10 @@ setup(
     'websockets',
     'wheel',
     'yarl',
+    'langchain-openai',
+    'langchain_chroma',
+    'chromadb',
+    'setuptools'
   ],
   python_requires='>=3.0',
 )
