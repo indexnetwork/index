@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
   name='indexnetwork-sdk',
-  version='0.0.15',
+  version='0.0.16',
   description='Index Network SDK',
   long_description=open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'README.MD')).read(),
   long_description_content_type='text/markdown',
