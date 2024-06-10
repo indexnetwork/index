@@ -52,6 +52,12 @@ export class IndexService {
                             type
                             controllerDID {
                                 id
+                                profile {
+                                  id
+                                  name
+                                  avatar
+                                  bio
+                                }
                             }
                             createdAt
                             updatedAt
