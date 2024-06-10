@@ -37,6 +37,8 @@ class DIDService {
       expirationTime: yearLater.toISOString(),
       resources: ["ceramic://*"],
     });
+    // Future, these will be stored in CapReg - object-capability registry
+    // https://forum.ceramic.network/t/cip-127-capreg-object-capability-registry/1082
 
     siweMessage.signature = await ethProvider.request({
       method: "personal_sign",
