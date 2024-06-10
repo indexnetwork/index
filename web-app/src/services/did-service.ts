@@ -21,7 +21,7 @@ class DIDService {
     await didKey.authenticate();
 
     const now = new Date(Date.now());
-    const thirtyDaysLater = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
+    const yearLater = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
     const domain = "index.network";
 
@@ -34,7 +34,7 @@ class DIDService {
       chainId: "1",
       nonce: randomString(10),
       issuedAt: now.toISOString(),
-      expirationTime: thirtyDaysLater.toISOString(),
+      expirationTime: yearLater.toISOString(),
       resources: ["ceramic://*"],
     });
 
