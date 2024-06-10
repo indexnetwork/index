@@ -29,6 +29,9 @@ export class EmbeddingService {
                   id
                   indexId
                   itemId
+                  controllerDID {
+                    id
+                  }
                   modelName
                   category
                   context
@@ -92,6 +95,9 @@ export class EmbeddingService {
                     id
                     indexId
                     itemId
+                    controllerDID {
+                      id
+                    }
                     modelName
                     category
                     context
@@ -172,6 +178,9 @@ export class EmbeddingService {
                             id
                             indexId
                             itemId
+                            controllerDID {
+                              id
+                            }
                             modelName
                             category
                             context
@@ -233,6 +242,9 @@ export class EmbeddingService {
                             id
                             indexId
                             itemId
+                            controllerDID {
+                              id
+                            }
                             modelName
                             category
                             context
