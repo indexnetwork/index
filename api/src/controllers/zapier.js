@@ -1,9 +1,8 @@
 import { getMetadata } from "../libs/crawl.js";
 import { ComposeDBService } from "../services/composedb.js";
 import { ItemService } from "../services/item.js";
-import { IndexService } from "../services/index.js";
-import { DIDSession } from "did-session";
 import axios from "axios";
+import { DIDService } from "../services/did.js";
 
 export const indexWebPage = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
@@ -13,21 +12,12 @@ export const indexWebPage = async (req, res, next) => {
   )[0];
 
   let params = req.body;
-  const sessionStr = Buffer.from(req.headers.authorization, "base64").toString(
-    "utf8",
-  );
-  const auth = JSON.parse(sessionStr);
-
-  const indexService = new IndexService(definition);
-  const index = await indexService.getIndexById(auth.indexId);
-
-  const zapierSession = await DIDSession.fromSession(auth.session);
 
   const composeDBService = new ComposeDBService(
     definition,
     webPageFragment,
-  ).setSession(zapierSession);
-  const itemService = new ItemService(definition).setSession(zapierSession);
+  ).setSession(req.session);
+  const itemService = new ItemService(definition).setSession(req.session);
 
   if (!params.title || !params.favicon) {
     const metaData = await getMetadata(params.url);
@@ -68,12 +58,40 @@ export const indexWebPage = async (req, res, next) => {
 
 export const authenticate = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
-  const sessionStr = Buffer.from(req.headers.authorization, "base64").toString(
-    "utf8",
-  );
-  const auth = JSON.parse(sessionStr);
+  try {
+    const didService = new DIDService(definition);
+    let profile = await didService.getProfile(req.session.did.parent);
 
-  const indexService = new IndexService(definition);
-  const index = await indexService.getIndexById(auth.indexId);
-  return res.json(index);
+    if (!profile || !profile.id) {
+      profile = {
+        id: req.session.did.parent,
+      };
+    }
+
+    res.status(200).json({ label: profile.name || profile.id, id: profile.id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const indexes = async (req, res) => {
+  // sendLit(req.params.id) // TODO Fix later.
+  const definition = req.app.get("runtimeDefinition");
+  try {
+    const didService = new DIDService(definition);
+    const { type, did } = req.params;
+    console.log(did);
+    const indexes = await didService.getIndexes(did, type);
+    res.status(200).json([
+      {
+        key: `indexId`,
+        label: `Index`,
+        choices: indexes.map((index) => {
+          return { value: index.id, label: index.title };
+        }),
+      },
+    ]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 };
