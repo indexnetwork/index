@@ -14,7 +14,7 @@ export interface FetchIndexResponse {
   controllerDID: {
     id: string;
   };
-  ownerDID: {
+  controllerDID: {
     id: string;
     name: string;
     bio: string;

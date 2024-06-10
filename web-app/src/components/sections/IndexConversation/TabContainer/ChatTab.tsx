@@ -39,6 +39,8 @@ export default function ChatTabSection() {
     ) : null;
   }
   return (
-    <NoIndexesChat isSelfDid={viewedIndex?.ownerDID.id === viewedProfile?.id} />
+    <NoIndexesChat
+      isSelfDid={viewedIndex?.controllerDID.id === viewedProfile?.id}
+    />
   );
 }

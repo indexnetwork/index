@@ -625,7 +625,7 @@ export const getPKPSessionWithLIT = async (session, index) => {
 export const getRolesFromSession = (index, session, definition) => {
   if (
     session.cacao.p.resources.indexOf("ceramic://*") > -1 &&
-    index.ownerDID.id == session.did.parent
+    index.controllerDID.id == session.did.parent
   ) {
     return {
       owner: true,

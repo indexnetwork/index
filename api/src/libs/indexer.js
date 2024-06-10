@@ -45,6 +45,12 @@ class Indexer {
     const itemService = new ItemService(this.definition);
     const indexItem = await itemService.getIndexItemById(id, false);
 
+    if (indexItem.index.controllerDID.id !== indexItem.controllerDID.id) {
+      logger.warn(
+        `Step [0]: IndexItem is unauthorized to index: ${JSON.stringify(indexItem)}`,
+      );
+      return;
+    }
     logger.info(
       `Step [0]: IndexItem found for id: ${JSON.stringify(indexItem)}`,
     );
@@ -120,6 +126,13 @@ class Indexer {
 
     const itemService = new ItemService(this.definition);
     const indexItem = await itemService.getIndexItemById(id, false);
+
+    if (indexItem.index.controllerDID.id !== indexItem.controllerDID.id) {
+      logger.warn(
+        `Step [0]: IndexItem is unauthorized to index: ${JSON.stringify(indexItem)}`,
+      );
+      return;
+    }
 
     try {
       const indexSession = await this.getIndexerSession(indexItem.index);
@@ -305,6 +318,13 @@ class Indexer {
     const embedding = await embeddingService.getEmbeddingById(id);
     const itemStream = await ceramic.loadStream(embedding.item.id);
 
+    if (embedding.index.controllerDID.id !== embedding.controllerDID.id) {
+      logger.warn(
+        `Step [0]: Embedding is unauthorized to index: ${JSON.stringify(indexItem)}`,
+      );
+      return;
+    }
+
     const doc = {
       ...itemStream.content,
       id: itemStream.id.toString(),
@@ -317,7 +337,7 @@ class Indexer {
       indexCreatedAt: embedding.index.createdAt,
       indexUpdatedAt: embedding.index.updatedAt,
       indexDeletedAt: embedding.index.deletedAt,
-      indexOwnerDID: embedding.index.ownerDID.id,
+      indexControllerDID: embedding.index.controllerDID.id,
       vector: embedding.vector,
     };
 
@@ -325,11 +345,11 @@ class Indexer {
       payload[key] = doc[key];
     }
 
-    if (embedding.index.ownerDID.name) {
-      payload.indexOwnerName = embedding.index.ownerDID.name;
+    if (embedding.index.controllerDID.name) {
+      payload.indexOwnerName = embedding.index.controllerDID.name;
     }
-    if (embedding.index.ownerDID.bio) {
-      payload.indexOwnerBio = embedding.index.ownerDID.bio;
+    if (embedding.index.controllerDID.bio) {
+      payload.indexOwnerBio = embedding.index.controllerDID.bio;
     }
 
     try {

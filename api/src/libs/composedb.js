@@ -218,6 +218,15 @@ let defaultRuntime = {
           property: "indexId",
         },
       },
+      embeddings: {
+        type: "view",
+        viewType: "relation",
+        relation: {
+          source: "queryConnection",
+          model: "Model_Embedding_ID",
+          property: "indexId",
+        },
+      },
     },
     IndexItem: {
       itemId: {
@@ -271,6 +280,15 @@ let defaultRuntime = {
         },
       },
       controllerDID: { type: "view", viewType: "documentAccount" },
+      embeddings: {
+        type: "view",
+        viewType: "relation",
+        relation: {
+          source: "queryConnection",
+          model: "Model_Embedding_ID",
+          property: "itemId",
+        },
+      },
     },
     Profile: {
       bio: { type: "string", required: false, immutable: false },

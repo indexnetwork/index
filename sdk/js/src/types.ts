@@ -13,7 +13,7 @@ export interface IIndex {
     owner: boolean;
     creator: boolean;
   };
-  ownerDID: IUser;
+  controllerDID: IUser;
   createdAt: string;
   updatedAt: string;
   deletedAt: string;

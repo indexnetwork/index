@@ -13,7 +13,7 @@ export type Indexes = {
     owner: boolean;
     creator: boolean;
   };
-  ownerDID: Users;
+  controllerDID: Users;
   createdAt: string;
   updatedAt: string;
   deletedAt: string;

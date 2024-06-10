@@ -10,6 +10,7 @@ export class EmbeddingService {
       definition,
     });
     this.did = null;
+    this.indexService = new IndexService(definition);
   }
 
   setSession(session) {
@@ -64,7 +65,6 @@ export class EmbeddingService {
       if (!data || !data.node) {
         throw new Error("Invalid response data");
       }
-      data.node.index.ownerDID = data.node.index.controllerDID;
 
       return data.node;
     } catch (error) {
@@ -97,6 +97,22 @@ export class EmbeddingService {
                     context
                     vector
                     description
+                    item {
+                      id
+                      __typename
+                    }
+                    index {
+                      id
+                      title
+                      controllerDID {
+                        id
+                      }
+                      signerPublicKey
+                      signerFunction
+                      createdAt
+                      updatedAt
+                      deletedAt
+                    }
                     createdAt
                     updatedAt
                     deletedAt

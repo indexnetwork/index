@@ -126,14 +126,17 @@ export const IndexConversationHeader: FC = () => {
                 display: "flex",
                 width: "fit-content",
               }}
-              href={`/${viewedIndex?.ownerDID?.id!}`}
+              href={`/${viewedIndex?.controllerDID?.id!}`}
             >
               <div
                 style={{ display: "flex", alignItems: "center", gap: "0.8em" }}
               >
-                <Avatar size={20} user={viewedIndex?.ownerDID} />
+                <Avatar size={20} user={viewedIndex?.controllerDID} />
                 <LoadingText
-                  val={viewedIndex?.ownerDID?.name || viewedIndex?.ownerDID?.id}
+                  val={
+                    viewedIndex?.controllerDID?.name ||
+                    viewedIndex?.controllerDID?.id
+                  }
                 >
                   <Text
                     size="sm"
@@ -141,9 +144,9 @@ export const IndexConversationHeader: FC = () => {
                     fontWeight={500}
                     element="span"
                   >
-                    {viewedIndex?.ownerDID?.name ||
-                      (viewedIndex?.ownerDID &&
-                        maskDID(viewedIndex?.ownerDID?.id!)) ||
+                    {viewedIndex?.controllerDID?.name ||
+                      (viewedIndex?.controllerDID &&
+                        maskDID(viewedIndex?.controllerDID?.id!)) ||
                       ""}
                   </Text>
                 </LoadingText>

@@ -33,8 +33,7 @@ export class IndexService {
       index.did = did;
     }
 
-    index.ownerDID = this.getOwnerProfile(index);
-    delete index.controllerDID;
+    index.controllerDID = this.getOwnerProfile(index);
     return index;
   }
   async getIndexById(id) {

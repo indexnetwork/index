@@ -321,11 +321,11 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     let targetDID;
     if (isIndex && !viewedProfile) {
       if (viewedIndex) {
-        targetDID = viewedIndex?.ownerDID?.id;
+        targetDID = viewedIndex?.controllerDID?.id;
       } else {
         fetchIndex(id, {}).then((index) => {
           if (index) {
-            targetDID = index?.ownerDID?.id;
+            targetDID = index?.controllerDID?.id;
             fetchIndexes(targetDID);
           }
         });

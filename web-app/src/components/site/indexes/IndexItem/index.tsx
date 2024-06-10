@@ -32,7 +32,7 @@ const IndexItem: FC<IndexItemProps> = ({ index, selected, onClick }) => (
       align={"center"}
     >
       <Col>
-        <Avatar size={40} user={index.ownerDID} />
+        <Avatar size={40} user={index.controllerDID} />
       </Col>
       <Col className="px-3">
         <Flex flexdirection={"column"}>
@@ -43,7 +43,7 @@ const IndexItem: FC<IndexItemProps> = ({ index, selected, onClick }) => (
             fontWeight={500}
             element="p"
           >
-            {index.ownerDID.name || maskDID(index.ownerDID.id!) || ""}
+            {index.controllerDID.name || maskDID(index.controllerDID.id!) || ""}
           </Text>
           <Header
             level={4}

@@ -46,6 +46,9 @@ export const indexItemFragment = `
     id
     indexId
     itemId
+    controllerDID {
+      id
+    }
     modelId
     createdAt
     updatedAt
@@ -60,6 +63,9 @@ export const indexItemFragment = `
       title
       signerPublicKey
       signerFunction
+      controllerDID {
+        id
+      }
       createdAt
       updatedAt
       deletedAt

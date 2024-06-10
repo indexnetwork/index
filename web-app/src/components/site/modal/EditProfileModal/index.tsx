@@ -37,10 +37,10 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
 
   const updateIndexesOwnerProfile = useCallback((profile: Users) => {
     const updatedIndexes = indexes.map((index: Indexes) => {
-      if (index.ownerDID.id === profile.id) {
+      if (index.controllerDID.id === profile.id) {
         return {
           ...index,
-          ownerDID: profile,
+          controllerDID: profile,
         };
       }
       return index;
