@@ -79,17 +79,31 @@ export class EmbeddingService {
 
   async getEmbedding(indexId, itemId, modelName, category) {
     try {
+      const index = await this.indexService.getIndexById(indexId);
       const { data, errors } = await this.client.executeQuery(`
-            query{
-              embeddingIndex(first:1, filters: {
-                where: {
-                  itemId: { equalTo: "${itemId}"},
-                  indexId: { equalTo: "${indexId}"}
-                  modelName: { equalTo: "${modelName}"}
-                  category: { equalTo: "${category}"}
-                  deletedAt: {isNull: true}
+        {
+          node(id: "${indexId}") {
+            ... on Index {
+              embeddings(
+                first: 1
+                account: "${index.controllerDID.id}"
+                filters: {
+                  where: {
+                    itemId: {
+                      equalTo: "${itemId}"
+                    },
+                    modelName: {
+                      equalTo: "${modelName}"
+                    },
+                    category: {
+                      equalTo: "${category}"
+                    },
+                    deletedAt: {
+                      isNull: true
+                    }
+                  }
                 }
-              }, sorting: { createdAt: DESC}) {
+              ) {
                 edges {
                   node {
                     id
@@ -125,22 +139,32 @@ export class EmbeddingService {
                   }
                 }
               }
-            }`);
+            }
+          }
+        }
+        `);
 
       // Handle GraphQL errors
       if (errors) {
         throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
       }
       // Validate the data response
-      if (!data || !data.embeddingIndex || !data.embeddingIndex.edges) {
+      if (
+        !data ||
+        !data.node ||
+        !data.node.embeddings ||
+        !data.node.embeddings.edges
+      ) {
         throw new Error("Invalid response data");
       }
 
-      if (data.embeddingIndex.edges.length === 0) {
+      const embeddingResp = data.node.embeddings.edges;
+
+      if (embeddingResp.length === 0) {
         return null;
       }
 
-      return data.embeddingIndex.edges[0].node;
+      return embeddingResp[0].node;
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in embeddingIndex:", error);
