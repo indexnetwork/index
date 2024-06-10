@@ -38,6 +38,7 @@ class DIDService {
       resources: ["ceramic://*"],
     });
     // Future, these will be stored in CapReg - object-capability registry
+    // That will allow us to revoke sessions.
     // https://forum.ceramic.network/t/cip-127-capreg-object-capability-registry/1082
 
     siweMessage.signature = await ethProvider.request({
