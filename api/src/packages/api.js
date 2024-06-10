@@ -441,8 +441,13 @@ app.patch(
 
 //Todo refactor later.
 app.post(
-  "/zapier/index/webpage",
+  "/zapier/index/:indexId/webpage",
   authCheckMiddleware,
+  validator.params(
+    Joi.object({
+      indexId: Joi.custom(isStreamID, "Index ID").required(),
+    }),
+  ),
   validator.body(
     Joi.object({
       title: Joi.string().required(),
@@ -454,16 +459,7 @@ app.post(
   zapierController.indexWebPage,
 );
 app.get("/zapier/auth", authCheckMiddleware, zapierController.authenticate);
-app.get(
-  "/zapier/did/:did/indexes",
-  validator.params(
-    Joi.object({
-      did: Joi.custom(isDID, "DID").required(),
-      type: Joi.string().valid("own", "star").optional(),
-    }),
-  ),
-  zapierController.indexes,
-);
+app.get("/zapier/indexes", authCheckMiddleware, zapierController.indexes);
 
 //Todo refactor later.
 app.get("/lit_actions/:cid", litProtocol.getAction);
