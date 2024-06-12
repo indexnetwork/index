@@ -12,7 +12,7 @@ const decryptJWE = async (did, str) => {
   }
 };
 
-export class DIDService {
+export class Conversation {
   constructor(definition) {
     this.definition = definition;
     this.client = new ComposeClient({
@@ -23,7 +23,7 @@ export class DIDService {
   }
 
   setSession(session) {
-    if (session && session.did.authenticated) {
+    if (session && session.did && session.did.authenticated) {
       this.did = session.did;
     }
     return this;
@@ -31,7 +31,7 @@ export class DIDService {
 
   async listConversations() {
     if (!this.did) {
-      throw new Error("DID not set. Use setDID() to set the did.");
+      throw new Error("DID not set. Use setSession() to set the did.");
     }
 
     try {
@@ -112,7 +112,7 @@ export class DIDService {
 
   async getConversation(id) {
     if (!this.did) {
-      throw new Error("DID not set. Use setDID() to set the did.");
+      throw new Error("DID not set. Use setSession() to set the did.");
     }
 
     try {
@@ -150,7 +150,7 @@ export class DIDService {
       // Handle GraphQL errors
       if (errors) {
         throw new Error(
-          `Error getting conversations: ${JSON.stringify(errors)}`,
+          `Error getting conversation: ${JSON.stringify(errors)}`,
         );
       }
 
@@ -159,17 +159,17 @@ export class DIDService {
         throw new Error("Invalid response data");
       }
 
-      if (data.node.messages.length === 0) {
+      if (data.node.messages.edges.length === 0) {
         return [];
       }
 
-      const conversations = data.node.messages.edges.map(async (edge) => {
+      const messages = data.node.messages.edges.map(async (edge) => {
         return {
           ...edge.node,
-          metadata: await decryptJWE(this.did, edge.node.metadata),
+          content: await decryptJWE(this.did, edge.node.content),
         };
       });
-      return await Promise.all(conversations);
+      return await Promise.all(messages);
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in returning conversation:", error);
@@ -179,7 +179,7 @@ export class DIDService {
 
   async createConversation(params) {
     if (!this.did) {
-      throw new Error("DID not set. Use setDID() to set the did.");
+      throw new Error("DID not set. Use setSession() to set the did.");
     }
     try {
       const content = {
@@ -210,7 +210,9 @@ export class DIDService {
       );
       // Handle GraphQL errors
       if (errors) {
-        throw new Error(`Error creating embedding: ${JSON.stringify(errors)}`);
+        throw new Error(
+          `Error creating conversation: ${JSON.stringify(errors)}`,
+        );
       }
 
       // Validate the data response
@@ -230,14 +232,14 @@ export class DIDService {
       };
     } catch (error) {
       // Log the error and rethrow it for external handling
-      console.error("Exception occurred in createEmbedding:", error);
+      console.error("Exception occurred in createConversation:", error);
       throw error;
     }
   }
 
   async updateConversation(id, params) {
     if (!this.did) {
-      throw new Error("DID not set. Use setDID() to set the did.");
+      throw new Error("DID not set. Use setSession() to set the did.");
     }
     try {
       const content = {
@@ -294,7 +296,7 @@ export class DIDService {
         throw new Error("Invalid response data");
       }
 
-      // Return the created index document
+      // Return the updated conversation document
       return data.updateConversation.document;
     } catch (error) {
       // Log the error and rethrow it for external handling
@@ -304,17 +306,32 @@ export class DIDService {
   }
 
   async deleteConversation(id) {
-    const content = {
-      ...params,
-      updatedAt: getCurrentDateTime(),
-      deletedAt: getCurrentDateTime(),
-    };
-    return await this.updateConversation(id, content);
+    if (!this.did) {
+      throw new Error("DID not set. Use setSession() to set the did.");
+    }
+
+    try {
+      const conversation = await this.getConversation(id);
+
+      if (conversation && conversation.messages) {
+        for (const message of conversation.messages) {
+          await this.deleteMessage(message.id);
+        }
+      }
+
+      // Delete the conversation
+      return await this.updateConversation(id, {
+        deletedAt: getCurrentDateTime(),
+      });
+    } catch (error) {
+      console.error("Exception occurred in deleting conversation:", error);
+      throw error;
+    }
   }
 
   async getMessage(id) {
     if (!this.did) {
-      throw new Error("DID not set. Use setDID() to set the did.");
+      throw new Error("DID not set. Use setSession() to set the did.");
     }
 
     try {
@@ -344,44 +361,29 @@ export class DIDService {
 
       // Handle GraphQL errors
       if (errors) {
-        throw new Error(
-          `Error getting conversations: ${JSON.stringify(errors)}`,
-        );
+        throw new Error(`Error getting message: ${JSON.stringify(errors)}`);
       }
 
       // Validate the data response
-      if (
-        !data ||
-        !data.node ||
-        !data.messages.conversationList ||
-        !data.viewer.conversationList.edges
-      ) {
+      if (!data || !data.node || !data.node.content) {
         throw new Error("Invalid response data");
       }
 
-      if (data.viewer.conversationList.edges.length === 0) {
-        return [];
-      }
-
-      const conversations = data.viewer.conversationList.edges.map(
-        async (edge) => {
-          return {
-            ...edge.node,
-            metadata: await decryptJWE(this.did, edge.node.metadata),
-          };
-        },
-      );
-      return await Promise.all(conversations);
+      const message = {
+        ...data.node,
+        content: await decryptJWE(this.did, data.node.content),
+      };
+      return message;
     } catch (error) {
       // Log the error and rethrow it for external handling
-      console.error("Exception occurred in returning conversation:", error);
+      console.error("Exception occurred in returning message:", error);
       throw error;
     }
   }
 
   async createMessage(params) {
     if (!this.did) {
-      throw new Error("DID not set. Use setDID() to set the did.");
+      throw new Error("DID not set. Use setSession() to set the did.");
     }
     try {
       const content = {
@@ -435,9 +437,26 @@ export class DIDService {
 
   async updateMessage(id, params, deleteAfter = false) {
     if (!this.did) {
-      throw new Error("DID not set. Use setDID() to set the did.");
+      throw new Error("DID not set. Use setSession() to set the did.");
     }
+
     try {
+      // Fetch the message if deleteAfter is true
+      if (deleteAfter) {
+        const message = await this.getMessage(id);
+        const conversation = await this.getConversation(
+          message.conversation.id,
+        );
+
+        if (conversation && conversation.messages) {
+          for (const messageEdge of conversation.messages.edges.filter(
+            (m) => new Date(m.node.createdAt) > new Date(message.createdAt),
+          )) {
+            await this.deleteMessage(messageEdge.node.id);
+          }
+        }
+      }
+
       const content = {
         ...params,
         updatedAt: getCurrentDateTime(),
@@ -446,22 +465,23 @@ export class DIDService {
 
       const { data, errors } = await this.client.executeQuery(
         `
-                mutation UpdateMessage($input: UpdateMessageInput!) {
-                    updateMessage(input: $input) {
-                        document {
-                          id
-                          content
-                          createdAt
-                          updatedAt
-                          deletedAt
-                          controllerDID {
-                            id
-                          }
-                        }
-                    }
-                }`,
+          mutation UpdateMessage($input: UpdateMessageInput!) {
+            updateMessage(input: $input) {
+              document {
+                id
+                content
+                createdAt
+                updatedAt
+                deletedAt
+                controllerDID {
+                  id
+                }
+              }
+            }
+          }`,
         { input: { id, content } },
       );
+
       // Handle GraphQL errors
       if (errors) {
         throw new Error(`Error updating message: ${JSON.stringify(errors)}`);
@@ -481,12 +501,7 @@ export class DIDService {
     }
   }
 
-  async deleteMessasge(id) {
-    const content = {
-      ...params,
-      updatedAt: getCurrentDateTime(),
-      deletedAt: getCurrentDateTime(),
-    };
-    return await this.updateMessage(id, content);
+  async deleteMessage(id) {
+    return await this.updateMessage(id, { deletedAt: getCurrentDateTime() });
   }
 }
