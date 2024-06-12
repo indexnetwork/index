@@ -81,6 +81,12 @@ let defaultRuntime = {
   },
   objects: {
     Conversation: {
+      members: {
+        type: "list",
+        required: false,
+        immutable: false,
+        item: { type: "did", required: false, immutable: false },
+      },
       metadata: { type: "string", required: true, immutable: false },
       createdAt: {
         type: "datetime",

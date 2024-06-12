@@ -1,5 +1,9 @@
 import { ComposeClient } from "@composedb/client";
 import { getCurrentDateTime } from "../utils/helpers.js";
+import { DID } from "dids";
+import { Ed25519Provider } from "key-did-provider-ed25519";
+import { getResolver } from "key-did-resolver";
+import { fromString } from "uint8arrays/from-string";
 
 const decryptJWE = async (did, str) => {
   try {
@@ -11,15 +15,35 @@ const decryptJWE = async (did, str) => {
     throw new Error("Decryption failed. Please check the input and try again.");
   }
 };
-const createDagJWE = async (did, cleartext) => {
+const createDagJWE = async (dids, cleartext) => {
   try {
-    const jwe = await did.createDagJWE(cleartext, [did.id]);
+    const jwe = await dids[0].createDagJWE(
+      cleartext,
+      dids.map((d) => d.id),
+    );
     const stringified = JSON.stringify(jwe).replace(/"/g, "`");
     return stringified;
   } catch (error) {
     console.error("Failed to create JWE:", error);
     throw new Error("Encryption failed. Please check the input and try again.");
   }
+};
+
+const getAgentDID = async () => {
+  const indexerWalletPrivateKey = process.env.INDEXER_WALLET_PRIVATE_KEY;
+  if (!indexerWalletPrivateKey) {
+    return false;
+  }
+  const key = fromString(indexerWalletPrivateKey, "base16");
+  const did = new DID({
+    resolver: getResolver(),
+    provider: new Ed25519Provider(key),
+  });
+  await did.authenticate();
+  if (!did.authenticated) {
+    return false;
+  }
+  return did;
 };
 
 //stringify your JWE object and replace escape characters
@@ -62,6 +86,9 @@ export class ConversationService {
                     updatedAt
                     deletedAt
                     controllerDID {
+                      id
+                    }
+                    members {
                       id
                     }
                     messages(last:1) {
@@ -128,7 +155,7 @@ export class ConversationService {
               delete edge.node.content;
               return {
                 ...edge.node,
-                ...decryptJWE,
+                ...decryptedJWE,
               };
             }),
           );
@@ -226,8 +253,10 @@ export class ConversationService {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
     try {
+      const agentDID = await getAgentDID();
       const content = {
-        metadata: await createDagJWE(this.did, params),
+        metadata: await createDagJWE([this.did, agentDID], params),
+        members: [this.did.id, agentDID.id],
         createdAt: getCurrentDateTime(),
         updatedAt: getCurrentDateTime(),
       };
@@ -243,6 +272,9 @@ export class ConversationService {
               createdAt
               updatedAt
               deletedAt
+              members {
+                id
+              }
               controllerDID {
                 id
               }
@@ -293,9 +325,13 @@ export class ConversationService {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
     try {
+      const agentDID = await getAgentDID();
       const { deletedAt, ...paramsWithoutDeletedAt } = params;
       const content = {
-        metadata: await createDagJWE(this.did, paramsWithoutDeletedAt),
+        metadata: await createDagJWE(
+          [this.did, agentDID],
+          paramsWithoutDeletedAt,
+        ),
         updatedAt: getCurrentDateTime(),
       };
       if (deletedAt) {
@@ -463,9 +499,10 @@ export class ConversationService {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
     try {
+      const agentDID = await getAgentDID();
       const content = {
         conversationId,
-        content: await createDagJWE(this.did, params),
+        content: await createDagJWE([this.did, agentDID], params),
         createdAt: getCurrentDateTime(),
         updatedAt: getCurrentDateTime(),
       };
@@ -523,8 +560,6 @@ export class ConversationService {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
 
-    console.log(params);
-
     try {
       // Fetch the message if deleteAfter is true
       if (deleteAfter) {
@@ -544,18 +579,17 @@ export class ConversationService {
       }
 
       const { deletedAt, ...paramsWithoutDeletedAt } = params;
+      const agentDID = await getAgentDID();
       const content = {
         conversationId,
         content: paramsWithoutDeletedAt
-          ? await createDagJWE(this.did, paramsWithoutDeletedAt)
+          ? await createDagJWE([this.did, agentDID], paramsWithoutDeletedAt)
           : "",
         updatedAt: getCurrentDateTime(),
       };
       if (deletedAt) {
         content.deletedAt = deletedAt;
       }
-
-      console.log(content);
 
       this.client.setDID(this.did);
 
