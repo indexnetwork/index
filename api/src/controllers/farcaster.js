@@ -37,7 +37,12 @@ export const createCast = async (req, res, next) => {
       return obj;
     };
 
-    const payload = removeMentionedProfiles(req.body.data);
+    let payload = removeMentionedProfiles(req.body.data);
+
+    payload.embeds = payload.embeds.map((e) => {
+      e.cast_id.fid = e.cast_id.fid.toString();
+      return e;
+    });
 
     const cast = await composeDBService.createNode({
       ...payload,
