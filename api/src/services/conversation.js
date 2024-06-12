@@ -11,8 +11,20 @@ const decryptJWE = async (did, str) => {
     throw new Error("Decryption failed. Please check the input and try again.");
   }
 };
+const createDagJWE = async (did, cleartext) => {
+  try {
+    const jwe = await did.createDagJWE(cleartext, [did.id]);
+    const stringified = JSON.stringify(jwe).replace(/"/g, "`");
+    return stringified;
+  } catch (error) {
+    console.error("Failed to create JWE:", error);
+    throw new Error("Encryption failed. Please check the input and try again.");
+  }
+};
 
-export class Conversation {
+//stringify your JWE object and replace escape characters
+
+export class ConversationService {
   constructor(definition) {
     this.definition = definition;
     this.client = new ComposeClient({
@@ -129,7 +141,7 @@ export class Conversation {
           createdAt
           updatedAt
           deletedAt
-          messages(first: 10000, sorting: {updatedAt: DESC}) {
+          messages(first: 1000,  filters: {where: {deletedAt: {isNull: true}}}, sorting: {createdAt: ASC}) {
             edges {
               node {
                 id
@@ -159,17 +171,25 @@ export class Conversation {
         throw new Error("Invalid response data");
       }
 
-      if (data.node.messages.edges.length === 0) {
-        return [];
+      if (data.node.deletedAt) {
+        return null;
       }
+      const decryptedMetadata = await decryptJWE(this.did, data.node.metadata);
+      data.node.sources = decryptedMetadata.sources;
+      data.node.summary = decryptedMetadata.summary;
+      delete data.node.metadata;
 
-      const messages = data.node.messages.edges.map(async (edge) => {
-        return {
-          ...edge.node,
-          content: await decryptJWE(this.did, edge.node.content),
-        };
-      });
-      return await Promise.all(messages);
+      const messages = await Promise.all(
+        data.node.messages.edges.map(async (edge) => {
+          return {
+            ...edge.node,
+            content: await decryptJWE(this.did, edge.node.content),
+          };
+        }),
+      );
+
+      data.node.messages = messages;
+      return data.node;
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in returning conversation:", error);
@@ -183,7 +203,7 @@ export class Conversation {
     }
     try {
       const content = {
-        ...params,
+        metadata: await createDagJWE(this.did, params),
         createdAt: getCurrentDateTime(),
         updatedAt: getCurrentDateTime(),
       };
@@ -223,12 +243,19 @@ export class Conversation {
       ) {
         throw new Error("Invalid response data");
       }
+
+      const decryptedMetadata = await decryptJWE(
+        this.did,
+        data.createConversation.document.metadata,
+      );
+
+      // Deconstruct document and override metadata
+      const { metadata, ...documentWithoutMetadata } =
+        data.createConversation.document;
+
       return {
-        ...data.createConversation.document,
-        metadata: await decryptJWE(
-          this.did,
-          data.createConversation.document.metadata,
-        ),
+        ...documentWithoutMetadata,
+        ...decryptedMetadata,
       };
     } catch (error) {
       // Log the error and rethrow it for external handling
@@ -242,10 +269,15 @@ export class Conversation {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
     try {
+      const { deletedAt, ...paramsWithoutDeletedAt } = params;
       const content = {
-        ...params,
+        metadata: await createDagJWE(this.did, paramsWithoutDeletedAt),
         updatedAt: getCurrentDateTime(),
       };
+      if (deletedAt) {
+        content.deletedAt = deletedAt;
+      }
+
       this.client.setDID(this.did);
 
       const { data, errors } = await this.client.executeQuery(
@@ -296,8 +328,29 @@ export class Conversation {
         throw new Error("Invalid response data");
       }
 
-      // Return the updated conversation document
-      return data.updateConversation.document;
+      const decryptedMetadata = await decryptJWE(
+        this.did,
+        data.updateConversation.document.metadata,
+      );
+
+      // Deconstruct document and override metadata
+      const { metadata, ...documentWithoutMetadata } =
+        data.updateConversation.document;
+
+      const messages = await Promise.all(
+        documentWithoutMetadata.messages.edges.map(async (edge) => {
+          return {
+            ...edge.node,
+            content: await decryptJWE(this.did, edge.node.content),
+          };
+        }),
+      );
+
+      documentWithoutMetadata.messages = messages;
+      return {
+        ...documentWithoutMetadata,
+        ...decryptedMetadata,
+      };
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in updateConversation:", error);
@@ -381,13 +434,14 @@ export class Conversation {
     }
   }
 
-  async createMessage(params) {
+  async createMessage(conversationId, params) {
     if (!this.did) {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
     try {
       const content = {
-        ...params,
+        conversationId,
+        content: await createDagJWE(this.did, params),
         createdAt: getCurrentDateTime(),
         updatedAt: getCurrentDateTime(),
       };
@@ -395,8 +449,8 @@ export class Conversation {
 
       const { data, errors } = await this.client.executeQuery(
         `
-        mutation CreateMessage($input: CreateMessageInput!) {
-          createMessage(input: $input) {
+        mutation CreateEncryptedMessage($input: CreateEncryptedMessageInput!) {
+          createEncryptedMessage(input: $input) {
             document {
               id
               content
@@ -418,55 +472,73 @@ export class Conversation {
       }
 
       // Validate the data response
-      if (!data || !data.createMessage || !data.createMessage.document) {
+      if (
+        !data ||
+        !data.createEncryptedMessage ||
+        !data.createEncryptedMessage.document
+      ) {
         throw new Error("Invalid response data");
       }
+      const decryptedContent = await decryptJWE(
+        this.did,
+        data.createEncryptedMessage.document.content,
+      );
       return {
-        ...data.createMessage.document,
-        content: await decryptJWE(
-          this.did,
-          data.createMessage.document.content,
-        ),
+        ...data.createEncryptedMessage.document,
+        ...decryptedContent,
       };
     } catch (error) {
       // Log the error and rethrow it for external handling
-      console.error("Exception occurred in createMessage:", error);
+      console.error("Exception occurred in createEncryptedMessage:", error);
       throw error;
     }
   }
 
-  async updateMessage(id, params, deleteAfter = false) {
+  async updateMessage(conversationId, messageId, params, deleteAfter = false) {
     if (!this.did) {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
 
+    console.log(params);
+
     try {
       // Fetch the message if deleteAfter is true
       if (deleteAfter) {
-        const message = await this.getMessage(id);
-        const conversation = await this.getConversation(
-          message.conversation.id,
-        );
-
-        if (conversation && conversation.messages) {
-          for (const messageEdge of conversation.messages.edges.filter(
-            (m) => new Date(m.node.createdAt) > new Date(message.createdAt),
+        const message = await this.getMessage(messageId);
+        const conversation = await this.getConversation(conversationId);
+        if (
+          conversation &&
+          conversation.messages &&
+          conversation.messages.length > 0
+        ) {
+          for (const messageEdge of conversation.messages.filter(
+            (m) => new Date(m.createdAt) > new Date(message.createdAt),
           )) {
-            await this.deleteMessage(messageEdge.node.id);
+            await this.deleteMessage(messageEdge.id);
           }
         }
       }
 
+      const { deletedAt, ...paramsWithoutDeletedAt } = params;
       const content = {
-        ...params,
+        conversationId,
+        content: paramsWithoutDeletedAt
+          ? await createDagJWE(this.did, paramsWithoutDeletedAt)
+          : "",
         updatedAt: getCurrentDateTime(),
       };
+      if (deletedAt) {
+        content.deletedAt = deletedAt;
+      }
+
+      console.log(content);
+
       this.client.setDID(this.did);
 
       const { data, errors } = await this.client.executeQuery(
         `
-          mutation UpdateMessage($input: UpdateMessageInput!) {
-            updateMessage(input: $input) {
+          mutation UpdateEncryptedMessage($input: UpdateEncryptedMessageInput!) {
+            updateEncryptedMessage(input: $input) {
               document {
                 id
                 content
@@ -479,21 +551,33 @@ export class Conversation {
               }
             }
           }`,
-        { input: { id, content } },
+        { input: { id: messageId, content } },
       );
 
       // Handle GraphQL errors
       if (errors) {
-        throw new Error(`Error updating message: ${JSON.stringify(errors)}`);
+        throw new Error(
+          `Error updating encrypted message: ${JSON.stringify(errors)}`,
+        );
       }
 
       // Validate the data response
-      if (!data || !data.updateMessage || !data.updateMessage.document) {
+      if (
+        !data ||
+        !data.updateEncryptedMessage ||
+        !data.updateEncryptedMessage.document
+      ) {
         throw new Error("Invalid response data");
       }
 
-      // Return the updated message document
-      return data.updateMessage.document;
+      const decryptedContent = await decryptJWE(
+        this.did,
+        data.updateEncryptedMessage.document.content,
+      );
+      return {
+        ...data.updateEncryptedMessage.document,
+        ...decryptedContent,
+      };
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in updateMessage:", error);
@@ -501,7 +585,9 @@ export class Conversation {
     }
   }
 
-  async deleteMessage(id) {
-    return await this.updateMessage(id, { deletedAt: getCurrentDateTime() });
+  async deleteMessage(conversationId, messageId) {
+    return await this.updateMessage(conversationId, messageId, {
+      deletedAt: getCurrentDateTime(),
+    });
   }
 }

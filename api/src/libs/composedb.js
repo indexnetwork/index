@@ -545,8 +545,6 @@ export const setIndexedModelParams = async (app) => {
     commonEmbeds: `all`,
   });
 
-  console.log(JSON.stringify(c.toParams()));
-
   defaultRuntime = JSON.stringify(defaultRuntime);
 
   const runTime = c.toRuntime();
