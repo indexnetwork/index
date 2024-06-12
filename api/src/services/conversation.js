@@ -106,15 +106,39 @@ export class ConversationService {
         return [];
       }
 
-      const conversations = data.viewer.conversationList.edges.map(
+      let conversations = data.viewer.conversationList.edges.map(
         async (edge) => {
-          return {
-            ...edge.node,
-            metadata: await decryptJWE(this.did, edge.node.metadata),
-          };
+          if (edge.node.deletedAt) {
+            return null;
+          }
+          const decryptedMetadata = await decryptJWE(
+            this.did,
+            edge.node.metadata,
+          );
+          edge.node.sources = decryptedMetadata.sources;
+          edge.node.summary = decryptedMetadata.summary;
+          delete edge.node.metadata;
+
+          const messages = await Promise.all(
+            edge.node.messages.edges.map(async (edge) => {
+              const decryptedJWE = await decryptJWE(
+                this.did,
+                edge.node.content,
+              );
+              delete edge.node.content;
+              return {
+                ...edge.node,
+                ...decryptJWE,
+              };
+            }),
+          );
+
+          edge.node.messages = messages;
+          return edge.node;
         },
       );
-      return await Promise.all(conversations);
+      conversations = await Promise.all(conversations);
+      return conversations.filter((c) => c && c.deletedAt === null);
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in returning conversation:", error);
