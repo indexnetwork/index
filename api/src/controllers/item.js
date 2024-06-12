@@ -61,7 +61,9 @@ export const removeItem = async (req, res, next) => {
   try {
     const itemService = new ItemService(definition).setSession(req.session);
     await itemService.removeItem(indexId, itemId);
-    res.sendStatus(204);
+    res.status(200).json({
+      itemId,
+    });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
