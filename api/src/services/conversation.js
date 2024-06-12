@@ -192,6 +192,9 @@ export class ConversationService {
           createdAt
           updatedAt
           deletedAt
+          members {
+            id
+          }
           messages(first: 1000,  filters: {where: {deletedAt: {isNull: true}}}, sorting: {createdAt: ASC}) {
             edges {
               node {
