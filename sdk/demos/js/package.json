@@ -5,7 +5,6 @@
   "type": "module",
   "license": "MIT",
   "dependencies": {
-    "@indexnetwork/sdk": "^0.0.14",
     "@langchain/openai": "^0.0.28",
     "chromadb": "^1.8.1",
     "ethers": "^6.12.0",

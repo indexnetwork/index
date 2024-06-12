@@ -1,9 +1,10 @@
 {
   "name": "@indexnetwork/sdk",
-  "version": "0.0.15",
+  "version": "0.1.0",
   "main": "dist/indexclient.cjs.js",
   "module": "dist/indexclient.es.js",
   "types": "dist/index.d.ts",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -41,5 +42,11 @@
     "vite": "^5.2.13",
     "vite-tsconfig-paths": "^4.3.2"
   },
-  "exports": "./dist/index.js"
+  "exports": {
+    ".": {
+      "import": "./dist/indexclient.es.js",
+      "require": "./dist/indexclient.cjs.js"
+    },
+    "./package.json": "./package.json"
+  }
 }
