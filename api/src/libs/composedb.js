@@ -36,6 +36,18 @@ const authenticateAdmin = async () => {
 
 let defaultRuntime = {
   models: {
+    Conversation: {
+      interface: false,
+      implements: [],
+      id: "Model_Conversation_ID",
+      accountRelation: { type: "list" },
+    },
+    EncryptedMessage: {
+      interface: false,
+      implements: [],
+      id: "Model_EncryptedMessage_ID",
+      accountRelation: { type: "list" },
+    },
     DIDIndex: {
       interface: false,
       implements: [],
@@ -68,6 +80,80 @@ let defaultRuntime = {
     },
   },
   objects: {
+    Conversation: {
+      members: {
+        type: "list",
+        required: false,
+        immutable: false,
+        item: { type: "did", required: false, immutable: false },
+      },
+      metadata: { type: "string", required: true, immutable: false },
+      createdAt: {
+        type: "datetime",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      deletedAt: {
+        type: "datetime",
+        required: false,
+        immutable: false,
+        indexed: true,
+      },
+      updatedAt: {
+        type: "datetime",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      controllerDID: { type: "view", viewType: "documentAccount" },
+      messages: {
+        type: "view",
+        viewType: "relation",
+        relation: {
+          source: "queryConnection",
+          model: "Model_EncryptedMessage_ID",
+          property: "conversationId",
+        },
+      },
+    },
+    EncryptedMessage: {
+      content: { type: "string", required: true, immutable: false },
+      createdAt: {
+        type: "datetime",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      deletedAt: {
+        type: "datetime",
+        required: false,
+        immutable: false,
+        indexed: true,
+      },
+      updatedAt: {
+        type: "datetime",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      conversationId: {
+        type: "streamid",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      conversation: {
+        type: "view",
+        viewType: "relation",
+        relation: {
+          source: "document",
+          model: "Model_Conversation_ID",
+          property: "conversationId",
+        },
+      },
+      controllerDID: { type: "view", viewType: "documentAccount" },
+    },
     DIDIndex: {
       type: { type: "string", required: true, immutable: true, indexed: true },
       indexId: {
@@ -306,6 +392,8 @@ let defaultRuntime = {
     didIndexList: { type: "connection", name: "DIDIndex" },
     embeddingList: { type: "connection", name: "Embedding" },
     indexItemList: { type: "connection", name: "IndexItem" },
+    conversationList: { type: "connection", name: "Conversation" },
+    encryptedMessageList: { type: "connection", name: "EncryptedMessage" },
     indexList: { type: "connection", name: "Index" },
     profile: { type: "node", name: "Profile" },
   },

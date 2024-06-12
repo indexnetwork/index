@@ -24,6 +24,7 @@ const pubSubClient = RedisClient.getPubSubInstance();
 import * as indexController from "../controllers/index.js";
 import * as itemController from "../controllers/item.js";
 import * as embeddingController from "../controllers/embedding.js";
+import * as conversationController from "../controllers/conversation.js";
 import * as didController from "../controllers/did.js";
 import * as discoveryController from "../controllers/discovery.js";
 
@@ -437,6 +438,120 @@ app.patch(
   "/composedb/:modelId/:nodeId",
   authCheckMiddleware,
   composeDbController.updateNode,
+);
+
+app.get(
+  "/conversations",
+  authCheckMiddleware,
+  conversationController.listConversations,
+);
+
+app.get(
+  "/conversations/:id",
+  authCheckMiddleware,
+  validator.params(
+    Joi.object({
+      id: Joi.custom(isStreamID, "Conversation ID").required(),
+    }),
+  ),
+  conversationController.getConversation,
+);
+
+app.post(
+  "/conversations",
+  authCheckMiddleware,
+  validator.body(
+    Joi.object({
+      sources: Joi.array().items(Joi.string()).required(),
+      summary: Joi.string().optional(),
+    }),
+  ),
+  conversationController.createConversation,
+);
+
+app.put(
+  "/conversations/:id",
+  authCheckMiddleware,
+  validator.params(
+    Joi.object({
+      id: Joi.custom(isStreamID, "Conversation ID").required(),
+    }),
+  ),
+  validator.body(
+    Joi.object({
+      sources: Joi.array().items(Joi.string()).required(),
+      summary: Joi.string().optional(),
+    }),
+  ),
+  conversationController.updateConversation,
+);
+
+app.delete(
+  "/conversations/:id",
+  authCheckMiddleware,
+  validator.params(
+    Joi.object({
+      id: Joi.custom(isStreamID, "Conversation ID").required(),
+    }),
+  ),
+  conversationController.deleteConversation,
+);
+
+app.post(
+  "/conversations/:conversationId/messages",
+  authCheckMiddleware,
+  validator.params(
+    Joi.object({
+      conversationId: Joi.custom(isStreamID, "Conversation ID").required(),
+    }),
+  ),
+  validator.body(
+    Joi.object({
+      role: Joi.string().required(),
+      content: Joi.string().required(),
+    }),
+  ),
+  conversationController.createMessage,
+);
+
+app.put(
+  "/conversations/:conversationId/messages/:messageId",
+  authCheckMiddleware,
+  validator.params(
+    Joi.object({
+      conversationId: Joi.custom(isStreamID, "Conversation ID").required(),
+      messageId: Joi.custom(isStreamID, "Message ID").required(),
+    }),
+  ),
+  validator.query(
+    Joi.object({
+      deleteAfter: Joi.boolean().optional(),
+    }),
+  ),
+  validator.body(
+    Joi.object({
+      role: Joi.string().required(),
+      content: Joi.string().required(),
+    }),
+  ),
+  conversationController.updateMessage,
+);
+
+app.delete(
+  "/conversations/:conversationId/messages/:messageId",
+  authCheckMiddleware,
+  validator.params(
+    Joi.object({
+      conversationId: Joi.custom(isStreamID, "Conversation ID").required(),
+      messageId: Joi.custom(isStreamID, "Message ID").required(),
+    }),
+  ),
+  validator.query(
+    Joi.object({
+      deleteAfter: Joi.boolean().optional(),
+    }),
+  ),
+  conversationController.deleteMessage,
 );
 
 //Todo refactor later.
