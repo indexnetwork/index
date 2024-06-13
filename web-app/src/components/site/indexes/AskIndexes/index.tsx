@@ -181,12 +181,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
         (c) => c.id === payload.data.messageId,
       );
 
-      console.log(
-        "Streaming message",
-        streamingMessage,
-        payload.data.messageId,
-      );
-
       if (!streamingMessage) {
         console.log(`newmessage ${payload.data.messageId}`);
         streamingMessage = {
