@@ -386,11 +386,17 @@ class Indexer {
     if (!message) {
       return;
     }
+
     const conversation = await conversationService.getConversation(
       message.conversationId,
     );
     if (!conversation) {
       return;
+    }
+
+    message.conversation = conversation;
+    if (message.role === `user`) {
+      handleUserMessage(message, this.definition, pubSubClient, redisClient);
     }
   }
 }

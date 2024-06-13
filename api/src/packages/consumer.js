@@ -38,12 +38,13 @@ async function start() {
 
   ceramicFirehose.addEventListener("message", async (event) => {
     const parsedData = decode(Codec, event.data);
+
     const modelId = parsedData.metadata.model.toString();
     const streamId = parsedData.commitId.baseID.toString();
     const op = parsedData.eventType === 0 ? "c" : "u";
     const isProcessed = await redisClient.hIncrBy(
       `events`,
-      `${modelId}:${streamId}:${op}`,
+      `${modelId}:${streamId}:${parsedData.commitId.toString()}`,
       1,
     );
 
@@ -106,7 +107,7 @@ async function start() {
               break;
             case "u":
               console.log(`User Message ${streamId} updated`);
-              await indexer.updateEncryptedMessageEvent(streamId);
+              await indexer.updateEncryptedMessageEvent(streamId, pubSubClient, redisClient);
               break;
           }
           break;
