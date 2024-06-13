@@ -54,7 +54,10 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   const { ready: apiReady, api } = useApi();
 
   const [conversation, setConversation] = useState<Message[]>([]);
+  const [stoppedMessages, setStoppedMessages] = useState<string[]>([]);
+
   const [isLoading, setIsLoading] = useState(false);
+
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
@@ -131,7 +134,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   };
 
   const initialMessages: Message[] = [];
-  const { append, reload, stop, input, setInput } = useChat({
+  const { append, reload, input, setInput } = useChat({
     initialMessages,
     id: chatID,
     onResponse(response) {
@@ -153,6 +156,11 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     scrollToBottom();
   }, [conversation, isLoading, scrollToBottom]);
 
+  const stop = () => {
+    setIsLoading(false)
+    // TODO send stop signal to backend.
+    setStoppedMessages(conversation.map(c => c.id))
+  }
   const handleMessage = (event: any) => {
     const payload = JSON.parse(event.data);
     console.log("Received message from server", payload);
@@ -162,6 +170,11 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
       setIsLoading(false);
       return;
     }
+
+    if (stoppedMessages.includes(payload.data.messageId)){
+      return
+    }
+
     setIsLoading(true);
     setConversation((prevConversation) => {
       let streamingMessage = prevConversation.find(
@@ -209,7 +222,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
         wsRef.current.close();
       }
     };
-  }, [chatID, API_ENDPOINTS]);
+  }, [stoppedMessages, chatID, API_ENDPOINTS]);
 
   if (leftSectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
