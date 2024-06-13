@@ -8,7 +8,7 @@ export const handleUserMessage = async (
   pubSubClient,
   redisClient,
 ) => {
-  console.log(JSON.stringify(message.conversation, null, 2));
+
   const definition = runtimeDefinition;
   const { id, messages, sources, ...rest } = message.conversation;
 
@@ -36,7 +36,12 @@ export const handleUserMessage = async (
       indexIds: reqIndexIds,
       input: {
         question: messages.at(-1).content,
-        chat_history: [...messages.slice(0, -1)],
+        chat_history: [...messages.slice(0, -1).map(c => {
+          return {
+            role: c.role,
+            content: c.content
+          }
+        })],
       },
       model_args: {
         ...rest,
