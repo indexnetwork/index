@@ -31,8 +31,6 @@ export const handleUserMessage = async (
     role: "assistant",
     content: "",
   });
-  // todo api create message.
-
   try {
     const chatRequest = {
       indexIds: reqIndexIds,
@@ -57,8 +55,10 @@ export const handleUserMessage = async (
 
     resp.data.on("data", async (chunk) => {
       if (isStopped && !isSaved) {
-        // todo api save.
         isSaved = true;
+        await conversationService.updateMessage(id, assistantMessage.id, {
+          content: assistantMessage.content,
+        });
         return;
       }
       const plainText = chunk.toString();
@@ -94,7 +94,6 @@ export const handleUserMessage = async (
         );
         // Future: save itent model
       }
-      console.log(`Why not stop`, assistantMessage.content, isStopped, isSaved);
       if (assistantMessage.content && !isStopped && !isSaved) {
         await redisClient.publish(
           `agentStream:${id}:end`,

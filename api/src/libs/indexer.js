@@ -377,15 +377,20 @@ class Indexer {
   async updateEncryptedMessageEvent(id, pubSubClient, redisClient) {
     logger.info(`Step [3]: updateEncryptedMessageEvent trigger for id: ${id}`);
 
-    const indexSession = await this.getIndexerSession(indexItem.index);
-    const conversationService = new ConversationService(
-      this.definition,
-    ).setSession(indexSession);
+    const agentDID = await getAgentDID();
+    const conversationService = new ConversationService(this.definition).setDID(
+      agentDID,
+    );
 
     const message = await conversationService.getMessage(id);
-    // Stop other signals first.
-    if (message.role === `user`) {
-      //handleUserMessage(message, this.definition, pubSubClient, redisClient);
+    if (!message) {
+      return;
+    }
+    const conversation = await conversationService.getConversation(
+      message.conversationId,
+    );
+    if (!conversation) {
+      return;
     }
   }
 }
