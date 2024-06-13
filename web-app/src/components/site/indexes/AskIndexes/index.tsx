@@ -3,7 +3,9 @@ import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { CHAT_STARTED, trackEvent } from "@/services/tracker";
-import { useChat, type Message } from "ai/react";
+
+import { useChat, type Message } from "@ai-sdk/react";
+
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
@@ -50,6 +52,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   const { viewedIndex } = useApp();
   const { isIndex, id, discoveryType } = useRouteParams();
   const { ready: apiReady, api } = useApi();
+  const [conversation, setConversation] = useState<Message[]>([]);
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
@@ -80,14 +83,14 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
 
   const handleSaveEdit = async () => {
     if (editingMessage) {
-      const messagesBeforeEdit = messages.slice(0, editingIndex);
+      const messagesBeforeEdit = conversation.slice(0, editingIndex);
 
       const newMessage = {
         ...editingMessage,
         content: editInput,
       };
 
-      setMessages(messagesBeforeEdit);
+      //setMessages(messagesBeforeEdit);
       setEditingMessage(undefined);
       setEditInput("");
       await append({
@@ -125,18 +128,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     return `indexes`;
   };
 
-  const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/${API_ENDPOINTS.CHAT_STREAM}`;
   const initialMessages: Message[] = [];
-  const {
-    messages,
-    append,
-    reload,
-    stop,
-    isLoading,
-    input,
-    setInput,
-    setMessages,
-  } = useChat({
+  const { append, reload, stop, isLoading, input, setInput } = useChat({
     initialMessages,
     id: chatID,
     onResponse(response) {
@@ -156,7 +149,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading, scrollToBottom]);
+  }, [conversation, isLoading, scrollToBottom]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const [accumulatedText, setAccumulatedText] = useState(``);
@@ -190,10 +183,10 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
           console.log(
             "New message started with id",
             payload.data.messageId,
-            messages.length,
+            conversation.length,
           );
-          setMessages((prevMessages) => [
-            ...prevMessages,
+          setConversation((prevConvo) => [
+            ...prevConvo,
             {
               id: payload.data.messageId,
               content: "",
@@ -202,23 +195,22 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
           ]);
           setAccumulatedText("");
           setIsStreaming(true);
-        } else {
-          setAccumulatedText((prevText) => {
-            const newAccumulatedText = prevText + payload.data.chunk;
-            setMessages((prevMessages) => {
-              const updatedMessages = [...prevMessages];
-              const lastIndex = updatedMessages.length - 1;
-              const outputMessage = { ...updatedMessages[lastIndex] };
-              outputMessage.content = newAccumulatedText;
-              updatedMessages[lastIndex] = outputMessage;
-              return updatedMessages;
-            });
-            return newAccumulatedText;
-          });
         }
+        setAccumulatedText((prevText) => {
+          const newAccumulatedText = prevText + payload.data.chunk;
+          setConversation((prevConvo) => {
+            const updatedMessages = [...prevConvo];
+            const lastIndex = updatedMessages.length - 1;
+            const outputMessage = { ...updatedMessages[lastIndex] };
+            outputMessage.content = newAccumulatedText;
+            updatedMessages[lastIndex] = outputMessage;
+            return updatedMessages;
+          });
+          return newAccumulatedText;
+        });
       }
     };
-  }, [isStreaming, messages]);
+  }, [isStreaming, conversation]);
   if (leftSectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
   }
@@ -254,10 +246,10 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
               flexDirection: "column",
             }}
           >
-            {messages.length ? (
+            {conversation.length ? (
               <>
                 <ChatList
-                  messages={messages}
+                  messages={conversation}
                   handleEditClick={handleEditClick}
                   editingMessage={editingMessage}
                   setEditInput={setEditInput}
@@ -300,7 +292,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
             isLoading={isLoading}
             stop={stop}
             reload={reload}
-            messages={messages}
+            messages={conversation}
           />
         </FlexRow>
         <FlexRow fullWidth className={"idxflex-grow-1"} colGap={0}>
@@ -309,8 +301,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
               contextMessage={getChatContextMessage()}
               onSubmit={async (value) => {
                 // TODO Post message here, can be async
-                setMessages([
-                  ...messages,
+                setConversation([
+                  ...conversation,
                   {
                     id: chatID,
                     role: "user",

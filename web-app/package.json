@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@3id/connect": "^0.4.1",
+    "@ai-sdk/react": "^0.0.1",
     "@ceramicnetwork/3id-did-resolver": "^3.0.4",
     "@ceramicnetwork/common": "^3.0.4",
     "@ceramicnetwork/http-client": "^3.0.4",

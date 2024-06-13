@@ -73,7 +73,7 @@
   dependencies:
     json-schema "0.4.0"
 
-"@ai-sdk/react@0.0.1":
+"@ai-sdk/react@0.0.1", "@ai-sdk/react@^0.0.1":
   version "0.0.1"
   resolved "https://registry.yarnpkg.com/@ai-sdk/react/-/react-0.0.1.tgz#c3b92c7a2c21d5a1136c4b22ae61184c22fbdff5"
   integrity sha512-y6KXzxRR7vmAgDVnS/hnLPt3RztvWOisANBw47O1o1D2nDeUqTo8E/SNw2J8mzzlRInGaw40EREY8jEf9AcwWQ==
