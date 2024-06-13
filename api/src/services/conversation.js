@@ -402,7 +402,7 @@ export class ConversationService {
 
       if (conversation && conversation.messages) {
         for (const message of conversation.messages) {
-          await this.deleteMessage(message.id);
+          await this.deleteMessage(id, message.id);
         }
       }
 
@@ -539,6 +539,10 @@ export class ConversationService {
     try {
       // Fetch the message if deleteAfter is true
       if (deleteAfter) {
+        const agentDID = await getAgentDID();
+        const agentConvService = new ConversationService(this.definition).setDID(
+          agentDID,
+        );
         const message = await this.getMessage(messageId);
         const conversation = await this.getConversation(conversationId);
         if (
@@ -549,7 +553,11 @@ export class ConversationService {
           for (const messageEdge of conversation.messages.filter(
             (m) => new Date(m.createdAt) > new Date(message.createdAt),
           )) {
-            await this.deleteMessage(messageEdge.id);
+            if(messageEdge.controllerDID.id == agentDID.id) {
+                await agentConvService.deleteMessage(conversation.id, messageEdge.id);
+            } else {
+                await this.deleteMessage(conversation.id, messageEdge.id);
+            }
           }
         }
       }
