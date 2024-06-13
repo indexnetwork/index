@@ -52,7 +52,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   const { viewedIndex } = useApp();
   const { isIndex, id, discoveryType } = useRouteParams();
   const { ready: apiReady, api } = useApi();
+
   const [conversation, setConversation] = useState<Message[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
@@ -129,7 +131,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   };
 
   const initialMessages: Message[] = [];
-  const { append, reload, stop, isLoading, input, setInput } = useChat({
+  const { append, reload, stop, input, setInput } = useChat({
     initialMessages,
     id: chatID,
     onResponse(response) {
@@ -151,66 +153,64 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     scrollToBottom();
   }, [conversation, isLoading, scrollToBottom]);
 
+  const handleMessage = (event: any) => {
+    const payload = JSON.parse(event.data);
+    console.log("Received message from server", payload);
+
+    if (payload.channel === "end") {
+      console.log("End of stream");
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    setConversation((prevConversation) => {
+      let streamingMessage = prevConversation.find(
+        (c) => c.id === payload.data.messageId,
+      );
+
+      console.log(
+        "Streaming message",
+        streamingMessage,
+        payload.data.messageId,
+      );
+
+      if (!streamingMessage) {
+        console.log(`newmessage ${payload.data.messageId}`);
+        streamingMessage = {
+          id: payload.data.messageId,
+          content: payload.data.chunk,
+          role: "assistant",
+        };
+        console.log("New message", streamingMessage);
+        return [...prevConversation, streamingMessage];
+      }
+
+      if (payload.channel === "chunk") {
+        return prevConversation.map((message) =>
+          message.id === payload.data.messageId
+            ? { ...message, content: message.content + payload.data.chunk }
+            : message,
+        );
+      }
+
+      return prevConversation;
+    });
+  };
   const wsRef = useRef<WebSocket | null>(null);
-  const [accumulatedText, setAccumulatedText] = useState(``);
-  const [isStreaming, setIsStreaming] = useState(false);
 
   useEffect(() => {
     const socketUrl = `${process.env.NEXT_PUBLIC_API_URL!.replace(/^https/, "wss")}${API_ENDPOINTS.DISCOVERY_UPDATES.replace(":chatID", chatID)}`;
     wsRef.current = new WebSocket(socketUrl);
-
+    wsRef.current.onmessage = (event) => {
+      handleMessage(event);
+    };
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
       }
     };
   }, [chatID, API_ENDPOINTS]);
-  useEffect(() => {
-    if (!wsRef.current) return;
 
-    wsRef.current.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-      console.log("Received message from server", payload);
-
-      if (payload.channel === "end") {
-        console.log("End of stream");
-        setIsStreaming(false);
-        return;
-      }
-
-      if (payload.channel === "chunk") {
-        if (!isStreaming) {
-          console.log(
-            "New message started with id",
-            payload.data.messageId,
-            conversation.length,
-          );
-          setConversation((prevConvo) => [
-            ...prevConvo,
-            {
-              id: payload.data.messageId,
-              content: "",
-              role: "assistant",
-            },
-          ]);
-          setAccumulatedText("");
-          setIsStreaming(true);
-        }
-        setAccumulatedText((prevText) => {
-          const newAccumulatedText = prevText + payload.data.chunk;
-          setConversation((prevConvo) => {
-            const updatedMessages = [...prevConvo];
-            const lastIndex = updatedMessages.length - 1;
-            const outputMessage = { ...updatedMessages[lastIndex] };
-            outputMessage.content = newAccumulatedText;
-            updatedMessages[lastIndex] = outputMessage;
-            return updatedMessages;
-          });
-          return newAccumulatedText;
-        });
-      }
-    };
-  }, [isStreaming, conversation]);
   if (leftSectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
   }
