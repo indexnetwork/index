@@ -76,9 +76,20 @@ export const chat = async (req, res, next) => {
 
 export const updates = async (ws, req) => {
   const { chatId } = req.params;
-  await pubSubClient.subscribe(`newUpdate:${chatId}`, async (data) => {
-    ws.send(data);
-  });
+  await pubSubClient.pSubscribe(
+    `agentStream:${chatId}:*`,
+    async (data, channel) => {
+      console.log("data", data);
+      const channelType = channel.replace(`agentStream:${chatId}:`, "");
+      ws.send(
+        JSON.stringify({
+          channel: channelType,
+          data: JSON.parse(data),
+          chatId,
+        }),
+      );
+    },
+  );
 };
 export const search = async (req, res, next) => {
   try {

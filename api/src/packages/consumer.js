@@ -94,6 +94,22 @@ async function start() {
               break;
           }
           break;
+        case runtimeDefinition.models.EncryptedMessage.id:
+          switch (op) {
+            case "c":
+              console.log(`User Message ${streamId} created`);
+              await indexer.createEncryptedMessageEvent(
+                streamId,
+                pubSubClient,
+                redisClient,
+              );
+              break;
+            case "u":
+              console.log(`User Message ${streamId} updated`);
+              await indexer.updateEncryptedMessageEvent(streamId);
+              break;
+          }
+          break;
       }
     } catch (e) {
       console.log(e);

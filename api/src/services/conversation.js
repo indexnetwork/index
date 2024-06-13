@@ -1,52 +1,10 @@
 import { ComposeClient } from "@composedb/client";
-import { getCurrentDateTime } from "../utils/helpers.js";
-import { DID } from "dids";
-import { Ed25519Provider } from "key-did-provider-ed25519";
-import { getResolver } from "key-did-resolver";
-import { fromString } from "uint8arrays/from-string";
-
-const decryptJWE = async (did, str) => {
-  try {
-    const parsedStr = JSON.parse(str.replace(/`/g, '"'));
-    const decryptedData = await did.decryptDagJWE(parsedStr);
-    return decryptedData;
-  } catch (error) {
-    console.error("Failed to decrypt JWE:", error);
-    throw new Error("Decryption failed. Please check the input and try again.");
-  }
-};
-const createDagJWE = async (dids, cleartext) => {
-  try {
-    const jwe = await dids[0].createDagJWE(
-      cleartext,
-      dids.map((d) => d.id),
-    );
-    const stringified = JSON.stringify(jwe).replace(/"/g, "`");
-    return stringified;
-  } catch (error) {
-    console.error("Failed to create JWE:", error);
-    throw new Error("Encryption failed. Please check the input and try again.");
-  }
-};
-
-const getAgentDID = async () => {
-  const indexerWalletPrivateKey = process.env.INDEXER_WALLET_PRIVATE_KEY;
-  if (!indexerWalletPrivateKey) {
-    return false;
-  }
-  const key = fromString(indexerWalletPrivateKey, "base16");
-  const did = new DID({
-    resolver: getResolver(),
-    provider: new Ed25519Provider(key),
-  });
-  await did.authenticate();
-  if (!did.authenticated) {
-    return false;
-  }
-  return did;
-};
-
-//stringify your JWE object and replace escape characters
+import {
+  getAgentDID,
+  getCurrentDateTime,
+  createDagJWE,
+  decryptJWE,
+} from "../utils/helpers.js";
 
 export class ConversationService {
   constructor(definition) {
@@ -62,6 +20,10 @@ export class ConversationService {
     if (session && session.did && session.did.authenticated) {
       this.did = session.did;
     }
+    return this;
+  }
+  setDID(did) {
+    this.did = did;
     return this;
   }
 
@@ -95,6 +57,7 @@ export class ConversationService {
                       edges {
                         node {
                           id
+                          conversationId
                           controllerDID {
                             id
                           }
@@ -142,6 +105,9 @@ export class ConversationService {
             this.did,
             edge.node.metadata,
           );
+          if (!decryptedMetadata) {
+            return null;
+          }
           edge.node.sources = decryptedMetadata.sources;
           edge.node.summary = decryptedMetadata.summary;
           delete edge.node.metadata;
@@ -185,6 +151,7 @@ export class ConversationService {
      {
       node(id: "${id}") {
         ... on Conversation {
+          id
           metadata
           controllerDID {
             id
@@ -235,9 +202,13 @@ export class ConversationService {
 
       const messages = await Promise.all(
         data.node.messages.edges.map(async (edge) => {
+          const decryptedContent = await decryptJWE(
+            this.did,
+            edge.node.content,
+          );
           return {
             ...edge.node,
-            content: await decryptJWE(this.did, edge.node.content),
+            ...decryptedContent,
           };
         }),
       );
@@ -461,6 +432,7 @@ export class ConversationService {
           controllerDID {
             id
           }
+          conversationId
           conversation {
             id
             controllerDID {
@@ -485,9 +457,10 @@ export class ConversationService {
         throw new Error("Invalid response data");
       }
 
+      const decryptedContent = await decryptJWE(this.did, data.node.content);
       const message = {
         ...data.node,
-        content: await decryptJWE(this.did, data.node.content),
+        ...decryptedContent,
       };
       return message;
     } catch (error) {

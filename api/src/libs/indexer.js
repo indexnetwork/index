@@ -3,6 +3,8 @@ import axios from "axios";
 import { ItemService } from "../services/item.js";
 import { ComposeDBService } from "../services/composedb.js";
 import { EmbeddingService } from "../services/embedding.js";
+import { handleNewItemEvent } from "../agents/basic_subscriber.js";
+import { ConversationService } from "../services/conversation.js";
 import RedisClient from "../clients/redis.js";
 import { CeramicClient } from "@ceramicnetwork/http-client";
 
@@ -10,6 +12,8 @@ import { ethers } from "ethers";
 
 import Logger from "../utils/logger.js";
 import { DIDSession } from "did-session";
+import { handleUserMessage } from "../agents/basic_assistant.js";
+import { getAgentDID } from "../utils/helpers.js";
 
 const logger = Logger.getInstance();
 
@@ -34,6 +38,18 @@ class Indexer {
     }
 
     const session = await DIDSession.fromSession(indexerSession);
+    await session.did.authenticate();
+
+    return session;
+  }
+
+  async getAgentSession() {
+    const agentSession = await redis.hGet(`sessions`, `agent`);
+    if (!agentSession) {
+      throw new Error("No session signatures found");
+    }
+
+    const session = await DIDSession.fromSession(agentSession);
     await session.did.authenticate();
 
     return session;
@@ -266,48 +282,10 @@ class Indexer {
       // Parse the JSON string to an object
       let subscription = JSON.parse(subscriptionPayload);
       //console.log(indexItem.item.id, indexItem.index.id, subscription.indexIds);
+      console.log(`Handle new item event for chatId: ${chatId}`);
       if (subscription.indexIds.indexOf(indexItem.index.id) >= 0) {
-        await this.processSubscription(
-          chatId,
-          subscription,
-          itemStream.content,
-        );
+        handleNewItemEvent(chatId, subscription, itemStream.content, redis);
       }
-    }
-  }
-  async processSubscription(chatId, subscription, item) {
-    console.log("New update triggered, fetching item data", chatId, item);
-    const subscriptionResp = await redis.hGet(`subscriptions`, chatId);
-    if (!subscriptionResp) {
-      return;
-    }
-    const { indexIds, messages } = subscription;
-    const chatRequest = {
-      indexIds,
-      input: {
-        information: JSON.stringify(item),
-        chat_history: messages,
-      },
-    };
-    try {
-      let resp = await axios.post(
-        `${process.env.LLM_INDEXER_HOST}/chat/stream`,
-        chatRequest,
-        {
-          responseType: "text",
-        },
-      );
-      console.log(`Update evaluation response for ${chatId}`, resp.data);
-      if (resp.data && !resp.data.includes("NOT_RELEVANT")) {
-        await redis.publish(`newUpdate:${chatId}`, resp.data);
-        await redis.hSet(
-          `subscriptions`,
-          chatId,
-          JSON.stringify({ indexIds, messages: [messages, resp.data] }),
-        );
-      }
-    } catch (e) {
-      console.log(e);
     }
   }
 
@@ -368,9 +346,47 @@ class Indexer {
       );
     }
   }
-
   async updateEmbeddingEvent(id) {
     logger.info("updateEmbeddingEvent", id);
+  }
+
+  async createEncryptedMessageEvent(id, pubSubClient, redisClient) {
+    logger.info(`Step [3]: createEncryptedMessageEvent trigger for id: ${id}`);
+
+    const agentDID = await getAgentDID();
+    const conversationService = new ConversationService(this.definition).setDID(
+      agentDID,
+    );
+
+    const message = await conversationService.getMessage(id);
+    if (!message) {
+      return;
+    }
+    const conversation = await conversationService.getConversation(
+      message.conversationId,
+    );
+    if (!conversation) {
+      return;
+    }
+    message.conversation = conversation;
+    if (message.role === `user`) {
+      handleUserMessage(message, this.definition, pubSubClient, redisClient);
+    }
+  }
+
+  async updateEncryptedMessageEvent(id, pubSubClient, redisClient) {
+    logger.info(`Step [3]: updateEncryptedMessageEvent trigger for id: ${id}`);
+
+    const indexSession = await this.getIndexerSession(indexItem.index);
+    const conversationService = new ConversationService(
+      this.definition,
+    ).setSession(indexSession);
+
+    const message = await conversationService.getMessage(id);
+    // Stop other signals first.
+    if (message.role === `user`) {
+      //handleUserMessage(message, this.definition, pubSubClient, redisClient);
+    }
   }
 }
 

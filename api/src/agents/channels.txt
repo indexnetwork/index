@@ -1,0 +1,5 @@
+stopChat :chatId
+agentStream:chatId:chunk chunk
+agentStream:chatId:end 1
+agentStream:chatId:update payload
+OK hset subscriptions chatId payload

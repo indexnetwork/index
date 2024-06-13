@@ -3,11 +3,17 @@ import { getAddress } from "@ethersproject/address";
 import moment from "moment";
 import fs from "fs/promises";
 
+import { DID } from "dids";
+import { Ed25519Provider } from "key-did-provider-ed25519";
+import { getResolver } from "key-did-resolver";
+import { fromString } from "uint8arrays/from-string";
+
 import pinataSDK from "@pinata/sdk";
 
 import { Readable } from "stream";
 
 import RedisClient from "../clients/redis.js";
+
 const redis = RedisClient.getInstance();
 
 export const fetchModelInfo = async () => {
@@ -97,4 +103,44 @@ export const flattenSources = async (sources, didService) => {
 
   const results = await Promise.all(sourcePromises);
   return results.flat();
+};
+
+export const getAgentDID = async () => {
+  const indexerWalletPrivateKey = process.env.INDEXER_WALLET_PRIVATE_KEY;
+  if (!indexerWalletPrivateKey) {
+    return false;
+  }
+  const key = fromString(indexerWalletPrivateKey, "base16");
+  const did = new DID({
+    resolver: getResolver(),
+    provider: new Ed25519Provider(key),
+  });
+  await did.authenticate();
+  if (!did.authenticated) {
+    return false;
+  }
+  return did;
+};
+
+export const decryptJWE = async (did, str) => {
+  try {
+    const parsedStr = JSON.parse(str.replace(/`/g, '"'));
+    const decryptedData = await did.decryptDagJWE(parsedStr);
+    return decryptedData;
+  } catch (error) {
+    console.error("Failed to decrypt JWE:", error);
+  }
+};
+export const createDagJWE = async (dids, cleartext) => {
+  try {
+    const jwe = await dids[0].createDagJWE(
+      cleartext,
+      dids.map((d) => d.id),
+    );
+    const stringified = JSON.stringify(jwe).replace(/"/g, "`");
+    return stringified;
+  } catch (error) {
+    console.error("Failed to create JWE:", error);
+    throw new Error("Encryption failed. Please check the input and try again.");
+  }
 };

@@ -13,7 +13,8 @@ import AskInput from "components/base/AskInput";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { nanoid } from "nanoid";
+
+// import { nanoid } from "nanoid";
 
 import {
   ComponentProps,
@@ -136,17 +137,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     setInput,
     setMessages,
   } = useChat({
-    api: apiUrl,
     initialMessages,
     id: chatID,
-    body: {
-      id: chatID,
-      sources,
-    },
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      Authorization: `Bearer ${session?.serialize()}`,
-    },
     onResponse(response) {
       if (response.status === 401) {
         toast.error(response.statusText);
@@ -167,31 +159,66 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   }, [messages, isLoading, scrollToBottom]);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const [accumulatedText, setAccumulatedText] = useState(``);
+  const [isStreaming, setIsStreaming] = useState(false);
+
   useEffect(() => {
     const socketUrl = `${process.env.NEXT_PUBLIC_API_URL!.replace(/^https/, "wss")}${API_ENDPOINTS.DISCOVERY_UPDATES.replace(":chatID", chatID)}`;
     wsRef.current = new WebSocket(socketUrl);
-  }, [chatID]);
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [chatID, API_ENDPOINTS]);
   useEffect(() => {
     if (!wsRef.current) return;
+
     wsRef.current.onmessage = (event) => {
-      console.log("Received message from server", messages);
-      setMessages([
-        ...messages,
-        {
-          id: nanoid(),
-          content: event.data,
-          role: "assistant",
-        } as Message,
-      ] as Message[]);
+      const payload = JSON.parse(event.data);
+      console.log("Received message from server", payload);
 
-      return () => {
-        if (wsRef.current) {
-          wsRef.current.close();
+      if (payload.channel === "end") {
+        console.log("End of stream");
+        setIsStreaming(false);
+        return;
+      }
+
+      if (payload.channel === "chunk") {
+        if (!isStreaming) {
+          console.log(
+            "New message started with id",
+            payload.data.messageId,
+            messages.length,
+          );
+          setMessages((prevMessages) => [
+            ...prevMessages,
+            {
+              id: payload.data.messageId,
+              content: "",
+              role: "assistant",
+            },
+          ]);
+          setAccumulatedText("");
+          setIsStreaming(true);
+        } else {
+          setAccumulatedText((prevText) => {
+            const newAccumulatedText = prevText + payload.data.chunk;
+            setMessages((prevMessages) => {
+              const updatedMessages = [...prevMessages];
+              const lastIndex = updatedMessages.length - 1;
+              const outputMessage = { ...updatedMessages[lastIndex] };
+              outputMessage.content = newAccumulatedText;
+              updatedMessages[lastIndex] = outputMessage;
+              return updatedMessages;
+            });
+            return newAccumulatedText;
+          });
         }
-      };
+      }
     };
-  }, [chatID, messages, setMessages, wsRef]);
-
+  }, [isStreaming, messages]);
   if (leftSectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
   }
@@ -281,11 +308,15 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
             <AskInput
               contextMessage={getChatContextMessage()}
               onSubmit={async (value) => {
-                await append({
-                  id: chatID,
-                  content: value,
-                  role: "user",
-                });
+                // TODO Post message here, can be async
+                setMessages([
+                  ...messages,
+                  {
+                    id: chatID,
+                    role: "user",
+                    content: value,
+                  } as Message,
+                ]);
                 trackEvent(CHAT_STARTED, {
                   type: discoveryType,
                 });
