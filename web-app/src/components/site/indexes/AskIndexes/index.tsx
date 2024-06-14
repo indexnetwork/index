@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { CHAT_STARTED, trackEvent } from "@/services/tracker";
 
-import { useChat, type Message } from "@ai-sdk/react";
+import { type Message } from "@ai-sdk/react";
 
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { ChatList } from "components/ai/chat-list";
@@ -63,6 +63,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
   const [editInput, setEditInput] = useState<string>("");
+  const [input, setInput] = useState<string>("");
   const [defaultQuestions, setDefaultQuestions] = useState<string[]>([]);
 
   const bottomRef = useRef<null | HTMLDivElement>(null);
@@ -105,7 +106,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
         console.error("Error sending message", error);
       }
     },
-    [apiReady, api, id, isIndex, conversation, isLoading],
+    [apiReady, api, isLoading, chatID],
   );
 
   const updateMessage = useCallback(
@@ -128,6 +129,16 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     [apiReady, api, id, isIndex, conversation, isLoading],
   );
 
+  const getConversation = useCallback(async () => {
+    if (!apiReady || !chatID) return;
+    setIsLoading(true);
+    const response = await api!.getConversation(chatID);
+    setConversation(response.messages);
+    setIsLoading(false);
+  }, [apiReady, api, chatID]);
+  useEffect(() => {
+    getConversation();
+  }, [getConversation, chatID]);
   useEffect(() => {
     fetchDefaultQuestions();
   }, [fetchDefaultQuestions]);
@@ -259,21 +270,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
 
     return `indexes`;
   };
-
-  const initialMessages: Message[] = [];
-  const { reload, input, setInput } = useChat({
-    initialMessages,
-    id: chatID,
-    onResponse(response) {
-      if (response.status === 401) {
-        toast.error(response.statusText);
-      }
-    },
-    onError(error) {
-      console.error("Error loading chat messages", error);
-      toast.error("Cannot load chat messages");
-    },
-  });
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

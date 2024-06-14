@@ -9,7 +9,7 @@ import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Soon from "components/site/indexes/Soon";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import ConversationHistory from "./History";
 
 const AppRight = () => {
@@ -18,11 +18,14 @@ const AppRight = () => {
   const [items, setItems] = useState<[]>([]);
   const { api, ready: apiReady } = useApi();
 
-  const handleListConversations = async () => {
+  // wrap with usecallback to avoid infinite loop
+  //
+  const handleListConversations = useCallback(async () => {
     if (!apiReady) return;
     try {
       const response = await api!.listConversations();
-      const mappedItems = response.data.map((item: any) => {
+      console.log(response, `listco`);
+      const mappedItems = response.map((item: any) => {
         return {
           id: item.id,
           summary: item.summary,
@@ -35,11 +38,11 @@ const AppRight = () => {
     } catch (error) {
       console.error("Error sending message", error);
     }
-  };
+  }, [api, apiReady]);
 
   useEffect(() => {
     handleListConversations();
-  }, []);
+  }, [handleListConversations]);
 
   const handleRightTabChange = (tabKey: string) => {
     setRightTabKey(tabKey);

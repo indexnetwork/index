@@ -28,6 +28,8 @@ const API_ENDPOINTS = {
   ENS: "/ens",
   ZAPIER_TEST_LOGIN: "/zapier/test_login",
   SUBSCRIBE_TO_NEWSLETTER: "/site/subscribe",
+  LIST_CONVERSATIONS: "/conversations",
+  GET_CONVERSATION: "/conversations/:conversationId",
   SEND_MESSAGE: "/conversations/:conversationId/messages",
   UPDATE_MESSAGE: "/conversations/:conversationId/messages/:messageId",
 };
@@ -274,6 +276,30 @@ class ApiService {
     return data;
   }
 
+  async listConversations(): Promise<any> {
+    const response = await this.apiAxios.get<any>(
+      API_ENDPOINTS.LIST_CONVERSATIONS,
+    );
+
+    if (response.status !== 200) {
+      throw new Error("Failed to list conversations message");
+    }
+
+    return response.data;
+  }
+
+  async getConversation(conversationId: string): Promise<any> {
+    const response = await this.apiAxios.get<any>(
+      API_ENDPOINTS.GET_CONVERSATION.replace(":conversationId", conversationId),
+    );
+
+    if (response.status !== 200) {
+      throw new Error("Failed to list conversations message");
+    }
+
+    return response.data;
+  }
+
   async sendMessage(conversationId: string, message: any): Promise<any> {
     const response = await this.apiAxios.post<any>(
       API_ENDPOINTS.SEND_MESSAGE.replace(":conversationId", conversationId),
@@ -307,16 +333,6 @@ class ApiService {
 
     if (response.status !== 200) {
       throw new Error("Failed to update message");
-    }
-
-    return response.data;
-  }
-
-  async listConversations() {
-    const response = await this.apiAxios.get<any>("/conversations");
-
-    if (response.status !== 200) {
-      throw new Error("Failed to list conversations");
     }
 
     return response.data;
