@@ -30,6 +30,7 @@ import { toast } from "react-hot-toast";
 import { API_ENDPOINTS } from "utils/constants";
 import { maskDID } from "utils/helper";
 import NoIndexes from "../NoIndexes";
+import { generateId, nanoid } from "ai";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -55,9 +56,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
 
   const [conversation, setConversation] = useState<Message[]>([]);
   const [stoppedMessages, setStoppedMessages] = useState<string[]>([]);
+  const [deletedMessages, setDeletedMessages] = useState<string[]>([]);
 
   const [isLoading, setIsLoading] = useState(false);
-
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
@@ -76,6 +77,57 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     }
   }, [apiReady, api, id, isIndex]);
 
+  const sendMessage = useCallback(
+    async (message: string) => {
+      if (!apiReady || isLoading) return;
+      try {
+        const newMessage: Message = {
+          id: generateId(),
+          role: "user",
+          content: message,
+        };
+        setConversation((prevConversation) => [
+          ...prevConversation,
+          newMessage,
+        ]);
+        setIsLoading(true);
+        const response = await api!.sendMessage(chatID, {
+          content: message,
+          role: "user",
+        });
+
+        setConversation((prevConversation) =>
+          prevConversation.map((m) =>
+            m.id === newMessage.id ? { ...m, id: response.id } : m,
+          ),
+        );
+      } catch (error) {
+        console.error("Error sending message", error);
+      }
+    },
+    [apiReady, api, id, isIndex, conversation, isLoading],
+  );
+
+  const updateMessage = useCallback(
+    async (messageId: string, message: string) => {
+      if (!apiReady || isLoading) return;
+      try {
+        await api!.updateMessage(
+          chatID,
+          messageId,
+          {
+            role: "user",
+            content: message,
+          },
+          true,
+        );
+      } catch (error) {
+        console.error("Error sending message", error);
+      }
+    },
+    [apiReady, api, id, isIndex, conversation, isLoading],
+  );
+
   useEffect(() => {
     fetchDefaultQuestions();
   }, [fetchDefaultQuestions]);
@@ -88,21 +140,96 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
 
   const handleSaveEdit = async () => {
     if (editingMessage) {
-      const messagesBeforeEdit = conversation.slice(0, editingIndex);
+      try {
+        const messagesBeforeEdit = conversation.slice(0, editingIndex);
+        const messagesAfterEdit = conversation.slice(editingIndex);
+        if (Array.isArray(messagesAfterEdit) && messagesAfterEdit.length > 0) {
+          const mIds = messagesAfterEdit.map((m) => m.id);
+          setDeletedMessages((prev) => {
+            return [...prev, ...mIds];
+          });
+        }
 
-      const newMessage = {
-        ...editingMessage,
-        content: editInput,
-      };
+        const newMessage = {
+          ...editingMessage,
+          content: editInput,
+        };
 
-      //setMessages(messagesBeforeEdit);
-      setEditingMessage(undefined);
-      setEditInput("");
-      await append({
-        id: chatID,
-        content: newMessage.content,
-        role: "user",
-      });
+        setEditingMessage(undefined);
+        setEditInput("");
+        setIsLoading(false);
+        setConversation([...messagesBeforeEdit, newMessage]);
+
+        await updateMessage(editingMessage.id, editInput); // TODO
+      } catch (error: any) {
+        console.error("An error occurred:", error.message);
+      }
+    }
+  };
+
+  // const handleRegeneratedMessages = async (regeneratingIndex: number) => {
+  //   if (regeneratingMessage) {
+  //     try {
+  //       const messagesBeforeEdit = conversation.slice(0, regeneratingIndex);
+  //       const messagesAfterEdit = conversation.slice(regeneratingIndex);
+  //       if (Array.isArray(messagesAfterEdit) && messagesAfterEdit.length > 0) {
+  //         const mIds = messagesAfterEdit.map((m) => m.id);
+  //         setDeletedMessages((prev) => {
+  //           return [...prev, ...mIds];
+  //         });
+  //       }
+
+  //       const newMessage = {
+  //         ...regeneratingMessage,
+  //         content: editInput,
+  //       };
+
+  //       setEditingMessage(undefined);
+  //       setEditInput("");
+  //       setIsLoading(false);
+  //       setConversation([...messagesBeforeEdit, newMessage]);
+
+  //       // await updateMessage(regeneratingMessage.id, editInput); // TODO
+  //     } catch (error: any) {
+  //       console.error("An error occurred:", error.message);
+  //     }
+  //   }
+  // };
+
+  const regenerateMessage = async () => {
+    if (!apiReady || isLoading) return;
+    try {
+      const lastUserMessage = conversation.findLast((m) => m.role === "user");
+      const lastAssistantMessage = conversation.findLast(
+        (m) => m.name === "assistant",
+      );
+      if (!lastUserMessage) return;
+      console.log("conversation", conversation);
+      console.log("lastAssistantMessage", lastAssistantMessage);
+
+      setIsLoading(true);
+      // remove messages after the last assistant message
+      if (lastAssistantMessage) {
+        const messagesBeforeEdit = conversation.slice(
+          0,
+          conversation.indexOf(lastAssistantMessage),
+        );
+
+        console.log("messagesBeforeEdit", messagesBeforeEdit);
+        setConversation(messagesBeforeEdit);
+      }
+
+      const regeneratedMessage = await api!.updateMessage(
+        chatID,
+        lastUserMessage.id,
+        { role: lastUserMessage.role, content: lastUserMessage.content },
+        false,
+      );
+
+      console.log("regeneratedMessage", regeneratedMessage);
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error sending message", error);
     }
   };
 
@@ -134,7 +261,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   };
 
   const initialMessages: Message[] = [];
-  const { append, reload, input, setInput } = useChat({
+  const { reload, input, setInput } = useChat({
     initialMessages,
     id: chatID,
     onResponse(response) {
@@ -157,12 +284,13 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
   }, [conversation, isLoading, scrollToBottom]);
 
   const stop = () => {
-    setIsLoading(false)
+    setIsLoading(false);
     // TODO send stop signal to backend.
-    setStoppedMessages(conversation.map(c => c.id))
-  }
-  const handleMessage = (event: any) => {
-    const payload = JSON.parse(event.data);
+    setStoppedMessages(conversation.map((c) => c.id));
+  };
+
+  const handleMessage = (data: any) => {
+    const payload = JSON.parse(data);
     console.log("Received message from server", payload);
 
     if (payload.channel === "end") {
@@ -171,8 +299,11 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
       return;
     }
 
-    if (stoppedMessages.includes(payload.data.messageId)){
-      return
+    if (
+      stoppedMessages.includes(payload.data.messageId) ||
+      deletedMessages.includes(payload.data.messageId)
+    ) {
+      return;
     }
 
     setIsLoading(true);
@@ -187,6 +318,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
           id: payload.data.messageId,
           content: payload.data.chunk,
           role: "assistant",
+          name: payload.data.name,
         };
         console.log("New message", streamingMessage);
         return [...prevConversation, streamingMessage];
@@ -209,14 +341,14 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     const socketUrl = `${process.env.NEXT_PUBLIC_API_URL!.replace(/^https/, "wss")}${API_ENDPOINTS.DISCOVERY_UPDATES.replace(":chatID", chatID)}`;
     wsRef.current = new WebSocket(socketUrl);
     wsRef.current.onmessage = (event) => {
-      handleMessage(event);
+      handleMessage(event.data);
     };
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
       }
     };
-  }, [stoppedMessages, chatID, API_ENDPOINTS]);
+  }, [stoppedMessages, deletedMessages, chatID, API_ENDPOINTS]);
 
   if (leftSectionIndexes.length === 0) {
     return <NoIndexes tabKey={leftTabKey} />;
@@ -298,7 +430,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
           <ChatPanel
             isLoading={isLoading}
             stop={stop}
-            reload={reload}
+            reload={regenerateMessage}
+            // reload={reload}
             messages={conversation}
           />
         </FlexRow>
@@ -307,18 +440,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
             <AskInput
               contextMessage={getChatContextMessage()}
               onSubmit={async (value) => {
-                // TODO Post message here, can be async
-                setConversation([
-                  ...conversation,
-                  {
-                    id: chatID,
-                    role: "user",
-                    content: value,
-                  } as Message,
-                ]);
-                trackEvent(CHAT_STARTED, {
-                  type: discoveryType,
-                });
+                sendMessage(value);
               }}
               isLoading={isLoading}
               input={input}
