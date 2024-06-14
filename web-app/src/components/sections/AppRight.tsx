@@ -24,16 +24,7 @@ const AppRight = () => {
     if (!apiReady) return;
     try {
       const response = await api!.listConversations();
-      console.log(response, `listco`);
-      const mappedItems = response.map((item: any) => {
-        return {
-          id: item.id,
-          summary: item.summary,
-          timestamp: item.updatedAt,
-          sources: item.sources,
-        };
-      });
-      setItems(mappedItems);
+      setItems(response);
       console.log("listConversations", response);
     } catch (error) {
       console.error("Error sending message", error);

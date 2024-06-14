@@ -1,4 +1,5 @@
 type HistoryItemProps = {
+  id: string;
   summary: string;
   link: string;
   timestamp: string;
@@ -6,7 +7,7 @@ type HistoryItemProps = {
 
 const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
   return (
-    <a href={`/${item.link}`}>
+    <a href={`/conversation/${item.id}`}>
       <div
         style={{
           borderRadius: "4px",

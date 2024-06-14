@@ -110,7 +110,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const prevIndexID = useRef(id);
   const isFetchingRef = useRef(false);
 
-  const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
+  const { isLanding, discoveryType, isDID, isIndex, isConversation } =
+    useRouteParams();
 
   const leftSectionIndexes = useMemo(() => {
     if (leftTabKey === IndexListTabKey.ALL) {
@@ -372,7 +373,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   useEffect(() => {
     //const newChatID = uuidv4();
     const newChatID =
-      "kjzl6kcym7w8y566uwti0lxnwgwihbbntwn882k2mg15iirwrdq8xzf9bylfi20";
+      "kjzl6kcym7w8yavyrq0oqt0pziy2aqhu1vqwptjo4m6k4zdn8xy0pebyqt8hk7p";
     localStorage.setItem("chatterID", newChatID);
     setChatID(newChatID);
   }, [id]);

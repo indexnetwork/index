@@ -10,7 +10,12 @@ export const useRouteParams = () => {
 
   const isLanding = useMemo(() => path === "/", [path]);
 
+  const isConversation = useMemo(() => path.includes("conversation"), [path]);
+
   const discoveryType = useMemo(() => {
+    if (isConversation) {
+      return DiscoveryType.CONVERSATION;
+    }
     return id
       ? id.includes("did:")
         ? DiscoveryType.DID
@@ -26,11 +31,11 @@ export const useRouteParams = () => {
     () => discoveryType === DiscoveryType.INDEX,
     [discoveryType],
   );
-
   return {
     id,
     isLanding,
     discoveryType,
+    isConversation,
     isDID,
     isIndex,
   };

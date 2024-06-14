@@ -4,6 +4,7 @@ import React, { ReactElement, ReactNode } from "react";
 export enum DiscoveryType {
   INDEX = "index",
   DID = "did",
+  CONVERSATION = "conversation",
 }
 
 /**
