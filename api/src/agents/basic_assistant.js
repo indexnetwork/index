@@ -8,7 +8,6 @@ export const handleUserMessage = async (
   pubSubClient,
   redisClient,
 ) => {
-
   const definition = runtimeDefinition;
   const { id, messages, sources, ...rest } = message.conversation;
 
@@ -31,20 +30,19 @@ export const handleUserMessage = async (
     role: "assistant",
     content: "",
   });
+
   try {
     const chatRequest = {
       indexIds: reqIndexIds,
       input: {
         question: messages.at(-1).content,
-        chat_history: [...messages.slice(0, -1).map(c => {
+        chat_history: messages.slice(0, -1).map((c) => {
           return {
+            id: c.id,
             role: c.role,
-            content: c.content
-          }
-        })],
-      },
-      model_args: {
-        ...rest,
+            content: c.content,
+          };
+        }),
       },
     };
     let resp = await axios.post(
@@ -79,6 +77,7 @@ export const handleUserMessage = async (
           `agentStream:${id}:chunk`,
           JSON.stringify({
             chunk: plainText,
+            name: "assistant",
             messageId: assistantMessage.id,
           }),
         );
@@ -104,6 +103,7 @@ export const handleUserMessage = async (
           `agentStream:${id}:end`,
           JSON.stringify({
             end: true,
+            name: "assistant",
             messageId: assistantMessage.id,
           }),
         );

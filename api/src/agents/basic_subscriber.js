@@ -1,4 +1,7 @@
 import axios from "axios";
+import { DIDService } from "../services/did";
+import { getAgentDID } from "../utils/helpers";
+import { ConversationService } from "../services/conversation";
 
 export const handleNewItemEvent = async (
   chatId,
@@ -11,6 +14,17 @@ export const handleNewItemEvent = async (
   if (!subscriptionResp) {
     return;
   }
+
+  const agentDID = await getAgentDID();
+  const conversationService = new ConversationService(definition).setDID(
+    agentDID,
+  );
+
+  const assistantMessage = await conversationService.createMessage(id, {
+    role: "assistant",
+    content: "",
+  });
+
   const { indexIds, messages } = subscription;
   const chatRequest = {
     indexIds,
@@ -29,11 +43,22 @@ export const handleNewItemEvent = async (
     );
     console.log(`Update evaluation response for ${chatId}`, resp.data);
     if (resp.data && !resp.data.includes("NOT_RELEVANT")) {
-      await redisClient.publish(`agentStream:${chatId}:update`, resp.data);
+      assistantMessage.content = resp.data;
+      await redisClient.publish(
+        `agentStream:${id}:update`,
+        JSON.stringify({
+          payload: assistantMessage,
+          name: "listener",
+          messageId: assistantMessage.id,
+        }),
+      );
+      await conversationService.updateMessage(id, assistantMessage.id, {
+        content: assistantMessage,
+      });
       await redisClient.hSet(
         `subscriptions`,
         chatId,
-        JSON.stringify({ indexIds, messages: [messages, resp.data] }),
+        JSON.stringify({ indexIds, messages: [...messages, assistantMessage] }),
       );
     }
   } catch (e) {
