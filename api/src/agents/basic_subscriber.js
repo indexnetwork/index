@@ -1,7 +1,6 @@
 import axios from "axios";
-import { DIDService } from "../services/did";
-import { getAgentDID } from "../utils/helpers";
-import { ConversationService } from "../services/conversation";
+import { getAgentDID } from "../utils/helpers.js";
+import { ConversationService } from "../services/conversation.js";
 
 export const handleNewItemEvent = async (
   chatId,
