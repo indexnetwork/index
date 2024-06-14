@@ -6,6 +6,7 @@ export const handleNewItemEvent = async (
   chatId,
   subscription,
   item,
+  definition,
   redisClient,
 ) => {
   console.log(`New item subscriber for ${chatId}`);

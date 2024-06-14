@@ -229,7 +229,7 @@ export class ConversationService {
     try {
       const agentDID = await getAgentDID();
       const content = {
-        metadata: await createDagJWE([this.did, agentDID], params),
+        metadata: await createDagJWE(this.did, [this.did, agentDID], params),
         members: [this.did.id, agentDID.id],
         createdAt: getCurrentDateTime(),
         updatedAt: getCurrentDateTime(),
@@ -299,11 +299,12 @@ export class ConversationService {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
     try {
-      const agentDID = await getAgentDID();
+      const conversation = await this.getConversation(id);
       const { deletedAt, ...paramsWithoutDeletedAt } = params;
       const content = {
         metadata: await createDagJWE(
-          [this.did, agentDID],
+          this.did,
+          conversation.members.map((did) => did.id),
           paramsWithoutDeletedAt,
         ),
         updatedAt: getCurrentDateTime(),
@@ -475,10 +476,11 @@ export class ConversationService {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
     try {
-      const agentDID = await getAgentDID();
+      const conversation = await this.getConversation(conversationId);
+      //console.log(conversation.members);
       const content = {
         conversationId,
-        content: await createDagJWE([this.did, agentDID], params),
+        content: await createDagJWE(this.did, conversation.members, params),
         createdAt: getCurrentDateTime(),
         updatedAt: getCurrentDateTime(),
       };
@@ -535,16 +537,15 @@ export class ConversationService {
     if (!this.did) {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
-
     try {
-      // Fetch the message if deleteAfter is true
+      const message = await this.getMessage(messageId);
+      const conversation = await this.getConversation(conversationId);
+      const agentDID = await getAgentDID();
+      const agentConvService = new ConversationService(this.definition).setDID(
+        agentDID,
+      );
+
       if (deleteAfter) {
-        const agentDID = await getAgentDID();
-        const agentConvService = new ConversationService(this.definition).setDID(
-          agentDID,
-        );
-        const message = await this.getMessage(messageId);
-        const conversation = await this.getConversation(conversationId);
         if (
           conversation &&
           conversation.messages &&
@@ -553,21 +554,28 @@ export class ConversationService {
           for (const messageEdge of conversation.messages.filter(
             (m) => new Date(m.createdAt) > new Date(message.createdAt),
           )) {
-            if(messageEdge.controllerDID.id == agentDID.id) {
-                await agentConvService.deleteMessage(conversation.id, messageEdge.id);
+            if (messageEdge.controllerDID.id == agentDID.id) {
+              await agentConvService.deleteMessage(
+                conversation.id,
+                messageEdge.id,
+              );
             } else {
-                await this.deleteMessage(conversation.id, messageEdge.id);
+              await this.deleteMessage(conversation.id, messageEdge.id);
             }
           }
         }
       }
 
       const { deletedAt, ...paramsWithoutDeletedAt } = params;
-      const agentDID = await getAgentDID();
+
       const content = {
         conversationId,
         content: paramsWithoutDeletedAt
-          ? await createDagJWE([this.did, agentDID], paramsWithoutDeletedAt)
+          ? await createDagJWE(
+              this.did,
+              conversation.members,
+              paramsWithoutDeletedAt,
+            )
           : "",
         updatedAt: getCurrentDateTime(),
       };

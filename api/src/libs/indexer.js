@@ -284,7 +284,13 @@ class Indexer {
       //console.log(indexItem.item.id, indexItem.index.id, subscription.indexIds);
       console.log(`Handle new item event for chatId: ${chatId}`);
       if (subscription.indexIds.indexOf(indexItem.index.id) >= 0) {
-        handleNewItemEvent(chatId, subscription, itemStream.content, redis);
+        handleNewItemEvent(
+          chatId,
+          subscription,
+          itemStream.content,
+          this.definition,
+          redis,
+        );
       }
     }
   }
