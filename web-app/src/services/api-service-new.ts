@@ -312,6 +312,16 @@ class ApiService {
     return response.data;
   }
 
+  async listConversations() {
+    const response = await this.apiAxios.get<any>("/conversations");
+
+    if (response.status !== 200) {
+      throw new Error("Failed to list conversations");
+    }
+
+    return response.data;
+  }
+
   async getContract(
     network: string,
     address: string,
