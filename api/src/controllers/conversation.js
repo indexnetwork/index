@@ -40,7 +40,7 @@ export const updates = async (req, res) => {
   const { id } = req.params;
 
   const session = await DIDSession.fromSession(req.query.session);
-  if (!session || !session.isAuthenticated()) {
+  if (!session || !session.isAuthorized()) {
     return res.status(401).json({ error: "Unauthorized" });
   }
   const definition = req.app.get("runtimeDefinition");
