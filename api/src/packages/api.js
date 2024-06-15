@@ -1,7 +1,6 @@
 import dotenv from "dotenv";
 import Moralis from "moralis";
 import express from "express";
-import expressWs from "express-ws";
 
 import Joi from "joi";
 import * as ejv from "express-joi-validation";
@@ -10,7 +9,7 @@ import RedisClient from "../clients/redis.js";
 
 import { createProxyMiddleware } from "http-proxy-middleware";
 
-const { app } = expressWs(express());
+const app = express();
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
@@ -457,6 +456,21 @@ app.get(
   conversationController.getConversation,
 );
 
+app.get(
+  "/conversations/:id/updates",
+  validator.params(
+    Joi.object({
+      id: Joi.custom(isStreamID, "Conversation ID").required(),
+    }),
+  ),
+  validator.query(
+    Joi.object({
+      session: Joi.string().required(),
+    }),
+  ),
+  conversationController.updates,
+);
+
 app.post(
   "/conversations",
   authCheckMiddleware,
@@ -645,7 +659,6 @@ app.delete(
 app.use(errorMiddleware);
 
 app.post("/farcaster/updates", farcasterController.createCast);
-app.ws("/discovery/:chatId/updates", discoveryController.updates);
 
 const start = async () => {
   console.log("Starting API ...", port);

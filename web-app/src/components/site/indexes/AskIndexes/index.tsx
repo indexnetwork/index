@@ -331,18 +331,20 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
       return prevConversation;
     });
   };
-  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const socketUrl = `${process.env.NEXT_PUBLIC_API_URL!.replace(/^https/, "wss")}${API_ENDPOINTS.DISCOVERY_UPDATES.replace(":chatID", chatID)}`;
-    wsRef.current = new WebSocket(socketUrl);
-    wsRef.current.onmessage = (event) => {
+    const eventUrl = `${process.env.NEXT_PUBLIC_API_URL!}${API_ENDPOINTS.CONVERSATION_UPDATES.replace(":conversationId", chatID)}?session=${session?.serialize()}`;
+    const eventSource = new EventSource(eventUrl);
+    eventSource.onmessage = (event) => {
+      console.log("Received message from server", event.data);
       handleMessage(event.data);
     };
+    eventSource.onerror = (err) => {
+      console.error("EventSource failed:", err);
+      eventSource.close();
+    };
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      eventSource.close();
     };
   }, [stoppedMessages, deletedMessages, chatID, API_ENDPOINTS]);
 

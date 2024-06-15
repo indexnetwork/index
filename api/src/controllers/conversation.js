@@ -1,4 +1,8 @@
 import { ConversationService } from "../services/conversation.js";
+import RedisClient from "../clients/redis.js";
+import { DIDSession } from "did-session";
+
+const pubSubClient = RedisClient.getPubSubInstance();
 
 // List all conversations
 export const listConversations = async (req, res, next) => {
@@ -30,6 +34,46 @@ export const getConversation = async (req, res, next) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+};
+
+export const updates = async (req, res) => {
+  const { id } = req.params;
+
+  const session = await DIDSession.fromSession(req.query.session);
+  if (!session || !session.isAuthenticated()) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  const definition = req.app.get("runtimeDefinition");
+
+  try {
+    const conversationService = new ConversationService(definition).setSession(
+      session,
+    );
+    const conversation = await conversationService.getConversation(id);
+    if (!conversation) {
+      res.end();
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  const handleMessage = (message, channel) => {
+    const channelType = channel.replace(`agentStream:${id}:`, "");
+    res.write(
+      `data: ${JSON.stringify({ channel: channelType, data: JSON.parse(message), id })}\n\n`,
+    );
+  };
+
+  await pubSubClient.pSubscribe(`agentStream:${id}:*`, handleMessage);
+
+  // Cleanup on client disconnect
+  req.on("close", () => {
+    pubSubClient.pUnsubscribe(`agentStream:${conversationId}:*`, handleMessage);
+    res.end();
+  });
 };
 
 // Create a new conversation
