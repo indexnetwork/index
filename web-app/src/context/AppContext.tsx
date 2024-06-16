@@ -16,7 +16,6 @@ import {
 import toast from "react-hot-toast";
 import { AccessControlCondition, Indexes, Users } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
-import { v4 as uuidv4 } from "uuid";
 import { CancelTokenSource } from "axios";
 import { INDEX_CREATED, trackEvent } from "@/services/tracker";
 
@@ -371,7 +370,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, [handleUserProfileChange]);
 
   useEffect(() => {
-    //const newChatID = uuidv4();
+    // const newChatID = uuidv4();
     const newChatID =
       "kjzl6kcym7w8yavyrq0oqt0pziy2aqhu1vqwptjo4m6k4zdn8xy0pebyqt8hk7p";
     localStorage.setItem("chatterID", newChatID);

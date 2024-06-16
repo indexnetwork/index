@@ -26,11 +26,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { toast } from "react-hot-toast";
 import { API_ENDPOINTS } from "utils/constants";
 import { maskDID } from "utils/helper";
+import { generateId } from "ai";
 import NoIndexes from "../NoIndexes";
-import { generateId, nanoid } from "ai";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -439,6 +438,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
               contextMessage={getChatContextMessage()}
               onSubmit={async (value) => {
                 sendMessage(value);
+                trackEvent(CHAT_STARTED, {
+                  type: discoveryType,
+                });
               }}
               isLoading={isLoading}
               input={input}
