@@ -72,7 +72,7 @@ export class ConversationService {
       query {
         viewer {
           ... on CeramicAccount {
-            conversationList(first: 1000, filters: {
+            conversationList(first: 1000,  sorting: {createdAt: DESC}, filters: {
               where: {
                 deletedAt: {isNull: true}
               }
