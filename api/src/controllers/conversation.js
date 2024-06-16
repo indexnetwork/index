@@ -51,10 +51,10 @@ export const updates = async (req, res) => {
     );
     const conversation = await conversationService.getConversation(id);
     if (!conversation) {
-      res.end();
+      return res.end();
     }
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
@@ -71,7 +71,7 @@ export const updates = async (req, res) => {
 
   // Cleanup on client disconnect
   req.on("close", () => {
-    pubSubClient.pUnsubscribe(`agentStream:${conversationId}:*`, handleMessage);
+    pubSubClient.pUnsubscribe(`agentStream:${id}:*`, handleMessage);
     res.end();
   });
 };

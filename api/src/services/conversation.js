@@ -56,17 +56,12 @@ export class ConversationService {
     delete node.metadata;
 
     const messages = await Promise.all(
-      node.messages.edges
-        .map(async (edge) => {
-          const decryptedContent = await decryptJWE(
-            this.did,
-            edge.node.content,
-          );
-          return { ...edge.node, ...decryptedContent };
-        })
-        .filter((m) => !m.content && m.deletedAt === null),
+      node.messages.edges.map(async (edge) => {
+        const decryptedContent = await decryptJWE(this.did, edge.node.content);
+        return { ...edge.node, ...decryptedContent };
+      }),
     );
-    node.messages = messages;
+    node.messages = messages.filter((m) => m.role && m.deletedAt === null);
     return node;
   }
 
@@ -77,7 +72,11 @@ export class ConversationService {
       query {
         viewer {
           ... on CeramicAccount {
-            conversationList(first: 1000) {
+            conversationList(first: 1000, filters: {
+              where: {
+                deletedAt: {isNull: true}
+              }
+            }) {
               edges {
                 node {
                   id
@@ -270,7 +269,11 @@ export class ConversationService {
     }
     if (conversation && conversation.messages) {
       for (const message of conversation.messages) {
-        await this.deleteMessage(id, message.id);
+        try {
+          await this.deleteMessage(id, message.id);
+        } catch (e) {
+          console.error(e);
+        }
       }
     }
 

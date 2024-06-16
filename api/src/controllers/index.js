@@ -1,8 +1,22 @@
-import { getRolesFromSession } from "../libs/lit/index.js";
 import { DIDService } from "../services/did.js";
 import { IndexService } from "../services/index.js";
 import RedisClient from "../clients/redis.js";
 
+export const getRolesFromSession = (index, session, definition) => {
+  if (
+    session.cacao.p.resources.indexOf("ceramic://*") > -1 &&
+    index.controllerDID.id == session.did.parent
+  ) {
+    return {
+      owner: true,
+      creator: false,
+    };
+  }
+  return {
+    owner: false,
+    creator: false,
+  };
+};
 const redis = RedisClient.getInstance();
 
 export const getIndexById = async (req, res, next) => {

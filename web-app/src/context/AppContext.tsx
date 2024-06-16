@@ -372,7 +372,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   useEffect(() => {
     // const newChatID = uuidv4();
     const newChatID =
-      "kjzl6kcym7w8yavyrq0oqt0pziy2aqhu1vqwptjo4m6k4zdn8xy0pebyqt8hk7p";
+      "kjzl6kcym7w8y4z06z2gv3ulgup1l1onjkbog02uai6ktw30uxbqi8jm9f75epg";
     localStorage.setItem("chatterID", newChatID);
     setChatID(newChatID);
   }, [id]);

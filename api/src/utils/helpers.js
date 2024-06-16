@@ -128,7 +128,7 @@ export const decryptJWE = async (did, str) => {
     const decryptedData = await did.decryptDagJWE(parsedStr);
     return decryptedData;
   } catch (error) {
-    console.error("Failed to decrypt JWE:", error);
+    console.error("Failed to decrypt JWE:", error.message);
   }
 };
 export const createDagJWE = async (owner, dids, cleartext) => {
