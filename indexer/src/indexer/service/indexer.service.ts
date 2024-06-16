@@ -164,10 +164,8 @@ export class IndexerService {
       const toFlat = body.document as JSON;
       const flattenMetadata: any = flatten(toFlat);
 
-      console.log(flattenMetadata);
-
       for (const key in flattenMetadata) {
-        if (flattenMetadata[key] && typeof flattenMetadata[key] === 'string') {
+        if (typeof flattenMetadata[key] === 'string') {
           flattenMetadata[key] =
             flattenMetadata[key].length > 300
               ? flattenMetadata[key].slice(0, 300)

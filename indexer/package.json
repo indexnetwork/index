@@ -37,7 +37,6 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.6",
-    "flatten-anything": "^4.0.1",
     "langchain": "^0.1.5",
     "notion-crawler": "^0.0.9",
     "openai": "^4.28.0",
