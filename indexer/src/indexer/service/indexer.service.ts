@@ -9,6 +9,9 @@ import { HttpService } from '@nestjs/axios';
 import * as fs from 'fs';
 import { MIME_TYPE } from '../schema/indexer.schema';
 import { TokenTextSplitter } from 'langchain/text_splitter';
+import { Metadata, UpdateParams } from 'chromadb';
+//what to do with this import
+import { flatten } from 'safe-flat';
 
 @Injectable()
 export class IndexerService {
@@ -129,38 +132,14 @@ export class IndexerService {
    * @param body IndexRequestBody
    * @returns Success message
    */
-  async index(indexId: string, body: any): Promise<{ message: string }> {
+  async index(body: any): Promise<{ message: string }> {
     Logger.log(
       `Indexing ${JSON.stringify(body)?.length} bytes`,
       'indexerService:index',
     );
 
-    const chromaID = await this.generateChromaID(indexId, body);
-
     try {
-      let payload = {};
-
-      const payload_keys = Object.keys(body);
-
-      let model_type = '';
-      payload_keys.forEach((key) => {
-        if (key.includes('_')) {
-          // Get the model type
-          model_type = key.split('_')[0];
-          // Model based keys
-          let chroma_key = key.split('_')[1];
-          payload[chroma_key] = body[key];
-        } else {
-          // Index based keys
-          if (key !== 'vector') {
-            payload[key] = body[key];
-          }
-        }
-      });
-
-      payload['model'] = model_type;
-      let pageContent = JSON.stringify(payload);
-
+      let pageContent = JSON.stringify(body.document);
       // Reduce the content size for indexing
       const splitter = new TokenTextSplitter();
       Logger.log(
@@ -182,22 +161,33 @@ export class IndexerService {
       pageContent = pageContent.trim();
 
       Logger.log(`Reduced ${pageContent}`, 'indexerService:index');
+      const toFlat = body.document as JSON;
+      const flattenMetadata: any = flatten(toFlat);
 
-      const documents = [
-        {
-          pageContent,
-          metadata: payload,
-        },
-      ];
+      console.log(flattenMetadata);
 
-      const ids = await this.chromaClient.addDocuments(documents, {
-        ids: [chromaID],
+      for (const key in flattenMetadata) {
+        if (flattenMetadata[key] && typeof flattenMetadata[key] === 'string') {
+          flattenMetadata[key] =
+            flattenMetadata[key].length > 300
+              ? flattenMetadata[key].slice(0, 300)
+              : flattenMetadata[key];
+        } else {
+          delete flattenMetadata[key];
+        }
+      }
+
+      await this.chromaClient.collection.upsert({
+        ids: [body.id],
+        metadatas: [flattenMetadata],
+        documents: [pageContent],
+        embeddings: [body.vector],
       });
 
-      Logger.log(`Indexed ${JSON.stringify(ids)}`, 'indexerService:index');
+      Logger.log(`Indexed ${body.id}`, 'indexerService:index');
 
       return {
-        message: `Successfully indexed ${body.indexTitle} with id ${ids[0]}`,
+        message: `Successfully indexed ${body.indexTitle}`,
       };
     } catch (e) {
       console.log(e);
@@ -213,31 +203,62 @@ export class IndexerService {
    */
   async update(
     indexId: string,
-    indexItemId: string,
+    itemId: string,
     body: IndexUpdateBody,
   ): Promise<{ message: string }> {
-    const chromaID = await this.generateChromaID(indexId, indexItemId);
-
     try {
-      let updated = {
-        ids: chromaID,
-      };
+      const response = await this.chromaClient.collection.query({
+        where: {
+          $and: [{ indexId: { $eq: indexId } }, { itemId: { $eq: itemId } }],
+        },
+        nResults: 100, // todo implement pagination
+      });
 
-      if (body.embedding) {
-        updated['embedding'] = body.embedding;
-      }
+      const updateRequest = {
+        ids: response.ids,
+      } as any;
+
       if (body.metadata) {
-        updated['metadata'] = body.metadata;
+        updateRequest.metadatas = response.ids.map(() => body.metadata);
       }
 
-      const response = await this.chromaClient.collection.update(updated);
+      await this.chromaClient.collection.update(updateRequest);
 
       return {
-        message: `Successfully updated ${chromaID}`,
+        message: `Successfully updated ${response.ids}`,
       };
     } catch (e) {
       return {
-        message: `Update error for ${chromaID}`,
+        message: `Update error`,
+      };
+    }
+  }
+
+  /**
+   * @description Deletes the document from ChromaDB with the given indexId
+   *
+   * @param body
+   * @returns Success or error message
+   */
+  async deleteIndex(indexId: string): Promise<{ message: string }> {
+    try {
+      if (indexId) {
+        const response = await this.chromaClient.collection.delete({
+          where: {
+            indexId: indexId,
+          },
+        });
+
+        if (!response)
+          Logger.warn(`Delete failed for ${response}`, 'indexerService:delete');
+
+        return {
+          message: `Successfully deleted ${response} documents`,
+        };
+      }
+    } catch (e) {
+      return {
+        message: `Delete error`,
       };
     }
   }
@@ -248,64 +269,27 @@ export class IndexerService {
    * @param body
    * @returns Success or error message
    */
-  async delete(
+  async deleteIndexItem(
     indexId: string,
-    indexItemId: string | null,
+    itemId: string | null,
   ): Promise<{ message: string }> {
-    let response;
-
-    const chromaID = await this.generateChromaID(indexId, indexItemId);
-
     try {
-      if (indexItemId) {
-        const res = await this.chromaClient.collection.get({
-          ids: [chromaID],
-          limit: 1,
-        });
+      const response = await this.chromaClient.collection.delete({
+        where: {
+          $and: [{ indexId: { $eq: indexId } }, { itemId: { $eq: itemId } }],
+        },
+      });
 
-        if (res.ids.length === 0)
-          Logger.warn(
-            'Delete failed, document not found',
-            'indexerService:delete',
-          );
+      if (!response)
+        Logger.warn(`Delete failed for ${response}`, 'indexerService:delete');
 
-        const response = await this.chromaClient.collection.delete({
-          ids: [chromaID],
-        });
-
-        Logger.debug(
-          `Delete Response ${JSON.stringify(response)}`,
-          'indexerService:delete',
-        );
-
-        // if (!response) throw new Error('Delete failed');
-
-        return {
-          message: `Successfully deleted ${JSON.stringify(response)}`,
-        };
-      } else {
-        const res = await this.chromaClient.collection.get({
-          where: { indexId: indexId },
-          limit: 1000,
-        });
-
-        Logger.log(
-          `Deleting ${JSON.stringify(res?.ids)}`,
-          'indexerService:delete',
-        );
-
-        response = await this.chromaClient.collection.delete({ ids: res?.ids });
-
-        if (!response)
-          Logger.warn(`Delete failed for ${res?.ids}`, 'indexerService:delete');
-
-        return {
-          message: `Successfully deleted ${response.ids.length} documents`,
-        };
-      }
+      console.log('response', response);
+      return {
+        message: `Successfully deleted ${response} documents`,
+      };
     } catch (e) {
       return {
-        message: `Delete error for ${indexId}`,
+        message: `Delete error`,
       };
     }
   }

@@ -158,7 +158,7 @@ class Indexer {
         `Step [1]: Indexer session created for index: ${indexItem.index.id}`,
       );
 
-      const updateURL = `${process.env.LLM_INDEXER_HOST}/indexer/item?indexId=${indexItem.indexId}&indexItemId=${indexItem.itemId}`;
+      const updateURL = `${process.env.LLM_INDEXER_HOST}/indexer/item?indexId=${indexItem.indexId}&itemId=${indexItem.itemId}`;
 
       if (indexItem.deletedAt !== null) {
         logger.info(`Step [1]: IndexItem DeleteEvent trigger for id: ${id}`);
@@ -182,7 +182,7 @@ class Indexer {
 
   async updateQuestions(indexItem) {
     try {
-      let response = await axios.get(
+      let response = await axios.post(
         `${process.env.LLM_INDEXER_HOST}/chat/questions`,
         {
           indexIds: [indexItem.index.id],
@@ -199,7 +199,7 @@ class Indexer {
         86400,
       );
     } catch (error) {
-      console.error("Error fetching or caching data:", error);
+      console.error("Error fetching or caching data:", error.message);
     }
   }
 
@@ -259,7 +259,7 @@ class Indexer {
             description: "Default document embeddings",
           });
 
-          //this.updateQuestions(indexItem);
+          this.updateQuestions(indexItem);
           logger.info(
             `Step [2]: EmbeddingEvent trigger successfull for id: ${embedding.id}`,
           );
@@ -309,36 +309,33 @@ class Indexer {
       return;
     }
 
-    const doc = {
-      ...itemStream.content,
-      id: itemStream.id.toString(),
-      controllerDID: itemStream.metadata.controller,
-      modelName: embedding.item.__typename,
-    };
     const payload = {
-      indexId: embedding.index.id,
-      indexTitle: embedding.index.title,
-      indexCreatedAt: embedding.index.createdAt,
-      indexUpdatedAt: embedding.index.updatedAt,
-      indexDeletedAt: embedding.index.deletedAt,
-      indexControllerDID: embedding.index.controllerDID.id,
+      id: embedding.id,
       vector: embedding.vector,
+      document: {
+        item: itemStream.content,
+        controllerDID: itemStream.metadata.controller,
+        modelName: embedding.item.__typename,
+        itemId: embedding.item.id,
+        indexId: embedding.index.id,
+        indexTitle: embedding.index.title,
+        indexCreatedAt: embedding.index.createdAt,
+        indexUpdatedAt: embedding.index.updatedAt,
+        indexDeletedAt: embedding.index.deletedAt,
+        indexControllerDID: embedding.index.controllerDID.id,
+      },
     };
-
-    for (let key of Object.keys(doc)) {
-      payload[key] = doc[key];
-    }
 
     if (embedding.index.controllerDID.name) {
-      payload.indexOwnerName = embedding.index.controllerDID.name;
+      payload.document.indexOwnerName = embedding.index.controllerDID.name;
     }
     if (embedding.index.controllerDID.bio) {
-      payload.indexOwnerBio = embedding.index.controllerDID.bio;
+      payload.document.indexOwnerBio = embedding.index.controllerDID.bio;
     }
 
     try {
       await axios.post(
-        `${process.env.LLM_INDEXER_HOST}/indexer/index?indexId=${embedding.index.id}`,
+        `${process.env.LLM_INDEXER_HOST}/indexer/index`,
         payload,
       );
 
