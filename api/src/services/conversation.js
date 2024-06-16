@@ -22,50 +22,87 @@ export class ConversationService {
     }
     return this;
   }
+
   setDID(did) {
     this.did = did;
     return this;
   }
 
-  async listConversations() {
+  validateDID() {
     if (!this.did) {
       throw new Error("DID not set. Use setSession() to set the did.");
     }
+  }
 
+  async executeQuery(query, variables = {}) {
     try {
       this.client.setDID(this.did);
+      const { data, errors } = await this.client.executeQuery(query, variables);
+      if (errors) {
+        throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
+      }
+      return data;
+    } catch (error) {
+      console.error("Exception occurred in executeQuery:", error);
+      throw error;
+    }
+  }
 
-      const { data, errors } = await this.client.executeQuery(`
-        query {
-          viewer {
-            ... on CeramicAccount {
-              conversationList(first: 1000) {
-                edges {
-                  node {
+  async decryptNode(node) {
+    const decryptedMetadata = await decryptJWE(this.did, node.metadata);
+    if (!decryptedMetadata) return null;
+    node.sources = decryptedMetadata.sources;
+    node.summary = decryptedMetadata.summary;
+    delete node.metadata;
+
+    const messages = await Promise.all(
+      node.messages.edges
+        .map(async (edge) => {
+          const decryptedContent = await decryptJWE(
+            this.did,
+            edge.node.content,
+          );
+          return { ...edge.node, ...decryptedContent };
+        })
+        .filter((m) => !m.content && m.deletedAt === null),
+    );
+    node.messages = messages;
+    return node;
+  }
+
+  async listConversations() {
+    this.validateDID();
+
+    const query = `
+      query {
+        viewer {
+          ... on CeramicAccount {
+            conversationList(first: 1000) {
+              edges {
+                node {
+                  id
+                  metadata
+                  createdAt
+                  updatedAt
+                  deletedAt
+                  controllerDID {
                     id
-                    metadata
-                    createdAt
-                    updatedAt
-                    deletedAt
-                    controllerDID {
-                      id
-                    }
-                    members {
-                      id
-                    }
-                    messages(last:1) {
-                      edges {
-                        node {
+                  }
+                  members {
+                    id
+                  }
+                  messages(last:1) {
+                    edges {
+                      node {
+                        id
+                        conversationId
+                        controllerDID {
                           id
-                          conversationId
-                          controllerDID {
-                            id
-                          }
-                          createdAt
-                          updatedAt
-                          deletedAt
-                          content
                         }
+                        createdAt
+                        updatedAt
+                        deletedAt
+                        content
                       }
                     }
                   }
@@ -73,566 +110,308 @@ export class ConversationService {
               }
             }
           }
-        }`);
+        }
+      }`;
 
-      // Handle GraphQL errors
-      if (errors) {
-        throw new Error(
-          `Error getting conversations: ${JSON.stringify(errors)}`,
-        );
-      }
-
-      // Validate the data response
-      if (
-        !data ||
-        !data.viewer ||
-        !data.viewer.conversationList ||
-        !data.viewer.conversationList.edges
-      ) {
-        throw new Error("Invalid response data");
-      }
-
-      if (data.viewer.conversationList.edges.length === 0) {
-        return [];
-      }
-
-      let conversations = data.viewer.conversationList.edges.map(
-        async (edge) => {
-          if (edge.node.deletedAt) {
-            return null;
-          }
-          const decryptedMetadata = await decryptJWE(
-            this.did,
-            edge.node.metadata,
-          );
-          if (!decryptedMetadata) {
-            return null;
-          }
-          edge.node.sources = decryptedMetadata.sources;
-          edge.node.summary = decryptedMetadata.summary;
-          delete edge.node.metadata;
-
-          const messages = await Promise.all(
-            edge.node.messages.edges.map(async (edge) => {
-              const decryptedJWE = await decryptJWE(
-                this.did,
-                edge.node.content,
-              );
-              delete edge.node.content;
-              return {
-                ...edge.node,
-                ...decryptedJWE,
-              };
-            }),
-          );
-
-          edge.node.messages = messages;
-          return edge.node;
-        },
-      );
-      conversations = await Promise.all(conversations);
-      return conversations.filter((c) => c && c.deletedAt === null);
-    } catch (error) {
-      // Log the error and rethrow it for external handling
-      console.error("Exception occurred in returning conversation:", error);
-      throw error;
-    }
+    const data = await this.executeQuery(query);
+    const edges = data?.viewer?.conversationList?.edges || [];
+    const conversations = await Promise.all(
+      edges.map(async (edge) => {
+        if (edge.node.deletedAt) return null;
+        return await this.decryptNode(edge.node);
+      }),
+    );
+    return conversations.filter((c) => c && c.deletedAt === null);
   }
 
   async getConversation(id) {
-    if (!this.did) {
-      throw new Error("DID not set. Use setSession() to set the did.");
-    }
+    this.validateDID();
 
-    try {
-      this.client.setDID(this.did);
-
-      const { data, errors } = await this.client.executeQuery(`
-     {
-      node(id: "${id}") {
-        ... on Conversation {
-          id
-          metadata
-          controllerDID {
+    const query = `
+      {
+        node(id: "${id}") {
+          ... on Conversation {
             id
-          }
-          createdAt
-          updatedAt
-          deletedAt
-          members {
-            id
-          }
-          messages(first: 1000,  filters: {where: {deletedAt: {isNull: true}}}, sorting: {createdAt: ASC}) {
-            edges {
-              node {
-                id
-                controllerDID {
+            metadata
+            controllerDID {
+              id
+            }
+            createdAt
+            updatedAt
+            deletedAt
+            members {
+              id
+            }
+            messages(first: 1000, filters: {where: {deletedAt: {isNull: true}}}, sorting: {createdAt: ASC}) {
+              edges {
+                node {
                   id
+                  controllerDID {
+                    id
+                  }
+                  createdAt
+                  updatedAt
+                  deletedAt
+                  content
                 }
-                createdAt
-                updatedAt
-                deletedAt
-                content
               }
             }
           }
         }
-      }
-    }`);
+      }`;
 
-      // Handle GraphQL errors
-      if (errors) {
-        throw new Error(
-          `Error getting conversation: ${JSON.stringify(errors)}`,
-        );
-      }
-
-      // Validate the data response
-      if (!data || !data.node || !data.node.messages) {
-        throw new Error("Invalid response data");
-      }
-
-      if (data.node.deletedAt) {
-        return null;
-      }
-      const decryptedMetadata = await decryptJWE(this.did, data.node.metadata);
-      data.node.sources = decryptedMetadata.sources;
-      data.node.summary = decryptedMetadata.summary;
-      delete data.node.metadata;
-
-      const messages = await Promise.all(
-        data.node.messages.edges.map(async (edge) => {
-          const decryptedContent = await decryptJWE(
-            this.did,
-            edge.node.content,
-          );
-          return {
-            ...edge.node,
-            ...decryptedContent,
-          };
-        }),
-      );
-
-      data.node.messages = messages;
-      return data.node;
-    } catch (error) {
-      // Log the error and rethrow it for external handling
-      console.error("Exception occurred in returning conversation:", error);
-      throw error;
-    }
+    const data = await this.executeQuery(query);
+    if (data.node.deletedAt) return null;
+    return await this.decryptNode(data.node);
   }
 
   async createConversation(params) {
-    if (!this.did) {
-      throw new Error("DID not set. Use setSession() to set the did.");
-    }
-    try {
-      const agentDID = await getAgentDID();
-      const content = {
-        metadata: await createDagJWE(this.did, [this.did, agentDID], params),
-        members: [this.did.id, agentDID.id],
-        createdAt: getCurrentDateTime(),
-        updatedAt: getCurrentDateTime(),
-      };
-      this.client.setDID(this.did);
+    this.validateDID();
 
-      const { data, errors } = await this.client.executeQuery(
-        `
-        mutation CreateConversation($input: CreateConversationInput!) {
-          createConversation(input: $input) {
-            document {
+    const agentDID = await getAgentDID();
+    const content = {
+      metadata: await createDagJWE(this.did, [this.did, agentDID], params),
+      members: [this.did.id, agentDID.id],
+      createdAt: getCurrentDateTime(),
+      updatedAt: getCurrentDateTime(),
+    };
+
+    const query = `
+      mutation CreateConversation($input: CreateConversationInput!) {
+        createConversation(input: $input) {
+          document {
+            id
+            metadata
+            createdAt
+            updatedAt
+            deletedAt
+            members {
               id
-              metadata
-              createdAt
-              updatedAt
-              deletedAt
-              members {
-                id
-              }
-              controllerDID {
-                id
-              }
             }
-          }
-        }
-      `,
-        { input: { content } },
-      );
-      // Handle GraphQL errors
-      if (errors) {
-        throw new Error(
-          `Error creating conversation: ${JSON.stringify(errors)}`,
-        );
-      }
-
-      // Validate the data response
-      if (
-        !data ||
-        !data.createConversation ||
-        !data.createConversation.document
-      ) {
-        throw new Error("Invalid response data");
-      }
-
-      const decryptedMetadata = await decryptJWE(
-        this.did,
-        data.createConversation.document.metadata,
-      );
-
-      // Deconstruct document and override metadata
-      const { metadata, ...documentWithoutMetadata } =
-        data.createConversation.document;
-
-      return {
-        ...documentWithoutMetadata,
-        ...decryptedMetadata,
-      };
-    } catch (error) {
-      // Log the error and rethrow it for external handling
-      console.error("Exception occurred in createConversation:", error);
-      throw error;
-    }
-  }
-
-  async updateConversation(id, params) {
-    if (!this.did) {
-      throw new Error("DID not set. Use setSession() to set the did.");
-    }
-    try {
-      const conversation = await this.getConversation(id);
-      const { deletedAt, ...paramsWithoutDeletedAt } = params;
-      const content = {
-        metadata: await createDagJWE(
-          this.did,
-          conversation.members.map((did) => did.id),
-          paramsWithoutDeletedAt,
-        ),
-        updatedAt: getCurrentDateTime(),
-      };
-      if (deletedAt) {
-        content.deletedAt = deletedAt;
-      }
-
-      this.client.setDID(this.did);
-
-      const { data, errors } = await this.client.executeQuery(
-        `
-                mutation UpdateConversation($input: UpdateConversationInput!) {
-                    updateConversation(input: $input) {
-                        document {
-                          id
-                          metadata
-                          createdAt
-                          updatedAt
-                          deletedAt
-                          controllerDID {
-                            id
-                          }
-                          messages(last:1) {
-                            edges {
-                              node {
-                                id
-                                controllerDID {
-                                  id
-                                }
-                                createdAt
-                                updatedAt
-                                deletedAt
-                                content
-                              }
-                            }
-                          }
-                        }
-                    }
-                }`,
-        { input: { id, content } },
-      );
-      // Handle GraphQL errors
-      if (errors) {
-        throw new Error(
-          `Error updating conversation: ${JSON.stringify(errors)}`,
-        );
-      }
-
-      // Validate the data response
-      if (
-        !data ||
-        !data.updateConversation ||
-        !data.updateConversation.document
-      ) {
-        throw new Error("Invalid response data");
-      }
-
-      const decryptedMetadata = await decryptJWE(
-        this.did,
-        data.updateConversation.document.metadata,
-      );
-
-      // Deconstruct document and override metadata
-      const { metadata, ...documentWithoutMetadata } =
-        data.updateConversation.document;
-
-      const messages = await Promise.all(
-        documentWithoutMetadata.messages.edges.map(async (edge) => {
-          return {
-            ...edge.node,
-            content: await decryptJWE(this.did, edge.node.content),
-          };
-        }),
-      );
-
-      documentWithoutMetadata.messages = messages;
-      return {
-        ...documentWithoutMetadata,
-        ...decryptedMetadata,
-      };
-    } catch (error) {
-      // Log the error and rethrow it for external handling
-      console.error("Exception occurred in updateConversation:", error);
-      throw error;
-    }
-  }
-
-  async deleteConversation(id) {
-    if (!this.did) {
-      throw new Error("DID not set. Use setSession() to set the did.");
-    }
-
-    try {
-      const conversation = await this.getConversation(id);
-
-      if (conversation && conversation.messages) {
-        for (const message of conversation.messages) {
-          await this.deleteMessage(id, message.id);
-        }
-      }
-
-      // Delete the conversation
-      return await this.updateConversation(id, {
-        deletedAt: getCurrentDateTime(),
-      });
-    } catch (error) {
-      console.error("Exception occurred in deleting conversation:", error);
-      throw error;
-    }
-  }
-
-  async getMessage(id) {
-    if (!this.did) {
-      throw new Error("DID not set. Use setSession() to set the did.");
-    }
-
-    try {
-      this.client.setDID(this.did);
-
-      const { data, errors } = await this.client.executeQuery(`
-     {
-      node(id: "${id}") {
-        ... on EncryptedMessage {
-          id
-          controllerDID {
-            id
-          }
-          conversationId
-          conversation {
-            id
             controllerDID {
               id
             }
           }
-          createdAt
-          updatedAt
-          deletedAt
-          content
         }
-      }
-    }`);
+      }`;
 
-      // Handle GraphQL errors
-      if (errors) {
-        throw new Error(`Error getting message: ${JSON.stringify(errors)}`);
-      }
+    const data = await this.executeQuery(query, { input: { content } });
+    const document = data.createConversation.document;
 
-      // Validate the data response
-      if (!data || !data.node || !data.node.content) {
-        throw new Error("Invalid response data");
-      }
-
-      const decryptedContent = await decryptJWE(this.did, data.node.content);
-      const message = {
-        ...data.node,
-        ...decryptedContent,
-      };
-      return message;
-    } catch (error) {
-      // Log the error and rethrow it for external handling
-      console.error("Exception occurred in returning message:", error);
-      throw error;
-    }
+    const decryptedMetadata = await decryptJWE(this.did, document.metadata);
+    return { ...document, ...decryptedMetadata, metadata: undefined };
   }
 
-  async createMessage(conversationId, params) {
-    if (!this.did) {
-      throw new Error("DID not set. Use setSession() to set the did.");
-    }
-    try {
-      const conversation = await this.getConversation(conversationId);
-      //console.log(conversation.members);
-      const content = {
-        conversationId,
-        content: await createDagJWE(this.did, conversation.members, params),
-        createdAt: getCurrentDateTime(),
-        updatedAt: getCurrentDateTime(),
-      };
-      this.client.setDID(this.did);
+  async updateConversation(id, params) {
+    this.validateDID();
 
-      const { data, errors } = await this.client.executeQuery(
-        `
-        mutation CreateEncryptedMessage($input: CreateEncryptedMessageInput!) {
-          createEncryptedMessage(input: $input) {
-            document {
+    const conversation = await this.getConversation(id);
+    const { deletedAt, ...paramsWithoutDeletedAt } = params;
+    const content = {
+      metadata: await createDagJWE(
+        this.did,
+        conversation.members,
+        paramsWithoutDeletedAt,
+      ),
+      updatedAt: getCurrentDateTime(),
+      ...(deletedAt && { deletedAt }),
+    };
+
+    const query = `
+      mutation UpdateConversation($input: UpdateConversationInput!) {
+        updateConversation(input: $input) {
+          document {
+            id
+            metadata
+            createdAt
+            updatedAt
+            deletedAt
+            controllerDID {
               id
-              content
-              createdAt
-              updatedAt
-              deletedAt
+            }
+            messages(last:1) {
+              edges {
+                node {
+                  id
+                  controllerDID {
+                    id
+                  }
+                  createdAt
+                  updatedAt
+                  deletedAt
+                  content
+                }
+              }
+            }
+          }
+        }
+      }`;
+
+    const data = await this.executeQuery(query, { input: { id, content } });
+    const document = data.updateConversation.document;
+
+    const decryptedMetadata = await decryptJWE(this.did, document.metadata);
+    const messages = await Promise.all(
+      document.messages.edges.map(async (edge) => ({
+        ...edge.node,
+        content: await decryptJWE(this.did, edge.node.content),
+      })),
+    );
+    return { ...document, ...decryptedMetadata, messages, metadata: undefined };
+  }
+
+  async deleteConversation(id) {
+    this.validateDID();
+
+    const conversation = await this.getConversation(id);
+
+    if (!conversation) {
+      return;
+    }
+    if (conversation && conversation.messages) {
+      for (const message of conversation.messages) {
+        await this.deleteMessage(id, message.id);
+      }
+    }
+
+    return await this.updateConversation(id, {
+      deletedAt: getCurrentDateTime(),
+    });
+  }
+
+  async getMessage(id) {
+    this.validateDID();
+
+    const query = `
+      {
+        node(id: "${id}") {
+          ... on EncryptedMessage {
+            id
+            controllerDID {
+              id
+            }
+            conversationId
+            conversation {
+              id
               controllerDID {
                 id
               }
             }
+            createdAt
+            updatedAt
+            deletedAt
+            content
           }
         }
-      `,
-        { input: { content } },
-      );
-      // Handle GraphQL errors
-      if (errors) {
-        throw new Error(`Error creating message: ${JSON.stringify(errors)}`);
-      }
+      }`;
 
-      // Validate the data response
-      if (
-        !data ||
-        !data.createEncryptedMessage ||
-        !data.createEncryptedMessage.document
-      ) {
-        throw new Error("Invalid response data");
-      }
-      const decryptedContent = await decryptJWE(
-        this.did,
-        data.createEncryptedMessage.document.content,
-      );
-      return {
-        ...data.createEncryptedMessage.document,
-        ...decryptedContent,
-      };
-    } catch (error) {
-      // Log the error and rethrow it for external handling
-      console.error("Exception occurred in createEncryptedMessage:", error);
-      throw error;
-    }
+    const data = await this.executeQuery(query);
+    const node = data.node;
+
+    const decryptedContent = await decryptJWE(this.did, node.content);
+    return { ...node, ...decryptedContent };
+  }
+
+  async createMessage(conversationId, params) {
+    this.validateDID();
+
+    const conversation = await this.getConversation(conversationId);
+    const content = {
+      conversationId,
+      content: await createDagJWE(this.did, conversation.members, params),
+      createdAt: getCurrentDateTime(),
+      updatedAt: getCurrentDateTime(),
+    };
+
+    const query = `
+      mutation CreateEncryptedMessage($input: CreateEncryptedMessageInput!) {
+        createEncryptedMessage(input: $input) {
+          document {
+            id
+            content
+            createdAt
+            updatedAt
+            deletedAt
+            controllerDID {
+              id
+            }
+          }
+        }
+      }`;
+
+    const data = await this.executeQuery(query, { input: { content } });
+    const document = data.createEncryptedMessage.document;
+
+    const decryptedContent = await decryptJWE(this.did, document.content);
+    return { ...document, ...decryptedContent };
   }
 
   async updateMessage(conversationId, messageId, params, deleteAfter = false) {
-    if (!this.did) {
-      throw new Error("DID not set. Use setSession() to set the did.");
-    }
-    try {
-      const message = await this.getMessage(messageId);
-      const conversation = await this.getConversation(conversationId);
-      const agentDID = await getAgentDID();
-      const agentConvService = new ConversationService(this.definition).setDID(
-        agentDID,
-      );
+    this.validateDID();
 
-      if (deleteAfter) {
-        if (
-          conversation &&
-          conversation.messages &&
-          conversation.messages.length > 0
-        ) {
-          for (const messageEdge of conversation.messages.filter(
-            (m) => new Date(m.createdAt) > new Date(message.createdAt),
-          )) {
-            if (messageEdge.controllerDID.id == agentDID.id) {
-              await agentConvService.deleteMessage(
-                conversation.id,
-                messageEdge.id,
-              );
-            } else {
-              await this.deleteMessage(conversation.id, messageEdge.id);
+    const message = await this.getMessage(messageId);
+
+    if (!message) {
+      return;
+    }
+    const conversation = await this.getConversation(conversationId);
+    if (!conversation) {
+      return;
+    }
+    const agentDID = await getAgentDID();
+    const agentConvService = new ConversationService(this.definition).setDID(
+      agentDID,
+    );
+
+    if (deleteAfter && conversation && conversation.messages.length > 0) {
+      for (const messageEdge of conversation.messages.filter(
+        (m) => new Date(m.createdAt) > new Date(message.createdAt),
+      )) {
+        if (messageEdge.controllerDID.id === agentDID.id) {
+          await agentConvService.deleteMessage(conversation.id, messageEdge.id);
+        } else {
+          await this.deleteMessage(conversation.id, messageEdge.id);
+        }
+      }
+    }
+
+    const { deletedAt, ...paramsWithoutDeletedAt } = params;
+    const content = {
+      conversationId,
+      content: paramsWithoutDeletedAt
+        ? await createDagJWE(
+            this.did,
+            conversation.members,
+            paramsWithoutDeletedAt,
+          )
+        : "",
+      updatedAt: getCurrentDateTime(),
+      ...(deletedAt && { deletedAt }),
+    };
+
+    const query = `
+      mutation UpdateEncryptedMessage($input: UpdateEncryptedMessageInput!) {
+        updateEncryptedMessage(input: $input) {
+          document {
+            id
+            content
+            createdAt
+            updatedAt
+            deletedAt
+            controllerDID {
+              id
             }
           }
         }
-      }
+      }`;
 
-      const { deletedAt, ...paramsWithoutDeletedAt } = params;
+    const data = await this.executeQuery(query, {
+      input: { id: messageId, content },
+    });
+    const document = data.updateEncryptedMessage.document;
 
-      const content = {
-        conversationId,
-        content: paramsWithoutDeletedAt
-          ? await createDagJWE(
-              this.did,
-              conversation.members,
-              paramsWithoutDeletedAt,
-            )
-          : "",
-        updatedAt: getCurrentDateTime(),
-      };
-      if (deletedAt) {
-        content.deletedAt = deletedAt;
-      }
-
-      this.client.setDID(this.did);
-
-      const { data, errors } = await this.client.executeQuery(
-        `
-          mutation UpdateEncryptedMessage($input: UpdateEncryptedMessageInput!) {
-            updateEncryptedMessage(input: $input) {
-              document {
-                id
-                content
-                createdAt
-                updatedAt
-                deletedAt
-                controllerDID {
-                  id
-                }
-              }
-            }
-          }`,
-        { input: { id: messageId, content } },
-      );
-
-      // Handle GraphQL errors
-      if (errors) {
-        throw new Error(
-          `Error updating encrypted message: ${JSON.stringify(errors)}`,
-        );
-      }
-
-      // Validate the data response
-      if (
-        !data ||
-        !data.updateEncryptedMessage ||
-        !data.updateEncryptedMessage.document
-      ) {
-        throw new Error("Invalid response data");
-      }
-
-      const decryptedContent = await decryptJWE(
-        this.did,
-        data.updateEncryptedMessage.document.content,
-      );
-      return {
-        ...data.updateEncryptedMessage.document,
-        ...decryptedContent,
-      };
-    } catch (error) {
-      // Log the error and rethrow it for external handling
-      console.error("Exception occurred in updateMessage:", error);
-      throw error;
-    }
+    const decryptedContent = await decryptJWE(this.did, document.content);
+    return { ...document, ...decryptedContent };
   }
 
   async deleteMessage(conversationId, messageId) {
