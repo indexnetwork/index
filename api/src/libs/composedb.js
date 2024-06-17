@@ -48,6 +48,12 @@ let defaultRuntime = {
       id: "Model_EncryptedMessage_ID",
       accountRelation: { type: "list" },
     },
+    PublicEncryptionDID: {
+      interface: false,
+      implements: [],
+      id: "Model_PublicEncryptionDID_ID",
+      accountRelation: { type: "list" },
+    },
     DIDIndex: {
       interface: false,
       implements: [],
@@ -116,6 +122,10 @@ let defaultRuntime = {
           property: "conversationId",
         },
       },
+    },
+    PublicEncryptionDID: {
+      publicEncryptionDID: { type: "did", required: true, immutable: false },
+      controllerDID: { type: "view", viewType: "documentAccount" },
     },
     EncryptedMessage: {
       payload: { type: "string", required: false, immutable: false },
@@ -394,6 +404,10 @@ let defaultRuntime = {
     indexItemList: { type: "connection", name: "IndexItem" },
     conversationList: { type: "connection", name: "Conversation" },
     encryptedMessageList: { type: "connection", name: "EncryptedMessage" },
+    publicEncryptionDidList: {
+      type: "connection",
+      name: "PublicEncryptionDID",
+    },
     indexList: { type: "connection", name: "Index" },
     profile: { type: "node", name: "Profile" },
   },
