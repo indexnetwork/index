@@ -56,9 +56,6 @@ const Discovery = () => {
 
   return (
     <DiscoveryLayout>
-      {discoveryType === DiscoveryType.CONVERSATION && (
-        <UserConversationSection />
-      )}
       {discoveryType === DiscoveryType.DID && <UserConversationSection />}
       {discoveryType === DiscoveryType.INDEX && <IndexConversationSection />}
     </DiscoveryLayout>

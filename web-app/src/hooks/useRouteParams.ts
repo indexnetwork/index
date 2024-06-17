@@ -9,6 +9,7 @@ export const useRouteParams = () => {
   const isLanding = useMemo(() => path === "/", [path]);
   const isConversation = useMemo(() => path.includes("conversation"), [path]);
   const isDID = useMemo(() => path?.includes("did:"), [path]);
+
   const isIndex = useMemo(
     () => !isConversation && !isDID,
     [isConversation, isDID],
@@ -20,14 +21,20 @@ export const useRouteParams = () => {
   } else id = decodeURIComponent(rawId as string);
 
   const discoveryType = useMemo(() => {
-    if (isConversation) {
-      return DiscoveryType.CONVERSATION;
-    }
     if (id) {
       return id.includes("did:") ? DiscoveryType.DID : DiscoveryType.INDEX;
     }
     return undefined;
   }, [id, isConversation]);
 
+  console.log({
+    isConversation,
+    isLanding,
+    isIndex,
+    isDID,
+    id,
+    path,
+    discoveryType,
+  });
   return { id, isLanding, isConversation, isDID, isIndex, discoveryType };
 };

@@ -63,6 +63,8 @@ export interface AppContextValue {
   setViewedIndex: (index: Indexes | undefined) => void;
   viewedConversation: Conversation | undefined;
   setViewedConversation: (conversation: Conversation | undefined) => void;
+  conversations: Conversation[] | [];
+  setConversations: (conversations: Conversation[] | []) => void;
   fetchProfile: (did: string) => void;
   fetchIndex: (
     indexId: string,
@@ -100,6 +102,9 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [viewedConversation, setViewedConversation] = useState<
     Conversation | undefined
   >();
+  const [conversations, setConversations] = useState<Conversation[] | []>(
+    [] as Conversation[],
+  );
   const [viewedProfile, setViewedProfile] = useState<Users | undefined>();
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -180,6 +185,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const fetchConversation = useCallback(
     async (conversationId: string): Promise<any> => {
       try {
+        console.log(`conversationId: ${conversationId}`);
         if (!apiReady || !isConversation || !conversationId) return;
         // if (viewedIndex?.id === id) return;
         if (isFetchingRef.current) return;
@@ -195,7 +201,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         toast.error("Error fetching index, please refresh the page");
       }
     },
-    [isConversation, apiReady, api],
+    [id, isConversation, apiReady, api],
   );
 
   const fetchIndexWithCreator = useCallback(
@@ -361,7 +367,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     }
 
     if (isConversation) {
-      if (viewedConversation) {
+      if (viewedConversation && id === viewedConversation.id) {
         targetDID = viewedConversation?.controllerDID?.id;
       } else {
         fetchConversation(id).then((conversation) => {
@@ -419,9 +425,21 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     }
   }, [userProfile, session, id]);
 
+  const handleListConversations = useCallback(async () => {
+    if (!apiReady) return;
+    try {
+      const response = await api!.listConversations();
+      setConversations(response);
+      console.log("listConversations", response);
+    } catch (error) {
+      console.error("Error sending message", error);
+    }
+  }, [userProfile, session, id]);
+
   useEffect(() => {
     if (viewedProfile) {
       fetchIndexes(viewedProfile.id);
+      handleListConversations();
     }
   }, [viewedProfile, fetchIndexes]);
 
@@ -431,6 +449,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     leftSectionIndexes,
     setIndexes,
     fetchIndexes,
+    conversations,
+    setConversations,
     setCreateModalVisible,
     createModalVisible,
     setTransactionApprovalWaiting,

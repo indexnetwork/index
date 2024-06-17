@@ -11,29 +11,16 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import Soon from "components/site/indexes/Soon";
 import { useCallback, useEffect, useState } from "react";
 import ConversationHistory from "./History";
+import { useAuth } from "@/context/AuthContext";
 
 const AppRight = () => {
-  const { setRightSidebarOpen, rightSidebarOpen, rightTabKey, setRightTabKey } =
-    useApp();
-  const [items, setItems] = useState<[]>([]);
-  const { api, ready: apiReady } = useApi();
-
-  // wrap with usecallback to avoid infinite loop
-  //
-  const handleListConversations = useCallback(async () => {
-    if (!apiReady) return;
-    try {
-      const response = await api!.listConversations();
-      setItems(response);
-      console.log("listConversations", response);
-    } catch (error) {
-      console.error("Error sending message", error);
-    }
-  }, [api, apiReady]);
-
-  useEffect(() => {
-    handleListConversations();
-  }, [handleListConversations]);
+  const {
+    conversations,
+    setRightSidebarOpen,
+    rightSidebarOpen,
+    rightTabKey,
+    setRightTabKey,
+  } = useApp();
 
   const handleRightTabChange = (tabKey: string) => {
     setRightTabKey(tabKey);
@@ -65,7 +52,7 @@ const AppRight = () => {
         <FlexRow wrap={false} className={"idxflex-grow-1 mt-6"}>
           <Tabs activeKey={rightTabKey} onTabChange={handleRightTabChange}>
             <TabPane enabled={true} tabKey={"history"} title={`History`}>
-              <ConversationHistory items={items} />
+              <ConversationHistory items={conversations} />
             </TabPane>
             <TabPane enabled={true} tabKey={"discover"} title={`Discovery`}>
               <div
