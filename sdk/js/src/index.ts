@@ -3,7 +3,6 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { Wallet, randomBytes } from "ethers";
 import IndexConfig from "./config.js";
-import { Message } from "./types.js";
 
 import IndexVectorStore from "./lib/chroma.js";
 import {
@@ -14,6 +13,11 @@ import {
   ILitActionConditions,
   IUser,
   IUserProfileUpdateParams,
+  ICreateConversationParams,
+  ICreateMessageParams,
+  IUpdateConversationParams,
+  IUpdateMessageParams,
+  Message,
 } from "./types.js";
 import { randomString } from "./util.js";
 
@@ -33,9 +37,9 @@ export default class IndexClient {
   constructor({
     domain,
     session,
+    wallet,
     network,
     options,
-    wallet,
   }: {
     domain: string;
     session?: string;
@@ -149,47 +153,6 @@ export default class IndexClient {
     this.initChroma();
   }
 
-  public async *chat({
-    id,
-    sources,
-    messages,
-  }: {
-    id: string;
-    sources: string[];
-    messages: Message[];
-  }): AsyncGenerator<string, void, undefined> {
-    const response = await fetch(`${this.baseUrl}/discovery/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messages,
-        id,
-        sources,
-      }),
-    });
-
-    if (!response.ok || response.body === null) {
-      throw new Error("Error streaming messages");
-    }
-
-    const reader = response.body.getReader();
-    let decoder = new TextDecoder("utf-8");
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        yield chunk;
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  }
-
   public getAllIndexes(did: string): ApiResponse<IIndex[]> {
     return this.request(`/dids/${did}/indexes`, { method: "GET" });
   }
@@ -226,19 +189,6 @@ export default class IndexClient {
     });
   }
 
-  public async getLitActions(cid: string): ApiResponse<ILitActionConditions[]> {
-    return this.request(`/lit_actions/${cid}`, { method: "GET" });
-  }
-
-  public async postLitAction(
-    action: ILitActionConditions,
-  ): ApiResponse<ICreatorAction> {
-    return this.request(`/lit_actions`, {
-      method: "POST",
-      body: JSON.stringify(action),
-    });
-  }
-
   public async getItems(
     indexId: string,
     queryParams: IGetItemQueryParams,
@@ -262,7 +212,6 @@ export default class IndexClient {
       method: "POST",
       body: JSON.stringify(body),
     });
-    // return { mocked: true } as any;
   }
 
   public async addItemToIndex(
@@ -326,22 +275,6 @@ export default class IndexClient {
     });
   }
 
-  public async getNFTMetadata(
-    network: string,
-    address: string,
-    tokenId?: string,
-  ): ApiResponse<any> {
-    let endpoint = `/nft/${network}/${address}`;
-    if (tokenId) {
-      endpoint += `/${tokenId}`;
-    }
-    return this.request(endpoint, { method: "GET" });
-  }
-
-  public async resolveENS(ensName: string): ApiResponse<any> {
-    return this.request(`/ens/${ensName}`, { method: "GET" });
-  }
-
   public async getNodeById(modelId: string, nodeId: string): ApiResponse<any> {
     return this.request(`/composedb/${modelId}/${nodeId}`, { method: "GET" });
   }
@@ -362,6 +295,91 @@ export default class IndexClient {
       method: "PATCH",
       body: JSON.stringify(nodeData),
     });
+  }
+
+  public async createConversation(
+    params: ICreateConversationParams,
+  ): ApiResponse<any> {
+    return this.request(`/conversations`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  }
+
+  public async updateConversation(
+    conversationId: string,
+    params: IUpdateConversationParams,
+  ): ApiResponse<any> {
+    return this.request(`/conversations/${conversationId}`, {
+      method: "PUT",
+      body: JSON.stringify(params),
+    });
+  }
+
+  public async deleteConversation(conversationId: string): ApiResponse<void> {
+    return this.request(`/conversations/${conversationId}`, {
+      method: "DELETE",
+    });
+  }
+
+  public async createMessage(
+    conversationId: string,
+    params: ICreateMessageParams,
+  ): ApiResponse<any> {
+    return this.request(`/conversations/${conversationId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  }
+
+  public listenToConversationUpdates(
+    conversationId: string,
+    handleMessage: (data: any) => void,
+    handleError: (error: any) => void,
+  ) {
+    const eventUrl = `${this.baseUrl}/conversations/${conversationId}/updates?session=${this.session}`;
+    const eventSource = new EventSource(eventUrl);
+
+    eventSource.onmessage = (event) => {
+      console.log("Received message from server", event.data);
+      handleMessage(event.data);
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("EventSource failed:", err);
+      handleError(err);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }
+
+  public async updateMessage(
+    conversationId: string,
+    messageId: string,
+    params: IUpdateMessageParams,
+  ): ApiResponse<any> {
+    return this.request(
+      `/conversations/${conversationId}/messages/${messageId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(params),
+      },
+    );
+  }
+
+  public async deleteMessage(
+    conversationId: string,
+    messageId: string,
+  ): ApiResponse<void> {
+    return this.request(
+      `/conversations/${conversationId}/messages/${messageId}`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 }
 

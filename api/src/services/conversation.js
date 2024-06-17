@@ -167,10 +167,19 @@ export class ConversationService {
 
   async createConversation(params) {
     this.validateDID();
-    const agentDID = await getAgentDID();
+
+    let members;
+    if (params.members) {
+      members = params.members;
+      delete params.members;
+    } else {
+      const agentDID = await getAgentDID();
+      members = [this.did.id, agentDID.id];
+    }
+
     const content = {
-      payload: await createDagJWE(this.did, [this.did.id, agentDID.id], params),
-      members: [this.did.id, agentDID.id],
+      payload: await createDagJWE(this.did, members, params),
+      members,
       createdAt: getCurrentDateTime(),
       updatedAt: getCurrentDateTime(),
     };
@@ -380,8 +389,10 @@ export class ConversationService {
       )) {
         if (messageEdge.controllerDID.id === agentDID.id) {
           await agentConvService.deleteMessage(conversation.id, messageEdge.id);
-        } else {
+        } else if (messageEdge.controllerDID.id === this.did.id) {
           await this.deleteMessage(conversation.id, messageEdge.id);
+        } else {
+          console.log(`Skipping message ${messageEdge.id}`);
         }
       }
     }

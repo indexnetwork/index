@@ -477,6 +477,7 @@ app.post(
   validator.body(
     Joi.object({
       sources: Joi.array().items(Joi.string()).required(),
+      members: Joi.array().items(Joi.custom(isDID, "DID")).optional(),
       summary: Joi.string().optional(),
     }),
   ),
