@@ -4,9 +4,8 @@ import { useApp } from "@/context/AppContext";
 import { useIndexConversation } from "../IndexConversationContext";
 
 export default function ChatTabSection() {
-  const { viewedIndex, viewedProfile, chatID } = useApp();
+  const { viewedIndex, viewedProfile } = useApp();
   const { itemsState } = useIndexConversation();
-
   // if (indexLoading) {
   //   return (
   //     <div
@@ -24,7 +23,7 @@ export default function ChatTabSection() {
   // }
 
   if (itemsState.items.length > 0 && viewedIndex) {
-    return chatID ? (
+    return (
       <div
         style={{
           display: "flex",
@@ -34,9 +33,9 @@ export default function ChatTabSection() {
           maxHeight: "calc(-30rem + 100dvh)",
         }}
       >
-        <AskIndexes chatID={chatID} sources={[viewedIndex?.id]} />
+        <AskIndexes />
       </div>
-    ) : null;
+    );
   }
   return (
     <NoIndexesChat

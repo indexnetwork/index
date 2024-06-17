@@ -5,7 +5,7 @@ type HistoryItemProps = {
   id: string;
   summary: string;
   link: string;
-  timestamp: string;
+  createdAt: string;
 };
 
 const HistoryItem = ({ item }: { item: HistoryItemProps }) => {

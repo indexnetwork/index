@@ -36,13 +36,14 @@ export interface ChatProps extends ComponentProps<"div"> {
   id?: string;
 }
 
-export interface AskIndexesProps {}
-
+export interface AskIndexesProps {
+  sources?: string[];
+}
 export interface MessageWithIndex extends Message {
   index?: number;
 }
 
-const AskIndexes: FC<AskIndexesProps> = () => {
+const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const { session } = useAuth();
   const {
     leftSectionIndexes,
@@ -91,16 +92,14 @@ const AskIndexes: FC<AskIndexesProps> = () => {
         };
 
         setMessages((prevMessages) => [...prevMessages, newMessage]);
-
         let currentConv = viewedConversation;
         if (!currentConv) {
           currentConv = await api!.createConversation({
-            sources: [
-              "did:pkh:eip155:1:0x1b9Aceb609a62bae0c0a9682A9268138Faff4F5f",
-            ],
+            sources: [id],
             summary: `User says: ${message}`,
           });
         }
+        if (!currentConv) return;
         const messageResp = await api!.sendMessage(currentConv.id, {
           content: message,
           role: "user",
@@ -173,8 +172,8 @@ const AskIndexes: FC<AskIndexesProps> = () => {
   const handleSaveEdit = async () => {
     if (editingMessage) {
       try {
-        const messagesBeforeEdit = conversation.slice(0, editingIndex);
-        const messagesAfterEdit = conversation.slice(editingIndex);
+        const messagesBeforeEdit = messages.slice(0, editingIndex);
+        const messagesAfterEdit = messages.slice(editingIndex);
         if (Array.isArray(messagesAfterEdit) && messagesAfterEdit.length > 0) {
           const mIds = messagesAfterEdit.map((m) => m.id);
           setDeletedMessages((prev) => {
@@ -229,30 +228,30 @@ const AskIndexes: FC<AskIndexesProps> = () => {
   // };
 
   const regenerateMessage = async () => {
-    if (!apiReady || isLoading) return;
+    if (!apiReady || isLoading || !viewedConversation) return;
     try {
-      const lastUserMessage = conversation.findLast((m) => m.role === "user");
-      const lastAssistantMessage = conversation.findLast(
+      const lastUserMessage = messages.findLast((m) => m.role === "user");
+      const lastAssistantMessage = messages.findLast(
         (m) => m.name === "assistant",
       );
       if (!lastUserMessage) return;
-      console.log("conversation", conversation);
+      console.log("conversation", messages);
       console.log("lastAssistantMessage", lastAssistantMessage);
 
       setIsLoading(true);
       // remove messages after the last assistant message
       if (lastAssistantMessage) {
-        const messagesBeforeEdit = conversation.slice(
+        const messagesBeforeEdit = messages.slice(
           0,
-          conversation.indexOf(lastAssistantMessage),
+          messages.indexOf(lastAssistantMessage),
         );
 
         console.log("messagesBeforeEdit", messagesBeforeEdit);
-        setConversation(messagesBeforeEdit);
+        setMessages(messagesBeforeEdit);
       }
 
       const regeneratedMessage = await api!.updateMessage(
-        chatID,
+        viewedConversation.id,
         lastUserMessage.id,
         { role: lastUserMessage.role, content: lastUserMessage.content },
         false,

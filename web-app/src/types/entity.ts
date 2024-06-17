@@ -29,6 +29,7 @@ export type Conversation = {
   id: string;
   controllerDID: Users;
   messages: any[];
+  sources: string[];
   createdAt: string;
   updatedAt: string;
   deletedAt: string;
