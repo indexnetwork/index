@@ -312,6 +312,21 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     if (payload.channel === "end") {
       console.log("End of stream");
       setIsLoading(false);
+      scrollToBottom();
+      return;
+    }
+
+    if (payload.channel === "update") {
+      const newMessage: Message = {
+        id: payload.data.messageId,
+        role: payload.data.payload.role,
+        content: payload.data.payload.content,
+      };
+      setMessages((prevMessages) => {
+        return [...prevMessages, newMessage];
+      });
+      setIsLoading(false);
+      scrollToBottom();
       return;
     }
 
@@ -349,6 +364,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       }
       return prevConversation;
     });
+    scrollToBottom();
   };
 
   useEffect(() => {

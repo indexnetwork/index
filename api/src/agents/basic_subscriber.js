@@ -25,7 +25,13 @@ export const handleNewItemEvent = async (
     indexIds,
     input: {
       information: JSON.stringify(item),
-      chat_history: messages,
+      chat_history: messages.map((c) => {
+        return {
+          id: c.id,
+          role: c.role,
+          content: c.content,
+        };
+      }),
     },
   };
   try {
@@ -38,19 +44,18 @@ export const handleNewItemEvent = async (
     );
     console.log(`Update evaluation response for ${chatId}`, resp.data);
     if (resp.data && !resp.data.includes("NOT_RELEVANT")) {
-      assistantMessage.content = resp.data;
+      const assistantMessage = await conversationService.createMessage(chatId, {
+        content: resp.data,
+        role: "assistant",
+      });
       await redisClient.publish(
-        `agentStream:${id}:update`,
+        `agentStream:${chatId}:update`,
         JSON.stringify({
           payload: assistantMessage,
           name: "listener",
           messageId: assistantMessage.id,
         }),
       );
-      await conversationService.updateMessage(id, assistantMessage.id, {
-        content: assistantMessage,
-        role: "assistant",
-      });
       await redisClient.hSet(
         `subscriptions`,
         chatId,
