@@ -360,9 +360,11 @@ export default class IndexClient {
     conversationId: string,
     messageId: string,
     params: IUpdateMessageParams,
+    deleteAfter?: boolean,
   ): ApiResponse<any> {
+    const queryParams = deleteAfter ? `?deleteAfter=true` : "";
     return this.request(
-      `/conversations/${conversationId}/messages/${messageId}`,
+      `/conversations/${conversationId}/messages/${messageId}${queryParams}`,
       {
         method: "PUT",
         body: JSON.stringify(params),
@@ -373,9 +375,11 @@ export default class IndexClient {
   public async deleteMessage(
     conversationId: string,
     messageId: string,
+    deleteAfter?: boolean,
   ): ApiResponse<void> {
+    const queryParams = deleteAfter ? `?deleteAfter=true` : "";
     return this.request(
-      `/conversations/${conversationId}/messages/${messageId}`,
+      `/conversations/${conversationId}/messages/${messageId}${queryParams}`,
       {
         method: "DELETE",
       },

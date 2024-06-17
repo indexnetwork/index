@@ -95,6 +95,8 @@ export interface IConversation {
 
 export interface ICreateConversationParams {
   sources: string[];
+  summary?: string;
+  members?: string[];
 }
 
 export interface IUpdateConversationParams {
