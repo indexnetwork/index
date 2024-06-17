@@ -1,4 +1,3 @@
-import { DiscoveryType } from "@/types";
 import { useParams, usePathname } from "next/navigation";
 import { useMemo } from "react";
 
@@ -15,26 +14,10 @@ export const useRouteParams = () => {
     [isConversation, isDID],
   );
 
-  let id: string;
-  if (isConversation) {
-    id = path.replace("/conversation/", "");
-  } else id = decodeURIComponent(rawId as string);
+  const id = isConversation ? null : decodeURIComponent(rawId as string);
+  const conversationId = isConversation
+    ? path.replace("/conversation/", "")
+    : null;
 
-  const discoveryType = useMemo(() => {
-    if (id) {
-      return id.includes("did:") ? DiscoveryType.DID : DiscoveryType.INDEX;
-    }
-    return undefined;
-  }, [id, isConversation]);
-
-  console.log({
-    isConversation,
-    isLanding,
-    isIndex,
-    isDID,
-    id,
-    path,
-    discoveryType,
-  });
-  return { id, isLanding, isConversation, isDID, isIndex, discoveryType };
+  return { id, conversationId, isLanding, isConversation, isDID, isIndex };
 };

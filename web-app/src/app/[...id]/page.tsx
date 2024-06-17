@@ -11,7 +11,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 
 const Discovery = () => {
-  const { discoveryType } = useApp();
+  const { view } = useApp();
   const { api: apiService, ready: apiReady } = useApi();
   const { session } = useAuth();
 
@@ -56,8 +56,10 @@ const Discovery = () => {
 
   return (
     <DiscoveryLayout>
-      {discoveryType === DiscoveryType.DID && <UserConversationSection />}
-      {discoveryType === DiscoveryType.INDEX && <IndexConversationSection />}
+      {view.discoveryType === DiscoveryType.DID && <UserConversationSection />}
+      {view.discoveryType === DiscoveryType.INDEX && (
+        <IndexConversationSection />
+      )}
     </DiscoveryLayout>
   );
 };

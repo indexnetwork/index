@@ -53,7 +53,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     setViewedConversation,
     viewedConversation,
   } = useApp();
-  const { isIndex, id, discoveryType } = useRouteParams();
+  const { isIndex, conversationId, id } = useRouteParams();
+  const { view } = useApp();
   const { ready: apiReady, api } = useApi();
 
   const router = useRouter();
@@ -148,11 +149,16 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   useEffect(() => {
     if (viewedConversation && viewedConversation.messages) {
       setMessages(viewedConversation.messages);
-      console.log(`messageedit`);
     } else {
       setMessages([]);
     }
-  }, [viewedConversation]);
+  }, [conversationId, viewedConversation]);
+
+  useEffect(() => {
+    if (view.name === "default") {
+      setMessages([]);
+    }
+  }, [view]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
@@ -226,8 +232,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         (m) => m.name === "assistant",
       );
       if (!lastUserMessage) return;
-      console.log("conversation", messages);
-      console.log("lastAssistantMessage", lastAssistantMessage);
 
       setIsLoading(true);
       // remove messages after the last assistant message
@@ -237,7 +241,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           messages.indexOf(lastAssistantMessage),
         );
 
-        console.log("messagesBeforeEdit", messagesBeforeEdit);
         setMessages(messagesBeforeEdit);
       }
 
@@ -248,7 +251,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         false,
       );
 
-      console.log("regeneratedMessage", regeneratedMessage);
       setIsLoading(false);
     } catch (error) {
       console.error("Error sending message", error);
@@ -473,7 +475,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
               onSubmit={async (value) => {
                 sendMessage(value);
                 trackEvent(CHAT_STARTED, {
-                  type: discoveryType,
+                  type: view.discoveryType,
                 });
               }}
               isLoading={isLoading}

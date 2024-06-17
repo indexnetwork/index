@@ -38,7 +38,7 @@ export interface AppContextValue {
   indexes: Indexes[];
   leftSectionIndexes: Indexes[];
   loading: boolean;
-  discoveryType: DiscoveryType | undefined;
+  view: any;
   setIndexes: (indexes: Indexes[]) => void;
   fetchIndexes: (did: string) => void;
   setCreateModalVisible: (visible: boolean) => void;
@@ -93,7 +93,7 @@ export interface AppContextValue {
 export const AppContext = createContext<AppContextValue>({} as AppContextValue);
 
 export const AppContextProvider = ({ children }: AppContextProviderProps) => {
-  const { id } = useRouteParams();
+  const { id, conversationId } = useRouteParams();
   const { api, ready: apiReady } = useApi();
   const { session } = useAuth();
   const router = useRouter();
@@ -121,8 +121,41 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   const isFetchingRef = useRef(false);
 
-  const { isLanding, discoveryType, isDID, isIndex, isConversation } =
-    useRouteParams();
+  const [view, setView] = useState({} as any);
+
+  const { isLanding, isDID, isIndex, isConversation } = useRouteParams();
+
+  useEffect(() => {
+    console.log("setting app view", { isConversation, viewedConversation });
+    if (isConversation && viewedConversation) {
+      const source = viewedConversation.sources[0];
+      const discoveryType = source.includes("did:")
+        ? DiscoveryType.DID
+        : DiscoveryType.INDEX;
+      console.log("setting conversation view", source, discoveryType);
+      setView({
+        name: "conversation",
+        id: viewedConversation.id,
+        discoveryType,
+      });
+
+      if (discoveryType === DiscoveryType.INDEX) {
+        fetchIndex(source, {}).then((index) => {
+          console.log("setting viewed index", index);
+          setViewedIndex(index);
+        });
+      }
+    }
+
+    if (id) {
+      console.log("setting default view");
+      setView({
+        name: "default",
+        id,
+        discoveryType: isDID ? DiscoveryType.DID : DiscoveryType.INDEX,
+      });
+    }
+  }, [id, conversationId, viewedConversation]);
 
   const leftSectionIndexes = useMemo(() => {
     if (leftTabKey === IndexListTabKey.ALL) {
@@ -163,7 +196,14 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       },
     ): Promise<any> => {
       try {
-        if (!apiReady || !isIndex || !indexId) return;
+        if (
+          !apiReady ||
+          view.discoveryType !== DiscoveryType.INDEX ||
+          !indexId
+        ) {
+          return;
+        }
+
         // if (viewedIndex?.id === id) return;
         if (isFetchingRef.current) return;
 
@@ -183,16 +223,17 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   );
 
   const fetchConversation = useCallback(
-    async (conversationId: string): Promise<any> => {
+    async (cID: string): Promise<any> => {
       try {
-        console.log(`conversationId: ${conversationId}`);
-        if (!apiReady || !isConversation || !conversationId) return;
+        console.log(`cID: ${cID}`);
+        if (!apiReady || !isConversation || !cID) return;
         // if (viewedIndex?.id === id) return;
         if (isFetchingRef.current) return;
 
         isFetchingRef.current = true;
 
-        const conversation = await api!.getConversation(conversationId);
+        const conversation = await api!.getConversation(cID);
+        console.log(`conversation888:`, conversation);
         setViewedConversation(conversation);
         isFetchingRef.current = false;
         return conversation;
@@ -351,10 +392,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const handleUserProfileChange = useCallback(async () => {
     if (isLanding) return;
     if (viewedProfile && isIndex) return;
-    if (!id) return;
+    // if (!id) return;
 
     let targetDID;
-    if (isIndex && !viewedProfile) {
+    if (id && isIndex && !viewedProfile) {
       if (viewedIndex) {
         targetDID = viewedIndex?.controllerDID?.id;
       } else {
@@ -367,10 +408,11 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     }
 
     if (isConversation) {
-      if (viewedConversation && id === viewedConversation.id) {
+      if (viewedConversation && conversationId === viewedConversation.id) {
         targetDID = viewedConversation?.controllerDID?.id;
       } else {
-        fetchConversation(id).then((conversation) => {
+        if (!conversationId) return;
+        fetchConversation(conversationId).then((conversation: any) => {
           if (conversation) {
             targetDID = conversation?.controllerDID?.id;
           }
@@ -391,6 +433,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     isLanding,
     isIndex,
     id,
+    conversationId,
     fetchProfile,
     isDID,
     isConversation,
@@ -425,7 +468,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     }
   }, [userProfile, session, id]);
 
-  const handleListConversations = useCallback(async () => {
+  const fetchConversations = useCallback(async () => {
     if (!apiReady) return;
     try {
       const response = await api!.listConversations();
@@ -439,12 +482,12 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   useEffect(() => {
     if (viewedProfile) {
       fetchIndexes(viewedProfile.id);
-      handleListConversations();
+      fetchConversations();
     }
   }, [viewedProfile, fetchIndexes]);
 
   const contextValue: AppContextValue = {
-    discoveryType,
+    view,
     indexes,
     leftSectionIndexes,
     setIndexes,

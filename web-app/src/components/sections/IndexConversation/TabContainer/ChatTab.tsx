@@ -4,7 +4,7 @@ import { useApp } from "@/context/AppContext";
 import { useIndexConversation } from "../IndexConversationContext";
 
 export default function ChatTabSection() {
-  const { viewedIndex, viewedProfile } = useApp();
+  const { viewedIndex, viewedProfile, view } = useApp();
   const { itemsState } = useIndexConversation();
   // if (indexLoading) {
   //   return (
@@ -21,8 +21,12 @@ export default function ChatTabSection() {
   //     </div>
   //   );
   // }
+  //
 
-  if (itemsState.items.length > 0 && viewedIndex) {
+  if (
+    (itemsState.items.length > 0 && viewedIndex) ||
+    view.name === "conversation"
+  ) {
     return (
       <div
         style={{
