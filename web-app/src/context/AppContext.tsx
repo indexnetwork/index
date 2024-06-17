@@ -196,11 +196,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       },
     ): Promise<any> => {
       try {
-        if (
-          !apiReady ||
-          view.discoveryType !== DiscoveryType.INDEX ||
-          !indexId
-        ) {
+        if (!apiReady || !indexId) {
           return;
         }
 
