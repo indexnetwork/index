@@ -58,6 +58,7 @@ export class ConversationService {
     const messages = await Promise.all(
       node.messages.edges.map(async (edge) => {
         const decryptedPayload = await decryptJWE(this.did, edge.node.payload);
+        delete edge.node.payload;
         return { ...edge.node, ...decryptedPayload };
       }),
     );
@@ -311,6 +312,7 @@ export class ConversationService {
     const node = data.node;
 
     const decryptedPayload = await decryptJWE(this.did, node.payload);
+    delete node.payload;
     return { ...node, ...decryptedPayload };
   }
 
@@ -351,6 +353,7 @@ export class ConversationService {
     const document = data.createEncryptedMessage.document;
 
     const decryptedPayload = await decryptJWE(this.did, document.payload);
+    delete document.payload;
     return { ...document, ...decryptedPayload };
   }
 
@@ -419,6 +422,7 @@ export class ConversationService {
     const document = data.updateEncryptedMessage.document;
 
     const decryptedPayload = await decryptJWE(this.did, document.payload);
+    delete document.payload;
     return { ...document, ...decryptedPayload };
   }
 

@@ -87,7 +87,7 @@ let defaultRuntime = {
         immutable: false,
         item: { type: "did", required: false, immutable: false },
       },
-      payload: { type: "string", required: true, immutable: false },
+      payload: { type: "string", required: false, immutable: false },
       createdAt: {
         type: "datetime",
         required: true,
