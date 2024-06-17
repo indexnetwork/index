@@ -90,9 +90,7 @@ const AskIndexes: FC<AskIndexesProps> = () => {
           content: message,
         };
 
-        setMessages((prevMessages) => {
-          [...prevMessages, newMessage];
-        });
+        setMessages((prevMessages) => [...prevMessages, newMessage]);
 
         let currentConv = viewedConversation;
         if (!currentConv) {
