@@ -9,7 +9,6 @@ import UserConversationSection from "components/sections/UserConversation";
 import "./app.css";
 import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import ConversationSection from "@/components/sections/Conversation";
 
 const Discovery = () => {
   const { discoveryType } = useApp();
