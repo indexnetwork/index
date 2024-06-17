@@ -141,7 +141,7 @@ export class ConversationService {
             members {
               id
             }
-            messages(first: 1000, filters: {where: {deletedAt: {isNull: true}}}, sorting: {createdAt: ASC}) {
+            messages(first: 1000, filters: {where: {deletedAt: {isNull: true}}}, sorting: { createdAt: ASC }) {
               edges {
                 node {
                   id

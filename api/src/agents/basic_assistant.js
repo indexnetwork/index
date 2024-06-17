@@ -60,6 +60,7 @@ export const handleUserMessage = async (
       if (isStopped && !isSaved) {
         isSaved = true;
         await conversationService.updateMessage(id, assistantMessage.id, {
+          role: "assistant",
           content: assistantMessage.content,
         });
         return;
@@ -109,6 +110,7 @@ export const handleUserMessage = async (
         );
         await conversationService.updateMessage(id, assistantMessage.id, {
           content: assistantMessage.content,
+          role: "assistant",
         });
         // todo api save.
         isStopped = true;

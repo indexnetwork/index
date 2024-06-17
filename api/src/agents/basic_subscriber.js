@@ -20,11 +20,6 @@ export const handleNewItemEvent = async (
     agentDID,
   );
 
-  const assistantMessage = await conversationService.createMessage(id, {
-    role: "assistant",
-    content: "",
-  });
-
   const { indexIds, messages } = subscription;
   const chatRequest = {
     indexIds,
@@ -54,6 +49,7 @@ export const handleNewItemEvent = async (
       );
       await conversationService.updateMessage(id, assistantMessage.id, {
         content: assistantMessage,
+        role: "assistant",
       });
       await redisClient.hSet(
         `subscriptions`,
