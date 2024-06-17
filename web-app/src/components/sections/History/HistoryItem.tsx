@@ -1,3 +1,6 @@
+import moment from "moment";
+import { useRouter } from "next/navigation";
+
 type HistoryItemProps = {
   id: string;
   summary: string;
@@ -6,20 +9,26 @@ type HistoryItemProps = {
 };
 
 const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
+  const router = useRouter();
   return (
-    <a href={`/conversation/${item.id}`}>
+    <div
+      onClick={() => {
+        router.push(`/conversation/${item.id}`);
+      }}
+    >
       <div
         style={{
           borderRadius: "4px",
-          padding: "16px",
+          padding: "12px",
           border: "1px solid var(--gray-2)",
           height: "fit-content",
           display: "flex",
           flexDirection: "column",
-          gap: "16px",
+          gap: "4px",
+          cursor: "pointer",
         }}
       >
-        <p
+        <h2
           style={{
             fontSize: "14px",
             fontWeight: "bold",
@@ -27,18 +36,21 @@ const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
           }}
         >
           {item.summary}
-        </p>
+        </h2>
 
         <p
           style={{
+            fontSize: "12px",
             margin: 0,
           }}
         >
           {/* Last message 10 days ago */}
-          {item.timestamp}
+          {item?.createdAt
+            ? `Updated ${moment(new Date(item.createdAt)).fromNow()}`
+            : ""}
         </p>
       </div>
-    </a>
+    </div>
   );
 };
 

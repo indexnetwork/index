@@ -10,11 +10,11 @@ const ConversationHistory = ({ items }: { items: any }) => {
     >
       <div
         style={{
-          padding: "24px 16px",
+          padding: "24px 16px 24px 0px",
           display: "flex",
-          gap: "24px",
+          gap: "12px",
           flexDirection: "column",
-          alignItems: "flex-start",
+          flexGrow: 1,
         }}
       >
         {items.map((item: any) => {
