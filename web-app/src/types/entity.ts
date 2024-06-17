@@ -25,6 +25,15 @@ export type Indexes = {
   links: IndexLink[];
 };
 
+export type Conversation = {
+  id: string;
+  controllerDID: Users;
+  messages: any[];
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string;
+};
+
 export type WebNode = {
   id: string;
   title: string;

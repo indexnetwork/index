@@ -14,7 +14,12 @@ import {
   useState,
 } from "react";
 import toast from "react-hot-toast";
-import { AccessControlCondition, Indexes, Users } from "types/entity";
+import {
+  AccessControlCondition,
+  Conversation,
+  Indexes,
+  Users,
+} from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { CancelTokenSource } from "axios";
 import { INDEX_CREATED, trackEvent } from "@/services/tracker";
@@ -56,6 +61,8 @@ export interface AppContextValue {
   setUserProfile: (profile: Users | undefined) => void;
   viewedIndex: Indexes | undefined;
   setViewedIndex: (index: Indexes | undefined) => void;
+  viewedConversation: Conversation | undefined;
+  setViewedConversation: (conversation: Conversation | undefined) => void;
   fetchProfile: (did: string) => void;
   fetchIndex: (
     indexId: string,
@@ -76,7 +83,6 @@ export interface AppContextValue {
   handleCreate: (title: string) => Promise<void>;
   handleCreatePublic: (title: string) => Promise<void>;
   handleTransactionCancel: () => void;
-  chatID: string | undefined;
   transactionApprovalWaiting: boolean;
   createModalVisible: boolean;
   createConditions: (conditions: AccessControlCondition[]) => Promise<void>;
@@ -91,6 +97,9 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const router = useRouter();
   const [indexes, setIndexes] = useState<Indexes[]>([]);
   const [viewedIndex, setViewedIndex] = useState<Indexes | undefined>();
+  const [viewedConversation, setViewedConversation] = useState<
+    Conversation | undefined
+  >();
   const [viewedProfile, setViewedProfile] = useState<Users | undefined>();
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -104,9 +113,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     IndexListTabKey.ALL,
   );
   const [loading, setLoading] = useState(false);
-  const [chatID, setChatID] = useState<string | undefined>(undefined);
 
-  const prevIndexID = useRef(id);
   const isFetchingRef = useRef(false);
 
   const { isLanding, discoveryType, isDID, isIndex, isConversation } =
@@ -127,6 +134,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   const fetchIndexes = useCallback(
     async (did: string): Promise<void> => {
+      console.log("fetching indexes");
       if (!apiReady) return;
       try {
         const fetchedIndexes = await api!.getAllIndexes(did);
@@ -167,6 +175,27 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       }
     },
     [isIndex, apiReady, api],
+  );
+
+  const fetchConversation = useCallback(
+    async (conversationId: string): Promise<any> => {
+      try {
+        if (!apiReady || !isConversation || !conversationId) return;
+        // if (viewedIndex?.id === id) return;
+        if (isFetchingRef.current) return;
+
+        isFetchingRef.current = true;
+
+        const conversation = await api!.getConversation(conversationId);
+        setViewedConversation(conversation);
+        isFetchingRef.current = false;
+        return conversation;
+      } catch (error) {
+        console.error("Error fetching index", error);
+        toast.error("Error fetching index, please refresh the page");
+      }
+    },
+    [isConversation, apiReady, api],
   );
 
   const fetchIndexWithCreator = useCallback(
@@ -326,13 +355,25 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         fetchIndex(id, {}).then((index) => {
           if (index) {
             targetDID = index?.controllerDID?.id;
-            fetchIndexes(targetDID);
+          }
+        });
+      }
+    }
+
+    if (isConversation) {
+      if (viewedConversation) {
+        targetDID = viewedConversation?.controllerDID?.id;
+      } else {
+        fetchConversation(id).then((conversation) => {
+          if (conversation) {
+            targetDID = conversation?.controllerDID?.id;
           }
         });
       }
     }
 
     if (isDID) {
+      setViewedConversation(undefined);
       targetDID = id;
     }
 
@@ -340,8 +381,21 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       const profile = await fetchProfile(targetDID);
       setViewedProfile(profile);
     }
-  }, [isLanding, isIndex, id, fetchProfile, isDID, session, viewedIndex]); // eslint-disable-line
+  }, [
+    isLanding,
+    isIndex,
+    id,
+    fetchProfile,
+    isDID,
+    isConversation,
+    session,
+    viewedIndex,
+    viewedConversation,
+  ]); // eslint-disable-line
 
+  useEffect(() => {
+    handleUserProfileChange();
+  }, [handleUserProfileChange]);
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
       if (!apiReady || !viewedIndex || conditions.length === 0) return;
@@ -364,18 +418,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       }
     }
   }, [userProfile, session, id]);
-
-  useEffect(() => {
-    handleUserProfileChange();
-  }, [handleUserProfileChange]);
-
-  useEffect(() => {
-    // const newChatID = uuidv4();
-    const newChatID =
-      "kjzl6kcym7w8y4z06z2gv3ulgup1l1onjkbog02uai6ktw30uxbqi8jm9f75epg";
-    localStorage.setItem("chatterID", newChatID);
-    setChatID(newChatID);
-  }, [id]);
 
   useEffect(() => {
     if (viewedProfile) {
@@ -407,6 +449,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     setUserProfile,
     viewedIndex,
     setViewedIndex,
+    viewedConversation,
+    setViewedConversation,
     updateUserIndexState,
     updateIndex,
     fetchProfile,
@@ -416,7 +460,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     loading,
     handleTransactionCancel,
     editProfileModalVisible,
-    chatID,
     transactionApprovalWaiting,
     createConditions,
     handleCreatePublic,

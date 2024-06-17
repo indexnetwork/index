@@ -3,40 +3,31 @@ import { useParams, usePathname } from "next/navigation";
 import { useMemo } from "react";
 
 export const useRouteParams = () => {
-  const params = useParams();
+  const { id: rawId } = useParams();
   const path = usePathname();
 
-  const id = params.id ? decodeURIComponent(params.id as string) : undefined;
-
   const isLanding = useMemo(() => path === "/", [path]);
-
   const isConversation = useMemo(() => path.includes("conversation"), [path]);
+  const isDID = useMemo(() => path?.includes("did:"), [path]);
+  const isIndex = useMemo(
+    () => !isConversation && !isDID,
+    [isConversation, isDID],
+  );
+
+  let id;
+  if (isConversation) {
+    id = path.replace("/conversation/", "");
+  } else id = decodeURIComponent(rawId as string);
 
   const discoveryType = useMemo(() => {
     if (isConversation) {
       return DiscoveryType.CONVERSATION;
     }
-    return id
-      ? id.includes("did:")
-        ? DiscoveryType.DID
-        : DiscoveryType.INDEX
-      : undefined;
-  }, [id]);
+    if (id) {
+      return id.includes("did:") ? DiscoveryType.DID : DiscoveryType.INDEX;
+    }
+    return undefined;
+  }, [id, isConversation]);
 
-  const isDID = useMemo(
-    () => discoveryType === DiscoveryType.DID,
-    [discoveryType],
-  );
-  const isIndex = useMemo(
-    () => discoveryType === DiscoveryType.INDEX,
-    [discoveryType],
-  );
-  return {
-    id,
-    isLanding,
-    discoveryType,
-    isConversation,
-    isDID,
-    isIndex,
-  };
+  return { id, isLanding, isConversation, isDID, isIndex, discoveryType };
 };

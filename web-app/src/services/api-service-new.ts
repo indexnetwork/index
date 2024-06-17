@@ -29,6 +29,7 @@ const API_ENDPOINTS = {
   ZAPIER_TEST_LOGIN: "/zapier/test_login",
   SUBSCRIBE_TO_NEWSLETTER: "/site/subscribe",
   LIST_CONVERSATIONS: "/conversations",
+  CREATE_CONVERSATION: "/conversations",
   GET_CONVERSATION: "/conversations/:conversationId",
   SEND_MESSAGE: "/conversations/:conversationId/messages",
   UPDATE_MESSAGE: "/conversations/:conversationId/messages/:messageId",
@@ -288,6 +289,18 @@ class ApiService {
     return response.data;
   }
 
+  async createConversation(params: any): Promise<any> {
+    const response = await this.apiAxios.post<any>(
+      API_ENDPOINTS.CREATE_CONVERSATION,
+      params,
+    );
+
+    if (response.status !== 201) {
+      throw new Error("Failed to send message");
+    }
+
+    return response.data;
+  }
   async getConversation(conversationId: string): Promise<any> {
     const response = await this.apiAxios.get<any>(
       API_ENDPOINTS.GET_CONVERSATION.replace(":conversationId", conversationId),
