@@ -1,7 +1,11 @@
 import { ComposeClient } from "@composedb/client";
 import { profileFragment } from "../types/fragments.js";
 import { getCurrentDateTime } from "../utils/helpers.js";
+import RedisClient from "../clients/redis.js";
 import { IndexService } from "./index.js";
+import { DIDSession } from "did-session";
+
+const redisClient = RedisClient.getInstance();
 
 export class DIDService {
   constructor(definition) {
@@ -16,6 +20,7 @@ export class DIDService {
   setSession(session) {
     if (session && session.did.authenticated) {
       this.did = session.did;
+      this.session = session;
     }
     return this;
   }
@@ -322,6 +327,66 @@ export class DIDService {
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in getProfile:", error);
+      throw error;
+    }
+  }
+  async publicEncryptionDID() {
+    if (!this.did) {
+      throw new Error("DID not set. Use setDID() to set the did.");
+    }
+
+    const encryptedSessionStr = await redisClient.hGet(
+      `encryption_sessions`,
+      this.did.parent,
+    );
+
+    if (encryptedSessionStr) {
+      const session = await DIDSession.fromSession(encryptedSessionStr);
+      await session.did.authenticate();
+      return session;
+    }
+
+    try {
+      const content = {
+        publicEncryptionDID: this.did.id,
+      };
+
+      const mutation = `
+        mutation createPublicEncryptionDID($input: CreatePublicEncryptionDIDInput!) {
+          createPublicEncryptionDID(input: $input) {
+            document {
+              id
+              controllerDID {
+                id
+              }
+              publicEncryptionDID {
+                id
+              }
+            }
+          }
+        }
+      `;
+
+      this.client.setDID(this.did);
+
+      const { data: mutationData, errors: mutationErrors } =
+        await this.client.executeQuery(mutation, { input: { content } });
+
+      if (mutationErrors) {
+        throw new Error(
+          `Error creating public encryption DID: ${JSON.stringify(mutationErrors)}`,
+        );
+      }
+
+      await redisClient.hSet(
+        `encryption_sessions`,
+        this.did.parent,
+        this.session.serialize(),
+      );
+
+      return this.session;
+    } catch (error) {
+      console.error("Exception occurred in publicEncryptionDID:", error);
       throw error;
     }
   }

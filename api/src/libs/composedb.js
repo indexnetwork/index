@@ -87,7 +87,7 @@ let defaultRuntime = {
         immutable: false,
         item: { type: "did", required: false, immutable: false },
       },
-      metadata: { type: "string", required: true, immutable: false },
+      payload: { type: "string", required: true, immutable: false },
       createdAt: {
         type: "datetime",
         required: true,
@@ -118,7 +118,7 @@ let defaultRuntime = {
       },
     },
     EncryptedMessage: {
-      content: { type: "string", required: true, immutable: false },
+      payload: { type: "string", required: false, immutable: false },
       createdAt: {
         type: "datetime",
         required: true,

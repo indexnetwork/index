@@ -1,17 +1,24 @@
 import { ConversationService } from "../services/conversation.js";
 import RedisClient from "../clients/redis.js";
 import { DIDSession } from "did-session";
+import { DIDService } from "../services/did.js";
 
 const pubSubClient = RedisClient.getPubSubInstance();
+const redisClient = RedisClient.getInstance();
 
 // List all conversations
 export const listConversations = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   try {
+    const didService = new DIDService(definition).setSession(req.session);
+    const userEncryptionDID = await didService.publicEncryptionDID();
+
     const conversationService = new ConversationService(definition).setSession(
-      req.session,
+      userEncryptionDID,
     );
+
     const conversations = await conversationService.listConversations();
+
     res.status(200).json(conversations);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -23,8 +30,11 @@ export const getConversation = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   const { id } = req.params;
   try {
+    const didService = new DIDService(definition).setSession(req.session);
+    const userEncryptionDID = await didService.publicEncryptionDID();
+
     const conversationService = new ConversationService(definition).setSession(
-      req.session,
+      userEncryptionDID,
     );
     const conversation = await conversationService.getConversation(id);
     if (!conversation) {
@@ -46,8 +56,11 @@ export const updates = async (req, res) => {
   const definition = req.app.get("runtimeDefinition");
 
   try {
+    const didService = new DIDService(definition).setSession(session);
+    const userEncryptionDID = await didService.publicEncryptionDID();
+
     const conversationService = new ConversationService(definition).setSession(
-      session,
+      userEncryptionDID,
     );
     const conversation = await conversationService.getConversation(id);
     if (!conversation) {
@@ -80,8 +93,11 @@ export const updates = async (req, res) => {
 export const createConversation = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   try {
+    const didService = new DIDService(definition).setSession(req.session);
+    const userEncryptionDID = await didService.publicEncryptionDID();
+
     const conversationService = new ConversationService(definition).setSession(
-      req.session,
+      userEncryptionDID,
     );
     const conversation = await conversationService.createConversation(req.body);
     res.status(201).json(conversation);
@@ -95,8 +111,11 @@ export const updateConversation = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   const { id } = req.params;
   try {
+    const didService = new DIDService(definition).setSession(req.session);
+    const userEncryptionDID = await didService.publicEncryptionDID();
+
     const conversationService = new ConversationService(definition).setSession(
-      req.session,
+      userEncryptionDID,
     );
     const conversation = await conversationService.updateConversation(
       id,
@@ -113,8 +132,11 @@ export const deleteConversation = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   const { id } = req.params;
   try {
+    const didService = new DIDService(definition).setSession(req.session);
+    const userEncryptionDID = await didService.publicEncryptionDID();
+
     const conversationService = new ConversationService(definition).setSession(
-      req.session,
+      userEncryptionDID,
     );
     await conversationService.deleteConversation(id);
     res.status(204).send();
@@ -128,8 +150,11 @@ export const createMessage = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   const { conversationId } = req.params;
   try {
+    const didService = new DIDService(definition).setSession(req.session);
+    const userEncryptionDID = await didService.publicEncryptionDID();
+
     const conversationService = new ConversationService(definition).setSession(
-      req.session,
+      userEncryptionDID,
     );
     const message = await conversationService.createMessage(
       conversationId,
@@ -147,8 +172,11 @@ export const updateMessage = async (req, res, next) => {
   const { conversationId, messageId } = req.params;
   const { deleteAfter } = req.query;
   try {
+    const didService = new DIDService(definition).setSession(req.session);
+    const userEncryptionDID = await didService.publicEncryptionDID();
+
     const conversationService = new ConversationService(definition).setSession(
-      req.session,
+      userEncryptionDID,
     );
     const message = await conversationService.updateMessage(
       conversationId,
@@ -168,8 +196,11 @@ export const deleteMessage = async (req, res, next) => {
   const { conversationId, messageId } = req.params;
   const { deleteAfter } = req.query;
   try {
+    const didService = new DIDService(definition).setSession(req.session);
+    const userEncryptionDID = await didService.publicEncryptionDID();
+
     const conversationService = new ConversationService(definition).setSession(
-      req.session,
+      userEncryptionDID,
     );
     await conversationService.deleteMessage(
       conversationId,

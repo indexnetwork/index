@@ -133,10 +133,7 @@ export const decryptJWE = async (did, str) => {
 };
 export const createDagJWE = async (owner, dids, cleartext) => {
   try {
-    const jwe = await owner.createDagJWE(
-      cleartext,
-      dids.map((d) => d.id),
-    );
+    const jwe = await owner.createDagJWE(cleartext, dids);
     const stringified = JSON.stringify(jwe).replace(/"/g, "`");
     return stringified;
   } catch (error) {

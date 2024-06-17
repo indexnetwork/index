@@ -86,12 +86,21 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
           role: "user",
           content: message,
         };
-        setConversation((prevConversation) => [
-          ...prevConversation,
-          newMessage,
-        ]);
-        setIsLoading(true);
-        const response = await api!.sendMessage(chatID, {
+
+        setMessages((prevMessages) => {
+          [...prevMessages, newMessage];
+        });
+
+        let currentConv = viewedConversation;
+        if (!currentConv) {
+          currentConv = await api!.createConversation({
+            sources: [
+              "did:pkh:eip155:1:0x1b9Aceb609a62bae0c0a9682A9268138Faff4F5f",
+            ],
+            summary: `User says: ${message}`,
+          });
+        }
+        const messageResp = await api!.sendMessage(currentConv.id, {
           content: message,
           role: "user",
         });

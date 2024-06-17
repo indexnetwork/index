@@ -49,16 +49,16 @@ export class ConversationService {
   }
 
   async decryptNode(node) {
-    const decryptedMetadata = await decryptJWE(this.did, node.metadata);
-    if (!decryptedMetadata) return null;
-    node.sources = decryptedMetadata.sources;
-    node.summary = decryptedMetadata.summary;
-    delete node.metadata;
+    const decryptedPayload = await decryptJWE(this.did, node.payload);
+    if (!decryptedPayload) return null;
+    node.sources = decryptedPayload.sources;
+    node.summary = decryptedPayload.summary;
+    delete node.payload;
 
     const messages = await Promise.all(
       node.messages.edges.map(async (edge) => {
-        const decryptedContent = await decryptJWE(this.did, edge.node.content);
-        return { ...edge.node, ...decryptedContent };
+        const decryptedPayload = await decryptJWE(this.did, edge.node.payload);
+        return { ...edge.node, ...decryptedPayload };
       }),
     );
     node.messages = messages.filter((m) => m.role && m.deletedAt === null);
@@ -80,7 +80,7 @@ export class ConversationService {
               edges {
                 node {
                   id
-                  metadata
+                  payload
                   createdAt
                   updatedAt
                   deletedAt
@@ -101,7 +101,7 @@ export class ConversationService {
                         createdAt
                         updatedAt
                         deletedAt
-                        content
+                        payload
                       }
                     }
                   }
@@ -131,7 +131,7 @@ export class ConversationService {
         node(id: "${id}") {
           ... on Conversation {
             id
-            metadata
+            payload
             controllerDID {
               id
             }
@@ -151,7 +151,7 @@ export class ConversationService {
                   createdAt
                   updatedAt
                   deletedAt
-                  content
+                  payload
                 }
               }
             }
@@ -166,10 +166,9 @@ export class ConversationService {
 
   async createConversation(params) {
     this.validateDID();
-
     const agentDID = await getAgentDID();
     const content = {
-      metadata: await createDagJWE(this.did, [this.did, agentDID], params),
+      payload: await createDagJWE(this.did, [this.did.id, agentDID.id], params),
       members: [this.did.id, agentDID.id],
       createdAt: getCurrentDateTime(),
       updatedAt: getCurrentDateTime(),
@@ -180,7 +179,7 @@ export class ConversationService {
         createConversation(input: $input) {
           document {
             id
-            metadata
+            payload
             createdAt
             updatedAt
             deletedAt
@@ -197,8 +196,8 @@ export class ConversationService {
     const data = await this.executeQuery(query, { input: { content } });
     const document = data.createConversation.document;
 
-    const decryptedMetadata = await decryptJWE(this.did, document.metadata);
-    return { ...document, ...decryptedMetadata, metadata: undefined };
+    const decryptedPayload = await decryptJWE(this.did, document.payload);
+    return { ...document, ...decryptedPayload, payload: undefined };
   }
 
   async updateConversation(id, params) {
@@ -207,9 +206,9 @@ export class ConversationService {
     const conversation = await this.getConversation(id);
     const { deletedAt, ...paramsWithoutDeletedAt } = params;
     const content = {
-      metadata: await createDagJWE(
+      payload: await createDagJWE(
         this.did,
-        conversation.members,
+        conversation.members.map((i) => i.id),
         paramsWithoutDeletedAt,
       ),
       updatedAt: getCurrentDateTime(),
@@ -221,7 +220,7 @@ export class ConversationService {
         updateConversation(input: $input) {
           document {
             id
-            metadata
+            payload
             createdAt
             updatedAt
             deletedAt
@@ -238,7 +237,7 @@ export class ConversationService {
                   createdAt
                   updatedAt
                   deletedAt
-                  content
+                  payload
                 }
               }
             }
@@ -249,14 +248,14 @@ export class ConversationService {
     const data = await this.executeQuery(query, { input: { id, content } });
     const document = data.updateConversation.document;
 
-    const decryptedMetadata = await decryptJWE(this.did, document.metadata);
+    const decryptedPayload = await decryptJWE(this.did, document.payload);
     const messages = await Promise.all(
       document.messages.edges.map(async (edge) => ({
         ...edge.node,
-        content: await decryptJWE(this.did, edge.node.content),
+        payload: await decryptJWE(this.did, edge.node.payload),
       })),
     );
-    return { ...document, ...decryptedMetadata, messages, metadata: undefined };
+    return { ...document, ...decryptedPayload, messages, payload: undefined };
   }
 
   async deleteConversation(id) {
@@ -303,7 +302,7 @@ export class ConversationService {
             createdAt
             updatedAt
             deletedAt
-            content
+            payload
           }
         }
       }`;
@@ -311,17 +310,23 @@ export class ConversationService {
     const data = await this.executeQuery(query);
     const node = data.node;
 
-    const decryptedContent = await decryptJWE(this.did, node.content);
-    return { ...node, ...decryptedContent };
+    const decryptedPayload = await decryptJWE(this.did, node.payload);
+    return { ...node, ...decryptedPayload };
   }
 
   async createMessage(conversationId, params) {
     this.validateDID();
 
     const conversation = await this.getConversation(conversationId);
+
+    console.log("conversation", conversation, `heheh`);
     const content = {
       conversationId,
-      content: await createDagJWE(this.did, conversation.members, params),
+      payload: await createDagJWE(
+        this.did,
+        conversation.members.map((i) => i.id),
+        params,
+      ),
       createdAt: getCurrentDateTime(),
       updatedAt: getCurrentDateTime(),
     };
@@ -331,7 +336,7 @@ export class ConversationService {
         createEncryptedMessage(input: $input) {
           document {
             id
-            content
+            payload
             createdAt
             updatedAt
             deletedAt
@@ -345,8 +350,8 @@ export class ConversationService {
     const data = await this.executeQuery(query, { input: { content } });
     const document = data.createEncryptedMessage.document;
 
-    const decryptedContent = await decryptJWE(this.did, document.content);
-    return { ...document, ...decryptedContent };
+    const decryptedPayload = await decryptJWE(this.did, document.payload);
+    return { ...document, ...decryptedPayload };
   }
 
   async updateMessage(conversationId, messageId, params, deleteAfter = false) {
@@ -381,10 +386,10 @@ export class ConversationService {
     const { deletedAt, ...paramsWithoutDeletedAt } = params;
     const content = {
       conversationId,
-      content: paramsWithoutDeletedAt
+      payload: paramsWithoutDeletedAt
         ? await createDagJWE(
             this.did,
-            conversation.members,
+            conversation.members.map((i) => i.id),
             paramsWithoutDeletedAt,
           )
         : "",
@@ -397,7 +402,7 @@ export class ConversationService {
         updateEncryptedMessage(input: $input) {
           document {
             id
-            content
+            payload
             createdAt
             updatedAt
             deletedAt
@@ -413,8 +418,8 @@ export class ConversationService {
     });
     const document = data.updateEncryptedMessage.document;
 
-    const decryptedContent = await decryptJWE(this.did, document.content);
-    return { ...document, ...decryptedContent };
+    const decryptedPayload = await decryptJWE(this.did, document.payload);
+    return { ...document, ...decryptedPayload };
   }
 
   async deleteMessage(conversationId, messageId) {
