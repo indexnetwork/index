@@ -425,7 +425,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       targetDID = id;
     }
 
-    if (targetDID) {
+    if (targetDID && targetDID !== viewedProfile?.id) {
       const profile = await fetchProfile(targetDID);
       setViewedProfile(profile);
     }
