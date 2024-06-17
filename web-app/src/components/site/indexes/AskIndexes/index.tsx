@@ -96,7 +96,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         if (!currentConv) {
           currentConv = await api!.createConversation({
             sources: [id],
-            summary: `User says: ${message}`,
+            summary: message,
           });
         }
         if (!currentConv) return;
@@ -128,21 +128,12 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           return [...prevMessages, newMessage];
         });
 
-        let currentConv = viewedConversation;
-        if (!currentConv) {
-          currentConv = await api!.createConversation({
-            sources: [
-              "did:pkh:eip155:1:0x1b9Aceb609a62bae0c0a9682A9268138Faff4F5f",
-            ],
-          });
-        }
-        const messageResp = await api!.sendMessage(currentConv.id, {
+        const messageResp = await api!.sendMessage(viewedConversation.id, {
           content: message,
           role: "user",
         });
-        currentConv.messages.push(messageResp);
-        setViewedConversation(currentConv);
-        router.push(`/conversation/${currentConv.id}`);
+        viewedConversation.messages.push(messageResp);
+        setViewedConversation(viewedConversation);
       } catch (e) {
         console.error("Error sending message", e);
       }
