@@ -3,6 +3,7 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRole } from "@/hooks/useRole";
+import { useRouteParams } from "@/hooks/useRouteParams";
 import { ITEM_STARRED, trackEvent } from "@/services/tracker";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
@@ -23,6 +24,7 @@ import { maskDID } from "utils/helper";
 import { useIndexConversation } from "./IndexConversationContext";
 
 export const IndexConversationHeader: FC = () => {
+  const { isConversation } = useRouteParams();
   const { isOwner } = useRole();
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
@@ -192,6 +194,7 @@ export const IndexConversationHeader: FC = () => {
         <Col className="mb-3 ml-2">
           <Button iconHover theme="clear" borderless>
             <IndexOperationsPopup
+              isConversation={!isConversation}
               index={viewedIndex}
               userIndexToggle={() =>
                 handleUserIndexToggle("own", !viewedIndex?.did.owned)

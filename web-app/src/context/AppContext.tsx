@@ -88,6 +88,7 @@ export interface AppContextValue {
   transactionApprovalWaiting: boolean;
   createModalVisible: boolean;
   createConditions: (conditions: AccessControlCondition[]) => Promise<void>;
+  deleteConversation: () => void;
 }
 
 export const AppContext = createContext<AppContextValue>({} as AppContextValue);
@@ -169,6 +170,17 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     }
     return [];
   }, [indexes, leftTabKey]);
+
+  const deleteConversation = useCallback(async () => {
+    if (!apiReady || !conversationId) return;
+    try {
+      await api!.deleteConversation(conversationId);
+      setConversations((cs) => cs.filter((c) => c.id !== conversationId));
+    } catch (error) {
+      console.error("Error deleting conversation", error);
+      toast.error("Error deleting conversation, please refresh the page");
+    }
+  }, [apiReady, api, conversationId]);
 
   const fetchIndexes = useCallback(
     async (did: string): Promise<void> => {
@@ -522,6 +534,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     transactionApprovalWaiting,
     createConditions,
     handleCreatePublic,
+    deleteConversation,
   };
 
   return (

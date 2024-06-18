@@ -13,11 +13,13 @@ import { Indexes } from "types/entity";
 export interface IndexOperationsPopupProps {
   index?: Indexes;
   userIndexToggle(): void;
+  isConversation?: boolean;
 }
 
 const IndexOperationsPopup: React.FC<IndexOperationsPopupProps> = ({
   index,
   userIndexToggle,
+  isConversation,
 }) => (
   <Dropdown
     menuClass="index-list-item-menu ml-6"
@@ -42,6 +44,7 @@ const IndexOperationsPopup: React.FC<IndexOperationsPopupProps> = ({
             </Text>
           </div>
         </DropdownMenuItem>
+
         {index?.roles?.owner &&
           (index?.did?.owned ? (
             <>
@@ -74,6 +77,26 @@ const IndexOperationsPopup: React.FC<IndexOperationsPopupProps> = ({
               </DropdownMenuItem>
             </>
           ))}
+        {isConversation && (
+          <DropdownMenuItem
+            onClick={() => {
+              console.log("click");
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "start",
+              }}
+            >
+              <IconCopy />
+              <Text className="ml-3" element="span" size="md">
+                New Chat
+              </Text>
+            </div>
+          </DropdownMenuItem>
+        )}
       </>
     }
   >

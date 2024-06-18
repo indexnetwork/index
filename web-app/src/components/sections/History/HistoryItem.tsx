@@ -1,5 +1,7 @@
+import Button from "components/base/Button";
 import moment from "moment";
 import { useRouter } from "next/navigation";
+import HistoryItemOpsPopup from "./HistoryItemOpsPopup";
 
 type HistoryItemProps = {
   id: string;
@@ -28,6 +30,23 @@ const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
           cursor: "pointer",
         }}
       >
+        <div
+          style={{
+            alignSelf: "flex-end",
+            position: "absolute",
+          }}
+        >
+          <Button
+            onClick={(e: any) => {
+              e.stopPropagation();
+            }}
+            iconHover
+            theme="clear"
+            borderless
+          >
+            <HistoryItemOpsPopup />
+          </Button>
+        </div>
         <h2
           style={{
             fontSize: "14px",
