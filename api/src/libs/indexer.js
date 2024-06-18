@@ -372,7 +372,11 @@ class Indexer {
       return;
     }
     message.conversation = conversation;
-    if (message.role === `user`) {
+    if (
+      message.role === `user` &&
+      message.content &&
+      message.content.length > 0
+    ) {
       handleUserMessage(message, this.definition, pubSubClient, redisClient);
     }
   }
