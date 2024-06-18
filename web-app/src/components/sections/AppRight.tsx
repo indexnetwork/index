@@ -1,13 +1,16 @@
 import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
 import { useApp } from "@/context/AppContext";
+import { useRouteParams } from "@/hooks/useRouteParams";
 import cc from "classcat";
 import Button from "components/base/Button";
 import IconClose from "components/base/Icon/IconClose";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
+import { useRouter } from "next/navigation";
 import ConversationHistory from "./History";
+import NewChatButton from "./NewChatButton";
 
 const AppRight = () => {
   const {
@@ -16,10 +19,21 @@ const AppRight = () => {
     rightSidebarOpen,
     rightTabKey,
     setRightTabKey,
+    setViewedConversation,
+    viewedConversation,
   } = useApp();
+
+  const { isConversation } = useRouteParams();
+
+  const router = useRouter();
 
   const handleRightTabChange = (tabKey: string) => {
     setRightTabKey(tabKey);
+  };
+
+  const handleStartChat = () => {
+    setViewedConversation(undefined);
+    router.push(`/${viewedConversation?.sources[0]}`);
   };
 
   return (
@@ -42,10 +56,31 @@ const AppRight = () => {
         </Button>
       </Flex>
       <Flex
-        className={"scrollable-container idxflex-grow-1 pl-6"}
+        className={"idxflex-grow-1 pl-6"}
         flexdirection={"column"}
+        style={{
+          position: "relative",
+        }}
       >
-        <FlexRow wrap={false} className={"idxflex-grow-1 mt-6"}>
+        {isConversation && (
+          <div
+            style={{
+              marginBottom: "12px",
+            }}
+          >
+            <NewChatButton onClick={handleStartChat} />
+          </div>
+        )}
+        <FlexRow
+          wrap={false}
+          className={"idxflex-grow-1"}
+          style={{
+            width: "100%",
+            overflow: "scroll",
+            maxHeight: "calc(100dvh - 144px)",
+            marginTop: "12px",
+          }}
+        >
           <Tabs
             headerType="sticky"
             activeKey={rightTabKey}

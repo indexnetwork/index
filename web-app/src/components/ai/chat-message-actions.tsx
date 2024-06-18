@@ -4,12 +4,14 @@ import { IconCheck, IconCopy, IconEdit } from "components/ai/ui/icons";
 import { useCopyToClipboard } from "hooks/useCopyToClipboard";
 import { Message } from "ai";
 import Flex from "components/layout/base/Grid/Flex";
+import Image from "next/image";
 
 interface ChatMessageActionsProps extends React.ComponentProps<"div"> {
   message: Message;
   handleEditClick: (message: Message, index: number) => void;
   index: number;
   editingMessage: Message | undefined;
+  regenerate: (() => void) | null;
 }
 
 export function ChatMessageActions({
@@ -17,6 +19,7 @@ export function ChatMessageActions({
   handleEditClick,
   index,
   editingMessage,
+  regenerate,
   className,
   ...props
 }: ChatMessageActionsProps) {
@@ -52,6 +55,18 @@ export function ChatMessageActions({
               <IconCopy width={20} height={20} />
             )}
             <span className="sr-only hidden">Copy message</span>
+          </Button>
+        )}
+
+        {regenerate && (
+          <Button iconHover borderless theme="clear" onClick={regenerate}>
+            <Image
+              color="red"
+              src="/images/ic_regenerate.svg"
+              alt="regenerate"
+              width={18}
+              height={18}
+            />
           </Button>
         )}
       </Flex>

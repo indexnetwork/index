@@ -52,6 +52,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     viewedIndex,
     setViewedConversation,
     viewedConversation,
+    conversations,
+    setConversations,
   } = useApp();
   const { isIndex, conversationId, id } = useRouteParams();
   const { view } = useApp();
@@ -95,10 +97,14 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         setMessages((prevMessages) => [...prevMessages, newMessage]);
         let currentConv = viewedConversation;
         if (!currentConv) {
-          currentConv = await api!.createConversation({
+          const response = await api!.createConversation({
             sources: [id],
             summary: message,
           });
+
+          currentConv = response;
+
+          setConversations([response, ...conversations]);
         }
         if (!currentConv) return;
         const messageResp = await api!.sendMessage(currentConv.id, {
@@ -107,12 +113,13 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         });
         currentConv.messages = [messageResp];
         setViewedConversation(currentConv);
+
         router.push(`/conversation/${currentConv.id}`);
       } catch (error) {
         console.error("Error sending message", error);
       }
     },
-    [viewedConversation, apiReady, api, isLoading],
+    [viewedConversation, apiReady, conversations, api, isLoading],
   );
 
   const updateMessage = useCallback(
@@ -120,6 +127,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       if (!viewedConversation) return;
       if (!apiReady || isLoading) return;
       try {
+        const lastUserMessage = messages.findLast((m) => m.role === "user");
+        if (!lastUserMessage) return;
+
         const newMessage: Message = {
           id: generateId(),
           role: "user",
@@ -129,10 +139,15 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           return [...prevMessages, newMessage];
         });
 
-        const messageResp = await api!.sendMessage(viewedConversation.id, {
-          content: message,
-          role: "user",
-        });
+        const messageResp = await api!.updateMessage(
+          viewedConversation.id,
+          lastUserMessage.id,
+          {
+            content: message,
+            role: "user",
+          },
+          true,
+        );
         viewedConversation.messages.push(messageResp);
         setViewedConversation(viewedConversation);
       } catch (e) {
@@ -171,6 +186,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       try {
         const messagesBeforeEdit = messages.slice(0, editingIndex);
         const messagesAfterEdit = messages.slice(editingIndex);
+
+        console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
         if (Array.isArray(messagesAfterEdit) && messagesAfterEdit.length > 0) {
           const mIds = messagesAfterEdit.map((m) => m.id);
           setDeletedMessages((prev) => {
@@ -187,6 +204,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         setEditInput("");
         setIsLoading(false);
         setMessages([...messagesBeforeEdit, newMessage]);
+        console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
 
         await updateMessage(editingMessage.id, editInput); // TODO
       } catch (error: any) {
@@ -195,41 +213,12 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     }
   };
 
-  // const handleRegeneratedMessages = async (regeneratingIndex: number) => {
-  //   if (regeneratingMessage) {
-  //     try {
-  //       const messagesBeforeEdit = conversation.slice(0, regeneratingIndex);
-  //       const messagesAfterEdit = conversation.slice(regeneratingIndex);
-  //       if (Array.isArray(messagesAfterEdit) && messagesAfterEdit.length > 0) {
-  //         const mIds = messagesAfterEdit.map((m) => m.id);
-  //         setDeletedMessages((prev) => {
-  //           return [...prev, ...mIds];
-  //         });
-  //       }
-
-  //       const newMessage = {
-  //         ...regeneratingMessage,
-  //         content: editInput,
-  //       };
-
-  //       setEditingMessage(undefined);
-  //       setEditInput("");
-  //       setIsLoading(false);
-  //       setConversation([...messagesBeforeEdit, newMessage]);
-
-  //       // await updateMessage(regeneratingMessage.id, editInput); // TODO
-  //     } catch (error: any) {
-  //       console.error("An error occurred:", error.message);
-  //     }
-  //   }
-  // };
-
   const regenerateMessage = async () => {
     if (!apiReady || isLoading || !viewedConversation) return;
     try {
       const lastUserMessage = messages.findLast((m) => m.role === "user");
       const lastAssistantMessage = messages.findLast(
-        (m) => m.name === "assistant",
+        (m) => m.name === "basic_assistant",
       );
       if (!lastUserMessage) return;
 
@@ -248,7 +237,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         viewedConversation.id,
         lastUserMessage.id,
         { role: lastUserMessage.role, content: lastUserMessage.content },
-        false,
+        true,
       );
 
       setIsLoading(false);
@@ -289,7 +278,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   }, [bottomRef]);
 
   useEffect(() => {
-    scrollToBottom();
+    // scrollToBottom();
   }, [viewedConversation, isLoading, scrollToBottom]);
 
   const stop = () => {
@@ -305,7 +294,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     if (payload.channel === "end") {
       console.log("End of stream");
       setIsLoading(false);
-      scrollToBottom();
+      // scrollToBottom();
       return;
     }
 
@@ -319,7 +308,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         return [...prevMessages, newMessage];
       });
       setIsLoading(false);
-      scrollToBottom();
+      // scrollToBottom();
       return;
     }
 
@@ -357,7 +346,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       }
       return prevConversation;
     });
-    scrollToBottom();
+    // scrollToBottom();
   };
 
   useEffect(() => {
@@ -425,6 +414,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                   editInput={editInput}
                   handleSaveEdit={handleSaveEdit}
                   editingIndex={editingIndex}
+                  regenerate={regenerateMessage}
                 />
                 <div ref={bottomRef} />
                 <ChatScrollAnchor trackVisibility={isLoading} />

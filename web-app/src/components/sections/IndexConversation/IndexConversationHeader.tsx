@@ -194,7 +194,6 @@ export const IndexConversationHeader: FC = () => {
         <Col className="mb-3 ml-2">
           <Button iconHover theme="clear" borderless>
             <IndexOperationsPopup
-              isConversation={!isConversation}
               index={viewedIndex}
               userIndexToggle={() =>
                 handleUserIndexToggle("own", !viewedIndex?.did.owned)

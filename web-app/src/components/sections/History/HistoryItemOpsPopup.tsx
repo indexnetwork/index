@@ -3,15 +3,18 @@ import Text from "components/base/Text";
 import DropdownMenuItem from "components/base/Dropdown/DropdownMenuItem";
 import React from "react";
 import IconContextMenu from "components/base/Icon/IconContextMenu";
-import { copyToClipboard } from "utils/helper";
 import { IconTrash } from "@/components/ai/ui/icons";
 
-export interface HistoryItemOpsPopupProps {}
+export interface HistoryItemOpsPopupProps {
+  onDelete: () => void;
+}
 
-const HistoryItemOpsPopup: React.FC<HistoryItemOpsPopupProps> = () => (
+const HistoryItemOpsPopup: React.FC<HistoryItemOpsPopupProps> = ({
+  onDelete,
+}) => (
   <div
     style={{
-      zIndex: 99,
+      zIndex: 9,
     }}
   >
     <Dropdown
@@ -22,7 +25,7 @@ const HistoryItemOpsPopup: React.FC<HistoryItemOpsPopupProps> = () => (
           <DropdownMenuItem
             onClick={(e: any) => {
               e.stopPropagation();
-              copyToClipboard(`${window.location.href}`);
+              onDelete();
             }}
           >
             <div
@@ -30,10 +33,18 @@ const HistoryItemOpsPopup: React.FC<HistoryItemOpsPopupProps> = () => (
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "start",
+                color: "red",
               }}
             >
               <IconTrash />
-              <Text className="ml-3" element="span" size="md">
+              <Text
+                style={{
+                  color: "red",
+                }}
+                className="ml-3"
+                element="span"
+                size="md"
+              >
                 Delete
               </Text>
             </div>

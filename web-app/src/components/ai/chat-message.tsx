@@ -24,6 +24,7 @@ export interface ChatMessageProps {
   handleSaveEdit: () => void;
   index: number;
   editingIndex: number | undefined;
+  regenerate: (() => void) | null;
 }
 
 export function ChatMessage({
@@ -35,6 +36,7 @@ export function ChatMessage({
   handleSaveEdit,
   index,
   editingIndex,
+  regenerate,
 }: ChatMessageProps) {
   const { userProfile } = useApp();
 
@@ -164,6 +166,7 @@ export function ChatMessage({
             handleEditClick={handleEditClick}
             index={index}
             editingMessage={editingMessage}
+            regenerate={regenerate}
           />
         )}
       </Col>

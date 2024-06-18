@@ -1,3 +1,4 @@
+import { useApp } from "@/context/AppContext";
 import Button from "components/base/Button";
 import moment from "moment";
 import { useRouter } from "next/navigation";
@@ -12,6 +13,12 @@ type HistoryItemProps = {
 
 const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
   const router = useRouter();
+  const { deleteConversation } = useApp();
+
+  const handleDelete = (id: string) => {
+    deleteConversation(id);
+  };
+
   return (
     <div
       onClick={() => {
@@ -44,7 +51,11 @@ const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
             theme="clear"
             borderless
           >
-            <HistoryItemOpsPopup />
+            <HistoryItemOpsPopup
+              onDelete={() => {
+                handleDelete(item.id);
+              }}
+            />
           </Button>
         </div>
         <h2

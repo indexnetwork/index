@@ -23,13 +23,14 @@ export function ChatPanel({ isLoading, stop, reload, messages }: any) {
           </Button>
         ) : (
           messages?.length > 0 && (
-            <Button
-              addOnBefore={<IconRefresh width={12} />}
-              onClick={() => reload()}
-              theme="panel"
-            >
-              <div className={"ml-3 text-md"}> Regenerate</div>
-            </Button>
+            <></>
+            // <Button
+            //   addOnBefore={<IconRefresh width={12} />}
+            //   onClick={() => reload()}
+            //   theme="panel"
+            // >
+            //   <div className={"ml-3 text-md"}> Regenerate</div>
+            // </Button>
           )
         )}
       </div>
