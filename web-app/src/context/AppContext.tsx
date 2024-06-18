@@ -211,8 +211,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         isFetchingRef.current = false;
         return index;
       } catch (error) {
-        console.error("Error fetching index", error);
-        toast.error("Error fetching index, please refresh the page");
+        if (!cancelSource) {
+          console.error("Error fetching index", error);
+          toast.error("Error fetching index, please refresh the page");
+        }
       }
     },
     [isIndex, apiReady, api],
