@@ -47,6 +47,7 @@ export const handleNewItemEvent = async (
       const assistantMessage = await conversationService.createMessage(chatId, {
         content: resp.data,
         role: "assistant",
+        name: "listener",
       });
       await redisClient.publish(
         `agentStream:${chatId}:update`,

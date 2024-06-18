@@ -29,6 +29,7 @@ export const handleUserMessage = async (
   const assistantMessage = await conversationService.createMessage(id, {
     role: "assistant",
     content: "",
+    name: "basic_assistant",
   });
 
   try {
@@ -62,6 +63,7 @@ export const handleUserMessage = async (
         await conversationService.updateMessage(id, assistantMessage.id, {
           role: "assistant",
           content: assistantMessage.content,
+          name: "basic_assistant",
         });
         return;
       }
@@ -78,7 +80,7 @@ export const handleUserMessage = async (
           `agentStream:${id}:chunk`,
           JSON.stringify({
             chunk: plainText,
-            name: "assistant",
+            name: "basic_assistant",
             messageId: assistantMessage.id,
           }),
         );
@@ -104,12 +106,13 @@ export const handleUserMessage = async (
           `agentStream:${id}:end`,
           JSON.stringify({
             end: true,
-            name: "assistant",
+            name: "basic_assistant",
             messageId: assistantMessage.id,
           }),
         );
         await conversationService.updateMessage(id, assistantMessage.id, {
           content: assistantMessage.content,
+          name: "basic_assistant",
           role: "assistant",
         });
         // todo api save.
