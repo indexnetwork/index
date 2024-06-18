@@ -5,8 +5,9 @@ export default function UserConversationSection() {
     <div
       style={{
         display: "flex",
-        justifyContent: "center",
+        justifyContent: "start",
         height: "100%",
+        flexDirection: "column",
       }}
     >
       <div

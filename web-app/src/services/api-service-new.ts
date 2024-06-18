@@ -31,6 +31,7 @@ const API_ENDPOINTS = {
   LIST_CONVERSATIONS: "/conversations",
   CREATE_CONVERSATION: "/conversations",
   GET_CONVERSATION: "/conversations/:conversationId",
+  DELETE_CONVERSATION: "/conversations/:conversationId",
   SEND_MESSAGE: "/conversations/:conversationId/messages",
   UPDATE_MESSAGE: "/conversations/:conversationId/messages/:messageId",
 };
@@ -308,6 +309,21 @@ class ApiService {
 
     if (response.status !== 200) {
       throw new Error("Failed to list conversations message");
+    }
+
+    return response.data;
+  }
+
+  async deleteConversation(conversationId: string): Promise<any> {
+    const response = await this.apiAxios.delete<any>(
+      API_ENDPOINTS.DELETE_CONVERSATION.replace(
+        ":conversationId",
+        conversationId,
+      ),
+    );
+
+    if (response.status !== 200) {
+      throw new Error("Failed to dekete conversations message");
     }
 
     return response.data;

@@ -1,5 +1,8 @@
+import { useApp } from "@/context/AppContext";
+import Button from "components/base/Button";
 import moment from "moment";
 import { useRouter } from "next/navigation";
+import HistoryItemOpsPopup from "./HistoryItemOpsPopup";
 
 type HistoryItemProps = {
   id: string;
@@ -10,6 +13,12 @@ type HistoryItemProps = {
 
 const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
   const router = useRouter();
+  const { deleteConversation } = useApp();
+
+  const handleDelete = (id: string) => {
+    deleteConversation(id);
+  };
+
   return (
     <div
       onClick={() => {
@@ -28,6 +37,27 @@ const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
           cursor: "pointer",
         }}
       >
+        <div
+          style={{
+            alignSelf: "flex-end",
+            position: "absolute",
+          }}
+        >
+          <Button
+            onClick={(e: any) => {
+              e.stopPropagation();
+            }}
+            iconHover
+            theme="clear"
+            borderless
+          >
+            <HistoryItemOpsPopup
+              onDelete={() => {
+                handleDelete(item.id);
+              }}
+            />
+          </Button>
+        </div>
         <h2
           style={{
             fontSize: "14px",

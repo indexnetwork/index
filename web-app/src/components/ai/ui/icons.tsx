@@ -269,25 +269,25 @@ function IconTrash({ className, ...props }: React.ComponentProps<"svg">) {
 function IconRefresh({ className, ...props }: React.ComponentProps<"svg">) {
   return (
     <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width={12}
-    height={12}
-    fill="none"
-    {...props}
-  >
-    <path
-      stroke="#475569"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="m.75 5.064 1.296 1.93L3.537 5.21M11.25 7.065 9.955 5.134 8.463 6.92"
-    />
-    <path
-      stroke="#475569"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M9.936 5.151a4.01 4.01 0 0 1-3.028 4.526 3.95 3.95 0 0 1-3.69-1.034M2.048 6.984A4.118 4.118 0 0 1 5.09 1.982 3.95 3.95 0 0 1 8.962 3.21"
-    />
-  </svg>
+      xmlns="http://www.w3.org/2000/svg"
+      width={12}
+      height={12}
+      fill="none"
+      {...props}
+    >
+      <path
+        stroke="#475569"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m.75 5.064 1.296 1.93L3.537 5.21M11.25 7.065 9.955 5.134 8.463 6.92"
+      />
+      <path
+        stroke="#475569"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9.936 5.151a4.01 4.01 0 0 1-3.028 4.526 3.95 3.95 0 0 1-3.69-1.034M2.048 6.984A4.118 4.118 0 0 1 5.09 1.982 3.95 3.95 0 0 1 8.962 3.21"
+      />
+    </svg>
   );
 }
 
@@ -420,7 +420,7 @@ function IconClose({ className, ...props }: React.ComponentProps<"svg">) {
       {...props}
     >
       <path
-       stroke="var(--gray-6)"
+        stroke="var(--gray-6)"
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={2}
