@@ -390,12 +390,19 @@ export class ConversationService {
       for (const messageEdge of conversation.messages.filter(
         (m) => new Date(m.createdAt) > new Date(message.createdAt),
       )) {
-        if (messageEdge.controllerDID.id === agentDID.id) {
-          await agentConvService.deleteMessage(conversation.id, messageEdge.id);
-        } else if (messageEdge.controllerDID.id === this.did.id) {
-          await this.deleteMessage(conversation.id, messageEdge.id);
-        } else {
-          console.log(`Skipping message ${messageEdge.id}`);
+        try {
+          if (messageEdge.controllerDID.id === agentDID.id) {
+            await agentConvService.deleteMessage(
+              conversation.id,
+              messageEdge.id,
+            );
+          } else {
+            await this.deleteMessage(conversation.id, messageEdge.id);
+          }
+        } catch (e) {
+          console.log(
+            `Skipping message ${messageEdge.controllerDID.id} - ${this.did.id}`,
+          );
         }
       }
     }

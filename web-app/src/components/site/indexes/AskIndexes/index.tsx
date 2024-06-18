@@ -125,20 +125,18 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       if (!viewedConversation) return;
       if (!apiReady || isLoading) return;
       try {
-        const newMessage: Message = {
-          id: generateId(),
-          role: "user",
-          content: message,
-        };
-        setMessages((prevMessages) => {
-          return [...prevMessages, newMessage];
-        });
-
-        const messageResp = await api!.sendMessage(viewedConversation.id, {
-          content: message,
-          role: "user",
-        });
-        viewedConversation.messages.push(messageResp);
+        const messageResp = await api!.updateMessage(
+          viewedConversation.id,
+          messageId,
+          {
+            content: message,
+            role: "user",
+          },
+          true,
+        );
+        viewedConversation.messages = viewedConversation.messages.map((m) =>
+          m.id === messageId ? messageResp : m,
+        );
         setViewedConversation(viewedConversation);
       } catch (e) {
         console.error("Error sending message", e);
@@ -256,7 +254,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         viewedConversation.id,
         lastUserMessage.id,
         { role: lastUserMessage.role, content: lastUserMessage.content },
-        false,
+        true,
       );
 
       setIsLoading(false);
