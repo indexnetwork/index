@@ -94,11 +94,13 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
 
         setMessages((prevMessages) => [...prevMessages, newMessage]);
         let currentConv = viewedConversation;
+        let isNew = false;
         if (!currentConv) {
           currentConv = await api!.createConversation({
             sources: [id],
             summary: message,
           });
+          isNew = true;
         }
         if (!currentConv) return;
         const messageResp = await api!.sendMessage(currentConv.id, {
@@ -107,7 +109,10 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         });
         currentConv.messages = [messageResp];
         setViewedConversation(currentConv);
-        router.push(`/conversation/${currentConv.id}`);
+        scrollToBottom();
+        if (isNew) {
+          router.push(`/conversation/${currentConv.id}`);
+        }
       } catch (error) {
         console.error("Error sending message", error);
       }
@@ -148,7 +153,10 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
 
   useEffect(() => {
     if (viewedConversation && viewedConversation.messages) {
-      setMessages(viewedConversation.messages);
+      setMessages(viewedConversation.messages.filter((m) => !!m.content));
+      setTimeout(() => {
+        scrollToBottom();
+      }, 10);
     } else {
       setMessages([]);
     }
@@ -285,7 +293,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   };
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "auto" });
   }, [bottomRef]);
 
   useEffect(() => {
@@ -344,7 +352,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           role: "assistant",
           name: payload.data.name,
         };
-        console.log("New message", streamingMessage);
         return [...prevConversation, streamingMessage];
       }
 

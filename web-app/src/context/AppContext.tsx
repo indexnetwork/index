@@ -240,7 +240,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         toast.error("Error fetching index, please refresh the page");
       }
     },
-    [id, isConversation, apiReady, api],
+    [isConversation, apiReady, api],
   );
 
   const fetchIndexWithCreator = useCallback(
@@ -390,6 +390,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const handleUserProfileChange = useCallback(async () => {
     if (isLanding) return;
     if (viewedProfile && isIndex) return;
+    //if (viewedProfile && isConversation) return;
     // if (!id) return;
 
     let targetDID;
@@ -423,8 +424,9 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       targetDID = id;
     }
 
-    if (targetDID && targetDID !== viewedProfile?.id) {
+    if (targetDID && (!viewedProfile || targetDID !== viewedProfile.id)) {
       const profile = await fetchProfile(targetDID);
+      console.log(`why fuck`, viewedProfile, targetDID, profile);
       setViewedProfile(profile);
     }
   }, [
@@ -464,7 +466,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         setViewedProfile(userProfile);
       }
     }
-  }, [userProfile, session, id]);
+  }, [viewedProfile?.id, userProfile, session, id]);
 
   const fetchConversations = useCallback(async () => {
     if (!apiReady) return;
@@ -475,14 +477,14 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     } catch (error) {
       console.error("Error sending message", error);
     }
-  }, [userProfile, session, id]);
+  }, [id, api, apiReady]);
 
   useEffect(() => {
-    if (viewedProfile) {
+    if (viewedProfile && viewedProfile.id) {
       fetchIndexes(viewedProfile.id);
       fetchConversations();
     }
-  }, [viewedProfile, fetchIndexes]);
+  }, [viewedProfile?.id, fetchIndexes, fetchConversations]);
 
   const contextValue: AppContextValue = {
     view,
