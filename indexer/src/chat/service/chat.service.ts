@@ -4,18 +4,13 @@ import {
   Inject,
   Injectable,
   Logger,
-  StreamableFile,
 } from '@nestjs/common';
 
 import { Chroma } from '@langchain/community/vectorstores/chroma';
-import {
-  QuestionGenerationInput,
-  RetrievalQuestionInput,
-} from '../schema/chat.schema';
+import { RetrievalQuestionInput } from '../schema/chat.schema';
 
 import { Agent } from 'src/app/modules/agent.module';
 import { RunnableSequence } from '@langchain/core/runnables';
-import { OpenAIEmbeddings } from '@langchain/openai';
 import { pull } from 'langchain/hub';
 
 @Injectable()
@@ -64,6 +59,29 @@ export class ChatService {
         });
         return stream;
       }
+      // Invoke the agent
+    } catch (e) {
+      Logger.log(
+        `Cannot process ${body.input.question} ${e}`,
+        'chatService:stream:error',
+      );
+      throw e;
+    }
+  }
+
+  /**
+   * @description Stream a question to the agent with a chat history
+   *
+   * @param body
+   * @returns
+   */
+  async streamExternal(body: any) {
+    Logger.log(
+      `Processing ${JSON.stringify(body)}`,
+      'chatService:streamExternal',
+    );
+    try {
+      return await this.agentClient.createDynamicChain(body);
       // Invoke the agent
     } catch (e) {
       Logger.log(
