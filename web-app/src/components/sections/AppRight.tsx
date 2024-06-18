@@ -1,6 +1,5 @@
 import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
-import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import cc from "classcat";
 import Button from "components/base/Button";
@@ -9,9 +8,7 @@ import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Soon from "components/site/indexes/Soon";
-import { useCallback, useEffect, useState } from "react";
 import ConversationHistory from "./History";
-import { useAuth } from "@/context/AuthContext";
 
 const AppRight = () => {
   const {
