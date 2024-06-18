@@ -3,14 +3,11 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { Wallet, randomBytes } from "ethers";
 import IndexConfig from "./config.js";
-
 import IndexVectorStore from "./lib/chroma.js";
 import {
-  ICreatorAction,
   IGetItemQueryParams,
   IIndex,
   ILink,
-  ILitActionConditions,
   IUser,
   IUserProfileUpdateParams,
   ICreateConversationParams,
@@ -37,6 +34,7 @@ export default class IndexClient {
   constructor({
     domain,
     session,
+    privateKey,
     wallet,
     network,
     options,
@@ -48,24 +46,32 @@ export default class IndexClient {
     network?: IndexNetworkType;
     options?: { useChroma: boolean };
   }) {
-    this.network = network || "dev";
-    if (this.network === "mainnet") {
-      this.baseUrl = "https://index.network/api";
-    } else {
-      this.baseUrl = "https://dev.index.network/api";
-    }
-    this.domain = domain || "index.network";
+    if (!domain) throw new Error("Domain is required");
+    this.domain = domain;
+
     if (session) {
       this.session = session;
-    } else {
+    } else if (privateKey) {
+      this.wallet = new Wallet(privateKey);
+    } else if (wallet) {
       this.wallet = wallet;
+    } else {
+      throw new Error("Either session or wallet (with privateKey) is required");
     }
+
+    this.network = network || "dev";
+    this.baseUrl =
+      this.network === "mainnet"
+        ? "https://index.network/api"
+        : "https://dev.index.network/api";
+    this.options = options;
   }
 
   private async initChroma() {
     if (!this.session) {
       throw new Error("Session is required to initialize Chroma");
     }
+    // Chroma initialization logic (e.g., this.chroma = new Chroma(this.session))
   }
 
   public async getVectorStore({
@@ -77,50 +83,51 @@ export default class IndexClient {
     sources: string[];
     filters: object;
   }) {
-    let indexChromaURL = "https://dev.index.network/api/chroma";
+    let indexChromaURL =
+      this.network === "mainnet"
+        ? "https://index.network/api/chroma"
+        : "https://dev.index.network/api/chroma";
 
-    if (this.network === "mainnet") {
-      indexChromaURL = "https://index.network/api/chroma";
-    }
-
-    return IndexVectorStore.fromExistingCollection(
-      embeddings, // new OpenAIEmbeddings({ openAIApiKey: apiKey, modelName: process.env.MODEL_EMBEDDING }),
-      {
-        collectionName: "chroma-indexer",
-        url: indexChromaURL,
-      },
-    );
+    return IndexVectorStore.fromExistingCollection(embeddings, {
+      collectionName: "chroma-indexer",
+      url: indexChromaURL,
+    });
   }
 
   private async request<T>(
     endpoint: string,
     options: RequestInit,
   ): ApiResponse<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${this.session}`,
-        ...options.headers,
-        "Content-Type": "application/json",
-      },
-    });
+    try {
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        ...options,
+        headers: {
+          Authorization: `Bearer ${this.session}`,
+          ...options.headers,
+          "Content-Type": "application/json",
+        },
+      });
 
-    if (!response.ok) {
-      throw new Error(`API call failed with status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(
+          `API call failed with status: ${response.status} - ${response.statusText}`,
+        );
+      }
+
+      return response.json() as Promise<T>;
+    } catch (error) {
+      throw new Error(`Network error: ${error.message}`);
     }
-
-    return response.json() as Promise<T>;
   }
 
   public async authenticate(): Promise<void> {
     if (this.session) return;
 
     if (!this.wallet || !this.domain) {
-      throw new Error("Private key and domain is required to authenticate");
+      throw new Error("Wallet and domain are required to authenticate");
     }
 
     const address = this.wallet.address;
-
     const keySeed = randomBytes(32);
     const didKey = await createDIDKey(keySeed);
 
@@ -150,7 +157,7 @@ export default class IndexClient {
 
     this.session = authBearer;
 
-    this.initChroma();
+    await this.initChroma();
   }
 
   public getAllIndexes(did: string): ApiResponse<IIndex[]> {
@@ -203,11 +210,7 @@ export default class IndexClient {
     title: string,
     signerFunction?: string,
   ): ApiResponse<IIndex> {
-    const body = {
-      title,
-      signerFunction,
-    };
-
+    const body = { title, signerFunction };
     return this.request(`/indexes`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -294,6 +297,12 @@ export default class IndexClient {
     return this.request(`/composedb/${modelId}/${nodeId}`, {
       method: "PATCH",
       body: JSON.stringify(nodeData),
+    });
+  }
+
+  public async getConversation(conversationId: string): ApiResponse<any> {
+    return this.request(`/conversations/${conversationId}`, {
+      method: "GET",
     });
   }
 

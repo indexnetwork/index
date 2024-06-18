@@ -58,7 +58,7 @@ We're almost ready. Now, let's create an Index, with a title.
 const indexId = await indexClient.createIndex(title: "Future of publishing");
 ```
 
-Voilà, now you have a truly decentralized index to interact with! Though it's empty, which means we need to create and add an [`Item`](../api-reference/indexing/item.md) into it so we can interact. Let's do that.
+Great, now you have a truly decentralized index to interact with! Though it's empty, which means we need to create and add an [`Item`](../api-reference/indexing/item.md) into it so we can interact. Let's do that.
 
 ```typescript
 const webPageId = await indexClient.crawlWebPage({
@@ -68,33 +68,62 @@ const webPageId = await indexClient.crawlWebPage({
 await indexClient.addItemToIndex(indexId, webPageId);
 ```
 
-Your index is now ready for interaction! Querying the index is straightforward:
+Your index is now ready for interaction! To start a conversation and interact with the data, follow these steps:
 
 ```typescript
-const queryResponse = await indexClient.chat({
-  id: uuidv4(), // Provide a unique chat id for the query
-  messages: [
-    {
-      content: "How do you evaluate a startup?",
-      role: "user",
-    },
-  ],
-  sources: [indexId], // You can add all the indexes of a user as well
-});
+// Create a conversation
+const conversationParams = {
+  sources: [index.id],
+  summary: "Mock summary",
+  members: [indexClient.wallet.address],
+};
+const conversation = await indexClient.createConversation(conversationParams);
 
-console.log(queryResponse);
+// Add a message to the conversation
+const messageParams = {
+  role: "user",
+  content: "How do you do this?",
+};
+const message = await indexClient.createMessage(conversation.id, messageParams);
+
+// Retrieve messages from the conversation
+const messages = await indexClient.getItems(conversation.id, {});
+console.log(messages);
 ```
 
 The response should look something like this:
 
 ```typescript
 {
-  "response": "This article discusses the intricacies and challenges of publishing ... strategies for successful online publishing."
-  "sources": [
-    {
-      "itemId": "kjzl6kcy...ii7z1anybovo",
-      "indexId": "rt38xm13...b2ca76w5ky27",
-    }
-  ]
+  "id": "message-id",
+  "content": "How do you do this?",
+  "role": "user",
+  "createdAt": "timestamp"
 }
+```
+
+### Listening to Conversation Updates
+
+The Index Client SDK allows you to listen for updates to a conversation in real-time. This is useful for applications that need to react to new messages or changes in a conversation.
+
+Here is an example of how you can use the `listenToConversationUpdates` method to handle real-time updates in a conversation:
+
+```typescript
+const conversationId = "your-conversation-id";
+
+const handleMessage = (data: any) => {
+  console.log("New message received:", data);
+  // Handle the new message data
+};
+
+const handleError = (error: any) => {
+  console.error("Error receiving updates:", error);
+  // Handle the error
+};
+
+const stopListening = indexClient.listenToConversationUpdates(
+  conversationId,
+  handleMessage,
+  handleError,
+);
 ```

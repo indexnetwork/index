@@ -111,6 +111,7 @@ export const updateConversation = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   const { id } = req.params;
   try {
+    console.log(id, req.body);
     const didService = new DIDService(definition).setSession(req.session);
     const userEncryptionDID = await didService.publicEncryptionDID();
 
@@ -139,7 +140,9 @@ export const deleteConversation = async (req, res, next) => {
       userEncryptionDID,
     );
     await conversationService.deleteConversation(id);
-    res.status(204).send();
+    res.status(200).send({
+      id,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -207,7 +210,9 @@ export const deleteMessage = async (req, res, next) => {
       messageId,
       deleteAfter,
     );
-    res.status(204).send();
+    res.status(200).send({
+      id: messageId,
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

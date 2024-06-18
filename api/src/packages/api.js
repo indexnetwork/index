@@ -494,7 +494,7 @@ app.put(
   ),
   validator.body(
     Joi.object({
-      sources: Joi.array().items(Joi.string()).required(),
+      sources: Joi.array().items(Joi.string()).optional(),
       summary: Joi.string().optional(),
     }),
   ),

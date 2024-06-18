@@ -231,6 +231,9 @@ export class ConversationService {
           document {
             id
             payload
+            members {
+              id
+            }
             createdAt
             updatedAt
             deletedAt

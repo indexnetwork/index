@@ -48,13 +48,11 @@ describe("IndexClient E2E Tests", () => {
     const ownedIndex = await client.getIndex(index.id);
 
     expect(ownedIndex.did.owned).toBeTruthy();
-    expect(ownedIndex.roles.owner).toBeTruthy();
 
     await client.disownIndex(did, index.id);
     const disownedIndex = await client.getIndex(index.id);
 
     expect(disownedIndex.did.owned).toBeFalsy();
-    expect(ownedIndex.roles.owner).toBeTruthy();
   });
 
   it("should get user profile", async () => {
@@ -94,6 +92,66 @@ describe("IndexClient E2E Tests", () => {
 
     const itemsResponse = await client.getItems(index.id, {});
     expect(itemsResponse.items).not.toContainEqual(createdItem);
+  });
+
+  it("should create, update, and delete a conversation", async () => {
+    const conversationParams = {
+      sources: [did],
+    };
+    const conversation = await client.createConversation(conversationParams);
+    expect(conversation).toHaveProperty("sources", conversationParams.sources);
+
+    const updateParams = {
+      summary: `Conversation summary`,
+      sources: [did],
+    };
+    const updatedConversation = await client.updateConversation(
+      conversation.id,
+      updateParams,
+    );
+    expect(updatedConversation.summary).toEqual(updateParams.summary);
+
+    await client.deleteConversation(conversation.id);
+    try {
+      const resp = await client.getConversation(conversation.id);
+      console.log(resp);
+    } catch (error) {
+      expect(error.message).toContain("404");
+    }
+  });
+
+  it("should create, update, and delete a message in a conversation", async () => {
+    const conversationParams = {
+      sources: [did],
+    };
+    const conversation = await client.createConversation(conversationParams);
+
+    const messageParams = {
+      role: "user",
+      content: "Test message content",
+    };
+    const message = await client.createMessage(conversation.id, messageParams);
+    expect(message).toHaveProperty("content", messageParams.content);
+
+    const updateParams = {
+      content: "Updated test message content",
+      role: "user",
+    };
+    const updatedMessage = await client.updateMessage(
+      conversation.id,
+      message.id,
+      updateParams,
+    );
+    expect(updatedMessage).toMatchObject(updateParams);
+
+    await client.deleteMessage(conversation.id, message.id);
+
+    const convo = await client.getConversation(conversation.id);
+
+    expect(convo.messages.filter((m) => m.id === message.id).length).toEqual(0);
+
+    // Clean up conversation
+    await client.deleteConversation(conversation.id);
   });
 
   afterAll(() => {

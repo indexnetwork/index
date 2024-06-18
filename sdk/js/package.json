@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "main": "dist/indexclient.cjs.js",
   "module": "dist/indexclient.es.js",
   "types": "dist/index.d.ts",
@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "jest",
+    "test": "jest --silent=false",
     "test:watch": "jest --watch"
   },
   "devDependencies": {
