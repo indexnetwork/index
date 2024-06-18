@@ -1,16 +1,6 @@
-<h1 align="center">
-    <a href="https://index.network/#gh-light-mode-only">
-    <img style="width:400px" src="https://index.network/images/IndexNetworkLogo.png">
-    </a>
-    <a href="https://index.network/#gh-dark-mode-only">
-    <img style="width:400px" src="https://index.network/images/IndexNetworkLogo-white.png">
-    </a>
-</h1>
-<p align="center">
-  <i align="center">Discovery Protocol 🚀</i>
-</p>
+# Index Network Client SDK
 
-# Quick start
+## Quick start
 
 Index is a discovery protocol that eliminates the need for intermediaries in finding knowledge, products, and like-minded people through direct, composable discovery across the web. As the first decentralized semantic index, it leverages Web3 and AI and offers an open layer for discovery.
 
@@ -18,7 +8,7 @@ You can either use the API directly or the client available. Here is a quick sta
 
 ### Using Index Client SDK
 
-The Index Network offers an SDK to facilitate various operations on our platform. In this example, we'll demonstrate how to authenticate, create an Index, and add an Item to it.
+The Index Network offers an SDK to facilitate various operations on the protocol. In this example, we'll demonstrate how to authenticate, create an Index, and add an Item to it.
 
 > [**Index**](https://docs.index.network/docs/getting-started/data-models#index) is a fundamental component of the Index Network, designed to facilitate context management and enable semantic interoperability within your system. It serves as a structured way to organize and store data related to specific contexts.
 
@@ -26,7 +16,9 @@ The Index Network offers an SDK to facilitate various operations on our platform
 
 First, install the index-client via your preferred package manager:
 
-`yarn add @indexnetwork/sdk`
+```shell
+yarn add @indexnetwork/sdk
+```
 
 Next, import it in your project:
 
