@@ -79,7 +79,7 @@ const messageParams = {
 const message = await indexClient.createMessage(conversation.id, messageParams);
 
 // Retrieve messages from the conversation
-const messages = await indexClient.getItems(conversation.id, {});
+const { messages } = await indexClient.getConversation(conversation.id);
 console.log(messages);
 ```
 
