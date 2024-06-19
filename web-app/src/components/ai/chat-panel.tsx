@@ -1,7 +1,7 @@
 import { type UseChatHelpers } from "ai/react";
 
 import Button from "components/base/Button";
-import { IconRefresh, IconStop } from "components/ai/ui/icons";
+import { IconStop } from "components/ai/ui/icons";
 import React from "react";
 
 export interface ChatPanelProps

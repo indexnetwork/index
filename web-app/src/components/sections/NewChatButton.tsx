@@ -1,7 +1,7 @@
 import Image from "next/image";
 
 type NewChatButtonProps = {
-  onClick: () => void;
+  onClick?: () => void;
 };
 
 const NewChatButton = ({ onClick }: NewChatButtonProps) => {

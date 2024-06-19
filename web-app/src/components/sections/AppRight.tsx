@@ -62,15 +62,16 @@ const AppRight = () => {
           position: "relative",
         }}
       >
-        {isConversation && (
-          <div
-            style={{
-              marginBottom: "12px",
-            }}
-          >
-            <NewChatButton onClick={handleStartChat} />
-          </div>
-        )}
+        <div
+          style={{
+            marginBottom: "12px",
+          }}
+        >
+          <NewChatButton
+            onClick={isConversation ? handleStartChat : undefined}
+          />
+        </div>
+
         <FlexRow
           wrap={false}
           className={"idxflex-grow-1"}

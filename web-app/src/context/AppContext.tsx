@@ -176,8 +176,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     async (cID: string) => {
       if (!apiReady) return;
       try {
-        await api!.deleteConversation(cID);
         setConversations((cs) => cs.filter((c) => c.id !== cID));
+        await api!.deleteConversation(cID);
         toast.success("Conversation deleted");
       } catch (error) {
         console.error("Error deleting conversation", error);
@@ -254,7 +254,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         return conversation;
       } catch (error) {
         console.error("Error fetching index", error);
-        toast.error("Error fetching index, please refresh the page");
+        // toast.error("Error fetching index, please refresh the page");
       }
     },
     [isConversation, apiReady, api],
@@ -407,7 +407,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const handleUserProfileChange = useCallback(async () => {
     if (isLanding) return;
     if (viewedProfile && isIndex) return;
-    //if (viewedProfile && isConversation) return;
+    // if (viewedProfile && isConversation) return;
     // if (!id) return;
 
     let targetDID;
