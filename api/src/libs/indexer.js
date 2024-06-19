@@ -43,17 +43,6 @@ class Indexer {
     return session;
   }
 
-  async getAgentSession() {
-    const agentSession = await redis.hGet(`sessions`, `agent`);
-    if (!agentSession) {
-      throw new Error("No session signatures found");
-    }
-
-    const session = await DIDSession.fromSession(agentSession);
-    await session.did.authenticate();
-
-    return session;
-  }
   // Index Item (C)
   async createIndexItemEvent(id) {
     logger.info(`Step [0]: createIndexItemEvent trigger for id: ${id}`);

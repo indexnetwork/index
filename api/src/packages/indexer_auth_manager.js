@@ -261,7 +261,7 @@ async function refreshIndexerDIDSession() {
   const cacao = Cacao.fromSiweMessage(siweMessage);
   const did = await createDIDCacao(didKey, cacao);
   const newSession = new DIDSession({ cacao, keySeed, did });
-  await redis.set(`indexer:did:session`, newSession.serialize());
+  await redis.set(`agent:did:session`, newSession.serialize());
   console.log("New DID Session for indexer saved to Redis");
 }
 
@@ -271,8 +271,8 @@ async function run() {
   await litContracts.connect();
 
   await refreshIndexerDIDSession();
-  await scheduleTokenRefresh();
+  //await scheduleTokenRefresh();
   process.exit(0);
 }
 
-generateDefaultLitActions();
+run();
