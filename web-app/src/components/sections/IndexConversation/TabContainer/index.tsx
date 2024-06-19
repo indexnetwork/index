@@ -37,7 +37,7 @@ export default function TabContainer() {
   const { viewedIndex } = useApp();
 
   useEffect(() => {
-    if (!viewedIndex || id !== viewedIndex.id) return;
+    if (!viewedIndex) return;
 
     if (loading) {
       return;
@@ -51,9 +51,8 @@ export default function TabContainer() {
   }, [viewedIndex]);
 
   useEffect(() => {
-    if (!id) return;
-
-    fetchDataForNewRoute(id);
+    if (!viewedIndex || !viewedIndex.id) return;
+    fetchDataForNewRoute(viewedIndex.id);
   }, [fetchDataForNewRoute]);
 
   const renderTabContent = useCallback(() => {
