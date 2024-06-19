@@ -1,8 +1,11 @@
 import { ChatOpenAI, OpenAI, OpenAIEmbeddings } from '@langchain/openai';
 import { loadSummarizationChain } from 'langchain/chains';
+import { PromptTemplate } from '@langchain/core/prompts';
+
 import {
   RunnableConfig,
   RunnableLambda,
+  RunnableLike,
   RunnablePassthrough,
   RunnableSequence,
 } from '@langchain/core/runnables';
@@ -16,10 +19,37 @@ import { ChatMistralAI } from '@langchain/mistralai';
 import { ListOutputParser } from '@langchain/core/output_parsers';
 import { TokenTextSplitter } from 'langchain/text_splitter';
 
+const formatChatHistory = (chatHistory: string | string[]) => {
+  if (Array.isArray(chatHistory)) {
+    const updatedChat = chatHistory
+      .map((dialogTurn: any) => {
+        if (dialogTurn['role'] == 'user') {
+          return `Human: ${dialogTurn['content']}`;
+        }
+        if (dialogTurn['role'] == 'assistant') {
+          return `AI: ${dialogTurn['content']}`;
+        }
+      })
+      .join('\n');
+    Logger.log(updatedChat, 'ChatService:formatChatHistory');
+    return updatedChat;
+  }
+  return '';
+};
 enum SummarizationType {
   map_reduce = 'map_reduce',
   stuff = 'stuff',
   refine = 'refine',
+}
+
+interface CreateDynamicChainParams {
+  indexIds: string[];
+  prompt: any;
+  inputs: FieldMappings;
+}
+
+interface FieldMappings {
+  [key: string]: string;
 }
 
 export class Agent {
@@ -129,6 +159,128 @@ export class Agent {
     ]);
 
     return questions;
+  }
+
+  public async createDynamicChain({
+    indexIds,
+    prompt,
+    inputs,
+  }: CreateDynamicChainParams): Promise<any> {
+    const model = new ChatOpenAI({
+      modelName: process.env.MODEL_CHAT as string,
+      streaming: true,
+      temperature: 0.0,
+      maxRetries: 4,
+    });
+
+    const vectorStore = await Chroma.fromExistingCollection(
+      new OpenAIEmbeddings({
+        modelName: process.env.MODEL_EMBEDDING as string,
+      }),
+      {
+        url: process.env.CHROMA_URL as string,
+        collectionName: process.env.CHROMA_COLLECTION_NAME as string,
+        filter: { indexId: { $in: indexIds } },
+      },
+    );
+
+    const myPrompt = PromptTemplate.fromTemplate(prompt);
+    const retriever = vectorStore.asRetriever();
+
+    const baseChainSequence: { [key: string]: any } = {};
+
+    // Add context sequence if context is defined in inputs
+    if (inputs.context) {
+      baseChainSequence['context'] = RunnableSequence.from([
+        {
+          docs: async (input: any) => {
+            const docs = await retriever.getRelevantDocuments(inputs.context);
+            return docs;
+          },
+        },
+        {
+          docs: (input: any) => input.docs,
+        },
+      ]);
+    }
+
+    // Dynamically add fields based on inputs
+    Object.keys(inputs).forEach((key) => {
+      if (key !== 'context' && key !== 'chat_history') {
+        baseChainSequence[key] = (input: any) => input[key];
+      }
+    });
+
+    // Add chat_history if defined in inputs
+    if (inputs.chat_history) {
+      baseChainSequence['chat_history'] = (input: any) => {
+        return formatChatHistory(inputs.chat_history);
+      };
+    }
+    const filterMultilineMetadata = (metadata) =>
+      Object.fromEntries(
+        Object.entries(metadata).filter(([key, value]) => {
+          const result =
+            typeof value === 'string' &&
+            !(value.includes('\n') || value.toString().length > 256);
+          console.log(value.toString().length, result);
+          return result;
+        }),
+      );
+
+    const answerChainSequence: [
+      RunnableLike<any, any>,
+      ...RunnableLike<any, any>[],
+      RunnableLike<any, any>,
+    ] = [
+      baseChainSequence,
+      {
+        answer: RunnableSequence.from([
+          {
+            context: (input: any) => {
+              if (input.context && input.context.docs) {
+                const docs_with_metadata = input.context.docs.map(
+                  (doc: any) => {
+                    const metaData = filterMultilineMetadata(doc.metadata);
+                    return `${JSON.stringify(metaData)}\n${doc.pageContent}`;
+                  },
+                );
+                return docs_with_metadata.join('\n');
+              }
+              return '';
+            },
+            ...Object.keys(inputs).reduce(
+              (acc, key) => {
+                if (key !== 'context' && key !== 'chat_history') {
+                  acc[key] = (input: any) => input[key];
+                }
+                return acc;
+              },
+              {} as { [key: string]: (input: any) => any },
+            ),
+            ...(inputs.chat_history
+              ? {
+                  chat_history: (input: any) =>
+                    formatChatHistory(input.chat_history),
+                }
+              : {}),
+          },
+          myPrompt as any,
+          model,
+          new StringOutputParser(),
+        ]),
+        sources: RunnableLambda.from((input: any) => {
+          if (input.context && input.context.docs) {
+            return input.context.docs.map((doc: any) => doc.metadata);
+          }
+          return [];
+        }),
+      },
+    ];
+
+    const chain = RunnableSequence.from(answerChainSequence);
+    const { context, chat_history, ...filteredInputs } = inputs;
+    return await chain.stream(filteredInputs);
   }
 
   private async createRAGChain(
