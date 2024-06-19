@@ -69,7 +69,6 @@ export const Tabs = ({
           position: `${headerType === "sticky" ? "sticky" : "relative"}`,
           top: 0,
           backgroundColor: "white",
-          zIndex: 999,
         }}
       >
         <div className="tabs-list" style={{}}>

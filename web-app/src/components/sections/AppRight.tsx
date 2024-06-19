@@ -55,13 +55,7 @@ const AppRight = () => {
           <IconClose width={32} />
         </Button>
       </Flex>
-      <Flex
-        className={"idxflex-grow-1 pl-6"}
-        flexdirection={"column"}
-        style={{
-          position: "relative",
-        }}
-      >
+      <Flex className={"idxflex-grow-1 pl-6"} flexdirection={"column"}>
         <div
           style={{
             marginBottom: "12px",
@@ -77,29 +71,16 @@ const AppRight = () => {
           className={"idxflex-grow-1"}
           style={{
             width: "100%",
-            overflow: "scroll",
-            maxHeight: "calc(100dvh - 144px)",
             marginTop: "12px",
           }}
         >
-          <Tabs
-            headerType="sticky"
-            activeKey={rightTabKey}
-            onTabChange={handleRightTabChange}
-          >
+          <Tabs activeKey={rightTabKey} onTabChange={handleRightTabChange}>
             <TabPane enabled={true} tabKey={"history"} title={`History`}>
-              <ConversationHistory items={conversations} />
+              <div className={"scrollable-container pb-11"} style={{}}>
+                <ConversationHistory items={conversations} />
+              </div>
             </TabPane>
             <></>
-            {/* <TabPane enabled={true} tabKey={"discover"} title={`Discovery`}>
-              <div
-                style={{
-                  marginTop: "48px",
-                }}
-              >
-                <Soon section={"chat_history"}></Soon>
-              </div>
-            </TabPane> */}
           </Tabs>
         </FlexRow>
       </Flex>

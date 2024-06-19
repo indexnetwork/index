@@ -3,14 +3,14 @@ import HistoryItem from "./HistoryItem";
 const ConversationHistory = ({ items }: { items: any }) => {
   return (
     <div
-      className={"scrollable-area idxflex-grow-1"}
+      className={"scrollable-area "}
       style={{
-        display: "flex",
+        position: "relative",
       }}
     >
       <div
         style={{
-          padding: "16px 16px 24px 0px",
+          padding: "16px 16px 30px 0px",
           display: "flex",
           gap: "12px",
           flexDirection: "column",
