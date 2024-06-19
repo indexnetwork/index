@@ -242,15 +242,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       try {
         console.log(`cID: ${cID}`);
         if (!apiReady || !isConversation || !cID) return;
-        // if (viewedIndex?.id === id) return;
-        if (isFetchingRef.current) return;
-
-        isFetchingRef.current = true;
 
         const conversation = await api!.getConversation(cID);
-        console.log(`conversation888:`, conversation);
         setViewedConversation(conversation);
-        isFetchingRef.current = false;
+
         return conversation;
       } catch (error) {
         console.error("Error fetching index", error);
