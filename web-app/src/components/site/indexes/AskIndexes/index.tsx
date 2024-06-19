@@ -55,7 +55,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     conversations,
     setConversations,
   } = useApp();
-  const { isIndex, conversationId, id } = useRouteParams();
+  const { isIndex, isConversation, conversationId, id } = useRouteParams();
   const { view } = useApp();
   const { ready: apiReady, api } = useApi();
 
@@ -75,7 +75,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const bottomRef = useRef<null | HTMLDivElement>(null);
 
   const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
-    if (!apiReady || !isIndex || !id) return;
+    if (!apiReady || isConversation || !id) return;
     try {
       const questions = await api!.getDefaultQuestionsOfIndex([id]);
       setDefaultQuestions(questions);
@@ -432,12 +432,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                 <EmptyScreen
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}
-                  indexIds={
-                    viewedConversation &&
-                    viewedConversation.sources?.filter(
-                      (source) => !source.includes("did:"),
-                    )
-                  }
                   defaultQuestions={defaultQuestions}
                 />
               </Flex>
