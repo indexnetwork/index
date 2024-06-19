@@ -1,52 +1,57 @@
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { randomBytes, randomString } from "@stablelib/random";
-import { DID } from "dids";
-import { DIDSession, createDIDCacao } from "did-session";
-import { ethers } from "ethers";
-import { Ed25519Provider } from "key-did-provider-ed25519";
-import { getResolver } from "key-did-resolver";
+import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
+import { normalizeAccountId } from "@ceramicnetwork/common";
+import { getAccountId } from "@didtools/pkh-ethereum";
+import { getAddress } from "@ethersproject/address";
 
 class DIDService {
-  async getRandomDIDSession(indexId: string) {
-    const wallet = ethers.Wallet.createRandom();
+  async getNewDIDSession() {
+    const ethProvider = window.ethereum;
 
+    // request ethereum accounts.
+    const addresses = await ethProvider.enable({
+      method: "eth_requestAccounts",
+    });
+    const accountId = await getAccountId(ethProvider, addresses[0]);
+    const normAccount = normalizeAccountId(accountId);
     const keySeed = randomBytes(32);
-    const didProvider = new Ed25519Provider(keySeed);
-    // @ts-ignore
-    const didKey = new DID({ provider: didProvider, resolver: getResolver() });
+    const didKey = await createDIDKey(keySeed);
+
     await didKey.authenticate();
 
     const now = new Date(Date.now());
-    const thirtyDaysLater = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
+    const yearLater = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
     const domain = "index.network";
 
     const siweMessage = new SiweMessage({
       domain,
-      address: wallet.address,
+      address: getAddress(normAccount.address),
       statement: "Give this application access to some of your data on Ceramic",
       uri: didKey.id,
       version: "1",
       chainId: "1",
       nonce: randomString(10),
       issuedAt: now.toISOString(),
-      expirationTime: thirtyDaysLater.toISOString(),
+      expirationTime: yearLater.toISOString(),
       resources: ["ceramic://*"],
     });
-    const messageToSign = siweMessage.toMessage();
+    // Future, these will be stored in CapReg - object-capability registry
+    // This feature will allow us to revoke sessions.
+    // https://forum.ceramic.network/t/cip-127-capreg-object-capability-registry/1082
 
-    siweMessage.signature = await wallet.signMessage(messageToSign);
+    siweMessage.signature = await ethProvider.request({
+      method: "personal_sign",
+      params: [siweMessage.signMessage(), getAddress(accountId.address)],
+    });
 
     const cacao = Cacao.fromSiweMessage(siweMessage);
 
     const did = await createDIDCacao(didKey, cacao);
     const didSession = new DIDSession({ cacao, keySeed, did });
 
-    return {
-      address: wallet.address,
-      session: didSession.serialize(),
-      indexId,
-    };
+    return didSession.serialize();
     /*
     const authSig = {
       sig: signature,

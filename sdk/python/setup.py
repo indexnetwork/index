@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
   name='indexnetwork-sdk',
-  version='0.0.15',
+  version='0.0.17',
   description='Index Network SDK',
   long_description=open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'README.MD')).read(),
   long_description_content_type='text/markdown',
@@ -13,7 +13,7 @@ setup(
   packages=find_packages(),
   include_package_data=True,
   package_data={
-      "indexnetwork_sdk": ["bin/session.bin"],
+      "indexclient": ["bin/session.bin"],
   },
   install_requires=[
     'abnf',
@@ -79,6 +79,10 @@ setup(
     'websockets',
     'wheel',
     'yarl',
+    'langchain-openai',
+    'langchain_chroma',
+    'chromadb',
+    'setuptools'
   ],
   python_requires='>=3.0',
 )

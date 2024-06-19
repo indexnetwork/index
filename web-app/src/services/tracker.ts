@@ -18,10 +18,10 @@ const trackEvent = (name: string, props?: Record<string, any>) => {
   }
 };
 
-export const WALLET_CONNECTED = events.WALLET_CONNECTED;
-export const INDEX_CREATED = events.INDEX_CREATED;
-export const CHAT_STARTED = events.CHAT_STARTED;
-export const ITEM_ADDED = events.ITEM_ADDED;
-export const ITEM_STARRED = events.ITEM_STARRED;
+export const { WALLET_CONNECTED } = events;
+export const { INDEX_CREATED } = events;
+export const { CHAT_STARTED } = events;
+export const { ITEM_ADDED } = events;
+export const { ITEM_STARRED } = events;
 
 export { trackEvent };

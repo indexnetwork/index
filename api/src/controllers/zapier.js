@@ -1,10 +1,9 @@
 import { getMetadata } from "../libs/crawl.js";
 import { ComposeDBService } from "../services/composedb.js";
 import { ItemService } from "../services/item.js";
-import { IndexService } from "../services/index.js";
-import { getPKPSession } from "../libs/lit/index.js";
-import { DIDSession } from "did-session";
 import axios from "axios";
+import { DIDService } from "../services/did.js";
+import { getCurrentDateTime } from "../utils/helpers.js";
 
 export const indexWebPage = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
@@ -14,22 +13,13 @@ export const indexWebPage = async (req, res, next) => {
   )[0];
 
   let params = req.body;
-  const sessionStr = Buffer.from(req.headers.authorization, "base64").toString(
-    "utf8",
-  );
-  const auth = JSON.parse(sessionStr);
+  let { indexId } = req.params;
 
-  const indexService = new IndexService(definition);
-  const index = await indexService.getIndexById(auth.indexId);
-
-  const zapierSession = await DIDSession.fromSession(auth.session);
-
-  const pkpSession = await getPKPSession(zapierSession, index);
   const composeDBService = new ComposeDBService(
     definition,
     webPageFragment,
-  ).setSession(zapierSession);
-  const itemService = new ItemService(definition).setSession(pkpSession);
+  ).setSession(req.session);
+  const itemService = new ItemService(definition).setSession(req.session);
 
   if (!params.title || !params.favicon) {
     const metaData = await getMetadata(params.url);
@@ -57,25 +47,49 @@ export const indexWebPage = async (req, res, next) => {
     }
   }
 
-  const webPage = await composeDBService.createWebPage({
+  const webPage = await composeDBService.createNode({
     ...params,
     createdAt: getCurrentDateTime(),
     updatedAt: getCurrentDateTime(),
   });
 
-  const item = await itemService.addItem(auth.indexId, webPage.id);
+  const item = await itemService.addItem(indexId, webPage.id);
 
   return res.json(item);
 };
 
 export const authenticate = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
-  const sessionStr = Buffer.from(req.headers.authorization, "base64").toString(
-    "utf8",
-  );
-  const auth = JSON.parse(sessionStr);
+  try {
+    const didService = new DIDService(definition);
+    let profile = await didService.getProfile(req.session.did.parent);
 
-  const indexService = new IndexService(definition);
-  const index = await indexService.getIndexById(auth.indexId);
-  return res.json(index);
+    if (!profile || !profile.id) {
+      profile = {
+        id: req.session.did.parent,
+      };
+    }
+
+    res
+      .status(200)
+      .json({ label: profile.name || profile.id, didKey: profile.id });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const indexes = async (req, res) => {
+  // sendLit(req.params.id) // TODO Fix later.
+  const definition = req.app.get("runtimeDefinition");
+  try {
+    const didService = new DIDService(definition);
+    const indexes = await didService.getIndexes(req.session.did.parent);
+    res.status(200).json(
+      indexes.map((index) => {
+        return { id: index.id, label: index.title };
+      }),
+    );
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 };

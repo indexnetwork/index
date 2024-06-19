@@ -14,9 +14,13 @@ import {
   useState,
 } from "react";
 import toast from "react-hot-toast";
-import { AccessControlCondition, Indexes, Users } from "types/entity";
+import {
+  AccessControlCondition,
+  Conversation,
+  Indexes,
+  Users,
+} from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
-import { v4 as uuidv4 } from "uuid";
 import { CancelTokenSource } from "axios";
 import { INDEX_CREATED, trackEvent } from "@/services/tracker";
 
@@ -34,7 +38,7 @@ export interface AppContextValue {
   indexes: Indexes[];
   leftSectionIndexes: Indexes[];
   loading: boolean;
-  discoveryType: DiscoveryType | undefined;
+  view: any;
   setIndexes: (indexes: Indexes[]) => void;
   fetchIndexes: (did: string) => void;
   setCreateModalVisible: (visible: boolean) => void;
@@ -57,6 +61,10 @@ export interface AppContextValue {
   setUserProfile: (profile: Users | undefined) => void;
   viewedIndex: Indexes | undefined;
   setViewedIndex: (index: Indexes | undefined) => void;
+  viewedConversation: Conversation | undefined;
+  setViewedConversation: (conversation: Conversation | undefined) => void;
+  conversations: Conversation[] | [];
+  setConversations: (conversations: Conversation[] | []) => void;
   fetchProfile: (did: string) => void;
   fetchIndex: (
     indexId: string,
@@ -77,21 +85,27 @@ export interface AppContextValue {
   handleCreate: (title: string) => Promise<void>;
   handleCreatePublic: (title: string) => Promise<void>;
   handleTransactionCancel: () => void;
-  chatID: string | undefined;
   transactionApprovalWaiting: boolean;
   createModalVisible: boolean;
   createConditions: (conditions: AccessControlCondition[]) => Promise<void>;
+  deleteConversation: (cID: string) => void;
 }
 
 export const AppContext = createContext<AppContextValue>({} as AppContextValue);
 
 export const AppContextProvider = ({ children }: AppContextProviderProps) => {
-  const { id } = useRouteParams();
+  const { id, conversationId } = useRouteParams();
   const { api, ready: apiReady } = useApi();
   const { session } = useAuth();
   const router = useRouter();
   const [indexes, setIndexes] = useState<Indexes[]>([]);
   const [viewedIndex, setViewedIndex] = useState<Indexes | undefined>();
+  const [viewedConversation, setViewedConversation] = useState<
+    Conversation | undefined
+  >();
+  const [conversations, setConversations] = useState<Conversation[] | []>(
+    [] as Conversation[],
+  );
   const [viewedProfile, setViewedProfile] = useState<Users | undefined>();
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -105,12 +119,45 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     IndexListTabKey.ALL,
   );
   const [loading, setLoading] = useState(false);
-  const [chatID, setChatID] = useState<string | undefined>(undefined);
 
-  const prevIndexID = useRef(id);
   const isFetchingRef = useRef(false);
 
-  const { isLanding, discoveryType, isDID, isIndex } = useRouteParams();
+  const [view, setView] = useState({} as any);
+
+  const { isLanding, isDID, isIndex, isConversation } = useRouteParams();
+
+  useEffect(() => {
+    console.log("setting app view", { isConversation, viewedConversation });
+    if (isConversation && viewedConversation) {
+      const source = viewedConversation.sources[0];
+      const discoveryType = source.includes("did:")
+        ? DiscoveryType.DID
+        : DiscoveryType.INDEX;
+      console.log("setting conversation view", source, discoveryType);
+      setView({
+        name: "conversation",
+        id: viewedConversation.id,
+        discoveryType,
+      });
+
+      if (discoveryType === DiscoveryType.INDEX) {
+        fetchIndex(source, {}).then((index) => {
+          console.log("setting viewed index", index);
+          setViewedIndex(index);
+        });
+      }
+    }
+
+    if (id) {
+      console.log("setting default view");
+      setView({
+        name: "default",
+        id,
+        discoveryType: isDID ? DiscoveryType.DID : DiscoveryType.INDEX,
+      });
+      setViewedConversation(undefined);
+    }
+  }, [id, conversationId, viewedConversation]);
 
   const leftSectionIndexes = useMemo(() => {
     if (leftTabKey === IndexListTabKey.ALL) {
@@ -125,16 +172,29 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     return [];
   }, [indexes, leftTabKey]);
 
+  const deleteConversation = useCallback(
+    async (cID: string) => {
+      if (!apiReady) return;
+      try {
+        setConversations((cs) => cs.filter((c) => c.id !== cID));
+        await api!.deleteConversation(cID);
+        toast.success("Conversation deleted");
+      } catch (error) {
+        console.error("Error deleting conversation", error);
+        toast.error("Error deleting conversation, please refresh the page");
+      }
+    },
+    [apiReady, api],
+  );
+
   const fetchIndexes = useCallback(
     async (did: string): Promise<void> => {
+      console.log("fetching indexes");
       if (!apiReady) return;
       try {
         const fetchedIndexes = await api!.getAllIndexes(did);
-        const sortedIndexes = fetchedIndexes.sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        );
-        setIndexes(sortedIndexes);
+
+        setIndexes(fetchedIndexes);
       } catch (error) {
         console.error("Error fetching indexes", error);
         toast.error("Error fetching indexes, please refresh the page");
@@ -153,7 +213,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       },
     ): Promise<any> => {
       try {
-        if (!apiReady || !isIndex || !indexId) return;
+        if (!apiReady || !indexId) {
+          return;
+        }
+
         // if (viewedIndex?.id === id) return;
         if (isFetchingRef.current) return;
 
@@ -165,11 +228,31 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         isFetchingRef.current = false;
         return index;
       } catch (error) {
-        console.error("Error fetching index", error);
-        toast.error("Error fetching index, please refresh the page");
+        if (!cancelSource) {
+          console.error("Error fetching index", error);
+          toast.error("Error fetching index, please refresh the page");
+        }
       }
     },
     [isIndex, apiReady, api],
+  );
+
+  const fetchConversation = useCallback(
+    async (cID: string): Promise<any> => {
+      try {
+        console.log(`cID: ${cID}`);
+        if (!apiReady || !isConversation || !cID) return;
+
+        const conversation = await api!.getConversation(cID);
+        setViewedConversation(conversation);
+
+        return conversation;
+      } catch (error) {
+        console.error("Error fetching index", error);
+        // toast.error("Error fetching index, please refresh the page");
+      }
+    },
+    [isConversation, apiReady, api],
   );
 
   const fetchIndexWithCreator = useCallback(
@@ -319,32 +402,61 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const handleUserProfileChange = useCallback(async () => {
     if (isLanding) return;
     if (viewedProfile && isIndex) return;
-    if (!id) return;
+    // if (viewedProfile && isConversation) return;
+    // if (!id) return;
 
     let targetDID;
-    if (isIndex && !viewedProfile) {
+    if (id && isIndex && !viewedProfile) {
       if (viewedIndex) {
-        targetDID = viewedIndex?.ownerDID?.id;
+        targetDID = viewedIndex?.controllerDID?.id;
       } else {
         fetchIndex(id, {}).then((index) => {
           if (index) {
-            targetDID = index?.ownerDID?.id;
-            fetchIndexes(targetDID);
+            targetDID = index?.controllerDID?.id;
+          }
+        });
+      }
+    }
+
+    if (isConversation) {
+      if (viewedConversation && conversationId === viewedConversation.id) {
+        targetDID = viewedConversation?.controllerDID?.id;
+      } else {
+        if (!conversationId) return;
+        fetchConversation(conversationId).then((conversation: any) => {
+          if (conversation) {
+            targetDID = conversation?.controllerDID?.id;
           }
         });
       }
     }
 
     if (isDID) {
+      setViewedConversation(undefined);
       targetDID = id;
     }
 
-    if (targetDID) {
+    if (targetDID && (!viewedProfile || targetDID !== viewedProfile.id)) {
       const profile = await fetchProfile(targetDID);
+      console.log(`why fuck`, viewedProfile, targetDID, profile);
       setViewedProfile(profile);
     }
-  }, [isLanding, isIndex, id, fetchProfile, isDID, session, viewedIndex]); // eslint-disable-line
+  }, [
+    isLanding,
+    isIndex,
+    id,
+    conversationId,
+    fetchProfile,
+    isDID,
+    isConversation,
+    session,
+    viewedIndex,
+    viewedConversation,
+  ]); // eslint-disable-line
 
+  useEffect(() => {
+    handleUserProfileChange();
+  }, [handleUserProfileChange]);
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
       if (!apiReady || !viewedIndex || conditions.length === 0) return;
@@ -366,30 +478,34 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
         setViewedProfile(userProfile);
       }
     }
-  }, [userProfile, session, id]);
+  }, [viewedProfile?.id, userProfile, session, id]);
 
-  useEffect(() => {
-    handleUserProfileChange();
-  }, [handleUserProfileChange]);
-
-  useEffect(() => {
-    const newChatID = uuidv4();
-    localStorage.setItem("chatterID", newChatID);
-    setChatID(newChatID);
-  }, [id]);
-
-  useEffect(() => {
-    if (viewedProfile) {
-      fetchIndexes(viewedProfile.id);
+  const fetchConversations = useCallback(async () => {
+    if (!apiReady) return;
+    try {
+      const response = await api!.listConversations();
+      setConversations(response);
+      console.log("listConversations", response);
+    } catch (error) {
+      console.error("Error sending message", error);
     }
-  }, [viewedProfile, fetchIndexes]);
+  }, [id, api, apiReady]);
+
+  useEffect(() => {
+    if (viewedProfile && viewedProfile.id) {
+      fetchIndexes(viewedProfile.id);
+      fetchConversations();
+    }
+  }, [viewedProfile?.id, fetchIndexes, fetchConversations]);
 
   const contextValue: AppContextValue = {
-    discoveryType,
+    view,
     indexes,
     leftSectionIndexes,
     setIndexes,
     fetchIndexes,
+    conversations,
+    setConversations,
     setCreateModalVisible,
     createModalVisible,
     setTransactionApprovalWaiting,
@@ -408,6 +524,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     setUserProfile,
     viewedIndex,
     setViewedIndex,
+    viewedConversation,
+    setViewedConversation,
     updateUserIndexState,
     updateIndex,
     fetchProfile,
@@ -417,10 +535,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     loading,
     handleTransactionCancel,
     editProfileModalVisible,
-    chatID,
     transactionApprovalWaiting,
     createConditions,
     handleCreatePublic,
+    deleteConversation,
   };
 
   return (

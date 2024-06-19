@@ -1,3 +1,5 @@
+import { readFile } from "fs/promises";
+
 import { createHandler } from "@composedb/server";
 import { Composite } from "@composedb/devtools";
 import { createContext, createGraphQLSchema } from "@composedb/runtime";
@@ -34,6 +36,24 @@ const authenticateAdmin = async () => {
 
 let defaultRuntime = {
   models: {
+    Conversation: {
+      interface: false,
+      implements: [],
+      id: "Model_Conversation_ID",
+      accountRelation: { type: "list" },
+    },
+    EncryptedMessage: {
+      interface: false,
+      implements: [],
+      id: "Model_EncryptedMessage_ID",
+      accountRelation: { type: "list" },
+    },
+    PublicEncryptionDID: {
+      interface: false,
+      implements: [],
+      id: "Model_PublicEncryptionDID_ID",
+      accountRelation: { type: "list" },
+    },
     DIDIndex: {
       interface: false,
       implements: [],
@@ -66,6 +86,84 @@ let defaultRuntime = {
     },
   },
   objects: {
+    Conversation: {
+      members: {
+        type: "list",
+        required: false,
+        immutable: false,
+        item: { type: "did", required: false, immutable: false },
+      },
+      payload: { type: "string", required: false, immutable: false },
+      createdAt: {
+        type: "datetime",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      deletedAt: {
+        type: "datetime",
+        required: false,
+        immutable: false,
+        indexed: true,
+      },
+      updatedAt: {
+        type: "datetime",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      controllerDID: { type: "view", viewType: "documentAccount" },
+      messages: {
+        type: "view",
+        viewType: "relation",
+        relation: {
+          source: "queryConnection",
+          model: "Model_EncryptedMessage_ID",
+          property: "conversationId",
+        },
+      },
+    },
+    PublicEncryptionDID: {
+      publicEncryptionDID: { type: "did", required: true, immutable: false },
+      controllerDID: { type: "view", viewType: "documentAccount" },
+    },
+    EncryptedMessage: {
+      payload: { type: "string", required: false, immutable: false },
+      createdAt: {
+        type: "datetime",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      deletedAt: {
+        type: "datetime",
+        required: false,
+        immutable: false,
+        indexed: true,
+      },
+      updatedAt: {
+        type: "datetime",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      conversationId: {
+        type: "streamid",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      conversation: {
+        type: "view",
+        viewType: "relation",
+        relation: {
+          source: "document",
+          model: "Model_Conversation_ID",
+          property: "conversationId",
+        },
+      },
+      controllerDID: { type: "view", viewType: "documentAccount" },
+    },
     DIDIndex: {
       type: { type: "string", required: true, immutable: true, indexed: true },
       indexId: {
@@ -168,6 +266,7 @@ let defaultRuntime = {
           property: "indexId",
         },
       },
+      controllerDID: { type: "view", viewType: "documentAccount" },
     },
     Index: {
       title: { type: "string", required: true, immutable: false },
@@ -196,6 +295,7 @@ let defaultRuntime = {
         immutable: false,
         indexed: true,
       },
+      controllerDID: { type: "view", viewType: "documentAccount" },
       items: {
         type: "view",
         viewType: "relation",
@@ -214,6 +314,15 @@ let defaultRuntime = {
           property: "indexId",
         },
       },
+      embeddings: {
+        type: "view",
+        viewType: "relation",
+        relation: {
+          source: "queryConnection",
+          model: "Model_Embedding_ID",
+          property: "indexId",
+        },
+      },
     },
     IndexItem: {
       itemId: {
@@ -223,6 +332,12 @@ let defaultRuntime = {
         indexed: true,
       },
       indexId: {
+        type: "streamid",
+        required: true,
+        immutable: false,
+        indexed: true,
+      },
+      modelId: {
         type: "streamid",
         required: true,
         immutable: false,
@@ -260,6 +375,16 @@ let defaultRuntime = {
           property: "indexId",
         },
       },
+      controllerDID: { type: "view", viewType: "documentAccount" },
+      embeddings: {
+        type: "view",
+        viewType: "relation",
+        relation: {
+          source: "queryConnection",
+          model: "Model_Embedding_ID",
+          property: "itemId",
+        },
+      },
     },
     Profile: {
       bio: { type: "string", required: false, immutable: false },
@@ -277,6 +402,12 @@ let defaultRuntime = {
     didIndexList: { type: "connection", name: "DIDIndex" },
     embeddingList: { type: "connection", name: "Embedding" },
     indexItemList: { type: "connection", name: "IndexItem" },
+    conversationList: { type: "connection", name: "Conversation" },
+    encryptedMessageList: { type: "connection", name: "EncryptedMessage" },
+    publicEncryptionDidList: {
+      type: "connection",
+      name: "PublicEncryptionDID",
+    },
     indexList: { type: "connection", name: "Index" },
     profile: { type: "node", name: "Profile" },
   },
@@ -430,12 +561,13 @@ export const setIndexedModelParams = async (app) => {
   const c = await Composite.fromModels({
     ceramic,
     models: modelList,
-    index: false,
+    index: true,
+    commonEmbeds: `all`,
   });
 
-  const runTime = c.toRuntime();
-
   defaultRuntime = JSON.stringify(defaultRuntime);
+
+  const runTime = c.toRuntime();
   Object.entries(runTime.models).forEach(([modelName, model]) => {
     defaultRuntime = defaultRuntime.replace(
       new RegExp(`Model_${modelName}_ID`, "g"),
@@ -472,6 +604,7 @@ export const setIndexedModelParams = async (app) => {
     ceramic,
     options: { context: createContext({ ceramic }), graphiql: true },
     port,
+    cache: false,
     schema: createGraphQLSchema({
       definition: defaultRuntime,
       readonly: false,

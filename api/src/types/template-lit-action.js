@@ -1,25 +1,26 @@
 "use strict";
 (() => {
-
   // lit_actions/src/session.action.ts
-  var getCreatorConditions = (transform=true) => {
+  var getCreatorConditions = (transform = true) => {
     let conditionsArray = __REPLACE_THIS_AS_CONDITIONS_ARRAY__;
 
-    if(conditionsArray.length < 1){
+    if (conditionsArray.length < 1) {
       return [];
     }
 
-    if(!transform){
-      return conditionsArray
+    if (!transform) {
+      return conditionsArray;
     }
 
     return conditionsArray
-        .map(c => c.value)
-        .flatMap((v, i) => i < conditionsArray.length - 1 ? [v, {"operator": "or"}] : [v])
-        .map(v => {
-          delete v.metadata
-          return v
-        })
+      .map((c) => c.value)
+      .flatMap((v, i) =>
+        i < conditionsArray.length - 1 ? [v, { operator: "or" }] : [v],
+      )
+      .map((v) => {
+        delete v.metadata;
+        return v;
+      });
   };
 
   var toSiweMessage = (message) => {
@@ -30,7 +31,7 @@
     const chainField = `Chain ID: 1`;
     const nonceField = `Nonce: ${message.nonce}`;
     const suffixArray = [uriField, versionField, chainField, nonceField];
-    message.issuedAt = message.issuedAt || (/* @__PURE__ */ new Date()).toISOString();
+
     suffixArray.push(`Issued At: ${message.issuedAt}`);
     if (message.expirationTime) {
       const expiryField = `Expiration Time: ${message.expirationTime}`;
@@ -44,7 +45,7 @@
     }
     if (message.resources) {
       suffixArray.push(
-          [`Resources:`, ...message.resources.map((x) => `- ${x}`)].join("\n")
+        [`Resources:`, ...message.resources.map((x) => `- ${x}`)].join("\n"),
       );
     }
     const suffix = suffixArray.join("\n");
@@ -57,16 +58,22 @@
 
   var getResources = (isPermittedAddress = false) => {
     const models = __REPLACE_THIS_AS_MODELS_OBJECT__;
-    return isPermittedAddress ? [models.Index, models.IndexItem, models.Embedding] : [models.IndexItem, models.Embedding];
+    return isPermittedAddress
+      ? [models.Index, models.IndexItem, models.Embedding]
+      : [models.IndexItem, models.Embedding];
   };
 
-  var getPKPSessionMessage = (publicKey, isPermittedAddress, didKey, domain, nonce) => {
-
+  var getPKPSessionMessage = (
+    publicKey,
+    isPermittedAddress,
+    didKey,
+    domain,
+    nonce,
+    currentDateTime,
+    twentyFiveDaysLater,
+  ) => {
     const pkpAddress = ethers.utils.computeAddress(publicKey).toLowerCase();
 
-    const now = /* @__PURE__ */ new Date();
-    now.setUTCHours(0, 0, 0, 0);
-    const twentyFiveDaysLater = new Date(now.getTime() + 25 * 24 * 60 * 60 * 1e3);
     const siweMessage = {
       domain,
       address: pkpAddress,
@@ -75,85 +82,116 @@
       version: "1",
       chainId: "1",
       nonce,
-      issuedAt: now.toISOString(),
-      expirationTime: twentyFiveDaysLater.toISOString(),
-      resources: getResources(isPermittedAddress).map((m) => `ceramic://*?model=${m}`)
+      issuedAt: currentDateTime,
+      expirationTime: twentyFiveDaysLater,
+      resources: getResources(isPermittedAddress).map(
+        (m) => `ceramic://*?model=${m}`,
+      ),
     };
     return siweMessage;
-  }
+  };
   var go = async () => {
-    const timers = {};
     try {
       if (typeof ACTION_CALL_MODE !== "undefined") {
         console.log(JSON.stringify(getCreatorConditions(false)));
         return;
       }
-      const context = { userAuthSig: false, isPermittedAddress: false, isCreator: false, siweMessage: false, signList: signList.getPKPSession };
+      const context = {
+        userAuthSig: false,
+        isPermittedAddress: false,
+        isCreator: false,
+        siweMessage: false,
+        signList: signList.getPKPSession,
+      };
       context.userAuthSig = userAuthSig;
       console.time("pubkeyToTokenId");
       const pkpTokenId = Lit.Actions.pubkeyToTokenId({ publicKey });
-      timers.pubkeyToTokenId = console.timeEnd("pubkeyToTokenId");
       //It'll also fail if authsig is malformed.
-      const conditions = getCreatorConditions();
-      let isCreator = false;
-      if (conditions.length > 0) {
-        isCreator = await Lit.Actions.checkConditions({ conditions, authSig: userAuthSig, chain });
-        context.isCreator = isCreator;
+
+      const isValidAuthSig = ethers.utils.verifyMessage(
+        userAuthSig.signedMessage,
+        userAuthSig.sig,
+      );
+      if (!isValidAuthSig) {
+        LitActions.setResponse({
+          response: JSON.stringify({
+            error: true,
+            context: JSON.stringify({
+              message: `authSig is not valid`,
+            }),
+          }),
+        });
+        return;
       }
 
-      console.time("isPermittedAddress");
-      const isPermittedAddress = await Lit.Actions.isPermittedAddress({ tokenId: pkpTokenId, address: userAuthSig.address });
+      const isPermittedAddress = await Lit.Actions.isPermittedAddress({
+        tokenId: pkpTokenId,
+        address: userAuthSig.address,
+      });
       context.isPermittedAddress = isPermittedAddress;
-      timers.isPermittedAddress = console.timeEnd("isPermittedAddress");
+
+      let isCreator = false;
+      if (!isPermittedAddress) {
+        const conditions = getCreatorConditions();
+        if (conditions.length > 0) {
+          isCreator = await Lit.Actions.checkConditions({
+            conditions,
+            authSig: userAuthSig,
+            chain,
+          });
+          context.isCreator = isCreator;
+        }
+      }
 
       let signatures = [];
 
       for (const functionToRun of Object.keys(signList)) {
         const op = signList[functionToRun];
 
-        console.time("signTransaction");
         if (functionToRun === "signTransaction") {
           if (isPermittedAddress) {
             const sigShare = await LitActions.signEcdsa({
               toSign: op.messageToSign,
               publicKey,
-              sigName: functionToRun
+              sigName: functionToRun,
             });
             signatures.push(sigShare);
           }
         }
-        timers.signTransaction = console.timeEnd("signTransaction");
 
-        console.time("getPKPSession");
         if (functionToRun === "getPKPSession") {
           if (isPermittedAddress || isCreator) {
-            const siwePayload = getPKPSessionMessage(publicKey, isPermittedAddress, op.didKey, op.domain, nonce);
+            const siwePayload = getPKPSessionMessage(
+              publicKey,
+              isPermittedAddress,
+              op.didKey,
+              op.domain,
+              nonce,
+              currentDateTime,
+              twentyFiveDaysLater,
+            );
             context.siweMessage = siwePayload;
             const sigShare = await LitActions.ethPersonalSignMessageEcdsa({
               message: toSiweMessage(siwePayload),
               publicKey,
-              sigName: functionToRun
+              sigName: functionToRun,
             });
             signatures.push(sigShare);
           }
         }
-        timers.getPKPSession = console.timeEnd("getPKPSession");
       }
-
-      context.timers = timers;
 
       const sigShares = signatures;
 
       LitActions.setResponse({
         response: JSON.stringify({
           error: false,
-          context: JSON.stringify(context)
-        })
+          context: JSON.stringify(context),
+        }),
       });
-  } catch (e){
-    console.error(e);
-  }
-
-}
+    } catch (e) {
+      console.error(e);
+    }
+  };
   go();
 })();

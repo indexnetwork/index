@@ -9,6 +9,7 @@ export interface ChatListInterface {
   editInput: string;
   handleSaveEdit: () => void;
   editingIndex: number | undefined;
+  regenerate: () => void;
 }
 
 export const ChatList = ({
@@ -19,10 +20,16 @@ export const ChatList = ({
   editInput,
   handleSaveEdit,
   editingIndex,
+  regenerate,
 }: ChatListInterface) => {
   if (!messages.length) {
     return null;
   }
+
+  const lastUserResponse = messages.findLast((message: Message) => {
+    return message.name === "basic_assistant";
+  });
+
   return (
     <div>
       {messages.map((message, index) => (
@@ -36,6 +43,7 @@ export const ChatList = ({
             handleSaveEdit={handleSaveEdit}
             index={index}
             editingIndex={editingIndex}
+            regenerate={lastUserResponse === message ? regenerate : null}
           />
         </div>
       ))}

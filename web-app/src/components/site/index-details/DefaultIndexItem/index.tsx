@@ -90,12 +90,12 @@ const DefaultIndexItem: React.FC<DefaultIndexItemProps> = ({
           </FlexRow>
         </Col>
         <Col xs={12} className="mt-2">
-          <Text size="md" theme="gray5">
+          <Text size="sm" theme="gray5">
             {item.type}
             {" • "}
           </Text>
 
-          <Text size="md" theme="gray5">
+          <Text size="sm" theme="gray5">
             {node?.updatedAt
               ? `Updated ${moment(new Date(node.updatedAt)).fromNow()}`
               : ""}

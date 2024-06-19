@@ -10,6 +10,7 @@ export class EmbeddingService {
       definition,
     });
     this.did = null;
+    this.indexService = new IndexService(definition);
   }
 
   setSession(session) {
@@ -28,6 +29,9 @@ export class EmbeddingService {
                   id
                   indexId
                   itemId
+                  controllerDID {
+                    id
+                  }
                   modelName
                   category
                   context
@@ -43,6 +47,9 @@ export class EmbeddingService {
                   index {
                     id
                     title
+                    controllerDID {
+                      id
+                    }
                     signerPublicKey
                     signerFunction
                     createdAt
@@ -61,14 +68,6 @@ export class EmbeddingService {
       if (!data || !data.node) {
         throw new Error("Invalid response data");
       }
-      try {
-        const indexService = new IndexService(this.definition);
-        data.node.index.ownerDID = await indexService.getOwnerProfile(
-          data.node.index,
-        );
-      } catch (e) {
-        console.log("Error fetching profile", e);
-      }
 
       return data.node;
     } catch (error) {
@@ -80,49 +79,92 @@ export class EmbeddingService {
 
   async getEmbedding(indexId, itemId, modelName, category) {
     try {
+      const index = await this.indexService.getIndexById(indexId);
       const { data, errors } = await this.client.executeQuery(`
-            query{
-              embeddingIndex(first:1, filters: {
-                where: {
-                  itemId: { equalTo: "${itemId}"},
-                  indexId: { equalTo: "${indexId}"}
-                  modelName: { equalTo: "${modelName}"}
-                  category: { equalTo: "${category}"}
-                  deletedAt: {isNull: true}
+        {
+          node(id: "${indexId}") {
+            ... on Index {
+              embeddings(
+                first: 1
+                account: "${index.controllerDID.id}"
+                filters: {
+                  where: {
+                    itemId: {
+                      equalTo: "${itemId}"
+                    },
+                    modelName: {
+                      equalTo: "${modelName}"
+                    },
+                    category: {
+                      equalTo: "${category}"
+                    },
+                    deletedAt: {
+                      isNull: true
+                    }
+                  }
                 }
-              }, sorting: { createdAt: DESC}) {
+              ) {
                 edges {
                   node {
                     id
                     indexId
                     itemId
+                    controllerDID {
+                      id
+                    }
                     modelName
                     category
                     context
                     vector
                     description
+                    item {
+                      id
+                      __typename
+                    }
+                    index {
+                      id
+                      title
+                      controllerDID {
+                        id
+                      }
+                      signerPublicKey
+                      signerFunction
+                      createdAt
+                      updatedAt
+                      deletedAt
+                    }
                     createdAt
                     updatedAt
                     deletedAt
                   }
                 }
               }
-            }`);
+            }
+          }
+        }
+        `);
 
       // Handle GraphQL errors
       if (errors) {
         throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
       }
       // Validate the data response
-      if (!data || !data.embeddingIndex || !data.embeddingIndex.edges) {
+      if (
+        !data ||
+        !data.node ||
+        !data.node.embeddings ||
+        !data.node.embeddings.edges
+      ) {
         throw new Error("Invalid response data");
       }
 
-      if (data.embeddingIndex.edges.length === 0) {
+      const embeddingResp = data.node.embeddings.edges;
+
+      if (embeddingResp.length === 0) {
         return null;
       }
 
-      return data.embeddingIndex.edges[0].node;
+      return embeddingResp[0].node;
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in embeddingIndex:", error);
@@ -160,6 +202,9 @@ export class EmbeddingService {
                             id
                             indexId
                             itemId
+                            controllerDID {
+                              id
+                            }
                             modelName
                             category
                             context
@@ -221,6 +266,9 @@ export class EmbeddingService {
                             id
                             indexId
                             itemId
+                            controllerDID {
+                              id
+                            }
                             modelName
                             category
                             context

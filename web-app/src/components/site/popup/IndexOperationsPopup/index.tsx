@@ -42,6 +42,7 @@ const IndexOperationsPopup: React.FC<IndexOperationsPopupProps> = ({
             </Text>
           </div>
         </DropdownMenuItem>
+
         {index?.roles?.owner &&
           (index?.did?.owned ? (
             <>

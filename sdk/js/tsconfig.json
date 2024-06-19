@@ -2,21 +2,20 @@
   "include": ["src/**/*"],
   "compilerOptions": {
     "baseUrl": ".",
-    "types": ["node"],
+    "types": ["node", "jest"],
     "typeRoots": ["./node_modules/@types"],
     "paths": {
       "@/*": ["src/*"]
     },
     "target": "es2020",
-    "module": "es2020",
-    "rootDirs": ["src", "__test__"],
-    "declaration": true,
-    "outDir": "./dist",
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "skipLibCheck": true,
+    "module": "esnext",
     "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true
+    "declaration": true,
+    "declarationMap": true,
+    "outDir": "./dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
   }
 }

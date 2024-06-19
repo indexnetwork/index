@@ -5994,32 +5994,47 @@ html#app {
       display: none;
     }
 
-    .app-container .sidebar-left .scrollable-container,
-    .app-container .sidebar-right .scrollable-container {
+    .app-container .sidebar-left .scrollable-container {
       height: calc(100vh - 6.4rem);
+      min-height: 0;
+    }
+    .app-container .sidebar-right .scrollable-container {
+      height: calc(100vh - 20rem);
       min-height: 0;
     }
   }
 
   @media (min-width: 1200px) and (min-width: 768px) {
-    .app-container .sidebar-left .scrollable-container,
-    .app-container .sidebar-right .scrollable-container {
-      height: calc(100vh - 6.4rem);
-    }
+      .app-container .sidebar-left .scrollable-container {
+        height: calc(100vh - 6.4rem);
+        min-height: 0;
+      }
+      .app-container .sidebar-right .scrollable-container {
+        height: calc(100vh - 20rem);
+        min-height: 0;
+      }
   }
 
   @media (min-width: 1200px) and (min-width: 992px) {
-    .app-container .sidebar-left .scrollable-container,
-    .app-container .sidebar-right .scrollable-container {
-      height: calc(100vh - 6.4rem);
-    }
+      .app-container .sidebar-left .scrollable-container {
+        height: calc(100vh - 6.4rem);
+        min-height: 0;
+      }
+      .app-container .sidebar-right .scrollable-container {
+        height: calc(100vh - 20rem);
+        min-height: 0;
+      }
   }
 
   @media (min-width: 1200px) and (min-width: 1200px) {
-    .app-container .sidebar-left .scrollable-container,
-    .app-container .sidebar-right .scrollable-container {
-      height: calc(100vh - 6.4rem);
-    }
+      .app-container .sidebar-left .scrollable-container {
+        height: calc(100vh - 6.4rem);
+        min-height: 0;
+      }
+      .app-container .sidebar-right .scrollable-container {
+        height: calc(100vh - 20rem);
+        min-height: 0;
+      }
   }
 
   @media (min-width: 1200px) {

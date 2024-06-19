@@ -1,6 +1,7 @@
 import { ComposeClient } from "@composedb/client";
 import { removePrefixFromKeys, getCurrentDateTime } from "../utils/helpers.js";
 import { indexItemFragment } from "../types/fragments.js";
+import { IndexService } from "./index.js";
 
 const transformIndexItem = (indexItem) => {
   const { __typename: type, indexedAt: _, ...rest } = indexItem.item;
@@ -20,6 +21,7 @@ export class ItemService {
       definition,
     });
     this.did = null;
+    this.indexService = new IndexService(definition);
   }
 
   setSession(session) {
@@ -31,44 +33,52 @@ export class ItemService {
 
   async getIndexItem(indexId, itemId, transformation = true) {
     try {
+      const index = await this.indexService.getIndexById(indexId);
+
       let { data, errors } = await this.client.executeQuery(`
-            query {
-              indexItemIndex(first:1, filters: {
-                where: {
-                  itemId: { equalTo: "${itemId}"},
-                  indexId: { equalTo: "${indexId}"}
-                  deletedAt: {isNull: true}
+        {
+          node(id: "${index.id}") {
+            ... on Index {
+              items(
+                first: 1
+                account: "${index.controllerDID.id}"
+                filters: {
+                  where: {
+                    deletedAt: {isNull: true}
+                    itemId: {equalTo: "${itemId}"}
+                  }
                 }
-              }, sorting: { createdAt: DESC}) {
+                sorting: { createdAt: DESC}
+              ) {
                 edges {
                   node {
                     ${indexItemFragment}
                   }
                 }
               }
-            }`);
+            }
+          }
+          }
+        `);
 
       // Handle GraphQL errors
       if (errors) {
         throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
       }
       // Validate the data response
-      if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
+      if (!data || !data.node || !data.node.items || !data.node.items.edges) {
         throw new Error("Invalid response data");
       }
 
-      if (data.indexItemIndex.edges.length === 0) {
+      const items = data.node.items.edges;
+
+      if (items.length === 0) {
         return null;
       }
 
-      data.indexItemIndex.edges[0].node = removePrefixFromKeys(
-        data.indexItemIndex.edges[0].node,
-        `${data.indexItemIndex.edges[0].node.__typename}_`,
-      );
-
-      return transformation
-        ? transformIndexItem(data.indexItemIndex.edges[0].node)
-        : data.indexItemIndex.edges[0].node;
+      let item = items[0];
+      item.node = removePrefixFromKeys(item.node, `${item.node.__typename}_`);
+      return transformation ? transformIndexItem(item.node) : item.node;
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in getIndexItem:", error);
@@ -111,53 +121,64 @@ export class ItemService {
   async getIndexItems(indexId, cursor = null, limit = 24) {
     try {
       let cursorFilter = cursor ? `after: "${cursor}",` : "";
+      const index = await this.indexService.getIndexById(indexId);
 
       let { data, errors } = await this.client.executeQuery(`{
-              indexItemIndex(first: ${limit}, ${cursorFilter} filters: {
+        node(id: "${indexId}") {
+          ... on Index {
+            items(
+              first: 10
+              ${cursorFilter}
+              account: "${index.controllerDID.id}"
+              filters: {
                 where: {
-                  indexId: { equalTo: "${indexId}"},
                   deletedAt: {isNull: true}
                 }
-              }, sorting: { createdAt: DESC}) {
-                pageInfo {
-                  endCursor
-                }
-                edges {
-                  node {
-                    ${indexItemFragment}
-                  }
+              }
+              sorting: { createdAt: DESC}
+            ) {
+              pageInfo {
+                endCursor
+              }
+              edges {
+                node {
+                  ${indexItemFragment}
                 }
               }
-            }`);
+            }
+          }
+        }
+        }`);
 
       // Handle GraphQL errors
       if (errors) {
         throw new Error(`Error getting index item: ${JSON.stringify(errors)}`);
       }
       // Validate the data response
-      if (!data || !data.indexItemIndex || !data.indexItemIndex.edges) {
+      if (!data || !data.node || !data.node.items || !data.node.items.edges) {
         throw new Error("Invalid response data");
       }
 
-      if (data.indexItemIndex.edges.length === 0) {
+      const items = data.node.items.edges;
+
+      if (items.length === 0) {
         return {
           endCursor: null,
           items: [],
         };
       }
 
-      data.indexItemIndex.edges.map((e) => {
+      items.map((e) => {
         e.node.item = removePrefixFromKeys(
           e.node.item,
           `${e.node.item.__typename}_`,
         );
         return e;
       });
-
       return {
         //Todo fix itemId to id
-        endCursor: data.indexItemIndex.pageInfo.endCursor,
-        items: data.indexItemIndex.edges.map((e) => transformIndexItem(e.node)),
+        endCursor: data.node.items.pageInfo.endCursor,
+        items: items.map((e) => transformIndexItem(e.node)),
       };
     } catch (error) {
       // Log the error and rethrow it for external handling
@@ -233,7 +254,7 @@ export class ItemService {
       const { data, errors } = await this.client.executeQuery(`{
               indexItemIndex(first: ${limit}, ${cursorFilter} filters: {
                 where: {
-                  itemId: { in: ["${itemIds.join('","')}"]},
+                  itemId: { in: ${JSON.stringify(itemIds)}}},
                   deletedAt: {isNull: true}
                 }
               }, sorting: { createdAt: DESC}) {
@@ -294,9 +315,14 @@ export class ItemService {
         return indexItem;
       }
 
+      const node = await this.client.context.ceramic.loadStream(itemId);
+      const modelId = node.metadata.model;
+      //const indexItem = await this.get(indexId, itemId);
+
       const content = {
         indexId,
         itemId,
+        modelId,
         createdAt: getCurrentDateTime(),
         updatedAt: getCurrentDateTime(),
       };

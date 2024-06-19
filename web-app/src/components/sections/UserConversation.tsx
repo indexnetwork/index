@@ -1,21 +1,13 @@
-import { useApp } from "@/context/AppContext";
 import AskIndexes from "components/site/indexes/AskIndexes";
-import { useRouteParams } from "hooks/useRouteParams";
 
 export default function UserConversationSection() {
-  const { id } = useRouteParams();
-  const { chatID } = useApp();
-
-  if (!chatID || !id) {
-    return null;
-  }
-
   return (
     <div
       style={{
         display: "flex",
-        justifyContent: "center",
+        justifyContent: "start",
         height: "100%",
+        flexDirection: "column",
       }}
     >
       <div
@@ -29,7 +21,7 @@ export default function UserConversationSection() {
           height: "100%",
         }}
       >
-        <AskIndexes chatID={chatID} sources={[id]} />
+        <AskIndexes />
       </div>
     </div>
   );

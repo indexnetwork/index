@@ -42,7 +42,8 @@
     "openai": "^4.28.0",
     "peggy": "^3.0.2",
     "reflect-metadata": "^0.1.13",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "safe-flat": "^2.1.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

@@ -1,18 +1,40 @@
+import { Tabs } from "@/components/base/Tabs";
+import TabPane from "@/components/base/Tabs/TabPane";
+import { useApp } from "@/context/AppContext";
+import { useRouteParams } from "@/hooks/useRouteParams";
 import cc from "classcat";
 import Button from "components/base/Button";
 import IconClose from "components/base/Icon/IconClose";
-import { Tabs } from "components/base/Tabs";
-import TabPane from "components/base/Tabs/TabPane";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-import { useApp } from "@/context/AppContext";
-import Soon from "components/site/indexes/Soon";
+import { useRouter } from "next/navigation";
+import ConversationHistory from "./History";
+import NewChatButton from "./NewChatButton";
 
 const AppRight = () => {
   const {
- setRightSidebarOpen, rightSidebarOpen, rightTabKey, setRightTabKey,
-} = useApp();
+    conversations,
+    setRightSidebarOpen,
+    rightSidebarOpen,
+    rightTabKey,
+    setRightTabKey,
+    setViewedConversation,
+    viewedConversation,
+  } = useApp();
+
+  const { isConversation } = useRouteParams();
+
+  const router = useRouter();
+
+  const handleRightTabChange = (tabKey: string) => {
+    setRightTabKey(tabKey);
+  };
+
+  const handleStartChat = () => {
+    setViewedConversation(undefined);
+    router.push(`/${viewedConversation?.sources[0]}`);
+  };
 
   return (
     <Col
@@ -33,23 +55,34 @@ const AppRight = () => {
           <IconClose width={32} />
         </Button>
       </Flex>
-      <Flex
-        className={"scrollable-container idxflex-grow-1 pl-6"}
-        flexdirection={"column"}
-      >
-        <FlexRow wrap={false} className={"idxflex-grow-1 mt-6"}>
-          <Tabs activeKey={"history"} onTabChange={setRightTabKey}>
-            <TabPane enabled={true} tabKey={"history"} title={`History`} />
-            <TabPane enabled={false} tabKey={"discover"} title={``} />
+      <Flex className={"idxflex-grow-1 pl-6"} flexdirection={"column"}>
+        <div
+          style={{
+            marginBottom: "12px",
+          }}
+        >
+          <NewChatButton
+            onClick={isConversation ? handleStartChat : undefined}
+          />
+        </div>
+
+        <FlexRow
+          wrap={false}
+          className={"idxflex-grow-1"}
+          style={{
+            width: "100%",
+            marginTop: "12px",
+          }}
+        >
+          <Tabs activeKey={rightTabKey} onTabChange={handleRightTabChange}>
+            <TabPane enabled={true} tabKey={"history"} title={`History`}>
+              <div className={"scrollable-container pb-11"} style={{}}>
+                <ConversationHistory items={conversations} />
+              </div>
+            </TabPane>
+            <></>
           </Tabs>
         </FlexRow>
-        {rightTabKey === "history" && (
-          <Flex className={"scrollable-area idxflex-grow-1 px-5"}>
-            <div className={"ml-3"}>
-              <Soon section={"chat_history"}></Soon>
-            </div>
-          </Flex>
-        )}
       </Flex>
     </Col>
   );

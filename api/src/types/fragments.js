@@ -31,17 +31,13 @@ export const appBundleFragment = `
     WebPage_updatedAt: updatedAt
     WebPage_deletedAt: deletedAt
   }
-  ... on Team {
-    Team_logo: logo
-    Team_name: name
-    Team_teamId: teamId
-    Team_twitter: twitter
-    Team_website: website
-    Team_fundingStage: fundingStage
-    Team_contactMethod: contactMethod
-    Team_linkedinHandle: linkedinHandle
-    Team_longDescription: longDescription
-    Team_shortDescription: shortDescription
+  ... on Cast {
+    Cast_thread_hash: thread_hash
+    Cast_author: author {
+      username
+    }
+    Cast_text: text
+    Cast_timestamp: timestamp
   }
 `;
 
@@ -50,6 +46,10 @@ export const indexItemFragment = `
     id
     indexId
     itemId
+    controllerDID {
+      id
+    }
+    modelId
     createdAt
     updatedAt
     deletedAt
@@ -63,6 +63,9 @@ export const indexItemFragment = `
       title
       signerPublicKey
       signerFunction
+      controllerDID {
+        id
+      }
       createdAt
       updatedAt
       deletedAt

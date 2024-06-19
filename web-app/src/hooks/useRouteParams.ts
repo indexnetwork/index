@@ -1,37 +1,23 @@
-import { DiscoveryType } from "@/types";
 import { useParams, usePathname } from "next/navigation";
 import { useMemo } from "react";
 
 export const useRouteParams = () => {
-  const params = useParams();
+  const { id: rawId } = useParams();
   const path = usePathname();
 
-  const id = params.id ? decodeURIComponent(params.id as string) : undefined;
-
   const isLanding = useMemo(() => path === "/", [path]);
+  const isConversation = useMemo(() => path.includes("conversation"), [path]);
+  const isDID = useMemo(() => path?.includes("did:"), [path]);
 
-  const discoveryType = useMemo(() => {
-    return id
-      ? id.includes("did:")
-        ? DiscoveryType.DID
-        : DiscoveryType.INDEX
-      : undefined;
-  }, [id]);
-
-  const isDID = useMemo(
-    () => discoveryType === DiscoveryType.DID,
-    [discoveryType],
-  );
   const isIndex = useMemo(
-    () => discoveryType === DiscoveryType.INDEX,
-    [discoveryType],
+    () => !isConversation && !isDID,
+    [isConversation, isDID],
   );
 
-  return {
-    id,
-    isLanding,
-    discoveryType,
-    isDID,
-    isIndex,
-  };
+  const id = isConversation ? null : decodeURIComponent(rawId as string);
+  const conversationId = isConversation
+    ? path.replace("/conversation/", "")
+    : null;
+
+  return { id, conversationId, isLanding, isConversation, isDID, isIndex };
 };

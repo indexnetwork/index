@@ -73,10 +73,11 @@ export class RetrievalQuestionInput {
     description: 'Chain input',
     example: {
       question: 'Summarize my documents',
+      information: 'Here is a json',
       chat_history: [],
     },
   })
-  input: { question: string; chat_history: [] };
+  input: { question?: string; information?: string; chat_history: [] };
 
   @ApiPropertyOptional({
     description: 'Model arguments',

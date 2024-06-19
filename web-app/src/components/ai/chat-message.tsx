@@ -24,6 +24,7 @@ export interface ChatMessageProps {
   handleSaveEdit: () => void;
   index: number;
   editingIndex: number | undefined;
+  regenerate: (() => void) | null;
 }
 
 export function ChatMessage({
@@ -35,6 +36,7 @@ export function ChatMessage({
   handleSaveEdit,
   index,
   editingIndex,
+  regenerate,
 }: ChatMessageProps) {
   const { userProfile } = useApp();
 
@@ -44,17 +46,15 @@ export function ChatMessage({
         {message.role === "user" ? (
           <Avatar size={24} user={userProfile} />
         ) : (
-          <div
-            style={{
-              border: "1px solid #E2E8F0",
-              borderRadius: "2px",
-              padding: "1px 3px",
-            }}
-          >
+          <div>
             <img
-              src="/images/huggingFaceLogo.png"
-              width={16}
-              height={16}
+              src="/images/chatprofileIndex.svg"
+              width={24}
+              height={24}
+              style={{
+                border: "0px solid #E2E8F0",
+                borderRadius: "2px",
+              }}
               alt="hugging face logo"
             />
           </div>
@@ -164,6 +164,7 @@ export function ChatMessage({
             handleEditClick={handleEditClick}
             index={index}
             editingMessage={editingMessage}
+            regenerate={regenerate}
           />
         )}
       </Col>

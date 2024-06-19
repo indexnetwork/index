@@ -34,6 +34,9 @@ const AppHeader = () => {
           height={32}
           src="/images/logo-full-white.svg"
           alt="index network"
+          style={{
+            zIndex: 9,
+          }}
         />
         {allowed ? (
           <Button onClick={connect}>Connect</Button>

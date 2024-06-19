@@ -112,7 +112,7 @@ export const AuthProvider = ({ children }: any) => {
 
     const now = new Date();
     const twentyFiveDaysLater = new Date(
-      now.getTime() + 25 * 24 * 60 * 60 * 1000,
+      now.getTime() + 365 * 24 * 60 * 60 * 1000,
     );
 
     const siweMessage = new SiweMessage({

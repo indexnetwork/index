@@ -150,9 +150,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         const indexData = await apiService.fetchIndex(sources[0]);
         setViewedProfile({
           id: indexData.id,
-          name: indexData.ownerDID.name,
-          avatar: indexData.ownerDID.avatar as any,
-          bio: indexData.ownerDID.bio,
+          name: indexData.controllerDID.name,
+          avatar: indexData.controllerDID.avatar as any,
+          bio: indexData.controllerDID.bio,
         });
       }
 

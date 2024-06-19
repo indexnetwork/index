@@ -3,7 +3,9 @@ import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { CHAT_STARTED, trackEvent } from "@/services/tracker";
-import { useChat, type Message } from "ai/react";
+
+import { type Message } from "@ai-sdk/react";
+
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
@@ -13,6 +15,9 @@ import AskInput from "components/base/AskInput";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
+
+// import { nanoid } from "nanoid";
+
 import {
   ComponentProps,
   FC,
@@ -21,10 +26,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { toast } from "react-hot-toast";
-import { API_ENDPOINTS } from "utils/constants";
 import { maskDID } from "utils/helper";
-import NoIndexes from "../NoIndexes";
+import { generateId } from "ai";
+import { useRouter } from "next/navigation";
+import { API_ENDPOINTS } from "@/utils/constants";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -32,25 +37,39 @@ export interface ChatProps extends ComponentProps<"div"> {
 }
 
 export interface AskIndexesProps {
-  chatID: string;
   sources?: string[];
 }
-
 export interface MessageWithIndex extends Message {
   index?: number;
 }
 
-const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
-  const { viewedProfile, leftSectionIndexes, leftTabKey } = useApp();
-
+const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const { session } = useAuth();
-  const { viewedIndex } = useApp();
-  const { isIndex, id, discoveryType } = useRouteParams();
+  const {
+    leftSectionIndexes,
+    leftTabKey,
+    viewedProfile,
+    viewedIndex,
+    setViewedConversation,
+    viewedConversation,
+    conversations,
+    setConversations,
+  } = useApp();
+  const { isIndex, conversationId, id } = useRouteParams();
+  const { view } = useApp();
   const { ready: apiReady, api } = useApi();
+
+  const router = useRouter();
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [stoppedMessages, setStoppedMessages] = useState<string[]>([]);
+  const [deletedMessages, setDeletedMessages] = useState<string[]>([]);
+
+  const [isLoading, setIsLoading] = useState(false);
 
   const [editingMessage, setEditingMessage] = useState<Message | undefined>();
   const [editingIndex, setEditingIndex] = useState<number | undefined>();
   const [editInput, setEditInput] = useState<string>("");
+  const [input, setInput] = useState<string>("");
   const [defaultQuestions, setDefaultQuestions] = useState<string[]>([]);
 
   const bottomRef = useRef<null | HTMLDivElement>(null);
@@ -65,9 +84,96 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     }
   }, [apiReady, api, id, isIndex]);
 
+  const sendMessage = useCallback(
+    async (message: string) => {
+      if (!apiReady || isLoading) return;
+      try {
+        const newMessage: Message = {
+          id: generateId(),
+          role: "user",
+          content: message,
+        };
+
+        setMessages((prevMessages) => [...prevMessages, newMessage]);
+        let currentConv = viewedConversation;
+        if (!currentConv) {
+          const response = await api!.createConversation({
+            sources: [id],
+            summary: message,
+          });
+
+          currentConv = response;
+
+          setConversations([response, ...conversations]);
+        }
+        if (!currentConv) return;
+        const messageResp = await api!.sendMessage(currentConv.id, {
+          content: message,
+          role: "user",
+        });
+        currentConv.messages = [messageResp];
+        setViewedConversation(currentConv);
+
+        router.push(`/conversation/${currentConv.id}`);
+      } catch (error) {
+        console.error("Error sending message", error);
+      }
+    },
+    [viewedConversation, apiReady, conversations, api, isLoading],
+  );
+
+  const updateMessage = useCallback(
+    async (messageId: string, message: string) => {
+      if (!viewedConversation) return;
+      if (!apiReady || isLoading) return;
+      try {
+        const lastUserMessage = messages.findLast((m) => m.role === "user");
+        if (!lastUserMessage) return;
+
+        const newMessage: Message = {
+          id: generateId(),
+          role: "user",
+          content: message,
+        };
+        setMessages((prevMessages) => {
+          return [...prevMessages, newMessage];
+        });
+
+        const messageResp = await api!.updateMessage(
+          viewedConversation.id,
+          lastUserMessage.id,
+          {
+            content: message,
+            role: "user",
+          },
+          true,
+        );
+        viewedConversation.messages.push(messageResp);
+        setViewedConversation(viewedConversation);
+      } catch (e) {
+        console.error("Error sending message", e);
+      }
+    },
+    [apiReady, api, id, isIndex, viewedConversation, isLoading],
+  );
+
   useEffect(() => {
     fetchDefaultQuestions();
   }, [fetchDefaultQuestions]);
+
+  useEffect(() => {
+    if (viewedConversation && viewedConversation.messages) {
+      setMessages(viewedConversation.messages);
+    } else {
+      setMessages([]);
+    }
+  }, [conversationId, viewedConversation]);
+
+  useEffect(() => {
+    if (view.name === "default") {
+      setMessages([]);
+    }
+  }, [view]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
@@ -77,21 +183,66 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
 
   const handleSaveEdit = async () => {
     if (editingMessage) {
-      const messagesBeforeEdit = messages.slice(0, editingIndex);
+      try {
+        const messagesBeforeEdit = messages.slice(0, editingIndex);
+        const messagesAfterEdit = messages.slice(editingIndex);
 
-      const newMessage = {
-        ...editingMessage,
-        content: editInput,
-      };
+        console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
+        if (Array.isArray(messagesAfterEdit) && messagesAfterEdit.length > 0) {
+          const mIds = messagesAfterEdit.map((m) => m.id);
+          setDeletedMessages((prev) => {
+            return [...prev, ...mIds];
+          });
+        }
 
-      setMessages(messagesBeforeEdit);
-      setEditingMessage(undefined);
-      setEditInput("");
-      await append({
-        id: chatID,
-        content: newMessage.content,
-        role: "user",
-      });
+        const newMessage = {
+          ...editingMessage,
+          content: editInput,
+        };
+
+        setEditingMessage(undefined);
+        setEditInput("");
+        setIsLoading(false);
+        setMessages([...messagesBeforeEdit, newMessage]);
+        console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
+
+        await updateMessage(editingMessage.id, editInput); // TODO
+      } catch (error: any) {
+        console.error("An error occurred:", error.message);
+      }
+    }
+  };
+
+  const regenerateMessage = async () => {
+    if (!apiReady || isLoading || !viewedConversation) return;
+    try {
+      const lastUserMessage = messages.findLast((m) => m.role === "user");
+      const lastAssistantMessage = messages.findLast(
+        (m) => m.name === "basic_assistant",
+      );
+      if (!lastUserMessage) return;
+
+      setIsLoading(true);
+      // remove messages after the last assistant message
+      if (lastAssistantMessage) {
+        const messagesBeforeEdit = messages.slice(
+          0,
+          messages.indexOf(lastAssistantMessage),
+        );
+
+        setMessages(messagesBeforeEdit);
+      }
+
+      const regeneratedMessage = await api!.updateMessage(
+        viewedConversation.id,
+        lastUserMessage.id,
+        { role: lastUserMessage.role, content: lastUserMessage.content },
+        true,
+      );
+
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Error sending message", error);
     }
   };
 
@@ -122,60 +273,114 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
     return `indexes`;
   };
 
-  const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/${API_ENDPOINTS.CHAT_STREAM}`;
-  const initialMessages: Message[] = [];
-  const {
-    messages,
-    append,
-    reload,
-    stop,
-    isLoading,
-    input,
-    setInput,
-    setMessages,
-  } = useChat({
-    api: apiUrl,
-    initialMessages,
-    id: chatID,
-    body: {
-      id: chatID,
-      sources,
-    },
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      Authorization: `Bearer ${session?.serialize()}`,
-    },
-    onResponse(response) {
-      if (response.status === 401) {
-        toast.error(response.statusText);
-      }
-    },
-    onError(error) {
-      console.error("Error loading chat messages", error);
-      toast.error("Cannot load chat messages");
-    },
-  });
-
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [bottomRef]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isLoading, scrollToBottom]);
+    // scrollToBottom();
+  }, [viewedConversation, isLoading, scrollToBottom]);
+
+  const stop = () => {
+    setIsLoading(false);
+    // TODO send stop signal to backend.
+    setStoppedMessages(messages.map((c) => c.id));
+  };
+
+  const handleMessage = (data: any) => {
+    const payload = JSON.parse(data);
+    console.log("Received message from server", payload);
+
+    if (payload.channel === "end") {
+      console.log("End of stream");
+      setIsLoading(false);
+      // scrollToBottom();
+      return;
+    }
+
+    if (payload.channel === "update") {
+      const newMessage: Message = {
+        id: payload.data.messageId,
+        role: payload.data.payload.role,
+        content: payload.data.payload.content,
+      };
+      setMessages((prevMessages) => {
+        return [...prevMessages, newMessage];
+      });
+      setIsLoading(false);
+      // scrollToBottom();
+      return;
+    }
+
+    if (
+      stoppedMessages.includes(payload.data.messageId) ||
+      deletedMessages.includes(payload.data.messageId)
+    ) {
+      return;
+    }
+
+    setIsLoading(true);
+    setMessages((prevConversation) => {
+      let streamingMessage = prevConversation.find(
+        (c) => c.id === payload.data.messageId,
+      );
+
+      if (!streamingMessage) {
+        console.log(`newmessage ${payload.data.messageId}`);
+        streamingMessage = {
+          id: payload.data.messageId,
+          content: payload.data.chunk,
+          role: "assistant",
+          name: payload.data.name,
+        };
+        console.log("New message", streamingMessage);
+        return [...prevConversation, streamingMessage];
+      }
+
+      if (payload.channel === "chunk") {
+        return prevConversation.map((message) =>
+          message.id === payload.data.messageId
+            ? { ...message, content: message.content + payload.data.chunk }
+            : message,
+        );
+      }
+      return prevConversation;
+    });
+    // scrollToBottom();
+  };
+
+  useEffect(() => {
+    if (!viewedConversation) return;
+    const eventUrl = `${process.env.NEXT_PUBLIC_API_URL!}${API_ENDPOINTS.CONVERSATION_UPDATES.replace(":conversationId", viewedConversation.id)}?session=${session?.serialize()}`;
+    const eventSource = new EventSource(eventUrl);
+    eventSource.onmessage = (event) => {
+      console.log("Received message from server", event.data);
+      handleMessage(event.data);
+    };
+    eventSource.onerror = (err) => {
+      console.error("EventSource failed:", err);
+      eventSource.close();
+    };
+    return () => {
+      eventSource.close();
+    };
+  }, [stoppedMessages, deletedMessages, viewedConversation, API_ENDPOINTS]);
 
   if (leftSectionIndexes.length === 0) {
-    return <NoIndexes tabKey={leftTabKey} />;
+    // return <NoIndexes tabKey={leftTabKey} />;
   }
 
   return (
     <>
       <Flex
-        id={chatID}
-        key={chatID}
+        id={`chatID`}
+        key={`chatID`}
         className={
-          sources &&
-          sources?.filter((source) => !source.includes("did:")).length > 0
+          viewedConversation &&
+          viewedConversation.sources &&
+          viewedConversation.sources?.filter(
+            (source) => !source.includes("did:"),
+          ).length > 0
             ? "px-0 pt-7"
             : "px-md-10 px-4 pt-7"
         }
@@ -199,7 +404,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
               flexDirection: "column",
             }}
           >
-            {messages.length ? (
+            {viewedConversation && viewedConversation.messages.length ? (
               <>
                 <ChatList
                   messages={messages}
@@ -209,6 +414,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
                   editInput={editInput}
                   handleSaveEdit={handleSaveEdit}
                   editingIndex={editingIndex}
+                  regenerate={regenerateMessage}
                 />
                 <div ref={bottomRef} />
                 <ChatScrollAnchor trackVisibility={isLoading} />
@@ -226,9 +432,12 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
                 <EmptyScreen
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}
-                  indexIds={sources?.filter(
-                    (source) => !source.includes("did:"),
-                  )}
+                  indexIds={
+                    viewedConversation &&
+                    viewedConversation.sources?.filter(
+                      (source) => !source.includes("did:"),
+                    )
+                  }
                   defaultQuestions={defaultQuestions}
                 />
               </Flex>
@@ -244,7 +453,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
           <ChatPanel
             isLoading={isLoading}
             stop={stop}
-            reload={reload}
+            reload={regenerateMessage}
+            // reload={reload}
             messages={messages}
           />
         </FlexRow>
@@ -253,13 +463,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ chatID, sources }) => {
             <AskInput
               contextMessage={getChatContextMessage()}
               onSubmit={async (value) => {
-                await append({
-                  id: chatID,
-                  content: value,
-                  role: "user",
-                });
+                sendMessage(value);
                 trackEvent(CHAT_STARTED, {
-                  type: discoveryType,
+                  type: view.discoveryType,
                 });
               }}
               isLoading={isLoading}

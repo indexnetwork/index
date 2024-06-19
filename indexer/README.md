@@ -12,7 +12,6 @@
 
 # Indexer
 
-
 This documentation outlines the usage of the API endpoints for a NestJS application featuring two main controllers: Indexer Controller and Chat Controller. Each controller is responsible for handling specific operations within the application, with a total of 8 endpoints described below.
 
 - [Indexer](#indexer)
@@ -43,8 +42,8 @@ Start NestJs application with the correct access with your environment.
 1. Node>=21.x.x
 1. yarn>=0.5.x
 
-
 ### Build
+
 ```sh
 yarn build
 yarn start:dev
@@ -117,8 +116,8 @@ sequenceDiagram
 
 ```
 
-
 ## A. Indexer Controller
+
 The Indexer Controller is designed for crawling, embedding extraction, and indexing operations. Below are the details of its endpoints:
 
 ### 1. Crawl Document Content
@@ -127,9 +126,8 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
 - **Endpoint**: /indexer/crawl
 - **Description**: Crawls the document content from a given URL using Unstructured.io API.
 - **Body Parameters**:
-    - `url (string)`: The URL of the document to crawl.
+  - `url (string)`: The URL of the document to crawl.
 - **Response**: Returns a key-value pair of 'content' (string) representing the textual content of the document.
-
 
 - **Example Usage**
 
@@ -159,10 +157,11 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
 - **Endpoint**: /indexer/embeddings
 - **Description**: Extracts embeddings for the given document using OpenAI embeddings.
 - **Body Parameters**:
-    - `content (string)`: The textual content of the document.
+  - `content (string)`: The textual content of the document.
 - **Response**: Returns a list of floats representing the embedding vector.
 
 - **Example Usage**
+
   - curl request
 
   ```sh
@@ -192,20 +191,20 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
 - **Endpoint**: /indexer/index
 - **Description**: Adds a document to the ChromaDB database with the appropriate metadata and content.
 - **Body Parameters**: An object containing the following keys:
-    - `indexId (string)`: The id string of the Index
-    - `indexTitle (string)`: The title of the index
-    - `indexCreatedAt (date)`: The create timestamp of index
-    - `indexUpdatedAt (date)`: The last update timestamp of index
-    - `indexDeletedAt (date)`: The delete timestamp of index
-    - `indexOwnerDID (string)`: The owner key of the index
-    - `webPageId (string)`: The id string of the webpage
-    - `webPageTitle (string)`: The title of the web page
-    - `webPageUrl (string)`: The url of the web page
-    - `webPageCreatedAt (date)`: The create timestamp of web page
-    - `webPageContent (string)`: The string of content of web page
-    - `webPageUpdatedAt (date)`: The last update timestamp of index
-    - `webPageDeletedAt (date)`: The delete timestamp of index
-    - `vector (number[])`: The embedding of the WebPageContent
+  - `indexId (string)`: The id string of the Index
+  - `indexTitle (string)`: The title of the index
+  - `indexCreatedAt (date)`: The create timestamp of index
+  - `indexUpdatedAt (date)`: The last update timestamp of index
+  - `indexDeletedAt (date)`: The delete timestamp of index
+  - `indexControllerDID (string)`: The owner key of the index
+  - `webPageId (string)`: The id string of the webpage
+  - `webPageTitle (string)`: The title of the web page
+  - `webPageUrl (string)`: The url of the web page
+  - `webPageCreatedAt (date)`: The create timestamp of web page
+  - `webPageContent (string)`: The string of content of web page
+  - `webPageUpdatedAt (date)`: The last update timestamp of index
+  - `webPageDeletedAt (date)`: The delete timestamp of index
+  - `vector (number[])`: The embedding of the WebPageContent
 - **Response**: Returns a success or error message.
 - **Example Usage**
 
@@ -217,6 +216,7 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
       -H 'X-API-KEY: your_api_key_here' \
       -d '{"indexId": "1", "indexTitle": "Title", ...}'
   ```
+
   - Python request:
 
   ```python
@@ -233,7 +233,6 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
 
   # 200, { "message": "Index item IndexItemID_0 succesfully upddated" }
   ```
-
 
 ### 4. Update Document Metadata or Content
 
@@ -252,6 +251,7 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
       -H "Content-Type: application/json" \
       -d '{"indexId": "1", "indexTitle": "Updated Title"}'
   ```
+
   - Python request:
 
   ```python
@@ -265,14 +265,14 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
   # 200, { "message": "Index item IndexItemID_0 succesfully upddated" }
   ```
 
-
 ### 5. Delete Index
 
 - **Method**: `DELETE`
 - **Endpoint**: /indexer/index
 - **Description**: Deletes the given index items from the "indexId".
 - **Body Parameters**: An object with the key indexId.
-    - `indexId (string)`: The id string of the Index
+
+  - `indexId (string)`: The id string of the Index
 
 - **Response**: Returns a success or error message.
 
@@ -285,6 +285,7 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
       -H "Content-Type: application/json" \
       -d '{"indexId": "1"}'
   ```
+
   - Python request:
 
   ```python
@@ -298,19 +299,20 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
   # 200, { "message": "Index IndexID_0 wirh IndexItemIDS [ 'IndexItemID_3', 'IndexItemID_5' ]  succesfully deleted" }
   ```
 
-
 ### 6. Delete Index Item
 
 - **Method**: `DELETE`
-- **Endpoint**: ``/indexer/item``
+- **Endpoint**: `/indexer/item`
 - **Description**: Deletes the given index item from the "indexId" and "indexItemId".
 - **Body Parameters**: An object with the keys indexId and indexItemId.
-    - `indexId (string)`: The id string of the Index
-    - `indexItemId (string)`: The id string of the IndexItem
+
+  - `indexId (string)`: The id string of the Index
+  - `indexItemId (string)`: The id string of the IndexItem
 
 - **Response**: Returns a success or error message.
 
 - **Example Usage**
+
   - curl request:
 
   ```sh
@@ -318,6 +320,7 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
       -H "Content-Type: application/json" \
       -d '{"indexId": "1", "indexItemId": "2"}'
   ```
+
   - Python request:
 
   ```python
@@ -331,7 +334,6 @@ The Indexer Controller is designed for crawling, embedding extraction, and index
   # 200, { "message": "Index item IndexItemID_0 succesfully deleted" }
   ```
 
-
 ## B. Chat Controller
 
 The Chat Controller handles operations related to generating content based on a given input and querying the database.
@@ -339,18 +341,19 @@ The Chat Controller handles operations related to generating content based on a 
 ### 7. Generate Content for Question
 
 - **Method**: `POST`
-- **Endpoint**: ``/chat/stream``
+- **Endpoint**: `/chat/stream`
 - **Description**: For a given "question" and "chat_history", generates content for the question.
 - **Body Parameters**: An object containing
-  * `question (string)`: The string of last chat input
 
-  * `chat_history (string)`: The list of input objects from both user and agent with message role and content
+  - `question (string)`: The string of last chat input
 
-  * `indexIds (string[])`: The list of id strings to ask
+  - `chat_history (string)`: The list of input objects from both user and agent with message role and content
 
+  - `indexIds (string[])`: The list of id strings to ask
 
 - **Response**: Returns "answer" text and "source" which are the list of "webPageId".
 - **Example Usage**
+
   - curl request:
 
   ```sh
@@ -358,6 +361,7 @@ The Chat Controller handles operations related to generating content based on a 
       -H "Content-Type: application/json" \
       -d '{"question": "What is AI?", "chat_history": "...", "index_id": "1", "model_type": "...", "chain_type": "..."}'
   ```
+
   - Python request:
 
   ```python
@@ -380,32 +384,29 @@ The Chat Controller handles operations related to generating content based on a 
   # }
   ```
 
-
 ## C. Query Controller
-
 
 Below, you will find detailed descriptions and usage instructions for our three main endpoints: query, search, and autocomplete.
 
-
 ### 1. Query Endpoint
 
-
-
-- **Method**: ``POST``
-- **URL**: ``discovery/query``
+- **Method**: `POST`
+- **URL**: `discovery/query`
 - **Description**: Returns a list of item results for user searches within specified index(es) using a given query string. It also supports [metadata filtering](https://docs.trychroma.com/usage-guide#using-where-filters) through ChromaDB .
 - **Body Parameters**: An object containing
-  - ``query (string)``: The query string to search.
 
-  - ``indexIds (string[])``: Array of index IDs to search within.
-  - ``page (int)``: The page number of results to return.
-  - ``limit (int)``: The number of results per page.
-  - ``filters (Object)``: Filters to apply on the search results (ChromaFilter).
-  - ``sort (int)``: The field to sort the results by.
-  - ``desc (int)``: Boolean indicating whether the sorting should be in descending order.
+  - `query (string)`: The query string to search.
 
-- **Response**: Returns  "items" which are the list of "webPageId".
+  - `indexIds (string[])`: Array of index IDs to search within.
+  - `page (int)`: The page number of results to return.
+  - `limit (int)`: The number of results per page.
+  - `filters (Object)`: Filters to apply on the search results (ChromaFilter).
+  - `sort (int)`: The field to sort the results by.
+  - `desc (int)`: Boolean indicating whether the sorting should be in descending order.
+
+- **Response**: Returns "items" which are the list of "webPageId".
 - **Example Usage**
+
   - curl request:
 
   ```sh
@@ -413,6 +414,7 @@ Below, you will find detailed descriptions and usage instructions for our three 
       -H "Content-Type: application/json" \
       -d '{ "query": "string", "indexIds": ["string"], "page": 0, "limit": 0, "filters": { "indexCreatedAt": { "$gte": "2024-02-28T11:08:59.353Z" }, "sort": "string", "desc": true }'
   ```
+
   - Python request:
 
   ```python
@@ -436,35 +438,32 @@ Below, you will find detailed descriptions and usage instructions for our three 
   print(response.text)
   ```
 
-
-
-
 ### 2. Search Endpoint
 
-
-
-- **Method**: ``POST``
-- **URL**: ``discovery/{db}/search/{indexIds}``
+- **Method**: `POST`
+- **URL**: `discovery/{db}/search/{indexIds}`
 - **Description**: Performs a search using embeddings in ChromaDB. This endpoint is similar to the query endpoint but focuses on embedding-based searches and will support multiple embedding models in the future.
 - **Body Parameters**: An object containing
 
-  - ``embedding``: The embedding to search.
+  - `embedding`: The embedding to search.
 
-  - ``model``: The embedding model, eg. `text-embedding-ada-002`.
+  - `model`: The embedding model, eg. `text-embedding-ada-002`.
 
-  - ``indexIds``: Array of index IDs to search within.
+  - `indexIds`: Array of index IDs to search within.
 
-  - ``page``: The page number of results to return.
+  - `page`: The page number of results to return.
 
-  - ``limit``: The number of results per page.
+  - `limit`: The number of results per page.
 
-  - ``filters``: Filters to apply on the search results (ChromaFilter).
+  - `filters`: Filters to apply on the search results (ChromaFilter).
 
-  - ``sort``: The field to sort the results by.
+  - `sort`: The field to sort the results by.
 
-  - ``desc``: Boolean indicating whether the sorting should be in descending order.
-- **Response**: Returns  "items" which are the list of "webPageId".
+  - `desc`: Boolean indicating whether the sorting should be in descending order.
+
+- **Response**: Returns "items" which are the list of "webPageId".
 - **Example Usage**
+
   - curl request:
 
   ```sh
@@ -473,6 +472,7 @@ Below, you will find detailed descriptions and usage instructions for our three 
       -H 'X-API-KEY: your_api_key_here' \
       -d '{ "embedding": [0.1, 0.2, ....], "indexIds": ["string"], "page": 0, "limit": 0, "filters": "ChromaFilter", "sort": "string", "desc": true }'
   ```
+
   - Python request:
 
   ```python
@@ -498,18 +498,18 @@ Below, you will find detailed descriptions and usage instructions for our three 
   # ] }
   ```
 
-
 ### 3. Autocomplete Endpoint
 
-- **Method**: ``POST``
-- **URL**: ``discovery/autocomplete``
+- **Method**: `POST`
+- **URL**: `discovery/autocomplete`
 - **Description**: Expands the given query via the openai.chat.completions endpoint to increase the specificity of the semantic content. It utilizes the content of the given index documents to provide autocomplete suggestions.
 - **Body Parameters**:
-    - `indexIds`: Array of index IDs to search within for autocomplete suggestions.
-    - `query`: The initial query string for which to provide autocomplete suggestions.
-    - `n`: The number of autocomplete suggestions to return.
+  - `indexIds`: Array of index IDs to search within for autocomplete suggestions.
+  - `query`: The initial query string for which to provide autocomplete suggestions.
+  - `n`: The number of autocomplete suggestions to return.
 - **Response**: Returns "answer" text and "source" which are the list of "webPageId".
 - **Example Usage**
+
   - curl request:
 
   ```sh
@@ -518,6 +518,7 @@ Below, you will find detailed descriptions and usage instructions for our three 
       -H 'X-API-KEY: your_api_key_here' \
       -d '{ "indexIds": ["string"], "query": "string", "n": 0 }'
   ```
+
   - Python request:
 
   ```python

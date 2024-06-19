@@ -1,6 +1,5 @@
 import { ItemService } from "../services/item.js";
 import { IndexService } from "../services/index.js";
-import { getPKPSession } from "../libs/lit/index.js";
 import axios from "axios";
 export const listItems = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
@@ -48,11 +47,7 @@ export const addItem = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   const { indexId, itemId } = req.params;
   try {
-    const indexService = new IndexService(definition);
-    const index = await indexService.getIndexById(indexId);
-    const pkpSession = await getPKPSession(req.session, index);
-
-    const itemService = new ItemService(definition).setSession(pkpSession);
+    const itemService = new ItemService(definition).setSession(req.session);
     const item = await itemService.addItem(indexId, itemId);
     res.status(201).json(item);
   } catch (error) {
@@ -64,13 +59,11 @@ export const removeItem = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   const { indexId, itemId } = req.params;
   try {
-    const indexService = new IndexService(definition);
-    const index = await indexService.getIndexById(indexId);
-    const pkpSession = await getPKPSession(req.session, index);
-
-    const itemService = new ItemService(definition).setSession(pkpSession);
+    const itemService = new ItemService(definition).setSession(req.session);
     await itemService.removeItem(indexId, itemId);
-    res.sendStatus(204);
+    res.status(200).json({
+      itemId,
+    });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

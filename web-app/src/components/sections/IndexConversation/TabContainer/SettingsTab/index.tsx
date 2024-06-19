@@ -1,16 +1,12 @@
-import { IconTrash } from "@/components/ai/ui/icons";
-import { useApi } from "@/context/APIContext";
-import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import didService from "@/services/did-service";
-import { AccessControlCondition } from "@/types/entity";
 import Header from "components/base/Header";
 import Text from "components/base/Text";
 import Col from "components/layout/base/Grid/Col";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import Image from "next/image";
 import Link from "next/link";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useState } from "react";
 import toast from "react-hot-toast";
 import { CodeSnippetReact, CodeSnippetsWithTabs } from "./CodeSnippets";
 import SettingsModal, { SettingsModalStep } from "./SettingsModal";
@@ -18,38 +14,11 @@ import SettingsModal, { SettingsModalStep } from "./SettingsModal";
 export interface IndexSettingsTabSectionProps {}
 
 const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
-  const [conditions, setConditions] = useState<AccessControlCondition[]>([]);
   const [secretKey, setSecretKey] = useState<string | undefined>();
-  const { api, ready: apiReady } = useApi();
   const { isOwner } = useRole();
-
-  const { viewedIndex, createConditions } = useApp();
-  const loadActionRef = React.useRef(false);
-
   const [showModal, setShowModal] = useState(false);
-  const apiKeys = useMemo(() => {
-    return conditions
-      .filter((action: any) => action.tag === "apiKey")
-      .map((c: any) => c.value.metadata.walletAddress) as any;
-  }, [conditions]);
 
   const [step, setStep] = useState<SettingsModalStep>("waiting");
-  const loadKeys = useCallback(async () => {
-    if (!apiReady || !viewedIndex) return;
-    if (loadActionRef.current) return;
-    loadActionRef.current = true;
-
-    const litActions = await api!.getLITAction(viewedIndex.signerFunction);
-    if (litActions && litActions.length > 0) {
-      setConditions(litActions as any);
-    }
-
-    loadActionRef.current = false;
-  }, [api, apiReady, viewedIndex]);
-
-  useEffect(() => {
-    loadKeys();
-  }, [loadKeys]);
 
   const handleCancel = useCallback(() => {
     setShowModal(false);
@@ -60,63 +29,15 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   const handleCreate = useCallback(async () => {
     setShowModal(true);
     try {
-      const sessionResponse = await didService.getRandomDIDSession(
-        viewedIndex!.id,
-      );
-      const condition = {
-        tag: "apiKey",
-        value: {
-          contractAddress: "",
-          standardContractType: "",
-          chain: "ethereum",
-          method: "",
-          parameters: [":userAddress"],
-          returnValueTest: {
-            comparator: "=",
-            value: sessionResponse.address,
-          },
-        },
-      } as any;
-
-      const deepCopyOfConditions = JSON.parse(
-        JSON.stringify(conditions),
-      ) as AccessControlCondition[];
-
-      const newConditions = [condition, ...deepCopyOfConditions];
-
-      await createConditions(newConditions);
-      setSecretKey(btoa(JSON.stringify(sessionResponse)));
+      const sessionResponse = await didService.getNewDIDSession();
+      setSecretKey(sessionResponse);
       setStep("done");
     } catch (e) {
       console.error("Error creating rule", e);
       toast.error("Error creating key");
       setShowModal(false);
     }
-  }, [conditions, createConditions]);
-
-  const handleRemove = useCallback(
-    async (key: string) => {
-      if (!apiReady) return;
-      setShowModal(true);
-
-      try {
-        const deepCopyOfConditions = JSON.parse(JSON.stringify(conditions));
-
-        const newConditions = deepCopyOfConditions.filter(
-          (c: any) => c.value.metadata.walletAddress !== key,
-        );
-
-        await createConditions(newConditions);
-        toast.success("Key removed");
-        setShowModal(false);
-      } catch (error) {
-        console.error("Error removing rule", error);
-        setShowModal(false);
-        toast.error("Error removing key");
-      }
-    },
-    [apiReady, conditions, createConditions],
-  );
+  }, []);
 
   const onDone = useCallback(() => {
     setShowModal(false);
@@ -157,42 +78,6 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
                 gap: "1.25rem",
               }}
             >
-              <Text className={"mb-4"} theme={"primary"} size="md">
-                Your secret API keys are listed below. Please note that we do
-                not display your secret API keys again after you generate them.
-              </Text>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                {apiKeys.map((key: any, i: number) => (
-                  <div
-                    key={key}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "1rem 0 ",
-                      borderBottom:
-                        apiKeys.length - 1 === i ? "none" : "1px solid #E2E8F0",
-                    }}
-                  >
-                    <Text> {key}</Text>
-                    <button
-                      style={{
-                        background: "none",
-                        border: "none",
-                      }}
-                      onClick={() => handleRemove(key)}
-                    >
-                      <IconTrash width={"1.4rem"} height={"1.4rem"} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
               <div>
                 <button
                   style={{
@@ -206,7 +91,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
                   }}
                   onClick={handleCreate}
                 >
-                  Create new key
+                  Generate new key
                 </button>
               </div>
             </div>

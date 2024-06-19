@@ -3,17 +3,18 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { Wallet, randomBytes } from "ethers";
 import IndexConfig from "./config.js";
-import { Message } from "./types.js";
-
 import IndexVectorStore from "./lib/chroma.js";
 import {
-  ICreatorAction,
   IGetItemQueryParams,
   IIndex,
   ILink,
-  ILitActionConditions,
   IUser,
   IUserProfileUpdateParams,
+  ICreateConversationParams,
+  ICreateMessageParams,
+  IUpdateConversationParams,
+  IUpdateMessageParams,
+  Message,
 } from "./types.js";
 import { randomString } from "./util.js";
 
@@ -33,9 +34,10 @@ export default class IndexClient {
   constructor({
     domain,
     session,
+    privateKey,
+    wallet,
     network,
     options,
-    wallet,
   }: {
     domain: string;
     session?: string;
@@ -44,24 +46,32 @@ export default class IndexClient {
     network?: IndexNetworkType;
     options?: { useChroma: boolean };
   }) {
-    this.network = network || "dev";
-    if (this.network === "mainnet") {
-      this.baseUrl = "https://index.network/api";
-    } else {
-      this.baseUrl = "https://dev.index.network/api";
-    }
-    this.domain = domain || "index.network";
+    if (!domain) throw new Error("Domain is required");
+    this.domain = domain;
+
     if (session) {
       this.session = session;
-    } else {
+    } else if (privateKey) {
+      this.wallet = new Wallet(privateKey);
+    } else if (wallet) {
       this.wallet = wallet;
+    } else {
+      throw new Error("Either session or wallet (with privateKey) is required");
     }
+
+    this.network = network || "dev";
+    this.baseUrl =
+      this.network === "mainnet"
+        ? "https://index.network/api"
+        : "https://dev.index.network/api";
+    this.options = options;
   }
 
   private async initChroma() {
     if (!this.session) {
       throw new Error("Session is required to initialize Chroma");
     }
+    // Chroma initialization logic (e.g., this.chroma = new Chroma(this.session))
   }
 
   public async getVectorStore({
@@ -73,50 +83,51 @@ export default class IndexClient {
     sources: string[];
     filters: object;
   }) {
-    let indexChromaURL = "https://dev.index.network/api/chroma";
+    let indexChromaURL =
+      this.network === "mainnet"
+        ? "https://index.network/api/chroma"
+        : "https://dev.index.network/api/chroma";
 
-    if (this.network === "mainnet") {
-      indexChromaURL = "https://index.network/api/chroma";
-    }
-
-    return IndexVectorStore.fromExistingCollection(
-      embeddings, // new OpenAIEmbeddings({ openAIApiKey: apiKey, modelName: process.env.MODEL_EMBEDDING }),
-      {
-        collectionName: "chroma-indexer",
-        url: indexChromaURL,
-      },
-    );
+    return IndexVectorStore.fromExistingCollection(embeddings, {
+      collectionName: "chroma-indexer",
+      url: indexChromaURL,
+    });
   }
 
   private async request<T>(
     endpoint: string,
     options: RequestInit,
   ): ApiResponse<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${this.session}`,
-        ...options.headers,
-        "Content-Type": "application/json",
-      },
-    });
+    try {
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        ...options,
+        headers: {
+          Authorization: `Bearer ${this.session}`,
+          ...options.headers,
+          "Content-Type": "application/json",
+        },
+      });
 
-    if (!response.ok) {
-      throw new Error(`API call failed with status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(
+          `API call failed with status: ${response.status} - ${response.statusText}`,
+        );
+      }
+
+      return response.json() as Promise<T>;
+    } catch (error) {
+      throw new Error(`Network error: ${error.message}`);
     }
-
-    return response.json() as Promise<T>;
   }
 
   public async authenticate(): Promise<void> {
     if (this.session) return;
 
     if (!this.wallet || !this.domain) {
-      throw new Error("Private key and domain is required to authenticate");
+      throw new Error("Wallet and domain are required to authenticate");
     }
 
     const address = this.wallet.address;
-
     const keySeed = randomBytes(32);
     const didKey = await createDIDKey(keySeed);
 
@@ -146,48 +157,7 @@ export default class IndexClient {
 
     this.session = authBearer;
 
-    this.initChroma();
-  }
-
-  public async *chat({
-    id,
-    sources,
-    messages,
-  }: {
-    id: string;
-    sources: string[];
-    messages: Message[];
-  }): AsyncGenerator<string, void, undefined> {
-    const response = await fetch(`${this.baseUrl}/discovery/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messages,
-        id,
-        sources,
-      }),
-    });
-
-    if (!response.ok || response.body === null) {
-      throw new Error("Error streaming messages");
-    }
-
-    const reader = response.body.getReader();
-    let decoder = new TextDecoder("utf-8");
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        yield chunk;
-      }
-    } finally {
-      reader.releaseLock();
-    }
+    await this.initChroma();
   }
 
   public getAllIndexes(did: string): ApiResponse<IIndex[]> {
@@ -226,19 +196,6 @@ export default class IndexClient {
     });
   }
 
-  public async getLitActions(cid: string): ApiResponse<ILitActionConditions[]> {
-    return this.request(`/lit_actions/${cid}`, { method: "GET" });
-  }
-
-  public async postLitAction(
-    action: ILitActionConditions,
-  ): ApiResponse<ICreatorAction> {
-    return this.request(`/lit_actions`, {
-      method: "POST",
-      body: JSON.stringify(action),
-    });
-  }
-
   public async getItems(
     indexId: string,
     queryParams: IGetItemQueryParams,
@@ -253,16 +210,11 @@ export default class IndexClient {
     title: string,
     signerFunction?: string,
   ): ApiResponse<IIndex> {
-    const body = {
-      title,
-      signerFunction,
-    };
-
+    const body = { title, signerFunction };
     return this.request(`/indexes`, {
       method: "POST",
       body: JSON.stringify(body),
     });
-    // return { mocked: true } as any;
   }
 
   public async addItemToIndex(
@@ -326,22 +278,6 @@ export default class IndexClient {
     });
   }
 
-  public async getNFTMetadata(
-    network: string,
-    address: string,
-    tokenId?: string,
-  ): ApiResponse<any> {
-    let endpoint = `/nft/${network}/${address}`;
-    if (tokenId) {
-      endpoint += `/${tokenId}`;
-    }
-    return this.request(endpoint, { method: "GET" });
-  }
-
-  public async resolveENS(ensName: string): ApiResponse<any> {
-    return this.request(`/ens/${ensName}`, { method: "GET" });
-  }
-
   public async getNodeById(modelId: string, nodeId: string): ApiResponse<any> {
     return this.request(`/composedb/${modelId}/${nodeId}`, { method: "GET" });
   }
@@ -362,6 +298,135 @@ export default class IndexClient {
       method: "PATCH",
       body: JSON.stringify(nodeData),
     });
+  }
+
+  public async getConversation(conversationId: string): ApiResponse<any> {
+    return this.request(`/conversations/${conversationId}`, {
+      method: "GET",
+    });
+  }
+
+  public async createConversation(
+    params: ICreateConversationParams,
+  ): ApiResponse<any> {
+    return this.request(`/conversations`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  }
+
+  public async updateConversation(
+    conversationId: string,
+    params: IUpdateConversationParams,
+  ): ApiResponse<any> {
+    return this.request(`/conversations/${conversationId}`, {
+      method: "PUT",
+      body: JSON.stringify(params),
+    });
+  }
+
+  public async deleteConversation(conversationId: string): ApiResponse<void> {
+    return this.request(`/conversations/${conversationId}`, {
+      method: "DELETE",
+    });
+  }
+
+  public async createMessage(
+    conversationId: string,
+    params: ICreateMessageParams,
+  ): ApiResponse<any> {
+    return this.request(`/conversations/${conversationId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  }
+
+  public listenToConversationUpdates(
+    conversationId: string,
+    handleMessage: (data: any) => void,
+    handleError: (error: any) => void,
+  ) {
+    const eventUrl = `${this.baseUrl}/conversations/${conversationId}/updates?session=${this.session}`;
+    const eventSource = new EventSource(eventUrl);
+
+    eventSource.onmessage = (event) => {
+      console.log("Received message from server", event.data);
+      handleMessage(event.data);
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("EventSource failed:", err);
+      handleError(err);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }
+
+  public async updateMessage(
+    conversationId: string,
+    messageId: string,
+    params: IUpdateMessageParams,
+    deleteAfter?: boolean,
+  ): ApiResponse<any> {
+    const queryParams = deleteAfter ? `?deleteAfter=true` : "";
+    return this.request(
+      `/conversations/${conversationId}/messages/${messageId}${queryParams}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(params),
+      },
+    );
+  }
+
+  public async deleteMessage(
+    conversationId: string,
+    messageId: string,
+    deleteAfter?: boolean,
+  ): ApiResponse<void> {
+    const queryParams = deleteAfter ? `?deleteAfter=true` : "";
+    return this.request(
+      `/conversations/${conversationId}/messages/${messageId}${queryParams}`,
+      {
+        method: "DELETE",
+      },
+    );
+  }
+
+  public listenToIndexUpdates(
+    sources: string[],
+    query: string,
+    handleMessage: (data: any) => void,
+    handleError: (error: any) => void,
+  ) {
+    const queryParams = new URLSearchParams();
+
+    const params = { query, sources, session: this.session };
+    for (const key in params) {
+      if (params.hasOwnProperty(key)) {
+        queryParams.append(key, params[key]);
+      }
+    }
+
+    const eventUrl = `${this.baseUrl}/discovery/updates${queryParams.toString()}`;
+    const eventSource = new EventSource(eventUrl);
+
+    eventSource.onmessage = (event) => {
+      console.log("Received message from server", event.data);
+      handleMessage(event.data);
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("EventSource failed:", err);
+      handleError(err);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
   }
 }
 

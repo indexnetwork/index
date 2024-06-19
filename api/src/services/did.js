@@ -1,7 +1,11 @@
 import { ComposeClient } from "@composedb/client";
 import { profileFragment } from "../types/fragments.js";
 import { getCurrentDateTime } from "../utils/helpers.js";
+import RedisClient from "../clients/redis.js";
 import { IndexService } from "./index.js";
+import { DIDSession } from "did-session";
+
+const redisClient = RedisClient.getInstance();
 
 export class DIDService {
   constructor(definition) {
@@ -16,6 +20,7 @@ export class DIDService {
   setSession(session) {
     if (session && session.did.authenticated) {
       this.did = session.did;
+      this.session = session;
     }
     return this;
   }
@@ -29,7 +34,7 @@ export class DIDService {
       this.client.setDID(this.did);
       const { data, errors } = await this.client.executeQuery(`{
               viewer{
-                didIndexList(first: 1, sorting: {createdAt: DESC}, filters: { where: {type: {equalTo: "${type}"}, indexId: {equalTo: "${indexId}"}}}) {
+                didIndexList(first: 1, sorting: {updatedAt: DESC}, filters: { where: {type: {equalTo: "${type}"}, indexId: {equalTo: "${indexId}"}}}) {
                   edges {
                     node {
                       ... on DIDIndex {
@@ -97,7 +102,7 @@ export class DIDService {
             query{
                 node(id:"${did}") {
                 ... on CeramicAccount{
-                        didIndexList (${didIndexListArguments}, sorting: {createdAt: DESC}) {
+                        didIndexList (${didIndexListArguments}, sorting: {updatedAt: DESC}) {
                             edges {
                                 node {
                                     id
@@ -113,6 +118,15 @@ export class DIDService {
                                         createdAt
                                         updatedAt
                                         deletedAt
+                                        controllerDID {
+                                          id
+                                          profile {
+                                            id
+                                            name
+                                            avatar
+                                            bio
+                                          }
+                                        }
                                     }
                                 }
                             }
@@ -137,35 +151,36 @@ export class DIDService {
         return [];
       }
 
-      const indexes = data.node.didIndexList.edges.reduce((acc, edge) => {
+      const indexesMap = new Map();
+      const uniqueIndexes = [];
+
+      data.node.didIndexList.edges.forEach((edge) => {
         const indexId = edge.node.index.id;
-        if (!acc[indexId]) {
-          acc[indexId] = {
+
+        if (!indexesMap.has(indexId)) {
+          const newIndex = {
             did: { owned: false, starred: false },
             ...edge.node.index,
           };
+
+          indexesMap.set(indexId, newIndex);
+          uniqueIndexes.push(newIndex);
         }
+
+        const currentIndex = indexesMap.get(indexId);
 
         if (edge.node.type === "owned") {
-          acc[indexId].did.owned = true;
+          currentIndex.did.owned = true;
         } else if (edge.node.type === "starred") {
-          acc[indexId].did.starred = true;
+          currentIndex.did.starred = true;
         }
-        return acc;
-      }, {});
+      });
 
       const indexService = new IndexService(this.definition);
-      return await Promise.all(
-        Object.values(indexes)
-          .filter((i) => i.did.owned || i.did.starred)
-          .map(async (i) => {
-            const ownerDID = await indexService.getOwnerProfile(i);
-            return { ...i, ownerDID };
-          })
-          .sort((a, b) => {
-            return new Date(b.createdAt) - new Date(a.createdAt);
-          }),
-      );
+
+      return uniqueIndexes
+        .filter((i) => i.did.owned || i.did.starred)
+        .map((i) => indexService.transformIndex(i));
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in createDIDIndex:", error);
@@ -312,6 +327,66 @@ export class DIDService {
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in getProfile:", error);
+      throw error;
+    }
+  }
+  async publicEncryptionDID() {
+    if (!this.did) {
+      throw new Error("DID not set. Use setDID() to set the did.");
+    }
+
+    const encryptedSessionStr = await redisClient.hGet(
+      `encryption_sessions`,
+      this.did.parent,
+    );
+
+    if (encryptedSessionStr) {
+      const session = await DIDSession.fromSession(encryptedSessionStr);
+      await session.did.authenticate();
+      return session;
+    }
+
+    try {
+      const content = {
+        publicEncryptionDID: this.did.id,
+      };
+
+      const mutation = `
+        mutation createPublicEncryptionDID($input: CreatePublicEncryptionDIDInput!) {
+          createPublicEncryptionDID(input: $input) {
+            document {
+              id
+              controllerDID {
+                id
+              }
+              publicEncryptionDID {
+                id
+              }
+            }
+          }
+        }
+      `;
+
+      this.client.setDID(this.did);
+
+      const { data: mutationData, errors: mutationErrors } =
+        await this.client.executeQuery(mutation, { input: { content } });
+
+      if (mutationErrors) {
+        throw new Error(
+          `Error creating public encryption DID: ${JSON.stringify(mutationErrors)}`,
+        );
+      }
+
+      await redisClient.hSet(
+        `encryption_sessions`,
+        this.did.parent,
+        this.session.serialize(),
+      );
+
+      return this.session;
+    } catch (error) {
+      console.error("Exception occurred in publicEncryptionDID:", error);
       throw error;
     }
   }

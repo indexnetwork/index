@@ -8,6 +8,7 @@ const API_ENDPOINTS = {
   CHAT_STREAM: "/chat_stream",
   INDEXES: "/indexes/:id",
   DEFAULT_QUESTIONS_OF_INDEX: "/discovery/questions",
+  DISCOVERY_UPDATES: "/discovery/:chatID/updates",
   GET_ALL_INDEXES: "/dids/:did/indexes",
   CREATE_INDEX: "/indexes",
   UPDATE_INDEX: "/indexes/:id",
@@ -27,6 +28,12 @@ const API_ENDPOINTS = {
   ENS: "/ens",
   ZAPIER_TEST_LOGIN: "/zapier/test_login",
   SUBSCRIBE_TO_NEWSLETTER: "/site/subscribe",
+  LIST_CONVERSATIONS: "/conversations",
+  CREATE_CONVERSATION: "/conversations",
+  GET_CONVERSATION: "/conversations/:conversationId",
+  DELETE_CONVERSATION: "/conversations/:conversationId",
+  SEND_MESSAGE: "/conversations/:conversationId/messages",
+  UPDATE_MESSAGE: "/conversations/:conversationId/messages/:messageId",
 };
 
 export interface LitActionConditions {}
@@ -269,6 +276,95 @@ class ApiService {
 
     const { data } = await this.apiAxios.post<Indexes>(url, body);
     return data;
+  }
+
+  async listConversations(): Promise<any> {
+    const response = await this.apiAxios.get<any>(
+      API_ENDPOINTS.LIST_CONVERSATIONS,
+    );
+
+    if (response.status !== 200) {
+      throw new Error("Failed to list conversations message");
+    }
+
+    return response.data;
+  }
+
+  async createConversation(params: any): Promise<any> {
+    const response = await this.apiAxios.post<any>(
+      API_ENDPOINTS.CREATE_CONVERSATION,
+      params,
+    );
+
+    if (response.status !== 201) {
+      throw new Error("Failed to send message");
+    }
+
+    return response.data;
+  }
+  async getConversation(conversationId: string): Promise<any> {
+    const response = await this.apiAxios.get<any>(
+      API_ENDPOINTS.GET_CONVERSATION.replace(":conversationId", conversationId),
+    );
+
+    if (response.status !== 200) {
+      throw new Error("Failed to list conversations message");
+    }
+
+    return response.data;
+  }
+
+  async deleteConversation(conversationId: string): Promise<any> {
+    const response = await this.apiAxios.delete<any>(
+      API_ENDPOINTS.DELETE_CONVERSATION.replace(
+        ":conversationId",
+        conversationId,
+      ),
+    );
+
+    if (response.status !== 200) {
+      throw new Error("Failed to dekete conversations message");
+    }
+
+    return response.data;
+  }
+
+  async sendMessage(conversationId: string, message: any): Promise<any> {
+    const response = await this.apiAxios.post<any>(
+      API_ENDPOINTS.SEND_MESSAGE.replace(":conversationId", conversationId),
+      message,
+    );
+
+    if (response.status !== 201) {
+      throw new Error("Failed to send message");
+    }
+
+    return response.data;
+  }
+
+  async updateMessage(
+    conversationId: string,
+    messageId: string,
+    message: any,
+    deleteAfter?: boolean,
+  ) {
+    const url = API_ENDPOINTS.UPDATE_MESSAGE.replace(
+      ":conversationId",
+      conversationId,
+    ).replace(":messageId", messageId);
+
+    console.log("message", message);
+    const response = await this.apiAxios.put<any>(url, message, {
+      params: {
+        deleteAfter,
+      },
+    });
+
+    if (response.status !== 200) {
+      throw new Error("Failed to update message");
+    }
+
+    return response.data;
   }
 
   async getContract(

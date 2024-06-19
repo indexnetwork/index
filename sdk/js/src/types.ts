@@ -13,7 +13,7 @@ export interface IIndex {
     owner: boolean;
     creator: boolean;
   };
-  ownerDID: IUser;
+  controllerDID: IUser;
   createdAt: string;
   updatedAt: string;
   deletedAt: string;
@@ -82,3 +82,38 @@ export type Message = {
   content: string;
   role: Participant;
 };
+
+// New Types
+export interface IConversation {
+  id: string;
+  title: string;
+  participants: IUser[];
+  messages: Message[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ICreateConversationParams {
+  sources: string[];
+  summary?: string;
+  members?: string[];
+}
+
+export interface IUpdateConversationParams {
+  sources: string[];
+  summary?: string;
+}
+
+export interface ICreateMessageParams {
+  role: Participant;
+  content: string;
+}
+
+export interface IUpdateMessageParams {
+  role: Participant;
+  content: string;
+}
+
+export interface IDeleteMessageParams {
+  deleteAfter: boolean;
+}

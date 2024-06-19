@@ -90,7 +90,9 @@ class PKPSigner extends ethers.Signer {
 
     return resolveProperties(transaction).then(async (tx) => {
       let params = this.actionParams;
-      await litNodeClient.connect();
+      if (!litNodeClient.ready) {
+        await litNodeClient.connect();
+      }
 
       delete tx.from;
       const serializedTx = ethers.utils.serializeTransaction(tx);
@@ -146,6 +148,17 @@ class PKPSigner extends ethers.Signer {
   }
 }
 
+const signer = new ethers.Wallet(
+  process.env.INDEXER_WALLET_PRIVATE_KEY,
+  provider,
+);
+
+const litContracts = new LitContracts({
+  network: config.litNetwork,
+  signer: signer,
+  debug: false,
+});
+
 export const writeAuthMethods = async ({
   userAuthSig,
   signerPublicKey,
@@ -173,6 +186,12 @@ export const writeAuthMethods = async ({
     const didKey = new DID({ provider: didProvider, resolver: getResolver() });
     await didKey.authenticate();
 
+    const now = new Date();
+    now.setUTCHours(0, 0, 0, 0);
+    const twentyFiveDaysLater = new Date(
+      now.getTime() + 25 * 24 * 60 * 60 * 1e3,
+    );
+
     const signer = new PKPSigner(from, litNodeClient, provider, {
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
@@ -181,6 +200,8 @@ export const writeAuthMethods = async ({
         publicKey: signerPublicKey,
         chain: "ethereum", // polygon
         nonce: randomString(12),
+        currentDateTime: currentDateTime.toISOString(),
+        twentyFiveDaysLater: twentyFiveDaysLater.toISOString(),
         signList: {
           signTransaction: {},
         },
@@ -193,7 +214,9 @@ export const writeAuthMethods = async ({
       debug: false,
     });
 
-    await litContracts.connect();
+    if (!litContracts.connected) {
+      await litContracts.connect();
+    }
 
     const prevCIDV0 = CID.parse(prevCID).toV0().toString();
     const pubKeyHash = ethers.utils.keccak256(signerPublicKey);
@@ -245,6 +268,12 @@ export const transferOwnership = async ({
     }
     const from = ethers.utils.computeAddress(signerPublicKey).toLowerCase();
 
+    const now = new Date();
+    now.setUTCHours(0, 0, 0, 0);
+    const twentyFiveDaysLater = new Date(
+      now.getTime() + 25 * 24 * 60 * 60 * 1e3,
+    );
+
     const signer = new PKPSigner(from, litNodeClient, provider, {
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
@@ -253,25 +282,29 @@ export const transferOwnership = async ({
         publicKey: signerPublicKey,
         chain: "ethereum", // polygon
         nonce: randomString(12),
+        currentDateTime: now.toISOString(),
+        twentyFiveDaysLater: twentyFiveDaysLater.toISOString(),
         signList: {
           signTransaction: {},
         },
       },
     });
 
-    const litContracts = new LitContracts({
+    const subContract = new LitContracts({
       network: config.litNetwork,
       signer: signer,
       debug: false,
     });
 
-    await litContracts.connect();
+    if (!subContract.connected) {
+      await subContract.connect();
+    }
 
     const pubKeyHash = ethers.utils.keccak256(signerPublicKey);
     const tokenId = BigInt(pubKeyHash);
 
     const transaction =
-      await litContracts.pkpPermissionsContract.write.batchAddRemoveAuthMethods(
+      await subContract.pkpPermissionsContract.write.batchAddRemoveAuthMethods(
         tokenId,
         [1],
         [newOwner],
@@ -295,11 +328,6 @@ export const transferOwnership = async ({
 };
 
 export const getLitOwner = async (pkpPubKey) => {
-  const litContracts = new LitContracts({
-    network: config.litNetwork,
-    debug: false,
-  });
-
   let existing = await redis.hGet(`pkp:owner`, pkpPubKey);
   if (existing) {
     return existing;
@@ -368,31 +396,8 @@ export const decodeDIDWithLit = (encodedDID) => {
 export const walletToDID = (chain, wallet) =>
   `did:pkh:eip155:${parseInt(chain).toString()}:${wallet}`;
 
-export const getPKPSessionForIndexer = async (index) => {
-  const indexerSession = await redis.get(`indexer:did:session`);
-  if (!indexerSession) {
-    throw new Error("No session signatures found");
-  }
-
-  const session = await DIDSession.fromSession(indexerSession);
-  await session.did.authenticate();
-
-  const pkpSession = await getPKPSession(session, index);
-  return pkpSession;
-};
-
 export const mintPKP = async (ownerAddress, actionCID) => {
   try {
-    const signer = new ethers.Wallet(
-      process.env.INDEXER_WALLET_PRIVATE_KEY,
-      provider,
-    );
-
-    const litContracts = new LitContracts({
-      network: config.litNetwork,
-      signer: signer,
-      debug: false,
-    });
     if (!litContracts.connected) {
       await litContracts.connect();
     }
@@ -509,6 +514,11 @@ const fetchAndAuthenticateSession = async (key) => {
 };
 
 export const getPKPSession = async (session, index) => {
+  await redis.hSet(`sessions`, index.id, session.serialize());
+  return session;
+};
+
+export const getPKPSessionWithLIT = async (session, index) => {
   if (!session.did.authenticated) {
     throw new Error("Unauthenticated DID");
   }
@@ -556,6 +566,12 @@ export const getPKPSession = async (session, index) => {
       await litNodeClient.connect();
     }
 
+    const now = new Date();
+    now.setUTCHours(0, 0, 0, 0);
+    const twentyFiveDaysLater = new Date(
+      now.getTime() + 25 * 24 * 60 * 60 * 1e3,
+    );
+
     const resp = await litNodeClient.executeJs({
       ipfsId: signerFunctionV0,
       sessionSigs: dAppSessionSigs, // index app, which capacity credit, authorizes to pkp, not the user.
@@ -563,6 +579,8 @@ export const getPKPSession = async (session, index) => {
         userAuthSig: userAuthSig, // for conditions control. to identify authenticated user.
         publicKey: index.signerPublicKey,
         nonce: randomString(12),
+        currentDateTime: now.toISOString(),
+        twentyFiveDaysLater: twentyFiveDaysLater.toISOString(),
         chain: "ethereum", // polygon
         signList: {
           getPKPSession: {
@@ -602,21 +620,4 @@ export const getPKPSession = async (session, index) => {
     await redis.del(`sessions:ops:${sessionCacheKey}`);
     console.log("Error", e);
   }
-};
-
-export const getRolesFromSession = (session, definition) => {
-  const authorizedModels = new Set(
-    session.cacao.p.resources.map((r) => r.replace("ceramic://*?model=", "")),
-  );
-
-  const owner = authorizedModels.has(definition.models.Index.id);
-
-  const creator =
-    authorizedModels.has(definition.models.IndexItem.id) &&
-    authorizedModels.has(definition.models.Embedding.id);
-
-  return {
-    owner,
-    creator,
-  };
 };
