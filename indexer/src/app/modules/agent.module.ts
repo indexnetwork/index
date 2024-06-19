@@ -217,6 +217,16 @@ export class Agent {
         return formatChatHistory(inputs.chat_history);
       };
     }
+    const filterMultilineMetadata = (metadata) =>
+      Object.fromEntries(
+        Object.entries(metadata).filter(([key, value]) => {
+          const result =
+            typeof value === 'string' &&
+            !(value.includes('\n') || value.toString().length > 256);
+          console.log(value.toString().length, result);
+          return result;
+        }),
+      );
 
     const answerChainSequence: [
       RunnableLike<any, any>,
@@ -230,8 +240,10 @@ export class Agent {
             context: (input: any) => {
               if (input.context && input.context.docs) {
                 const docs_with_metadata = input.context.docs.map(
-                  (doc: any) =>
-                    `${JSON.stringify(doc.metadata)}\n${doc.pageContent}`,
+                  (doc: any) => {
+                    const metaData = filterMultilineMetadata(doc.metadata);
+                    return `${JSON.stringify(metaData)}\n${doc.pageContent}`;
+                  },
                 );
                 return docs_with_metadata.join('\n');
               }
