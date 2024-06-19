@@ -394,6 +394,40 @@ export default class IndexClient {
       },
     );
   }
+
+  public listenToIndexUpdates(
+    sources: string[],
+    query: string,
+    handleMessage: (data: any) => void,
+    handleError: (error: any) => void,
+  ) {
+    const queryParams = new URLSearchParams();
+
+    const params = { query, sources, session: this.session };
+    for (const key in params) {
+      if (params.hasOwnProperty(key)) {
+        queryParams.append(key, params[key]);
+      }
+    }
+
+    const eventUrl = `${this.baseUrl}/discovery/updates${queryParams.toString()}`;
+    const eventSource = new EventSource(eventUrl);
+
+    eventSource.onmessage = (event) => {
+      console.log("Received message from server", event.data);
+      handleMessage(event.data);
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("EventSource failed:", err);
+      handleError(err);
+      eventSource.close();
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }
 }
 
 export { IndexVectorStore, IndexConfig };

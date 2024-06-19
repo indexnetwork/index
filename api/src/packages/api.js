@@ -380,7 +380,7 @@ app.post(
 
 app.get(
   "/discovery/updates",
-  validator.body(
+  validator.query(
     Joi.object({
       sources: Joi.array().items(Joi.string()).required(),
       query: Joi.string().min(1).optional(),

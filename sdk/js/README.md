@@ -119,3 +119,32 @@ const stopListening = indexClient.listenToConversationUpdates(
   handleError,
 );
 ```
+
+### Listening to Index Updates
+
+The Index Client SDK allows you to listen for updates to miltiple indexes in real-time. This is useful for applications that need to react to new data events, using natural language.
+
+Here is an example of how you can use the `listenToIndexUpdates` method to handle real-time updates in a conversation:
+
+```typescript
+const sources = ["did:pkh:eip155:1:0x1b9Aceb609a62bae0c0a9682A9268138Faff4F5f"];
+
+const query = "if it is relevant to decentralized AI";
+
+const handleMessage = (data: any) => {
+  console.log("New event received:", data);
+  // Handle the new message data
+};
+
+const handleError = (error: any) => {
+  console.error("Error receiving updates:", error);
+  // Handle the error
+};
+
+const stopListening = indexClient.listenToIndexUpdates(
+  sources,
+  query
+  handleMessage,
+  handleError,
+);
+```

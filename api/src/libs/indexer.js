@@ -304,7 +304,7 @@ class Indexer {
 
     if (embedding.index.controllerDID.id !== embedding.controllerDID.id) {
       logger.warn(
-        `Step [0]: Embedding is unauthorized to index: ${JSON.stringify(indexItem)}`,
+        `Step [0]: Embedding is unauthorized to embedding: ${JSON.stringify(embedding)}`,
       );
       return;
     }
@@ -337,6 +337,11 @@ class Indexer {
       await axios.post(
         `${process.env.LLM_INDEXER_HOST}/indexer/index`,
         payload,
+      );
+
+      await redis.publish(
+        `indexStream:${embedding.index.id}`,
+        JSON.stringify(itemStream.content),
       );
 
       // todo send fluence as well.
