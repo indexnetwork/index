@@ -75,7 +75,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const bottomRef = useRef<null | HTMLDivElement>(null);
 
   const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
-    if (!apiReady || !id) return;
+    if (!apiReady || !isIndex || !id) return;
     try {
       const questions = await api!.getDefaultQuestionsOfIndex([id]);
       setDefaultQuestions(questions);
