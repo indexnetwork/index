@@ -44,36 +44,34 @@ export const createCast = async (req, res, next) => {
       return e;
     });
 
+    if (payload.author) {
+      payload.warpcast_url = `https://warpcast.com/${payload.author.username}/${payload.thread_hash.substring(0, 12)}`;
+      payload.author.warpcast_url = `https://warpcast.com/${payload.author.username}`;
+    }
+
+    if (payload.channel) {
+      payload.channel.warpcast_url = `https://warpcast.com/~/channel/${payload.channel.id}`;
+    }
     const cast = await composeDBService.createNode({
       ...payload,
     });
 
     let indexId = await redis.hGet(`farcaster:channels`, payload.parent_url);
     if (!indexId) {
-      const channelInfo = await axios.get(
-        `https://api.neynar.com/v2/farcaster/channel?id=${payload.parent_url}&type=parent_url&viewer_fid=3`,
-        {
-          headers: {
-            accept: "application/json",
-            api_key: process.env.NEYNAR_API_KEY,
-          },
-        },
-      );
-
-      const channelName = channelInfo.data.channel.name;
+      const channelName = payload.channel.name;
       const didIndexes = await didService.getIndexes(
         session.did.parent,
         `owned`,
       );
 
       let channelIndex = didIndexes.find(
-        (index) => index.title === `Farcaster - ${channelName}`,
+        (index) => index.title === channelName,
       );
 
       if (!channelIndex) {
         const indexService = new IndexService(definition).setSession(session);
         channelIndex = await indexService.createIndex({
-          title: `Farcaster - ${channelName}`,
+          title: channelName,
         });
         await redis.hSet(`sessions`, channelIndex.id, session.serialize());
         await didService.setDIDIndex(channelIndex.id, "owned");
