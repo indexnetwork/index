@@ -55,7 +55,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     conversations,
     setConversations,
   } = useApp();
-  const { isIndex, isConversation, conversationId, id } = useRouteParams();
+  const { isIndex, conversationId, id } = useRouteParams();
   const { view } = useApp();
   const { ready: apiReady, api } = useApi();
 
@@ -432,8 +432,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                 <EmptyScreen
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}
-                  defaultQuestions={defaultQuestions}
-                />
+                  defaultQuestions={defaultQuestions} />
               </Flex>
             )}
           </Col>
