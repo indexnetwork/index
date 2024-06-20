@@ -56,7 +56,6 @@ export default function TabContainer() {
     fetchDataForNewRoute(id);
   }, [id, fetchDataForNewRoute]);
 
-
   const renderTabContent = useCallback(() => {
     switch (tabKey) {
       case TabKey.Chat:

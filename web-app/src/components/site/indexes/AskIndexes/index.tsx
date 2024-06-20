@@ -75,7 +75,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const bottomRef = useRef<null | HTMLDivElement>(null);
 
   const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
-    if (!apiReady || isConversation || !id) return;
+    if (!apiReady || !id) return;
     try {
       const questions = await api!.getDefaultQuestionsOfIndex([id]);
       setDefaultQuestions(questions);
@@ -432,7 +432,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                 <EmptyScreen
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}
-                  defaultQuestions={defaultQuestions} />
+                  defaultQuestions={defaultQuestions}
+                />
               </Flex>
             )}
           </Col>
