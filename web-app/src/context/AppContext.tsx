@@ -412,6 +412,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       if (viewedIndex) {
         targetDID = viewedIndex?.controllerDID?.id;
       } else {
+        if (!id) return;
         fetchIndex(id, {}).then((index) => {
           if (index) {
             targetDID = index?.controllerDID?.id;

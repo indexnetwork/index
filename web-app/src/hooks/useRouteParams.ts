@@ -14,7 +14,13 @@ export const useRouteParams = () => {
     [isConversation, isDID],
   );
 
-  const id = isConversation ? null : decodeURIComponent(rawId as string);
+  const id =
+    typeof rawId === "undefined"
+      ? rawId
+      : isConversation
+        ? null
+        : decodeURIComponent(rawId);
+
   const conversationId = isConversation
     ? path.replace("/conversation/", "")
     : null;

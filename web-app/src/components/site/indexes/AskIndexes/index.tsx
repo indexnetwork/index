@@ -119,7 +119,17 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         console.error("Error sending message", error);
       }
     },
-    [viewedConversation, apiReady, conversations, api, isLoading],
+    [
+      viewedConversation,
+      apiReady,
+      id,
+      router,
+      setConversations,
+      setViewedConversation,
+      conversations,
+      api,
+      isLoading,
+    ],
   );
 
   const updateMessage = useCallback(
@@ -127,8 +137,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       if (!viewedConversation) return;
       if (!apiReady || isLoading) return;
       try {
-        const lastUserMessage = messages.findLast((m) => m.role === "user");
-        if (!lastUserMessage) return;
+        console.log("update message", messages, viewedConversation);
 
         const newMessage: Message = {
           id: generateId(),
@@ -141,7 +150,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
 
         const messageResp = await api!.updateMessage(
           viewedConversation.id,
-          lastUserMessage.id,
+          messageId,
           {
             content: message,
             role: "user",
@@ -149,12 +158,28 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           true,
         );
         viewedConversation.messages.push(messageResp);
+        setMessages((prevMessages) => {
+          return prevMessages.map((msg) => {
+            if (msg.id === messageId) {
+              return messageResp;
+            }
+            return msg;
+          });
+        });
+
         setViewedConversation(viewedConversation);
       } catch (e) {
         console.error("Error sending message", e);
       }
     },
-    [apiReady, api, id, isIndex, viewedConversation, isLoading],
+    [
+      apiReady,
+      api,
+      viewedConversation,
+      messages,
+      setViewedConversation,
+      isLoading,
+    ],
   );
 
   useEffect(() => {
@@ -163,14 +188,17 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
 
   useEffect(() => {
     if (viewedConversation && viewedConversation.messages) {
+      console.log("viewedConversation.messages", viewedConversation.messages);
       setMessages(viewedConversation.messages);
     } else {
+      console.log("reset set messages", viewedConversation);
       setMessages([]);
     }
   }, [conversationId, viewedConversation]);
 
   useEffect(() => {
     if (view.name === "default") {
+      console.log("reset set messages view", view);
       setMessages([]);
     }
   }, [view]);
@@ -181,7 +209,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     setEditInput(message.content);
   };
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = useCallback(async () => {
     if (editingMessage) {
       try {
         const messagesBeforeEdit = messages.slice(0, editingIndex);
@@ -203,7 +231,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         setEditingMessage(undefined);
         setEditInput("");
         setIsLoading(false);
-        setMessages([...messagesBeforeEdit, newMessage]);
+        setMessages([...messagesBeforeEdit]);
         console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
 
         await updateMessage(editingMessage.id, editInput); // TODO
@@ -211,7 +239,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         console.error("An error occurred:", error.message);
       }
     }
-  };
+  }, [editingMessage, editInput, messages, editingIndex, updateMessage]);
 
   const regenerateMessage = async () => {
     if (!apiReady || isLoading || !viewedConversation) return;
@@ -223,7 +251,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       if (!lastUserMessage) return;
 
       setIsLoading(true);
-      // remove messages after the last assistant message
+
       if (lastAssistantMessage) {
         const messagesBeforeEdit = messages.slice(
           0,
