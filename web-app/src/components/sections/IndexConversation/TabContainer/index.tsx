@@ -51,18 +51,21 @@ export default function TabContainer() {
   }, [viewedIndex]);
 
   useEffect(() => {
+    console.log("88 id", id, conversationId, viewedConversation);
     if (!id && !conversationId) return;
 
     let targetID = id;
 
     if (conversationId && viewedConversation?.sources[0]) {
       targetID = viewedConversation?.sources[0];
-    } else {
-      return;
     }
 
+    console.log("targetID", id, conversationId, targetID);
+
+    if (!targetID) return;
+
     fetchDataForNewRoute(targetID);
-  }, [fetchDataForNewRoute]);
+  }, [id, conversationId, fetchDataForNewRoute, viewedConversation]);
 
   const renderTabContent = useCallback(() => {
     switch (tabKey) {

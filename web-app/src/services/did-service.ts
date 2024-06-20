@@ -4,6 +4,7 @@ import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { normalizeAccountId } from "@ceramicnetwork/common";
 import { getAccountId } from "@didtools/pkh-ethereum";
 import { getAddress } from "@ethersproject/address";
+import { HDNodeWallet, Wallet } from "ethers";
 
 class DIDService {
   async getNewDIDSession() {
@@ -61,6 +62,39 @@ class DIDService {
     };
     return authSig;
     */
+  }
+
+  async getNewDIDSessionWithWallet(wallet: HDNodeWallet | Wallet) {
+    const { address } = wallet;
+
+    const keySeed = randomBytes(32);
+    const didKey = await createDIDKey(keySeed);
+
+    const now = new Date();
+    const threeMonthsLater = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+
+    const siweMessage = new SiweMessage({
+      domain: "index.network",
+      address,
+      statement: "Give this application access to some of your data on Ceramic",
+      uri: didKey.id,
+      version: "1",
+      chainId: "1",
+      nonce: randomString(10),
+      issuedAt: now.toISOString(),
+      expirationTime: threeMonthsLater.toISOString(),
+      resources: ["ceramic://*"],
+    });
+
+    const signature = await wallet.signMessage(siweMessage.toMessage());
+
+    siweMessage.signature = signature;
+
+    const cacao = Cacao.fromSiweMessage(siweMessage);
+    const did = await createDIDCacao(didKey, cacao);
+    const newSession = new DIDSession({ cacao, keySeed, did });
+
+    return newSession;
   }
 
   checkAndSignAuthMessage() {

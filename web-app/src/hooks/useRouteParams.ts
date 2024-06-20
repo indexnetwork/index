@@ -19,7 +19,7 @@ export const useRouteParams = () => {
       ? rawId
       : isConversation
         ? null
-        : decodeURIComponent(rawId);
+        : decodeURIComponent(rawId as string);
 
   const conversationId = isConversation
     ? path.replace("/conversation/", "")

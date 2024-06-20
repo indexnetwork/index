@@ -24,6 +24,7 @@ const IndexListSection: FC = () => {
     setLeftTabKey,
     leftTabKey,
     viewedProfile,
+    viewedConversation,
   } = useApp();
 
   const prevProfileID = useRef(viewedProfile?.id);
@@ -88,7 +89,12 @@ const IndexListSection: FC = () => {
               data={leftSectionIndexes}
               render={(itm: Indexes) => (
                 <>
-                  <IndexItem index={itm} selected={itm.id === id} />
+                  <IndexItem
+                    index={itm}
+                    selected={
+                      itm.id === id || itm.id === viewedConversation?.sources[0]
+                    }
+                  />
                 </>
               )}
               divided={false}
