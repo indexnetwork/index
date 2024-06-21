@@ -294,7 +294,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     if (payload.channel === "end") {
       if (viewedConversation && viewedConversation.summary === `New Chat`) {
         api!.getConversationWithSummary(viewedConversation.id).then((c) => {
-          setViewedConversation(c);
+          viewedConversation.summary = c.summary;
+          setViewedConversation(viewedConversation);
         });
       }
 
