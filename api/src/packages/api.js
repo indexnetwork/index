@@ -468,6 +468,17 @@ app.get(
 );
 
 app.get(
+  "/conversations/:id/summary",
+  authCheckMiddleware,
+  validator.params(
+    Joi.object({
+      id: Joi.custom(isStreamID, "Conversation ID").required(),
+    }),
+  ),
+  conversationController.refreshSummary,
+);
+
+app.get(
   "/conversations/:id/updates",
   validator.params(
     Joi.object({

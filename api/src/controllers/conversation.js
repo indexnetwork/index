@@ -2,6 +2,7 @@ import { ConversationService } from "../services/conversation.js";
 import RedisClient from "../clients/redis.js";
 import { DIDSession } from "did-session";
 import { DIDService } from "../services/did.js";
+import axios from "axios";
 
 const pubSubClient = RedisClient.getPubSubInstance();
 const redisClient = RedisClient.getInstance();
@@ -123,6 +124,49 @@ export const updateConversation = async (req, res, next) => {
       req.body,
     );
     res.status(200).json(conversation);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const refreshSummary = async (req, res, next) => {
+  const definition = req.app.get("runtimeDefinition");
+  const { id } = req.params;
+  try {
+    const didService = new DIDService(definition).setSession(req.session);
+    const userEncryptionDID = await didService.publicEncryptionDID();
+
+    const conversationService = new ConversationService(definition).setSession(
+      userEncryptionDID,
+    );
+    const conversation = await conversationService.getConversation(id);
+    if (!conversation) {
+      return res.status(404).json({ error: "Conversation not found" });
+    }
+
+    const response = await axios.post(
+      `${process.env.LLM_INDEXER_HOST}/chat/external`,
+      {
+        inputs: {
+          chat_history: conversation.messages,
+        },
+        prompt: `Given the following conversation titles, generate one and unique title.
+        The title should be clear, descriptive, and relevant to the topic at hand.
+        Write title from the chat_history in maximum 10 words.
+        Chat_history: {chat_history}
+        `,
+      },
+      {
+        responseType: "text",
+      },
+    );
+
+    const updated = await conversationService.updateConversation(id, {
+      sources: conversation.sources,
+      summary: response.data,
+    });
+
+    res.status(200).json(updated);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

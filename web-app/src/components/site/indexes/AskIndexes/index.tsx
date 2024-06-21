@@ -99,7 +99,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         if (!currentConv) {
           const response = await api!.createConversation({
             sources: [id],
-            summary: message,
+            summary: `New chat`,
           });
 
           currentConv = response;
@@ -292,7 +292,12 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     console.log("Received message from server", payload);
 
     if (payload.channel === "end") {
-      console.log("End of stream");
+      if (viewedConversation && viewedConversation.summary === `New Chat`) {
+        api!.getConversationWithSummary(viewedConversation.id).then((c) => {
+          setViewedConversation(c);
+        });
+      }
+
       setIsLoading(false);
       // scrollToBottom();
       return;
