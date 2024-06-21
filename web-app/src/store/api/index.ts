@@ -78,9 +78,13 @@ export const fetchIndex = createAsyncThunk(
     { dispatch, rejectWithValue },
   ) => {
     try {
-      let discoveryType = DiscoveryType.INDEX;
+      dispatch(
+        setViewType({
+          type: "default",
+          discoveryType: DiscoveryType.INDEX,
+        }),
+      );
       const index = await api.getIndex(indexID, {});
-
       if (index) {
         await dispatch(
           fetchDID({
@@ -89,20 +93,17 @@ export const fetchIndex = createAsyncThunk(
             ignoreDiscoveryType: true,
           }),
         ).unwrap();
-        await dispatch(fetchIndexItems({ indexID: index.id, api })).unwrap();
-      } else {
-        discoveryType = "unknown" as any;
-      }
 
-      dispatch(
-        setViewType({
-          type: "default",
-          discoveryType,
-        }),
-      );
+        try {
+          await dispatch(fetchIndexItems({ indexID: index.id, api })).unwrap();
+        } catch (err) {
+          console.error("Error fetching index items", err);
+        }
+      }
 
       return index;
     } catch (err: any) {
+      console.log("err41", err);
       return rejectWithValue(err.response.data);
     }
   },
