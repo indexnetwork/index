@@ -31,6 +31,7 @@ const API_ENDPOINTS = {
   LIST_CONVERSATIONS: "/conversations",
   CREATE_CONVERSATION: "/conversations",
   GET_CONVERSATION: "/conversations/:conversationId",
+  GET_CONVERSATION_WITH_SUMMARY: "/conversations/:conversationId/summary",
   DELETE_CONVERSATION: "/conversations/:conversationId",
   SEND_MESSAGE: "/conversations/:conversationId/messages",
   UPDATE_MESSAGE: "/conversations/:conversationId/messages/:messageId",
@@ -305,6 +306,21 @@ class ApiService {
   async getConversation(conversationId: string): Promise<any> {
     const response = await this.apiAxios.get<any>(
       API_ENDPOINTS.GET_CONVERSATION.replace(":conversationId", conversationId),
+    );
+
+    if (response.status !== 200) {
+      throw new Error("Failed to list conversations message");
+    }
+
+    return response.data;
+  }
+
+  async getConversationWithSummary(conversationId: string): Promise<any> {
+    const response = await this.apiAxios.get<any>(
+      API_ENDPOINTS.GET_CONVERSATION_WITH_SUMMARY.replace(
+        ":conversationId",
+        conversationId,
+      ),
     );
 
     if (response.status !== 200) {

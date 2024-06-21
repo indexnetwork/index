@@ -217,13 +217,13 @@ export class Agent {
         return formatChatHistory(inputs.chat_history);
       };
     }
-    const filterMultilineMetadata = (metadata) =>
+
+    const filterMultilineMetadata = (metadata: any) =>
       Object.fromEntries(
         Object.entries(metadata).filter(([key, value]) => {
           const result =
             typeof value === 'string' &&
             !(value.includes('\n') || value.toString().length > 256);
-          console.log(value.toString().length, result);
           return result;
         }),
       );
@@ -261,7 +261,7 @@ export class Agent {
             ...(inputs.chat_history
               ? {
                   chat_history: (input: any) =>
-                    formatChatHistory(input.chat_history),
+                    formatChatHistory(inputs.chat_history),
                 }
               : {}),
           },
@@ -279,8 +279,13 @@ export class Agent {
     ];
 
     const chain = RunnableSequence.from(answerChainSequence);
-    const { context, chat_history, ...filteredInputs } = inputs;
-    return await chain.stream(filteredInputs);
+
+    return await chain.stream({
+      ...inputs,
+      chat_history: inputs.chat_history
+        ? formatChatHistory(inputs.chat_history)
+        : undefined,
+    });
   }
 
   private async createRAGChain(
