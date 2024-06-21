@@ -2,6 +2,11 @@ import { useApp } from "@/context/AppContext";
 import Button from "components/base/Button";
 import moment from "moment";
 import { useRouter } from "next/navigation";
+import Row from "@/components/layout/base/Grid/Row";
+import Col from "@/components/layout/base/Grid/Col";
+import Flex from "@/components/layout/base/Grid/Flex";
+import Text from "@/components/base/Text";
+import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import HistoryItemOpsPopup from "./HistoryItemOpsPopup";
 
 type HistoryItemProps = {
@@ -24,25 +29,48 @@ const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
       onClick={() => {
         router.push(`/conversation/${item.id}`);
       }}
+      style={{
+        cursor: "pointer",
+      }}
+      className="card-item p-6"
     >
-      <div
-        style={{
-          borderRadius: "4px",
-          padding: "12px",
-          border: "1px solid var(--gray-2)",
-          height: "fit-content",
-          display: "flex",
-          flexDirection: "column",
-          gap: "4px",
-          cursor: "pointer",
-        }}
-      >
-        <div
-          style={{
-            alignSelf: "flex-end",
-            position: "absolute",
-          }}
-        >
+      <FlexRow justify={"between"} fullWidth>
+        <Col xs={10}>
+          <Flex
+            className={"idxflex-nowrap"}
+            alignitems={"top"}
+            flexdirection={"column"}
+          >
+            <Row>
+              <Text
+                style={{
+                  fontSize: "14px",
+                  fontWeight: "bold",
+                  margin: 0,
+                }}
+              >
+                {item.summary}
+              </Text>
+            </Row>
+            <Row className={"mt-3"}>
+              <Flex alignitems={"left"}>
+                <Col>
+                  <Text
+                    style={{
+                      fontSize: "12px",
+                      margin: 0,
+                    }}
+                  >
+                    {item?.createdAt
+                      ? `Updated ${moment(new Date(item.createdAt)).fromNow()}`
+                      : ""}
+                  </Text>
+                </Col>
+              </Flex>
+            </Row>
+          </Flex>
+        </Col>
+        <Col pullRight>
           <Button
             onClick={(e: any) => {
               e.stopPropagation();
@@ -57,29 +85,8 @@ const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
               }}
             />
           </Button>
-        </div>
-        <h2
-          style={{
-            fontSize: "14px",
-            fontWeight: "bold",
-            margin: 0,
-          }}
-        >
-          {item.summary}
-        </h2>
-
-        <p
-          style={{
-            fontSize: "12px",
-            margin: 0,
-          }}
-        >
-          {/* Last message 10 days ago */}
-          {item?.createdAt
-            ? `Updated ${moment(new Date(item.createdAt)).fromNow()}`
-            : ""}
-        </p>
-      </div>
+        </Col>
+      </FlexRow>
     </div>
   );
 };

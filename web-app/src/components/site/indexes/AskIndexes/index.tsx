@@ -292,10 +292,13 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     console.log("Received message from server", payload);
 
     if (payload.channel === "end") {
-      if (viewedConversation && viewedConversation.summary === `New Chat`) {
+      if (viewedConversation && viewedConversation.summary === `New chat`) {
         api!.getConversationWithSummary(viewedConversation.id).then((c) => {
-          viewedConversation.summary = c.summary;
-          setViewedConversation(viewedConversation);
+          setConversations(
+            conversations.map((i: any) =>
+              i.id === c.id ? { ...c, summary: c.summary } : i,
+            ),
+          );
         });
       }
 

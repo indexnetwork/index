@@ -31,7 +31,7 @@ const API_ENDPOINTS = {
   LIST_CONVERSATIONS: "/conversations",
   CREATE_CONVERSATION: "/conversations",
   GET_CONVERSATION: "/conversations/:conversationId",
-  GET_CONVERSATION_WITH_SUMMARY: "/conversations/:conversationId",
+  GET_CONVERSATION_WITH_SUMMARY: "/conversations/:conversationId/summary",
   DELETE_CONVERSATION: "/conversations/:conversationId",
   SEND_MESSAGE: "/conversations/:conversationId/messages",
   UPDATE_MESSAGE: "/conversations/:conversationId/messages/:messageId",
