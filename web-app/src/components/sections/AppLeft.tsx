@@ -1,5 +1,7 @@
 import { useApp } from "@/context/AppContext";
 import Freizeit from "@/fonts/loader";
+import { selectDID } from "@/store/slices/didSlice";
+import { useAppSelector } from "@/store/store";
 import cc from "classcat";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
@@ -14,7 +16,9 @@ import LoadingText from "../base/Loading";
 import IndexListSection from "./IndexList";
 
 const AppLeft = () => {
-  const { leftSidebarOpen, setLeftSidebarOpen, viewedProfile } = useApp();
+  const { leftSidebarOpen, setLeftSidebarOpen } = useApp();
+
+  const { data: viewedProfile } = useAppSelector(selectDID);
 
   return (
     <Col

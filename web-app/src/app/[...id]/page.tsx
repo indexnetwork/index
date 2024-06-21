@@ -1,6 +1,5 @@
 "use client";
 
-import { useApp } from "@/context/AppContext";
 import { useApi } from "@/context/APIContext";
 import { DiscoveryType } from "@/types";
 import DiscoveryLayout from "components/layout/site/DiscoveryLayout";
@@ -9,11 +8,17 @@ import UserConversationSection from "components/sections/UserConversation";
 import "./app.css";
 import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { useAppSelector } from "@/store/store";
+import { selectView } from "@/store/slices/appViewSlice";
+import { selectIndex } from "@/store/slices/indexSlice";
+import { selectDID } from "@/store/slices/didSlice";
 
 const Discovery = () => {
-  const { view } = useApp();
   const { api: apiService, ready: apiReady } = useApi();
   const { session } = useAuth();
+  const view = useAppSelector(selectView);
+  const index = useAppSelector(selectIndex);
+  const did = useAppSelector(selectDID);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -56,6 +61,11 @@ const Discovery = () => {
 
   return (
     <DiscoveryLayout>
+      {JSON.stringify(view)}
+      <br />
+      {JSON.stringify(index.data)}
+      <br />
+      {JSON.stringify(did.data)}
       {view.discoveryType === DiscoveryType.DID && <UserConversationSection />}
       {view.discoveryType === DiscoveryType.INDEX && (
         <IndexConversationSection />

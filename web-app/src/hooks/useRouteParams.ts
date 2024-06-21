@@ -25,5 +25,13 @@ export const useRouteParams = () => {
     ? path.replace("/conversation/", "")
     : null;
 
-  return { id, conversationId, isLanding, isConversation, isDID, isIndex };
+  return {
+    id,
+    conversationId,
+    path,
+    isLanding,
+    isConversation,
+    isDID,
+    isIndex,
+  };
 };

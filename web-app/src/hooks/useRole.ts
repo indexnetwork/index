@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useApp } from "@/context/AppContext";
+import { useAppSelector } from "@/store/store";
+import { selectIndex } from "@/store/slices/indexSlice";
 
 export enum UserRole {
   VIEWER = "viewer",
@@ -10,7 +12,7 @@ export enum UserRole {
 
 export const useRole = () => {
   const { status } = useAuth();
-  const { viewedIndex } = useApp();
+  const { data: viewedIndex } = useAppSelector(selectIndex);
 
   const role = useMemo(() => {
     if (status === AuthStatus.IDLE || status === AuthStatus.LOADING) {

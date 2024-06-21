@@ -23,6 +23,10 @@ import {
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
 import { CancelTokenSource } from "axios";
 import { INDEX_CREATED, trackEvent } from "@/services/tracker";
+import { fetchConversation } from "@/store/slices/conversationSlice";
+import { fetchIndex } from "@/store/slices/indexSlice";
+import { fetchDID } from "@/store/slices/didSlice";
+import { useAppDispatch } from "@/store/store";
 
 type AppContextProviderProps = {
   children: ReactNode;
@@ -95,11 +99,20 @@ export interface AppContextValue {
 export const AppContext = createContext<AppContextValue>({} as AppContextValue);
 
 export const AppContextProvider = ({ children }: AppContextProviderProps) => {
-  const { id, conversationId, isLanding, isDID, isIndex, isConversation } =
-    useRouteParams();
+  const {
+    id,
+    conversationId,
+    path,
+    isLanding,
+    isDID,
+    isIndex,
+    isConversation,
+  } = useRouteParams();
   const { api, ready: apiReady } = useApi();
   const { session } = useAuth();
   const router = useRouter();
+  const dispatch = useAppDispatch();
+
   const [indexes, setIndexes] = useState<Indexes[]>([]);
   const [viewedIndex, setViewedIndex] = useState<Indexes | undefined>();
   const [viewedConversation, setViewedConversation] = useState<
@@ -125,47 +138,113 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const isFetchingRef = useRef(false);
   const isFetchingConversationRef = useRef(false);
 
-  const [view, setView] = useState({} as any);
+  // useEffect(() => {
+  //   if (isConversation && conversationId) {
+  //     console.log("fetching conversation", conversationId);
+  //     fetchConversation(conversationId);
+  //   }
+  // }, [isConversation, apiReady]);
 
-  useEffect(() => {
-    if (isConversation && conversationId) {
-      console.log("fetching conversation", conversationId);
-      fetchConversation(conversationId);
+  // useEffect(() => {
+  //   console.log("setting app view", { isConversation, viewedConversation });
+  //   if (isConversation && viewedConversation) {
+  //     const source = viewedConversation.sources[0];
+  //     const discoveryType = source.includes("did:")
+  //       ? DiscoveryType.DID
+  //       : DiscoveryType.INDEX;
+  //     console.log("setting conversation view", source, discoveryType);
+  //     setView({
+  //       name: "conversation",
+  //       id: viewedConversation.id,
+  //       discoveryType,
+  //     });
+
+  //     if (discoveryType === DiscoveryType.INDEX) {
+  //       fetchIndex(source, {}).then((index) => {
+  //         console.log("setting viewed index", index);
+  //         setViewedIndex(index);
+  //       });
+  //     }
+  //   }
+
+  //   if (id) {
+  //     console.log("setting default view");
+  //     setView({
+  //       name: "default",
+  //       id,
+  //       discoveryType: isDID ? DiscoveryType.DID : DiscoveryType.INDEX,
+  //     });
+  //     setViewedConversation(undefined);
+  //   }
+  // }, [id, conversationId, isConversation, isDID, viewedConversation]);
+  //
+
+  const fetchAndStoreConversation = useCallback(async () => {
+    try {
+      if (!apiReady || !conversationId || !api) return;
+      if (isFetchingConversationRef.current) return;
+
+      isFetchingConversationRef.current = true;
+
+      await dispatch(fetchConversation({ cID: conversationId, api })).unwrap();
+
+      isFetchingConversationRef.current = false;
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
     }
-  }, [isConversation, apiReady]);
+  }, [dispatch, apiReady, api, conversationId]);
 
-  useEffect(() => {
-    console.log("setting app view", { isConversation, viewedConversation });
-    if (isConversation && viewedConversation) {
-      const source = viewedConversation.sources[0];
-      const discoveryType = source.includes("did:")
-        ? DiscoveryType.DID
-        : DiscoveryType.INDEX;
-      console.log("setting conversation view", source, discoveryType);
-      setView({
-        name: "conversation",
-        id: viewedConversation.id,
-        discoveryType,
-      });
+  const fetchAndStoreIndex = useCallback(
+    async (indexID: string) => {
+      try {
+        if (!apiReady || !api || !indexID) return;
+        if (isFetchingRef.current) return;
 
-      if (discoveryType === DiscoveryType.INDEX) {
-        fetchIndex(source, {}).then((index) => {
-          console.log("setting viewed index", index);
-          setViewedIndex(index);
-        });
+        isFetchingRef.current = true;
+
+        await dispatch(fetchIndex({ indexID, api })).unwrap();
+
+        isFetchingRef.current = false;
+      } catch (error) {
+        console.error("Error fetching index:", error);
       }
+    },
+    [dispatch, apiReady, api],
+  );
+
+  const fetchAndStoreDID = useCallback(
+    async (didID: string) => {
+      try {
+        if (!apiReady || !api || !didID) return;
+        if (isFetchingRef.current) return;
+
+        isFetchingRef.current = true;
+
+        await dispatch(fetchDID({ didID, api })).unwrap();
+
+        isFetchingRef.current = false;
+      } catch (error) {
+        console.error("Error fetching DID:", error);
+      }
+    },
+    [dispatch, apiReady, api],
+  );
+
+  useEffect(() => {
+    if (isLanding || !apiReady) return;
+
+    if (isConversation) {
+      fetchAndStoreConversation();
     }
 
-    if (id) {
-      console.log("setting default view");
-      setView({
-        name: "default",
-        id,
-        discoveryType: isDID ? DiscoveryType.DID : DiscoveryType.INDEX,
-      });
-      setViewedConversation(undefined);
+    if (isIndex && id) {
+      fetchAndStoreIndex(id);
     }
-  }, [id, conversationId, isConversation, isDID, viewedConversation]);
+
+    if (isDID && id) {
+      fetchAndStoreDID(id);
+    }
+  }, [path, apiReady, isLanding, isConversation, fetchAndStoreConversation]);
 
   const leftSectionIndexes = useMemo(() => {
     if (leftTabKey === IndexListTabKey.ALL) {
@@ -211,68 +290,60 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     [apiReady, api],
   );
 
-  const fetchIndex = useCallback(
-    async (
-      indexId: string,
-      {
-        cancelSource,
-      }: {
-        cancelSource?: CancelTokenSource;
-      },
-    ): Promise<any> => {
-      try {
-        if (!apiReady || !indexId) {
-          return;
-        }
+  // const fetchIndex = useCallback(
+  //   async (
+  //     indexId: string,
+  //     {
+  //       cancelSource,
+  //     }: {
+  //       cancelSource?: CancelTokenSource;
+  //     },
+  //   ): Promise<any> => {
+  //     try {
+  //       if (!apiReady || !indexId) {
+  //         return;
+  //       }
 
-        // if (viewedIndex?.id === id) return;
-        if (isFetchingRef.current) return;
+  //       // if (viewedIndex?.id === id) return;
+  //       if (isFetchingRef.current) return;
 
-        isFetchingRef.current = true;
+  //       isFetchingRef.current = true;
 
-        const index = await api!.getIndex(indexId, { cancelSource });
-        setViewedIndex(index);
+  //       const index = await api!.getIndex(indexId, { cancelSource });
+  //       setViewedIndex(index);
 
-        isFetchingRef.current = false;
-        return index;
-      } catch (error) {
-        console.error("Error fetching index", error);
-        toast.error("Error fetching index, please refresh the page");
-      }
-    },
-    [isIndex, apiReady, api],
-  );
+  //       isFetchingRef.current = false;
+  //       return index;
+  //     } catch (error) {
+  //       console.error("Error fetching index", error);
+  //       toast.error("Error fetching index, please refresh the page");
+  //     }
+  //   },
+  //   [isIndex, apiReady, api],
+  // );
 
-  const fetchConversation = useCallback(
-    async (cID: string): Promise<any> => {
-      try {
-        console.log(
-          `cID 61: ${cID}`,
-          isConversation,
-          isFetchingConversationRef.current,
-          !apiReady,
-          !isConversation,
-          !cID,
-        );
-        if (!apiReady || !isConversation || !cID) return;
-        // if (viewedIndex?.id === id) return;
-        console.log(`conversation8878:`, cID);
-        if (isFetchingConversationRef.current) return;
+  // const fetchConversation = useCallback(
+  //   async (cID: string): Promise<any> => {
+  //     try {
+  //       if (!apiReady || !isConversation || !cID) return;
+  //       // if (viewedIndex?.id === id) return;
+  //       console.log(`conversation8878:`, cID);
+  //       if (isFetchingConversationRef.current) return;
 
-        isFetchingConversationRef.current = true;
+  //       isFetchingConversationRef.current = true;
 
-        const conversation = await api!.getConversation(cID);
-        console.log(`conversation888:`, conversation);
-        setViewedConversation(conversation);
-        isFetchingConversationRef.current = false;
-        return conversation;
-      } catch (error) {
-        console.error("Error fetching index", error);
-        toast.error("Error fetching index, please refresh the page");
-      }
-    },
-    [isConversation, apiReady, api],
-  );
+  //       const conversation = await api!.getConversation(cID);
+  //       console.log(`conversation888:`, conversation);
+  //       setViewedConversation(conversation);
+  //       isFetchingConversationRef.current = false;
+  //       return conversation;
+  //     } catch (error) {
+  //       console.error("Error fetching index", error);
+  //       toast.error("Error fetching index, please refresh the page");
+  //     }
+  //   },
+  //   [isConversation, apiReady, api],
+  // );
 
   const fetchIndexWithCreator = useCallback(
     async (
@@ -418,56 +489,56 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     handleUserProfile();
   }, [handleUserProfile]);
 
-  const handleUserProfileChange = useCallback(async () => {
-    if (isLanding) return;
-    if (viewedProfile && isIndex) return;
-    // if (!id) return;
+  // const handleUserProfileChange = useCallback(async () => {
+  //   if (isLanding) return;
+  //   if (viewedProfile && isIndex) return;
+  //   // if (!id) return;
 
-    let targetDID;
-    if (id && isIndex && !viewedProfile) {
-      if (viewedIndex) {
-        targetDID = viewedIndex?.controllerDID?.id;
-      } else {
-        if (!id) return;
-        fetchIndex(id, {}).then((index) => {
-          if (index) {
-            targetDID = index?.controllerDID?.id;
-          }
-        });
-      }
-    }
+  //   let targetDID;
+  //   if (id && isIndex && !viewedProfile) {
+  //     if (viewedIndex) {
+  //       targetDID = viewedIndex?.controllerDID?.id;
+  //     } else {
+  //       if (!id) return;
+  //       fetchIndex(id, {}).then((index) => {
+  //         if (index) {
+  //           targetDID = index?.controllerDID?.id;
+  //         }
+  //       });
+  //     }
+  //   }
 
-    if (isConversation) {
-      if (viewedConversation && conversationId === viewedConversation.id) {
-        targetDID = viewedConversation?.controllerDID?.id;
-      }
-    }
+  //   if (isConversation) {
+  //     if (viewedConversation && conversationId === viewedConversation.id) {
+  //       targetDID = viewedConversation?.controllerDID?.id;
+  //     }
+  //   }
 
-    if (isDID) {
-      setViewedConversation(undefined);
-      targetDID = id;
-    }
+  //   if (isDID) {
+  //     setViewedConversation(undefined);
+  //     targetDID = id;
+  //   }
 
-    if (targetDID && targetDID !== viewedProfile?.id) {
-      const profile = await fetchProfile(targetDID);
-      setViewedProfile(profile);
-    }
-  }, [
-    isLanding,
-    isIndex,
-    id,
-    conversationId,
-    fetchProfile,
-    isDID,
-    isConversation,
-    session,
-    viewedIndex,
-    viewedConversation,
-  ]); // eslint-disable-line
+  //   if (targetDID && targetDID !== viewedProfile?.id) {
+  //     const profile = await fetchProfile(targetDID);
+  //     setViewedProfile(profile);
+  //   }
+  // }, [
+  //   isLanding,
+  //   isIndex,
+  //   id,
+  //   conversationId,
+  //   fetchProfile,
+  //   isDID,
+  //   isConversation,
+  //   session,
+  //   viewedIndex,
+  //   viewedConversation,
+  // ]); // eslint-disable-line
 
-  useEffect(() => {
-    handleUserProfileChange();
-  }, [handleUserProfileChange]);
+  // useEffect(() => {
+  //   handleUserProfileChange();
+  // }, [handleUserProfileChange]);
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
       if (!apiReady || !viewedIndex || conditions.length === 0) return;
@@ -510,7 +581,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, [viewedProfile, fetchIndexes]);
 
   const contextValue: AppContextValue = {
-    view,
     indexes,
     leftSectionIndexes,
     setIndexes,
@@ -550,7 +620,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     createConditions,
     handleCreatePublic,
     deleteConversation,
-    fetchConversation,
   };
 
   return (

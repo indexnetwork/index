@@ -30,6 +30,9 @@ import { maskDID } from "utils/helper";
 import { generateId } from "ai";
 import { useRouter } from "next/navigation";
 import { API_ENDPOINTS } from "@/utils/constants";
+import { useAppSelector } from "@/store/store";
+import { selectView } from "@/store/slices/appViewSlice";
+import { setConversation } from "@/store/slices/conversationSlice";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -50,16 +53,15 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     leftTabKey,
     viewedProfile,
     viewedIndex,
-    setViewedConversation,
-    viewedConversation,
     conversations,
     setConversations,
   } = useApp();
   const { isIndex, conversationId, id } = useRouteParams();
-  const { view } = useApp();
   const { ready: apiReady, api } = useApi();
-
   const router = useRouter();
+  const viewedConversation = useAppSelector((state) => state.conversation.data);
+  const view = useAppSelector(selectView);
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [stoppedMessages, setStoppedMessages] = useState<string[]>([]);
   const [deletedMessages, setDeletedMessages] = useState<string[]>([]);
@@ -84,7 +86,24 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     }
   }, [apiReady, api, id, isIndex]);
 
-  const sendMessage = useCallback(
+  useEffect(() => {
+    if (viewedConversation && viewedConversation.messages) {
+      console.log("viewedConversation.messages", viewedConversation.messages);
+      setMessages(viewedConversation.messages);
+    } else {
+      console.log("reset set messages", viewedConversation);
+      setMessages([]);
+    }
+  }, [conversationId, viewedConversation]);
+
+  useEffect(() => {
+    if (view.type !== "conversation") {
+      console.log("reset set messages view", view);
+      setMessages([]);
+    }
+  }, [view]);
+
+  const handleSendMessage = useCallback(
     async (message: string) => {
       if (!apiReady || isLoading) return;
       try {
@@ -112,7 +131,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           role: "user",
         });
         currentConv.messages = [messageResp];
-        setViewedConversation(currentConv);
+        setConversation(currentConv);
 
         router.push(`/conversation/${currentConv.id}`);
       } catch (error) {
@@ -125,83 +144,65 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       id,
       router,
       setConversations,
-      setViewedConversation,
       conversations,
       api,
       isLoading,
     ],
   );
 
-  const updateMessage = useCallback(
-    async (messageId: string, message: string) => {
-      if (!viewedConversation) return;
-      if (!apiReady || isLoading) return;
-      try {
-        console.log("update message", messages, viewedConversation);
+  // const updateMessage = useCallback(
+  //   async (messageId: string, message: string) => {
+  //     if (!viewedConversation) return;
+  //     if (!apiReady || isLoading) return;
+  //     try {
+  //       console.log("update message", messages, viewedConversation);
 
-        const newMessage: Message = {
-          id: generateId(),
-          role: "user",
-          content: message,
-        };
-        setMessages((prevMessages) => {
-          return [...prevMessages, newMessage];
-        });
+  //       const newMessage: Message = {
+  //         id: generateId(),
+  //         role: "user",
+  //         content: message,
+  //       };
+  //       setMessages((prevMessages) => {
+  //         return [...prevMessages, newMessage];
+  //       });
 
-        const messageResp = await api!.updateMessage(
-          viewedConversation.id,
-          messageId,
-          {
-            content: message,
-            role: "user",
-          },
-          true,
-        );
-        viewedConversation.messages.push(messageResp);
-        setMessages((prevMessages) => {
-          return prevMessages.map((msg) => {
-            if (msg.id === messageId) {
-              return messageResp;
-            }
-            return msg;
-          });
-        });
+  //       const messageResp = await api!.updateMessage(
+  //         viewedConversation.id,
+  //         messageId,
+  //         {
+  //           content: message,
+  //           role: "user",
+  //         },
+  //         true,
+  //       );
+  //       viewedConversation.messages.push(messageResp);
+  //       setMessages((prevMessages) => {
+  //         return prevMessages.map((msg) => {
+  //           if (msg.id === messageId) {
+  //             return messageResp;
+  //           }
+  //           return msg;
+  //         });
+  //       });
 
-        setViewedConversation(viewedConversation);
-      } catch (e) {
-        console.error("Error sending message", e);
-      }
-    },
-    [
-      apiReady,
-      api,
-      viewedConversation,
-      messages,
-      setViewedConversation,
-      isLoading,
-    ],
-  );
+  //       setViewedConversation(viewedConversation);
+  //     } catch (e) {
+  //       console.error("Error sending message", e);
+  //     }
+  //   },
+  //   [
+  //     apiReady,
+  //     api,
+  //     viewedConversation,
+  //     messages,
+  //     setViewedConversation,
+  //     isLoading,
+  //   ],
+  // );
 
   useEffect(() => {
     fetchDefaultQuestions();
   }, [fetchDefaultQuestions]);
-
-  useEffect(() => {
-    if (viewedConversation && viewedConversation.messages) {
-      console.log("viewedConversation.messages", viewedConversation.messages);
-      setMessages(viewedConversation.messages);
-    } else {
-      console.log("reset set messages", viewedConversation);
-      setMessages([]);
-    }
-  }, [conversationId, viewedConversation]);
-
-  useEffect(() => {
-    if (view.name === "default") {
-      console.log("reset set messages view", view);
-      setMessages([]);
-    }
-  }, [view]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
@@ -209,70 +210,70 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     setEditInput(message.content);
   };
 
-  const handleSaveEdit = useCallback(async () => {
-    if (editingMessage) {
-      try {
-        const messagesBeforeEdit = messages.slice(0, editingIndex);
-        const messagesAfterEdit = messages.slice(editingIndex);
+  // const handleSaveEdit = useCallback(async () => {
+  //   if (editingMessage) {
+  //     try {
+  //       const messagesBeforeEdit = messages.slice(0, editingIndex);
+  //       const messagesAfterEdit = messages.slice(editingIndex);
 
-        console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
-        if (Array.isArray(messagesAfterEdit) && messagesAfterEdit.length > 0) {
-          const mIds = messagesAfterEdit.map((m) => m.id);
-          setDeletedMessages((prev) => {
-            return [...prev, ...mIds];
-          });
-        }
+  //       console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
+  //       if (Array.isArray(messagesAfterEdit) && messagesAfterEdit.length > 0) {
+  //         const mIds = messagesAfterEdit.map((m) => m.id);
+  //         setDeletedMessages((prev) => {
+  //           return [...prev, ...mIds];
+  //         });
+  //       }
 
-        const newMessage = {
-          ...editingMessage,
-          content: editInput,
-        };
+  //       const newMessage = {
+  //         ...editingMessage,
+  //         content: editInput,
+  //       };
 
-        setEditingMessage(undefined);
-        setEditInput("");
-        setIsLoading(false);
-        setMessages([...messagesBeforeEdit]);
-        console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
+  //       setEditingMessage(undefined);
+  //       setEditInput("");
+  //       setIsLoading(false);
+  //       setMessages([...messagesBeforeEdit]);
+  //       console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
 
-        await updateMessage(editingMessage.id, editInput); // TODO
-      } catch (error: any) {
-        console.error("An error occurred:", error.message);
-      }
-    }
-  }, [editingMessage, editInput, messages, editingIndex, updateMessage]);
+  //       await updateMessage(editingMessage.id, editInput); // TODO
+  //     } catch (error: any) {
+  //       console.error("An error occurred:", error.message);
+  //     }
+  //   }
+  // }, [editingMessage, editInput, messages, editingIndex, updateMessage]);
 
-  const regenerateMessage = async () => {
-    if (!apiReady || isLoading || !viewedConversation) return;
-    try {
-      const lastUserMessage = messages.findLast((m) => m.role === "user");
-      const lastAssistantMessage = messages.findLast(
-        (m) => m.name === "basic_assistant",
-      );
-      if (!lastUserMessage) return;
+  // const regenerateMessage = async () => {
+  //   if (!apiReady || isLoading || !viewedConversation) return;
+  //   try {
+  //     const lastUserMessage = messages.findLast((m) => m.role === "user");
+  //     const lastAssistantMessage = messages.findLast(
+  //       (m) => m.name === "basic_assistant",
+  //     );
+  //     if (!lastUserMessage) return;
 
-      setIsLoading(true);
+  //     setIsLoading(true);
 
-      if (lastAssistantMessage) {
-        const messagesBeforeEdit = messages.slice(
-          0,
-          messages.indexOf(lastAssistantMessage),
-        );
+  //     if (lastAssistantMessage) {
+  //       const messagesBeforeEdit = messages.slice(
+  //         0,
+  //         messages.indexOf(lastAssistantMessage),
+  //       );
 
-        setMessages(messagesBeforeEdit);
-      }
+  //       setMessages(messagesBeforeEdit);
+  //     }
 
-      const regeneratedMessage = await api!.updateMessage(
-        viewedConversation.id,
-        lastUserMessage.id,
-        { role: lastUserMessage.role, content: lastUserMessage.content },
-        true,
-      );
+  //     const regeneratedMessage = await api!.updateMessage(
+  //       viewedConversation.id,
+  //       lastUserMessage.id,
+  //       { role: lastUserMessage.role, content: lastUserMessage.content },
+  //       true,
+  //     );
 
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Error sending message", error);
-    }
-  };
+  //     setIsLoading(false);
+  //   } catch (error) {
+  //     console.error("Error sending message", error);
+  //   }
+  // };
 
   const getChatContextMessage = (): string => {
     if (viewedIndex && isIndex) {
@@ -440,9 +441,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                   editingMessage={editingMessage}
                   setEditInput={setEditInput}
                   editInput={editInput}
-                  handleSaveEdit={handleSaveEdit}
+                  // handleSaveEdit={handleSaveEdit}
                   editingIndex={editingIndex}
-                  regenerate={regenerateMessage}
+                  // regenerate={regenerateMessage}
                 />
                 <div ref={bottomRef} />
                 <ChatScrollAnchor trackVisibility={isLoading} />
@@ -481,7 +482,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           <ChatPanel
             isLoading={isLoading}
             stop={stop}
-            reload={regenerateMessage}
+            // reload={regenerateMessage}
             // reload={reload}
             messages={messages}
           />
@@ -491,7 +492,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
             <AskInput
               contextMessage={getChatContextMessage()}
               onSubmit={async (value) => {
-                sendMessage(value);
+                handleSendMessage(value);
                 trackEvent(CHAT_STARTED, {
                   type: view.discoveryType,
                 });

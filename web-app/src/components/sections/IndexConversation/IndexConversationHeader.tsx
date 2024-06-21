@@ -22,6 +22,8 @@ import toast from "react-hot-toast";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
 import { useIndexConversation } from "./IndexConversationContext";
+import { useAppSelector } from "@/store/store";
+import { selectIndex } from "@/store/slices/indexSlice";
 
 export const IndexConversationHeader: FC = () => {
   const { isConversation } = useRouteParams();
@@ -31,15 +33,11 @@ export const IndexConversationHeader: FC = () => {
   const router = useRouter();
   const { loading: indexLoading } = useIndexConversation();
 
+  const { data: viewedIndex } = useAppSelector(selectIndex);
+
   const [titleLoading, setTitleLoading] = useState(false);
-  const {
-    viewedIndex,
-    setViewedIndex,
-    viewedProfile,
-    indexes,
-    setIndexes,
-    fetchIndexes,
-  } = useApp();
+  const { setViewedIndex, viewedProfile, indexes, setIndexes, fetchIndexes } =
+    useApp();
 
   const handleTitleChange = useCallback(
     async (title: string) => {
