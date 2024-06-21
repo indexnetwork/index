@@ -11,6 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useAppSelector } from "@/store/store";
 import { selectView } from "@/store/slices/appViewSlice";
 import { selectIndex } from "@/store/slices/indexSlice";
+import { selectConversation } from "@/store/slices/conversationSlice";
 import { selectDID } from "@/store/slices/didSlice";
 
 const Discovery = () => {
@@ -19,6 +20,7 @@ const Discovery = () => {
   const view = useAppSelector(selectView);
   const index = useAppSelector(selectIndex);
   const did = useAppSelector(selectDID);
+  const conversation = useAppSelector(selectConversation);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -46,12 +48,10 @@ const Discovery = () => {
 
       if (isMainnet) {
         apiService?.starIndex(
-          session.did.parent,
           "kjzl6kcym7w8yanw06ihwgpo49rl37g6eq4xc753g5phjs5f2vjcmcp3vvuhhkk",
           true,
         );
         apiService?.starIndex(
-          session.did.parent,
           "kjzl6kcym7w8y88qolfxxr74n51tb91xi36flwrxwah9yt5q8y0hh2odx96etmj",
           true,
         );
@@ -66,6 +66,8 @@ const Discovery = () => {
       {JSON.stringify(index.data)}
       <br />
       {JSON.stringify(did.data)}
+      <br />
+      {JSON.stringify(conversation.data?.sources[0])}
       {view.discoveryType === DiscoveryType.DID && <UserConversationSection />}
       {view.discoveryType === DiscoveryType.INDEX && (
         <IndexConversationSection />

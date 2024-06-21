@@ -7,6 +7,7 @@ import { setViewType } from "./appViewSlice";
 type FetchDIDPayload = {
   didID: string;
   api: ApiService;
+  ignoreDiscoveryType?: boolean;
 };
 
 type FetchDIDIndexesPayload = {
@@ -21,24 +22,26 @@ type FetchDIDConversationsPayload = {
 
 export const fetchDID = createAsyncThunk(
   "did/fetchDid",
-  async ({ didID, api }: FetchDIDPayload, { dispatch, rejectWithValue }) => {
+  async (
+    { didID, api, ignoreDiscoveryType }: FetchDIDPayload,
+    { dispatch, rejectWithValue },
+  ) => {
     try {
       const did = await api.getProfile(didID);
-      let discoveryType = "unknown";
 
       if (did) {
-        discoveryType = DiscoveryType.DID;
+        if (!ignoreDiscoveryType) {
+          dispatch(
+            setViewType({
+              type: "default",
+              discoveryType: DiscoveryType.DID,
+            }),
+          );
+        }
 
         await dispatch(fetchDIDIndexes({ didID, api })).unwrap();
         await dispatch(fetchDIDConversations({ didID, api })).unwrap();
       }
-
-      dispatch(
-        setViewType({
-          type: "default",
-          discoveryType,
-        }),
-      );
 
       return did;
     } catch (err: any) {

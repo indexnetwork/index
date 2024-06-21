@@ -1,7 +1,11 @@
 import { useApi } from "@/context/APIContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
-import { DiscoveryType } from "@/types";
+import { INDEX_CREATED, trackEvent } from "@/services/tracker";
+import { fetchConversation, fetchIndex } from "@/store/api";
+import { fetchDID } from "@/store/slices/didSlice";
+import { useAppDispatch } from "@/store/store";
+import { CancelTokenSource } from "axios";
 import { useRouter } from "next/navigation";
 import {
   ReactNode,
@@ -21,12 +25,6 @@ import {
   Users,
 } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
-import { CancelTokenSource } from "axios";
-import { INDEX_CREATED, trackEvent } from "@/services/tracker";
-import { fetchConversation } from "@/store/slices/conversationSlice";
-import { fetchIndex } from "@/store/slices/indexSlice";
-import { fetchDID } from "@/store/slices/didSlice";
-import { useAppDispatch } from "@/store/store";
 
 type AppContextProviderProps = {
   children: ReactNode;
@@ -42,7 +40,6 @@ export interface AppContextValue {
   indexes: Indexes[];
   leftSectionIndexes: Indexes[];
   loading: boolean;
-  view: any;
   setIndexes: (indexes: Indexes[]) => void;
   fetchIndexes: (did: string) => void;
   setCreateModalVisible: (visible: boolean) => void;
@@ -70,15 +67,6 @@ export interface AppContextValue {
   conversations: Conversation[] | [];
   setConversations: (conversations: Conversation[] | []) => void;
   fetchProfile: (did: string) => void;
-  fetchConversation: (cID: string) => Promise<void>;
-  fetchIndex: (
-    indexId: string,
-    {
-      cancelSource,
-    }: {
-      cancelSource?: CancelTokenSource;
-    },
-  ) => Promise<any>;
   fetchIndexWithCreator: (
     indexId: string,
     {
@@ -137,6 +125,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
   const isFetchingRef = useRef(false);
   const isFetchingConversationRef = useRef(false);
+  const isFetchingDIDRef = useRef(false);
 
   // useEffect(() => {
   //   if (isConversation && conversationId) {
@@ -216,13 +205,13 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     async (didID: string) => {
       try {
         if (!apiReady || !api || !didID) return;
-        if (isFetchingRef.current) return;
+        if (isFetchingDIDRef.current) return;
 
-        isFetchingRef.current = true;
+        isFetchingDIDRef.current = true;
 
         await dispatch(fetchDID({ didID, api })).unwrap();
 
-        isFetchingRef.current = false;
+        isFetchingDIDRef.current = false;
       } catch (error) {
         console.error("Error fetching DID:", error);
       }
@@ -234,14 +223,17 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     if (isLanding || !apiReady) return;
 
     if (isConversation) {
+      console.log("fetching conversation");
       fetchAndStoreConversation();
     }
 
     if (isIndex && id) {
+      console.log("fetching index", id);
       fetchAndStoreIndex(id);
     }
 
     if (isDID && id) {
+      console.log("fetching DID", id);
       fetchAndStoreDID(id);
     }
   }, [path, apiReady, isLanding, isConversation, fetchAndStoreConversation]);
@@ -610,7 +602,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     updateUserIndexState,
     updateIndex,
     fetchProfile,
-    fetchIndex,
     fetchIndexWithCreator,
     handleCreate,
     loading,
