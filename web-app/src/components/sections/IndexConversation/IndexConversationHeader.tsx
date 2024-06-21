@@ -22,11 +22,12 @@ import toast from "react-hot-toast";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
 import { useIndexConversation } from "./IndexConversationContext";
-import { useAppSelector } from "@/store/store";
-import { selectIndex } from "@/store/slices/indexSlice";
+import { useAppDispatch, useAppSelector } from "@/store/store";
+import { selectIndex, toggleUserIndex } from "@/store/slices/indexSlice";
 
 export const IndexConversationHeader: FC = () => {
   const { isConversation } = useRouteParams();
+  const dispatch = useAppDispatch();
   const { isOwner } = useRole();
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
@@ -38,6 +39,24 @@ export const IndexConversationHeader: FC = () => {
   const [titleLoading, setTitleLoading] = useState(false);
   const { setViewedIndex, viewedProfile, indexes, setIndexes, fetchIndexes } =
     useApp();
+
+  const handleIndexToggle = useCallback(
+    (toggleType: "own" | "star") => {
+      if (!api) return;
+      dispatch(
+        toggleUserIndex({
+          indexID: viewedIndex?.id,
+          api,
+          toggleType,
+          value:
+            toggleType === "star"
+              ? !viewedIndex?.did?.starred
+              : !viewedIndex?.did?.owned,
+        }),
+      );
+    },
+    [api, viewedIndex, dispatch],
+  );
 
   const handleTitleChange = useCallback(
     async (title: string) => {
@@ -68,48 +87,48 @@ export const IndexConversationHeader: FC = () => {
     [api, viewedIndex, indexes, setIndexes, apiReady, setViewedIndex],
   );
 
-  const handleUserIndexToggle = useCallback(
-    async (type: string, value: boolean) => {
-      if (!apiReady || !viewedIndex || !viewedProfile || !session) return;
-      let updatedIndex: Indexes;
+  // const handleUserIndexToggle = useCallback(
+  //   async (type: string, value: boolean) => {
+  //     if (!apiReady || !viewedIndex || !viewedProfile || !session) return;
+  //     let updatedIndex: Indexes;
 
-      try {
-        if (type === "star") {
-          await api!.starIndex(session!.did.parent, viewedIndex.id, value);
-          updatedIndex = {
-            ...viewedIndex,
-            did: { ...viewedIndex.did, starred: value },
-          };
-          setViewedIndex(updatedIndex);
-          toast.success(
-            `Index ${value ? "added to" : "removed from"} starred indexes list`,
-          );
-          trackEvent(ITEM_STARRED);
-        } else {
-          await api!.ownIndex(session!.did.parent, viewedIndex.id, value);
-          if (value) {
-            updatedIndex = {
-              ...viewedIndex,
-              did: { ...viewedIndex.did, owned: value },
-            };
-            setViewedIndex(updatedIndex);
-          } else {
-            router.push(`/${viewedProfile.id}`);
-          }
-          toast.success(
-            `Index ${value ? "added to" : "removed from"} your indexes list`,
-          );
-        }
-      } catch (error) {
-        console.error("Error updating index", error);
-        toast.error("Error updating index");
-        return;
-      }
+  //     try {
+  //       if (type === "star") {
+  //         await api!.starIndex(viewedIndex.id, value);
+  //         updatedIndex = {
+  //           ...viewedIndex,
+  //           did: { ...viewedIndex.did, starred: value },
+  //         };
+  //         setViewedIndex(updatedIndex);
+  //         toast.success(
+  //           `Index ${value ? "added to" : "removed from"} starred indexes list`,
+  //         );
+  //         trackEvent(ITEM_STARRED);
+  //       } else {
+  //         await api!.ownIndex(viewedIndex.id, value);
+  //         if (value) {
+  //           updatedIndex = {
+  //             ...viewedIndex,
+  //             did: { ...viewedIndex.did, owned: value },
+  //           };
+  //           setViewedIndex(updatedIndex);
+  //         } else {
+  //           router.push(`/${viewedProfile.id}`);
+  //         }
+  //         toast.success(
+  //           `Index ${value ? "added to" : "removed from"} your indexes list`,
+  //         );
+  //       }
+  //     } catch (error) {
+  //       console.error("Error updating index", error);
+  //       toast.error("Error updating index");
+  //       return;
+  //     }
 
-      fetchIndexes(viewedProfile.id);
-    },
-    [api, session, viewedIndex, apiReady, setViewedIndex, indexes, setIndexes],
-  );
+  //     fetchIndexes(viewedProfile.id);
+  //   },
+  //   [api, session, viewedIndex, apiReady, setViewedIndex, indexes, setIndexes],
+  // );
 
   return (
     <div
@@ -173,9 +192,9 @@ export const IndexConversationHeader: FC = () => {
               <Button
                 iconHover
                 theme="clear"
-                onClick={() =>
-                  handleUserIndexToggle("star", !viewedIndex?.did?.starred)
-                }
+                onClick={() => {
+                  handleIndexToggle("star");
+                }}
                 borderless
               >
                 <IconStar
@@ -193,9 +212,9 @@ export const IndexConversationHeader: FC = () => {
           <Button iconHover theme="clear" borderless>
             <IndexOperationsPopup
               index={viewedIndex}
-              userIndexToggle={() =>
-                handleUserIndexToggle("own", !viewedIndex?.did.owned)
-              }
+              userIndexToggle={() => {
+                handleIndexToggle("own");
+              }}
             ></IndexOperationsPopup>
           </Button>
         </Col>

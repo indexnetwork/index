@@ -82,7 +82,14 @@ const didSlice = createSlice({
     error: null,
   },
   reducers: {
-    // add regular reducers here if necessary
+    updateDidIndex: (state, action) => {
+      const index = state.indexes.find(
+        (idx) => idx.id === action.payload.indexID,
+      );
+      if (index) {
+        Object.assign(index, action.payload.updatedIndex);
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -124,4 +131,6 @@ const didSlice = createSlice({
 
 export const selectDID = (state: any) => state.did;
 export const selectIndexes = (state: any) => state.did.indexes;
+export const { updateDidIndex } = didSlice.actions;
+
 export default didSlice.reducer;
