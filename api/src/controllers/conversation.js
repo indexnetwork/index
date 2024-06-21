@@ -152,7 +152,7 @@ export const refreshSummary = async (req, res, next) => {
         },
         prompt: `Given the following conversation titles, generate one and unique title.
         The title should be clear, descriptive, and relevant to the topic at hand.
-        Write title from the chat_history in maximum 10 words. Dont add "title" prefixes.
+        Write title from the chat_history in maximum 10 words. Dont add "title" or "conversation", just use content.
         Chat_history: {chat_history}
         `,
       },
