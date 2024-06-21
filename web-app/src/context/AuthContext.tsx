@@ -31,6 +31,7 @@ export interface AuthContextType {
   status: AuthStatus;
   setStatus: (status: AuthStatus) => void;
   session?: DIDSession;
+  setSession: (session: DIDSession) => void;
   userDID?: string;
   isLoading?: boolean;
 }
@@ -41,6 +42,7 @@ const defaultAuthContext = {
   status: AuthStatus.IDLE,
   setStatus: () => {},
   session: undefined,
+  setSession: undefined,
   userDID: undefined,
   isLoading: false,
 };
@@ -183,6 +185,7 @@ export const AuthProvider = ({ children }: any) => {
         status,
         setStatus,
         session,
+        setSession,
         userDID,
         isLoading,
       }}

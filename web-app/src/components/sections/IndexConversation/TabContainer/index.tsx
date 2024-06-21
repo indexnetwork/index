@@ -31,7 +31,7 @@ const TAB_TITLES = {
 export default function TabContainer() {
   const [tabKey, setTabKey] = useState<string>(TabKey.Chat);
 
-  const { id, isIndex, isConversation } = useRouteParams();
+  const { id, conversationId } = useRouteParams();
   const { fetchDataForNewRoute } = useOrderedFetch();
   const { itemsState, loading } = useIndexConversation();
   const { viewedIndex, viewedConversation } = useApp();
@@ -50,11 +50,22 @@ export default function TabContainer() {
     }
   }, [viewedIndex]);
 
-  useEffect(() => {
-    if (!id) return;
+  // useEffect(() => {
+  //   console.log("88 id", id, conversationId, viewedConversation);
+  //   if (!id && !conversationId) return;
 
-    fetchDataForNewRoute(id);
-  }, [id, fetchDataForNewRoute]);
+  //   let targetID = id;
+
+  //   if (conversationId && viewedConversation?.sources[0]) {
+  //     targetID = viewedConversation?.sources[0];
+  //   }
+
+  //   console.log("targetID", id, conversationId, targetID);
+
+  //   if (!targetID) return;
+
+  //   fetchDataForNewRoute(targetID);
+  // }, [id, conversationId, fetchDataForNewRoute, viewedConversation]);
 
   const renderTabContent = useCallback(() => {
     switch (tabKey) {

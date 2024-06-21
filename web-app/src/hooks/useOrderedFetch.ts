@@ -3,12 +3,14 @@ import { useApp } from "@/context/AppContext";
 import { useIndexConversation } from "@/components/sections/IndexConversation/IndexConversationContext";
 import axios, { CancelTokenSource } from "axios";
 import { useApi } from "@/context/APIContext";
+import { useRouteParams } from "./useRouteParams";
 
 export const useOrderedFetch = () => {
   const { fetchIndex, fetchIndexWithCreator } = useApp();
   const { fetchIndexItems, setLoading } = useIndexConversation();
   const cancelSourceRef = useRef<CancelTokenSource | null>(null);
   const { ready: apiReady } = useApi();
+  const { isConversation, conversationId } = useRouteParams();
 
   const fetchDataForNewRoute = useCallback(
     async (id: string) => {
@@ -18,6 +20,15 @@ export const useOrderedFetch = () => {
       if (!apiReady) return;
       cancelSourceRef.current = axios.CancelToken.source();
       const cancelSource = cancelSourceRef.current;
+
+      console.log("66 Fetching data for new route");
+
+      console.log(
+        "67 isConversation",
+        isConversation,
+        "conversationId",
+        conversationId,
+      );
 
       try {
         await fetchIndex(id, { cancelSource });
@@ -34,7 +45,15 @@ export const useOrderedFetch = () => {
         setLoading(false);
       }
     },
-    [fetchIndex, fetchIndexWithCreator, fetchIndexItems, setLoading],
+    [
+      fetchIndex,
+      fetchIndexWithCreator,
+      apiReady,
+      fetchIndexItems,
+      setLoading,
+      isConversation,
+      conversationId,
+    ],
   );
 
   useEffect(() => {

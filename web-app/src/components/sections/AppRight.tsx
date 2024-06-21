@@ -2,6 +2,8 @@ import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
 import { useApp } from "@/context/AppContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import { selectDID } from "@/store/slices/didSlice";
+import { useAppSelector } from "@/store/store";
 import cc from "classcat";
 import Button from "components/base/Button";
 import IconClose from "components/base/Icon/IconClose";
@@ -14,7 +16,6 @@ import NewChatButton from "./NewChatButton";
 
 const AppRight = () => {
   const {
-    conversations,
     setRightSidebarOpen,
     rightSidebarOpen,
     rightTabKey,
@@ -24,6 +25,7 @@ const AppRight = () => {
   } = useApp();
 
   const { isConversation } = useRouteParams();
+  const { conversations } = useAppSelector(selectDID);
 
   const router = useRouter();
 

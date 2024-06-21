@@ -192,11 +192,12 @@ class ApiService {
     return data;
   }
 
-  async starIndex(did: string, indexId: string, add: boolean) {
-    const url = API_ENDPOINTS.STAR_INDEX.replace(":did", did).replace(
-      ":indexId",
-      indexId,
-    );
+  async starIndex(indexId: string, add: boolean) {
+    if (!this.session) return;
+    const url = API_ENDPOINTS.STAR_INDEX.replace(
+      ":did",
+      this.session?.did.parent,
+    ).replace(":indexId", indexId);
 
     if (add) {
       const { data } = await this.apiAxios.put(url);
@@ -205,11 +206,12 @@ class ApiService {
     const { data } = await this.apiAxios.delete(url);
     return data;
   }
-  async ownIndex(did: string, indexId: string, add: boolean) {
-    const url = API_ENDPOINTS.OWN_INDEX.replace(":did", did).replace(
-      ":indexId",
-      indexId,
-    );
+  async ownIndex(indexId: string, add: boolean) {
+    if (!this.session) return;
+    const url = API_ENDPOINTS.OWN_INDEX.replace(
+      ":did",
+      this.session?.did.parent,
+    ).replace(":indexId", indexId);
 
     if (add) {
       const { data } = await this.apiAxios.put(url);
