@@ -2,6 +2,7 @@ import {
   addItem,
   fetchIndex,
   fetchIndexItems,
+  removeItem,
   toggleUserIndex,
 } from "@/store/api";
 
@@ -67,6 +68,19 @@ const indexSlice = createSlice({
         state.items.data.push(action.payload);
       })
       .addCase(addItem.rejected, (state, action) => {
+        state.addItemLoading = false;
+        state.addItemError = action.payload as any;
+      })
+      .addCase(removeItem.pending, (state) => {
+        state.addItemLoading = true;
+      })
+      .addCase(removeItem.fulfilled, (state, action) => {
+        state.addItemLoading = false;
+        state.items.data = state.items.data.filter(
+          (item: any) => item.node.id !== action.payload,
+        );
+      })
+      .addCase(removeItem.rejected, (state, action) => {
         state.addItemLoading = false;
         state.addItemError = action.payload as any;
       })

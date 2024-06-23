@@ -104,6 +104,23 @@ export const addItem = createAsyncThunk(
   },
 );
 
+export const removeItem = createAsyncThunk(
+  "index/removeItem",
+  async ({ item, api, indexID }: AddItemPayload, { rejectWithValue }) => {
+    try {
+      if (!isStreamID(item)) {
+        throw new Error("Invalid item ID provided.");
+      }
+
+      await api.deleteItem(indexID, item);
+
+      return item;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data || err.message);
+    }
+  },
+);
+
 export const toggleUserIndex = createAsyncThunk(
   "index/toggleUserIndex",
   async (
