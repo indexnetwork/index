@@ -1,4 +1,4 @@
-import { fetchConversation } from "@/store/api";
+import { fetchConversation } from "@/store/api/conversation";
 import { createSlice } from "@reduxjs/toolkit";
 
 const conversationSlice = createSlice({

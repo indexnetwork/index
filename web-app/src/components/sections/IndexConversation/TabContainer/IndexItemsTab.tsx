@@ -8,17 +8,14 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import { ITEM_ADDED, trackEvent } from "@/services/tracker";
+import { addItem } from "@/store/api/index";
+import { selectIndex, setAddItemLoading } from "@/store/slices/indexSlice";
+import { useAppDispatch, useAppSelector } from "@/store/store";
 import { IndexItem } from "@/types/entity";
 import { filterValidUrls, isStreamID, removeDuplicates } from "@/utils/helper";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useIndexConversation } from "../IndexConversationContext";
-import { useAppDispatch, useAppSelector } from "@/store/store";
-import {
-  addItem,
-  selectIndex,
-  setAddItemLoading,
-} from "@/store/slices/indexSlice";
 
 const CONCURRENCY_LIMIT = 10;
 
@@ -92,7 +89,7 @@ export default function IndexItemsTabSection() {
   };
 
   const handleAddItem = useCallback(
-    async (inputItems) => {
+    async (inputItems: any) => {
       if (!apiReady || !viewedIndex || !api) return;
 
       // Add only unique and valid URLs

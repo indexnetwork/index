@@ -21,9 +21,9 @@ import { FC, useCallback, useState } from "react";
 import toast from "react-hot-toast";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
-import { useIndexConversation } from "./IndexConversationContext";
 import { useAppDispatch, useAppSelector } from "@/store/store";
-import { selectIndex, toggleUserIndex } from "@/store/slices/indexSlice";
+import { toggleUserIndex } from "@/store/api";
+import { selectIndex } from "@/store/slices/indexSlice";
 
 export const IndexConversationHeader: FC = () => {
   const { isConversation } = useRouteParams();
@@ -32,7 +32,6 @@ export const IndexConversationHeader: FC = () => {
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
   const router = useRouter();
-  const { loading: indexLoading } = useIndexConversation();
 
   const { data: viewedIndex } = useAppSelector(selectIndex);
 
@@ -41,19 +40,26 @@ export const IndexConversationHeader: FC = () => {
     useApp();
 
   const handleIndexToggle = useCallback(
-    (toggleType: "own" | "star") => {
+    async (toggleType: "own" | "star") => {
       if (!api) return;
-      dispatch(
+
+      const value =
+        toggleType === "star"
+          ? !viewedIndex?.did?.starred
+          : !viewedIndex?.did?.owned;
+      await dispatch(
         toggleUserIndex({
           indexID: viewedIndex?.id,
           api,
           toggleType,
-          value:
-            toggleType === "star"
-              ? !viewedIndex?.did?.starred
-              : !viewedIndex?.did?.owned,
+          value,
         }),
+      ).unwrap();
+
+      toast.success(
+        `Index ${value ? "added to" : "removed from"} starred indexes list`,
       );
+      trackEvent(ITEM_STARRED);
     },
     [api, viewedIndex, dispatch],
   );
@@ -182,7 +188,7 @@ export const IndexConversationHeader: FC = () => {
               defaultValue={viewedIndex?.title || ""}
               onChange={handleTitleChange}
               disabled={!isOwner}
-              loading={titleLoading || indexLoading}
+              loading={titleLoading}
             />
           </LoadingText>
         </Col>

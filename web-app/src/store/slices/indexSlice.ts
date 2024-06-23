@@ -27,6 +27,12 @@ const indexSlice = createSlice({
     setAddItemLoading: (state, action) => {
       state.addItemLoading = action.payload;
     },
+    updateIndexControllerDID: (state, action) => {
+      console.log("updateIndexControllerDID", state.data.id, action.payload);
+      if (state.data.controllerDID.id === action.payload.id) {
+        state.data.controllerDID = action.payload;
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -89,5 +95,6 @@ const indexSlice = createSlice({
 });
 
 export const selectIndex = (state: any) => state.index;
-export const { setAddItemLoading } = indexSlice.actions;
+export const { setAddItemLoading, updateIndexControllerDID } =
+  indexSlice.actions;
 export default indexSlice.reducer;
