@@ -4,6 +4,7 @@ import {
   fetchIndexItems,
   removeItem,
   toggleUserIndex,
+  updateIndexTitle,
 } from "@/store/api";
 
 import { createSlice } from "@reduxjs/toolkit";
@@ -23,6 +24,8 @@ const indexSlice = createSlice({
     addItemError: null,
     toggleLoading: false,
     toggleError: null,
+    titleLoading: false,
+    titleError: null,
   },
   reducers: {
     setAddItemLoading: (state, action) => {
@@ -107,6 +110,18 @@ const indexSlice = createSlice({
       .addCase(toggleUserIndex.rejected, (state, action) => {
         state.toggleLoading = false;
         state.toggleError = action.payload as any;
+      })
+      .addCase(updateIndexTitle.pending, (state) => {
+        state.titleLoading = true;
+      })
+      .addCase(updateIndexTitle.fulfilled, (state, action) => {
+        state.titleLoading = false;
+        state.error = null;
+        state.data = action.payload;
+      })
+      .addCase(updateIndexTitle.rejected, (state, action) => {
+        state.titleLoading = false;
+        state.titleError = action.payload as any;
       });
   },
 });

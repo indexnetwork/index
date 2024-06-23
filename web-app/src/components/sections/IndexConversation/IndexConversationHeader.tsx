@@ -22,22 +22,19 @@ import toast from "react-hot-toast";
 import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
 import { useAppDispatch, useAppSelector } from "@/store/store";
-import { toggleUserIndex } from "@/store/api";
+import { toggleUserIndex, updateIndexTitle } from "@/store/api";
 import { selectIndex } from "@/store/slices/indexSlice";
 
 export const IndexConversationHeader: FC = () => {
-  const { isConversation } = useRouteParams();
-  const dispatch = useAppDispatch();
   const { isOwner } = useRole();
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
+  const dispatch = useAppDispatch();
   const router = useRouter();
 
   const { data: viewedIndex } = useAppSelector(selectIndex);
 
   const [titleLoading, setTitleLoading] = useState(false);
-  const { setViewedIndex, viewedProfile, indexes, setIndexes, fetchIndexes } =
-    useApp();
 
   const handleIndexToggle = useCallback(
     async (toggleType: "own" | "star") => {
@@ -66,32 +63,45 @@ export const IndexConversationHeader: FC = () => {
 
   const handleTitleChange = useCallback(
     async (title: string) => {
-      if (!apiReady || !viewedIndex) return;
+      if (!apiReady || !viewedIndex || !api) return;
 
-      setTitleLoading(true);
-      try {
-        const result = await api!.updateIndex(viewedIndex.id, { title });
-        const updatedIndex = {
-          ...viewedIndex,
-          title: result.title,
-          updatedAt: result.updatedAt,
-        };
-        setViewedIndex(updatedIndex);
-        const updatedIndexes = indexes.map((i) =>
-          i.id === viewedIndex.id ? { ...i, title: result.title } : i,
-        );
+      await dispatch(
+        updateIndexTitle({ indexID: viewedIndex.id, title, api }),
+      ).unwrap();
 
-        setIndexes(updatedIndexes);
-        toast.success("Index title updated");
-      } catch (error) {
-        console.error("Error updating index", error);
-        toast.error("Error updating index");
-      } finally {
-        setTitleLoading(false);
-      }
+      toast.success("Index title updated");
     },
-    [api, viewedIndex, indexes, setIndexes, apiReady, setViewedIndex],
+    [api, apiReady, viewedIndex, dispatch],
   );
+
+  // const handleTitleChange = useCallback(
+  //   async (title: string) => {
+  //     if (!apiReady || !viewedIndex) return;
+
+  //     setTitleLoading(true);
+  //     try {
+  //       const result = await api!.updateIndex(viewedIndex.id, { title });
+  //       const updatedIndex = {
+  //         ...viewedIndex,
+  //         title: result.title,
+  //         updatedAt: result.updatedAt,
+  //       };
+  //       setViewedIndex(updatedIndex);
+  //       const updatedIndexes = indexes.map((i) =>
+  //         i.id === viewedIndex.id ? { ...i, title: result.title } : i,
+  //       );
+
+  //       setIndexes(updatedIndexes);
+  //       toast.success("Index title updated");
+  //     } catch (error) {
+  //       console.error("Error updating index", error);
+  //       toast.error("Error updating index");
+  //     } finally {
+  //       setTitleLoading(false);
+  //     }
+  //   },
+  //   [api, viewedIndex, indexes, setIndexes, apiReady, setViewedIndex],
+  // );
 
   // const handleUserIndexToggle = useCallback(
   //   async (type: string, value: boolean) => {

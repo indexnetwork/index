@@ -31,6 +31,11 @@ const didSlice = createSlice({
   },
   reducers: {
     updateDidIndex: (state, action) => {
+      console.log(
+        "updateDidIndex",
+        action.payload.indexID,
+        action.payload.updatedIndex,
+      );
       const index = state.indexes.find(
         (idx) => idx.id === action.payload.indexID,
       );

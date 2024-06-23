@@ -29,6 +29,12 @@ type ToggleUserIndexPayload = {
   value: boolean;
 };
 
+type UpdateIndexTitlePayload = {
+  indexID: string;
+  title: string;
+  api: ApiService;
+};
+
 export const fetchIndex = createAsyncThunk(
   "index/fetchIndex",
   async (
@@ -151,6 +157,38 @@ export const toggleUserIndex = createAsyncThunk(
       return { toggleType, [toggleType]: value };
     } catch (err: any) {
       return rejectWithValue(err.response.data);
+    }
+  },
+);
+
+export const updateIndexTitle = createAsyncThunk(
+  "index/updateIndexTitle",
+  async (
+    { indexID, title, api }: UpdateIndexTitlePayload,
+    { dispatch, getState, rejectWithValue },
+  ) => {
+    try {
+      const result = await api.updateIndex(indexID, { title });
+      const state: any = getState();
+      const updatedIndexOrig = state.did.indexes.find(
+        (i: any) => i.id === indexID,
+      );
+
+      if (!updatedIndexOrig) {
+        throw new Error("Index to update not found");
+      }
+
+      const updatedIndex = {
+        ...updatedIndexOrig,
+        title: result.title,
+        updatedAt: result.updatedAt,
+      };
+
+      dispatch(updateDidIndex({ indexID, updatedIndex }));
+
+      return updatedIndex;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data || error.message);
     }
   },
 );
