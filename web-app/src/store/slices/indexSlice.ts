@@ -34,6 +34,9 @@ const indexSlice = createSlice({
         state.data.controllerDID = action.payload;
       }
     },
+    resetIndex: (state) => {
+      state.data = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -109,6 +112,6 @@ const indexSlice = createSlice({
 });
 
 export const selectIndex = (state: any) => state.index;
-export const { setAddItemLoading, updateIndexControllerDID } =
+export const { setAddItemLoading, resetIndex, updateIndexControllerDID } =
   indexSlice.actions;
 export default indexSlice.reducer;

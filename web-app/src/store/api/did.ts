@@ -3,7 +3,11 @@ import { setViewType } from "@/store/slices/appViewSlice";
 import { DiscoveryType } from "@/types";
 import { Users } from "@/types/entity";
 import { createAsyncThunk } from "@reduxjs/toolkit";
-import { updateIndexControllerDID } from "../slices/indexSlice";
+import { resetConversation } from "@/store/slices/conversationSlice";
+import {
+  resetIndex,
+  updateIndexControllerDID,
+} from "@/store/slices/indexSlice";
 
 type UpdateProfilePayload = {
   profile: Partial<Users>;
@@ -35,10 +39,11 @@ export const fetchDID = createAsyncThunk(
   "did/fetchDid",
   async (
     { didID, api, ignoreDiscoveryType }: FetchDIDPayload,
-    { dispatch, rejectWithValue },
+    { dispatch, rejectWithValue, getState },
   ) => {
     try {
-      const did = await api.getProfile(didID);
+      const { did: prevDID } = getState() as any;
+      const did: any = await api.getProfile(didID);
 
       if (did) {
         if (!ignoreDiscoveryType) {
@@ -49,13 +54,18 @@ export const fetchDID = createAsyncThunk(
             }),
           );
         }
-
-        await dispatch(fetchDIDIndexes({ didID, api })).unwrap();
-        await dispatch(fetchDIDConversations({ didID, api })).unwrap();
+        dispatch(resetIndex());
+        dispatch(resetConversation());
+        console.log("prevDID", prevDID);
+        if (!prevDID.data || prevDID.data.id !== didID) {
+          await dispatch(fetchDIDIndexes({ didID, api })).unwrap();
+          await dispatch(fetchDIDConversations({ didID, api })).unwrap();
+        }
       }
 
       return did;
     } catch (err: any) {
+      console.error("322 Error fetching DID:", err);
       return rejectWithValue(err.response.data);
     }
   },
