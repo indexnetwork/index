@@ -32,8 +32,7 @@ const indexSlice = createSlice({
       state.addItemLoading = action.payload;
     },
     updateIndexControllerDID: (state, action) => {
-      console.log("updateIndexControllerDID", state.data.id, action.payload);
-      if (state.data.controllerDID.id === action.payload.id) {
+      if (state.data?.controllerDID.id === action.payload.id) {
         state.data.controllerDID = action.payload;
       }
     },

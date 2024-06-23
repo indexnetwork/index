@@ -13,6 +13,8 @@ import { selectView } from "@/store/slices/appViewSlice";
 import {
   addMessage,
   selectConversation,
+  setMessages,
+  updateMessage,
 } from "@/store/slices/conversationSlice";
 import { selectDID } from "@/store/slices/didSlice";
 import { selectIndex } from "@/store/slices/indexSlice";
@@ -65,8 +67,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const { data: viewedIndex } = useAppSelector(selectIndex);
   const { data: viewedProfile } = useAppSelector(selectDID);
   const view = useAppSelector(selectView);
+  const [streamingMessage, setStreamingMessage] = useState<any>(undefined);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  // const [messages, setMessages] = useState<Message[]>([]);
   const [stoppedMessages, setStoppedMessages] = useState<string[]>([]);
   const [deletedMessages, setDeletedMessages] = useState<string[]>([]);
 
@@ -90,15 +93,15 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     }
   }, [apiReady, api, id, isIndex]);
 
-  useEffect(() => {
-    if (viewedConversation && viewedConversation.messages) {
-      console.log("viewedConversation.messages", viewedConversation.messages);
-      setMessages(viewedConversation.messages);
-    } else {
-      console.log("reset set messages", viewedConversation);
-      setMessages([]);
-    }
-  }, [conversationId, viewedConversation]);
+  // useEffect(() => {
+  //   if (viewedConversation && viewedConversation?.messages) {
+  //     console.log("viewedConversation?.messages", viewedConversation?.messages);
+  //     setMessages(viewedConversation?.messages);
+  //   } else {
+  //     console.log("reset set messages", viewedConversation);
+  //     setMessages([]);
+  //   }
+  // }, [viewedConversation?.id]);
 
   useEffect(() => {
     if (view.type !== "conversation") {
@@ -117,6 +120,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           content: message,
         };
 
+        console.log("88", newMessage);
         dispatch(addMessage(newMessage));
 
         let currentConv = viewedConversation;
@@ -132,10 +136,13 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           setConversations([response, ...conversations]);
         }
 
-        if (!currentConv) return;
+        if (!currentConv) {
+          throw new Error("No conversation found");
+        }
 
         await dispatch(
           sendMessage({
+            prevID: newMessage.id,
             content: message,
             role: "user",
             conversationId: currentConv.id,
@@ -150,7 +157,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     },
     [
       api,
-      viewedConversation,
+      viewedConversation?.id,
       id,
       dispatch,
       router,
@@ -244,87 +251,125 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const stop = () => {
     setIsLoading(false);
     // TODO send stop signal to backend.
-    setStoppedMessages(messages.map((c) => c.id));
+    setStoppedMessages(viewedConversation?.messages.map((c) => c.id));
   };
 
-  const handleMessage = (data: any) => {
-    const payload = JSON.parse(data);
-    console.log("Received message from server", payload);
+  // const handleMessage = (data: any) => {
+  //   const payload = JSON.parse(data);
+  //   console.log("Received message from server", payload);
 
-    if (payload.channel === "end") {
-      console.log("End of stream");
-      setIsLoading(false);
-      // scrollToBottom();
-      return;
-    }
+  //   if (payload.channel === "end") {
+  //     console.log("End of stream");
+  //     setIsLoading(false);
+  //     // scrollToBottom();
+  //     return;
+  //   }
 
-    if (payload.channel === "update") {
-      const newMessage: Message = {
-        id: payload.data.messageId,
-        role: payload.data.payload.role,
-        content: payload.data.payload.content,
-      };
-      setMessages((prevMessages) => {
-        return [...prevMessages, newMessage];
-      });
-      setIsLoading(false);
-      // scrollToBottom();
-      return;
-    }
+  //   if (payload.channel === "update") {
+  //     const newMessage: Message = {
+  //       id: payload.data.messageId,
+  //       role: payload.data.payload.role,
+  //       content: payload.data.payload.content,
+  //     };
+  //     dispatch(addMessage(newMessage));
+  //     setIsLoading(false);
+  //     // scrollToBottom();
+  //     return;
+  //   }
 
-    if (
-      stoppedMessages.includes(payload.data.messageId) ||
-      deletedMessages.includes(payload.data.messageId)
-    ) {
-      return;
-    }
+  //   if (
+  //     stoppedMessages.includes(payload.data.messageId) ||
+  //     deletedMessages.includes(payload.data.messageId)
+  //   ) {
+  //     return;
+  //   }
 
-    setIsLoading(true);
-    setMessages((prevConversation) => {
-      let streamingMessage = prevConversation.find(
-        (c) => c.id === payload.data.messageId,
-      );
+  //   setIsLoading(true);
+  //   setMessages((prevConversation: any) => {
+  //     let streamingMessage = prevConversation.find(
+  //       (c: any) => c.id === payload.data.messageId,
+  //     );
+
+  //     if (!streamingMessage) {
+  //       console.log(`newmessage ${payload.data.messageId}`);
+  //       streamingMessage = {
+  //         id: payload.data.messageId,
+  //         content: payload.data.chunk,
+  //         role: "assistant",
+  //         name: payload.data.name,
+  //       };
+  //       console.log("New message", streamingMessage);
+  //       return [...prevConversation, streamingMessage];
+  //     }
+
+  //     if (payload.channel === "chunk") {
+  //       return prevConversation.map((message: any) =>
+  //         message.id === payload.data.messageId
+  //           ? { ...message, content: message.content + payload.data.chunk }
+  //           : message,
+  //       );
+  //     }
+  //     return prevConversation;
+  //   });
+  //   // scrollToBottom();
+  // };
+  //
+
+  const handleIncomingMessage = useCallback(
+    (payload: any) => {
+      if (payload.channel === "end") {
+        // state.isLoading = false;
+        return;
+      }
+      console.log("34", payload);
+      const messageId = payload.data.messageId;
+      // let streamingMessage = viewedConversation?.messages.find(
+      //   (msg) => msg.id === messageId,
+      // );
+
+      // if (payload.channel === "update") {
+      //   const newMessage = {
+      //     id: messageId,
+      //     role: payload.data.payload.role,
+      //     content: payload.data.payload.content,
+      //   };
+      //   state.data?.messages.push(newMessage);
+      //   state.isLoading = false;
+      //   return;
+      // }
 
       if (!streamingMessage) {
-        console.log(`newmessage ${payload.data.messageId}`);
-        streamingMessage = {
-          id: payload.data.messageId,
-          content: payload.data.chunk,
+        setStreamingMessage({
+          id: messageId,
           role: "assistant",
+          content: payload.data.chunk,
           name: payload.data.name,
-        };
-        console.log("New message", streamingMessage);
-        return [...prevConversation, streamingMessage];
+        });
+      } else if (payload.channel === "chunk") {
+        setStreamingMessage({
+          ...streamingMessage,
+          content: streamingMessage.content + payload.data.chunk,
+        });
       }
-
-      if (payload.channel === "chunk") {
-        return prevConversation.map((message) =>
-          message.id === payload.data.messageId
-            ? { ...message, content: message.content + payload.data.chunk }
-            : message,
-        );
-      }
-      return prevConversation;
-    });
-    // scrollToBottom();
-  };
+    },
+    [dispatch, viewedConversation],
+  );
 
   useEffect(() => {
     if (!viewedConversation) return;
     const eventUrl = `${process.env.NEXT_PUBLIC_API_URL!}${API_ENDPOINTS.CONVERSATION_UPDATES.replace(":conversationId", viewedConversation.id)}?session=${session?.serialize()}`;
     const eventSource = new EventSource(eventUrl);
     eventSource.onmessage = (event) => {
-      console.log("Received message from server", event.data);
-      handleMessage(event.data);
+      console.log("324 Received message from server", event.data);
+      handleIncomingMessage(JSON.parse(event.data));
     };
+
     eventSource.onerror = (err) => {
       console.error("EventSource failed:", err);
       eventSource.close();
     };
-    return () => {
-      eventSource.close();
-    };
-  }, [stoppedMessages, deletedMessages, viewedConversation, API_ENDPOINTS]);
+    return () => eventSource.close();
+  }, [viewedConversation, session, handleIncomingMessage]);
 
   if (leftSectionIndexes.length === 0) {
     // return <NoIndexes tabKey={leftTabKey} />;
@@ -353,6 +398,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           alignItems: "stretch",
         }}
       >
+        {JSON.stringify(viewedConversation)}
         <FlexRow wrap={true} align={"start"} style={{ flex: "1 1 auto" }}>
           <Col
             className="idxflex-grow-1"
@@ -364,10 +410,14 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
               flexDirection: "column",
             }}
           >
-            {viewedConversation && viewedConversation.messages.length ? (
+            {viewedConversation ? (
               <>
                 <ChatList
-                  messages={messages}
+                  messages={
+                    streamingMessage
+                      ? [viewedConversation?.messages, streamingMessage]
+                      : viewedConversation?.messages
+                  }
                   handleEditClick={handleEditClick}
                   editingMessage={editingMessage}
                   setEditInput={setEditInput}
@@ -415,7 +465,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
             stop={stop}
             // reload={regenerateMessage}
             // reload={reload}
-            messages={messages}
+            messages={viewedConversation?.messages}
           />
         </FlexRow>
         <FlexRow fullWidth className={"idxflex-grow-1"} colGap={0}>

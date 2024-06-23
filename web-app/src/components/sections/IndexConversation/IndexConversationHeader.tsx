@@ -1,10 +1,11 @@
 import LoadingText from "@/components/base/Loading";
 import { useApi } from "@/context/APIContext";
-import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRole } from "@/hooks/useRole";
-import { useRouteParams } from "@/hooks/useRouteParams";
 import { ITEM_STARRED, trackEvent } from "@/services/tracker";
+import { toggleUserIndex, updateIndexTitle } from "@/store/api";
+import { selectIndex } from "@/store/slices/indexSlice";
+import { useAppDispatch, useAppSelector } from "@/store/store";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
 import IconStar from "components/base/Icon/IconStar";
@@ -16,25 +17,17 @@ import IndexTitleInput from "components/site/input/IndexTitleInput";
 import IndexOperationsPopup from "components/site/popup/IndexOperationsPopup";
 import moment from "moment";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FC, useCallback, useState } from "react";
+import { FC, useCallback } from "react";
 import toast from "react-hot-toast";
-import { Indexes } from "types/entity";
 import { maskDID } from "utils/helper";
-import { useAppDispatch, useAppSelector } from "@/store/store";
-import { toggleUserIndex, updateIndexTitle } from "@/store/api";
-import { selectIndex } from "@/store/slices/indexSlice";
 
 export const IndexConversationHeader: FC = () => {
   const { isOwner } = useRole();
   const { session } = useAuth();
   const { api, ready: apiReady } = useApi();
   const dispatch = useAppDispatch();
-  const router = useRouter();
 
-  const { data: viewedIndex } = useAppSelector(selectIndex);
-
-  const [titleLoading, setTitleLoading] = useState(false);
+  const { data: viewedIndex, titleLoading } = useAppSelector(selectIndex);
 
   const handleIndexToggle = useCallback(
     async (toggleType: "own" | "star") => {
@@ -73,78 +66,6 @@ export const IndexConversationHeader: FC = () => {
     },
     [api, apiReady, viewedIndex, dispatch],
   );
-
-  // const handleTitleChange = useCallback(
-  //   async (title: string) => {
-  //     if (!apiReady || !viewedIndex) return;
-
-  //     setTitleLoading(true);
-  //     try {
-  //       const result = await api!.updateIndex(viewedIndex.id, { title });
-  //       const updatedIndex = {
-  //         ...viewedIndex,
-  //         title: result.title,
-  //         updatedAt: result.updatedAt,
-  //       };
-  //       setViewedIndex(updatedIndex);
-  //       const updatedIndexes = indexes.map((i) =>
-  //         i.id === viewedIndex.id ? { ...i, title: result.title } : i,
-  //       );
-
-  //       setIndexes(updatedIndexes);
-  //       toast.success("Index title updated");
-  //     } catch (error) {
-  //       console.error("Error updating index", error);
-  //       toast.error("Error updating index");
-  //     } finally {
-  //       setTitleLoading(false);
-  //     }
-  //   },
-  //   [api, viewedIndex, indexes, setIndexes, apiReady, setViewedIndex],
-  // );
-
-  // const handleUserIndexToggle = useCallback(
-  //   async (type: string, value: boolean) => {
-  //     if (!apiReady || !viewedIndex || !viewedProfile || !session) return;
-  //     let updatedIndex: Indexes;
-
-  //     try {
-  //       if (type === "star") {
-  //         await api!.starIndex(viewedIndex.id, value);
-  //         updatedIndex = {
-  //           ...viewedIndex,
-  //           did: { ...viewedIndex.did, starred: value },
-  //         };
-  //         setViewedIndex(updatedIndex);
-  //         toast.success(
-  //           `Index ${value ? "added to" : "removed from"} starred indexes list`,
-  //         );
-  //         trackEvent(ITEM_STARRED);
-  //       } else {
-  //         await api!.ownIndex(viewedIndex.id, value);
-  //         if (value) {
-  //           updatedIndex = {
-  //             ...viewedIndex,
-  //             did: { ...viewedIndex.did, owned: value },
-  //           };
-  //           setViewedIndex(updatedIndex);
-  //         } else {
-  //           router.push(`/${viewedProfile.id}`);
-  //         }
-  //         toast.success(
-  //           `Index ${value ? "added to" : "removed from"} your indexes list`,
-  //         );
-  //       }
-  //     } catch (error) {
-  //       console.error("Error updating index", error);
-  //       toast.error("Error updating index");
-  //       return;
-  //     }
-
-  //     fetchIndexes(viewedProfile.id);
-  //   },
-  //   [api, session, viewedIndex, apiReady, setViewedIndex, indexes, setIndexes],
-  // );
 
   return (
     <div

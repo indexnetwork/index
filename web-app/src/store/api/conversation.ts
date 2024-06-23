@@ -4,7 +4,13 @@ import { DiscoveryType } from "@/types";
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import { fetchIndex } from ".";
 import { fetchDID } from "./did";
-import { addMessage, setConversation } from "../slices/conversationSlice";
+import {
+  addMessage,
+  setConversation,
+  setMessageLoading,
+  updateMessage,
+  updateMessageByID,
+} from "../slices/conversationSlice";
 
 type FetchConversationPayload = {
   cID: string;
@@ -22,6 +28,7 @@ type SendMessagePayload = {
   role: string;
   conversationId: string;
   api: ApiService;
+  prevID: string;
 };
 
 type UpdateMessagePayload = {
@@ -39,6 +46,7 @@ export const createConversation = createAsyncThunk(
   ) => {
     try {
       const response = await api.createConversation({ sources, summary });
+      console.log("91 setting conversation", response);
       dispatch(setConversation(response));
       return response;
     } catch (error: any) {
@@ -50,7 +58,7 @@ export const createConversation = createAsyncThunk(
 export const sendMessage = createAsyncThunk(
   "conversation/sendMessage",
   async (
-    { content, role, conversationId, api }: SendMessagePayload,
+    { content, role, conversationId, api, prevID }: SendMessagePayload,
     { dispatch, rejectWithValue },
   ) => {
     try {
@@ -58,9 +66,12 @@ export const sendMessage = createAsyncThunk(
         content,
         role,
       });
-      dispatch(addMessage(messageResp));
+
+      console.log("111", messageResp);
+      dispatch(updateMessageByID({ prevID, message: messageResp }));
       return messageResp;
     } catch (error: any) {
+      console.log("115 error", error);
       return rejectWithValue(error.response.data || error.message);
     }
   },
@@ -176,5 +187,67 @@ export const updateMessageThunk = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(error.response?.data || error.message);
     }
+  },
+);
+
+export const handleMessageThunk = createAsyncThunk(
+  "conversation/handleMessage",
+  (data: any, { dispatch, getState }) => {
+    const payload = JSON.parse(data);
+    console.log("Received message from server", payload);
+
+    // // End of the stream handling
+    // if (payload.channel === "end") {
+    //   console.log("End of stream");
+    //   dispatch(setMessageLoading(false));
+    //   return;
+    // }
+
+    // // Update handling
+    // if (payload.channel === "update") {
+    //   const newMessage = {
+    //     id: payload.data.messageId,
+    //     role: payload.data.payload.role,
+    //     content: payload.data.payload.content,
+    //   };
+    //   dispatch(addMessage(newMessage));
+    //   dispatch(setMessageLoading(false));
+    //   return;
+    // }
+
+    dispatch(setMessageLoading(true));
+    const state: any = getState();
+    const { conversation } = state;
+    const { messages } = conversation.data;
+
+    // Update existing message content if it matches the streaming message
+    let streamingMessage = messages.find(
+      (c: any) => c.id === payload.data.messageId,
+    );
+    console.log(
+      "11 New message",
+      messages,
+      payload.data.messageId,
+      streamingMessage,
+    );
+
+    if (!streamingMessage) {
+      console.log("New message", streamingMessage);
+      streamingMessage = {
+        id: payload.data.messageId,
+        content: payload.data.chunk,
+        role: "assistant",
+        name: payload.data.name,
+      };
+      dispatch(addMessage(streamingMessage));
+    }
+    // else if (payload.channel === "chunk") {
+    //   console.log(`Chunk message `, payload.data);
+    //   streamingMessage = {
+    //     ...streamingMessage,
+    //     content: streamingMessage.content + payload.data.chunk,
+    //   };
+    //   dispatch(updateMessage(streamingMessage));
+    // }
   },
 );

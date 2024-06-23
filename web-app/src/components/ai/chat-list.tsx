@@ -22,7 +22,7 @@ export const ChatList = ({
   editingIndex,
   regenerate,
 }: ChatListInterface) => {
-  if (!messages.length) {
+  if (!messages?.length) {
     return null;
   }
 
