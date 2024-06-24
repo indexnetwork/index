@@ -47,13 +47,13 @@ await indexClient.authenticate();
 We're almost ready. Now, let's create an Index, with a title.
 
 ```typescript
-const index = await indexClient.createIndex(title="Future of publishing");
+const index = await indexClient.createIndex("Future of publishing");
 ```
 
 Great, now you have a truly decentralized index to interact with! Though it's empty, which means we need to create and add an [`Item`](../api-reference/indexing/item.md) into it so we can interact. Let's do that.
 
 ```typescript
-const webPage = await indexClient.crawlWebPage(url="http://www.paulgraham.com/publishing.html");
+const webPage = await indexClient.crawlWebPage("http://www.paulgraham.com/publishing.html");
 
 await indexClient.addItemToIndex(index.id, webPage.id);
 ```
