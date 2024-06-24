@@ -7,42 +7,6 @@ import {
 } from "@/store/api/conversation";
 import { createSlice } from "@reduxjs/toolkit";
 
-const handleIncomingMessageAction = (state, action) => {
-  const payload = action.payload;
-  const { messages } = state.data;
-
-  if (payload.channel === "end") {
-    state.isLoading = false;
-    return;
-  }
-  console.log("34", state.data.messages, payload);
-  const messageId = payload.data.messageId;
-  let streamingMessage = messages.find((msg) => msg.id === messageId);
-
-  if (payload.channel === "update") {
-    const newMessage = {
-      id: messageId,
-      role: payload.data.payload.role,
-      content: payload.data.payload.content,
-    };
-    state.data?.messages.push(newMessage);
-    state.isLoading = false;
-    return;
-  }
-
-  if (!streamingMessage) {
-    streamingMessage = {
-      id: messageId,
-      role: "assistant",
-      content: payload.data.chunk,
-      name: payload.data.name,
-    };
-    state.data?.messages.push(streamingMessage);
-  } else if (payload.channel === "chunk") {
-    streamingMessage.content += payload.data.chunk;
-  }
-};
-
 const conversationSlice = createSlice({
   name: "conversation",
   initialState: {
@@ -65,10 +29,7 @@ const conversationSlice = createSlice({
     setMessageLoading: (state, action) => {
       state.messageLoading = action.payload;
     },
-    handleIncomingMessage: handleIncomingMessageAction,
     addMessage(state, action) {
-      console.log("89", action.payload, state.data?.messages);
-
       if (state.data?.messages) {
         state.data.messages.push(action.payload);
       } else {
@@ -181,7 +142,6 @@ export const {
   updateMessage,
   setMessageLoading,
   updateMessageByID,
-  handleIncomingMessage,
 } = conversationSlice.actions;
 export const selectConversation = (state: any) => state.conversation;
 export default conversationSlice.reducer;

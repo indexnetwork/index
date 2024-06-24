@@ -5,7 +5,6 @@ import { createAsyncThunk } from "@reduxjs/toolkit";
 import { fetchIndex } from ".";
 import { fetchDID } from "./did";
 import {
-  addMessage,
   setConversation,
   setMessageLoading,
   updateMessage,
@@ -46,7 +45,6 @@ export const createConversation = createAsyncThunk(
   ) => {
     try {
       const response = await api.createConversation({ sources, summary });
-      console.log("91 setting conversation", response);
       dispatch(setConversation(response));
       return response;
     } catch (error: any) {
@@ -67,11 +65,8 @@ export const sendMessage = createAsyncThunk(
         role,
       });
 
-      console.log("111", messageResp);
-      dispatch(updateMessageByID({ prevID, message: messageResp }));
       return messageResp;
     } catch (error: any) {
-      console.log("115 error", error);
       return rejectWithValue(error.response.data || error.message);
     }
   },
@@ -85,7 +80,6 @@ export const regenerateMessage = createAsyncThunk(
   ) => {
     try {
       const { conversation } = getState() as any;
-      console.log("21 conversationId", conversation, conversationId);
       const { messages } = conversation.data;
       const lastUserMessage = messages.findLast((m: any) => m.role === "user");
       const lastAssistantMessage = messages.findLast(
@@ -113,7 +107,6 @@ export const regenerateMessage = createAsyncThunk(
 
       return { messagesBeforeEdit };
     } catch (error: any) {
-      console.log("44 error", error);
       return rejectWithValue(error.response.data || error.message);
     }
   },
@@ -123,11 +116,12 @@ export const fetchConversation = createAsyncThunk(
   "conversation/fetchConversation",
   async (
     { cID, api }: FetchConversationPayload,
-    { dispatch, rejectWithValue },
+    { dispatch, rejectWithValue, getState },
   ) => {
     try {
       const conversation = await api.getConversation(cID);
       const source = conversation.sources[0];
+      const state = getState() as any;
 
       if (source.includes("did:")) {
         dispatch(
@@ -136,9 +130,9 @@ export const fetchConversation = createAsyncThunk(
             discoveryType: DiscoveryType.DID,
           }),
         );
-        await dispatch(
-          fetchDID({ didID: source, api, ignoreDiscoveryType: true }),
-        ).unwrap();
+        if (!state.did?.data?.id || source !== state.did?.data?.id) {
+          await dispatch(fetchDID({ didID: source, api })).unwrap();
+        }
       } else {
         // TODO: check if this is index really
         dispatch(
@@ -147,11 +141,15 @@ export const fetchConversation = createAsyncThunk(
             discoveryType: DiscoveryType.INDEX,
           }),
         );
-        await dispatch(fetchIndex({ indexID: source, api })).unwrap();
+        console.log("23 fetching index", source, state.index?.data?.id);
+        if (!state.index?.data?.id || source !== state.index?.data?.id) {
+          await dispatch(fetchIndex({ indexID: source, api })).unwrap();
+        }
       }
 
       return conversation;
     } catch (err: any) {
+      console.log("25 fetchConversation error", err);
       return rejectWithValue(err.response.data);
     }
   },
@@ -187,67 +185,5 @@ export const updateMessageThunk = createAsyncThunk(
     } catch (error: any) {
       return rejectWithValue(error.response?.data || error.message);
     }
-  },
-);
-
-export const handleMessageThunk = createAsyncThunk(
-  "conversation/handleMessage",
-  (data: any, { dispatch, getState }) => {
-    const payload = JSON.parse(data);
-    console.log("Received message from server", payload);
-
-    // // End of the stream handling
-    // if (payload.channel === "end") {
-    //   console.log("End of stream");
-    //   dispatch(setMessageLoading(false));
-    //   return;
-    // }
-
-    // // Update handling
-    // if (payload.channel === "update") {
-    //   const newMessage = {
-    //     id: payload.data.messageId,
-    //     role: payload.data.payload.role,
-    //     content: payload.data.payload.content,
-    //   };
-    //   dispatch(addMessage(newMessage));
-    //   dispatch(setMessageLoading(false));
-    //   return;
-    // }
-
-    dispatch(setMessageLoading(true));
-    const state: any = getState();
-    const { conversation } = state;
-    const { messages } = conversation.data;
-
-    // Update existing message content if it matches the streaming message
-    let streamingMessage = messages.find(
-      (c: any) => c.id === payload.data.messageId,
-    );
-    console.log(
-      "11 New message",
-      messages,
-      payload.data.messageId,
-      streamingMessage,
-    );
-
-    if (!streamingMessage) {
-      console.log("New message", streamingMessage);
-      streamingMessage = {
-        id: payload.data.messageId,
-        content: payload.data.chunk,
-        role: "assistant",
-        name: payload.data.name,
-      };
-      dispatch(addMessage(streamingMessage));
-    }
-    // else if (payload.channel === "chunk") {
-    //   console.log(`Chunk message `, payload.data);
-    //   streamingMessage = {
-    //     ...streamingMessage,
-    //     content: streamingMessage.content + payload.data.chunk,
-    //   };
-    //   dispatch(updateMessage(streamingMessage));
-    // }
   },
 );

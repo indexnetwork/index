@@ -26,8 +26,10 @@ export const ChatList = ({
     return null;
   }
 
+  console.log("08", messages);
+
   const lastUserResponse = messages.findLast((message: Message) => {
-    return message.name === "basic_assistant";
+    return message?.name === "basic_assistant";
   });
 
   return (

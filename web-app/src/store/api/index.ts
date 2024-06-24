@@ -5,6 +5,7 @@ import { DiscoveryType } from "@/types";
 import { isStreamID } from "@/utils/helper";
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import { fetchDID } from "./did";
+import { resetConversation } from "../slices/conversationSlice";
 
 type FetchIndexPayload = {
   indexID: string;
@@ -39,7 +40,7 @@ export const fetchIndex = createAsyncThunk(
   "index/fetchIndex",
   async (
     { indexID, api }: FetchIndexPayload,
-    { dispatch, rejectWithValue },
+    { dispatch, rejectWithValue, getState },
   ) => {
     try {
       dispatch(
@@ -48,6 +49,13 @@ export const fetchIndex = createAsyncThunk(
           discoveryType: DiscoveryType.INDEX,
         }),
       );
+      const state: any = getState();
+      dispatch(resetConversation());
+
+      if (state.index?.data?.id === indexID) {
+        return state.index.data;
+      }
+
       const index = await api.getIndex(indexID, {});
       if (index) {
         await dispatch(
