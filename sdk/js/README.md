@@ -34,6 +34,7 @@ const wallet = new Wallet(process.env.PRIVATE_KEY);
 
 const indexClient = new IndexClient({
   wallet,
+  domain: "https://dev.index.network",
   network: "dev", // or mainnet
 });
 ```
