@@ -151,6 +151,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const handleSaveEdit = useCallback(async () => {
     if (!apiReady || !api || !viewedConversation || !editingMessage) return;
     try {
+      isLocalUpdate.current = false;
       await dispatch(
         updateMessageThunk({
           conversationId: viewedConversation.id,

@@ -137,12 +137,14 @@ const conversationSlice = createSlice({
       })
       .addCase(updateMessageThunk.fulfilled, (state, action) => {
         state.loading = false;
+        let messages = [];
         if (action.payload.messagesBeforeEdit) {
-          state.data.messages = action.payload.messagesBeforeEdit;
+          messages = action.payload.messagesBeforeEdit;
         }
         if (action.payload.editMessage) {
-          state.data.messages.push(action.payload.editMessage);
+          messages.push(action.payload.editMessage);
         }
+        state.data.messages = messages;
       })
       .addCase(updateMessageThunk.rejected, (state, action) => {
         state.loading = false;

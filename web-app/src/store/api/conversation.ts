@@ -159,7 +159,7 @@ export const updateMessageThunk = createAsyncThunk(
   "conversation/updateMessage",
   async (
     { conversationId, messageId, content, api }: UpdateMessagePayload,
-    { getState, rejectWithValue },
+    { dispatch, getState, rejectWithValue },
   ) => {
     try {
       const { conversation } = getState() as any;
