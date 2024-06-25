@@ -7,6 +7,11 @@ import { updateProfile, uploadAvatar } from "@/store/api/profile";
 import { createSlice } from "@reduxjs/toolkit";
 import { Indexes, Users } from "@/types/entity";
 
+export enum AuthUserType {
+  USER = "USER",
+  GUEST = "GUEST",
+}
+
 const indexesOwnerProfileUpdated = (indexes: Indexes[], profile: Users) => {
   return indexes.map((index) => {
     if (index.controllerDID.id === profile.id) {
@@ -28,6 +33,7 @@ const didSlice = createSlice({
     loading: false,
     error: null,
     avatar: null as any,
+    userAuthType: AuthUserType.GUEST,
   },
   reducers: {
     updateDidIndex: (state, action) => {
@@ -55,6 +61,9 @@ const didSlice = createSlice({
       state.conversations = state.conversations
         ? state.conversations.filter((c) => c.id !== action.payload)
         : [];
+    },
+    setAuthType: (state, action) => {
+      state.userAuthType = action.payload;
     },
   },
   extraReducers: (builder) => {
@@ -131,6 +140,7 @@ export const {
   setProfile,
   addConversation,
   removeConversation,
+  setAuthType,
 } = didSlice.actions;
 
 export default didSlice.reducer;

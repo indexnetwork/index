@@ -1,12 +1,16 @@
 import { useApi } from "@/context/APIContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import didService from "@/services/did-service";
 import { INDEX_CREATED, trackEvent } from "@/services/tracker";
 import { fetchIndex } from "@/store/api";
-import { fetchDID } from "@/store/api/did";
 import { fetchConversation } from "@/store/api/conversation";
+import { fetchDID } from "@/store/api/did";
+import { removeConversation } from "@/store/slices/didSlice";
 import { useAppDispatch } from "@/store/store";
 import { CancelTokenSource } from "axios";
+import { DIDSession } from "did-session";
+import { ethers } from "ethers";
 import { useRouter } from "next/navigation";
 import {
   ReactNode,
@@ -26,7 +30,6 @@ import {
   Users,
 } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
-import { removeConversation } from "@/store/slices/didSlice";
 
 type AppContextProviderProps = {
   children: ReactNode;
@@ -97,7 +100,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     isConversation,
   } = useRouteParams();
   const { api, ready: apiReady } = useApi();
-  const { session } = useAuth();
+  const { session, setSession } = useAuth();
   const router = useRouter();
   const dispatch = useAppDispatch();
 
@@ -123,6 +126,44 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const isFetchingRef = useRef(false);
   const isFetchingConversationRef = useRef(false);
   const isFetchingDIDRef = useRef(false);
+
+  const handleGuest = useCallback(async () => {
+    let sessionToken = localStorage.getItem("did");
+    const isGuest = localStorage.getItem("isGuest");
+
+    let tmpSession;
+    if (!sessionToken) {
+      const wallet = ethers.Wallet.createRandom();
+      tmpSession = await didService.getNewDIDSessionWithWallet(wallet);
+      sessionToken = tmpSession.serialize();
+      localStorage.setItem("did", sessionToken);
+      localStorage.setItem("isGuest", "true");
+    } else {
+      // return;
+      tmpSession = await DIDSession.fromSession(sessionToken);
+    }
+
+    if (!isGuest) {
+      return;
+    }
+
+    setSession(tmpSession);
+
+    api!.setSessionToken(sessionToken);
+    api!.updateProfile({
+      name: "You",
+      bio: "Adventurer",
+    });
+  }, [api, setSession]);
+
+  useEffect(() => {
+    if (apiReady || !session) {
+      handleGuest();
+      console.log("api ready or no session", session);
+    }
+  }, [apiReady, handleGuest]);
+
+  useEffect(() => {}, [isIndex, id, apiReady]);
 
   // useEffect(() => {
   //   if (isConversation && conversationId) {

@@ -1,6 +1,8 @@
 "use client";
 
 import { WALLET_CONNECTED, trackEvent } from "@/services/tracker";
+import { AuthUserType, selectDID } from "@/store/slices/didSlice";
+import { useAppSelector } from "@/store/store";
 import { normalizeAccountId } from "@ceramicnetwork/common";
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { getAccountId } from "@didtools/pkh-ethereum";
@@ -56,13 +58,13 @@ export const AuthProvider = ({ children }: any) => {
 
   const [session, setSession] = useState<DIDSession | undefined>();
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
+  const { userAuthType, setAuthType } = useAppSelector(selectDID);
 
   const userDID = session?.did.parent;
   const isLoading = status === AuthStatus.LOADING;
 
   const handleInitialCheck = useCallback(async () => {
     const res = await checkSession();
-    console.log("Check session result", res);
   }, []);
 
   useEffect(() => {
@@ -75,6 +77,11 @@ export const AuthProvider = ({ children }: any) => {
   }, []);
 
   const checkSession = useCallback(async (): Promise<boolean> => {
+    if (userAuthType === AuthUserType.GUEST) {
+      setStatus(AuthStatus.NOT_CONNECTED);
+      return false;
+    }
+
     if (session && session?.isExpired) {
       setStatus(AuthStatus.CONNECTED);
       return true;
@@ -168,6 +175,7 @@ export const AuthProvider = ({ children }: any) => {
       console.log("Session is valid, connecting...");
 
       setStatus(AuthStatus.CONNECTED);
+      setAuthType(AuthUserType.USER);
       toast.success("Successfully connected to your wallet.");
       trackEvent(WALLET_CONNECTED);
     } catch (err) {

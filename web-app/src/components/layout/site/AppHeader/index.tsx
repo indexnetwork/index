@@ -3,7 +3,7 @@ import WaitBetaModal from "@/components/site/modal/WaitBetaModal";
 import { useApp } from "@/context/AppContext";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
-import { selectDID } from "@/store/slices/didSlice";
+import { AuthUserType, selectDID } from "@/store/slices/didSlice";
 import { useAppSelector } from "@/store/store";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
@@ -19,6 +19,7 @@ import { useCallback, useState } from "react";
 
 const AppHeader = () => {
   const { connect, disconnect, status, setStatus } = useAuth();
+  const { userAuthType } = useAppSelector(selectDID);
   const router = useRouter();
   const { isLanding } = useRouteParams();
   const [modalVisible, setModalVisible] = useState(false);
@@ -77,7 +78,7 @@ const AppHeader = () => {
     );
   }
 
-  if (status !== AuthStatus.CONNECTED) {
+  if (userAuthType === AuthUserType.GUEST || status !== AuthStatus.CONNECTED) {
     return (
       <>
         {modalVisible && (
