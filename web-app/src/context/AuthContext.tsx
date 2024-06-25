@@ -1,8 +1,6 @@
 "use client";
 
 import { WALLET_CONNECTED, trackEvent } from "@/services/tracker";
-import { AuthUserType, selectDID } from "@/store/slices/didSlice";
-import { useAppSelector } from "@/store/store";
 import { normalizeAccountId } from "@ceramicnetwork/common";
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { getAccountId } from "@didtools/pkh-ethereum";
@@ -58,7 +56,6 @@ export const AuthProvider = ({ children }: any) => {
 
   const [session, setSession] = useState<DIDSession | undefined>();
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
-  const { userAuthType, setAuthType } = useAppSelector(selectDID);
 
   const userDID = session?.did.parent;
   const isLoading = status === AuthStatus.LOADING;
@@ -68,6 +65,12 @@ export const AuthProvider = ({ children }: any) => {
   }, []);
 
   useEffect(() => {
+    const isGuest = localStorage.getItem("isGuest");
+    if (isGuest) {
+      setStatus(AuthStatus.NOT_CONNECTED);
+      return;
+    }
+
     handleInitialCheck();
   }, [handleInitialCheck]);
 
@@ -77,11 +80,6 @@ export const AuthProvider = ({ children }: any) => {
   }, []);
 
   const checkSession = useCallback(async (): Promise<boolean> => {
-    if (userAuthType === AuthUserType.GUEST) {
-      setStatus(AuthStatus.NOT_CONNECTED);
-      return false;
-    }
-
     if (session && session?.isExpired) {
       setStatus(AuthStatus.CONNECTED);
       return true;
@@ -166,8 +164,9 @@ export const AuthProvider = ({ children }: any) => {
     setStatus(AuthStatus.LOADING);
     try {
       const sessionIsValid = await checkSession();
+      const isGuest = localStorage.getItem("isGuest");
 
-      if (!sessionIsValid) {
+      if (!sessionIsValid || isGuest) {
         console.log("No valid session found, starting new session...");
         await startSession();
       }
@@ -175,7 +174,7 @@ export const AuthProvider = ({ children }: any) => {
       console.log("Session is valid, connecting...");
 
       setStatus(AuthStatus.CONNECTED);
-      setAuthType(AuthUserType.USER);
+      localStorage.removeItem("isGuest");
       toast.success("Successfully connected to your wallet.");
       trackEvent(WALLET_CONNECTED);
     } catch (err) {

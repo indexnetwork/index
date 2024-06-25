@@ -3,7 +3,7 @@ import WaitBetaModal from "@/components/site/modal/WaitBetaModal";
 import { useApp } from "@/context/AppContext";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
-import { AuthUserType, selectDID } from "@/store/slices/didSlice";
+import { selectDID } from "@/store/slices/didSlice";
 import { useAppSelector } from "@/store/store";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
@@ -18,8 +18,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 const AppHeader = () => {
-  const { connect, disconnect, status, setStatus } = useAuth();
-  const { userAuthType } = useAppSelector(selectDID);
+  const { connect, disconnect, session, status, setStatus } = useAuth();
   const router = useRouter();
   const { isLanding } = useRouteParams();
   const [modalVisible, setModalVisible] = useState(false);
@@ -47,7 +46,6 @@ const AppHeader = () => {
       if (window !== undefined) {
         const allowed = localStorage.getItem("allowed");
 
-        console.log("allowed", allowed);
         if (!allowed) {
           setModalVisible(true);
           return;
@@ -55,6 +53,7 @@ const AppHeader = () => {
       }
 
       await connect();
+      // router.push(`/${session?.did.parent}`);
     } catch (err) {
       console.log(err);
     }
@@ -78,7 +77,7 @@ const AppHeader = () => {
     );
   }
 
-  if (userAuthType === AuthUserType.GUEST || status !== AuthStatus.CONNECTED) {
+  if (localStorage.getItem("isGuest") || status !== AuthStatus.CONNECTED) {
     return (
       <>
         {modalVisible && (

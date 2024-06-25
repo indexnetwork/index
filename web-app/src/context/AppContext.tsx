@@ -128,8 +128,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const isFetchingDIDRef = useRef(false);
 
   const handleGuest = useCallback(async () => {
-    let sessionToken = localStorage.getItem("did");
     const isGuest = localStorage.getItem("isGuest");
+    let sessionToken = localStorage.getItem("did");
 
     let tmpSession;
     if (!sessionToken) {
@@ -143,10 +143,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       tmpSession = await DIDSession.fromSession(sessionToken);
     }
 
-    if (!isGuest) {
-      return;
-    }
-
     setSession(tmpSession);
 
     api!.setSessionToken(sessionToken);
@@ -157,11 +153,13 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   }, [api, setSession]);
 
   useEffect(() => {
-    if (apiReady || !session) {
-      handleGuest();
+    if (isLanding) return;
+    console.log("app context mounted", { isLanding, session });
+    if (apiReady && !session) {
       console.log("api ready or no session", session);
+      handleGuest();
     }
-  }, [apiReady, handleGuest]);
+  }, [apiReady, handleGuest, isLanding]);
 
   useEffect(() => {}, [isIndex, id, apiReady]);
 
