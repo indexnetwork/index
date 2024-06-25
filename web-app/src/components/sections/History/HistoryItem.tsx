@@ -8,7 +8,11 @@ import Flex from "@/components/layout/base/Grid/Flex";
 import Text from "@/components/base/Text";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import HistoryItemOpsPopup from "./HistoryItemOpsPopup";
-
+import { deleteConversation } from "@/store/api/conversation";
+import toast from "react-hot-toast";
+import { useCallback } from "react";
+import { useApi } from "@/context/APIContext";
+import { useAppDispatch } from "@/store/store";
 type HistoryItemProps = {
   id: string;
   summary: string;
@@ -18,11 +22,21 @@ type HistoryItemProps = {
 
 const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
   const router = useRouter();
-  const { deleteConversation } = useApp();
-
-  const handleDelete = (id: string) => {
-    deleteConversation(id);
-  };
+  const { api, ready: apiReady } = useApi();
+  const dispatch = useAppDispatch();
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!apiReady || !api) return;
+      try {
+        await dispatch(deleteConversation({ id, api }));
+        toast.success("Conversation deleted");
+      } catch (error) {
+        console.error("Error deleting conversation", error);
+        toast.error("Error deleting conversation, please refresh the page");
+      }
+    },
+    [apiReady, api],
+  );
 
   return (
     <div

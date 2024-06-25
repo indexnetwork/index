@@ -9,7 +9,7 @@ import {
   setConversation,
   updateMessageByID,
 } from "../slices/conversationSlice";
-import { addConversation } from "../slices/didSlice";
+import { addConversation, removeConversation } from "../slices/didSlice";
 
 type FetchConversationPayload = {
   cID: string;
@@ -19,6 +19,11 @@ type FetchConversationPayload = {
 type CreateConversationPayload = {
   sources: string[];
   summary: string;
+  api: ApiService;
+};
+
+type DeleteConversationPayload = {
+  id: string;
   api: ApiService;
 };
 
@@ -48,6 +53,21 @@ export const createConversation = createAsyncThunk(
       dispatch(addConversation(response));
       dispatch(setConversation(response));
       return response;
+    } catch (error: any) {
+      return rejectWithValue(error.response.data || error.message);
+    }
+  },
+);
+
+export const deleteConversation = createAsyncThunk(
+  "conversation/deleteConversation",
+  async (
+    { id, api }: DeleteConversationPayload,
+    { dispatch, rejectWithValue },
+  ) => {
+    try {
+      dispatch(removeConversation(id));
+      return await api!.deleteConversation(id);
     } catch (error: any) {
       return rejectWithValue(error.response.data || error.message);
     }
