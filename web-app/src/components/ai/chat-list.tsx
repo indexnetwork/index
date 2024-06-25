@@ -25,17 +25,15 @@ export const ChatList = ({
 }: ChatListInterface) => {
   const bottomRef = useRef<null | HTMLDivElement>(null);
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "start",
+    });
   }, [bottomRef]);
 
-  const lastUserResponse = messages.findLast((message: Message) => {
-    return message?.name === "basic_assistant";
-  });
-
   useEffect(() => {
-    setTimeout(() => {
-      scrollToBottom();
-    }, 150);
+    messages && scrollToBottom();
   }, [messages, scrollToBottom]);
 
   return (
