@@ -97,10 +97,12 @@ const didSlice = createSlice({
       })
       .addCase(updateProfile.fulfilled, (state, action) => {
         state.loading = false;
+        if (!action.payload.storeProfile) return;
+
         state.data = action.payload;
         state.indexes = indexesOwnerProfileUpdated(
           state.indexes,
-          action.payload,
+          action.payload.newProfile,
         );
       })
       .addCase(updateProfile.rejected, (state, action) => {

@@ -61,13 +61,6 @@ const Discovery = () => {
 
   return (
     <DiscoveryLayout>
-      {/* {JSON.stringify(view)}
-      <br />
-      {JSON.stringify(index.data)}
-      <br />
-      {JSON.stringify(did.data)}
-      <br />
-      {JSON.stringify(conversation.data?.sources[0])} */}
       {view.discoveryType === DiscoveryType.DID && <UserConversationSection />}
       {view.discoveryType === DiscoveryType.INDEX && (
         <IndexConversationSection />

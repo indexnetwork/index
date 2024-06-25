@@ -1,11 +1,12 @@
 import ApiService from "@/services/api-service-new";
-import { createAsyncThunk } from "@reduxjs/toolkit";
 import { updateIndexControllerDID } from "@/store/slices/indexSlice"; // Ensure correct path
 import { Users } from "@/types/entity";
+import { createAsyncThunk } from "@reduxjs/toolkit";
 
 type UpdateProfilePayload = {
   profile: Partial<Users>;
   api: ApiService;
+  storeProfile?: boolean;
 };
 
 type UploadAvatarPayload = {
@@ -16,13 +17,13 @@ type UploadAvatarPayload = {
 export const updateProfile = createAsyncThunk(
   "profile/updateProfile",
   async (
-    { profile, api }: UpdateProfilePayload,
+    { profile, api, storeProfile = true }: UpdateProfilePayload,
     { dispatch, rejectWithValue },
   ) => {
     try {
       const newProfile = await api.updateProfile(profile);
-      dispatch(updateIndexControllerDID(newProfile)); // Dispatch index slice action
-      return newProfile;
+      dispatch(updateIndexControllerDID(newProfile));
+      return { newProfile, storeProfile };
     } catch (error: any) {
       console.error("Error updating profile:", error);
       return rejectWithValue(error.response.data || error.message);

@@ -58,13 +58,16 @@ export const fetchDID = createAsyncThunk(
         dispatch(resetConversation());
         if (!prevDID.data || prevDID.data.id !== didID) {
           await dispatch(fetchDIDIndexes({ didID, api })).unwrap();
-          await dispatch(fetchDIDConversations({ didID, api })).unwrap();
+          try {
+            await dispatch(fetchDIDConversations({ didID, api })).unwrap();
+          } catch (error: any) {
+            // console.error("Error fetching conversations:", error);
+          }
         }
       }
 
       return did;
     } catch (err: any) {
-      console.error("322 Error fetching DID:", err);
       return rejectWithValue(err.response.data);
     }
   },

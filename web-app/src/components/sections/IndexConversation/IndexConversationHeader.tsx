@@ -31,6 +31,7 @@ export const IndexConversationHeader: FC = () => {
 
   const handleIndexToggle = useCallback(
     async (toggleType: "own" | "star") => {
+      console.log("88", session, api);
       if (!api) return;
 
       const value =

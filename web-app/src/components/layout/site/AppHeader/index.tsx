@@ -84,7 +84,6 @@ const AppHeader = () => {
           <WaitBetaModal
             visible={modalVisible}
             onClose={() => setModalVisible(false)}
-            onCreate={() => {}}
           />
         )}
         <Navbar logoSize="mini" className="site-navbar">

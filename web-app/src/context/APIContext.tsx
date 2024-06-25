@@ -22,6 +22,7 @@ export const APIProvider: FC<{ children: React.ReactNode }> = ({
   useEffect(() => {
     console.log("APIProvider: status", status, session);
     if (status === AuthStatus.CONNECTED && session) {
+      console.log("APIProvider: connected");
       apiService!.setSession(session);
       setReady(true);
     }

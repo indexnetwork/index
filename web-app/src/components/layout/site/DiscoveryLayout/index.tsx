@@ -1,7 +1,9 @@
 import ConfirmTransaction from "@/components/site/modal/Common/ConfirmTransaction";
 import CreateModal from "@/components/site/modal/CreateModal";
 import EditProfileModal from "@/components/site/modal/EditProfileModal";
+import GuestModal from "@/components/site/modal/GuestModal";
 import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import cc from "classcat";
 import AppLeft from "components/sections/AppLeft";
 import AppRight from "components/sections/AppRight";
@@ -28,7 +30,21 @@ const DiscoveryLayout = ({ children }: DiscoveryLayoutProps) => {
     createModalVisible,
     setCreateModalVisible,
     handleCreate,
+    handleGuest,
+    guestTryingChat,
+    setGuestTryingChat,
   } = useApp();
+
+  const { connect } = useAuth();
+
+  const tryConnect = async () => {
+    await connect();
+    setGuestTryingChat(false);
+  };
+  const tryGuest = async () => {
+    await handleGuest();
+    setGuestTryingChat(false);
+  };
 
   const closeSidebars = () => {
     setLeftSidebarOpen(false);
@@ -76,6 +92,14 @@ const DiscoveryLayout = ({ children }: DiscoveryLayoutProps) => {
           backdropClose={false}
           handleCancel={handleTransactionCancel}
           visible={transactionApprovalWaiting}
+        />
+      )}
+      {guestTryingChat && (
+        <GuestModal
+          visible={guestTryingChat}
+          tryGuest={tryGuest}
+          connect={tryConnect}
+          onClose={() => setGuestTryingChat(false)}
         />
       )}
     </div>

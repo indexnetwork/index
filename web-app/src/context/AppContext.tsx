@@ -6,6 +6,7 @@ import { INDEX_CREATED, trackEvent } from "@/services/tracker";
 import { fetchIndex } from "@/store/api";
 import { fetchConversation } from "@/store/api/conversation";
 import { fetchDID } from "@/store/api/did";
+import { updateProfile } from "@/store/api/profile";
 import { removeConversation } from "@/store/slices/didSlice";
 import { useAppDispatch } from "@/store/store";
 import { CancelTokenSource } from "axios";
@@ -85,6 +86,9 @@ export interface AppContextValue {
   createModalVisible: boolean;
   createConditions: (conditions: AccessControlCondition[]) => Promise<void>;
   deleteConversation: (cID: string) => void;
+  handleGuest: () => Promise<void>;
+  guestTryingChat: boolean;
+  setGuestTryingChat: (value: boolean) => void;
 }
 
 export const AppContext = createContext<AppContextValue>({} as AppContextValue);
@@ -122,13 +126,17 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     IndexListTabKey.ALL,
   );
   const [loading, setLoading] = useState(false);
+  const [guestTryingChat, setGuestTryingChat] = useState(false);
 
   const isFetchingRef = useRef(false);
   const isFetchingConversationRef = useRef(false);
   const isFetchingDIDRef = useRef(false);
 
+  const [waitingForGuestCheck, setWaitingForGuestCheck] = useState(true);
+
   const handleGuest = useCallback(async () => {
-    const isGuest = localStorage.getItem("isGuest");
+    if (!apiReady || !api) return;
+
     let sessionToken = localStorage.getItem("did");
 
     let tmpSession;
@@ -138,71 +146,33 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       sessionToken = tmpSession.serialize();
       localStorage.setItem("did", sessionToken);
       localStorage.setItem("isGuest", "true");
+      setSession(tmpSession);
+      api!.setSession(tmpSession);
+
+      await dispatch(
+        updateProfile({
+          profile: { name: "You", bio: "Adventurer" },
+          api,
+          storeProfile: false,
+        }),
+      );
     } else {
-      // return;
       tmpSession = await DIDSession.fromSession(sessionToken);
+      setSession(tmpSession);
+      api!.setSession(tmpSession);
     }
 
-    setSession(tmpSession);
-
-    api!.setSessionToken(sessionToken);
-    api!.updateProfile({
-      name: "You",
-      bio: "Adventurer",
-    });
-  }, [api, setSession]);
+    setWaitingForGuestCheck(false);
+  }, [api, setSession, apiReady]);
 
   useEffect(() => {
     if (isLanding) return;
-    console.log("app context mounted", { isLanding, session });
-    if (apiReady && !session) {
-      console.log("api ready or no session", session);
+    const isGuest = localStorage.getItem("isGuest");
+
+    if (isGuest) {
       handleGuest();
     }
-  }, [apiReady, handleGuest, isLanding]);
-
-  useEffect(() => {}, [isIndex, id, apiReady]);
-
-  // useEffect(() => {
-  //   if (isConversation && conversationId) {
-  //     console.log("fetching conversation", conversationId);
-  //     fetchConversation(conversationId);
-  //   }
-  // }, [isConversation, apiReady]);
-
-  // useEffect(() => {
-  //   console.log("setting app view", { isConversation, viewedConversation });
-  //   if (isConversation && viewedConversation) {
-  //     const source = viewedConversation.sources[0];
-  //     const discoveryType = source.includes("did:")
-  //       ? DiscoveryType.DID
-  //       : DiscoveryType.INDEX;
-  //     console.log("setting conversation view", source, discoveryType);
-  //     setView({
-  //       name: "conversation",
-  //       id: viewedConversation.id,
-  //       discoveryType,
-  //     });
-
-  //     if (discoveryType === DiscoveryType.INDEX) {
-  //       fetchIndex(source, {}).then((index) => {
-  //         console.log("setting viewed index", index);
-  //         setViewedIndex(index);
-  //       });
-  //     }
-  //   }
-
-  //   if (id) {
-  //     console.log("setting default view");
-  //     setView({
-  //       name: "default",
-  //       id,
-  //       discoveryType: isDID ? DiscoveryType.DID : DiscoveryType.INDEX,
-  //     });
-  //     setViewedConversation(undefined);
-  //   }
-  // }, [id, conversationId, isConversation, isDID, viewedConversation]);
-  //
+  }, [isLanding, handleGuest]);
 
   const fetchAndStoreConversation = useCallback(async () => {
     try {
@@ -256,7 +226,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   );
 
   useEffect(() => {
-    if (isLanding || !apiReady) return;
+    if (isLanding || !apiReady || waitingForGuestCheck) return;
 
     if (isConversation) {
       console.log("fetching conversation");
@@ -272,7 +242,16 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       console.log("fetching DID", id);
       fetchAndStoreDID(id);
     }
-  }, [path, apiReady, isLanding, isConversation, fetchAndStoreConversation]);
+  }, [
+    path,
+    apiReady,
+    isLanding,
+    isConversation,
+    fetchAndStoreConversation,
+    fetchAndStoreDID,
+    fetchAndStoreIndex,
+    waitingForGuestCheck,
+  ]);
 
   const leftSectionIndexes = useMemo(() => {
     if (leftTabKey === IndexListTabKey.ALL) {
@@ -633,6 +612,9 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     createConditions,
     handleCreatePublic,
     deleteConversation,
+    handleGuest,
+    guestTryingChat,
+    setGuestTryingChat,
   };
 
   return (
