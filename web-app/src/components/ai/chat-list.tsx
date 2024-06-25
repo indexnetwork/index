@@ -1,5 +1,6 @@
 import { type Message } from "ai";
 import { ChatMessage } from "components/ai/chat-message";
+import { useCallback, useEffect, useRef } from "react";
 
 export interface ChatListInterface {
   messages: Message[];
@@ -22,13 +23,20 @@ export const ChatList = ({
   handleSaveEdit,
   editingIndex,
 }: ChatListInterface) => {
-  if (!messages?.length) {
-    return null;
-  }
+  const bottomRef = useRef<null | HTMLDivElement>(null);
+  const scrollToBottom = useCallback(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [bottomRef]);
 
   const lastUserResponse = messages.findLast((message: Message) => {
     return message?.name === "basic_assistant";
   });
+
+  useEffect(() => {
+    setTimeout(() => {
+      scrollToBottom();
+    }, 150);
+  }, [messages, scrollToBottom]);
 
   return (
     <div>
@@ -47,6 +55,7 @@ export const ChatList = ({
           />
         </div>
       ))}
+      <div ref={bottomRef} />
     </div>
   );
 };

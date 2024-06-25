@@ -78,8 +78,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const [input, setInput] = useState<string>("");
   const [defaultQuestions, setDefaultQuestions] = useState<string[]>([]);
 
-  const bottomRef = useRef<null | HTMLDivElement>(null);
-
   const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
     if (!apiReady || !isIndex || !id) return;
     try {
@@ -214,14 +212,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     session,
   ]);
 
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [bottomRef]);
-
-  useEffect(() => {
-    // scrollToBottom();
-  }, [viewedConversation, isLoading, scrollToBottom]);
-
   const stop = () => {
     setIsLoading(false);
     // TODO send stop signal to backend.
@@ -288,12 +278,14 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
 
   useEffect(() => {
     !viewedConversation && setStreamingMessages([]);
-    if (!isLocalUpdate.current) {
+    if (
+      !isLocalUpdate.current &&
       viewedConversation &&
-        viewedConversation.messages &&
-        setStreamingMessages(viewedConversation.messages);
+      viewedConversation.messages
+    ) {
+      setStreamingMessages(viewedConversation.messages);
+      isLocalUpdate.current = false;
     }
-    isLocalUpdate.current = false;
   }, [viewedConversation]);
 
   useEffect(() => {
@@ -361,7 +353,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                   handleRegenerate={handleRegenerate}
                   editingIndex={editingIndex}
                 />
-                <div ref={bottomRef} />
                 <ChatScrollAnchor trackVisibility={isLoading} />
               </>
             ) : (
