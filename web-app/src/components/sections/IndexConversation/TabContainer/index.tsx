@@ -11,6 +11,8 @@ import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
 import IndexItemsTab from "./IndexItemsTab";
 import IndexSettingsTab from "./SettingsTab";
+import { selectIndex } from "@/store/slices/indexSlice";
+import { useAppSelector } from "@/store/store";
 
 enum TabKey {
   Chat = "chat",
@@ -30,25 +32,22 @@ const TAB_TITLES = {
 
 export default function TabContainer() {
   const [tabKey, setTabKey] = useState<string>(TabKey.Chat);
-
-  const { id, conversationId } = useRouteParams();
-  const { fetchDataForNewRoute } = useOrderedFetch();
-  const { itemsState, loading } = useIndexConversation();
-  const { viewedIndex, viewedConversation } = useApp();
+  const { items } = useAppSelector(selectIndex);
+  const { loading } = useIndexConversation();
 
   useEffect(() => {
-    if (!viewedIndex || id !== viewedIndex.id) return;
+    if (!items) return;
 
     if (loading) {
       return;
     }
 
-    if (itemsState.items.length === 0) {
+    if (items.data.length === 0) {
       setTabKey(TabKey.Index);
     } else {
       setTabKey(TabKey.Chat);
     }
-  }, [viewedIndex]);
+  }, [items, loading]);
 
   // useEffect(() => {
   //   console.log("88 id", id, conversationId, viewedConversation);
