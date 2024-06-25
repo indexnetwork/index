@@ -57,7 +57,7 @@ const Avatar = ({
         <Image
           width={size}
           height={size}
-          src={`${appConfig.ipfsProxy}/${user.avatar}`}
+          src={user.avatar}
           alt="Profile Image"
         />
       );

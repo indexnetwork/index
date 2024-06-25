@@ -2,6 +2,7 @@ import { ComposeClient } from "@composedb/client";
 
 import { getCurrentDateTime } from "../utils/helpers.js";
 import { profileFragment } from "../types/fragments.js";
+import { DIDService } from "./did.js";
 
 export class IndexService {
   constructor(definition) {
@@ -10,16 +11,18 @@ export class IndexService {
       definition,
     });
     this.did = null;
+    this.didService = new DIDService(definition);
   }
 
   setSession(session) {
     if (session && session.did.authenticated) {
       this.did = session.did;
+      this.didService.setSession(session);
     }
     return this;
   }
 
-  transformIndex(index) {
+  async transformIndex(index) {
     if (index.did && index.did.edges && index.did.edges.length > 0) {
       const did = { starred: false, owned: false };
       index.did.edges.forEach((edge) => {
@@ -33,7 +36,9 @@ export class IndexService {
       index.did = did;
     }
 
-    index.controllerDID = this.getOwnerProfile(index);
+    index.controllerDID = await this.didService.getProfile(
+      index.controllerDID.id,
+    );
     return index;
   }
   async getIndexById(id) {
@@ -103,7 +108,7 @@ export class IndexService {
         throw new Error("Invalid response data");
       }
 
-      return this.transformIndex(data.node);
+      return await this.transformIndex(data.node);
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in getIndexById:", error);
@@ -160,7 +165,7 @@ export class IndexService {
       }
 
       // Return the created index document
-      return this.transformIndex(data.createIndex.document);
+      return await this.transformIndex(data.createIndex.document);
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in createIndex:", error);
@@ -246,7 +251,7 @@ export class IndexService {
         throw new Error("Invalid response data");
       }
 
-      return this.transformIndex(data.updateIndex.document);
+      return await this.transformIndex(data.updateIndex.document);
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in updateIndex:", error);
@@ -308,16 +313,6 @@ export class IndexService {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in updateIndex:", error);
       throw error;
-    }
-  }
-
-  getOwnerProfile(index) {
-    if (index.controllerDID.profile) {
-      const profile = index.controllerDID.profile;
-      profile.id = index.controllerDID.id;
-      return profile;
-    } else {
-      return { id: index.controllerDID.id };
     }
   }
 }

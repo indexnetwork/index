@@ -186,7 +186,7 @@ export interface Users {
   id: string;
   name?: string;
   bio?: string;
-  avatar?: CID;
+  avatar?: string;
   createdAt?: string;
   updatedAt?: string;
 }
