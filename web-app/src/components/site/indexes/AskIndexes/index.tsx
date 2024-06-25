@@ -287,6 +287,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   };
 
   useEffect(() => {
+    !viewedConversation && setStreamingMessages([]);
     if (!isLocalUpdate.current) {
       viewedConversation &&
         viewedConversation.messages &&
