@@ -282,6 +282,7 @@ class ApiService {
   }
 
   async listConversations(): Promise<any> {
+    if (!this.session) return;
     const response = await this.apiAxios.get<any>(
       API_ENDPOINTS.LIST_CONVERSATIONS,
     );

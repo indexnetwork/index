@@ -27,6 +27,7 @@ const AppHeader = () => {
     rightSidebarOpen,
     setRightSidebarOpen,
     setEditProfileModalVisible,
+    setGuestModalVisible,
   } = useApp();
 
   const { data: userProfile } = useAppSelector(selectDID);
@@ -43,16 +44,6 @@ const AppHeader = () => {
 
   const handleConnect = useCallback(async () => {
     try {
-      if (window !== undefined) {
-        const allowed = localStorage.getItem("allowed");
-
-        console.log("allowed", allowed);
-        if (!allowed) {
-          setModalVisible(true);
-          return;
-        }
-      }
-
       await connect();
     } catch (err) {
       console.log(err);
@@ -60,7 +51,16 @@ const AppHeader = () => {
   }, [connect]);
 
   const handleCreateIndex = useCallback(() => {
-    setCreateModalVisible(true);
+    if (window !== undefined) {
+      const allowed = localStorage.getItem("allowed2");
+
+      console.log("allowed", allowed);
+      if (!allowed) {
+        setGuestModalVisible(true);
+      } else {
+        setCreateModalVisible(true);
+      }
+    }
   }, [setCreateModalVisible]);
 
   if (isLanding) {

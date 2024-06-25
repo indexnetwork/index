@@ -1,7 +1,9 @@
 import ConfirmTransaction from "@/components/site/modal/Common/ConfirmTransaction";
 import CreateModal from "@/components/site/modal/CreateModal";
 import EditProfileModal from "@/components/site/modal/EditProfileModal";
+import GuestModal from "@/components/site/modal/GuestModal";
 import { useApp } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import cc from "classcat";
 import AppLeft from "components/sections/AppLeft";
 import AppRight from "components/sections/AppRight";
@@ -28,7 +30,11 @@ const DiscoveryLayout = ({ children }: DiscoveryLayoutProps) => {
     createModalVisible,
     setCreateModalVisible,
     handleCreate,
+    setGuestModalVisible,
+    guestModalVisible,
   } = useApp();
+
+  const { connect } = useAuth();
 
   const closeSidebars = () => {
     setLeftSidebarOpen(false);
@@ -76,6 +82,12 @@ const DiscoveryLayout = ({ children }: DiscoveryLayoutProps) => {
           backdropClose={false}
           handleCancel={handleTransactionCancel}
           visible={transactionApprovalWaiting}
+        />
+      )}
+      {guestModalVisible && (
+        <GuestModal
+          visible={guestModalVisible}
+          onClose={() => setGuestModalVisible(false)}
         />
       )}
     </div>

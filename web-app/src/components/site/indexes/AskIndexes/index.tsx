@@ -53,8 +53,13 @@ export interface MessageWithIndex extends Message {
 }
 
 const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
-  const { session } = useAuth();
-  const { leftSectionIndexes, leftTabKey } = useApp();
+  const { session, connect } = useAuth();
+  const {
+    leftSectionIndexes,
+    leftTabKey,
+    guestModalVisible,
+    setGuestModalVisible,
+  } = useApp();
   const { isIndex, id } = useRouteParams();
   const { ready: apiReady, api } = useApi();
   const router = useRouter();
@@ -91,6 +96,12 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const handleSendMessage = useCallback(
     async (messageStr: string) => {
       if (!apiReady || !api) return;
+
+      if (!session) {
+        connect();
+        return;
+      }
+
       try {
         isLocalUpdate.current = false;
         const newMessage: Message = {
@@ -129,7 +140,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         console.error("Error sending message", error);
       }
     },
-    [api, viewedConversation, id, dispatch, router, apiReady],
+    [api, viewedConversation, id, dispatch, router, apiReady, session],
   );
 
   useEffect(() => {

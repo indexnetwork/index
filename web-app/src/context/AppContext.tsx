@@ -109,7 +109,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [viewedProfile, setViewedProfile] = useState<Users | undefined>();
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
-  const [guestModalVisible, setGuestModalVisible] = useState(true);
+  const [guestModalVisible, setGuestModalVisible] = useState(false);
   const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
   const [transactionApprovalWaiting, setTransactionApprovalWaiting] =
     useState(false);

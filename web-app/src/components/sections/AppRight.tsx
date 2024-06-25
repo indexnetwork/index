@@ -73,7 +73,7 @@ const AppRight = () => {
         >
           <Tabs activeKey={rightTabKey} onTabChange={handleRightTabChange}>
             <TabPane enabled={true} tabKey={"history"} title={`History`}>
-              {conversations.length > 0 ? (
+              {conversations && conversations.length > 0 ? (
                 <div className={"scrollable-container pb-6"} style={{}}>
                   <ConversationHistory items={conversations} />
                 </div>
