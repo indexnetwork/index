@@ -56,7 +56,7 @@ export const createConversation = createAsyncThunk(
 export const sendMessage = createAsyncThunk(
   "conversation/sendMessage",
   async (
-    { content, role, conversationId, api, prevID }: SendMessagePayload,
+    { content, role, conversationId, api, prevID, message }: SendMessagePayload,
     { dispatch, rejectWithValue },
   ) => {
     try {
@@ -64,8 +64,8 @@ export const sendMessage = createAsyncThunk(
         content,
         role,
       });
-
-      return messageResp;
+      dispatch(updateMessageByID({ message: messageResp, prevID }));
+      return { message: messageResp, prevID };
     } catch (error: any) {
       return rejectWithValue(error.response.data || error.message);
     }

@@ -44,8 +44,9 @@ const conversationSlice = createSlice({
         (msg: any) => msg.id === action.payload.id,
       );
       if (index !== -1) {
-        console.log("101", state.data.messages[index], action.payload);
         state.data.messages[index] = action.payload;
+      } else {
+        state.data.messages.push(action.payload);
       }
     },
     updateMessageByID(state, action) {
@@ -107,7 +108,24 @@ const conversationSlice = createSlice({
       .addCase(sendMessage.fulfilled, (state, action) => {
         state.loading = false;
         if (state.data.messages) {
-          state.data.messages.push(action.payload);
+          state.data.messages.push(action.payload.message);
+          return;
+        }
+        const { message, prevID } = action.payload;
+
+        if (state.data && !state.data.messages) {
+          state.data.messages = [message];
+          return;
+        }
+
+        const messageIndex = state.data.messages.findIndex(
+          (msg: any) => msg.id === prevID,
+        );
+
+        if (messageIndex !== -1) {
+          state.data.messages[messageIndex] = message;
+        } else {
+          state.data.messages.push(message);
         }
       })
       .addCase(sendMessage.rejected, (state, action) => {

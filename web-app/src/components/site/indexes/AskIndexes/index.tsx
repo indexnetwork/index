@@ -12,8 +12,11 @@ import {
 import { selectView } from "@/store/slices/appViewSlice";
 import {
   addMessage,
+  updateMessage,
   deleteMessage,
   selectConversation,
+  setMessages,
+  updateMessageByID,
 } from "@/store/slices/conversationSlice";
 import { selectDID } from "@/store/slices/didSlice";
 import { selectIndex } from "@/store/slices/indexSlice";
@@ -67,6 +70,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const { data: viewedProfile } = useAppSelector(selectDID);
   const view = useAppSelector(selectView);
   const [streamingMessages, setStreamingMessages] = useState<any>([]);
+  const isLocalUpdate = useRef(false);
 
   const [stoppedMessages, setStoppedMessages] = useState<string[]>([]);
   const [deletedMessages, setDeletedMessages] = useState<string[]>([]);
@@ -95,6 +99,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     async (messageStr: string) => {
       if (!apiReady || !api) return;
       try {
+        isLocalUpdate.current = false;
         const newMessage: Message = {
           id: generateId(),
           role: "user",
@@ -112,6 +117,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           ).unwrap();
           currentConv = response;
           setConversations([response, ...conversations]);
+          router.push(`/conversation/${currentConv.id}`);
         }
 
         if (!currentConv) {
@@ -127,15 +133,13 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
             api,
           }),
         ).unwrap();
-
-        router.push(`/conversation/${currentConv.id}`);
       } catch (error) {
         console.error("Error sending message", error);
       }
     },
     [
       api,
-      viewedConversation?.id,
+      viewedConversation,
       id,
       dispatch,
       router,
@@ -231,49 +235,21 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     // TODO send stop signal to backend.
     setStoppedMessages(viewedConversation?.messages.map((c) => c.id));
   };
+  const handleIncomingMessage = (p: any) => {
+    isLocalUpdate.current = true;
+    if (p.channel === "end") {
+      //dispatch(setMessages(streamingMessages));
+      return;
+    }
 
-  useEffect(() => {
-    const handleIncomingMessage = (p: any) => {
-      if (p.channel === "end") {
-        setStreamingMessages((prevMessages: any) => {
-          const streamingMessage = prevMessages.find(
-            (m: any) => m.id === p.data.messageId,
-          );
-          if (!streamingMessage) return prevMessages;
-
-          dispatch(addMessage(streamingMessage));
-
-          return prevMessages.filter((m: any) => m.id !== p.data.messageId);
-        });
-
-        return;
-      }
-
+    if (p.channel === "chunk") {
       setStreamingMessages((prevMessages: any) => {
         let streamingMessage = prevMessages.find(
           (m: any) => m.id === p.data.messageId,
         );
 
-        if (!streamingMessage) {
-          streamingMessage = viewedConversation.messages.find(
-            (m: any) => m.id === p.data.messageId,
-          );
-          if (streamingMessage) {
-            dispatch(deleteMessage(streamingMessage.id));
-            return [...prevMessages, streamingMessage];
-          }
-
-          const initialAssistantMessage = {
-            id: p.data.messageId,
-            role: "assistant",
-            name: "basic_assistant",
-            content: p.data.chunk,
-          };
-          return [...prevMessages, initialAssistantMessage];
-        }
-
-        if (p.channel === "chunk") {
-          return prevMessages.map((m: any) =>
+        if (streamingMessage) {
+          const updatedStream = prevMessages.map((m: any) =>
             m.id === p.data.messageId
               ? {
                   ...m,
@@ -281,17 +257,57 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                 }
               : m,
           );
+          dispatch(setMessages(updatedStream));
+          return updatedStream;
         }
 
-        return prevMessages;
-      });
-    };
+        const viewedMessages = viewedConversation.messages;
 
+        if (viewedMessages) {
+          streamingMessage = viewedMessages.find(
+            (m: any) => m.id === p.data.messageId,
+          );
+          if (streamingMessage) {
+            const updatedStreamViewed = viewedMessages.map((m: any) =>
+              m.id === p.data.messageId
+                ? {
+                    ...m,
+                    content: m.content + p.data.chunk,
+                  }
+                : m,
+            );
+            dispatch(setMessages(updatedStreamViewed));
+            return updatedStreamViewed;
+          }
+        }
+
+        const initialAssistantMessage = {
+          id: p.data.messageId,
+          role: "assistant",
+          name: "basic_assistant",
+          content: p.data.chunk,
+        };
+        const updated = [...prevMessages, initialAssistantMessage];
+        dispatch(setMessages(updated));
+        return updated;
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!isLocalUpdate.current) {
+      viewedConversation &&
+        viewedConversation.messages &&
+        setStreamingMessages(viewedConversation.messages);
+    }
+    isLocalUpdate.current = false;
+  }, [viewedConversation]);
+
+  useEffect(() => {
     if (!viewedConversation) return;
     const eventUrl = `${process.env.NEXT_PUBLIC_API_URL!}${API_ENDPOINTS.CONVERSATION_UPDATES.replace(":conversationId", viewedConversation.id)}?session=${session?.serialize()}`;
     const eventSource = new EventSource(eventUrl);
     eventSource.onmessage = (event) => {
-      console.log("324 Received message from server", event.data);
       handleIncomingMessage(JSON.parse(event.data));
     };
 
@@ -300,7 +316,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       eventSource.close();
     };
     return () => eventSource.close();
-  }, [viewedConversation, session]);
+  }, []);
 
   if (leftSectionIndexes.length === 0) {
     // return <NoIndexes tabKey={leftTabKey} />;
@@ -343,10 +359,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
             {viewedConversation ? (
               <>
                 <ChatList
-                  messages={[
-                    ...(viewedConversation?.messages || []),
-                    ...streamingMessages,
-                  ]}
+                  messages={streamingMessages || []}
                   handleEditClick={handleEditClick}
                   editingMessage={editingMessage}
                   setEditInput={setEditInput}
