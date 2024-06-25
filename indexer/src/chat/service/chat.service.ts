@@ -125,10 +125,14 @@ export class ChatService {
     if (response.ids.length === 0)
       throw new HttpException('No documents have found', HttpStatus.NOT_FOUND);
 
-    const questions = await chain.invoke({
+    const resp = await chain.invoke({
       documents: response.documents,
     });
 
-    return questions;
+    if (resp.questions && resp.questions.length > 4) {
+      resp.questions = resp.questions.slice(0, 4);
+    }
+
+    return resp;
   }
 }

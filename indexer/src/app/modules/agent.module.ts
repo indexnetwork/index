@@ -152,7 +152,7 @@ export class Agent {
               return question.replace(/^\d+\.\s/g, '');
             })
             .filter((question: string) => {
-              return question.length > 5;
+              return question && question.length > 5;
             });
         },
       },
