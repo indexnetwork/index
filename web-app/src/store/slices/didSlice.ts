@@ -51,6 +51,11 @@ const didSlice = createSlice({
         ? [action.payload, ...state.conversations]
         : [action.payload];
     },
+    removeConversation: (state, action) => {
+      state.conversations = state.conversations
+        ? state.conversations.filter((c) => c.id !== action.payload)
+        : [];
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -121,6 +126,11 @@ export const selectIndexes = (state: any) => state.did.indexes;
 export const selectAvatar = (state: any) => state.did.avatar;
 export const selectProfileLoading = (state: any) => state.did.loading;
 
-export const { updateDidIndex, setProfile, addConversation } = didSlice.actions;
+export const {
+  updateDidIndex,
+  setProfile,
+  addConversation,
+  removeConversation,
+} = didSlice.actions;
 
 export default didSlice.reducer;

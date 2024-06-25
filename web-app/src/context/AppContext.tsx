@@ -26,6 +26,7 @@ import {
   Users,
 } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
+import { removeConversation } from "@/store/slices/didSlice";
 
 type AppContextProviderProps = {
   children: ReactNode;
@@ -251,8 +252,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     async (cID: string) => {
       if (!apiReady) return;
       try {
+        dispatch(removeConversation(cID));
         await api!.deleteConversation(cID);
-
         toast.success("Conversation deleted");
       } catch (error) {
         console.error("Error deleting conversation", error);
