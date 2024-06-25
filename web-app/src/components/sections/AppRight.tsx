@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { selectConversation } from "@/store/slices/conversationSlice";
 import ConversationHistory from "./History";
 import NewChatButton from "./NewChatButton";
+import Soon from "../site/indexes/Soon";
 
 const AppRight = () => {
   const { setRightSidebarOpen, rightSidebarOpen, rightTabKey, setRightTabKey } =
@@ -72,9 +73,15 @@ const AppRight = () => {
         >
           <Tabs activeKey={rightTabKey} onTabChange={handleRightTabChange}>
             <TabPane enabled={true} tabKey={"history"} title={`History`}>
-              <div className={"scrollable-container pb-11"} style={{}}>
-                <ConversationHistory items={conversations} />
-              </div>
+              {conversations.length > 0 ? (
+                <div className={"scrollable-container pb-6"} style={{}}>
+                  <ConversationHistory items={conversations} />
+                </div>
+              ) : (
+                <div style={{ paddingTop: `8rem` }}>
+                  <Soon section="chat_history"></Soon>
+                </div>
+              )}
             </TabPane>
             <></>
           </Tabs>
