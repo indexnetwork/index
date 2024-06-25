@@ -36,6 +36,7 @@ const AskInput = ({
       <TextArea
         ref={inputRef}
         value={input}
+        autoFocus={true}
         rows={1}
         maxRows={8}
         onKeyDown={onKeyDown}
