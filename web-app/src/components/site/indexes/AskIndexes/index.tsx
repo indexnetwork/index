@@ -224,6 +224,23 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       return;
     }
 
+    if (p.channel === "update") {
+      const newMessage: Message = {
+        id: p.data.messageId,
+        role: p.data.payload.role,
+        name: p.data.payload.name,
+        content: p.data.payload.content,
+      };
+      console.log(newMessage);
+      setStreamingMessages((prevMessages: any) => {
+        const updated = [...prevMessages, newMessage];
+        dispatch(setMessages(updated));
+        return updated;
+      });
+
+      return;
+    }
+
     if (p.channel === "chunk") {
       setStreamingMessages((prevMessages: any) => {
         let streamingMessage = prevMessages.find(
