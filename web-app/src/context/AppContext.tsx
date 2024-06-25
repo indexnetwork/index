@@ -97,7 +97,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     isConversation,
   } = useRouteParams();
   const { api, ready: apiReady } = useApi();
-  const { session } = useAuth();
+  const { session, userDID } = useAuth();
   const router = useRouter();
   const dispatch = useAppDispatch();
 
@@ -176,7 +176,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
       isFetchingConversationRef.current = false;
     } catch (error) {
-      console.error("Error fetching conversation:", error);
+      router.push(`/${userDID}`);
     }
   }, [dispatch, apiReady, api, conversationId]);
 
