@@ -48,11 +48,15 @@ const Discovery = () => {
 
       if (isMainnet) {
         apiService?.starIndex(
-          "kjzl6kcym7w8yanw06ihwgpo49rl37g6eq4xc753g5phjs5f2vjcmcp3vvuhhkk",
+          "kjzl6kcym7w8y6b1fncbo7p7h2v6tei9llby5ai9n7wj09oy1aeae7hqsc1io0j",
           true,
         );
         apiService?.starIndex(
-          "kjzl6kcym7w8y88qolfxxr74n51tb91xi36flwrxwah9yt5q8y0hh2odx96etmj",
+          "kjzl6kcym7w8y63ksezbl4z1frr3xd0d9fg6nfmuwr1n0ue2xc4j7dtejvl4527",
+          true,
+        );
+        apiService?.starIndex(
+          "kjzl6kcym7w8y8lefkkbpl44q6jh1zu78gaq2zp18we4wdgz1tz9vxyx213ochh",
           true,
         );
       }
