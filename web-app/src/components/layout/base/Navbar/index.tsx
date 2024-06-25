@@ -82,7 +82,8 @@ const Navbar = ({
 
   const handleLogoClick = () => {
     setLeftTabKey(IndexListTabKey.ALL);
-    if (status === AuthStatus.CONNECTED) {
+    const isGuest = localStorage.getItem("isGuest");
+    if (status === AuthStatus.CONNECTED || isGuest) {
       router.push(`/${session?.did.parent}`);
     } else {
       router.push(`/`);
