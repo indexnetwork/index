@@ -309,7 +309,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
       eventSource.close();
     };
     return () => eventSource.close();
-  }, []);
+  }, [viewedConversation?.id]);
 
   if (leftSectionIndexes.length === 0) {
     // return <NoIndexes tabKey={leftTabKey} />;
