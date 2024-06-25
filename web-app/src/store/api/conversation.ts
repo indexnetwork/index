@@ -76,37 +76,44 @@ export const sendMessage = createAsyncThunk(
 export const regenerateMessage = createAsyncThunk(
   "conversation/regenerateMessage",
   async (
-    { conversationId, api }: { conversationId: string; api: ApiService },
+    {
+      conversationId,
+      message,
+      index,
+      api,
+    }: {
+      conversationId: string;
+      message: any;
+      index: number;
+      api: ApiService;
+    },
     { getState, rejectWithValue },
   ) => {
     try {
       const { conversation } = getState() as any;
       const { messages } = conversation.data;
       const lastUserMessage = messages.findLast((m: any) => m.role === "user");
-      const lastAssistantMessage = messages.findLast(
-        (m: any) => m.name === "basic_assistant",
+      const messageToRegenerate = messages.findLast(
+        (m: any) => m.id === message.id,
       );
 
       if (!lastUserMessage) {
         throw new Error("No user message found");
       }
 
-      let messagesBeforeEdit: any[] = [];
-      if (lastAssistantMessage) {
-        messagesBeforeEdit = messages.slice(
-          0,
-          messages.indexOf(lastAssistantMessage),
-        );
+      let messagesBeforeGenerate: any[] = [];
+      if (messageToRegenerate) {
+        messagesBeforeGenerate = messages.slice(0, index);
       }
 
-      await api.updateMessage(
+      const messageResp = await api.updateMessage(
         conversationId,
         lastUserMessage.id,
         { role: lastUserMessage.role, content: lastUserMessage.content },
         true,
       );
 
-      return { messagesBeforeEdit };
+      return { messagesBeforeGenerate };
     } catch (error: any) {
       return rejectWithValue(error.response.data || error.message);
     }

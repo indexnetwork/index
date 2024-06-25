@@ -83,8 +83,8 @@ const conversationSlice = createSlice({
       })
       .addCase(regenerateMessage.fulfilled, (state, action) => {
         state.regenerationLoading = false;
-        if (action.payload.messagesBeforeEdit) {
-          state.data.messages = action.payload.messagesBeforeEdit;
+        if (action.payload.messagesBeforeGenerate) {
+          state.data.messages = action.payload.messagesBeforeGenerate;
         }
       })
       .addCase(regenerateMessage.rejected, (state, action) => {

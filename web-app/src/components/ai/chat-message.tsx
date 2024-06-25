@@ -18,25 +18,25 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 export interface ChatMessageProps {
   message: Message;
   handleEditClick: (message: Message, index: number) => void;
+  handleRegenerate: (message: Message, index: number) => void;
   editingMessage: Message | undefined;
   setEditInput: (input: string) => void;
   editInput: string;
   handleSaveEdit: () => void;
   index: number;
   editingIndex: number | undefined;
-  regenerate: (() => void) | null;
 }
 
 export function ChatMessage({
   message,
   handleEditClick,
+  handleRegenerate,
   editingMessage,
   setEditInput,
   editInput,
   handleSaveEdit,
   index,
   editingIndex,
-  regenerate,
 }: ChatMessageProps) {
   const { userProfile } = useApp();
 
@@ -166,7 +166,7 @@ export function ChatMessage({
             handleEditClick={handleEditClick}
             index={index}
             editingMessage={editingMessage}
-            regenerate={regenerate}
+            handleRegenerate={handleRegenerate}
           />
         )}
       </Col>

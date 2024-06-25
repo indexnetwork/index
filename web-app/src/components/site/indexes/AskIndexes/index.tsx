@@ -167,16 +167,22 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     }
   }, [dispatch, api, apiReady, viewedConversation, editingMessage, editInput]);
 
-  const handleRegenerateMessage = useCallback(async () => {
-    if (!apiReady || !api || !viewedConversation) return;
+  const handleRegenerate = useCallback(
+    async (message: Message, index: number) => {
+      if (!apiReady || !api || !viewedConversation) return;
+      isLocalUpdate.current = false;
 
-    await dispatch(
-      regenerateMessage({
-        conversationId: viewedConversation.id,
-        api,
-      }),
-    );
-  }, [api, viewedConversation, apiReady, dispatch]);
+      await dispatch(
+        regenerateMessage({
+          conversationId: viewedConversation.id,
+          message,
+          index,
+          api,
+        }),
+      );
+    },
+    [api, viewedConversation, apiReady, dispatch],
+  );
 
   const getChatContextMessage = useCallback((): string => {
     if (viewedIndex && isIndex) {
@@ -355,8 +361,8 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                   setEditInput={setEditInput}
                   editInput={editInput}
                   handleSaveEdit={handleSaveEdit}
+                  handleRegenerate={handleRegenerate}
                   editingIndex={editingIndex}
-                  regenerate={handleRegenerateMessage}
                 />
                 <div ref={bottomRef} />
                 <ChatScrollAnchor trackVisibility={isLoading} />
