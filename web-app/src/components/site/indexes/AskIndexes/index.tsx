@@ -18,7 +18,7 @@ import {
   setMessages,
   updateMessageByID,
 } from "@/store/slices/conversationSlice";
-import { selectDID } from "@/store/slices/didSlice";
+import { addConversation, selectDID } from "@/store/slices/didSlice";
 import { selectIndex } from "@/store/slices/indexSlice";
 import { useAppDispatch, useAppSelector } from "@/store/store";
 import { API_ENDPOINTS } from "@/utils/constants";
@@ -58,9 +58,8 @@ export interface MessageWithIndex extends Message {
 
 const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const { session } = useAuth();
-  const { leftSectionIndexes, leftTabKey, conversations, setConversations } =
-    useApp();
-  const { isIndex, conversationId, id } = useRouteParams();
+  const { leftSectionIndexes, leftTabKey } = useApp();
+  const { isIndex, id } = useRouteParams();
   const { ready: apiReady, api } = useApi();
   const router = useRouter();
 
@@ -116,7 +115,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
             }),
           ).unwrap();
           currentConv = response;
-          setConversations([response, ...conversations]);
           router.push(`/conversation/${currentConv.id}`);
         }
 
@@ -137,16 +135,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
         console.error("Error sending message", error);
       }
     },
-    [
-      api,
-      viewedConversation,
-      id,
-      dispatch,
-      router,
-      setConversations,
-      conversations,
-      apiReady,
-    ],
+    [api, viewedConversation, id, dispatch, router, apiReady],
   );
 
   useEffect(() => {

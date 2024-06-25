@@ -2,14 +2,14 @@ import ApiService from "@/services/api-service-new";
 import { setViewType } from "@/store/slices/appViewSlice";
 import { DiscoveryType } from "@/types";
 import { createAsyncThunk } from "@reduxjs/toolkit";
-import { fetchIndex } from ".";
 import { fetchDID } from "./did";
+import { fetchIndex } from ".";
+
 import {
   setConversation,
-  setMessageLoading,
-  updateMessage,
   updateMessageByID,
 } from "../slices/conversationSlice";
+import { addConversation } from "../slices/didSlice";
 
 type FetchConversationPayload = {
   cID: string;
@@ -45,6 +45,7 @@ export const createConversation = createAsyncThunk(
   ) => {
     try {
       const response = await api.createConversation({ sources, summary });
+      dispatch(addConversation(response));
       dispatch(setConversation(response));
       return response;
     } catch (error: any) {
@@ -141,7 +142,6 @@ export const fetchConversation = createAsyncThunk(
             discoveryType: DiscoveryType.INDEX,
           }),
         );
-        console.log("23 fetching index", source, state.index?.data?.id);
         if (!state.index?.data?.id || source !== state.index?.data?.id) {
           await dispatch(fetchIndex({ indexID: source, api })).unwrap();
         }

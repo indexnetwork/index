@@ -56,7 +56,6 @@ export const fetchDID = createAsyncThunk(
         }
         dispatch(resetIndex());
         dispatch(resetConversation());
-        console.log("prevDID", prevDID);
         if (!prevDID.data || prevDID.data.id !== didID) {
           await dispatch(fetchDIDIndexes({ didID, api })).unwrap();
           await dispatch(fetchDIDConversations({ didID, api })).unwrap();
@@ -88,7 +87,6 @@ export const fetchDIDConversations = createAsyncThunk(
   async ({ api }: FetchDIDConversationsPayload, { rejectWithValue }) => {
     try {
       const conversations = await api.listConversations();
-      console.log("conversations 87", conversations);
       return conversations;
     } catch (err: any) {
       return rejectWithValue(err.response.data);

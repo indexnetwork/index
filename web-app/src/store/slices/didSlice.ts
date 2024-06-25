@@ -46,6 +46,11 @@ const didSlice = createSlice({
     setProfile: (state, action) => {
       state.data = action.payload;
     },
+    addConversation: (state, action) => {
+      state.conversations = state.conversations
+        ? [action.payload, ...state.conversations]
+        : [action.payload];
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -88,7 +93,6 @@ const didSlice = createSlice({
       .addCase(updateProfile.fulfilled, (state, action) => {
         state.loading = false;
         state.data = action.payload;
-        console.log("64", state.indexes, action.payload);
         state.indexes = indexesOwnerProfileUpdated(
           state.indexes,
           action.payload,
@@ -103,7 +107,6 @@ const didSlice = createSlice({
       })
       .addCase(uploadAvatar.fulfilled, (state, action) => {
         state.loading = false;
-        console.log("uploadAvatar", action.payload);
         state.avatar = action.payload;
       })
       .addCase(uploadAvatar.rejected, (state, action) => {
@@ -118,6 +121,6 @@ export const selectIndexes = (state: any) => state.did.indexes;
 export const selectAvatar = (state: any) => state.did.avatar;
 export const selectProfileLoading = (state: any) => state.did.loading;
 
-export const { updateDidIndex, setProfile } = didSlice.actions;
+export const { updateDidIndex, setProfile, addConversation } = didSlice.actions;
 
 export default didSlice.reducer;
