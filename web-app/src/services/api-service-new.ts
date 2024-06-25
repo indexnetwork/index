@@ -101,7 +101,7 @@ class ApiService {
     return data;
   }
 
-  async updateProfile(params: UserProfileUpdateParams): Promise<Users> {
+  async updateProfile(params: Partial<Users>): Promise<Users> {
     const url = API_ENDPOINTS.UPDATE_PROFILE;
     const { data } = await this.apiAxios.patch<Users>(url, params);
     return data;

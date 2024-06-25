@@ -54,13 +54,17 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
       bio: userProfile.bio || "",
     },
     onSubmit: async (values) => {
+      console.log(`submit all`);
       try {
         if (!apiReady || !api) return;
 
         const profileData = {
           name: values.name,
           bio: values.bio,
-          avatar: avatar || userProfile.avatar,
+          avatar: (avatar || userProfile.avatar).replace(
+            `${appConfig.ipfsProxy}/`,
+            "",
+          ),
         };
 
         await dispatch(updateProfile({ profile: profileData, api })).unwrap();
@@ -88,6 +92,22 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
     },
     [api, apiReady, dispatch],
   );
+
+  const handleKeyDown = useCallback(
+    (event: any) => {
+      if (event.key === "Enter") {
+        formik.handleSubmit();
+      }
+    },
+    [formik],
+  );
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleKeyDown]);
 
   return (
     <Modal

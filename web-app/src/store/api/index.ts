@@ -59,18 +59,21 @@ export const fetchIndex = createAsyncThunk(
       dispatch(resetConversation());
 
       if (state.index?.data?.id === indexID) {
-        return state.index.data;
+        return state.index?.data;
       }
 
       const index = await api.getIndex(indexID, {});
+
       if (index) {
-        await dispatch(
-          fetchDID({
-            didID: index.controllerDID.id,
-            api,
-            ignoreDiscoveryType: true,
-          }),
-        ).unwrap();
+        if (!state.did?.data) {
+          await dispatch(
+            fetchDID({
+              didID: index.controllerDID.id,
+              api,
+              ignoreDiscoveryType: true,
+            }),
+          ).unwrap();
+        }
 
         try {
           await dispatch(fetchIndexItems({ indexID: index.id, api })).unwrap();
@@ -162,26 +165,33 @@ export const toggleUserIndex = createAsyncThunk(
     { dispatch, rejectWithValue, getState },
   ) => {
     try {
+      let controllerDID;
       if (toggleType === "star") {
-        await api.starIndex(indexID, value);
+        const resp = await api.starIndex(indexID, value);
+        controllerDID = resp?.controllerDID?.id;
       } else if (toggleType === "own") {
-        await api.ownIndex(indexID, value);
+        const resp = await api.ownIndex(indexID, value);
+        controllerDID = resp?.controllerDID?.id;
       }
 
       const state: any = getState();
       const currentIndex = state.index.data;
-      dispatch(
-        updateDidIndex({
-          indexID,
-          updatedIndex: {
-            ...currentIndex,
-            did: {
-              ...currentIndex.did,
-              [toggleType === "star" ? "starred" : "owned"]: value,
+
+      if (controllerDID === currentIndex.controllerDID.id) {
+        dispatch(
+          updateDidIndex({
+            indexID,
+            updatedIndex: {
+              ...currentIndex,
+              did: {
+                ...currentIndex.did,
+                [toggleType === "star" ? "starred" : "owned"]: value,
+              },
             },
-          },
-        }),
-      );
+          }),
+        );
+      }
+
       return { toggleType, [toggleType]: value };
     } catch (err: any) {
       return rejectWithValue(err.response.data);

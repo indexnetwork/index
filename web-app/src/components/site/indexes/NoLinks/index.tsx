@@ -1,8 +1,9 @@
 import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";
 import Row from "components/layout/base/Grid/Row";
-import { useApp } from "@/context/AppContext";
 import React from "react";
+import { useAppSelector } from "@/store/store";
+import { selectIndex } from "@/store/slices/indexSlice";
 
 export interface NoLinksProps {
   search?: string;
@@ -15,7 +16,7 @@ const NoLinks: React.FC<NoLinksProps> = ({
   isOwner = false,
   tabKey,
 }) => {
-  const { viewedIndex } = useApp();
+  const { data: viewedIndex } = useAppSelector(selectIndex);
   return (
     <>
       <Row rowSpacing={5} fullWidth>

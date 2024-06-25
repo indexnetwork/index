@@ -122,47 +122,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const isFetchingConversationRef = useRef(false);
   const isFetchingDIDRef = useRef(false);
 
-  // useEffect(() => {
-  //   if (isConversation && conversationId) {
-  //     console.log("fetching conversation", conversationId);
-  //     fetchConversation(conversationId);
-  //   }
-  // }, [isConversation, apiReady]);
-
-  // useEffect(() => {
-  //   console.log("setting app view", { isConversation, viewedConversation });
-  //   if (isConversation && viewedConversation) {
-  //     const source = viewedConversation.sources[0];
-  //     const discoveryType = source.includes("did:")
-  //       ? DiscoveryType.DID
-  //       : DiscoveryType.INDEX;
-  //     console.log("setting conversation view", source, discoveryType);
-  //     setView({
-  //       name: "conversation",
-  //       id: viewedConversation.id,
-  //       discoveryType,
-  //     });
-
-  //     if (discoveryType === DiscoveryType.INDEX) {
-  //       fetchIndex(source, {}).then((index) => {
-  //         console.log("setting viewed index", index);
-  //         setViewedIndex(index);
-  //       });
-  //     }
-  //   }
-
-  //   if (id) {
-  //     console.log("setting default view");
-  //     setView({
-  //       name: "default",
-  //       id,
-  //       discoveryType: isDID ? DiscoveryType.DID : DiscoveryType.INDEX,
-  //     });
-  //     setViewedConversation(undefined);
-  //   }
-  // }, [id, conversationId, isConversation, isDID, viewedConversation]);
-  //
-
   const fetchAndStoreConversation = useCallback(async () => {
     try {
       if (!apiReady || !conversationId || !api) return;
@@ -231,7 +190,15 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       console.log("fetching DID", id);
       fetchAndStoreDID(id);
     }
-  }, [path, apiReady, isLanding, isConversation, fetchAndStoreConversation]);
+  }, [
+    path,
+    apiReady,
+    isLanding,
+    isConversation,
+    fetchAndStoreConversation,
+    fetchAndStoreDID,
+    fetchAndStoreIndex,
+  ]);
 
   const leftSectionIndexes = useMemo(() => {
     if (leftTabKey === IndexListTabKey.ALL) {
