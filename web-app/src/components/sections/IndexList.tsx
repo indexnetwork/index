@@ -106,7 +106,10 @@ const IndexListSection: FC = () => {
                   <IndexItem
                     index={itm}
                     selected={
-                      itm.id === id || itm.id === viewedConversation?.sources[0]
+                      itm.id === id ||
+                      (viewedConversation?.sources &&
+                        viewedConversation?.sources.length > 0 &&
+                        itm.id === viewedConversation?.sources[0])
                     }
                   />
                 </>

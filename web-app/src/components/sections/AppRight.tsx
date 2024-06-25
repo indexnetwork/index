@@ -13,20 +13,15 @@ import FlexRow from "components/layout/base/Grid/FlexRow";
 import { useRouter } from "next/navigation";
 import ConversationHistory from "./History";
 import NewChatButton from "./NewChatButton";
+import { selectConversation } from "@/store/slices/conversationSlice";
 
 const AppRight = () => {
-  const {
-    setRightSidebarOpen,
-    rightSidebarOpen,
-    rightTabKey,
-    setRightTabKey,
-    setViewedConversation,
-    viewedConversation,
-  } = useApp();
+  const { setRightSidebarOpen, rightSidebarOpen, rightTabKey, setRightTabKey } =
+    useApp();
 
   const { isConversation } = useRouteParams();
   const { conversations } = useAppSelector(selectDID);
-
+  const { data: viewedConversation } = useAppSelector(selectConversation);
   const router = useRouter();
 
   const handleRightTabChange = (tabKey: string) => {
@@ -34,7 +29,6 @@ const AppRight = () => {
   };
 
   const handleStartChat = () => {
-    setViewedConversation(undefined);
     router.push(`/${viewedConversation?.sources[0]}`);
   };
 

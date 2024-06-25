@@ -3,9 +3,27 @@ import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { CHAT_STARTED, trackEvent } from "@/services/tracker";
-
+import {
+  createConversation,
+  regenerateMessage,
+  sendMessage,
+  updateMessageThunk,
+} from "@/store/api/conversation";
+import { selectView } from "@/store/slices/appViewSlice";
+import {
+  addMessage,
+  updateMessage,
+  deleteMessage,
+  selectConversation,
+  setMessages,
+  updateMessageByID,
+} from "@/store/slices/conversationSlice";
+import { addConversation, selectDID } from "@/store/slices/didSlice";
+import { selectIndex } from "@/store/slices/indexSlice";
+import { useAppDispatch, useAppSelector } from "@/store/store";
+import { API_ENDPOINTS } from "@/utils/constants";
 import { type Message } from "@ai-sdk/react";
-
+import { generateId } from "ai";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
@@ -15,9 +33,7 @@ import AskInput from "components/base/AskInput";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-
-// import { nanoid } from "nanoid";
-
+import { useRouter } from "next/navigation";
 import {
   ComponentProps,
   FC,
@@ -27,12 +43,6 @@ import {
   useState,
 } from "react";
 import { maskDID } from "utils/helper";
-import { generateId } from "ai";
-import { useRouter } from "next/navigation";
-import { API_ENDPOINTS } from "@/utils/constants";
-import { useAppSelector } from "@/store/store";
-import { selectView } from "@/store/slices/appViewSlice";
-import { setConversation } from "@/store/slices/conversationSlice";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -48,21 +58,19 @@ export interface MessageWithIndex extends Message {
 
 const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const { session } = useAuth();
-  const {
-    leftSectionIndexes,
-    leftTabKey,
-    viewedProfile,
-    viewedIndex,
-    conversations,
-    setConversations,
-  } = useApp();
-  const { isIndex, conversationId, id } = useRouteParams();
+  const { leftSectionIndexes, leftTabKey } = useApp();
+  const { isIndex, id } = useRouteParams();
   const { ready: apiReady, api } = useApi();
   const router = useRouter();
-  const viewedConversation = useAppSelector((state) => state.conversation.data);
-  const view = useAppSelector(selectView);
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const dispatch = useAppDispatch();
+  const { data: viewedConversation } = useAppSelector(selectConversation);
+  const { data: viewedIndex } = useAppSelector(selectIndex);
+  const { data: viewedProfile } = useAppSelector(selectDID);
+  const view = useAppSelector(selectView);
+  const [streamingMessages, setStreamingMessages] = useState<any>([]);
+  const isLocalUpdate = useRef(false);
+
   const [stoppedMessages, setStoppedMessages] = useState<string[]>([]);
   const [deletedMessages, setDeletedMessages] = useState<string[]>([]);
 
@@ -86,119 +94,49 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     }
   }, [apiReady, api, id, isIndex]);
 
-  useEffect(() => {
-    if (viewedConversation && viewedConversation.messages) {
-      console.log("viewedConversation.messages", viewedConversation.messages);
-      setMessages(viewedConversation.messages);
-    } else {
-      console.log("reset set messages", viewedConversation);
-      setMessages([]);
-    }
-  }, [conversationId, viewedConversation]);
-
-  useEffect(() => {
-    if (view.type !== "conversation") {
-      console.log("reset set messages view", view);
-      setMessages([]);
-    }
-  }, [view]);
-
   const handleSendMessage = useCallback(
-    async (message: string) => {
-      if (!apiReady || isLoading) return;
+    async (messageStr: string) => {
+      if (!apiReady || !api) return;
       try {
+        isLocalUpdate.current = false;
         const newMessage: Message = {
           id: generateId(),
           role: "user",
-          content: message,
+          content: messageStr,
         };
 
-        setMessages((prevMessages) => [...prevMessages, newMessage]);
         let currentConv = viewedConversation;
-        if (!currentConv) {
-          const response = await api!.createConversation({
-            sources: [id],
-            summary: `New chat`,
-          });
-
+        if (!currentConv && id) {
+          const response = await dispatch(
+            createConversation({
+              sources: [id],
+              summary: messageStr,
+              api,
+            }),
+          ).unwrap();
           currentConv = response;
-
-          setConversations([response, ...conversations]);
+          router.push(`/conversation/${currentConv.id}`);
         }
-        if (!currentConv) return;
-        const messageResp = await api!.sendMessage(currentConv.id, {
-          content: message,
-          role: "user",
-        });
-        currentConv.messages = [messageResp];
-        setConversation(currentConv);
 
-        router.push(`/conversation/${currentConv.id}`);
+        if (!currentConv) {
+          throw new Error("No conversation found");
+        }
+
+        await dispatch(
+          sendMessage({
+            prevID: newMessage.id,
+            content: messageStr,
+            role: "user",
+            conversationId: currentConv.id,
+            api,
+          }),
+        ).unwrap();
       } catch (error) {
         console.error("Error sending message", error);
       }
     },
-    [
-      viewedConversation,
-      apiReady,
-      id,
-      router,
-      setConversations,
-      conversations,
-      api,
-      isLoading,
-    ],
+    [api, viewedConversation, id, dispatch, router, apiReady],
   );
-
-  // const updateMessage = useCallback(
-  //   async (messageId: string, message: string) => {
-  //     if (!viewedConversation) return;
-  //     if (!apiReady || isLoading) return;
-  //     try {
-  //       console.log("update message", messages, viewedConversation);
-
-  //       const newMessage: Message = {
-  //         id: generateId(),
-  //         role: "user",
-  //         content: message,
-  //       };
-  //       setMessages((prevMessages) => {
-  //         return [...prevMessages, newMessage];
-  //       });
-
-  //       const messageResp = await api!.updateMessage(
-  //         viewedConversation.id,
-  //         messageId,
-  //         {
-  //           content: message,
-  //           role: "user",
-  //         },
-  //         true,
-  //       );
-  //       viewedConversation.messages.push(messageResp);
-  //       setMessages((prevMessages) => {
-  //         return prevMessages.map((msg) => {
-  //           if (msg.id === messageId) {
-  //             return messageResp;
-  //           }
-  //           return msg;
-  //         });
-  //       });
-
-  //       setViewedConversation(viewedConversation);
-  //     } catch (e) {
-  //       console.error("Error sending message", e);
-  //     }
-  //   },
-  //   [
-  //     apiReady,
-  //     api,
-  //     viewedConversation,
-  //     messages,
-  //     setViewedConversation,
-  //     isLoading,
-  //   ],
-  // );
 
   useEffect(() => {
     fetchDefaultQuestions();
@@ -210,72 +148,43 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     setEditInput(message.content);
   };
 
-  // const handleSaveEdit = useCallback(async () => {
-  //   if (editingMessage) {
-  //     try {
-  //       const messagesBeforeEdit = messages.slice(0, editingIndex);
-  //       const messagesAfterEdit = messages.slice(editingIndex);
+  const handleSaveEdit = useCallback(async () => {
+    if (!apiReady || !api || !viewedConversation || !editingMessage) return;
+    try {
+      isLocalUpdate.current = false;
+      await dispatch(
+        updateMessageThunk({
+          conversationId: viewedConversation.id,
+          messageId: editingMessage.id,
+          content: editInput,
+          api,
+        }),
+      ).unwrap();
+      setEditingMessage(undefined);
+      setEditInput("");
+    } catch (error: any) {
+      console.error("An error occurred:", error.message);
+    }
+  }, [dispatch, api, apiReady, viewedConversation, editingMessage, editInput]);
 
-  //       console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
-  //       if (Array.isArray(messagesAfterEdit) && messagesAfterEdit.length > 0) {
-  //         const mIds = messagesAfterEdit.map((m) => m.id);
-  //         setDeletedMessages((prev) => {
-  //           return [...prev, ...mIds];
-  //         });
-  //       }
+  const handleRegenerate = useCallback(
+    async (message: Message, index: number) => {
+      if (!apiReady || !api || !viewedConversation) return;
+      isLocalUpdate.current = false;
 
-  //       const newMessage = {
-  //         ...editingMessage,
-  //         content: editInput,
-  //       };
+      await dispatch(
+        regenerateMessage({
+          conversationId: viewedConversation.id,
+          message,
+          index,
+          api,
+        }),
+      );
+    },
+    [api, viewedConversation, apiReady, dispatch],
+  );
 
-  //       setEditingMessage(undefined);
-  //       setEditInput("");
-  //       setIsLoading(false);
-  //       setMessages([...messagesBeforeEdit]);
-  //       console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
-
-  //       await updateMessage(editingMessage.id, editInput); // TODO
-  //     } catch (error: any) {
-  //       console.error("An error occurred:", error.message);
-  //     }
-  //   }
-  // }, [editingMessage, editInput, messages, editingIndex, updateMessage]);
-
-  // const regenerateMessage = async () => {
-  //   if (!apiReady || isLoading || !viewedConversation) return;
-  //   try {
-  //     const lastUserMessage = messages.findLast((m) => m.role === "user");
-  //     const lastAssistantMessage = messages.findLast(
-  //       (m) => m.name === "basic_assistant",
-  //     );
-  //     if (!lastUserMessage) return;
-
-  //     setIsLoading(true);
-
-  //     if (lastAssistantMessage) {
-  //       const messagesBeforeEdit = messages.slice(
-  //         0,
-  //         messages.indexOf(lastAssistantMessage),
-  //       );
-
-  //       setMessages(messagesBeforeEdit);
-  //     }
-
-  //     const regeneratedMessage = await api!.updateMessage(
-  //       viewedConversation.id,
-  //       lastUserMessage.id,
-  //       { role: lastUserMessage.role, content: lastUserMessage.content },
-  //       true,
-  //     );
-
-  //     setIsLoading(false);
-  //   } catch (error) {
-  //     console.error("Error sending message", error);
-  //   }
-  // };
-
-  const getChatContextMessage = (): string => {
+  const getChatContextMessage = useCallback((): string => {
     if (viewedIndex && isIndex) {
       return viewedIndex.title;
     }
@@ -300,7 +209,14 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     }
 
     return `indexes`;
-  };
+  }, [
+    viewedProfile,
+    viewedIndex,
+    viewedConversation,
+    leftTabKey,
+    isIndex,
+    session,
+  ]);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -313,96 +229,90 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const stop = () => {
     setIsLoading(false);
     // TODO send stop signal to backend.
-    setStoppedMessages(messages.map((c) => c.id));
+    setStoppedMessages(viewedConversation?.messages.map((c) => c.id));
   };
-
-  const handleMessage = (data: any) => {
-    const payload = JSON.parse(data);
-    console.log("Received message from server", payload);
-
-    if (payload.channel === "end") {
-      if (viewedConversation && viewedConversation.summary === `New chat`) {
-        api!.getConversationWithSummary(viewedConversation.id).then((c) => {
-          setConversations(
-            conversations.map((i: any) =>
-              i.id === c.id ? { ...c, summary: c.summary } : i,
-            ),
-          );
-        });
-      }
-
-      setIsLoading(false);
-      // scrollToBottom();
+  const handleIncomingMessage = (p: any) => {
+    isLocalUpdate.current = true;
+    if (p.channel === "end") {
+      //dispatch(setMessages(streamingMessages));
       return;
     }
 
-    if (payload.channel === "update") {
-      const newMessage: Message = {
-        id: payload.data.messageId,
-        role: payload.data.payload.role,
-        content: payload.data.payload.content,
-      };
-      setMessages((prevMessages) => {
-        return [...prevMessages, newMessage];
-      });
-      setIsLoading(false);
-      // scrollToBottom();
-      return;
-    }
-
-    if (
-      stoppedMessages.includes(payload.data.messageId) ||
-      deletedMessages.includes(payload.data.messageId)
-    ) {
-      return;
-    }
-
-    setIsLoading(true);
-    setMessages((prevConversation) => {
-      let streamingMessage = prevConversation.find(
-        (c) => c.id === payload.data.messageId,
-      );
-
-      if (!streamingMessage) {
-        console.log(`newmessage ${payload.data.messageId}`);
-        streamingMessage = {
-          id: payload.data.messageId,
-          content: payload.data.chunk,
-          role: "assistant",
-          name: payload.data.name,
-        };
-        console.log("New message", streamingMessage);
-        return [...prevConversation, streamingMessage];
-      }
-
-      if (payload.channel === "chunk") {
-        return prevConversation.map((message) =>
-          message.id === payload.data.messageId
-            ? { ...message, content: message.content + payload.data.chunk }
-            : message,
+    if (p.channel === "chunk") {
+      setStreamingMessages((prevMessages: any) => {
+        let streamingMessage = prevMessages.find(
+          (m: any) => m.id === p.data.messageId,
         );
-      }
-      return prevConversation;
-    });
-    // scrollToBottom();
+
+        if (streamingMessage) {
+          const updatedStream = prevMessages.map((m: any) =>
+            m.id === p.data.messageId
+              ? {
+                  ...m,
+                  content: m.content + p.data.chunk,
+                }
+              : m,
+          );
+          dispatch(setMessages(updatedStream));
+          return updatedStream;
+        }
+
+        const viewedMessages = viewedConversation.messages;
+
+        if (viewedMessages) {
+          streamingMessage = viewedMessages.find(
+            (m: any) => m.id === p.data.messageId,
+          );
+          if (streamingMessage) {
+            const updatedStreamViewed = viewedMessages.map((m: any) =>
+              m.id === p.data.messageId
+                ? {
+                    ...m,
+                    content: m.content + p.data.chunk,
+                  }
+                : m,
+            );
+            dispatch(setMessages(updatedStreamViewed));
+            return updatedStreamViewed;
+          }
+        }
+
+        const initialAssistantMessage = {
+          id: p.data.messageId,
+          role: "assistant",
+          name: "basic_assistant",
+          content: p.data.chunk,
+        };
+        const updated = [...prevMessages, initialAssistantMessage];
+        dispatch(setMessages(updated));
+        return updated;
+      });
+    }
   };
+
+  useEffect(() => {
+    if (!isLocalUpdate.current) {
+      viewedConversation &&
+        viewedConversation.messages &&
+        setStreamingMessages(viewedConversation.messages);
+    }
+    isLocalUpdate.current = false;
+  }, [viewedConversation]);
 
   useEffect(() => {
     if (!viewedConversation) return;
     const eventUrl = `${process.env.NEXT_PUBLIC_API_URL!}${API_ENDPOINTS.CONVERSATION_UPDATES.replace(":conversationId", viewedConversation.id)}?session=${session?.serialize()}`;
     const eventSource = new EventSource(eventUrl);
     eventSource.onmessage = (event) => {
-      console.log("Received message from server", event.data);
-      handleMessage(event.data);
+      handleIncomingMessage(JSON.parse(event.data));
     };
+
     eventSource.onerror = (err) => {
       console.error("EventSource failed:", err);
       eventSource.close();
     };
-    return () => {
-      eventSource.close();
-    };
-  }, [stoppedMessages, deletedMessages, viewedConversation, API_ENDPOINTS]);
+    return () => eventSource.close();
+  }, []);
 
   if (leftSectionIndexes.length === 0) {
     // return <NoIndexes tabKey={leftTabKey} />;
@@ -417,7 +327,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           viewedConversation &&
           viewedConversation.sources &&
           viewedConversation.sources?.filter(
-            (source) => !source.includes("did:"),
+            (source: string) => !source.includes("did:"),
           ).length > 0
             ? "px-0 pt-7"
             : "px-md-10 px-4 pt-7"
@@ -442,17 +352,17 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
               flexDirection: "column",
             }}
           >
-            {viewedConversation && viewedConversation.messages.length ? (
+            {viewedConversation ? (
               <>
                 <ChatList
-                  messages={messages}
+                  messages={streamingMessages || []}
                   handleEditClick={handleEditClick}
                   editingMessage={editingMessage}
                   setEditInput={setEditInput}
                   editInput={editInput}
-                  // handleSaveEdit={handleSaveEdit}
+                  handleSaveEdit={handleSaveEdit}
+                  handleRegenerate={handleRegenerate}
                   editingIndex={editingIndex}
-                  // regenerate={regenerateMessage}
                 />
                 <div ref={bottomRef} />
                 <ChatScrollAnchor trackVisibility={isLoading} />
@@ -473,7 +383,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                   indexIds={
                     viewedConversation &&
                     viewedConversation.sources?.filter(
-                      (source) => !source.includes("did:"),
+                      (source: string) => !source.includes("did:"),
                     )
                   }
                   defaultQuestions={defaultQuestions}
@@ -493,7 +403,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
             stop={stop}
             // reload={regenerateMessage}
             // reload={reload}
-            messages={messages}
+            messages={viewedConversation?.messages}
           />
         </FlexRow>
         <FlexRow fullWidth className={"idxflex-grow-1"} colGap={0}>

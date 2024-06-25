@@ -3,6 +3,8 @@ import WaitBetaModal from "@/components/site/modal/WaitBetaModal";
 import { useApp } from "@/context/AppContext";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import { selectDID } from "@/store/slices/didSlice";
+import { useAppSelector } from "@/store/store";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
 import Dropdown from "components/base/Dropdown";
@@ -25,8 +27,9 @@ const AppHeader = () => {
     rightSidebarOpen,
     setRightSidebarOpen,
     setEditProfileModalVisible,
-    userProfile,
   } = useApp();
+
+  const { data: userProfile } = useAppSelector(selectDID);
 
   const handleDisconnect = useCallback(async () => {
     try {

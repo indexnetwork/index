@@ -2,7 +2,9 @@ import {
   addItem,
   fetchIndex,
   fetchIndexItems,
+  removeItem,
   toggleUserIndex,
+  updateIndexTitle,
 } from "@/store/api";
 
 import { createSlice } from "@reduxjs/toolkit";
@@ -22,10 +24,20 @@ const indexSlice = createSlice({
     addItemError: null,
     toggleLoading: false,
     toggleError: null,
+    titleLoading: false,
+    titleError: null,
   },
   reducers: {
     setAddItemLoading: (state, action) => {
       state.addItemLoading = action.payload;
+    },
+    updateIndexControllerDID: (state, action) => {
+      if (state.data?.controllerDID.id === action.payload.id) {
+        state.data.controllerDID = action.payload;
+      }
+    },
+    resetIndex: (state) => {
+      state.data = null;
     },
   },
   extraReducers: (builder) => {
@@ -64,6 +76,19 @@ const indexSlice = createSlice({
         state.addItemLoading = false;
         state.addItemError = action.payload as any;
       })
+      .addCase(removeItem.pending, (state) => {
+        state.addItemLoading = true;
+      })
+      .addCase(removeItem.fulfilled, (state, action) => {
+        state.addItemLoading = false;
+        state.items.data = state.items.data.filter(
+          (item: any) => item.node.id !== action.payload,
+        );
+      })
+      .addCase(removeItem.rejected, (state, action) => {
+        state.addItemLoading = false;
+        state.addItemError = action.payload as any;
+      })
       .addCase(toggleUserIndex.pending, (state) => {
         state.toggleLoading = true;
       })
@@ -84,10 +109,23 @@ const indexSlice = createSlice({
       .addCase(toggleUserIndex.rejected, (state, action) => {
         state.toggleLoading = false;
         state.toggleError = action.payload as any;
+      })
+      .addCase(updateIndexTitle.pending, (state) => {
+        state.titleLoading = true;
+      })
+      .addCase(updateIndexTitle.fulfilled, (state, action) => {
+        state.titleLoading = false;
+        state.error = null;
+        state.data = action.payload;
+      })
+      .addCase(updateIndexTitle.rejected, (state, action) => {
+        state.titleLoading = false;
+        state.titleError = action.payload as any;
       });
   },
 });
 
 export const selectIndex = (state: any) => state.index;
-export const { setAddItemLoading } = indexSlice.actions;
+export const { setAddItemLoading, resetIndex, updateIndexControllerDID } =
+  indexSlice.actions;
 export default indexSlice.reducer;

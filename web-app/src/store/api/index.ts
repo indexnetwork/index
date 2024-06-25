@@ -1,9 +1,11 @@
 import ApiService, { GetItemQueryParams } from "@/services/api-service-new";
 import { setViewType } from "@/store/slices/appViewSlice";
-import { fetchDID, updateDidIndex } from "@/store/slices/didSlice";
+import { updateDidIndex } from "@/store/slices/didSlice";
 import { DiscoveryType } from "@/types";
 import { isStreamID } from "@/utils/helper";
 import { createAsyncThunk } from "@reduxjs/toolkit";
+import { fetchDID } from "./did";
+import { resetConversation } from "../slices/conversationSlice";
 
 type FetchIndexPayload = {
   indexID: string;
@@ -28,59 +30,33 @@ type ToggleUserIndexPayload = {
   value: boolean;
 };
 
-type FetchConversationPayload = {
-  cID: string;
+type UpdateIndexTitlePayload = {
+  indexID: string;
+  title: string;
   api: ApiService;
 };
-
-export const fetchConversation = createAsyncThunk(
-  "conversation/fetchConversation",
-  async (
-    { cID, api }: FetchConversationPayload,
-    { dispatch, rejectWithValue },
-  ) => {
-    try {
-      const conversation = await api.getConversation(cID);
-      const source = conversation.sources[0];
-
-      if (source.includes("did:")) {
-        dispatch(
-          setViewType({
-            type: "conversation",
-            discoveryType: DiscoveryType.DID,
-          }),
-        );
-        await dispatch(
-          fetchDID({ didID: source, api, ignoreDiscoveryType: true }),
-        ).unwrap();
-      } else {
-        // TODO: check if this is index really
-        dispatch(
-          setViewType({
-            type: "conversation",
-            discoveryType: DiscoveryType.INDEX,
-          }),
-        );
-        await dispatch(fetchIndex({ indexID: source, api })).unwrap();
-      }
-
-      return conversation;
-    } catch (err: any) {
-      return rejectWithValue(err.response.data);
-    }
-  },
-);
 
 export const fetchIndex = createAsyncThunk(
   "index/fetchIndex",
   async (
     { indexID, api }: FetchIndexPayload,
-    { dispatch, rejectWithValue },
+    { dispatch, rejectWithValue, getState },
   ) => {
     try {
-      let discoveryType = DiscoveryType.INDEX;
-      const index = await api.getIndex(indexID, {});
+      dispatch(
+        setViewType({
+          type: "default",
+          discoveryType: DiscoveryType.INDEX,
+        }),
+      );
+      const state: any = getState();
+      dispatch(resetConversation());
 
+      if (state.index?.data?.id === indexID) {
+        return state.index.data;
+      }
+
+      const index = await api.getIndex(indexID, {});
       if (index) {
         await dispatch(
           fetchDID({
@@ -89,20 +65,17 @@ export const fetchIndex = createAsyncThunk(
             ignoreDiscoveryType: true,
           }),
         ).unwrap();
-        await dispatch(fetchIndexItems({ indexID: index.id, api })).unwrap();
-      } else {
-        discoveryType = "unknown" as any;
-      }
 
-      dispatch(
-        setViewType({
-          type: "default",
-          discoveryType,
-        }),
-      );
+        try {
+          await dispatch(fetchIndexItems({ indexID: index.id, api })).unwrap();
+        } catch (err) {
+          console.error("Error fetching index items", err);
+        }
+      }
 
       return index;
     } catch (err: any) {
+      console.log("Error fetching index", err);
       return rejectWithValue(err.response.data);
     }
   },
@@ -145,6 +118,23 @@ export const addItem = createAsyncThunk(
   },
 );
 
+export const removeItem = createAsyncThunk(
+  "index/removeItem",
+  async ({ item, api, indexID }: AddItemPayload, { rejectWithValue }) => {
+    try {
+      if (!isStreamID(item)) {
+        throw new Error("Invalid item ID provided.");
+      }
+
+      await api.deleteItem(indexID, item);
+
+      return item;
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data || err.message);
+    }
+  },
+);
+
 export const toggleUserIndex = createAsyncThunk(
   "index/toggleUserIndex",
   async (
@@ -175,6 +165,38 @@ export const toggleUserIndex = createAsyncThunk(
       return { toggleType, [toggleType]: value };
     } catch (err: any) {
       return rejectWithValue(err.response.data);
+    }
+  },
+);
+
+export const updateIndexTitle = createAsyncThunk(
+  "index/updateIndexTitle",
+  async (
+    { indexID, title, api }: UpdateIndexTitlePayload,
+    { dispatch, getState, rejectWithValue },
+  ) => {
+    try {
+      const result = await api.updateIndex(indexID, { title });
+      const state: any = getState();
+      const updatedIndexOrig = state.did.indexes.find(
+        (i: any) => i.id === indexID,
+      );
+
+      if (!updatedIndexOrig) {
+        throw new Error("Index to update not found");
+      }
+
+      const updatedIndex = {
+        ...updatedIndexOrig,
+        title: result.title,
+        updatedAt: result.updatedAt,
+      };
+
+      dispatch(updateDidIndex({ indexID, updatedIndex }));
+
+      return updatedIndex;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data || error.message);
     }
   },
 );

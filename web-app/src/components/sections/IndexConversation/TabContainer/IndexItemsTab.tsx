@@ -8,17 +8,14 @@ import { useApi } from "@/context/APIContext";
 import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import { ITEM_ADDED, trackEvent } from "@/services/tracker";
+import { addItem, removeItem } from "@/store/api/index";
+import { selectIndex, setAddItemLoading } from "@/store/slices/indexSlice";
+import { useAppDispatch, useAppSelector } from "@/store/store";
 import { IndexItem } from "@/types/entity";
 import { filterValidUrls, isStreamID, removeDuplicates } from "@/utils/helper";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { useIndexConversation } from "../IndexConversationContext";
-import { useAppDispatch, useAppSelector } from "@/store/store";
-import {
-  addItem,
-  selectIndex,
-  setAddItemLoading,
-} from "@/store/slices/indexSlice";
 
 const CONCURRENCY_LIMIT = 10;
 
@@ -92,7 +89,7 @@ export default function IndexItemsTabSection() {
   };
 
   const handleAddItem = useCallback(
-    async (inputItems) => {
+    async (inputItems: any) => {
       if (!apiReady || !viewedIndex || !api) return;
 
       // Add only unique and valid URLs
@@ -137,60 +134,28 @@ export default function IndexItemsTabSection() {
     [api, viewedIndex, apiReady, items, dispatch],
   );
 
-  // const handleAddItem = useCallback(
-  //   async (inputItems: string[]) => {
-  //     if (!apiReady || !viewedIndex) return;
+  const handleRemoveItem = useCallback(
+    async (item: IndexItem) => {
+      if (!apiReady || !viewedIndex || !api) return;
 
-  //     // add only unique and valid URLs
-  //     const filteredUrls = filterValidUrls(inputItems);
-  //     const uniqueUrls = removeDuplicates(filteredUrls);
-  //     const urls = removeDuplicates(
-  //       uniqueUrls,
-  //       itemsState.items
-  //         .filter((i) => i.type === "WebPage")
-  //         // @ts-ignore
-  //         .map((i) => i.node.url),
-  //     );
-
-  //     // add only unique and valid indexes
-  //     const inputIndexIds = inputItems.filter((id) => isStreamID(id));
-  //     const uniqueIndexIds = removeDuplicates(inputIndexIds);
-  //     const indexIds = removeDuplicates(
-  //       uniqueIndexIds,
-  //       itemsState.items
-  //         .filter((i) => i.type === "Index")
-  //         // @ts-ignore
-  //         .map((i) => i.node.id),
-  //     );
-
-  //     const items = [...urls, ...indexIds];
-
-  //     setAddItemLoading(true);
-  //     setProgress({ current: 0, total: items.length });
-
-  //     await processUrlsInBatches(items, async (item: string) => {
-  //       try {
-  //         let itemId = item;
-
-  //         if (!isStreamID(item)) {
-  //           const createdLink = await api!.crawlLink(item);
-  //           itemId = createdLink.id;
-  //         }
-
-  //         const createdItem = await api!.createItem(viewedIndex.id, itemId);
-
-  //         setAddedItem(createdItem);
-  //         trackEvent(ITEM_ADDED);
-  //       } catch (error) {
-  //         console.error("Error adding item", error);
-  //         toast.error(`Error adding item: ${item}`);
-  //       }
-  //     });
-
-  //     setAddItemLoading(false);
-  //   },
-  //   [api, viewedIndex, apiReady],
-  // );
+      dispatch(setAddItemLoading(true));
+      try {
+        await dispatch(
+          removeItem({
+            item: item.node.id,
+            api,
+            indexID: viewedIndex.id,
+          }),
+        ).unwrap();
+      } catch (error) {
+        console.error("Error removing item", error);
+        toast.error(`Error removing item: ${item.id}`);
+      } finally {
+        dispatch(setAddItemLoading(false));
+      }
+    },
+    [api, viewedIndex, apiReady, fetchIndexItems],
+  );
 
   // const handleRemove = useCallback(
   //   (item: IndexItem) => {
@@ -256,8 +221,7 @@ export default function IndexItemsTabSection() {
           items={items.data}
           search={search}
           hasMore={!!items.cursor}
-          // removeItem={handleRemove}
-          removeItem={() => {}}
+          removeItem={handleRemoveItem}
           loadMore={() =>
             viewedIndex &&
             fetchMoreIndexItems(viewedIndex?.id, { resetCursor: false })

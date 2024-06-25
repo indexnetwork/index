@@ -1,79 +1,23 @@
-import ApiService from "@/services/api-service-new";
-import { DiscoveryType } from "@/types";
-import { Indexes } from "@/types/entity";
-import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { setViewType } from "./appViewSlice";
+import {
+  fetchDID,
+  fetchDIDConversations,
+  fetchDIDIndexes,
+} from "@/store/api/did";
+import { updateProfile, uploadAvatar } from "@/store/api/profile";
+import { createSlice } from "@reduxjs/toolkit";
+import { Indexes, Users } from "@/types/entity";
 
-type FetchDIDPayload = {
-  didID: string;
-  api: ApiService;
-  ignoreDiscoveryType?: boolean;
-};
-
-type FetchDIDIndexesPayload = {
-  didID: string;
-  api: ApiService;
-};
-
-type FetchDIDConversationsPayload = {
-  didID: string;
-  api: ApiService;
-};
-
-export const fetchDID = createAsyncThunk(
-  "did/fetchDid",
-  async (
-    { didID, api, ignoreDiscoveryType }: FetchDIDPayload,
-    { dispatch, rejectWithValue },
-  ) => {
-    try {
-      const did = await api.getProfile(didID);
-
-      if (did) {
-        if (!ignoreDiscoveryType) {
-          dispatch(
-            setViewType({
-              type: "default",
-              discoveryType: DiscoveryType.DID,
-            }),
-          );
-        }
-
-        await dispatch(fetchDIDIndexes({ didID, api })).unwrap();
-        await dispatch(fetchDIDConversations({ didID, api })).unwrap();
-      }
-
-      return did;
-    } catch (err: any) {
-      return rejectWithValue(err.response.data);
+const indexesOwnerProfileUpdated = (indexes: Indexes[], profile: Users) => {
+  return indexes.map((index) => {
+    if (index.controllerDID.id === profile.id) {
+      return {
+        ...index,
+        controllerDID: profile,
+      };
     }
-  },
-);
-
-export const fetchDIDIndexes = createAsyncThunk(
-  "did/fetchDIDIndexes",
-  async ({ didID, api }: FetchDIDIndexesPayload, { rejectWithValue }) => {
-    try {
-      const indexes = await api.getAllIndexes(didID);
-      return indexes;
-    } catch (err: any) {
-      return rejectWithValue(err.response.data);
-    }
-  },
-);
-
-export const fetchDIDConversations = createAsyncThunk(
-  "did/fetchDIDConversations",
-  async ({ api }: FetchDIDConversationsPayload, { rejectWithValue }) => {
-    try {
-      const conversations = await api.listConversations();
-      console.log("conversations 87", conversations);
-      return conversations;
-    } catch (err: any) {
-      return rejectWithValue(err.response.data);
-    }
-  },
-);
+    return index;
+  });
+};
 
 const didSlice = createSlice({
   name: "did",
@@ -83,15 +27,34 @@ const didSlice = createSlice({
     conversations: [] as any,
     loading: false,
     error: null,
+    avatar: null as any,
   },
   reducers: {
     updateDidIndex: (state, action) => {
+      console.log(
+        "updateDidIndex",
+        action.payload.indexID,
+        action.payload.updatedIndex,
+      );
       const index = state.indexes.find(
         (idx) => idx.id === action.payload.indexID,
       );
       if (index) {
         Object.assign(index, action.payload.updatedIndex);
       }
+    },
+    setProfile: (state, action) => {
+      state.data = action.payload;
+    },
+    addConversation: (state, action) => {
+      state.conversations = state.conversations
+        ? [action.payload, ...state.conversations]
+        : [action.payload];
+    },
+    removeConversation: (state, action) => {
+      state.conversations = state.conversations
+        ? state.conversations.filter((c) => c.id !== action.payload)
+        : [];
     },
   },
   extraReducers: (builder) => {
@@ -128,12 +91,46 @@ const didSlice = createSlice({
       .addCase(fetchDIDConversations.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as any;
+      })
+      .addCase(updateProfile.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(updateProfile.fulfilled, (state, action) => {
+        state.loading = false;
+        state.data = action.payload;
+        state.indexes = indexesOwnerProfileUpdated(
+          state.indexes,
+          action.payload,
+        );
+      })
+      .addCase(updateProfile.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
+      })
+      .addCase(uploadAvatar.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(uploadAvatar.fulfilled, (state, action) => {
+        state.loading = false;
+        state.avatar = action.payload;
+      })
+      .addCase(uploadAvatar.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
       });
   },
 });
 
 export const selectDID = (state: any) => state.did;
 export const selectIndexes = (state: any) => state.did.indexes;
-export const { updateDidIndex } = didSlice.actions;
+export const selectAvatar = (state: any) => state.did.avatar;
+export const selectProfileLoading = (state: any) => state.did.loading;
+
+export const {
+  updateDidIndex,
+  setProfile,
+  addConversation,
+  removeConversation,
+} = didSlice.actions;
 
 export default didSlice.reducer;

@@ -2,8 +2,9 @@ import { useApi } from "@/context/APIContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { INDEX_CREATED, trackEvent } from "@/services/tracker";
-import { fetchConversation, fetchIndex } from "@/store/api";
-import { fetchDID } from "@/store/slices/didSlice";
+import { fetchIndex } from "@/store/api";
+import { fetchDID } from "@/store/api/did";
+import { fetchConversation } from "@/store/api/conversation";
 import { useAppDispatch } from "@/store/store";
 import { CancelTokenSource } from "axios";
 import { useRouter } from "next/navigation";
@@ -25,6 +26,7 @@ import {
   Users,
 } from "types/entity";
 import { DEFAULT_CREATE_INDEX_TITLE } from "utils/constants";
+import { removeConversation } from "@/store/slices/didSlice";
 
 type AppContextProviderProps = {
   children: ReactNode;
@@ -64,8 +66,6 @@ export interface AppContextValue {
   setViewedIndex: (index: Indexes | undefined) => void;
   viewedConversation: Conversation | undefined;
   setViewedConversation: (conversation: Conversation | undefined) => void;
-  conversations: Conversation[] | [];
-  setConversations: (conversations: Conversation[] | []) => void;
   fetchProfile: (did: string) => void;
   fetchIndexWithCreator: (
     indexId: string,
@@ -106,9 +106,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [viewedConversation, setViewedConversation] = useState<
     Conversation | undefined
   >();
-  const [conversations, setConversations] = useState<Conversation[] | []>(
-    [] as Conversation[],
-  );
   const [viewedProfile, setViewedProfile] = useState<Users | undefined>();
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -255,8 +252,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     async (cID: string) => {
       if (!apiReady) return;
       try {
+        dispatch(removeConversation(cID));
         await api!.deleteConversation(cID);
-        setConversations((cs) => cs.filter((c) => c.id !== cID));
         toast.success("Conversation deleted");
       } catch (error) {
         console.error("Error deleting conversation", error);
@@ -554,21 +551,9 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     }
   }, [userProfile, session, id]);
 
-  const fetchConversations = useCallback(async () => {
-    if (!apiReady) return;
-    try {
-      const response = await api!.listConversations();
-      setConversations(response);
-      console.log("listConversations", response);
-    } catch (error) {
-      console.error("Error sending message", error);
-    }
-  }, [userProfile, session, id]);
-
   useEffect(() => {
     if (viewedProfile) {
       fetchIndexes(viewedProfile.id);
-      fetchConversations();
     }
   }, [viewedProfile, fetchIndexes]);
 
@@ -577,8 +562,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     leftSectionIndexes,
     setIndexes,
     fetchIndexes,
-    conversations,
-    setConversations,
     setCreateModalVisible,
     createModalVisible,
     setTransactionApprovalWaiting,
