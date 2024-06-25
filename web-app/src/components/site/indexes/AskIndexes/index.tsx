@@ -11,14 +11,10 @@ import {
 } from "@/store/api/conversation";
 import { selectView } from "@/store/slices/appViewSlice";
 import {
-  addMessage,
-  updateMessage,
-  deleteMessage,
   selectConversation,
   setMessages,
-  updateMessageByID,
 } from "@/store/slices/conversationSlice";
-import { addConversation, selectDID } from "@/store/slices/didSlice";
+import { selectDID } from "@/store/slices/didSlice";
 import { selectIndex } from "@/store/slices/indexSlice";
 import { useAppDispatch, useAppSelector } from "@/store/store";
 import { API_ENDPOINTS } from "@/utils/constants";
@@ -234,7 +230,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const handleIncomingMessage = (p: any) => {
     isLocalUpdate.current = true;
     if (p.channel === "end") {
-      //dispatch(setMessages(streamingMessages));
+      // dispatch(setMessages(streamingMessages));
       return;
     }
 

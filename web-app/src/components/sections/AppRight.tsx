@@ -11,9 +11,9 @@ import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import { useRouter } from "next/navigation";
+import { selectConversation } from "@/store/slices/conversationSlice";
 import ConversationHistory from "./History";
 import NewChatButton from "./NewChatButton";
-import { selectConversation } from "@/store/slices/conversationSlice";
 
 const AppRight = () => {
   const { setRightSidebarOpen, rightSidebarOpen, rightTabKey, setRightTabKey } =

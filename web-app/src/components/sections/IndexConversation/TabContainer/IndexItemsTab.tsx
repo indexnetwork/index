@@ -5,7 +5,6 @@ import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import IndexItemList from "@/components/site/index-details/IndexItemList";
 import LinkInput from "@/components/site/input/LinkInput";
 import { useApi } from "@/context/APIContext";
-import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import { ITEM_ADDED, trackEvent } from "@/services/tracker";
 import { addItem, removeItem } from "@/store/api/index";
@@ -13,7 +12,7 @@ import { selectIndex, setAddItemLoading } from "@/store/slices/indexSlice";
 import { useAppDispatch, useAppSelector } from "@/store/store";
 import { IndexItem } from "@/types/entity";
 import { filterValidUrls, isStreamID, removeDuplicates } from "@/utils/helper";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import toast from "react-hot-toast";
 import { useIndexConversation } from "../IndexConversationContext";
 

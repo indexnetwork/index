@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
-import { useApp } from "@/context/AppContext";
 import { useAppSelector } from "@/store/store";
 import { selectIndex } from "@/store/slices/indexSlice";
 
