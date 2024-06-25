@@ -1,14 +1,20 @@
 import ApiService, { GetItemQueryParams } from "@/services/api-service-new";
 import { setViewType } from "@/store/slices/appViewSlice";
-import { updateDidIndex } from "@/store/slices/didSlice";
+import { addIndex, updateDidIndex } from "@/store/slices/didSlice";
 import { DiscoveryType } from "@/types";
 import { isStreamID } from "@/utils/helper";
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import { fetchDID } from "./did";
 import { resetConversation } from "../slices/conversationSlice";
+import { Indexes } from "@/types/entity";
 
 type FetchIndexPayload = {
   indexID: string;
+  api: ApiService;
+};
+
+type CreateIndexPayload = {
+  title: string;
   api: ApiService;
 };
 
@@ -131,6 +137,20 @@ export const removeItem = createAsyncThunk(
       return item;
     } catch (err: any) {
       return rejectWithValue(err.response?.data || err.message);
+    }
+  },
+);
+
+export const createIndex = createAsyncThunk(
+  "index/createIndex",
+  async ({ title, api }: CreateIndexPayload, { dispatch, rejectWithValue }) => {
+    try {
+      const index = await api!.createIndex(title);
+      console.log(`charlie2`);
+      dispatch(addIndex(index));
+      return index;
+    } catch (err: any) {
+      return rejectWithValue(err.response.data);
     }
   },
 );

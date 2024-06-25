@@ -2,7 +2,7 @@ import { useApi } from "@/context/APIContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { INDEX_CREATED, trackEvent } from "@/services/tracker";
-import { fetchIndex } from "@/store/api";
+import { createIndex, fetchIndex } from "@/store/api";
 import { fetchDID } from "@/store/api/did";
 import { fetchConversation } from "@/store/api/conversation";
 import { useAppDispatch } from "@/store/store";
@@ -350,15 +350,10 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
       setCreateModalVisible(false);
       setTransactionApprovalWaiting(true);
       try {
-        if (!apiReady) return;
-
-        const doc = await api!.createIndex(title);
-        if (!doc) {
-          throw new Error("API didn't return a doc");
-        }
-        setIndexes((prevIndexes) => [doc, ...prevIndexes]);
+        if (!apiReady || !api) return;
+        const index = await dispatch(createIndex({ title, api })).unwrap();
         toast.success("Index created successfully");
-        router.push(`/${doc.id}`);
+        router.push(`/${index.id}`);
       } catch (err: any) {
         let message = "";
         if (err?.code === -32603) {

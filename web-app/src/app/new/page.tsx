@@ -13,6 +13,8 @@ import toast from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { DIDSession } from "did-session";
+import { createIndex } from "@/store/api";
+import { useAppDispatch } from "@/store/store";
 
 const Home: NextPage = () => {
   const {
@@ -25,7 +27,7 @@ const Home: NextPage = () => {
   const { setSession } = useAuth();
 
   const { api, ready: apiReady } = useApi();
-
+  const dispatch = useAppDispatch();
   const router = useRouter();
 
   const handleGuest = useCallback(async () => {
@@ -56,14 +58,15 @@ const Home: NextPage = () => {
   }, [apiReady, handleGuest]);
 
   const handleCreate = async (title: string) => {
-    const doc = await api!.createIndex(title);
-
-    if (!doc) {
-      throw new Error("API didn't return a doc");
-    }
-    setIndexes([...indexes, doc]);
+    if (!apiReady || !api) return;
+    const resp = await dispatch(
+      createIndex({
+        title,
+        api,
+      }),
+    ).unwrap();
     toast.success("Index created successfully");
-    router.push(`/${doc.id}`);
+    router.push(`/${resp.index.id}`);
   };
 
   return (

@@ -43,6 +43,11 @@ const didSlice = createSlice({
         Object.assign(index, action.payload.updatedIndex);
       }
     },
+    addIndex: (state, action) => {
+      state.indexes = state.indexes
+        ? [action.payload, ...state.indexes]
+        : [action.payload];
+    },
     setProfile: (state, action) => {
       state.data = action.payload;
     },
@@ -131,6 +136,7 @@ export const {
   setProfile,
   addConversation,
   removeConversation,
+  addIndex,
 } = didSlice.actions;
 
 export default didSlice.reducer;

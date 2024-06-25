@@ -38,6 +38,9 @@ const IndexListSection: FC = () => {
         if (leftTabKey === IndexListTabKey.STARRED) {
           return i.did.starred;
         }
+        if (leftTabKey === IndexListTabKey.ALL) {
+          return i.did.starred || i.did.owned;
+        }
         return true;
       }),
     [indexes, leftTabKey],
