@@ -43,7 +43,6 @@ export interface AppContextValue {
   loading: boolean;
   setIndexes: (indexes: Indexes[]) => void;
   fetchIndexes: (did: string) => void;
-  setCreateModalVisible: (visible: boolean) => void;
   setTransactionApprovalWaiting: (visible: boolean) => void;
   leftTabKey: IndexListTabKey;
   setLeftTabKey: (key: IndexListTabKey) => void;
@@ -79,6 +78,9 @@ export interface AppContextValue {
   handleTransactionCancel: () => void;
   transactionApprovalWaiting: boolean;
   createModalVisible: boolean;
+  setCreateModalVisible: (visible: boolean) => void;
+  guestModalVisible: boolean;
+  setGuestModalVisible: (visible: boolean) => void;
   createConditions: (conditions: AccessControlCondition[]) => Promise<void>;
 }
 
@@ -107,6 +109,7 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [viewedProfile, setViewedProfile] = useState<Users | undefined>();
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [guestModalVisible, setGuestModalVisible] = useState(true);
   const [editProfileModalVisible, setEditProfileModalVisible] = useState(false);
   const [transactionApprovalWaiting, setTransactionApprovalWaiting] =
     useState(false);
@@ -228,61 +231,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     },
     [apiReady, api],
   );
-
-  // const fetchIndex = useCallback(
-  //   async (
-  //     indexId: string,
-  //     {
-  //       cancelSource,
-  //     }: {
-  //       cancelSource?: CancelTokenSource;
-  //     },
-  //   ): Promise<any> => {
-  //     try {
-  //       if (!apiReady || !indexId) {
-  //         return;
-  //       }
-
-  //       // if (viewedIndex?.id === id) return;
-  //       if (isFetchingRef.current) return;
-
-  //       isFetchingRef.current = true;
-
-  //       const index = await api!.getIndex(indexId, { cancelSource });
-  //       setViewedIndex(index);
-
-  //       isFetchingRef.current = false;
-  //       return index;
-  //     } catch (error) {
-  //       console.error("Error fetching index", error);
-  //       toast.error("Error fetching index, please refresh the page");
-  //     }
-  //   },
-  //   [isIndex, apiReady, api],
-  // );
-
-  // const fetchConversation = useCallback(
-  //   async (cID: string): Promise<any> => {
-  //     try {
-  //       if (!apiReady || !isConversation || !cID) return;
-  //       // if (viewedIndex?.id === id) return;
-  //       console.log(`conversation8878:`, cID);
-  //       if (isFetchingConversationRef.current) return;
-
-  //       isFetchingConversationRef.current = true;
-
-  //       const conversation = await api!.getConversation(cID);
-  //       console.log(`conversation888:`, conversation);
-  //       setViewedConversation(conversation);
-  //       isFetchingConversationRef.current = false;
-  //       return conversation;
-  //     } catch (error) {
-  //       console.error("Error fetching index", error);
-  //       toast.error("Error fetching index, please refresh the page");
-  //     }
-  //   },
-  //   [isConversation, apiReady, api],
-  // );
 
   const fetchIndexWithCreator = useCallback(
     async (
@@ -423,56 +371,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     handleUserProfile();
   }, [handleUserProfile]);
 
-  // const handleUserProfileChange = useCallback(async () => {
-  //   if (isLanding) return;
-  //   if (viewedProfile && isIndex) return;
-  //   // if (!id) return;
-
-  //   let targetDID;
-  //   if (id && isIndex && !viewedProfile) {
-  //     if (viewedIndex) {
-  //       targetDID = viewedIndex?.controllerDID?.id;
-  //     } else {
-  //       if (!id) return;
-  //       fetchIndex(id, {}).then((index) => {
-  //         if (index) {
-  //           targetDID = index?.controllerDID?.id;
-  //         }
-  //       });
-  //     }
-  //   }
-
-  //   if (isConversation) {
-  //     if (viewedConversation && conversationId === viewedConversation.id) {
-  //       targetDID = viewedConversation?.controllerDID?.id;
-  //     }
-  //   }
-
-  //   if (isDID) {
-  //     setViewedConversation(undefined);
-  //     targetDID = id;
-  //   }
-
-  //   if (targetDID && targetDID !== viewedProfile?.id) {
-  //     const profile = await fetchProfile(targetDID);
-  //     setViewedProfile(profile);
-  //   }
-  // }, [
-  //   isLanding,
-  //   isIndex,
-  //   id,
-  //   conversationId,
-  //   fetchProfile,
-  //   isDID,
-  //   isConversation,
-  //   session,
-  //   viewedIndex,
-  //   viewedConversation,
-  // ]); // eslint-disable-line
-
-  // useEffect(() => {
-  //   handleUserProfileChange();
-  // }, [handleUserProfileChange]);
   const createConditions = useCallback(
     async (conditions: AccessControlCondition[]) => {
       if (!apiReady || !viewedIndex || conditions.length === 0) return;
@@ -509,6 +407,8 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     fetchIndexes,
     setCreateModalVisible,
     createModalVisible,
+    setGuestModalVisible,
+    guestModalVisible,
     setTransactionApprovalWaiting,
     leftSidebarOpen,
     setLeftSidebarOpen,
