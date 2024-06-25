@@ -47,7 +47,7 @@ export const IndexConversationHeader: FC = () => {
       ).unwrap();
 
       toast.success(
-        `Index ${value ? "added to" : "removed from"} starred indexes list`,
+        `Index ${value ? "added to" : "removed from"} ${toggleType === "own" ? "owned" : "starred"} indexes.`,
       );
       trackEvent(ITEM_STARRED);
     },
