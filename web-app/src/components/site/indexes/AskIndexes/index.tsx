@@ -142,8 +142,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     fetchDefaultQuestions();
   }, [fetchDefaultQuestions]);
 
-  useEffect(() => {
-
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
     setEditingIndex(indexOfMessage);
