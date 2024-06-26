@@ -95,7 +95,7 @@ const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
           >
             <HistoryItemOpsPopup
               onDelete={() => {
-                handleDelete(item);
+                handleDelete();
               }}
             />
           </Button>

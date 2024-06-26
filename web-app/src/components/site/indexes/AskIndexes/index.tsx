@@ -143,13 +143,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   }, [fetchDefaultQuestions]);
 
   useEffect(() => {
-    console.log(
-      `aaaa`,
-      viewedIndex && viewedIndex,
-      viewedProfile && viewedProfile,
-      viewedConversation && viewedConversation,
-    );
-  }, [viewedIndex, viewedProfile, viewedConversation]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);

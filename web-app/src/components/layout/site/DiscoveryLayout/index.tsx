@@ -3,7 +3,6 @@ import CreateModal from "@/components/site/modal/CreateModal";
 import EditProfileModal from "@/components/site/modal/EditProfileModal";
 import GuestModal from "@/components/site/modal/GuestModal";
 import { useApp } from "@/context/AppContext";
-import { useAuth } from "@/context/AuthContext";
 import cc from "classcat";
 import AppLeft from "components/sections/AppLeft";
 import AppRight from "components/sections/AppRight";
@@ -33,8 +32,6 @@ const DiscoveryLayout = ({ children }: DiscoveryLayoutProps) => {
     setGuestModalVisible,
     guestModalVisible,
   } = useApp();
-
-  const { connect } = useAuth();
 
   const closeSidebars = () => {
     setLeftSidebarOpen(false);
