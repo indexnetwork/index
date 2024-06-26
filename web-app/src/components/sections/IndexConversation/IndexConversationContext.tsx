@@ -1,5 +1,7 @@
 import { useApi } from "@/context/APIContext";
 import { GetItemQueryParams } from "@/services/api-service-new";
+import { selectIndex } from "@/store/slices/indexSlice";
+import { useAppSelector } from "@/store/store";
 import { IndexItem } from "@/types/entity";
 import { CancelTokenSource } from "axios";
 import {
@@ -72,6 +74,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
     items: [],
     cursor: undefined,
   });
+  const { data: viewedIndex } = useAppSelector(selectIndex);
   const [loading, setLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [addItemLoading, setAddItemLoading] = useState(false);
@@ -206,9 +209,9 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
   }, []);
 
   const loadMoreItems = useCallback(() => {
-    // if (!viewedIndex) return;
-    // fetchMoreIndexItems(viewedIndex.id);
-  }, [fetchMoreIndexItems]);
+    if (!viewedIndex) return;
+    fetchMoreIndexItems(viewedIndex.id);
+  }, [viewedIndex, fetchMoreIndexItems]);
 
   return (
     <IndexConversationContext.Provider
