@@ -1,6 +1,6 @@
 const BigTextSection = () => {
   return (
-    <section className="mb-16 mt-8">
+    <section className="mb-8 mt-8">
       <div className="m-auto max-w-screen-lg px-4 py-8 md:py-16 md:px-0">
         <div className="flex flex-col gap-6 md:gap-16">
           <h1 className="font-title text-3xl md:text-5xl">
@@ -8,8 +8,7 @@ const BigTextSection = () => {
             <span className="text-highlightBlue">
               transform discovery into a protocol
             </span>{" "}
-            and its components into networks.
-            We're building{" "}
+            and its components into networks. We're building{" "}
             <span className="text-highlightBlue">
               the first decentralized semantic index
             </span>
@@ -25,9 +24,7 @@ const BigTextSection = () => {
           </p>
         </div>
         <a href="#">
-          <p className="mt-4 text-highlightBlue font-bold">
-          Learn more ->
-          </p>
+          <p className="mt-4 text-highlightBlue font-bold">Learn more {"->"}</p>
         </a>
       </div>
     </section>
