@@ -1,4 +1,3 @@
-import Text from "@/components/base/Text";
 import Freizeit from "@/fonts/loader";
 import Header from "components/base/Header";
 import Col from "components/layout/base/Grid/Col";

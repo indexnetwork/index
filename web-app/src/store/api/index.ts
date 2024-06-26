@@ -6,7 +6,6 @@ import { isStreamID } from "@/utils/helper";
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import { fetchDID } from "./did";
 import { resetConversation } from "../slices/conversationSlice";
-import { Indexes } from "@/types/entity";
 
 type FetchIndexPayload = {
   indexID: string;

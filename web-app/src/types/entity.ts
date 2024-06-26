@@ -3,8 +3,6 @@
  *
  */
 
-import { CID } from "multiformats";
-
 export type Indexes = {
   id: string;
   title: string;

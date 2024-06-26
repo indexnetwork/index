@@ -1,4 +1,3 @@
-import { useApp } from "@/context/AppContext";
 import Button from "components/base/Button";
 import moment from "moment";
 import { useRouter } from "next/navigation";
@@ -7,12 +6,13 @@ import Col from "@/components/layout/base/Grid/Col";
 import Flex from "@/components/layout/base/Grid/Flex";
 import Text from "@/components/base/Text";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
-import HistoryItemOpsPopup from "./HistoryItemOpsPopup";
 import { deleteConversation } from "@/store/api/conversation";
 import toast from "react-hot-toast";
 import { useCallback } from "react";
 import { useApi } from "@/context/APIContext";
 import { useAppDispatch } from "@/store/store";
+import HistoryItemOpsPopup from "./HistoryItemOpsPopup";
+
 type HistoryItemProps = {
   id: string;
   summary: string;

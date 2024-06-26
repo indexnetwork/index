@@ -1,7 +1,5 @@
 import Button from "components/base/Button";
-import Header from "components/base/Header";
-import Modal, { ModalProps } from "components/base/Modal";
-import Col from "components/layout/base/Grid/Col";
+import { ModalProps } from "components/base/Modal";
 import { memo } from "react";
 
 export interface WaitBetaModalContentProps

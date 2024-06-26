@@ -2,17 +2,14 @@ import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
 import Col from "@/components/layout/base/Grid/Col";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
-import { useApp } from "@/context/AppContext";
-import { useOrderedFetch } from "@/hooks/useOrderedFetch";
-import { useRouteParams } from "@/hooks/useRouteParams";
 import { useCallback, useEffect, useState } from "react";
+import { selectIndex } from "@/store/slices/indexSlice";
+import { useAppSelector } from "@/store/store";
 import { useIndexConversation } from "../IndexConversationContext";
 import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
 import IndexItemsTab from "./IndexItemsTab";
 import IndexSettingsTab from "./SettingsTab";
-import { selectIndex } from "@/store/slices/indexSlice";
-import { useAppSelector } from "@/store/store";
 
 enum TabKey {
   Chat = "chat",
