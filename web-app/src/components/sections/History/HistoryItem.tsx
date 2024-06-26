@@ -25,11 +25,11 @@ const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
   const { api, ready: apiReady } = useApi();
   const dispatch = useAppDispatch();
   const handleDelete = useCallback(
-    async (id: string) => {
+    async (item: any) => {
       if (!apiReady || !api) return;
       try {
-        await dispatch(deleteConversation({ id, api }));
-        toast.success("Conversation deleted");
+        await dispatch(deleteConversation({ id: item.id, api }));
+        router.push(`/${item.controllerDID.id}`);
       } catch (error) {
         console.error("Error deleting conversation", error);
         toast.error("Error deleting conversation, please refresh the page");
@@ -95,7 +95,7 @@ const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
           >
             <HistoryItemOpsPopup
               onDelete={() => {
-                handleDelete(item.id);
+                handleDelete(item);
               }}
             />
           </Button>
