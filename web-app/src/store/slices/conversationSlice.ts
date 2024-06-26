@@ -1,11 +1,15 @@
+import { createSlice } from "@reduxjs/toolkit";
 import {
   createConversation,
+  deleteConversation,
   fetchConversation,
   regenerateMessage,
   sendMessage,
   updateMessageThunk,
 } from "@/store/api/conversation";
-import { createSlice } from "@reduxjs/toolkit";
+
+import { fetchDID } from "@/store/api/did";
+import { fetchIndex } from "@/store/api/index";
 
 const conversationSlice = createSlice({
   name: "conversation",
@@ -17,12 +21,6 @@ const conversationSlice = createSlice({
     messageLoading: false,
   },
   reducers: {
-    setConversation(state, action) {
-      state.data = action.payload;
-    },
-    resetConversation(state) {
-      state.data = null;
-    },
     setMessages(state, action) {
       state.data.messages = action.payload;
     },
@@ -49,16 +47,6 @@ const conversationSlice = createSlice({
         state.data.messages.push(action.payload);
       }
     },
-    updateMessageByID(state, action) {
-      if (!state.data?.messages) return;
-
-      const index = state.data.messages.findIndex(
-        (msg: any) => msg.id === action.payload.prevID,
-      );
-      if (index !== -1) {
-        state.data.messages[index] = action.payload.message;
-      }
-    },
     deleteMessage(state, action) {
       state.data.messages = state.data.messages.filter(
         (msg: any) => msg.id !== action.payload,
@@ -75,6 +63,28 @@ const conversationSlice = createSlice({
         state.data = action.payload;
       })
       .addCase(fetchConversation.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
+      })
+      .addCase(fetchDID.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchDID.fulfilled, (state, action) => {
+        state.loading = false;
+        state.data = null;
+      })
+      .addCase(fetchDID.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
+      })
+      .addCase(fetchIndex.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchIndex.fulfilled, (state) => {
+        state.loading = false;
+        state.data = null;
+      })
+      .addCase(fetchIndex.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as any;
       })
@@ -99,6 +109,17 @@ const conversationSlice = createSlice({
         state.data = action.payload;
       })
       .addCase(createConversation.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(deleteConversation.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(deleteConversation.fulfilled, (state, action) => {
+        state.loading = false;
+        state.data = null;
+      })
+      .addCase(deleteConversation.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
       })
@@ -154,14 +175,11 @@ const conversationSlice = createSlice({
 });
 
 export const {
-  setConversation,
-  resetConversation,
   setMessages,
   addMessage,
   deleteMessage,
   updateMessage,
   setMessageLoading,
-  updateMessageByID,
 } = conversationSlice.actions;
 export const selectConversation = (state: any) => state.conversation;
 export default conversationSlice.reducer;

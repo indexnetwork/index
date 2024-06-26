@@ -6,6 +6,12 @@ import {
 import { updateProfile, uploadAvatar } from "@/store/api/profile";
 import { createSlice } from "@reduxjs/toolkit";
 import { Indexes, Users } from "@/types/entity";
+import { createIndex, toggleUserIndex } from "@/store/api/index";
+import {
+  createConversation,
+  fetchConversation,
+  deleteConversation,
+} from "@/store/api/conversation";
 
 const indexesOwnerProfileUpdated = (indexes: Indexes[], profile: Users) => {
   return indexes.map((index) => {
@@ -30,24 +36,6 @@ const didSlice = createSlice({
     avatar: null as any,
   },
   reducers: {
-    updateDidIndex: (state, action) => {
-      console.log(
-        "updateDidIndex",
-        action.payload.indexID,
-        action.payload.updatedIndex,
-      );
-      const index = state.indexes.find(
-        (idx) => idx.id === action.payload.indexID,
-      );
-      if (index) {
-        Object.assign(index, action.payload.updatedIndex);
-      }
-    },
-    addIndex: (state, action) => {
-      state.indexes = state.indexes
-        ? [action.payload, ...state.indexes]
-        : [action.payload];
-    },
     setProfile: (state, action) => {
       state.data = action.payload;
     },
@@ -58,12 +46,25 @@ const didSlice = createSlice({
     },
     removeConversation: (state, action) => {
       state.conversations = state.conversations
-        ? state.conversations.filter((c) => c.id !== action.payload)
+        ? state.conversations.filter((c: any) => c.id !== action.payload)
         : [];
     },
   },
   extraReducers: (builder) => {
     builder
+      .addCase(toggleUserIndex.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(toggleUserIndex.fulfilled, (state, action) => {
+        state.loading = false;
+        state.indexes = state.indexes.map((idx) =>
+          idx.id === action.payload.id ? action.payload : idx,
+        );
+      })
+      .addCase(toggleUserIndex.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
+      })
       .addCase(fetchDID.pending, (state) => {
         state.loading = true;
       })
@@ -72,6 +73,19 @@ const didSlice = createSlice({
         state.data = action.payload;
       })
       .addCase(fetchDID.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
+      })
+      .addCase(createIndex.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(createIndex.fulfilled, (state, action) => {
+        state.loading = false;
+        state.indexes = state.indexes
+          ? [action.payload, ...state.indexes]
+          : [action.payload];
+      })
+      .addCase(createIndex.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as any;
       })
@@ -94,6 +108,44 @@ const didSlice = createSlice({
         state.conversations = action.payload;
       })
       .addCase(fetchDIDConversations.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
+      })
+      .addCase(createConversation.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(createConversation.fulfilled, (state, action) => {
+        state.loading = false;
+        state.conversations = state.conversations
+          ? [action.payload, ...state.conversations]
+          : [action.payload];
+      })
+      .addCase(createConversation.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
+      })
+      .addCase(fetchConversation.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchConversation.fulfilled, (state, action) => {
+        state.loading = false;
+        // state.data = action.payload;
+      })
+      .addCase(fetchConversation.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
+      })
+      .addCase(deleteConversation.pending, (state, action) => {
+        state.loading = true;
+      })
+      .addCase(deleteConversation.fulfilled, (state, action) => {
+        console.log(`makaka`, action.payload);
+        state.conversations = state.conversations
+          ? state.conversations.filter((c: any) => c.id !== action.payload)
+          : [];
+        state.loading = false;
+      })
+      .addCase(deleteConversation.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as any;
       })
@@ -131,12 +183,7 @@ export const selectIndexes = (state: any) => state.did.indexes;
 export const selectAvatar = (state: any) => state.did.avatar;
 export const selectProfileLoading = (state: any) => state.did.loading;
 
-export const {
-  updateDidIndex,
-  setProfile,
-  addConversation,
-  removeConversation,
-  addIndex,
-} = didSlice.actions;
+export const { setProfile, addConversation, removeConversation } =
+  didSlice.actions;
 
 export default didSlice.reducer;

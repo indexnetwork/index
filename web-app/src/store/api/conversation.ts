@@ -2,14 +2,8 @@ import ApiService from "@/services/api-service-new";
 import { setViewType } from "@/store/slices/appViewSlice";
 import { DiscoveryType } from "@/types";
 import { createAsyncThunk } from "@reduxjs/toolkit";
-import { fetchDID } from "./did";
-import { fetchIndex } from ".";
-
-import {
-  setConversation,
-  updateMessageByID,
-} from "../slices/conversationSlice";
-import { addConversation, removeConversation } from "../slices/didSlice";
+import { fetchDID } from "@/store/api/did";
+import { fetchIndex } from "@/store/api/index";
 
 type FetchConversationPayload = {
   cID: string;
@@ -46,12 +40,10 @@ export const createConversation = createAsyncThunk(
   "conversation/createConversation",
   async (
     { sources, summary, api }: CreateConversationPayload,
-    { dispatch, rejectWithValue },
+    { rejectWithValue },
   ) => {
     try {
       const response = await api.createConversation({ sources, summary });
-      dispatch(addConversation(response));
-      dispatch(setConversation(response));
       return response;
     } catch (error: any) {
       return rejectWithValue(error.response.data || error.message);
@@ -61,14 +53,12 @@ export const createConversation = createAsyncThunk(
 
 export const deleteConversation = createAsyncThunk(
   "conversation/deleteConversation",
-  async (
-    { id, api }: DeleteConversationPayload,
-    { dispatch, rejectWithValue },
-  ) => {
+  async ({ id, api }: DeleteConversationPayload, { rejectWithValue }) => {
     try {
-      dispatch(removeConversation(id));
-      return await api!.deleteConversation(id);
+      api!.deleteConversation(id);
+      return id;
     } catch (error: any) {
+      console.log(`delete2`, id);
       return rejectWithValue(error.response.data || error.message);
     }
   },
@@ -77,15 +67,14 @@ export const deleteConversation = createAsyncThunk(
 export const sendMessage = createAsyncThunk(
   "conversation/sendMessage",
   async (
-    { content, role, conversationId, api, prevID, message }: SendMessagePayload,
-    { dispatch, rejectWithValue },
+    { content, role, conversationId, api, prevID }: SendMessagePayload,
+    { rejectWithValue },
   ) => {
     try {
       const messageResp = await api.sendMessage(conversationId, {
         content,
         role,
       });
-      dispatch(updateMessageByID({ message: messageResp, prevID }));
       return { message: messageResp, prevID };
     } catch (error: any) {
       return rejectWithValue(error.response.data || error.message);
@@ -126,7 +115,7 @@ export const regenerateMessage = createAsyncThunk(
         messagesBeforeGenerate = messages.slice(0, index);
       }
 
-      const messageResp = await api.updateMessage(
+      await api.updateMessage(
         conversationId,
         lastUserMessage.id,
         { role: lastUserMessage.role, content: lastUserMessage.content },
@@ -150,7 +139,7 @@ export const fetchConversation = createAsyncThunk(
       const conversation = await api.getConversation(cID);
       const source = conversation.sources[0];
       const state = getState() as any;
-
+      console.log(`django`);
       if (source.includes("did:")) {
         dispatch(
           setViewType({

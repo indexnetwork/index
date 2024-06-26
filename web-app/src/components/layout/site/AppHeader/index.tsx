@@ -52,7 +52,7 @@ const AppHeader = () => {
 
   const handleCreateIndex = useCallback(() => {
     if (window !== undefined) {
-      const allowed = localStorage.getItem("allowed2");
+      const allowed = localStorage.getItem("allowed");
 
       console.log("allowed", allowed);
       if (!allowed) {
@@ -84,7 +84,6 @@ const AppHeader = () => {
           <WaitBetaModal
             visible={modalVisible}
             onClose={() => setModalVisible(false)}
-            onCreate={() => {}}
           />
         )}
         <Navbar logoSize="mini" className="site-navbar">

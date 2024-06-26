@@ -76,26 +76,31 @@ export type CastIndexNode = {
 };
 
 export type IndexWebPageItem = {
+  id: string;
   type: string;
   node: WebNode;
 };
 
 export type IndexTeamNodeItem = {
+  id: string;
   type: string;
   node: TeamNode;
 };
 
 export type IndexIndexNodeItem = {
+  id: string;
   type: string;
   node: IndexIndexNode;
 };
 
 export type DefaultIndexNodeItem = {
+  id: string;
   type: string;
   node: DefaultIndexNode;
 };
 
 export type CastIndexNodeItem = {
+  id: string;
   type: string;
   node: CastIndexNode;
 };

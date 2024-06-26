@@ -12,6 +12,7 @@ import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import { useRouter } from "next/navigation";
 import { selectConversation } from "@/store/slices/conversationSlice";
+import { useCallback } from "react";
 import ConversationHistory from "./History";
 import NewChatButton from "./NewChatButton";
 import Soon from "../site/indexes/Soon";
@@ -29,9 +30,9 @@ const AppRight = () => {
     setRightTabKey(tabKey);
   };
 
-  const handleStartChat = () => {
-    router.push(`/${viewedConversation?.sources[0]}`);
-  };
+  const handleStartChat = useCallback(async () => {
+    viewedConversation && router.push(`/${viewedConversation?.sources[0]}`);
+  }, [router, viewedConversation]);
 
   return (
     <Col

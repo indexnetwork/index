@@ -3,11 +3,6 @@ import { setViewType } from "@/store/slices/appViewSlice";
 import { DiscoveryType } from "@/types";
 import { Users } from "@/types/entity";
 import { createAsyncThunk } from "@reduxjs/toolkit";
-import { resetConversation } from "@/store/slices/conversationSlice";
-import {
-  resetIndex,
-  updateIndexControllerDID,
-} from "@/store/slices/indexSlice";
 
 type UpdateProfilePayload = {
   profile: Partial<Users>;
@@ -43,6 +38,7 @@ export const fetchDID = createAsyncThunk(
   ) => {
     try {
       const { did: prevDID } = getState() as any;
+      console.log(didID, `taza`);
       const did: any = await api.getProfile(didID);
 
       if (did) {
@@ -54,8 +50,6 @@ export const fetchDID = createAsyncThunk(
             }),
           );
         }
-        dispatch(resetIndex());
-        dispatch(resetConversation());
         if (!prevDID.data || prevDID.data.id !== didID) {
           await dispatch(fetchDIDIndexes({ didID, api })).unwrap();
           await dispatch(fetchDIDConversations({ didID, api })).unwrap();
@@ -102,7 +96,6 @@ export const updateProfile = createAsyncThunk(
   ) => {
     try {
       const newProfile = await api.updateProfile(profile);
-      dispatch(updateIndexControllerDID(newProfile));
       return newProfile;
     } catch (error: any) {
       console.error("Error updating profile:", error);

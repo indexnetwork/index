@@ -5,8 +5,9 @@ import {
   removeItem,
   toggleUserIndex,
   updateIndexTitle,
-} from "@/store/api";
+} from "@/store/api/index";
 
+import { updateProfile, fetchDID } from "@/store/api/did";
 import { createSlice } from "@reduxjs/toolkit";
 
 const indexSlice = createSlice({
@@ -31,11 +32,6 @@ const indexSlice = createSlice({
     setAddItemLoading: (state, action) => {
       state.addItemLoading = action.payload;
     },
-    updateIndexControllerDID: (state, action) => {
-      if (state.data?.controllerDID.id === action.payload.id) {
-        state.data.controllerDID = action.payload;
-      }
-    },
     resetIndex: (state) => {
       state.data = null;
     },
@@ -46,7 +42,7 @@ const indexSlice = createSlice({
         state.loading = true;
       })
       .addCase(fetchIndex.fulfilled, (state, action) => {
-        state.loading = false;
+        // state.loading = false;
         state.data = action.payload;
       })
       .addCase(fetchIndex.rejected, (state, action) => {
@@ -65,12 +61,24 @@ const indexSlice = createSlice({
         state.loading = false;
         state.error = action.payload as any;
       })
+
+      .addCase(fetchDID.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchDID.fulfilled, (state, action) => {
+        state.data = null;
+      })
+      .addCase(fetchDID.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
+      })
+
       .addCase(addItem.pending, (state) => {
         state.addItemLoading = true;
       })
       .addCase(addItem.fulfilled, (state, action) => {
-        state.addItemLoading = false;
         state.items.data.push(action.payload);
+        state.addItemLoading = false;
       })
       .addCase(addItem.rejected, (state, action) => {
         state.addItemLoading = false;
@@ -94,17 +102,7 @@ const indexSlice = createSlice({
       })
       .addCase(toggleUserIndex.fulfilled, (state, action) => {
         state.toggleLoading = false;
-        const updatedIndex = {
-          ...state.data,
-          ...{
-            did: {
-              ...state.data.did,
-              [action.payload.toggleType === "star" ? "starred" : "owned"]:
-                action.payload[action.payload.toggleType],
-            },
-          },
-        };
-        state.data = updatedIndex;
+        state.data = action.payload;
       })
       .addCase(toggleUserIndex.rejected, (state, action) => {
         state.toggleLoading = false;
@@ -121,11 +119,23 @@ const indexSlice = createSlice({
       .addCase(updateIndexTitle.rejected, (state, action) => {
         state.titleLoading = false;
         state.titleError = action.payload as any;
+      })
+      .addCase(updateProfile.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(updateProfile.fulfilled, (state, action) => {
+        state.loading = false;
+        if (state.data?.controllerDID.id === action.payload.id) {
+          state.data.controllerDID = action.payload;
+        }
+      })
+      .addCase(updateProfile.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as any;
       });
   },
 });
 
 export const selectIndex = (state: any) => state.index;
-export const { setAddItemLoading, resetIndex, updateIndexControllerDID } =
-  indexSlice.actions;
+export const { setAddItemLoading, resetIndex } = indexSlice.actions;
 export default indexSlice.reducer;

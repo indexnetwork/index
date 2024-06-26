@@ -71,7 +71,7 @@ export default function IndexItemsTabSection() {
   //   [fetchIndexItems],
   // );
 
-  const processUrlsInBatches = async (urls, processUrl) => {
+  const processUrlsInBatches = async (urls: any, processUrl: any) => {
     let currentIndex = 0;
     const executeNextBatch = async () => {
       if (currentIndex >= urls.length) return;
@@ -96,15 +96,19 @@ export default function IndexItemsTabSection() {
       const uniqueUrls = removeDuplicates(filteredUrls);
       const urls = removeDuplicates(
         uniqueUrls,
-        items.data.filter((i) => i.type === "WebPage").map((i) => i.node.url),
+        items.data
+          .filter((i: any) => i.type === "WebPage")
+          .map((i: any) => i.node.url),
       );
 
       // Add only unique and valid indexes
-      const inputIndexIds = inputItems.filter((id) => isStreamID(id));
+      const inputIndexIds = inputItems.filter((id: any) => isStreamID(id));
       const uniqueIndexIds = removeDuplicates(inputIndexIds);
       const indexIds = removeDuplicates(
         uniqueIndexIds,
-        items.data.filter((i) => i.type === "Index").map((i) => i.node.id),
+        items.data
+          .filter((i: any) => i.type === "Index")
+          .map((i: any) => i.node.id),
       );
 
       const updatedItems = [...urls, ...indexIds];
@@ -112,7 +116,7 @@ export default function IndexItemsTabSection() {
       dispatch(setAddItemLoading(true));
       setProgress({ current: 0, total: updatedItems.length });
 
-      await processUrlsInBatches(updatedItems, async (item) => {
+      await processUrlsInBatches(updatedItems, async (item: any) => {
         try {
           await dispatch(
             addItem({

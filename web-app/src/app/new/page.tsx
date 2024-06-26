@@ -17,12 +17,7 @@ import { createIndex } from "@/store/api";
 import { useAppDispatch } from "@/store/store";
 
 const Home: NextPage = () => {
-  const {
-    transactionApprovalWaiting,
-    handleTransactionCancel,
-    setIndexes,
-    indexes,
-  } = useApp();
+  const { transactionApprovalWaiting, handleTransactionCancel } = useApp();
 
   const { setSession } = useAuth();
 
@@ -66,7 +61,7 @@ const Home: NextPage = () => {
       }),
     ).unwrap();
     toast.success("Index created successfully");
-    router.push(`/${resp.index.id}`);
+    router.push(`/${resp.id}`);
   };
 
   return (

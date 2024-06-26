@@ -5,7 +5,6 @@ import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import { useCallback, useEffect, useState } from "react";
 import { selectIndex } from "@/store/slices/indexSlice";
 import { useAppSelector } from "@/store/store";
-import { useIndexConversation } from "../IndexConversationContext";
 import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
 import IndexItemsTab from "./IndexItemsTab";
@@ -29,8 +28,7 @@ const TAB_TITLES = {
 
 export default function TabContainer() {
   const [tabKey, setTabKey] = useState<string>(TabKey.Chat);
-  const { items } = useAppSelector(selectIndex);
-  const { loading } = useIndexConversation();
+  const { id, items, loading } = useAppSelector(selectIndex);
 
   useEffect(() => {
     if (!items) return;
@@ -41,27 +39,8 @@ export default function TabContainer() {
 
     if (items.data.length === 0) {
       setTabKey(TabKey.Index);
-    } else {
-      setTabKey(TabKey.Chat);
     }
-  }, [items, loading]);
-
-  // useEffect(() => {
-  //   console.log("88 id", id, conversationId, viewedConversation);
-  //   if (!id && !conversationId) return;
-
-  //   let targetID = id;
-
-  //   if (conversationId && viewedConversation?.sources[0]) {
-  //     targetID = viewedConversation?.sources[0];
-  //   }
-
-  //   console.log("targetID", id, conversationId, targetID);
-
-  //   if (!targetID) return;
-
-  //   fetchDataForNewRoute(targetID);
-  // }, [id, conversationId, fetchDataForNewRoute, viewedConversation]);
+  }, [id, items, loading]);
 
   const renderTabContent = useCallback(() => {
     switch (tabKey) {
@@ -69,8 +48,6 @@ export default function TabContainer() {
         return <ChatTab />;
       case TabKey.Index:
         return <IndexItemsTab />;
-      // case TabKey.Creators:
-      //  return <CreatorsTab />;
       case TabKey.AccessControl:
         return <AccessControlTab />;
       case TabKey.Settings:

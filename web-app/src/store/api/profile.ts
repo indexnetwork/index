@@ -1,6 +1,5 @@
 import ApiService from "@/services/api-service-new";
 import { createAsyncThunk } from "@reduxjs/toolkit";
-import { updateIndexControllerDID } from "@/store/slices/indexSlice"; // Ensure correct path
 import { Users } from "@/types/entity";
 
 type UpdateProfilePayload = {
@@ -15,13 +14,9 @@ type UploadAvatarPayload = {
 
 export const updateProfile = createAsyncThunk(
   "profile/updateProfile",
-  async (
-    { profile, api }: UpdateProfilePayload,
-    { dispatch, rejectWithValue },
-  ) => {
+  async ({ profile, api }: UpdateProfilePayload, { rejectWithValue }) => {
     try {
       const newProfile = await api.updateProfile(profile);
-      dispatch(updateIndexControllerDID(newProfile)); // Dispatch index slice action
       return newProfile;
     } catch (error: any) {
       console.error("Error updating profile:", error);

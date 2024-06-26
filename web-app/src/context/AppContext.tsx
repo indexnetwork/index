@@ -56,8 +56,6 @@ export interface AppContextValue {
   setEditProfileModalVisible: (visible: boolean) => void;
   updateIndex: (index: Indexes) => void;
   updateUserIndexState: (index: Indexes, value: boolean) => void;
-  viewedProfile: Users | undefined;
-  setViewedProfile: (profile: Users | undefined) => void;
   userProfile: Users | undefined;
   setUserProfile: (profile: Users | undefined) => void;
   viewedIndex: Indexes | undefined;
@@ -106,7 +104,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   const [viewedConversation, setViewedConversation] = useState<
     Conversation | undefined
   >();
-  const [viewedProfile, setViewedProfile] = useState<Users | undefined>();
   const [userProfile, setUserProfile] = useState<Users | undefined>();
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [guestModalVisible, setGuestModalVisible] = useState(false);
@@ -132,7 +129,9 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
       isFetchingConversationRef.current = true;
 
-      await dispatch(fetchConversation({ cID: conversationId, api })).unwrap();
+      const conversation = await dispatch(
+        fetchConversation({ cID: conversationId, api }),
+      ).unwrap();
 
       isFetchingConversationRef.current = false;
     } catch (error) {
@@ -386,20 +385,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     [apiReady, viewedIndex],
   );
 
-  useEffect(() => {
-    if (session) {
-      if (viewedProfile?.id === session.id) {
-        setViewedProfile(userProfile);
-      }
-    }
-  }, [userProfile, session, id]);
-
-  useEffect(() => {
-    if (viewedProfile) {
-      fetchIndexes(viewedProfile.id);
-    }
-  }, [viewedProfile, fetchIndexes]);
-
   const contextValue: AppContextValue = {
     indexes,
     leftSectionIndexes,
@@ -419,8 +404,6 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
     setRightTabKey,
     leftTabKey,
     setLeftTabKey,
-    viewedProfile,
-    setViewedProfile,
     userProfile,
     setUserProfile,
     viewedIndex,

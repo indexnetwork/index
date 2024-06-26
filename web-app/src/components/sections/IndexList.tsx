@@ -87,13 +87,17 @@ const IndexListSection: FC = () => {
             <TabPane
               enabled={true}
               tabKey={IndexListTabKey.OWNED}
-              total={indexes ? indexes.filter((i) => i.did.owned).length : 0}
+              total={
+                indexes ? indexes.filter((i: any) => i.did.owned).length : 0
+              }
               title={`Owned`}
             />
             <TabPane
               enabled={true}
               tabKey={IndexListTabKey.STARRED}
-              total={indexes ? indexes.filter((i) => i.did.starred).length : 0}
+              total={
+                indexes ? indexes.filter((i: any) => i.did.starred).length : 0
+              }
               title={`Starred`}
             />
           </Tabs>

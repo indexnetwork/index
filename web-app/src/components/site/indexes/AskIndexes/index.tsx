@@ -54,12 +54,7 @@ export interface MessageWithIndex extends Message {
 
 const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const { session, connect } = useAuth();
-  const {
-    leftSectionIndexes,
-    leftTabKey,
-    guestModalVisible,
-    setGuestModalVisible,
-  } = useApp();
+  const { leftSectionIndexes, leftTabKey } = useApp();
   const { isIndex, id } = useRouteParams();
   const { ready: apiReady, api } = useApi();
   const router = useRouter();
@@ -214,19 +209,12 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     }
 
     return `indexes`;
-  }, [
-    viewedProfile,
-    viewedIndex,
-    viewedConversation,
-    leftTabKey,
-    isIndex,
-    session,
-  ]);
+  }, [viewedProfile, viewedIndex, leftTabKey, isIndex, session]);
 
   const stop = () => {
     setIsLoading(false);
     // TODO send stop signal to backend.
-    setStoppedMessages(viewedConversation?.messages.map((c) => c.id));
+    setStoppedMessages(viewedConversation?.messages.map((c: any) => c.id));
   };
   const handleIncomingMessage = (p: any) => {
     isLocalUpdate.current = true;

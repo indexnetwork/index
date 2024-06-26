@@ -1,5 +1,4 @@
 import { useApi } from "@/context/APIContext";
-import { useApp } from "@/context/AppContext";
 import { GetItemQueryParams } from "@/services/api-service-new";
 import { IndexItem } from "@/types/entity";
 import { CancelTokenSource } from "axios";
@@ -78,7 +77,6 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
   const [addItemLoading, setAddItemLoading] = useState(false);
 
   const { api, ready: apiReady } = useApi();
-  const { viewedIndex, fetchIndex } = useApp();
 
   const fetchingIndexItems = useRef(false);
 
@@ -99,7 +97,7 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
       if (fetchingIndexItems.current) return;
 
       fetchingIndexItems.current = true;
-
+      setLoading(true);
       setSearchLoading(true);
       try {
         const itemParams: GetItemQueryParams = {};
@@ -112,12 +110,11 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
           itemParams.query = params.query;
         }
 
-        // if (viewedIndex.id !== id) return;
         const response = await api!.getItems(indexId, {
           queryParams: itemParams,
           cancelSource,
         });
-
+        setLoading(false);
         if (response) {
           setItemsState({
             items:
@@ -167,7 +164,6 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
           itemParams.query = params.query;
         }
 
-        // if (viewedIndex.id !== id) return;
         const response = await api!.getItems(indexId, {
           queryParams: itemParams,
           cancelSource,
@@ -210,8 +206,8 @@ export const IndexConversationProvider = ({ children }: { children: any }) => {
   }, []);
 
   const loadMoreItems = useCallback(() => {
-    if (!viewedIndex) return;
-    fetchMoreIndexItems(viewedIndex.id);
+    // if (!viewedIndex) return;
+    // fetchMoreIndexItems(viewedIndex.id);
   }, [fetchMoreIndexItems]);
 
   return (

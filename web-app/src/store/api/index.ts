@@ -1,11 +1,9 @@
 import ApiService, { GetItemQueryParams } from "@/services/api-service-new";
 import { setViewType } from "@/store/slices/appViewSlice";
-import { addIndex, updateDidIndex } from "@/store/slices/didSlice";
 import { DiscoveryType } from "@/types";
 import { isStreamID } from "@/utils/helper";
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import { fetchDID } from "./did";
-import { resetConversation } from "../slices/conversationSlice";
 
 type FetchIndexPayload = {
   indexID: string;
@@ -55,7 +53,6 @@ export const fetchIndex = createAsyncThunk(
         }),
       );
       const state: any = getState();
-      dispatch(resetConversation());
 
       if (state.index?.data?.id === indexID) {
         return state.index?.data;
@@ -97,9 +94,6 @@ export const fetchIndexItems = createAsyncThunk(
       const items = await api.getItems(indexID, {
         queryParams: itemParams,
       });
-
-      console.log("items", items);
-
       return items;
     } catch (err: any) {
       return rejectWithValue(err.response.data);
@@ -148,8 +142,6 @@ export const createIndex = createAsyncThunk(
   async ({ title, api }: CreateIndexPayload, { dispatch, rejectWithValue }) => {
     try {
       const index = await api!.createIndex(title);
-      console.log(`charlie2`);
-      dispatch(addIndex(index));
       return index;
     } catch (err: any) {
       return rejectWithValue(err.response.data);
@@ -161,37 +153,26 @@ export const toggleUserIndex = createAsyncThunk(
   "index/toggleUserIndex",
   async (
     { indexID, api, toggleType, value }: ToggleUserIndexPayload,
-    { dispatch, rejectWithValue, getState },
+    { rejectWithValue, getState },
   ) => {
     try {
-      let controllerDID;
       if (toggleType === "star") {
-        const resp = await api.starIndex(indexID, value);
-        controllerDID = resp?.controllerDID?.id;
+        api.starIndex(indexID, value);
       } else if (toggleType === "own") {
-        const resp = await api.ownIndex(indexID, value);
-        controllerDID = resp?.controllerDID?.id;
+        api.ownIndex(indexID, value);
       }
 
       const state: any = getState();
-      const currentIndex = state.index.data;
+      let updatedIndex = state.index.data;
 
-      if (controllerDID === currentIndex.controllerDID.id) {
-        dispatch(
-          updateDidIndex({
-            indexID,
-            updatedIndex: {
-              ...currentIndex,
-              did: {
-                ...currentIndex.did,
-                [toggleType === "star" ? "starred" : "owned"]: value,
-              },
-            },
-          }),
-        );
-      }
-
-      return { toggleType, [toggleType]: value };
+      updatedIndex = {
+        ...updatedIndex,
+        did: {
+          ...updatedIndex.did,
+          [toggleType === "star" ? "starred" : "owned"]: value,
+        },
+      };
+      return updatedIndex;
     } catch (err: any) {
       return rejectWithValue(err.response.data);
     }
@@ -202,7 +183,7 @@ export const updateIndexTitle = createAsyncThunk(
   "index/updateIndexTitle",
   async (
     { indexID, title, api }: UpdateIndexTitlePayload,
-    { dispatch, getState, rejectWithValue },
+    { getState, rejectWithValue },
   ) => {
     try {
       const result = await api.updateIndex(indexID, { title });
@@ -220,8 +201,6 @@ export const updateIndexTitle = createAsyncThunk(
         title: result.title,
         updatedAt: result.updatedAt,
       };
-
-      dispatch(updateDidIndex({ indexID, updatedIndex }));
 
       return updatedIndex;
     } catch (error: any) {

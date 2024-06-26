@@ -42,7 +42,7 @@ const defaultAuthContext = {
   status: AuthStatus.IDLE,
   setStatus: () => {},
   session: undefined,
-  setSession: undefined,
+  setSession: () => {},
   userDID: undefined,
   isLoading: false,
 };
