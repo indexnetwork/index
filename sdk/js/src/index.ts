@@ -1,3 +1,5 @@
+import { EventSource } from "cross-eventsource";
+
 import { Cacao, SiweMessage } from "@didtools/cacao";
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
@@ -346,19 +348,19 @@ export default class IndexClient {
     handleMessage: (data: any) => void,
     handleError: (error: any) => void,
   ) {
+
     const eventUrl = `${this.baseUrl}/conversations/${conversationId}/updates?session=${this.session}`;
     const eventSource = new EventSource(eventUrl);
 
-    eventSource.onmessage = (event) => {
-      console.log("Received message from server", event.data);
-      handleMessage(event.data);
-    };
+    eventSource.addEventListener("message", async (event) => {
+      console.log("Received message from server", event);
+      handleMessage(event);
+    });
 
-    eventSource.onerror = (err) => {
-      console.error("EventSource failed:", err);
-      handleError(err);
-      eventSource.close();
-    };
+    eventSource.addEventListener("error", (error) => {
+      console.error("EventSource failed:", error);
+      handleError(error);
+    });
 
     return () => {
       eventSource.close();
@@ -413,16 +415,16 @@ export default class IndexClient {
     const eventUrl = `${this.baseUrl}/discovery/updates${queryParams.toString()}`;
     const eventSource = new EventSource(eventUrl);
 
-    eventSource.onmessage = (event) => {
+    eventSource.addEventListener("message", async (event) => {
       console.log("Received message from server", event.data);
       handleMessage(event.data);
-    };
+    });
 
-    eventSource.onerror = (err) => {
-      console.error("EventSource failed:", err);
-      handleError(err);
+    eventSource.addEventListener("error", (error) => {
+      console.error("EventSource failed:", error);
+      handleError(error);
       eventSource.close();
-    };
+    });
 
     return () => {
       eventSource.close();

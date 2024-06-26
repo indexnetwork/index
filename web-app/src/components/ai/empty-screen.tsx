@@ -6,41 +6,50 @@ import Text from "../base/Text";
 export function EmptyScreen({
   setInput,
   contextMessage,
+  indexIds,
   defaultQuestions,
 }: {
   setInput: (input: string) => void;
-  contextMessage: string;
+  contextMessage?: string;
+  indexIds?: string[];
   defaultQuestions?: string[];
 }) {
   return (
-    <Flex
-      flexdirection="column"
-      alignitems="center"
-      className="container-empty-screen pt-2"
-    >
-      <div className="inner-container-empty-screen">
-        <Image
-          src="/images/index-chat-empty-screen.png"
-          width={202}
-          height={202}
-          alt="Illustration of trees"
-        />
-        <Text
-          size="xl"
-          className={`${Freizeit.className} text`}
-          fontWeight={700}
-        >
-          Your responses will align with {contextMessage}
-        </Text>
-      </div>
-      <div className="example-messages-empty-screen">
-        {defaultQuestions &&
-          defaultQuestions.length > 0 &&
-          defaultQuestions?.map((message, i) => (
-            <ExampleMessageBox key={i} message={message} setInput={setInput} />
-          ))}
-      </div>
-    </Flex>
+    contextMessage && (
+      <Flex
+        flexdirection="column"
+        alignitems="center"
+        className="container-empty-screen pt-2"
+      >
+        <div className="inner-container-empty-screen">
+          <Image
+            src="/images/index-chat-empty-screen.png"
+            width={202}
+            height={202}
+            alt="Illustration of trees"
+          />
+
+          <Text
+            size="xl"
+            className={`${Freizeit.className} text`}
+            fontWeight={700}
+          >
+            Your responses will align with {contextMessage}
+          </Text>
+        </div>
+        <div className="example-messages-empty-screen">
+          {indexIds &&
+            indexIds.length > 0 &&
+            defaultQuestions?.map((message, i) => (
+              <ExampleMessageBox
+                key={i}
+                message={message}
+                setInput={setInput}
+              />
+            ))}
+        </div>
+      </Flex>
+    )
   );
 }
 

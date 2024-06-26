@@ -6,20 +6,24 @@ import { AuthProvider } from "@/context/AuthContext";
 import PlausibleProvider from "next-plausible";
 import { ReactNode } from "react";
 import { Toaster } from "react-hot-toast";
+import { Provider } from "react-redux";
+import store from "@/store/store";
 
 interface AppLayoutProps {
   children: ReactNode;
 }
 
 export const AppLayout = ({ children }: AppLayoutProps) => (
-  <AuthProvider>
-    <APIProvider>
-      <PlausibleProvider domain="index.network">
-        <AppContextProvider>
-          {children}
-          <Toaster />
-        </AppContextProvider>
-      </PlausibleProvider>
-    </APIProvider>
-  </AuthProvider>
+  <Provider store={store}>
+    <AuthProvider>
+      <APIProvider>
+        <PlausibleProvider domain="index.network">
+          <AppContextProvider>
+            {children}
+            <Toaster />
+          </AppContextProvider>
+        </PlausibleProvider>
+      </APIProvider>
+    </AuthProvider>
+  </Provider>
 );

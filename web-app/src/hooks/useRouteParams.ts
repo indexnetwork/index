@@ -14,10 +14,24 @@ export const useRouteParams = () => {
     [isConversation, isDID],
   );
 
-  const id = isConversation ? null : decodeURIComponent(rawId as string);
+  const id =
+    typeof rawId === "undefined"
+      ? rawId
+      : isConversation
+        ? null
+        : decodeURIComponent(rawId as string);
+
   const conversationId = isConversation
     ? path.replace("/conversation/", "")
     : null;
 
-  return { id, conversationId, isLanding, isConversation, isDID, isIndex };
+  return {
+    id,
+    conversationId,
+    path,
+    isLanding,
+    isConversation,
+    isDID,
+    isIndex,
+  };
 };

@@ -195,7 +195,12 @@ export const questions = async (req, res, next) => {
     const questionCache = await redis.get(`questions:${sourcesHash}`);
 
     if (questionCache) {
-      return res.status(200).json(JSON.parse(questionCache));
+      let resp = JSON.parse(questionCache);
+      if (resp.questions) {
+        resp.questions = resp.questions.slice(0, 4);
+      }
+
+      return res.status(200).json(resp);
     }
 
     try {
@@ -208,6 +213,11 @@ export const questions = async (req, res, next) => {
       redis.set(`questions:${sourcesHash}`, JSON.stringify(response.data), {
         EX: 86400,
       });
+
+      if (response.data.questions) {
+        response.data.questions = response.data.questions.slice(0, 4);
+      }
+
       res.status(200).json(response.data);
     } catch (error) {
       return res.status(400).json({ error: error.message });

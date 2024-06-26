@@ -5,12 +5,14 @@ import FlexRow from "@/components/layout/base/Grid/FlexRow";
 import IndexItemList from "@/components/site/index-details/IndexItemList";
 import LinkInput from "@/components/site/input/LinkInput";
 import { useApi } from "@/context/APIContext";
-import { useApp } from "@/context/AppContext";
 import { useRole } from "@/hooks/useRole";
 import { ITEM_ADDED, trackEvent } from "@/services/tracker";
+import { addItem, removeItem } from "@/store/api/index";
+import { selectIndex, setAddItemLoading } from "@/store/slices/indexSlice";
+import { useAppDispatch, useAppSelector } from "@/store/store";
 import { IndexItem } from "@/types/entity";
 import { filterValidUrls, isStreamID, removeDuplicates } from "@/utils/helper";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import toast from "react-hot-toast";
 import { useIndexConversation } from "../IndexConversationContext";
 
@@ -18,58 +20,59 @@ const CONCURRENCY_LIMIT = 10;
 
 export default function IndexItemsTabSection() {
   const {
-    itemsState,
     setItemsState,
     loading,
     setLoading,
     searchLoading,
-    addItemLoading,
-    setAddItemLoading,
     fetchIndexItems,
     fetchMoreIndexItems,
   } = useIndexConversation();
   const { isCreator } = useRole();
+  const {
+    data: viewedIndex,
+    items,
+    addItemLoading,
+  } = useAppSelector(selectIndex);
+  const dispatch = useAppDispatch();
+
   const { api, ready: apiReady } = useApi();
   const [search, setSearch] = useState("");
   const [addedItem, setAddedItem] = useState(null);
   const [progress, setProgress] = useState({ current: 0, total: 0 });
 
-  const { viewedIndex } = useApp();
+  // useEffect(() => {
+  //   if (addedItem) {
+  //     setItemsState({
+  //       items: [addedItem, ...itemsState.items],
+  //       cursor: itemsState.cursor,
+  //     });
+  //   }
 
-  useEffect(() => {
-    if (addedItem) {
-      setItemsState({
-        items: [addedItem, ...itemsState.items],
-        cursor: itemsState.cursor,
-      });
-    }
+  //   setProgress({
+  //     ...progress,
+  //     current: progress.current + 1,
+  //   });
 
-    setProgress({
-      ...progress,
-      current: progress.current + 1,
-    });
+  //   if (progress.current === progress.total) {
+  //     setLoading(false);
+  //     setProgress({ current: 0, total: 0 });
+  //   }
+  // }, [addedItem, setItemsState]);
 
-    if (progress.current === progress.total) {
-      setLoading(false);
-      setProgress({ current: 0, total: 0 });
-    }
-  }, [addedItem, setItemsState]);
+  // const handleSearch = useCallback(
+  //   (searchQuery: string) => {
+  //     if (!viewedIndex) return;
+  //     setSearch(searchQuery);
+  //     fetchIndexItems(viewedIndex?.id, {
+  //       resetCursor: true,
+  //       params: { query: searchQuery },
+  //     });
+  //   },
+  //   [fetchIndexItems],
+  // );
 
-  const handleSearch = useCallback(
-    (searchQuery: string) => {
-      if (!viewedIndex) return;
-      setSearch(searchQuery);
-      fetchIndexItems(viewedIndex?.id, {
-        resetCursor: true,
-        params: { query: searchQuery },
-      });
-    },
-    [fetchIndexItems],
-  );
-
-  const processUrlsInBatches = async (urls: string[], processUrl: any) => {
+  const processUrlsInBatches = async (urls: any, processUrl: any) => {
     let currentIndex = 0;
-
     const executeNextBatch = async () => {
       if (currentIndex >= urls.length) return;
 
@@ -85,48 +88,43 @@ export default function IndexItemsTabSection() {
   };
 
   const handleAddItem = useCallback(
-    async (inputItems: string[]) => {
-      if (!apiReady || !viewedIndex) return;
+    async (inputItems: any) => {
+      if (!apiReady || !viewedIndex || !api) return;
 
-      // add only unique and valid URLs
+      // Add only unique and valid URLs
       const filteredUrls = filterValidUrls(inputItems);
       const uniqueUrls = removeDuplicates(filteredUrls);
       const urls = removeDuplicates(
         uniqueUrls,
-        itemsState.items
-          .filter((i) => i.type === "WebPage")
-          // @ts-ignore
-          .map((i) => i.node.url),
+        items.data
+          .filter((i: any) => i.type === "WebPage")
+          .map((i: any) => i.node.url),
       );
 
-      // add only unique and valid indexes
-      const inputIndexIds = inputItems.filter((id) => isStreamID(id));
+      // Add only unique and valid indexes
+      const inputIndexIds = inputItems.filter((id: any) => isStreamID(id));
       const uniqueIndexIds = removeDuplicates(inputIndexIds);
       const indexIds = removeDuplicates(
         uniqueIndexIds,
-        itemsState.items
-          .filter((i) => i.type === "Index")
-          // @ts-ignore
-          .map((i) => i.node.id),
+        items.data
+          .filter((i: any) => i.type === "Index")
+          .map((i: any) => i.node.id),
       );
 
-      const items = [...urls, ...indexIds];
+      const updatedItems = [...urls, ...indexIds];
 
-      setAddItemLoading(true);
-      setProgress({ current: 0, total: items.length });
+      dispatch(setAddItemLoading(true));
+      setProgress({ current: 0, total: updatedItems.length });
 
-      await processUrlsInBatches(items, async (item: string) => {
+      await processUrlsInBatches(updatedItems, async (item: any) => {
         try {
-          let itemId = item;
-
-          if (!isStreamID(item)) {
-            const createdLink = await api!.crawlLink(item);
-            itemId = createdLink.id;
-          }
-
-          const createdItem = await api!.createItem(viewedIndex.id, itemId);
-
-          setAddedItem(createdItem);
+          await dispatch(
+            addItem({
+              item,
+              api,
+              indexID: viewedIndex.id,
+            }),
+          ).unwrap();
           trackEvent(ITEM_ADDED);
         } catch (error) {
           console.error("Error adding item", error);
@@ -134,48 +132,71 @@ export default function IndexItemsTabSection() {
         }
       });
 
-      setAddItemLoading(false);
+      dispatch(setAddItemLoading(false));
     },
-    [api, viewedIndex, apiReady],
+    [api, viewedIndex, apiReady, items, dispatch],
   );
 
-  const handleRemove = useCallback(
-    (item: IndexItem) => {
-      if (!apiReady || !viewedIndex) return;
-      setLoading(true);
-      api!
-        .deleteItem(viewedIndex.id, item.node.id)
-        .then(() => {
-          setItemsState({
-            items: itemsState.items.filter((i) => i.node.id !== item.node.id),
-            cursor: itemsState.cursor,
-          });
-          toast.success("Item deleted successfully");
-        })
-        .catch((error) => {
-          console.error("Error deleting item", error);
-          toast.error("Error deleting item");
-        })
-        .finally(() => setLoading(false));
+  const handleRemoveItem = useCallback(
+    async (item: IndexItem) => {
+      if (!apiReady || !viewedIndex || !api) return;
+
+      dispatch(setAddItemLoading(true));
+      try {
+        await dispatch(
+          removeItem({
+            item: item.node.id,
+            api,
+            indexID: viewedIndex.id,
+          }),
+        ).unwrap();
+      } catch (error) {
+        console.error("Error removing item", error);
+        toast.error(`Error removing item: ${item.id}`);
+      } finally {
+        dispatch(setAddItemLoading(false));
+      }
     },
-    [
-      api,
-      apiReady,
-      viewedIndex,
-      setItemsState,
-      itemsState.cursor,
-      itemsState.items,
-      setLoading,
-    ],
+    [api, viewedIndex, apiReady, fetchIndexItems],
   );
+
+  // const handleRemove = useCallback(
+  //   (item: IndexItem) => {
+  //     if (!apiReady || !viewedIndex) return;
+  //     setLoading(true);
+  //     api!
+  //       .deleteItem(viewedIndex.id, item.node.id)
+  //       .then(() => {
+  //         setItemsState({
+  //           items: itemsState.items.filter((i) => i.node.id !== item.node.id),
+  //           cursor: itemsState.cursor,
+  //         });
+  //         toast.success("Item deleted successfully");
+  //       })
+  //       .catch((error) => {
+  //         console.error("Error deleting item", error);
+  //         toast.error("Error deleting item");
+  //       })
+  //       .finally(() => setLoading(false));
+  //   },
+  //   [
+  //     api,
+  //     apiReady,
+  //     viewedIndex,
+  //     setItemsState,
+  //     itemsState.cursor,
+  //     itemsState.items,
+  //     setLoading,
+  //   ],
+  // );
 
   return (
     <Flex flexdirection="column" className="idxflex-grow-1">
-      {itemsState.items.length > 0 && (
+      {items.data && items.data.length > 0 && (
         <FlexRow className={"mt-6"}>
           <Col className="idxflex-grow-1">
             <SearchInput
-              onSearch={handleSearch}
+              // onSearch={handleSearch}
               debounceTime={300}
               showClear
               defaultValue={search}
@@ -200,10 +221,10 @@ export default function IndexItemsTabSection() {
 
       <div key={viewedIndex?.id} className={"mb-4 mt-6"}>
         <IndexItemList
-          items={itemsState.items}
+          items={items.data}
           search={search}
-          hasMore={!!itemsState.cursor}
-          removeItem={handleRemove}
+          hasMore={!!items.cursor}
+          removeItem={handleRemoveItem}
           loadMore={() =>
             viewedIndex &&
             fetchMoreIndexItems(viewedIndex?.id, { resetCursor: false })

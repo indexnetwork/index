@@ -1,11 +1,14 @@
 import NoIndexesChat from "@/components/ai/no-indexes";
 import AskIndexes from "@/components/site/indexes/AskIndexes";
-import { useApp } from "@/context/AppContext";
-import { useIndexConversation } from "../IndexConversationContext";
+import { selectView } from "@/store/slices/appViewSlice";
+import { useAppSelector } from "@/store/store";
+import { selectIndex } from "@/store/slices/indexSlice";
+import { selectDID } from "@/store/slices/didSlice";
 
 export default function ChatTabSection() {
-  const { viewedIndex, viewedProfile, view } = useApp();
-  const { itemsState } = useIndexConversation();
+  const { items, data: viewedIndex } = useAppSelector(selectIndex);
+  const { data: viewedProfile } = useAppSelector(selectDID);
+  const view = useAppSelector(selectView);
   // if (indexLoading) {
   //   return (
   //     <div
@@ -24,8 +27,8 @@ export default function ChatTabSection() {
   //
 
   if (
-    (itemsState.items.length > 0 && viewedIndex) ||
-    view.name === "conversation"
+    (items.data && items.data.length > 0 && viewedIndex) ||
+    view.type === "conversation"
   ) {
     return (
       <div
@@ -41,6 +44,7 @@ export default function ChatTabSection() {
       </div>
     );
   }
+
   return (
     <NoIndexesChat
       isSelfDid={viewedIndex?.controllerDID.id === viewedProfile?.id}

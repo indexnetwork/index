@@ -8,14 +8,15 @@ export interface SoonProps {
   section?: string;
 }
 let text: String;
-
+let subText: String;
 const Soon: React.VFC<SoonProps> = ({ section }) => {
   if (section === "access_control") {
     text = `This section will allow you to control access to your index using access rules based on NFTs.`;
   } else if (section === "ask") {
     text = `This section will soon allow you to interact with your index through the LLM algorithms you choose.`;
   } else if (section === "chat_history") {
-    text = `Your chat history will be here soon, with complete privacy.`;
+    text = `You don't have any chats yet.`;
+    subText = `Your chat history is stored securely with blockchain backed privacy.`;
   }
   return (
     <>
@@ -57,6 +58,7 @@ const Soon: React.VFC<SoonProps> = ({ section }) => {
           >
             {text}
           </Header>
+          {subText ? <div className=" mt-4 ">{subText}</div> : null}
         </Col>
       </Row>
     </>

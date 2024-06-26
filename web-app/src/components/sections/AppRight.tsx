@@ -2,6 +2,8 @@ import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
 import { useApp } from "@/context/AppContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import { selectDID } from "@/store/slices/didSlice";
+import { useAppSelector } from "@/store/store";
 import cc from "classcat";
 import Button from "components/base/Button";
 import IconClose from "components/base/Icon/IconClose";
@@ -9,32 +11,28 @@ import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
 import { useRouter } from "next/navigation";
+import { selectConversation } from "@/store/slices/conversationSlice";
+import { useCallback } from "react";
 import ConversationHistory from "./History";
 import NewChatButton from "./NewChatButton";
+import Soon from "../site/indexes/Soon";
 
 const AppRight = () => {
-  const {
-    conversations,
-    setRightSidebarOpen,
-    rightSidebarOpen,
-    rightTabKey,
-    setRightTabKey,
-    setViewedConversation,
-    viewedConversation,
-  } = useApp();
+  const { setRightSidebarOpen, rightSidebarOpen, rightTabKey, setRightTabKey } =
+    useApp();
 
   const { isConversation } = useRouteParams();
-
+  const { conversations } = useAppSelector(selectDID);
+  const { data: viewedConversation } = useAppSelector(selectConversation);
   const router = useRouter();
 
   const handleRightTabChange = (tabKey: string) => {
     setRightTabKey(tabKey);
   };
 
-  const handleStartChat = () => {
-    setViewedConversation(undefined);
-    router.push(`/${viewedConversation?.sources[0]}`);
-  };
+  const handleStartChat = useCallback(async () => {
+    viewedConversation && router.push(`/${viewedConversation?.sources[0]}`);
+  }, [router, viewedConversation]);
 
   return (
     <Col
@@ -76,9 +74,15 @@ const AppRight = () => {
         >
           <Tabs activeKey={rightTabKey} onTabChange={handleRightTabChange}>
             <TabPane enabled={true} tabKey={"history"} title={`History`}>
-              <div className={"scrollable-container pb-11"} style={{}}>
-                <ConversationHistory items={conversations} />
-              </div>
+              {conversations && conversations.length > 0 ? (
+                <div className={"scrollable-container pb-6"} style={{}}>
+                  <ConversationHistory items={conversations} />
+                </div>
+              ) : (
+                <div style={{ paddingTop: `8rem` }}>
+                  <Soon section="chat_history"></Soon>
+                </div>
+              )}
             </TabPane>
             <></>
           </Tabs>

@@ -1,5 +1,11 @@
 import { useApi } from "@/context/APIContext";
-import { useApp } from "@/context/AppContext";
+import { updateProfile, uploadAvatar } from "@/store/api/did";
+import {
+  selectAvatar,
+  selectDID,
+  selectProfileLoading,
+} from "@/store/slices/didSlice";
+import { useAppDispatch, useAppSelector } from "@/store/store";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
 import Header from "components/base/Header";
@@ -16,96 +22,92 @@ import Row from "components/layout/base/Grid/Row";
 import { appConfig } from "config";
 import { useFormik } from "formik";
 import { CID } from "multiformats";
+import Image from "next/image";
 import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import ImageUploading from "react-images-uploading";
-import { Indexes, Users } from "types/entity";
-import Image from "next/image";
 
 export interface EditProfileModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {}
 
 const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
-  const { userProfile, setUserProfile, indexes, setIndexes } = useApp();
+  const dispatch = useAppDispatch();
   const { api, ready: apiReady } = useApi();
+  const did = useAppSelector(selectDID);
+  const userProfile = did.data;
+  const loading = useAppSelector(selectProfileLoading);
+  const avatar = useAppSelector(selectAvatar);
+
   const handleClose = () => {
     modalProps.onClose?.();
   };
 
-  const [loading, setLoading] = useState(false);
-  const [image, setImage] = useState<CID>();
+  const [image, setImage] = useState<CID | null>();
 
-  const updateIndexesOwnerProfile = useCallback((profile: Users) => {
-    const updatedIndexes = indexes.map((index: Indexes) => {
-      if (index.controllerDID.id === profile.id) {
-        return {
-          ...index,
-          controllerDID: profile,
-        };
-      }
-      return index;
-    });
-    setIndexes(updatedIndexes);
-  }, []);
+  useEffect(() => {
+    setImage(did.avatar || userProfile?.avatar || null);
+  }, [userProfile, did.avatar]);
 
-  const formik = useFormik<Partial<Users>>({
+  const formik = useFormik({
     initialValues: {
-      ...userProfile,
+      name: userProfile.name || "",
+      bio: userProfile.bio || "",
     },
     onSubmit: async (values) => {
+      console.log(`submit all`);
       try {
-        if (!apiReady) return;
-        setLoading(true);
-        const params: Partial<Users> = {
+        if (!apiReady || !api) return;
+
+        const profileData = {
           name: values.name,
           bio: values.bio,
+          avatar: (avatar || userProfile.avatar).replace(
+            `${appConfig.ipfsProxy}/`,
+            "",
+          ),
         };
-        if (image) {
-          params.avatar = image;
-        }
-        const newProfile = await api!.updateProfile(params);
-        setUserProfile(newProfile);
-        updateIndexesOwnerProfile(newProfile);
+
+        await dispatch(updateProfile({ profile: profileData, api })).unwrap();
         toast.success("Profile updated successfully");
-      } catch (err) {
-        console.log(err);
-        toast.error("Failed to update profile, please try again");
-      } finally {
-        setLoading(false);
         handleClose();
+      } catch (err) {
+        console.error("Failed to update profile:", err);
+        toast.error("Failed to update profile");
       }
     },
   });
 
   const onChange = useCallback(
     async (imageList: any) => {
-      if (!apiReady) return;
-      if (imageList.length > 0) {
-        try {
-          const res = await api!.uploadAvatar(imageList[0].file);
-          res && setImage(res.cid);
-          toast.success("Image uploaded successfully");
-        } catch (err: any) {
-          console.error(err);
-          let message = "";
-          if (err.response.status === 413) {
-            message = "Image size is too large";
-          }
-          toast.error(`Failed to upload image: ${message}`);
-        }
-      } else {
-        setImage(undefined);
+      if (!apiReady || !api || imageList.length === 0) return;
+
+      try {
+        const imageFile = imageList[0].file;
+        await dispatch(uploadAvatar({ api, file: imageFile })).unwrap();
+        // toast.success("Image uploaded successfully");
+      } catch (err) {
+        console.error("Failed to upload image:", err);
+        toast.error("Failed to upload image");
       }
     },
-    [api, apiReady],
+    [api, apiReady, dispatch],
+  );
+
+  const handleKeyDown = useCallback(
+    (event: any) => {
+      if (event.key === "Enter") {
+        formik.handleSubmit();
+      }
+    },
+    [formik],
   );
 
   useEffect(() => {
-    if (!userProfile) return;
-
-    userProfile.avatar && setImage(userProfile.avatar);
-    updateIndexesOwnerProfile(userProfile);
-  }, [userProfile, updateIndexesOwnerProfile]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [handleKeyDown]);
 
   return (
     <Modal
@@ -223,7 +225,17 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
                     </Col>
                   </FlexRow>
                   <div className="modal-footer">
-                    <Col auto pullLeft>
+                    <Col pullLeft>
+                      <Button
+                        size="lg"
+                        className="mt-7 pl-8 pr-8"
+                        theme="clear"
+                        onClick={handleClose}
+                      >
+                        Cancel
+                      </Button>
+                    </Col>
+                    <Col auto pullRight>
                       <Button
                         theme="primary"
                         size="lg"

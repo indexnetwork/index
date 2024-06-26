@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/sdk",
-  "version": "0.1.5",
+  "version": "0.1.22",
   "main": "dist/indexclient.cjs.js",
   "module": "dist/indexclient.es.js",
   "types": "dist/index.d.ts",
@@ -32,8 +32,10 @@
     "@langchain/community": "^0.0.53",
     "@langchain/openai": "^0.0.28",
     "chromadb": "^1.8.1",
+    "cross-eventsource": "^1.0.0",
     "did-session": "^3.1.0",
     "ethers": "^6.12.0",
+    "eventsource": "^2.0.2",
     "langchain": "^0.1.36",
     "multiformats": "^13.1.0",
     "openai": "^4.38.5",

@@ -2,11 +2,9 @@ import { Tabs } from "@/components/base/Tabs";
 import TabPane from "@/components/base/Tabs/TabPane";
 import Col from "@/components/layout/base/Grid/Col";
 import FlexRow from "@/components/layout/base/Grid/FlexRow";
-import { useApp } from "@/context/AppContext";
-import { useOrderedFetch } from "@/hooks/useOrderedFetch";
-import { useRouteParams } from "@/hooks/useRouteParams";
 import { useCallback, useEffect, useState } from "react";
-import { useIndexConversation } from "../IndexConversationContext";
+import { selectIndex } from "@/store/slices/indexSlice";
+import { useAppSelector } from "@/store/store";
 import AccessControlTab from "./AccessControlTab";
 import ChatTab from "./ChatTab";
 import IndexItemsTab from "./IndexItemsTab";
@@ -30,31 +28,21 @@ const TAB_TITLES = {
 
 export default function TabContainer() {
   const [tabKey, setTabKey] = useState<string>(TabKey.Chat);
-
-  const { id, isIndex, isConversation } = useRouteParams();
-  const { fetchDataForNewRoute } = useOrderedFetch();
-  const { itemsState, loading } = useIndexConversation();
-  const { viewedIndex, viewedConversation } = useApp();
+  const { id, items, loading } = useAppSelector(selectIndex);
 
   useEffect(() => {
-    if (!viewedIndex) return;
+    if (!items) return;
 
     if (loading) {
       return;
     }
 
-    if (itemsState.items.length === 0) {
+    if (items.data && items.data.length === 0) {
       setTabKey(TabKey.Index);
     } else {
       setTabKey(TabKey.Chat);
     }
-  }, [viewedIndex]);
-
-  useEffect(() => {
-    if (!id) return;
-
-    fetchDataForNewRoute(id);
-  }, [id, fetchDataForNewRoute]);
+  }, [items, loading]);
 
   const renderTabContent = useCallback(() => {
     switch (tabKey) {
@@ -62,8 +50,6 @@ export default function TabContainer() {
         return <ChatTab />;
       case TabKey.Index:
         return <IndexItemsTab />;
-      // case TabKey.Creators:
-      //  return <CreatorsTab />;
       case TabKey.AccessControl:
         return <AccessControlTab />;
       case TabKey.Settings:
@@ -84,17 +70,19 @@ export default function TabContainer() {
     >
       <FlexRow>
         <Col className="idxflex-grow-1 mt-3">
-          <Tabs activeKey={tabKey} onTabChange={setTabKey}>
-            {Object.values(TabKey).map((key) => (
-              <TabPane
-                key={key}
-                enabled={true}
-                hidden={false}
-                tabKey={key}
-                title={TAB_TITLES[key]}
-              />
-            ))}
-          </Tabs>
+          {!loading && (
+            <Tabs activeKey={tabKey} onTabChange={setTabKey}>
+              {Object.values(TabKey).map((key) => (
+                <TabPane
+                  key={key}
+                  enabled={true}
+                  hidden={false}
+                  tabKey={key}
+                  title={TAB_TITLES[key]}
+                />
+              ))}
+            </Tabs>
+          )}
         </Col>
       </FlexRow>
       <FlexRow>

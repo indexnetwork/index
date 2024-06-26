@@ -1,29 +1,21 @@
-import { useEffect, useRef, useCallback } from "react";
-import { useApp } from "@/context/AppContext";
+import { useCallback } from "react";
 import { useIndexConversation } from "@/components/sections/IndexConversation/IndexConversationContext";
-import axios, { CancelTokenSource } from "axios";
+import axios from "axios";
 import { useApi } from "@/context/APIContext";
+import { fetchIndex } from "@/store/api";
+import { useAppDispatch } from "@/store/store";
 
 export const useOrderedFetch = () => {
-  const { fetchIndex, fetchIndexWithCreator } = useApp();
-  const { fetchIndexItems, setLoading } = useIndexConversation();
-  const cancelSourceRef = useRef<CancelTokenSource | null>(null);
-  const { ready: apiReady } = useApi();
+  const { setLoading } = useIndexConversation();
+  const dispatch = useAppDispatch();
+  const { api, ready: apiReady } = useApi();
 
   const fetchDataForNewRoute = useCallback(
     async (id: string) => {
-      if (cancelSourceRef.current) {
-        cancelSourceRef.current.cancel("Operation canceled due to new request");
-      }
-      if (!apiReady) return;
-      cancelSourceRef.current = axios.CancelToken.source();
-      const cancelSource = cancelSourceRef.current;
+      if (!apiReady || !api) return;
 
       try {
-        await fetchIndex(id, { cancelSource });
-        setLoading(true);
-        await fetchIndexItems(id, { cancelSource });
-        await fetchIndexWithCreator(id, { cancelSource });
+        dispatch(fetchIndex({ indexID: id, api }));
       } catch (err: any) {
         if (axios.isCancel(err)) {
           console.warn("Request was canceled:", err.message);
@@ -34,16 +26,8 @@ export const useOrderedFetch = () => {
         setLoading(false);
       }
     },
-    [fetchIndex, fetchIndexWithCreator, fetchIndexItems, setLoading],
+    [dispatch, api, apiReady, setLoading],
   );
-
-  useEffect(() => {
-    return () => {
-      if (cancelSourceRef.current) {
-        cancelSourceRef.current.cancel("Component unmounted");
-      }
-    };
-  }, []);
 
   return {
     fetchDataForNewRoute,

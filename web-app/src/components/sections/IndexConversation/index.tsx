@@ -1,11 +1,12 @@
-import { useApp } from "@/context/AppContext";
 import Head from "next/head";
+import { useAppSelector } from "@/store/store";
+import { selectIndex } from "@/store/slices/indexSlice";
 import { IndexConversationProvider } from "./IndexConversationContext";
 import { IndexConversationHeader } from "./IndexConversationHeader";
 import TabContainer from "./TabContainer";
 
 const IndexConversationSection = () => {
-  const { viewedIndex } = useApp();
+  const { data: viewedIndex } = useAppSelector(selectIndex);
 
   return (
     <IndexConversationProvider>

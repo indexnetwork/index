@@ -3,9 +3,23 @@ import { useApp } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
 import { CHAT_STARTED, trackEvent } from "@/services/tracker";
-
+import {
+  createConversation,
+  regenerateMessage,
+  sendMessage,
+  updateMessageThunk,
+} from "@/store/api/conversation";
+import { selectView } from "@/store/slices/appViewSlice";
+import {
+  selectConversation,
+  setMessages,
+} from "@/store/slices/conversationSlice";
+import { selectDID } from "@/store/slices/didSlice";
+import { selectIndex } from "@/store/slices/indexSlice";
+import { useAppDispatch, useAppSelector } from "@/store/store";
+import { API_ENDPOINTS } from "@/utils/constants";
 import { type Message } from "@ai-sdk/react";
-
+import { generateId } from "ai";
 import { ButtonScrollToBottom } from "components/ai/button-scroll-to-bottom";
 import { ChatList } from "components/ai/chat-list";
 import { ChatPanel } from "components/ai/chat-panel";
@@ -15,9 +29,7 @@ import AskInput from "components/base/AskInput";
 import Col from "components/layout/base/Grid/Col";
 import Flex from "components/layout/base/Grid/Flex";
 import FlexRow from "components/layout/base/Grid/FlexRow";
-
-// import { nanoid } from "nanoid";
-
+import { useRouter } from "next/navigation";
 import {
   ComponentProps,
   FC,
@@ -27,9 +39,6 @@ import {
   useState,
 } from "react";
 import { maskDID } from "utils/helper";
-import { generateId } from "ai";
-import { useRouter } from "next/navigation";
-import { API_ENDPOINTS } from "@/utils/constants";
 
 export interface ChatProps extends ComponentProps<"div"> {
   initialMessages?: Message[];
@@ -44,23 +53,20 @@ export interface MessageWithIndex extends Message {
 }
 
 const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
-  const { session } = useAuth();
-  const {
-    leftSectionIndexes,
-    leftTabKey,
-    viewedProfile,
-    viewedIndex,
-    setViewedConversation,
-    viewedConversation,
-    conversations,
-    setConversations,
-  } = useApp();
-  const { isIndex, conversationId, id } = useRouteParams();
-  const { view } = useApp();
+  const { session, connect } = useAuth();
+  const { leftSectionIndexes, leftTabKey } = useApp();
+  const { isIndex, id } = useRouteParams();
   const { ready: apiReady, api } = useApi();
-
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>([]);
+
+  const dispatch = useAppDispatch();
+  const { data: viewedConversation } = useAppSelector(selectConversation);
+  const { data: viewedIndex } = useAppSelector(selectIndex);
+  const { data: viewedProfile } = useAppSelector(selectDID);
+  const view = useAppSelector(selectView);
+  const [streamingMessages, setStreamingMessages] = useState<any>([]);
+  const isLocalUpdate = useRef(false);
+
   const [stoppedMessages, setStoppedMessages] = useState<string[]>([]);
   const [deletedMessages, setDeletedMessages] = useState<string[]>([]);
 
@@ -72,8 +78,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   const [input, setInput] = useState<string>("");
   const [defaultQuestions, setDefaultQuestions] = useState<string[]>([]);
 
-  const bottomRef = useRef<null | HTMLDivElement>(null);
-
   const fetchDefaultQuestions = useCallback(async (): Promise<void> => {
     if (!apiReady || !isIndex || !id) return;
     try {
@@ -84,96 +88,59 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     }
   }, [apiReady, api, id, isIndex]);
 
-  const sendMessage = useCallback(
-    async (message: string) => {
-      if (!apiReady || isLoading) return;
+  const handleSendMessage = useCallback(
+    async (messageStr: string) => {
+      if (!apiReady || !api) return;
+
+      if (!session) {
+        connect();
+        return;
+      }
+
       try {
+        isLocalUpdate.current = false;
         const newMessage: Message = {
           id: generateId(),
           role: "user",
-          content: message,
+          content: messageStr,
         };
 
-        setMessages((prevMessages) => [...prevMessages, newMessage]);
         let currentConv = viewedConversation;
-        if (!currentConv) {
-          const response = await api!.createConversation({
-            sources: [id],
-            summary: `New chat`,
-          });
-
+        if (!currentConv && id) {
+          const response = await dispatch(
+            createConversation({
+              sources: [id],
+              summary: messageStr,
+              api,
+            }),
+          ).unwrap();
           currentConv = response;
-
-          setConversations([response, ...conversations]);
+          router.push(`/conversation/${currentConv.id}`);
         }
-        if (!currentConv) return;
-        const messageResp = await api!.sendMessage(currentConv.id, {
-          content: message,
-          role: "user",
-        });
-        currentConv.messages = [messageResp];
-        setViewedConversation(currentConv);
 
-        router.push(`/conversation/${currentConv.id}`);
+        if (!currentConv) {
+          throw new Error("No conversation found");
+        }
+
+        await dispatch(
+          sendMessage({
+            prevID: newMessage.id,
+            content: messageStr,
+            role: "user",
+            conversationId: currentConv.id,
+            api,
+          }),
+        ).unwrap();
       } catch (error) {
         console.error("Error sending message", error);
       }
     },
-    [viewedConversation, apiReady, conversations, api, isLoading],
-  );
-
-  const updateMessage = useCallback(
-    async (messageId: string, message: string) => {
-      if (!viewedConversation) return;
-      if (!apiReady || isLoading) return;
-      try {
-        const lastUserMessage = messages.findLast((m) => m.role === "user");
-        if (!lastUserMessage) return;
-
-        const newMessage: Message = {
-          id: generateId(),
-          role: "user",
-          content: message,
-        };
-        setMessages((prevMessages) => {
-          return [...prevMessages, newMessage];
-        });
-
-        const messageResp = await api!.updateMessage(
-          viewedConversation.id,
-          lastUserMessage.id,
-          {
-            content: message,
-            role: "user",
-          },
-          true,
-        );
-        viewedConversation.messages.push(messageResp);
-        setViewedConversation(viewedConversation);
-      } catch (e) {
-        console.error("Error sending message", e);
-      }
-    },
-    [apiReady, api, id, isIndex, viewedConversation, isLoading],
+    [api, viewedConversation, id, dispatch, router, apiReady, session],
   );
 
   useEffect(() => {
     fetchDefaultQuestions();
   }, [fetchDefaultQuestions]);
-
-  useEffect(() => {
-    if (viewedConversation && viewedConversation.messages) {
-      setMessages(viewedConversation.messages);
-    } else {
-      setMessages([]);
-    }
-  }, [conversationId, viewedConversation]);
-
-  useEffect(() => {
-    if (view.name === "default") {
-      setMessages([]);
-    }
-  }, [view]);
 
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
@@ -181,72 +148,43 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     setEditInput(message.content);
   };
 
-  const handleSaveEdit = async () => {
-    if (editingMessage) {
-      try {
-        const messagesBeforeEdit = messages.slice(0, editingIndex);
-        const messagesAfterEdit = messages.slice(editingIndex);
-
-        console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
-        if (Array.isArray(messagesAfterEdit) && messagesAfterEdit.length > 0) {
-          const mIds = messagesAfterEdit.map((m) => m.id);
-          setDeletedMessages((prev) => {
-            return [...prev, ...mIds];
-          });
-        }
-
-        const newMessage = {
-          ...editingMessage,
-          content: editInput,
-        };
-
-        setEditingMessage(undefined);
-        setEditInput("");
-        setIsLoading(false);
-        setMessages([...messagesBeforeEdit, newMessage]);
-        console.log("messagesBeforeEdit", messagesBeforeEdit, messages);
-
-        await updateMessage(editingMessage.id, editInput); // TODO
-      } catch (error: any) {
-        console.error("An error occurred:", error.message);
-      }
-    }
-  };
-
-  const regenerateMessage = async () => {
-    if (!apiReady || isLoading || !viewedConversation) return;
+  const handleSaveEdit = useCallback(async () => {
+    if (!apiReady || !api || !viewedConversation || !editingMessage) return;
     try {
-      const lastUserMessage = messages.findLast((m) => m.role === "user");
-      const lastAssistantMessage = messages.findLast(
-        (m) => m.name === "basic_assistant",
-      );
-      if (!lastUserMessage) return;
-
-      setIsLoading(true);
-      // remove messages after the last assistant message
-      if (lastAssistantMessage) {
-        const messagesBeforeEdit = messages.slice(
-          0,
-          messages.indexOf(lastAssistantMessage),
-        );
-
-        setMessages(messagesBeforeEdit);
-      }
-
-      const regeneratedMessage = await api!.updateMessage(
-        viewedConversation.id,
-        lastUserMessage.id,
-        { role: lastUserMessage.role, content: lastUserMessage.content },
-        true,
-      );
-
-      setIsLoading(false);
-    } catch (error) {
-      console.error("Error sending message", error);
+      isLocalUpdate.current = false;
+      await dispatch(
+        updateMessageThunk({
+          conversationId: viewedConversation.id,
+          messageId: editingMessage.id,
+          content: editInput,
+          api,
+        }),
+      ).unwrap();
+      setEditingMessage(undefined);
+      setEditInput("");
+    } catch (error: any) {
+      console.error("An error occurred:", error.message);
     }
-  };
+  }, [dispatch, api, apiReady, viewedConversation, editingMessage, editInput]);
 
-  const getChatContextMessage = (): string => {
+  const handleRegenerate = useCallback(
+    async (message: Message, index: number) => {
+      if (!apiReady || !api || !viewedConversation) return;
+      isLocalUpdate.current = false;
+
+      await dispatch(
+        regenerateMessage({
+          conversationId: viewedConversation.id,
+          message,
+          index,
+          api,
+        }),
+      );
+    },
+    [api, viewedConversation, apiReady, dispatch],
+  );
+
+  const getChatContextMessage = useCallback((): any => {
     if (viewedIndex && isIndex) {
       return viewedIndex.title;
     }
@@ -269,111 +207,116 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
 
       return `${sections[leftTabKey]} ${viewedProfile.name || maskDID(viewedProfile.id)}`;
     }
-
-    return `indexes`;
-  };
-
-  const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [bottomRef]);
-
-  useEffect(() => {
-    // scrollToBottom();
-  }, [viewedConversation, isLoading, scrollToBottom]);
+    return null;
+  }, [viewedProfile, viewedIndex, leftTabKey, isIndex, session]);
 
   const stop = () => {
     setIsLoading(false);
     // TODO send stop signal to backend.
-    setStoppedMessages(messages.map((c) => c.id));
+    setStoppedMessages(viewedConversation?.messages.map((c: any) => c.id));
   };
-
-  const handleMessage = (data: any) => {
-    const payload = JSON.parse(data);
-    console.log("Received message from server", payload);
-
-    if (payload.channel === "end") {
-      if (viewedConversation && viewedConversation.summary === `New chat`) {
-        api!.getConversationWithSummary(viewedConversation.id).then((c) => {
-          setConversations(
-            conversations.map((i: any) =>
-              i.id === c.id ? { ...c, summary: c.summary } : i,
-            ),
-          );
-        });
-      }
-
-      setIsLoading(false);
-      // scrollToBottom();
+  const handleIncomingMessage = (p: any) => {
+    isLocalUpdate.current = true;
+    if (p.channel === "end") {
+      // dispatch(setMessages(streamingMessages));
       return;
     }
 
-    if (payload.channel === "update") {
+    if (p.channel === "update") {
       const newMessage: Message = {
-        id: payload.data.messageId,
-        role: payload.data.payload.role,
-        content: payload.data.payload.content,
+        id: p.data.messageId,
+        role: p.data.payload.role,
+        name: p.data.payload.name,
+        content: p.data.payload.content,
       };
-      setMessages((prevMessages) => {
-        return [...prevMessages, newMessage];
+      console.log(newMessage);
+      setStreamingMessages((prevMessages: any) => {
+        const updated = [...prevMessages, newMessage];
+        dispatch(setMessages(updated));
+        return updated;
       });
-      setIsLoading(false);
-      // scrollToBottom();
+
       return;
     }
 
-    if (
-      stoppedMessages.includes(payload.data.messageId) ||
-      deletedMessages.includes(payload.data.messageId)
-    ) {
-      return;
-    }
-
-    setIsLoading(true);
-    setMessages((prevConversation) => {
-      let streamingMessage = prevConversation.find(
-        (c) => c.id === payload.data.messageId,
-      );
-
-      if (!streamingMessage) {
-        console.log(`newmessage ${payload.data.messageId}`);
-        streamingMessage = {
-          id: payload.data.messageId,
-          content: payload.data.chunk,
-          role: "assistant",
-          name: payload.data.name,
-        };
-        console.log("New message", streamingMessage);
-        return [...prevConversation, streamingMessage];
-      }
-
-      if (payload.channel === "chunk") {
-        return prevConversation.map((message) =>
-          message.id === payload.data.messageId
-            ? { ...message, content: message.content + payload.data.chunk }
-            : message,
+    if (p.channel === "chunk") {
+      setStreamingMessages((prevMessages: any) => {
+        let streamingMessage = prevMessages.find(
+          (m: any) => m.id === p.data.messageId,
         );
-      }
-      return prevConversation;
-    });
-    // scrollToBottom();
+
+        if (streamingMessage) {
+          const updatedStream = prevMessages.map((m: any) =>
+            m.id === p.data.messageId
+              ? {
+                  ...m,
+                  content: m.content + p.data.chunk,
+                }
+              : m,
+          );
+          dispatch(setMessages(updatedStream));
+          return updatedStream;
+        }
+
+        const viewedMessages = viewedConversation.messages;
+
+        if (viewedMessages) {
+          streamingMessage = viewedMessages.find(
+            (m: any) => m.id === p.data.messageId,
+          );
+          if (streamingMessage) {
+            const updatedStreamViewed = viewedMessages.map((m: any) =>
+              m.id === p.data.messageId
+                ? {
+                    ...m,
+                    content: m.content + p.data.chunk,
+                  }
+                : m,
+            );
+            dispatch(setMessages(updatedStreamViewed));
+            return updatedStreamViewed;
+          }
+        }
+
+        const initialAssistantMessage = {
+          id: p.data.messageId,
+          role: "assistant",
+          name: "basic_assistant",
+          content: p.data.chunk,
+        };
+        const updated = [...prevMessages, initialAssistantMessage];
+        dispatch(setMessages(updated));
+        return updated;
+      });
+    }
   };
+
+  useEffect(() => {
+    !viewedConversation && setStreamingMessages([]);
+    if (
+      !isLocalUpdate.current &&
+      viewedConversation &&
+      viewedConversation.messages
+    ) {
+      setStreamingMessages(viewedConversation.messages);
+      isLocalUpdate.current = false;
+    }
+  }, [viewedConversation]);
 
   useEffect(() => {
     if (!viewedConversation) return;
     const eventUrl = `${process.env.NEXT_PUBLIC_API_URL!}${API_ENDPOINTS.CONVERSATION_UPDATES.replace(":conversationId", viewedConversation.id)}?session=${session?.serialize()}`;
     const eventSource = new EventSource(eventUrl);
     eventSource.onmessage = (event) => {
-      console.log("Received message from server", event.data);
-      handleMessage(event.data);
+      handleIncomingMessage(JSON.parse(event.data));
     };
+
     eventSource.onerror = (err) => {
       console.error("EventSource failed:", err);
       eventSource.close();
     };
-    return () => {
-      eventSource.close();
-    };
-  }, [stoppedMessages, deletedMessages, viewedConversation, API_ENDPOINTS]);
+    return () => eventSource.close();
+  }, [viewedConversation?.id]);
 
   if (leftSectionIndexes.length === 0) {
     // return <NoIndexes tabKey={leftTabKey} />;
@@ -388,7 +331,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           viewedConversation &&
           viewedConversation.sources &&
           viewedConversation.sources?.filter(
-            (source) => !source.includes("did:"),
+            (source: string) => !source.includes("did:"),
           ).length > 0
             ? "px-0 pt-7"
             : "px-md-10 px-4 pt-7"
@@ -413,19 +356,18 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
               flexDirection: "column",
             }}
           >
-            {viewedConversation && viewedConversation.messages.length ? (
+            {viewedConversation ? (
               <>
                 <ChatList
-                  messages={messages}
+                  messages={streamingMessages || []}
                   handleEditClick={handleEditClick}
                   editingMessage={editingMessage}
                   setEditInput={setEditInput}
                   editInput={editInput}
                   handleSaveEdit={handleSaveEdit}
+                  handleRegenerate={handleRegenerate}
                   editingIndex={editingIndex}
-                  regenerate={regenerateMessage}
                 />
-                <div ref={bottomRef} />
                 <ChatScrollAnchor trackVisibility={isLoading} />
               </>
             ) : (
@@ -441,6 +383,12 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                 <EmptyScreen
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}
+                  indexIds={
+                    viewedConversation &&
+                    viewedConversation.sources?.filter(
+                      (source: string) => !source.includes("did:"),
+                    )
+                  }
                   defaultQuestions={defaultQuestions}
                 />
               </Flex>
@@ -456,9 +404,9 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           <ChatPanel
             isLoading={isLoading}
             stop={stop}
-            reload={regenerateMessage}
+            // reload={regenerateMessage}
             // reload={reload}
-            messages={messages}
+            messages={viewedConversation?.messages}
           />
         </FlexRow>
         <FlexRow fullWidth className={"idxflex-grow-1"} colGap={0}>
@@ -466,7 +414,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
             <AskInput
               contextMessage={getChatContextMessage()}
               onSubmit={async (value) => {
-                sendMessage(value);
+                handleSendMessage(value);
                 trackEvent(CHAT_STARTED, {
                   type: view.discoveryType,
                 });

@@ -34,6 +34,7 @@ const wallet = new Wallet(process.env.PRIVATE_KEY);
 
 const indexClient = new IndexClient({
   wallet,
+  domain: "https://dev.index.network",
   network: "dev", // or mainnet
 });
 ```
@@ -47,17 +48,15 @@ await indexClient.authenticate();
 We're almost ready. Now, let's create an Index, with a title.
 
 ```typescript
-const indexId = await indexClient.createIndex(title: "Future of publishing");
+const index = await indexClient.createIndex("Future of publishing");
 ```
 
 Great, now you have a truly decentralized index to interact with! Though it's empty, which means we need to create and add an [`Item`](../api-reference/indexing/item.md) into it so we can interact. Let's do that.
 
 ```typescript
-const webPageId = await indexClient.crawlWebPage({
-  url: "http://www.paulgraham.com/publishing.html",
-});
+const webPage = await indexClient.crawlWebPage("http://www.paulgraham.com/publishing.html");
 
-await indexClient.addItemToIndex(indexId, webPageId);
+await indexClient.addItemToIndex(index.id, webPage.id);
 ```
 
 Your index is now ready for interaction! To start a conversation and interact with the data, follow these steps:
@@ -67,7 +66,6 @@ Your index is now ready for interaction! To start a conversation and interact wi
 const conversationParams = {
   sources: [index.id],
   summary: "Mock summary",
-  members: [indexClient.wallet.address],
 };
 const conversation = await indexClient.createConversation(conversationParams);
 

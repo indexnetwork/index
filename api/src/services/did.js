@@ -4,6 +4,7 @@ import { getCurrentDateTime } from "../utils/helpers.js";
 import RedisClient from "../clients/redis.js";
 import { IndexService } from "./index.js";
 import { DIDSession } from "did-session";
+import { getENSProfileByWallet } from "../controllers/meta.js";
 
 const redisClient = RedisClient.getInstance();
 
@@ -178,9 +179,11 @@ export class DIDService {
 
       const indexService = new IndexService(this.definition);
 
-      return uniqueIndexes
-        .filter((i) => i.did.owned || i.did.starred)
-        .map((i) => indexService.transformIndex(i));
+      return await Promise.all(
+        uniqueIndexes
+          .filter((i) => i.did.owned || i.did.starred)
+          .map(async (i) => await indexService.transformIndex(i)),
+      );
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in createDIDIndex:", error);
@@ -279,12 +282,9 @@ export class DIDService {
         throw new Error("Invalid response data");
       }
 
-      const profileObj = data.createProfile.document;
-
-      profileObj.id = profileObj.controllerDID.id;
-      delete profileObj.controllerDID;
-
-      return profileObj;
+      return await this.getProfile(
+        data.createProfile.document.controllerDID.id,
+      );
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in createProfile:", error);
@@ -315,13 +315,28 @@ export class DIDService {
       }
 
       if (!data.node.profile) {
-        return null;
+        const wallet = did.split(":").slice(-1).pop();
+        const ensProfile = await getENSProfileByWallet(wallet);
+        if (ensProfile) {
+          return {
+            id: did,
+            name: ensProfile.ensName,
+            avatar: ensProfile.image,
+            bio: "",
+          };
+        }
+        return {
+          id: did,
+        };
       }
-
       const profileObj = data.node.profile;
 
       profileObj.id = profileObj.controllerDID.id;
       delete profileObj.controllerDID;
+
+      if (profileObj.avatar) {
+        profileObj.avatar = `https://ipfs.io/ipfs/${profileObj.avatar}`;
+      }
 
       return profileObj;
     } catch (error) {

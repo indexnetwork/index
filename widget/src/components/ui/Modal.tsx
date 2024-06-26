@@ -2,6 +2,7 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  allowBackdropClick?: boolean;
 }
 
 const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children }) => {
@@ -16,11 +17,9 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children }) => {
   return (
     <div
       className="fixed backdrop-blur-sm inset-0 z-10 bg-black bg-opacity-50 flex justify-center items-center"
-      onClick={handleBackdropClick}
+      // onClick={handleBackdropClick}
     >
-      <div className="shadow-natural relative">
-        {children}
-      </div>
+      <div className="shadow-natural relative">{children}</div>
     </div>
   );
 };

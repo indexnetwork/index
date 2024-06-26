@@ -11,7 +11,7 @@ interface ChatMessageActionsProps extends React.ComponentProps<"div"> {
   handleEditClick: (message: Message, index: number) => void;
   index: number;
   editingMessage: Message | undefined;
-  regenerate: (() => void) | null;
+  handleRegenerate: (message: Message, index: number) => void;
 }
 
 export function ChatMessageActions({
@@ -19,8 +19,7 @@ export function ChatMessageActions({
   handleEditClick,
   index,
   editingMessage,
-  regenerate,
-  className,
+  handleRegenerate,
   ...props
 }: ChatMessageActionsProps) {
   const { isCopied, copyToClipboard } = useCopyToClipboard({ timeout: 2000 });
@@ -58,8 +57,13 @@ export function ChatMessageActions({
           </Button>
         )}
 
-        {regenerate && (
-          <Button iconHover borderless theme="clear" onClick={regenerate}>
+        {message.role === "assistant" && (
+          <Button
+            iconHover
+            borderless
+            theme="clear"
+            onClick={() => handleRegenerate(message, index)}
+          >
             <Image
               color="red"
               src="/images/ic_regenerate.svg"

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { generateRandomColor, isSSR } from "utils/helper";
 import { ShapeType } from "types";
 import { Users } from "types/entity";
-import { appConfig } from "config";
 import Image from "next/image";
 
 export interface AvatarProps
@@ -57,7 +56,7 @@ const Avatar = ({
         <Image
           width={size}
           height={size}
-          src={`${appConfig.ipfsProxy}/${user.avatar}`}
+          src={user.avatar}
           alt="Profile Image"
         />
       );

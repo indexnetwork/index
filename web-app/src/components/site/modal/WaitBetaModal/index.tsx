@@ -2,14 +2,22 @@ import Button from "components/base/Button";
 import Header from "components/base/Header";
 import Modal, { ModalProps } from "components/base/Modal";
 import Col from "components/layout/base/Grid/Col";
+import { memo } from "react";
 
 export interface WaitBetaModalProps
   extends Omit<ModalProps, "header" | "footer" | "body"> {
-  onCreate: (title: string) => void;
+  onCloseHandler?: () => void;
 }
 
-const WaitBetaModal = ({ onCreate, ...modalProps }: WaitBetaModalProps) => {
+const WaitBetaModal = ({
+  onCloseHandler,
+  ...modalProps
+}: WaitBetaModalProps) => {
   const handleClose = () => {
+    if (onCloseHandler) {
+      onCloseHandler();
+      return;
+    }
     modalProps.onClose?.();
   };
 
@@ -93,4 +101,4 @@ const WaitBetaModal = ({ onCreate, ...modalProps }: WaitBetaModalProps) => {
   );
 };
 
-export default WaitBetaModal;
+export default memo(WaitBetaModal);

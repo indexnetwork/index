@@ -279,15 +279,6 @@ export class ConversationService {
     if (!conversation) {
       return;
     }
-    if (conversation && conversation.messages) {
-      for (const message of conversation.messages) {
-        try {
-          await this.deleteMessage(id, message.id);
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    }
 
     return await this.updateConversation(id, {
       deletedAt: getCurrentDateTime(),

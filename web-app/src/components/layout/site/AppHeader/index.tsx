@@ -3,6 +3,8 @@ import WaitBetaModal from "@/components/site/modal/WaitBetaModal";
 import { useApp } from "@/context/AppContext";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouteParams } from "@/hooks/useRouteParams";
+import { selectDID } from "@/store/slices/didSlice";
+import { useAppSelector } from "@/store/store";
 import Avatar from "components/base/Avatar";
 import Button from "components/base/Button";
 import Dropdown from "components/base/Dropdown";
@@ -25,8 +27,10 @@ const AppHeader = () => {
     rightSidebarOpen,
     setRightSidebarOpen,
     setEditProfileModalVisible,
-    userProfile,
+    setGuestModalVisible,
   } = useApp();
+
+  const { data: userProfile } = useAppSelector(selectDID);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -40,16 +44,6 @@ const AppHeader = () => {
 
   const handleConnect = useCallback(async () => {
     try {
-      if (window !== undefined) {
-        const allowed = localStorage.getItem("allowed");
-
-        console.log("allowed", allowed);
-        if (!allowed) {
-          setModalVisible(true);
-          return;
-        }
-      }
-
       await connect();
     } catch (err) {
       console.log(err);
@@ -57,7 +51,16 @@ const AppHeader = () => {
   }, [connect]);
 
   const handleCreateIndex = useCallback(() => {
-    setCreateModalVisible(true);
+    if (window !== undefined) {
+      const allowed = localStorage.getItem("allowed");
+
+      console.log("allowed", allowed);
+      if (!allowed) {
+        setGuestModalVisible(true);
+      } else {
+        setCreateModalVisible(true);
+      }
+    }
   }, [setCreateModalVisible]);
 
   if (isLanding) {
@@ -81,7 +84,6 @@ const AppHeader = () => {
           <WaitBetaModal
             visible={modalVisible}
             onClose={() => setModalVisible(false)}
-            onCreate={() => {}}
           />
         )}
         <Navbar logoSize="mini" className="site-navbar">

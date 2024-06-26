@@ -89,7 +89,7 @@ const Popover = ({ onClose }: { onClose: () => void }) => {
             style={{ marginRight: "8px" }}
           />
           <Text theme="gray5" size="sm">
-            <b>Index any URL</b>: It will be crawled and made queryable with
+            <b>Index any URL</b>: It will be fetched and made queryable with
             natural language.
           </Text>
         </div>

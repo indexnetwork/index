@@ -18,7 +18,7 @@ export default defineConfig({
       fileName: (format) => `indexclient.${format}.js`,
     },
     rollupOptions: {
-      external: ["crypto", "chromadb-default-embed", "@xenova/transformers"],
+      external: ["crypto", "cross-eventsource", "chromadb-default-embed", "@xenova/transformers"],
       output: {
         globals: {
           crypto: "crypto",
