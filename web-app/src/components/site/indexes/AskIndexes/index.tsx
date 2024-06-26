@@ -142,6 +142,15 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     fetchDefaultQuestions();
   }, [fetchDefaultQuestions]);
 
+  useEffect(() => {
+    console.log(
+      `aaaa`,
+      viewedIndex && viewedIndex,
+      viewedProfile && viewedProfile,
+      viewedConversation && viewedConversation,
+    );
+  }, [viewedIndex, viewedProfile, viewedConversation]);
+
   const handleEditClick = (message: Message, indexOfMessage: number) => {
     setEditingMessage(message);
     setEditingIndex(indexOfMessage);
@@ -184,7 +193,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
     [api, viewedConversation, apiReady, dispatch],
   );
 
-  const getChatContextMessage = useCallback((): string => {
+  const getChatContextMessage = useCallback((): any => {
     if (viewedIndex && isIndex) {
       return viewedIndex.title;
     }
@@ -207,8 +216,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
 
       return `${sections[leftTabKey]} ${viewedProfile.name || maskDID(viewedProfile.id)}`;
     }
-
-    return `indexes`;
+    return null;
   }, [viewedProfile, viewedIndex, leftTabKey, isIndex, session]);
 
   const stop = () => {

@@ -139,7 +139,6 @@ const didSlice = createSlice({
         state.loading = true;
       })
       .addCase(deleteConversation.fulfilled, (state, action) => {
-        console.log(`makaka`, action.payload);
         state.conversations = state.conversations
           ? state.conversations.filter((c: any) => c.id !== action.payload)
           : [];

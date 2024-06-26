@@ -18,25 +18,25 @@ type HistoryItemProps = {
   summary: string;
   link: string;
   createdAt: string;
+  controllerDID: {
+    id: string;
+  };
 };
 
 const HistoryItem = ({ item }: { item: HistoryItemProps }) => {
   const router = useRouter();
   const { api, ready: apiReady } = useApi();
   const dispatch = useAppDispatch();
-  const handleDelete = useCallback(
-    async (item: any) => {
-      if (!apiReady || !api) return;
-      try {
-        await dispatch(deleteConversation({ id: item.id, api }));
-        router.push(`/${item.controllerDID.id}`);
-      } catch (error) {
-        console.error("Error deleting conversation", error);
-        toast.error("Error deleting conversation, please refresh the page");
-      }
-    },
-    [apiReady, api],
-  );
+  const handleDelete = useCallback(async () => {
+    if (!apiReady || !api) return;
+    try {
+      await dispatch(deleteConversation({ id: item.id, api }));
+      router.push(`/${item.controllerDID.id}`);
+    } catch (error) {
+      console.error("Error deleting conversation", error);
+      toast.error("Error deleting conversation, please refresh the page");
+    }
+  }, [apiReady, api]);
 
   return (
     <div
