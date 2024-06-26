@@ -10,7 +10,8 @@ type HowItWorksContentProps = {
 
 const HowItWorksContent = ({ data }: HowItWorksContentProps) => {
   // set isMobile state to true if window width is less than 768px
-  const isMobile = window.innerWidth < 768;
+  // const isMobile = typeof window !== undefined && window.innerWidth < 768;
+  const isMobile = false;
   return (
     <section>
       <div className="flex w-full flex-col min-h-[400px] items-center gap-8 md:flex-row justify-between">

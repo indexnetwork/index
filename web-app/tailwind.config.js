@@ -18,6 +18,10 @@ module.exports = {
         passiveLight: "#D5DDF0",
         passiveDark: "#0D0D0D",
         highlightBlue: "#3992FF",
+        highlightPink: "#FF85AB",
+        highlightRed: "#F44250",
+        highlightPurple: "#B399FF",
+        highlightYellow: "#FECC1B",
         grey: {
           500: "#475569",
         },
