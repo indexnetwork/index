@@ -11,12 +11,16 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        white: "#ffffff",
         mainDark: "#131620",
         primary: "#ffffff",
         secondary: "#4192F1",
         passiveLight: "#D5DDF0",
         passiveDark: "#0D0D0D",
         highlightBlue: "#3992FF",
+        grey: {
+          500: "#475569",
+        },
       },
       fontFamily: {
         title: ["Roquefort", "sans-serif"],

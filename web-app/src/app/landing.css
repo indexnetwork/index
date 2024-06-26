@@ -56,7 +56,6 @@ html#landing {
     box-sizing: border-box; /* 1 */
     border-width: 0; /* 2 */
     border-style: solid; /* 2 */
-    border-color: #e5e7eb; /* 2 */
   }
 
   ::before,
@@ -82,16 +81,6 @@ html#landing {
   /*
   Remove the default font size and weight for headings.
   */
-
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    font-size: inherit;
-    font-weight: inherit;
-  }
 
   /*
   Reset links to optimize for opt-in styling instead of opt-out.
@@ -186,7 +175,6 @@ html#landing {
     font-size: 100%; /* 1 */
     font-weight: inherit; /* 1 */
     line-height: inherit; /* 1 */
-    color: inherit; /* 1 */
     margin: 0; /* 2 */
     padding: 0; /* 3 */
   }
@@ -210,7 +198,6 @@ html#landing {
   [type="reset"],
   [type="submit"] {
     -webkit-appearance: button; /* 1 */
-    background-color: transparent; /* 2 */
     background-image: none; /* 2 */
   }
 

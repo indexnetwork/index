@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import "./globals.css";
 import "./landing.css";
+import HowItWorksSection from "@/components/sections/landing/HowItWorks";
 
 const Landing = () => {
   const router = useRouter();
@@ -44,6 +45,7 @@ const Landing = () => {
         <HeroSection />
         <BigTextSection />
         <TestimonialsSection />
+        <HowItWorksSection />
         <PartnersSection />
         <div className="mb-16 flex flex-col gap-24 md:mb-32 md:gap-48">
           <FeatureSection1 />
