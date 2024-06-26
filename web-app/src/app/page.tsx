@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import "./globals.css";
 import "./landing.css";
+import BigTextSection from "@/components/sections/landing/BigText";
 
 const Landing = () => {
   const router = useRouter();
@@ -25,21 +26,22 @@ const Landing = () => {
     }
   }, [status, session, router]);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      if (window.location.pathname === "/") {
-        document.getElementsByTagName("html")[0].setAttribute("id", "landing");
-      } else {
-        document.getElementsByTagName("html")[0].setAttribute("id", "app");
-      }
-    }
-  }, []);
+  // useEffect(() => {
+  //   if (typeof window !== "undefined") {
+  //     if (window.location.pathname === "/") {
+  //       document.getElementsByTagName("html")[0].setAttribute("id", "landing");
+  //     } else {
+  //       document.getElementsByTagName("html")[0].setAttribute("id", "app");
+  //     }
+  //   }
+  // }, []);
 
   return (
     <Suspense>
       <div className="min-h-screen bg-mainDark font-primary text-primary">
         <AppHeader />
         <HeroSection />
+        <BigTextSection />
         <PartnersSection />
         <div className="mb-16 flex flex-col gap-24 md:mb-32 md:gap-48">
           <FeatureSection1 />

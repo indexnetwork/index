@@ -16,6 +16,7 @@ module.exports = {
         secondary: "#4192F1",
         passiveLight: "#D5DDF0",
         passiveDark: "#0D0D0D",
+        highlightBlue: "#3992FF",
       },
       fontFamily: {
         title: ["Roquefort", "sans-serif"],
@@ -24,6 +25,9 @@ module.exports = {
       },
       screens: {
         lg: "1200px",
+      },
+      spacing: {
+        12: "3rem",
       },
     },
   },
