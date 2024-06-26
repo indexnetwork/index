@@ -93,13 +93,13 @@ const IndexItemList: FC<IndexItemListProps> = ({
 
   return (
     <>
-      {items.length === 0 ? (
+      {items && items.length === 0 ? (
         <NoLinks isOwner={isOwner} tabKey="items" search={search} />
       ) : (
         <InfiniteScroll
           hasMore={hasMore}
           next={loadMore}
-          dataLength={items.length}
+          dataLength={items && items.length}
           height={"calc(100dvh - 34rem)"}
           loader={<div className="loader" key={0}></div>}
         >

@@ -26,7 +26,10 @@ export default function ChatTabSection() {
   // }
   //
 
-  if ((items.data.length > 0 && viewedIndex) || view.type === "conversation") {
+  if (
+    (items.data && items.data.length > 0 && viewedIndex) ||
+    view.type === "conversation"
+  ) {
     return (
       <div
         style={{

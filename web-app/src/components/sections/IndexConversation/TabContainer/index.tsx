@@ -37,10 +37,12 @@ export default function TabContainer() {
       return;
     }
 
-    if (items.data.length === 0) {
+    if (items.data && items.data.length === 0) {
       setTabKey(TabKey.Index);
+    } else {
+      setTabKey(TabKey.Chat);
     }
-  }, [id, items, loading]);
+  }, [items, loading]);
 
   const renderTabContent = useCallback(() => {
     switch (tabKey) {
@@ -68,17 +70,19 @@ export default function TabContainer() {
     >
       <FlexRow>
         <Col className="idxflex-grow-1 mt-3">
-          <Tabs activeKey={tabKey} onTabChange={setTabKey}>
-            {Object.values(TabKey).map((key) => (
-              <TabPane
-                key={key}
-                enabled={true}
-                hidden={false}
-                tabKey={key}
-                title={TAB_TITLES[key]}
-              />
-            ))}
-          </Tabs>
+          {!loading && (
+            <Tabs activeKey={tabKey} onTabChange={setTabKey}>
+              {Object.values(TabKey).map((key) => (
+                <TabPane
+                  key={key}
+                  enabled={true}
+                  hidden={false}
+                  tabKey={key}
+                  title={TAB_TITLES[key]}
+                />
+              ))}
+            </Tabs>
+          )}
         </Col>
       </FlexRow>
       <FlexRow>

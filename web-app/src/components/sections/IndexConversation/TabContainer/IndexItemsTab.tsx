@@ -192,7 +192,7 @@ export default function IndexItemsTabSection() {
 
   return (
     <Flex flexdirection="column" className="idxflex-grow-1">
-      {items.data.length > 0 && (
+      {items.data && items.data.length > 0 && (
         <FlexRow className={"mt-6"}>
           <Col className="idxflex-grow-1">
             <SearchInput

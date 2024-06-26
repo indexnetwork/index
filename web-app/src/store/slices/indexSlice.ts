@@ -51,6 +51,8 @@ const indexSlice = createSlice({
       })
       .addCase(fetchIndexItems.pending, (state) => {
         state.loading = true;
+        state.items.data = null;
+        state.items.cursor = null;
       })
       .addCase(fetchIndexItems.fulfilled, (state, action) => {
         state.loading = false;
