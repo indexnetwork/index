@@ -1,6 +1,3 @@
-import Header from "@/components/base/Header";
-import Freizeit from "@/fonts/loader";
-
 const BigTextSection = () => {
   return (
     <section className="mb-8 mt-8">

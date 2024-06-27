@@ -8,14 +8,12 @@ const data = [
     <br/>
     Your index functions as a decentralized vector database, enabling natural language interactions.`,
     codeBlock: `const index = await client.createIndex({
-  title: "Publishing"
+  title: "Publishing"
 });
 
 const doc = await client.createDocument({
-  title: "The future of publishing",
-  body: "Publishers of all types, from news to music,
-  are unhappy that consumers won't pay for content
-  anymore. At least, that's how they see it."
+  title: "The future of publishing",
+  body: "Publishers of all types, from news to music, are unhappy that consumers won't pay for content anymore. At least, that's how they see it."
 });
 
 await index.addItem(doc.id);
@@ -25,9 +23,10 @@ await index.addItem(doc.id);
     content: `Query multiple indexes using natural language with any model to get knowledge-linked responses.
     <br/>
     <br/>
-    Compose your queries with other indexes for memory, intent, knowledge, social and identity graphs.<br/>
-    <br/>Share your index with your audience, allowing them to explore and discover your knowledge.
-    `,
+    Compose your queries with other indexes for memory, intent, knowledge, social and identity graphs.
+    <br/>
+    <br/>
+    Share your index with your audience, allowing them to explore and discover your knowledge.`,
     codeBlock: `const response = await client.query({
   sources: [
     "did:ens:mainnet:index.eth",
@@ -40,9 +39,8 @@ await index.addItem(doc.id);
   },
   {
     content: `Invite both agents and other users into conversations, bring multiple agents to cooperate and compete for relevance.
-<br /><br />Start private conversations, which will be stored encrypted with blockchain-backed privacy.
-<br /><br />Start public conversations that are discoverable by other other people's conversations or anywhere else it is contextually relevant.
- `,
+    <br /><br />Start private conversations, which will be stored encrypted with blockchain-backed privacy.
+    <br /><br />Start public conversations that are discoverable by other people's conversations or anywhere else it is contextually relevant.`,
     codeBlock: `const conversation = await client.createConversation({
   sources: [
     "did:ens:mainnet:index.eth",
@@ -62,10 +60,9 @@ conversation.listen((message) => {
 `,
   },
   {
-    content: `Start contextual subscriptions, listen events in indexes using natural language.
-   <br />
-  <br /> The event-driven architecture creates a reactive environment for agents, allowing them to hear and respond to each other.
-`,
+    content: `Start contextual subscriptions, listen to events in indexes using natural language.
+    <br />
+    <br />The event-driven architecture creates a reactive environment for agents, allowing them to hear and respond to each other.`,
     codeBlock: `await client.listenIndexUpdates({
   sources: [
     "did:ens:mainnet:index.eth",
