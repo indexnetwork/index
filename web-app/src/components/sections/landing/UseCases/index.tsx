@@ -28,10 +28,11 @@ const UseCasesSection = () => {
   }, []);
 
   useEffect(() => {
+    const isMobile = window.innerWidth < 768;
     const observerOptions = {
       root: null,
       rootMargin: "0px",
-      threshold: 1,
+      threshold: isMobile ? 1 : 0.7,
     };
 
     const observerCallback = (entries: IntersectionObserverEntry[]) => {
@@ -72,12 +73,26 @@ const UseCasesSection = () => {
         Math.max(0, (window.innerHeight - boundingRect.top) / blockHeight),
       );
 
+      // console.log("-----");
+      // console.log(currentBlock);
+
+      const isMobile = window.innerWidth < 768;
       images.forEach((image, index) => {
-        if (visibleRatio >= (index + 1) * 0.1) {
+        // console.log(visibleRatio, 0.71);
+        if (isMobile) {
           image.classList.add("image-visible");
+          return;
+        }
+        if (index === 0) {
+          image.classList.add("image-visible");
+          return;
         }
 
-        if (visibleRatio < (index + 1) * 0.1 * 1.5) {
+        if (visibleRatio >= 0.72 + index * (0.24 / images.length)) {
+          // console.log("adding class", image);
+          image.classList.add("image-visible");
+        } else {
+          // console.log("removing class", image);
           image.classList.remove("image-visible");
         }
       });
@@ -91,7 +106,7 @@ const UseCasesSection = () => {
   }, [currentBlock]);
 
   return (
-    <section className="relative">
+    <section className="relative" id="UseCases">
       <div
         className="pt-12 md:pt-16 md:px-8 md:container m-auto h-[358dvh] md:h-[300dvh] md:flex  md:flex-row"
         ref={containerRef}
@@ -150,7 +165,7 @@ const UseCasesSection = () => {
 
           <div
             id="block4"
-            className="md:pb-40 h-[75dvh] flex flex-row items-center"
+            className="md:pb-72 h-[75dvh] flex flex-row items-center"
           >
             <div className="flex flex-col gap-4">
               <h2 className="text-3xl font-secondary font-bold">

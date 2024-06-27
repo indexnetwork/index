@@ -13,6 +13,13 @@ const AppHeader = () => {
   const [allowed, setAllowed] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  const scrollIntoSection = (id: string) => {
+    const elem = document.getElementById(id);
+    console.log(elem);
+    elem?.scrollIntoView({ behavior: "smooth" });
+    setIsMenuOpen(false);
+  };
+
   useEffect(() => {
     const allowedQueryParam = query.get("surf");
 
@@ -43,7 +50,11 @@ const AppHeader = () => {
               </a>
             </li>
             <li>
-              <a href="https://index.network" className="hover:underline">
+              <a
+                href="#"
+                onClick={() => scrollIntoSection("UseCases")}
+                className="hover:underline"
+              >
                 USE CASES
               </a>
             </li>
@@ -53,7 +64,7 @@ const AppHeader = () => {
               </a>
             </li>
             <li>
-              <a href="https://index.network" className="hover:underline">
+              <a href="https://docs.index.network" className="hover:underline">
                 DOCUMENTATION
               </a>
             </li>
@@ -94,7 +105,11 @@ const AppHeader = () => {
               </a>
             </li>
             <li>
-              <a href="https://index.network" className="hover:underline">
+              <a
+                onClick={() => scrollIntoSection("UseCases")}
+                href="#"
+                className="hover:underline"
+              >
                 USE CASES
               </a>
             </li>
