@@ -59,7 +59,10 @@ const AppHeader = () => {
               </a>
             </li>
             <li>
-              <a href="https://index.network" className="hover:underline">
+              <a
+                href="https://mirror.xyz/indexnetwork.eth"
+                className="hover:underline"
+              >
                 BLOG
               </a>
             </li>
@@ -114,7 +117,10 @@ const AppHeader = () => {
               </a>
             </li>
             <li>
-              <a href="https://index.network" className="hover:underline">
+              <a
+                href="https://mirror.xyz/indexnetwork.eth"
+                className="hover:underline"
+              >
                 BLOG
               </a>
             </li>
