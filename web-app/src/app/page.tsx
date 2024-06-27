@@ -10,7 +10,7 @@ import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import "./globals.css";
-// import "./landing.css";
+import "./landing.css";
 import HowItWorksSection from "@/components/sections/landing/HowItWorks";
 import UseCasesSection from "@/components/sections/landing/UseCases";
 
@@ -25,15 +25,15 @@ const Landing = () => {
     }
   }, [status, session, router]);
 
-  // useEffect(() => {
-  //   if (typeof window !== "undefined") {
-  //     if (window.location.pathname === "/") {
-  //       document.getElementsByTagName("html")[0].setAttribute("id", "landing");
-  //     } else {
-  //       document.getElementsByTagName("html")[0].setAttribute("id", "app");
-  //     }
-  //   }
-  // }, []);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (window.location.pathname === "/") {
+        document.getElementsByTagName("html")[0].setAttribute("id", "landing");
+      } else {
+        document.getElementsByTagName("html")[0].setAttribute("id", "app");
+      }
+    }
+  }, []);
 
   return (
     <Suspense>
