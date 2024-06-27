@@ -10,7 +10,7 @@ import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import "./globals.css";
-// import "./landing.css";
+import "./landing.css";
 import HowItWorksSection from "@/components/sections/landing/HowItWorks";
 import UseCasesSection from "@/components/sections/landing/UseCases";
 
