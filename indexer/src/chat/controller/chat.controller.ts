@@ -58,7 +58,7 @@ export class ChatController {
           chunk.answer && res.write(chunk.answer);
         }
       } else {
-        console.log(body);
+        console.log(JSON.stringify(body));
         throw new TypeError('Stream is not an async iterable');
       }
 
