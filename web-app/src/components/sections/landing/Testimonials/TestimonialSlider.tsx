@@ -3,46 +3,25 @@ import React, { useState } from "react";
 
 const testimonials = [
   {
-    name: "Joseph Lubin",
-    title: "Consensys, Founder & CEO",
-    image: "/images/testimonials/lubin.jpg",
-    text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Neque vitae tempus quam pellentesque nec nam aliquam. Enim diam vulputate ut pharetra sit amet aliquam. Etiam erat velit scelerisque in dictum non consectetur a.",
-    twitter: "https://twitter.com/ethereumJoseph",
+    name: "David Sneider",
+    title: "Lit Protocol, Co-founder",
+    image: "/images/testimonials/sneider.jpg",
+    text: "Index Network is a foundational base layer for the user owned web. We're so glad to be  collaborators on privacy at Lit Protocol!",
+    twitter: "https://x.com/davidlsneider",
   },
   {
     name: "Danny Zuckerman",
     title: "3Box Labs, Co-founder",
     image: "/images/testimonials/zuckerman.jpg",
-    text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Neque vitae tempus quam pellentesque nec nam aliquam. Enim diam vulputate ut pharetra sit amet aliquam. Etiam erat velit scelerisque in dictum non consectetur a.",
-    twitter: "https://twitter.com/dazuck",
+    text: "Apps need to deliver better information and experiences faster. Index's semantic index does that. Index can make better discovery a primitive all apps rely on.",
+    twitter: "https://x.com/dazuck",
   },
   {
-    name: "Adam Corrado",
-    title: "3Box Labs, Partnerships and BD Lead",
-    image: "/images/testimonials/corrado.jpg",
-    text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Neque vitae tempus quam pellentesque nec nam aliquam. Enim diam vulputate ut pharetra sit amet aliquam. Etiam erat velit scelerisque in dictum non consectetur a.",
-    twitter: "https://twitter.com/dazuck",
-  },
-  {
-    name: "Joseph Lubin",
-    title: "Consensys, Founder & CEO",
-    image: "/images/testimonials/lubin.jpg",
-    text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Neque vitae tempus quam pellentesque nec nam aliquam. Enim diam vulputate ut pharetra sit amet aliquam. Etiam erat velit scelerisque in dictum non consectetur a.",
-    twitter: "https://twitter.com/ethereumJoseph",
-  },
-  {
-    name: "Danny Zuckerman",
-    title: "3Box Labs, Co-founder",
-    image: "/images/testimonials/zuckerman.jpg",
-    text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Neque vitae tempus quam pellentesque nec nam aliquam. Enim diam vulputate ut pharetra sit amet aliquam. Etiam erat velit scelerisque in dictum non consectetur a.",
-    twitter: "https://twitter.com/dazuck",
-  },
-  {
-    name: "Adam Corrado",
-    title: "3Box Labs, Partnerships and BD Lead",
-    image: "/images/testimonials/corrado.jpg",
-    text: "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Neque vitae tempus quam pellentesque nec nam aliquam. Enim diam vulputate ut pharetra sit amet aliquam. Etiam erat velit scelerisque in dictum non consectetur a.",
-    twitter: "https://twitter.com/dazuck",
+    name: "Simon Brown",
+    title: "Consensys, Researcher & Advisor",
+    image: "/images/testimonials/brown.jpg",
+    text: "Index Network is going to change the way we think about discovering information and interacting with the web. The ability to use autonomous AI agents to index and interpret data from multiple sources through an intuitive natural language interface is a total game changer!",
+    twitter: "https://x.com/orbmis",
   },
 ];
 
