@@ -33,17 +33,28 @@ export const handleUserMessage = async (
   });
 
   try {
+    // Find the index of the item with the specific id
+    const questionIndex = messages.findIndex((m) => m.id === id);
+
+    // If the item is found, filter out the item and all subsequent items
+    const chat_history =
+      questionIndex !== -1
+        ? messages.filter((_, index) => index <= questionIndex)
+        : messages;
+
     const chatRequest = {
       indexIds: reqIndexIds,
       input: {
-        question: messages.at(-1).content,
-        chat_history: messages.slice(0, -1).map((c) => {
-          return {
-            id: c.id,
-            role: c.role,
-            content: c.content,
-          };
-        }),
+        question: messages[questionIndex].content,
+        chat_history: chat_history
+          .filter((m) => m.id !== id)
+          .map((c) => {
+            return {
+              id: c.id,
+              role: c.role,
+              content: c.content,
+            };
+          }),
       },
     };
     let resp = await axios.post(
