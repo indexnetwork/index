@@ -63,7 +63,7 @@ const Landing = () => {
           }}
         >
           <BigTextSection />
-          <TestimonialsSection />
+          {/* <TestimonialsSection /> */}
         </div>
         <PartnersSection />
         <SubscribeSection />

@@ -5,7 +5,6 @@ const UseCasesSection = () => {
   const containerRef = useRef(null);
   const [currentBlock, setCurrentBlock] = useState("block1");
 
-  // add sticky class to the container when the user scrolls to the top of the container
   useEffect(() => {
     const handleScroll = () => {
       const container: any = containerRef.current;
@@ -13,7 +12,7 @@ const UseCasesSection = () => {
 
       const containerBoundingRect = container.getBoundingClientRect();
       const rightContainer = document.getElementById("UseCasesRight");
-      console.log("containerBoundingRect.top", containerBoundingRect.top);
+
       if (containerBoundingRect.top <= 0) {
         rightContainer?.classList.add("sticky");
       } else {
@@ -73,9 +72,7 @@ const UseCasesSection = () => {
         Math.max(0, (window.innerHeight - boundingRect.top) / blockHeight),
       );
 
-      console.log("-----");
       images.forEach((image, index) => {
-        console.log(visibleRatio, (index + 1) * 0.1);
         if (visibleRatio >= (index + 1) * 0.1) {
           image.classList.add("image-visible");
         }
@@ -96,7 +93,7 @@ const UseCasesSection = () => {
   return (
     <section className="relative">
       <div
-        className="pt-12 md:px-8 md:container m-auto h-[358dvh] md:h-[300dvh] md:flex  md:flex-row"
+        className="pt-12 md:pt-16 md:px-8 md:container m-auto h-[358dvh] md:h-[300dvh] md:flex  md:flex-row"
         ref={containerRef}
       >
         <div className="px-4 w-full md:w-1/2 flex flex-col" id="UseCasesLeft">

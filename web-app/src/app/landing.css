@@ -716,9 +716,6 @@ html#landing {
   .list-item {
     display: list-item;
   }
-  .hidden {
-    display: none;
-  }
   .h-4 {
     height: 1rem;
   }
