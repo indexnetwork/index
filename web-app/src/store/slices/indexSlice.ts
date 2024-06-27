@@ -42,7 +42,7 @@ const indexSlice = createSlice({
         state.loading = true;
       })
       .addCase(fetchIndex.fulfilled, (state, action) => {
-        // state.loading = false;
+        state.loading = false;
         state.data = action.payload;
       })
       .addCase(fetchIndex.rejected, (state, action) => {
@@ -80,6 +80,7 @@ const indexSlice = createSlice({
       })
       .addCase(addItem.fulfilled, (state, action) => {
         state.items.data.push(action.payload);
+        state.data.hasItems = true;
         state.addItemLoading = false;
       })
       .addCase(addItem.rejected, (state, action) => {
