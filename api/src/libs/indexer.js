@@ -378,6 +378,7 @@ class Indexer {
     console.log(message, `tata`);
     if (
       message.role === `user` &&
+      message &&
       message.content &&
       message.content.length > 0
     ) {
