@@ -28,7 +28,7 @@ const HeroSection = () => {
       className="relative"
       style={{
         backgroundImage: "url(/images/hero-bg.png)",
-        //cover
+        // cover
         backgroundSize: "cover",
       }}
     >
