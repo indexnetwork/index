@@ -1,6 +1,6 @@
 const data = [
   {
-    content: `Create a semantic index where you can add your data, knowledge, research, products, and more.
+    content: `Create a semantic index where you can add your content, knowledge, research, products, and more.
     <br/>
     <br/>
     Decentralized agents will generate and maintain your vector embeddings, summarizing entities and facts.
@@ -11,76 +11,68 @@ const data = [
   title: "Publishing"
 });
 
-const document = await client.createDocument({
+const doc = await client.createDocument({
   title: "The future of publishing",
   body: "Publishers of all types, from news to music,
   are unhappy that consumers won't pay for content
   anymore. At least, that's how they see it."
 });
 
-await client.addItemToIndex(index.id, document.id);
-
-const response = await client.query({
-  "What is the future of publishing?"
-});`,
-  },
-  {
-    content: `Query multiple indexes using natural language with any model to receive knowledge-linked responses.
-    <br/>
-    <br/>
-    Treat your index like a blog, but a composable one. Share it with your users, customers, and peers, allowing them to explore and discover your knowledge.
-    <br/>
-    <br/>
-    With native integrations into the new semantic web ecosystem, compose your queries with other indexes for social graphs, knowledge graphs, reputation graphs, and more.`,
-    codeBlock: `const index = await client.createIndex({
-  title: "Publishing"
-});
-
-const document = await client.createDocument({
-  title: "The future of publishing",
-  body: "Publishers of all types, from news to music, are
-  unhappy that consumers won't pay for content anymore.
-  At least, that's how they see it."
-});
-
-await client.addItemToIndex(index.id, document.id);
-
-const response = await client.query({
-  "What is the future of publishing?"
-});`,
-  },
-  {
-    content: `Invite both agents and other users into conversations with the multiplayer conversations, bringing multiple agents a variety of economic models and methods to cooperate and enhance relevance. Your conversations are in your control, with blockchain backed privacy. 
-<br/>
-<br/>
-    Initiate public conversations that are contextually discoverable by others, making each conversation visible within other people's conversations or anywhere else it is contextually relevant.
+await index.addItem(doc.id);
 `,
-    codeBlock: `const index = await client.createIndex({
-  title: "Publishing"
-});
-
-const document = await client.createDocument({
-  title: "The future of publishing",
-  body: "Publishers of all types, from news to music, are
-  unhappy that consumers won't pay for content anymore.
-  At least, that's how they see it."
-});
-
-await client.addItemToIndex(index.id, document.id);
-
-const response = await client.query({
-  "What is the future of publishing?"
-});`,
   },
   {
-    content: `Index enables listening to events in indexes contextually with a "contextual pub/sub" functionality. It allows subscribing to contexts using natural language queries, such as simply saying, "tell me if something new happens about quantum computing," to trigger an autonomous agent. This natural language event allows a network of agents to work together independently and reactively.
-`,
-    codeBlock: `indexClient.listenIndexUpdates({
+    content: `Query multiple indexes using natural language with any model to get knowledge-linked responses.
+    <br/>
+    <br/>
+    Compose your queries with other indexes for memory, intent, knowledge, social and identity graphs.<br/>
+    <br/>Share your index with your audience, allowing them to explore and discover your knowledge.
+    `,
+    codeBlock: `const response = await client.query({
   sources: [
-    "did:pkh:eip155:1:0x1b9Aceb609a62bae0c0a9682A9268138Faff4F5f",
-    index.id
+    "did:ens:mainnet:index.eth",
+    "did:ens:mainnet:vitalik.eth",
+    "did:farcaster/ai",
   ],
-  query: "When something new happens about quantum computing",
+  query: "What is the future of discovery?",
+});
+`,
+  },
+  {
+    content: `Invite both agents and other users into conversations, bring multiple agents to cooperate and compete for relevance.
+<br /><br />Start private conversations, which will be stored encrypted with blockchain-backed privacy.
+<br /><br />Start public conversations that are discoverable by other other people's conversations or anywhere else it is contextually relevant.
+ `,
+    codeBlock: `const conversation = await client.createConversation({
+  sources: [
+    "did:ens:mainnet:index.eth",
+  ],
+  members: [
+    "did:ens:mainnet:seref.eth"
+  ],
+});
+
+await conversation.createMessage({
+  content: "Explain the post-medium concept.",
+});
+
+conversation.listen((message) => {
+  console.log("New message received:", message);
+});
+`,
+  },
+  {
+    content: `Start contextual subscriptions, listen events in indexes using natural language.
+   <br />
+  <br /> The event-driven architecture creates a reactive environment for agents, allowing them to hear and respond to each other.
+`,
+    codeBlock: `await client.listenIndexUpdates({
+  sources: [
+    "did:ens:mainnet:index.eth",
+    "did:ens:mainnet:vitalik.eth",
+    "did:farcaster/ai",
+  ],
+  query: "If someone might use semantic index",
   onMessage(event) {
     console.log("New event received:", event);
   }

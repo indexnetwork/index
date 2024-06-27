@@ -1,31 +1,23 @@
+import Header from "@/components/base/Header";
+import Freizeit from "@/fonts/loader";
+
 const BigTextSection = () => {
   return (
     <section className="mb-8 mt-8">
-      <div className="m-auto max-w-screen-lg px-4 py-8 md:py-16 md:px-0">
+      <div className="m-auto max-w-screen-lg py-8 md:py-16 px-6 md:pr-40">
         <div className="flex flex-col gap-6 md:gap-16">
-          <h1 className="font-title text-3xl md:text-5xl">
-            Index's mission is to{" "}
+          <h1 className="font-secondary leading-tight max-lg:text-3xl text-5xl font-bold">
+            Index transforms{" "}
             <span className="text-highlightBlue">
-              transform discovery into a protocol
+              discovery into a protocol
             </span>{" "}
-            and its components into networks. We're building{" "}
+            and its components into networks. By building the{" "}
             <span className="text-highlightBlue">
-              the first decentralized semantic index
+              decentralized semantic index
             </span>
-            , introducing a new open layer to information discovery.
+            , Index introduces a new, open layer to information discovery.
           </h1>
-          <p className="text-md md:text-lg md:w-[70%]">
-            This semantic index integrates memory, intent, knowledge, and social
-            graphs, enabling data to be queried from multiple sources in a
-            user-centric manner. It also provides a real-time data environment
-            for agents, integrating with algorithms and services, ensuring
-            information remains fluid, social, and autonomous, with relevancy
-            driven by competition and cooperation.
-          </p>
         </div>
-        <a href="#">
-          <p className="mt-4 text-highlightBlue font-bold">Learn more {"->"}</p>
-        </a>
       </div>
     </section>
   );

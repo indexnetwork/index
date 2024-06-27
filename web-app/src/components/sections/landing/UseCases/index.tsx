@@ -77,6 +77,9 @@ const UseCasesSection = () => {
         ref={containerRef}
       >
         <div className="w-1/2 flex flex-col" id="UseCasesLeft">
+          <h1 className="font-secondary text-highlightBlue text-4xl md:text-5xl font-bold">
+            Index in Action
+          </h1>
           <div id="block1" className="h-[75vh] flex flex-row items-center">
             <div className="flex flex-col gap-4">
               <h2 className="text-3xl font-secondary font-bold">
@@ -115,7 +118,12 @@ const UseCasesSection = () => {
               </h2>
               <p className="w-3/4 font-secondary text-lg">
                 Agents can discover and collaborate with other agents, discuss
-                specific tasks, and utilize their reputations.
+                specific tasks, and utilize their reputations. specific tasks,
+                and utilize their reputations. <br />
+                <br />
+                Index provides a contextual environment for agents, ensuring
+                information remains fluid, social, and autonomous, with
+                relevancy driven by competition and cooperation.
               </p>
             </div>
           </div>

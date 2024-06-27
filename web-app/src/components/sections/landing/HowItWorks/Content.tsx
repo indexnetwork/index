@@ -14,14 +14,14 @@ const HowItWorksContent = ({ data }: HowItWorksContentProps) => {
   const isMobile = false;
   return (
     <section>
-      <div className="flex w-full flex-col min-h-[400px] items-center gap-8 md:flex-row justify-between">
-        <div className="w-full md:w-1/3 md:px-4">
+      <div className="flex w-full flex-col min-h-[300px]  items-center gap-24 lg:flex-row justify-between">
+        <div className="w-full lg:w-1/2 md:pl-4">
           <p
-            className="font-secondary text-md md:text-lg"
+            className="font-secondary text-md md:text-lg md:pr-12"
             dangerouslySetInnerHTML={{ __html: data.content }}
           />
         </div>
-        <div className="w-full md:w-1/2 mx-8">
+        <div className="w-full lg:w-1/2 mx-8">
           <SyntaxHighlighter
             language="javascript"
             style={atomOneDark}

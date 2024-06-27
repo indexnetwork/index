@@ -44,16 +44,28 @@ const Landing = () => {
       <div className="min-h-screen bg-mainDark font-primary text-primary">
         <AppHeader />
         <HeroSection />
-        <BigTextSection />
-        <TestimonialsSection />
-        <HowItWorksSection />
-        <UseCasesSection />
-        <PartnersSection />
-        <div className="mb-16 flex flex-col gap-24 md:mb-32 md:gap-48">
-          <FeatureSection1 />
-          <FeatureSection2 />
-          <FeatureSection3 />
+
+        <div
+          style={{
+            background: "rgba(110, 191, 244, 0.07)",
+            borderTop: "1px solid rgba(110, 191, 244, 0.2)",
+            borderBottom: "1px solid rgba(110, 191, 244, 0.2)",
+          }}
+        >
+          {true && <UseCasesSection />}
         </div>
+        <HowItWorksSection />
+        <div
+          style={{
+            background: "rgba(110, 191, 244, 0.07)",
+            borderTop: "1px solid rgba(110, 191, 244, 0.2)",
+            borderBottom: "1px solid rgba(110, 191, 244, 0.2)",
+          }}
+        >
+          <BigTextSection />
+          <TestimonialsSection />
+        </div>
+        <PartnersSection />
         <SubscribeSection />
         <FooterSection />
       </div>
