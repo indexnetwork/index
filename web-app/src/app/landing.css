@@ -925,6 +925,9 @@ html#landing {
   .gap-8 {
     gap: 2rem;
   }
+  .self-center {
+    align-self: center;
+  }
   .overflow-hidden {
     overflow: hidden;
   }
@@ -1140,6 +1143,9 @@ html#landing {
   .text-center {
     text-align: center;
   }
+  .text-start {
+    text-align: start;
+  }
   .font-primary {
     font-family: Inter, sans-serif;
   }
@@ -1317,13 +1323,13 @@ html#landing {
     transition-duration: 500ms;
   }
 
-  .no-scrollbar::-webkit-scrollbar {
+  /* .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
-  }
+  } */
 
   @font-face {
     font-family: Inter;
@@ -1446,10 +1452,6 @@ html#landing {
   }
 
   @media not all and (min-width: 1200px) {
-    .max-lg\:w-\[50\%\] {
-      width: 50%;
-    }
-
     .max-lg\:py-16 {
       padding-top: 4rem;
       padding-bottom: 4rem;
@@ -1462,10 +1464,6 @@ html#landing {
   }
 
   @media (min-width: 640px) {
-    .sm\:w-\[75\%\] {
-      width: 75%;
-    }
-
     .sm\:w-full {
       width: 100%;
     }
@@ -1534,6 +1532,10 @@ html#landing {
 
     .md\:gap-24 {
       gap: 6rem;
+    }
+
+    .md\:gap-4 {
+      gap: 1rem;
     }
 
     .md\:gap-48 {
@@ -1611,16 +1613,16 @@ html#landing {
       padding-right: 10rem;
     }
 
-    .md\:pt-0 {
-      padding-top: 0px;
-    }
-
     .md\:pt-16 {
       padding-top: 4rem;
     }
 
     .md\:pt-4 {
       padding-top: 1rem;
+    }
+
+    .md\:text-center {
+      text-align: center;
     }
 
     .md\:text-end {
@@ -1635,6 +1637,11 @@ html#landing {
     .md\:text-3xl {
       font-size: 1.875rem;
       line-height: 2.25rem;
+    }
+
+    .md\:text-4xl {
+      font-size: 2.25rem;
+      line-height: 2.5rem;
     }
 
     .md\:text-5xl {
@@ -1666,18 +1673,18 @@ html#landing {
       line-height: 4.5rem;
     }
 
+    .md\:leading-\[4rem\] {
+      line-height: 4rem;
+    }
+
     .md\:leading-\[5\.2rem\] {
       line-height: 5.2rem;
     }
   }
 
   @media (min-width: 1200px) {
-    .lg\:absolute {
-      position: absolute;
-    }
-
-    .lg\:m-0 {
-      margin: 0px;
+    .lg\:mt-0 {
+      margin-top: 0px;
     }
 
     .lg\:h-\[100dvh\] {
@@ -1688,20 +1695,24 @@ html#landing {
       width: 50%;
     }
 
-    .lg\:w-\[700px\] {
-      width: 700px;
+    .lg\:w-\[575px\] {
+      width: 575px;
     }
 
     .lg\:flex-row {
       flex-direction: row;
     }
 
-    .lg\:items-end {
-      align-items: flex-end;
+    .lg\:items-start {
+      align-items: flex-start;
     }
 
-    .lg\:justify-end {
-      justify-content: flex-end;
+    .lg\:justify-start {
+      justify-content: flex-start;
+    }
+
+    .lg\:gap-12 {
+      gap: 3rem;
     }
 
     .lg\:px-0 {
@@ -1709,22 +1720,25 @@ html#landing {
       padding-right: 0px;
     }
 
-    .lg\:pb-48 {
-      padding-bottom: 12rem;
-    }
-
     .lg\:pr-6 {
       padding-right: 1.5rem;
     }
 
-    .lg\:text-end {
-      text-align: end;
+    .lg\:pt-32 {
+      padding-top: 8rem;
     }
-  }
 
-  @media (min-width: 1280px) {
-    .xl\:w-\[75\%\] {
-      width: 75%;
+    .lg\:text-start {
+      text-align: start;
+    }
+
+    .lg\:text-5xl {
+      font-size: 3rem;
+      line-height: 1;
+    }
+
+    .lg\:leading-\[3\.6rem\] {
+      line-height: 3.6rem;
     }
   }
 

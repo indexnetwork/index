@@ -45,7 +45,7 @@ const AppHeader = () => {
           alt="index network"
         />
         <div className="hidden md:flex gap-24 items-center">
-          <ul className="flex gap-12 text-white text-sm">
+          <ul className="flex md:gap-4 lg:gap-12 text-white text-sm">
             <li>
               <a href="https://index.network" className="hover:underline">
                 HOME

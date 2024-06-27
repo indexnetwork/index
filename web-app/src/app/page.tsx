@@ -13,6 +13,7 @@ import "./globals.css";
 import "./landing.css";
 import HowItWorksSection from "@/components/sections/landing/HowItWorks";
 import UseCasesSection from "@/components/sections/landing/UseCases";
+import TestimonialsSection from "@/components/sections/landing/Testimonials";
 
 const Landing = () => {
   const router = useRouter();
@@ -59,7 +60,7 @@ const Landing = () => {
           }}
         >
           <BigTextSection />
-          {/* <TestimonialsSection /> */}
+          <TestimonialsSection />
         </div>
         <PartnersSection />
         <SubscribeSection />
