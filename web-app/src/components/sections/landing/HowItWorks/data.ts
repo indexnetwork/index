@@ -13,7 +13,11 @@ const data = [
 
 const doc = await client.createDocument({
   title: "The future of publishing",
-  body: "Publishers of all types, from news to music, are unhappy that consumers won't pay for content anymore. At least, that's how they see it."
+  body: "Publishers of all types, from
+         news to music, are unhappy that
+         consumers won't pay for content
+         anymore. At least, that's how
+         they see it."
 });
 
 await index.addItem(doc.id);
