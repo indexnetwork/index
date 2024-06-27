@@ -45,7 +45,7 @@ const AppHeader = () => {
         <div className="hidden md:flex gap-8 items-center">
           <ul className="flex gap-6 text-white text-sm">
             <li>
-              <a href="https://index.network" className="hover:underline">
+              <a href="#" className="hover:underline">
                 HOME
               </a>
             </li>
@@ -59,7 +59,10 @@ const AppHeader = () => {
               </a>
             </li>
             <li>
-              <a href="https://index.network" className="hover:underline">
+              <a
+                href="https://mirror.xyz/indexnetwork.eth"
+                className="hover:underline"
+              >
                 BLOG
               </a>
             </li>
