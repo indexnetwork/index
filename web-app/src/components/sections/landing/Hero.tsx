@@ -38,10 +38,6 @@ const HeroSection = () => {
         </div>
 
         <div className="lg:pt-32 font-secondary z-10 flex flex-col items-center justify-center gap-4 px-8 text-center  lg:w-[575px] lg:items-start lg:px-0 lg:pr-6 ">
-          {/* <h1 className="hidden md:block md:text-center lg:text-start font-title text-[1.9rem] leading-[2.25rem] md:text-5xl md:leading-[4rem]">
-            The First Discovery Protocol <br /> for{" "}
-            <span className="text-highlightBlue">{typingText}|</span>
-          </h1> */}
           <h1 className="font-title text-center lg:text-start text-[1.9rem] leading-[2.25rem] md:text-4xl lg:text-5xl lg:leading-[3.6rem]">
             The First <br />
             Discovery Protocol <br /> for{" "}

@@ -318,6 +318,12 @@ export class DIDService {
         const wallet = did.split(":").slice(-1).pop();
         const ensProfile = await getENSProfileByWallet(wallet);
         if (ensProfile) {
+          if (ensProfile.image && ensProfile.image.startsWith(`ipfs://`)) {
+            ensProfile.image = ensProfile.image.replace(
+              `ipfs://`,
+              `https://ipfs.io/ipfs/`,
+            );
+          }
           return {
             id: did,
             name: ensProfile.ensName,

@@ -35,6 +35,9 @@ export class IndexService {
       });
       index.did = did;
     }
+    index.hasItems =
+      index.items && index.items.edges && index.items.edges.length > 0;
+    delete index.items;
 
     index.controllerDID = await this.didService.getProfile(
       index.controllerDID.id,
@@ -84,6 +87,17 @@ export class IndexService {
                       createdAt
                       updatedAt
                       deletedAt
+                      items(first:1, filters: {
+                        where: {
+                          deletedAt: {isNull: true}
+                        }
+                      }) {
+                        edges {
+                          node {
+                            id
+                          }
+                        }
+                      }
                       controllerDID {
                         id
                         profile {

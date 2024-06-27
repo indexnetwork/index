@@ -28,21 +28,19 @@ const TAB_TITLES = {
 
 export default function TabContainer() {
   const [tabKey, setTabKey] = useState<string>(TabKey.Chat);
-  const { id, items, loading } = useAppSelector(selectIndex);
+  const { data: indexData, loading } = useAppSelector(selectIndex);
 
   useEffect(() => {
-    if (!items) return;
+    if (!indexData) return;
 
     if (loading) {
       return;
     }
 
-    if (items.data && items.data.length === 0) {
+    if (!indexData.hasItems) {
       setTabKey(TabKey.Index);
-    } else {
-      setTabKey(TabKey.Chat);
     }
-  }, [items, loading]);
+  }, [loading, indexData]);
 
   const renderTabContent = useCallback(() => {
     switch (tabKey) {
