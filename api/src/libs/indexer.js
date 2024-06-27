@@ -359,6 +359,15 @@ class Indexer {
     if (!message) {
       return;
     }
+
+    // Only listen user mesages for now.
+    if (
+      message.role === `assistant` &&
+      message.controllerDID.id === agentDID.id
+    ) {
+      return;
+    }
+
     const conversation = await conversationService.getConversation(
       message.conversationId,
     );
