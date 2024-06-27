@@ -34,7 +34,9 @@ const AppHeader = () => {
   }, [query]);
 
   return (
-    <header className="py-8 px-4">
+    <header
+      className={`absolute  top-0 right-0 left-0 z-20 px-4 py-4 md:py-8 ${isMenuOpen ? "bg-mainDark" : ""}`}
+    >
       <div className="container mx-auto flex justify-between items-center">
         <Image
           width={192}
@@ -42,10 +44,10 @@ const AppHeader = () => {
           src="/images/logo-full-white.svg"
           alt="index network"
         />
-        <div className="hidden md:flex gap-8 items-center">
-          <ul className="flex gap-6 text-white text-sm">
+        <div className="hidden md:flex gap-24 items-center">
+          <ul className="flex gap-12 text-white text-sm">
             <li>
-              <a href="#" className="hover:underline">
+              <a href="https://index.network" className="hover:underline">
                 HOME
               </a>
             </li>
@@ -117,7 +119,10 @@ const AppHeader = () => {
               </a>
             </li>
             <li>
-              <a href="https://index.network" className="hover:underline">
+              <a
+                href="https://mirror.xyz/indexnetwork.eth"
+                className="hover:underline"
+              >
                 BLOG
               </a>
             </li>
