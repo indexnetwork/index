@@ -14,14 +14,14 @@ const HeroSection = () => {
 
   return (
     <section className="relative">
-      <div className="m-auto flex max-w-screen-lg flex-col gap-12 lg:h-[75dvh] lg:flex-row lg:justify-end">
-        <div className="bottom-0 left-0 top-0 flex items-center lg:absolute">
+      <div className="m-auto flex max-w-screen-lg flex-col gap-12 lg:h-[100dvh] pb-12 pt-12 md:pb-10 lg:flex-row lg:justify-end">
+        <div className="bottom-0 left-0 top-0 flex items-center lg:pb-48 lg:absolute">
           <video
             autoPlay
             preload="auto"
             loop
             muted
-            className="m-auto w-full pt-8 md:w-[75%] md:pt-0 lg:m-0"
+            className="m-auto sm:w-[75%] max-lg:w-[50%] xl:w-[75%]  md:pt-0 lg:m-0"
           >
             <source src="/video/hero.webm" type="video/webm" />
             Your browser does not support the video tag.
@@ -32,8 +32,12 @@ const HeroSection = () => {
           <h1 className="font-title text-3xl md:text-6xl">
             Discovery Protocol
           </h1>
-          <p className="text-base md:text-xl">
+          <p className="hidden md:block text-base md:text-xl">
             Index allows you to create truly personalised and <br /> autonomous
+            discovery experiences across the web
+          </p>
+          <p className="md:hidden text-base md:text-xl">
+            Index allows you to create truly personalised and autonomous
             discovery experiences across the web
           </p>
           <div className="flex gap-4">

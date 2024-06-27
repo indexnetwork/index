@@ -29,7 +29,7 @@ const SubscribeSection = () => {
   return (
     <section>
       <div className="flex flex-col items-center justify-center gap-8 py-16 text-center md:py-24">
-        <h2 className="font-title text-3xl">
+        <h2 className="font-title  text-xl md:text-3xl">
           Stay up to date with our newsletter
         </h2>
         <div className="rounded-sm border">

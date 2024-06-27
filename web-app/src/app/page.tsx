@@ -1,9 +1,7 @@
 "use client";
 
 import AppHeader from "@/components/new/AppHeader";
-import FeatureSection1 from "@/components/sections/landing/Feature1";
-import FeatureSection2 from "@/components/sections/landing/Feature2";
-import FeatureSection3 from "@/components/sections/landing/Feature3";
+import BigTextSection from "@/components/sections/landing/BigText";
 import FooterSection from "@/components/sections/landing/Footer";
 import HeroSection from "@/components/sections/landing/Hero";
 import PartnersSection from "@/components/sections/landing/Partners";
@@ -12,7 +10,9 @@ import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import "./globals.css";
-import "./landing.css";
+// import "./landing.css";
+import HowItWorksSection from "@/components/sections/landing/HowItWorks";
+import UseCasesSection from "@/components/sections/landing/UseCases";
 
 const Landing = () => {
   const router = useRouter();
@@ -25,27 +25,43 @@ const Landing = () => {
     }
   }, [status, session, router]);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      if (window.location.pathname === "/") {
-        document.getElementsByTagName("html")[0].setAttribute("id", "landing");
-      } else {
-        document.getElementsByTagName("html")[0].setAttribute("id", "app");
-      }
-    }
-  }, []);
+  // useEffect(() => {
+  //   if (typeof window !== "undefined") {
+  //     if (window.location.pathname === "/") {
+  //       document.getElementsByTagName("html")[0].setAttribute("id", "landing");
+  //     } else {
+  //       document.getElementsByTagName("html")[0].setAttribute("id", "app");
+  //     }
+  //   }
+  // }, []);
 
   return (
     <Suspense>
       <div className="min-h-screen bg-mainDark font-primary text-primary">
         <AppHeader />
         <HeroSection />
-        <PartnersSection />
-        <div className="mb-16 flex flex-col gap-24 md:mb-32 md:gap-48">
-          <FeatureSection1 />
-          <FeatureSection2 />
-          <FeatureSection3 />
+
+        <div
+          style={{
+            background: "rgba(110, 191, 244, 0.07)",
+            borderTop: "1px solid rgba(110, 191, 244, 0.2)",
+            borderBottom: "1px solid rgba(110, 191, 244, 0.2)",
+          }}
+        >
+          {true && <UseCasesSection />}
         </div>
+        <HowItWorksSection />
+        <div
+          style={{
+            background: "rgba(110, 191, 244, 0.07)",
+            borderTop: "1px solid rgba(110, 191, 244, 0.2)",
+            borderBottom: "1px solid rgba(110, 191, 244, 0.2)",
+          }}
+        >
+          <BigTextSection />
+          {/* <TestimonialsSection /> */}
+        </div>
+        <PartnersSection />
         <SubscribeSection />
         <FooterSection />
       </div>
