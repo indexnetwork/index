@@ -375,6 +375,7 @@ class Indexer {
       return;
     }
     message.conversation = conversation;
+    console.log(message, `tata`);
     if (
       message.role === `user` &&
       message.content &&
