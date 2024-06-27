@@ -375,7 +375,9 @@ class Indexer {
       return;
     }
     message.conversation = conversation;
+
     if (
+      message &&
       message.role === `user` &&
       message.content &&
       message.content.length > 0

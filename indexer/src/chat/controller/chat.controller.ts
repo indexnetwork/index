@@ -53,8 +53,13 @@ export class ChatController {
       Logger.log(`Processing ${JSON.stringify(body)}`, 'chatController:stream');
       const stream = await this.chatService.stream(body);
 
-      for await (const chunk of stream) {
-        chunk.answer && res.write(chunk.answer);
+      if (stream && stream[Symbol.asyncIterator]) {
+        for await (const chunk of stream) {
+          chunk.answer && res.write(chunk.answer);
+        }
+      } else {
+        console.log(JSON.stringify(body));
+        throw new TypeError('Stream is not an async iterable');
       }
 
       res.end();
