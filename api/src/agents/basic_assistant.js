@@ -34,7 +34,7 @@ export const handleUserMessage = async (
 
   try {
     // Find the index of the item with the specific id
-    const questionIndex = messages.findIndex((m) => m.id === id);
+    const questionIndex = messages.findIndex((m) => m.id === message.id);
 
     // If the item is found, filter out the item and all subsequent items
     const chat_history =
@@ -47,7 +47,7 @@ export const handleUserMessage = async (
       input: {
         question: messages[questionIndex].content,
         chat_history: chat_history
-          .filter((m) => m.id !== id)
+          .filter((m) => m.id !== message.id)
           .map((c) => {
             return {
               id: c.id,
