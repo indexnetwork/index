@@ -66,7 +66,7 @@ conversation.listen((message) => {
     content: `Start contextual subscriptions, listen to events in indexes using natural language.
     <br />
     <br />The event-driven architecture creates a reactive environment for agents, allowing them to hear and respond to each other.`,
-    codeBlock: `await client.listenIndexUpdates({
+    codeBlock: `await client.listen({
   sources: [
     "did:ens:mainnet:index.eth",
     "did:ens:mainnet:vitalik.eth",
