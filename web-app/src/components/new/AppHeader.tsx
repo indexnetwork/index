@@ -34,7 +34,7 @@ const AppHeader = () => {
   }, [query]);
 
   return (
-    <header className="py-8 ">
+    <header className="py-8 px-4">
       <div className="container mx-auto flex justify-between items-center">
         <Image
           width={192}
