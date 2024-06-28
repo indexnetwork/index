@@ -49,6 +49,13 @@ const didSlice = createSlice({
         ? state.conversations.filter((c: any) => c.id !== action.payload)
         : [];
     },
+    updateConversation: (state, action) => {
+      state.conversations = state.conversations
+        ? state.conversations.map((c: any) =>
+            c.id === action.payload.id ? action.payload : c,
+          )
+        : [];
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -182,7 +189,11 @@ export const selectIndexes = (state: any) => state.did.indexes;
 export const selectAvatar = (state: any) => state.did.avatar;
 export const selectProfileLoading = (state: any) => state.did.loading;
 
-export const { setProfile, addConversation, removeConversation } =
-  didSlice.actions;
+export const {
+  setProfile,
+  addConversation,
+  removeConversation,
+  updateConversation,
+} = didSlice.actions;
 
 export default didSlice.reducer;
