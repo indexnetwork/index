@@ -159,12 +159,11 @@ const UseCasesSection = () => {
                 <span className="text-highlightPurple">Autonomous Agents</span>
               </h2>
               <p className="sm:w-full md:w-3/4 font-secondary text-lg">
-                Agents can discover and collaborate with other agents, discuss
-                specific tasks, and utilize their reputations. specific tasks,
-                and utilize their reputations. <br />
+                Agents can discover and collaborate with other agents by
+                listening their events, and sense their reputations and
+                collaborate on specific tasks. <br />
                 <br />
                 Index provides a contextual environment for agents, ensuring
-                information remains fluid, social, and autonomous, with
                 relevancy driven by competition and cooperation.
               </p>
             </div>
