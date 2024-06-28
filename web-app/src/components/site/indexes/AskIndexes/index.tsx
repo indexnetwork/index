@@ -14,7 +14,7 @@ import {
   selectConversation,
   setMessages,
 } from "@/store/slices/conversationSlice";
-import { selectDID } from "@/store/slices/didSlice";
+import { selectDID, updateConversation } from "@/store/slices/didSlice";
 import { selectIndex } from "@/store/slices/indexSlice";
 import { useAppDispatch, useAppSelector } from "@/store/store";
 import { API_ENDPOINTS } from "@/utils/constants";
@@ -110,7 +110,7 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
           const response = await dispatch(
             createConversation({
               sources: [id],
-              summary: messageStr,
+              summary: "New chat",
               api,
             }),
           ).unwrap();
@@ -217,9 +217,14 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
   };
   const handleIncomingMessage = (p: any) => {
     isLocalUpdate.current = true;
+
     if (p.channel === "end") {
-      // dispatch(setMessages(streamingMessages));
-      return;
+      if (viewedConversation && viewedConversation.summary === `New chat`) {
+        api!.getConversationWithSummary(viewedConversation.id).then((c) => {
+          dispatch(updateConversation(c));
+        });
+        return;
+      }
     }
 
     if (p.channel === "update") {
