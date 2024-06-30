@@ -18,6 +18,7 @@ type FetchDIDPayload = {
   didID: string;
   api: ApiService;
   ignoreDiscoveryType?: boolean;
+  isUser?: boolean;
 };
 
 type FetchDIDIndexesPayload = {
@@ -33,7 +34,7 @@ type FetchDIDConversationsPayload = {
 export const fetchDID = createAsyncThunk(
   "did/fetchDid",
   async (
-    { didID, api, ignoreDiscoveryType }: FetchDIDPayload,
+    { didID, api, ignoreDiscoveryType, isUser = false }: FetchDIDPayload,
     { dispatch, rejectWithValue, getState },
   ) => {
     try {
@@ -56,7 +57,7 @@ export const fetchDID = createAsyncThunk(
         }
       }
 
-      return did;
+      return { isUser, did };
     } catch (err: any) {
       console.error("322 Error fetching DID:", err);
       return rejectWithValue(err.response.data);
