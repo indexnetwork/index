@@ -107,11 +107,8 @@ const UseCasesSection = () => {
 
   return (
     <section className="relative" id="UseCases">
-      <div
-        className="pt-12 md:pt-16 md:px-8 md:container m-auto h-[368dvh] md:h-[300dvh] md:flex  md:flex-row"
-        ref={containerRef}
-      >
-        <div className="px-4 w-full md:w-1/2 flex flex-col" id="UseCasesLeft">
+      <div className="pt-12 md:pt-16 md:px-8 md:container m-auto">
+        <div className="px-4 md:w-2/3">
           <h1 className="font-secondary pb-8 text-highlightBlue text-4xl md:text-5xl font-bold">
             Index in Action
           </h1>
@@ -120,6 +117,14 @@ const UseCasesSection = () => {
             possible, ranging from science, journalism, e-commerce, social and
             many more. Here are four examples that we are most excited about:
           </p>
+        </div>
+      </div>
+
+      <div
+        className="pt-12 md:pt-16 md:px-8 md:container m-auto h-[368dvh] md:h-[300dvh] md:flex md:flex-row"
+        ref={containerRef}
+      >
+        <div className="px-4 w-full md:w-1/2 flex flex-col" id="UseCasesLeft">
           <div id="block1" className="h-[75dvh] flex flex-row items-center">
             <div className="flex flex-col gap-4">
               <h2 className="text-3xl font-secondary font-bold">

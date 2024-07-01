@@ -4,16 +4,16 @@ import AppHeader from "@/components/new/AppHeader";
 import BigTextSection from "@/components/sections/landing/BigText";
 import FooterSection from "@/components/sections/landing/Footer";
 import HeroSection from "@/components/sections/landing/Hero";
+import HowItWorksSection from "@/components/sections/landing/HowItWorks";
 import PartnersSection from "@/components/sections/landing/Partners";
 import SubscribeSection from "@/components/sections/landing/Subscribe";
+import TestimonialsSection from "@/components/sections/landing/Testimonials";
+import UseCasesSection from "@/components/sections/landing/UseCases";
 import { AuthStatus, useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { Suspense, useEffect } from "react";
 import "./globals.css";
 import "./landing.css";
-import HowItWorksSection from "@/components/sections/landing/HowItWorks";
-import UseCasesSection from "@/components/sections/landing/UseCases";
-import TestimonialsSection from "@/components/sections/landing/Testimonials";
 
 const Landing = () => {
   const router = useRouter();
