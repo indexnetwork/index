@@ -21,6 +21,7 @@ const IndexListSection: FC = () => {
   const router = useRouter();
   const query = useSearchParams();
   const indexes = useAppSelector(selectIndexes);
+  const scrollPosition = useRef(0);
 
   const { setLeftTabKey, leftTabKey } = useApp();
 
@@ -28,6 +29,22 @@ const IndexListSection: FC = () => {
   const { data: viewedConversation } = useAppSelector(selectConversation);
 
   const prevProfileID = useRef(did?.id);
+  useEffect(() => {
+    const container = document.querySelector(".index-list");
+    const pos = localStorage.getItem("indexListScrollPosition");
+    container?.scrollTo(0, JSON.parse(pos || "0"));
+  }, [id]);
+
+  useEffect(() => {
+    const container = document.querySelector(".index-list");
+    container?.addEventListener("scroll", () => {
+      scrollPosition.current = container?.scrollTop || 0;
+      localStorage.setItem(
+        "indexListScrollPosition",
+        (container?.scrollTop || 0).toString(),
+      );
+    });
+  }, []);
 
   const leftSectionIndexes = useMemo(
     () =>
