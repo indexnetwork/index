@@ -22,6 +22,29 @@
   7. Disable tap highlights on iOS
   */
 
+.no-scrollbar {
+  /* For Firefox */
+  scrollbar-color: #666 transparent; /* Thumb color #666 and track color transparent */
+  scrollbar-width: auto; /* Default scrollbar width */
+}
+
+/* For WebKit browsers */
+.no-scrollbar::-webkit-scrollbar {
+  width: 12px; /* Default width */
+  height: 12px; /* Default height for horizontal scrollbars */
+}
+
+.no-scrollbar::-webkit-scrollbar-track {
+  background: transparent; /* Transparent track */
+}
+
+.no-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #666; /* Thumb color */
+  border-radius: 10px; /* Roundness of scrollbar thumb */
+  border: 3px solid transparent; /* Space around thumb */
+  background-clip: padding-box; /* Ensures the thumb's color doesn't extend into the border */
+}
+
 html#landing {
   line-height: 1.5; /* 1 */
   -webkit-text-size-adjust: 100%; /* 2 */
