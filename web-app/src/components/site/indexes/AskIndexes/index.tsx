@@ -388,12 +388,6 @@ const AskIndexes: FC<AskIndexesProps> = ({ sources }) => {
                 <EmptyScreen
                   contextMessage={getChatContextMessage()}
                   setInput={setInput}
-                  indexIds={
-                    viewedConversation &&
-                    viewedConversation.sources?.filter(
-                      (source: string) => !source.includes("did:"),
-                    )
-                  }
                   defaultQuestions={defaultQuestions}
                 />
               </Flex>
