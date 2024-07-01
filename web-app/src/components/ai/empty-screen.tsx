@@ -6,12 +6,10 @@ import Text from "../base/Text";
 export function EmptyScreen({
   setInput,
   contextMessage,
-  indexIds,
   defaultQuestions,
 }: {
   setInput: (input: string) => void;
   contextMessage?: string;
-  indexIds?: string[];
   defaultQuestions?: string[];
 }) {
   return (
@@ -38,8 +36,7 @@ export function EmptyScreen({
           </Text>
         </div>
         <div className="example-messages-empty-screen">
-          {indexIds &&
-            indexIds.length > 0 &&
+          {defaultQuestions &&
             defaultQuestions?.map((message, i) => (
               <ExampleMessageBox
                 key={i}
