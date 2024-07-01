@@ -19,18 +19,13 @@ import { useIndexConversation } from "../IndexConversationContext";
 const CONCURRENCY_LIMIT = 10;
 
 export default function IndexItemsTabSection() {
-  const {
-    setItemsState,
-    loading,
-    setLoading,
-    searchLoading,
-    fetchIndexItems,
-    fetchMoreIndexItems,
-  } = useIndexConversation();
+  const { setItemsState, searchLoading, fetchIndexItems, fetchMoreIndexItems } =
+    useIndexConversation();
   const { isCreator } = useRole();
   const {
     data: viewedIndex,
     items,
+    loading,
     addItemLoading,
   } = useAppSelector(selectIndex);
   const dispatch = useAppDispatch();
@@ -191,46 +186,48 @@ export default function IndexItemsTabSection() {
   // );
 
   return (
-    <Flex flexdirection="column" className="idxflex-grow-1">
-      {items.data && items.data.length > 0 && (
-        <FlexRow className={"mt-6"}>
-          <Col className="idxflex-grow-1">
-            <SearchInput
-              // onSearch={handleSearch}
-              debounceTime={300}
-              showClear
-              defaultValue={search}
-              loading={searchLoading}
-              placeholder="Search in this index"
-            />
-          </Col>
-        </FlexRow>
-      )}
+    !loading && (
+      <Flex flexdirection="column" className="idxflex-grow-1">
+        {items.data && items.data.length > 0 && (
+          <FlexRow className={"mt-6"}>
+            <Col className="idxflex-grow-1">
+              <SearchInput
+                // onSearch={handleSearch}
+                debounceTime={300}
+                showClear
+                defaultValue={search}
+                loading={searchLoading}
+                placeholder="Search in this index"
+              />
+            </Col>
+          </FlexRow>
+        )}
 
-      {isCreator && (
-        <FlexRow>
-          <Col className="idxflex-grow-1 mt-6 pb-0">
-            <LinkInput
-              loading={addItemLoading}
-              onItemAdd={handleAddItem}
-              progress={progress}
-            />
-          </Col>
-        </FlexRow>
-      )}
+        {isCreator && (
+          <FlexRow>
+            <Col className="idxflex-grow-1 mt-6 pb-0">
+              <LinkInput
+                loading={addItemLoading}
+                onItemAdd={handleAddItem}
+                progress={progress}
+              />
+            </Col>
+          </FlexRow>
+        )}
 
-      <div key={viewedIndex?.id} className={"mb-4 mt-6"}>
-        <IndexItemList
-          items={items.data}
-          search={search}
-          hasMore={!!items.cursor}
-          removeItem={handleRemoveItem}
-          loadMore={() =>
-            viewedIndex &&
-            fetchMoreIndexItems(viewedIndex?.id, { resetCursor: false })
-          }
-        />
-      </div>
-    </Flex>
+        <div key={viewedIndex?.id} className={"mb-4 mt-6"}>
+          <IndexItemList
+            items={items.data}
+            search={search}
+            hasMore={!!items.cursor}
+            removeItem={handleRemoveItem}
+            loadMore={() =>
+              viewedIndex &&
+              fetchMoreIndexItems(viewedIndex?.id, { resetCursor: false })
+            }
+          />
+        </div>
+      </Flex>
+    )
   );
 }
