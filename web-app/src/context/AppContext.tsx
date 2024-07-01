@@ -165,7 +165,9 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
 
         isFetchingDIDRef.current = true;
 
-        await dispatch(fetchDID({ didID, api })).unwrap();
+        await dispatch(
+          fetchDID({ didID, api, isUser: session?.did.parent === didID }),
+        ).unwrap();
 
         isFetchingDIDRef.current = false;
       } catch (error) {

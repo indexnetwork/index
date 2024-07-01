@@ -118,9 +118,7 @@ const UseCasesSection = () => {
           <p className="font-secondary text-lg md:text-xl">
             Index, as a discovery primitive, makes many different use-cases
             possible, ranging from science, journalism, e-commerce, social and
-            many more. <br />
-            <br />
-            Here are four examples that we are most excited about:
+            many more. Here are four examples that we are most excited about:
           </p>
           <div id="block1" className="h-[75dvh] flex flex-row items-center">
             <div className="flex flex-col gap-4">

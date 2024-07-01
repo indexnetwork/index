@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
 const AppHeader = () => {
-  const { connect, disconnect, status, setStatus } = useAuth();
+  const { connect, disconnect, status, setStatus, session } = useAuth();
   const router = useRouter();
   const { isLanding } = useRouteParams();
   const [modalVisible, setModalVisible] = useState(false);
@@ -30,7 +30,7 @@ const AppHeader = () => {
     setGuestModalVisible,
   } = useApp();
 
-  const { data: userProfile } = useAppSelector(selectDID);
+  const { userProfile } = useAppSelector(selectDID);
 
   const handleDisconnect = useCallback(async () => {
     try {

@@ -34,6 +34,7 @@ const didSlice = createSlice({
     loading: false,
     error: null,
     avatar: null as any,
+    userProfile: null as any,
   },
   reducers: {
     setProfile: (state, action) => {
@@ -77,7 +78,11 @@ const didSlice = createSlice({
       })
       .addCase(fetchDID.fulfilled, (state, action) => {
         state.loading = false;
-        state.data = action.payload;
+        const { did, isUser } = action.payload;
+        state.data = did;
+        if (isUser) {
+          state.userProfile = did;
+        }
       })
       .addCase(fetchDID.rejected, (state, action) => {
         state.loading = false;
