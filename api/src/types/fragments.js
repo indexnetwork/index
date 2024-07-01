@@ -22,6 +22,12 @@ export const appBundleFragment = `
     Index_updatedAt: updatedAt
     Index_deletedAt: deletedAt
   }
+  ... on Article {
+    Article_id: id
+    Article_title: title
+    Article_url: url
+    Article_createdAt: createdAt
+  }
   ... on WebPage {
     WebPage_title: title
     WebPage_favicon: favicon

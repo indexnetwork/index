@@ -9,6 +9,7 @@ import {
   IndexItem,
   IndexTeamNodeItem,
   IndexWebPageItem,
+  ArticleIndexNodeItem,
 } from "types/entity";
 
 import NoLinks from "../../indexes/NoLinks";
@@ -17,6 +18,7 @@ import TeamItem from "../TeamItem";
 import IndexIndexItem from "../IndexIndexItem";
 import DefaultIndexItem from "../DefaultIndexItem";
 import CastItem from "../CastItem";
+import ArticleItem from "../ArticleItem";
 
 export interface IndexItemListProps {
   search: string;
@@ -31,6 +33,7 @@ const MemoTeamItem = memo(TeamItem);
 const MemoIndexItem = memo(IndexIndexItem);
 const MemoDefaultIndexItem = memo(DefaultIndexItem);
 const MemoCastItem = memo(CastItem);
+const MemoArticleItem = memo(ArticleItem);
 
 const IndexItemList: FC<IndexItemListProps> = ({
   search,
@@ -58,6 +61,16 @@ const IndexItemList: FC<IndexItemListProps> = ({
           handleRemove={() => removeItem(item)}
           search={!!search}
           item={item as IndexWebPageItem}
+        />
+      );
+    }
+
+    if (item.type === "Article") {
+      return (
+        <MemoArticleItem
+          handleRemove={() => removeItem(item)}
+          search={!!search}
+          item={item as ArticleIndexNodeItem}
         />
       );
     }
