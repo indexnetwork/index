@@ -74,6 +74,12 @@ export type CastIndexNode = {
     username: string;
   };
 };
+export type ArticleIndexNode = {
+  id: string;
+  title: string;
+  url: string;
+  createdAt: string;
+};
 
 export type IndexWebPageItem = {
   id: string;
@@ -105,11 +111,18 @@ export type CastIndexNodeItem = {
   node: CastIndexNode;
 };
 
+export type ArticleIndexNodeItem = {
+  id: string;
+  type: string;
+  node: ArticleIndexNode;
+};
+
 export type IndexItem =
   | IndexWebPageItem
   | IndexTeamNodeItem
   | IndexIndexNodeItem
   | DefaultIndexNodeItem
+  | ArticleIndexNodeItem
   | CastIndexNodeItem;
 
 export type IndexLink = {

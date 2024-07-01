@@ -817,6 +817,9 @@ html#landing {
   .w-12 {
     width: 3rem;
   }
+  .w-2\/3 {
+    width: 66.666667%;
+  }
   .w-4 {
     width: 1rem;
   }
@@ -1520,6 +1523,10 @@ html#landing {
 
     .md\:w-\[75\%\] {
       width: 75%;
+    }
+
+    .md\:w-2\/3 {
+      width: 66.666667%;
     }
 
     .md\:flex-row {

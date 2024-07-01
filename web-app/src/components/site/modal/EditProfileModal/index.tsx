@@ -61,11 +61,15 @@ const EditProfileModal = ({ ...modalProps }: EditProfileModalProps) => {
         const profileData = {
           name: values.name,
           bio: values.bio,
-          avatar: (avatar || userProfile.avatar).replace(
+          avatar: undefined,
+        };
+
+        if (avatar || userProfile.avatar) {
+          profileData.avatar = (avatar || userProfile.avatar).replace(
             `${appConfig.ipfsProxy}/`,
             "",
-          ),
-        };
+          );
+        }
 
         await dispatch(updateProfile({ profile: profileData, api })).unwrap();
         toast.success("Profile updated successfully");

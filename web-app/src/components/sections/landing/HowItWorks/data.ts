@@ -49,7 +49,8 @@ await index.addItem(doc.id);
     "did:ens:mainnet:index.eth",
   ],
   members: [
-    "did:ens:mainnet:seref.eth"
+    "did:ens:mainnet:seref.eth",
+    "did:ens:mainnet:agent.eth"
   ],
 });
 
