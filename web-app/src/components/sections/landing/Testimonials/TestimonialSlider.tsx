@@ -23,6 +23,13 @@ const testimonials = [
     text: "Index Network is going to change the way we think about discovering information and interacting with the web. The ability to use autonomous AI agents to index and interpret data from multiple sources through an intuitive natural language interface is a total game changer!",
     twitter: "https://x.com/orbmis",
   },
+  {
+    name: "Billy Luedtke",
+    title: "Intuition Systems, Founder",
+    image: "/images/testimonials/billy.jpg",
+    text: "The future is AI. And in this future, the efficacy of AI will only be as good as the data our agents are ingesting. Index plays a pivotal role in this future, enabling our AI counterparts to return increasingly relevant, contextual, and accurate results and information.",
+    twitter: "https://x.com/0xbilly",
+  },
 ];
 
 const TestimonialSlider = () => {

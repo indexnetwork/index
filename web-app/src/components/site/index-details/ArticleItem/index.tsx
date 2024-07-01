@@ -98,7 +98,7 @@ const ArticleItem: React.FC<ArticleItemProps> = ({
                 color: "#475569",
               }}
             >
-              {node.url}
+              {shortStr(node.url, 60)}
             </a>
             {" • "}
           </Text>
