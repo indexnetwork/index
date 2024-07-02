@@ -30,6 +30,13 @@ const testimonials = [
     text: "The future is AI. And in this future, the efficacy of AI will only be as good as the data our agents are ingesting. Index plays a pivotal role in this future, enabling our AI counterparts to return increasingly relevant, contextual, and accurate results and information.",
     twitter: "https://x.com/0xbilly",
   },
+  {
+    name: "Oak",
+    title: "Autonolas, Co-founder",
+    image: "/images/testimonials/oak.jpg",
+    text: "Index is attempting to create a totally novel discovery and social experience. They aim to deploy autonomous agents in a way that can uniquely benefit from web3 technology and I'm really excited to see their progress.",
+    twitter: "https://x.com/tannedoaksprout",
+  },
 ];
 
 const TestimonialSlider = () => {
