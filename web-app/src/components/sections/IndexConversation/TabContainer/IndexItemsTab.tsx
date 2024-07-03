@@ -7,7 +7,7 @@ import LinkInput from "@/components/site/input/LinkInput";
 import { useApi } from "@/context/APIContext";
 import { useRole } from "@/hooks/useRole";
 import { ITEM_ADDED, trackEvent } from "@/services/tracker";
-import { addItem, removeItem } from "@/store/api/index";
+import { addItem, fetchIndexItems, removeItem } from "@/store/api/index";
 import { selectIndex, setAddItemLoading } from "@/store/slices/indexSlice";
 import { useAppDispatch, useAppSelector } from "@/store/store";
 import { IndexItem } from "@/types/entity";
@@ -19,8 +19,7 @@ import { useIndexConversation } from "../IndexConversationContext";
 const CONCURRENCY_LIMIT = 10;
 
 export default function IndexItemsTabSection() {
-  const { setItemsState, searchLoading, fetchIndexItems, fetchMoreIndexItems } =
-    useIndexConversation();
+  const { setItemsState, searchLoading } = useIndexConversation();
   const { isCreator } = useRole();
   const {
     data: viewedIndex,
@@ -29,11 +28,24 @@ export default function IndexItemsTabSection() {
     addItemLoading,
   } = useAppSelector(selectIndex);
   const dispatch = useAppDispatch();
-
   const { api, ready: apiReady } = useApi();
+
   const [search, setSearch] = useState("");
-  const [addedItem, setAddedItem] = useState(null);
-  const [progress, setProgress] = useState({ current: 0, total: 0 });
+
+  const loadMoreItems = useCallback(async () => {
+    if (!viewedIndex || !api) {
+      return;
+    }
+
+    await dispatch(
+      fetchIndexItems({
+        indexID: viewedIndex.id,
+        api,
+        resetCursor: false,
+        params: { query: search },
+      }),
+    );
+  }, [dispatch, viewedIndex, api, search]);
 
   // useEffect(() => {
   //   if (addedItem) {
@@ -109,7 +121,7 @@ export default function IndexItemsTabSection() {
       const updatedItems = [...urls, ...indexIds];
 
       dispatch(setAddItemLoading(true));
-      setProgress({ current: 0, total: updatedItems.length });
+      // setProgress({ current: 0, total: updatedItems.length });
 
       await processUrlsInBatches(updatedItems, async (item: any) => {
         try {
@@ -152,7 +164,7 @@ export default function IndexItemsTabSection() {
         dispatch(setAddItemLoading(false));
       }
     },
-    [api, viewedIndex, apiReady, fetchIndexItems],
+    [api, viewedIndex, apiReady],
   );
 
   // const handleRemove = useCallback(
@@ -209,7 +221,7 @@ export default function IndexItemsTabSection() {
               <LinkInput
                 loading={addItemLoading}
                 onItemAdd={handleAddItem}
-                progress={progress}
+                progress={items.progress}
               />
             </Col>
           </FlexRow>
@@ -221,10 +233,9 @@ export default function IndexItemsTabSection() {
             search={search}
             hasMore={!!items.cursor}
             removeItem={handleRemoveItem}
-            loadMore={() =>
-              viewedIndex &&
-              fetchMoreIndexItems(viewedIndex?.id, { resetCursor: false })
-            }
+            loadMore={() => {
+              loadMoreItems();
+            }}
           />
         </div>
       </Flex>

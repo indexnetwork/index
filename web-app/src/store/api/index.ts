@@ -18,6 +18,12 @@ type CreateIndexPayload = {
 type FetchIndexItemsPayload = {
   indexID: string;
   api: ApiService;
+  resetCursor?: boolean;
+  params?: {
+    limit?: number;
+    cursor?: string;
+    query?: string;
+  };
 };
 
 type AddItemPayload = {
@@ -88,14 +94,35 @@ export const fetchIndex = createAsyncThunk(
 
 export const fetchIndexItems = createAsyncThunk(
   "index/fetchIndexItems",
-  async ({ indexID, api }: FetchIndexItemsPayload, { rejectWithValue }) => {
+  async (
+    { indexID, api, resetCursor = true, params }: FetchIndexItemsPayload,
+    { getState, rejectWithValue },
+  ) => {
     try {
+      const { index } = getState() as any;
       const itemParams: GetItemQueryParams = {};
+
+      if (!resetCursor && index.items.cursor) {
+        itemParams.cursor = index.items.cursor;
+      }
+
+      if (params?.query) {
+        itemParams.query = params.query;
+      }
+
       const items = await api.getItems(indexID, {
         queryParams: itemParams,
       });
-      return items;
+
+      return {
+        items:
+          resetCursor || itemParams.query
+            ? items.items
+            : [...(index.items.data || []), ...items.items],
+        cursor: items.endCursor || index.items.cursor,
+      };
     } catch (err: any) {
+      console.log("33", err);
       return rejectWithValue(err.response.data);
     }
   },
