@@ -3,18 +3,18 @@ import React, { useState } from "react";
 
 const testimonials = [
   {
-    name: "David Sneider",
-    title: "Lit Protocol, Co-founder",
-    image: "/images/testimonials/sneider.jpg",
-    text: "Index Network is a foundational base layer for the user owned web. We're so glad to be  collaborators on privacy at Lit Protocol!",
-    twitter: "https://x.com/davidlsneider",
-  },
-  {
     name: "Danny Zuckerman",
     title: "3Box Labs, Co-founder",
     image: "/images/testimonials/zuckerman.jpg",
     text: "Apps need to deliver better information and experiences faster. Index's semantic index does that. Index can make better discovery a primitive all apps rely on.",
     twitter: "https://x.com/dazuck",
+  },
+  {
+    name: "Oak",
+    title: "Autonolas, Co-founder",
+    image: "/images/testimonials/oak.jpg",
+    text: "Index is attempting to create a totally novel discovery and social experience. They aim to deploy autonomous agents in a way that can uniquely benefit from web3 technology and I'm really excited to see their progress.",
+    twitter: "https://x.com/tannedoaksprout",
   },
   {
     name: "Simon Brown",
@@ -24,18 +24,18 @@ const testimonials = [
     twitter: "https://x.com/orbmis",
   },
   {
+    name: "David Sneider",
+    title: "Lit Protocol, Co-founder",
+    image: "/images/testimonials/sneider.jpg",
+    text: "Index Network is a foundational base layer for the user owned web. We're so glad to be  collaborators on privacy at Lit Protocol!",
+    twitter: "https://x.com/davidlsneider",
+  },
+  {
     name: "Billy Luedtke",
     title: "Intuition Systems, Founder",
     image: "/images/testimonials/billy.jpg",
     text: "The future is AI. And in this future, the efficacy of AI will only be as good as the data our agents are ingesting. Index plays a pivotal role in this future, enabling our AI counterparts to return increasingly relevant, contextual, and accurate results and information.",
     twitter: "https://x.com/0xbilly",
-  },
-  {
-    name: "Oak",
-    title: "Autonolas, Co-founder",
-    image: "/images/testimonials/oak.jpg",
-    text: "Index is attempting to create a totally novel discovery and social experience. They aim to deploy autonomous agents in a way that can uniquely benefit from web3 technology and I'm really excited to see their progress.",
-    twitter: "https://x.com/tannedoaksprout",
   },
 ];
 
