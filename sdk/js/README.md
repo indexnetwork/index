@@ -59,7 +59,57 @@ const webPage = await indexClient.crawlWebPage("http://www.paulgraham.com/publis
 await indexClient.addItemToIndex(index.id, webPage.id);
 ```
 
+
+### Using Custom Schemas
+If you want to use your own schema, you can do so by creating and deploying a custom model. Below are the methods and examples of how to use them.
+
+#### Creating a Custom Model
+Use the createModel method to create a custom model using a GraphQL schema.
+
+```typescript
+
+const modelResponse = await indexClient.createModel(`
+  type CustomObject {
+    title: String! @string(maxLength: 50)
+  }
+
+  type YourModel @createModel(accountRelation: LIST, description: "Full schema for models") {
+    id: ID!
+    booleanValue: Boolean!
+    intValue: Int!
+    floatValue: Float!
+    did: DID!
+    streamId: StreamID!
+    commitId: CommitID!
+    cid: CID!
+    chainId: ChainID!
+    accountId: AccountID!
+    uri: URI! @string(maxLength: 2000)
+    date: Date!
+    dateTime: DateTime!
+    time: Time!
+    localDate: LocalDate!
+    localTime: LocalTime!
+    timeZone: TimeZone!
+    utcOffset: UTCOffset!
+    duration: Duration!
+    stringValue: String! @string(maxLength: 10)
+    objectArray: [CustomObject!] @list(maxLength: 30)
+    singleObject: CustomObject
+  }
+`);
+
+```
+
+### Deploying a Custom Model
+After creating a custom model, use the deployModel method to deploy it.
+
+```typescript
+await indexClient.deployModel(modelResponse.models[0]);
+```
+
 Your index is now ready for interaction! To start a conversation and interact with the data, follow these steps:
+
 
 ```typescript
 // Create a conversation

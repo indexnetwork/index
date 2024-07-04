@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/sdk",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "main": "dist/indexclient.cjs.js",
   "module": "dist/indexclient.es.js",
   "types": "dist/index.d.ts",
