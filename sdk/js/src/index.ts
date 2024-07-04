@@ -302,6 +302,26 @@ export default class IndexClient {
     });
   }
 
+  public async createModel(graphQLSchema: string): ApiResponse<any> {
+    return this.request(`/model`, {
+      method: "POST",
+      body: JSON.stringify({
+        schema: graphQLSchema
+      }),
+    });
+  }
+
+  public async deployModel(modelId: string): ApiResponse<any> {
+    return this.request(`/model/${modelId}`, {
+      method: "POST",
+    });
+  }
+  public async removeModel(modelId: string): ApiResponse<any> {
+    return this.request(`/model/${modelId}`, {
+      method: "DELETE",
+    });
+  }
+
   public async getConversation(conversationId: string): ApiResponse<any> {
     return this.request(`/conversations/${conversationId}`, {
       method: "GET",

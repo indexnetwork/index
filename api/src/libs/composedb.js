@@ -413,6 +413,7 @@ let defaultRuntime = {
   },
 };
 
+
 export const jsonSchemaToGraphQLFragment = (schema, prefix = false) => {
   function resolveRef(ref, defs) {
     const refPath = ref.replace(/^#\/\$defs\//, "");
@@ -488,56 +489,53 @@ export const jsonSchemaToGraphQLFragment = (schema, prefix = false) => {
   return `... on ${schema.name} {\n${finalFragment}\n}`;
 };
 
-export const indexNewModel = async (app, modelId, ceramicAdminPrivateKey) => {
-  const indexerCeramic = new CeramicClient(process.env.CERAMIC_HOST);
-  if (!ceramicAdminPrivateKey) {
-    return false;
+export const createNewModel = async (graphQLSchema) => {
+  await authenticateAdmin()
+  try {
+    const response = await Composite.create({ ceramic, schema: graphQLSchema, index: false })
+    return {status: true, models: response.modelIDs}
+  } catch (e) {
+    return {status: false, error: e.message}
   }
-  const key = fromString(ceramicAdminPrivateKey, "base16");
-  const did = new DID({
-    resolver: getResolver(),
-    provider: new Ed25519Provider(key),
-  });
-  await did.authenticate();
-  if (!did.authenticated) {
-    return false;
-  }
-  indexerCeramic.did = did;
+}
 
+export const indexNewModel = async (app, modelId) => {
+
+  const modelName = await ceramic.loadStream(modelId);
+  const protectedModelNames = Object.keys(defaultRuntime.models)
+  if (protectedModelNames.includes(modelName)) {
+    console.log(`Model name is protected`)
+    return false
+  }
+  const indexedModelList =await ceramic.admin.getIndexedModels()
+  if (indexedModelList.includes(modelId)) {
+    console.log(`Model is already indexed`)
+    return false
+  }
+
+  await authenticateAdmin()
   await Composite.fromModels({
-    ceramic: indexerCeramic,
+    ceramic,
     models: [modelId],
     index: true,
   });
   await setIndexedModelParams(app);
-
   return true;
 };
 
 export const stopIndexingModels = async (
   app,
   modelId,
-  ceramicAdminPrivateKey,
 ) => {
-  const indexerCeramic = new CeramicClient(process.env.CERAMIC_HOST);
-  if (!ceramicAdminPrivateKey) {
-    return false;
+  await authenticateAdmin()
+  const modelName = await ceramic.loadStream(modelId);
+  const protectedModelNames = Object.keys(defaultRuntime.models)
+  if (protectedModelNames.includes(modelName)) {
+    console.log(`Model name is protected`)
+    return false
   }
-  const key = fromString(ceramicAdminPrivateKey, "base16");
-  const did = new DID({
-    resolver: getResolver(),
-    provider: new Ed25519Provider(key),
-  });
-  await did.authenticate();
-  if (!did.authenticated) {
-    return false;
-  }
-  indexerCeramic.did = did;
-
-  const models = await indexerCeramic.admin.stopIndexingModels([modelId]);
-
+  const models = await ceramic.admin.stopIndexingModels([modelId]);
   await setIndexedModelParams(app);
-
   return models;
 };
 export const setIndexedModelParams = async (app) => {

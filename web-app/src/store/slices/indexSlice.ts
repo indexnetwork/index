@@ -50,14 +50,14 @@ const indexSlice = createSlice({
         state.error = action.payload as any;
       })
       .addCase(fetchIndexItems.pending, (state) => {
-        state.loading = true;
-        state.items.data = null;
-        state.items.cursor = null;
+        if (!state.items.data) {
+          state.loading = true;
+        }
       })
       .addCase(fetchIndexItems.fulfilled, (state, action) => {
         state.loading = false;
         state.items.data = action.payload.items;
-        state.items.cursor = action.payload.endCursor;
+        state.items.cursor = action.payload.cursor;
       })
       .addCase(fetchIndexItems.rejected, (state, action) => {
         state.loading = false;

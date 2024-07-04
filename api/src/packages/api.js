@@ -659,22 +659,30 @@ app.post(
 
 app.get("/model/info", modelController.info);
 app.post(
-  "/model/index/:id",
+  "/model/:id",
   validator.params(
     Joi.object({
       id: Joi.custom(isStreamID, "Model ID").required(),
     }),
   ),
+  authCheckMiddleware,
   modelController.deploy,
 );
 
+app.post(
+  "/model",
+  authCheckMiddleware,
+  modelController.create,
+);
+
 app.delete(
-  "/model/index/:id",
+  "/model/:id",
   validator.params(
     Joi.object({
       id: Joi.custom(isStreamID, "Model ID").required(),
     }),
   ),
+  authCheckMiddleware,
   modelController.remove,
 );
 
