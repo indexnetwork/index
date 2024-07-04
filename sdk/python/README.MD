@@ -191,6 +191,7 @@ index_client.listen_to_index_updates(
   handle_message=handle_message,
   handle_error=handle_error
 )
+```
 
 ### Additional Methods
 
