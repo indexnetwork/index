@@ -208,11 +208,8 @@ export default class IndexClient {
     });
   }
 
-  public async createIndex(
-    title: string,
-    signerFunction?: string,
-  ): ApiResponse<IIndex> {
-    const body = { title, signerFunction };
+  public async createIndex(title: string): ApiResponse<IIndex> {
+    const body = { title };
     return this.request(`/indexes`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -306,7 +303,7 @@ export default class IndexClient {
     return this.request(`/model`, {
       method: "POST",
       body: JSON.stringify({
-        schema: graphQLSchema
+        schema: graphQLSchema,
       }),
     });
   }
@@ -368,7 +365,6 @@ export default class IndexClient {
     handleMessage: (data: any) => void,
     handleError: (error: any) => void,
   ) {
-
     const eventUrl = `${this.baseUrl}/conversations/${conversationId}/updates?session=${this.session}`;
     const eventSource = new EventSource(eventUrl);
 
