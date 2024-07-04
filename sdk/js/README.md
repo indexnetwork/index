@@ -101,13 +101,14 @@ const modelResponse = await indexClient.createModel(`
 
 ```
 
-### Deploying a Custom Model
+#### Deploying a Custom Model
 After creating a custom model, use the deployModel method to deploy it.
 
 ```typescript
 await indexClient.deployModel(modelResponse.models[0]);
 ```
 
+## Interact with your index
 Your index is now ready for interaction! To start a conversation and interact with the data, follow these steps:
 
 
