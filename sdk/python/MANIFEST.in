@@ -1,2 +1,2 @@
 include README.MD
-recursive-include indexnetwork_sdk/bin *
+recursive-include . *.bin

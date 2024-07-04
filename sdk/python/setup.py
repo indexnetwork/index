@@ -13,7 +13,7 @@ setup(
   packages=find_packages(),
   include_package_data=True,
   package_data={
-      "indexclient": ["bin/session.bin"],
+    "indexnetwork_sdk": ["bin/session.bin"],
   },
   install_requires=[
     'abnf',
