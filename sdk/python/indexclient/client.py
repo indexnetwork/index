@@ -16,6 +16,8 @@ from siwe import SiweMessage
 from urllib.parse import urlencode
 import subprocess
 from enum import Enum
+import sseclient
+
 
 class IndexClient:
     def __init__(self, domain, session=None, private_key=None, wallet=None, network="ethereum"):
@@ -116,13 +118,10 @@ class IndexClient:
         query_string = ""
       return self._request(f"/indexes/{index_id}/items?{query_string}", "GET")
 
-    def create_index(self, title, signer_function=None):
+    def create_index(self, title):
       body = {
         "title": title,
       }
-
-      if signer_function:
-        body["signer_function"] = signer_function
 
       return self._request("/indexes", "POST", body)
 
@@ -185,3 +184,71 @@ class IndexClient:
 
     def update_node(self, model_id, node_id, node_data):
       return self._request(f"/composedb/{model_id}/{node_id}", "PATCH", node_data)
+
+    def create_model(self, graphQLSchema: str):
+      body = {
+        "schema": graphQLSchema
+      }
+      return self._request("/model", "POST", body)
+
+    def deploy_model(self, model_id: str):
+      return self._request(f"/model/{model_id}", "POST")
+
+    def remove_model(self, model_id: str):
+      return self._request(f"/model/{model_id}", "DELETE")
+
+    def get_conversation(self, conversation_id: str):
+      return self._request(f"/conversations/{conversation_id}", "GET")
+
+    def create_conversation(self, params: dict):
+      return self._request("/conversations", "POST", params)
+
+    def update_conversation(self, conversation_id: str, params: dict):
+      return self._request(f"/conversations/{conversation_id}", "PUT", params)
+
+    def delete_conversation(self, conversation_id: str):
+      return self._request(f"/conversations/{conversation_id}", "DELETE")
+
+    def create_message(self, conversation_id: str, params: dict):
+      return self._request(f"/conversations/{conversation_id}/messages", "POST", params)
+
+    def listen_to_conversation_updates(self, conversation_id: str, handle_message, handle_error):
+      event_url = f"{self.base_url}/conversations/{conversation_id}/updates?session={self.session}"
+      try:
+        response = requests.get(event_url, stream=True)
+        client = sseclient.SSEClient(response)
+
+        for event in client.events():
+          print("Received message from server", event)
+          handle_message(event.data)
+      except Exception as error:
+        print("EventSource failed:", error)
+        handle_error(error)
+
+    def update_message(self, conversation_id: str, message_id: str, params: dict, delete_after=False):
+        query_params = "?deleteAfter=true" if delete_after else ""
+        return self._request(f"/conversations/{conversation_id}/messages/{message_id}{query_params}", "PUT", params)
+
+    def delete_message(self, conversation_id: str, message_id: str, delete_after=False):
+        query_params = "?deleteAfter=true" if delete_after else ""
+        return self._request(f"/conversations/{conversation_id}/messages/{message_id}{query_params}", "DELETE")
+
+    def listen_to_index_updates(self, sources: list, query: str, handle_message, handle_error):
+      params = {
+        "query": query,
+        "sources": ",".join(sources),
+        "session": self.session
+      }
+      query_string = urlencode(params)
+      event_url = f"{self.base_url}/discovery/updates?{query_string}"
+
+      try:
+        response = requests.get(event_url, stream=True)
+        client = sseclient.SSEClient(response)
+
+        for event in client.events():
+          print("Received message from server", event.data)
+          handle_message(event.data)
+      except Exception as error:
+        print("EventSource failed:", error)
+        handle_error(error)
