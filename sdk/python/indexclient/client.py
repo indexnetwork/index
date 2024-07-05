@@ -18,7 +18,6 @@ import subprocess
 from enum import Enum
 import sseclient
 
-
 class IndexClient:
     def __init__(self, domain, session=None, private_key=None, wallet=None, network="ethereum"):
       self.session = session
@@ -89,7 +88,6 @@ class IndexClient:
     def get_all_indexes(self, did):
       return self._request(f"/dids/{did}/indexes", "GET")
 
-
     def get_profile(self, did):
       return self._request(f"/dids/{did}/profile", "GET")
 
@@ -97,7 +95,7 @@ class IndexClient:
       return self._request(f"/indexes/{index_id}", "GET")
 
     def update_profile(self, params):
-      return self._request("/profile", "PATCH", json.dumps(params))
+      return self._request("/profile", "PATCH", params)
 
     def update_index(self, id, index):
       return self._request(f"/indexes/{id}", "PATCH", index)
@@ -136,7 +134,7 @@ class IndexClient:
         'id': id,
         'sources': sources
       }
-      response = requests.post(url, headers=headers, data=json.dumps(body), stream=True)
+      response = requests.post(url, headers=headers, data=body, stream=True)
 
       if response.status_code != 200:
         raise Exception('Error streaming messages')
@@ -149,7 +147,7 @@ class IndexClient:
     def get_ens_name_details(self, ens_name):
       return self._request(f"/ens/{ens_name}", "GET")
 
-    def add_item(self, index_id, item):
+    def add_item(self, index_id, item_id):
       return self._request(f"/indexes/{index_id}/items/{item_id}", "POST")
 
     def remove_item(self, index_id, item_id):
