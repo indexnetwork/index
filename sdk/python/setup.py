@@ -3,9 +3,9 @@ from setuptools import setup, find_packages
 
 setup(
   name='indexnetwork-sdk',
-  version='0.0.17',
+  version='0.0.18',
   description='Index Network SDK',
-  long_description=open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'README.MD')).read(),
+  long_description=open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'README.md')).read(),
   long_description_content_type='text/markdown',
   author='Index',
   author_email='accounts@index.network',
@@ -13,7 +13,7 @@ setup(
   packages=find_packages(),
   include_package_data=True,
   package_data={
-      "indexclient": ["bin/session.bin"],
+    "indexnetwork_sdk": ["bin/session.bin"],
   },
   install_requires=[
     'abnf',
