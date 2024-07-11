@@ -39,6 +39,16 @@ export const createCast = async (req, res, next) => {
 
     let payload = removeMentionedProfiles(req.body.data);
 
+    const isProcessed = await redis.hIncrBy(`casts`, payload.hash, 1);
+    if (isProcessed && isProcessed > 1) {
+      console.log(
+        `Cast ${payload.hash} already processed ${isProcessed} times. Skipping...`,
+      );
+      return res.status(200).json({ message: "Cast already processed" });
+    } else {
+      console.log(`Cast ${payload.hash} is processing...`);
+    }
+
     payload.embeds = payload.embeds.map((e) => {
       e.cast_id.fid = e.cast_id.fid.toString();
       return e;
