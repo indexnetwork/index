@@ -82,6 +82,8 @@ app.use(
     target: process.env.CHROMA_URL,
     changeOrigin: true,
     plugins: [simpleRequestLogger],
+    proxyTimeout: 5000,
+    timeout: 5000,
   }),
 );
 
@@ -669,11 +671,7 @@ app.post(
   modelController.deploy,
 );
 
-app.post(
-  "/model",
-  authCheckMiddleware,
-  modelController.create,
-);
+app.post("/model", authCheckMiddleware, modelController.create);
 
 app.delete(
   "/model/:id",

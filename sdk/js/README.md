@@ -2,6 +2,7 @@
 
 ## Quick start
 
+
 Index is a discovery protocol that eliminates the need for intermediaries in finding knowledge, products, and like-minded people through direct, composable discovery across the web. As the first decentralized semantic index, it leverages Web3 and AI and offers an open layer for discovery.
 
 You can either use the API directly or the client available. Here is a quick start to discover it.
@@ -39,7 +40,7 @@ const indexClient = new IndexClient({
 });
 ```
 
-For authentication, you need a `DIDSession`. You can either sign in using a wallet or pass an existing session. Check [Authentication](../api-reference/identity/authentication.md) for details explanation on how to initiate a session.
+For authentication, you need a `DIDSession`. You can either sign in using a wallet or pass an existing session. Check [Authentication](https://docs.index.network/docs/api-reference/identity/authentication) for details explanation on how to initiate a session.
 
 ```typescript
 await indexClient.authenticate();
@@ -51,14 +52,13 @@ We're almost ready. Now, let's create an Index, with a title.
 const index = await indexClient.createIndex("Future of publishing");
 ```
 
-Great, now you have a truly decentralized index to interact with! Though it's empty, which means we need to create and add an [`Item`](../api-reference/indexing/item.md) into it so we can interact. Let's do that.
+Great, now you have a truly decentralized index to interact with! Though it's empty, which means we need to create and add an [`Item`](https://docs.index.network/docs/api-reference/indexing/index) into it so we can interact. Let's do that.
 
 ```typescript
 const webPage = await indexClient.crawlWebPage("http://www.paulgraham.com/publishing.html");
 
 await indexClient.addItemToIndex(index.id, webPage.id);
 ```
-
 
 ### Using Custom Schemas
 If you want to use your own schema, you can do so by creating and deploying a custom model. Below are the methods and examples of how to use them.
@@ -106,6 +106,25 @@ After creating a custom model, use the deployModel method to deploy it.
 
 ```typescript
 await indexClient.deployModel(modelResponse.models[0]);
+```
+
+#### Using Your Model
+To use it, create a node with your model and required data.
+
+```typescript
+const sampleNodeData = { } // Fill with your data
+
+const createdNode = await indexClient.createNode(
+  modelResponse.models[0],
+  sampleNodeData,
+);
+
+const newIndex = await indexClient.createIndex("Index with your model");
+
+const addedItem = await indexClient.addItemToIndex(
+  newIndex.id,
+  createdNode.id,
+);
 ```
 
 ## Interact with your index
