@@ -337,23 +337,6 @@ app.delete(
   embeddingController.deleteEmbedding,
 );
 
-// Discovery
-app.post(
-  "/discovery/search",
-  validator.body(
-    Joi.object({
-      query: Joi.string().required(),
-      indexIds: Joi.array().items(Joi.string()).required(),
-      page: Joi.number().default(1),
-      limit: Joi.number().default(24),
-      filters: Joi.array().items(Joi.object()).optional(),
-      sort: Joi.string().optional(),
-      desc: Joi.bool().optional(),
-    }),
-  ),
-  discoveryController.search,
-);
-
 app.post(
   "/discovery/chat",
   validator.body(
@@ -378,6 +361,17 @@ app.post(
     }),
   ),
   discoveryController.questions,
+);
+
+app.post(
+  "/discovery/search",
+  validator.body(
+    Joi.object({
+      sources: Joi.array().items(Joi.string()).required(),
+      vector: Joi.array().items(Joi.number()).optional(),
+    }),
+  ),
+  discoveryController.search,
 );
 
 app.get(

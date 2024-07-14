@@ -22,21 +22,25 @@ export const handleNewItemEvent = async (
 
   const { indexIds, messages } = subscription;
   const chatRequest = {
+    basePrompt: "seref/index-relevancy-check",
     indexIds,
-    input: {
-      information: JSON.stringify(item),
-      chat_history: messages.map((c) => {
+    messages: [
+      ...messages.map((c) => {
         return {
           id: c.id,
           role: c.role,
           content: c.content,
         };
       }),
-    },
+      {
+        role: "system",
+        content: `New information: ${JSON.stringify(item)}`,
+      },
+    ],
   };
   try {
     let resp = await axios.post(
-      `${process.env.LLM_INDEXER_HOST}/chat/stream`,
+      `${process.env.LLM_INDEXER_HOST}/chat/external`,
       chatRequest,
       {
         responseType: "text",

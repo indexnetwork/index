@@ -42,23 +42,23 @@ export const handleUserMessage = async (
         ? messages.filter((_, index) => index <= questionIndex)
         : messages;
 
+    const transformedHistory = chat_history
+      //.filter((m) => m.id !== message.id)
+      .map((c) => {
+        return {
+          id: c.id,
+          role: c.role,
+          content: c.content,
+        };
+      });
     const chatRequest = {
       indexIds: reqIndexIds,
-      input: {
-        question: messages[questionIndex].content,
-        chat_history: chat_history
-          .filter((m) => m.id !== message.id)
-          .map((c) => {
-            return {
-              id: c.id,
-              role: c.role,
-              content: c.content,
-            };
-          }),
-      },
+      messages: transformedHistory,
+      basePrompt: "seref/first-system",
     };
+
     let resp = await axios.post(
-      `${process.env.LLM_INDEXER_HOST}/chat/stream`,
+      `${process.env.LLM_INDEXER_HOST}/chat/external`,
       chatRequest,
       {
         responseType: "stream",
