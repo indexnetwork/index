@@ -112,7 +112,7 @@ export class Agent {
       }
 
       const response = await this.httpService.axiosRef({
-        url: 'http://localhost:8000/discovery/search',
+        url: `${process.env.API_URL}/discovery/search`,
         method: 'POST',
         data: payload,
       });
