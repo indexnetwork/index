@@ -413,7 +413,6 @@ let defaultRuntime = {
   },
 };
 
-
 export const jsonSchemaToGraphQLFragment = (schema, prefix = false) => {
   function resolveRef(ref, defs) {
     const refPath = ref.replace(/^#\/\$defs\//, "");
@@ -490,30 +489,33 @@ export const jsonSchemaToGraphQLFragment = (schema, prefix = false) => {
 };
 
 export const createNewModel = async (graphQLSchema) => {
-  await authenticateAdmin()
+  await authenticateAdmin();
   try {
-    const response = await Composite.create({ ceramic, schema: graphQLSchema, index: false })
-    return {status: true, models: response.modelIDs}
+    const response = await Composite.create({
+      ceramic,
+      schema: graphQLSchema,
+      index: false,
+    });
+    return { status: true, models: response.modelIDs };
   } catch (e) {
-    return {status: false, error: e.message}
+    return { status: false, error: e.message };
   }
-}
+};
 
 export const indexNewModel = async (app, modelId) => {
-
   const modelName = await ceramic.loadStream(modelId);
-  const protectedModelNames = Object.keys(defaultRuntime.models)
+  const protectedModelNames = Object.keys(defaultRuntime.models);
   if (protectedModelNames.includes(modelName)) {
-    console.log(`Model name is protected`)
-    return false
+    console.log(`Model name is protected`);
+    return false;
   }
-  const indexedModelList =await ceramic.admin.getIndexedModels()
+  const indexedModelList = await ceramic.admin.getIndexedModels();
   if (indexedModelList.includes(modelId)) {
-    console.log(`Model is already indexed`)
-    return false
+    console.log(`Model is already indexed`);
+    return false;
   }
 
-  await authenticateAdmin()
+  await authenticateAdmin();
   await Composite.fromModels({
     ceramic,
     models: [modelId],
@@ -523,16 +525,13 @@ export const indexNewModel = async (app, modelId) => {
   return true;
 };
 
-export const stopIndexingModels = async (
-  app,
-  modelId,
-) => {
-  await authenticateAdmin()
+export const stopIndexingModels = async (app, modelId) => {
+  await authenticateAdmin();
   const modelName = await ceramic.loadStream(modelId);
-  const protectedModelNames = Object.keys(defaultRuntime.models)
+  const protectedModelNames = Object.keys(defaultRuntime.models);
   if (protectedModelNames.includes(modelName)) {
-    console.log(`Model name is protected`)
-    return false
+    console.log(`Model name is protected`);
+    return false;
   }
   const models = await ceramic.admin.stopIndexingModels([modelId]);
   await setIndexedModelParams(app);

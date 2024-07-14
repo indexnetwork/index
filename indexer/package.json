@@ -20,10 +20,9 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@langchain/community": "^0.0.20",
-    "@langchain/core": "^0.1.15",
-    "@langchain/mistralai": "^0.0.6",
-    "@langchain/openai": "^0.0.12",
+    "@langchain/community": "^0.2.18",
+    "@langchain/mistralai": "^0.0.25",
+    "@langchain/openai": "^0.2.1",
     "@nestjs/axios": "^3.0.1",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.1.1",
@@ -37,7 +36,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.6",
-    "langchain": "^0.1.5",
+    "langchain": "^0.2.9",
     "notion-crawler": "^0.0.9",
     "openai": "^4.28.0",
     "peggy": "^3.0.2",

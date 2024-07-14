@@ -1,15 +1,6 @@
-import { Embeddings } from '@langchain/core/embeddings';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import {
-  IsUrl,
-  Matches,
-  MaxLength,
-  MinLength,
-  Validate,
-  ValidateNested,
-} from 'class-validator';
-import exp from 'constants';
+import { IsUrl, MaxLength, MinLength } from 'class-validator';
 
 export enum MIME_TYPE {
   'text/csv' = 'csv',
@@ -87,7 +78,7 @@ export class IndexUpdateBody {
     default: null,
   })
   // @ValidateNested(() => ) // TODO: Check if appropriate fields
-  metadata: Object | null;
+  metadata: any;
 
   @ApiPropertyOptional({
     description: 'Documents of the',

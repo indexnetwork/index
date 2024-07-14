@@ -147,20 +147,10 @@ class Indexer {
         `Step [1]: Indexer session created for index: ${indexItem.index.id}`,
       );
 
-      const updateURL = `${process.env.LLM_INDEXER_HOST}/indexer/item?indexId=${indexItem.indexId}&itemId=${indexItem.itemId}`;
+      // const updateURL = `${process.env.LLM_INDEXER_HOST}/indexer/item?indexId=${indexItem.indexId}&itemId=${indexItem.itemId}`;
 
       if (indexItem.deletedAt !== null) {
         logger.info(`Step [1]: IndexItem DeleteEvent trigger for id: ${id}`);
-
-        const deleteResponse = await axios.delete(updateURL);
-
-        // logger.info("IndexItem Delete Response", deleteResponse)
-
-        if (deleteResponse.status === 200) {
-          logger.info(`Step [1]: IndexItem Delete Success for id: ${id}`);
-        } else {
-          logger.debug(`Step [1]: IndexItem Delete Failed for id: ${id}`);
-        }
       }
     } catch (e) {
       logger.error(
@@ -172,8 +162,9 @@ class Indexer {
   async updateQuestions(indexItem) {
     try {
       let response = await axios.post(
-        `${process.env.LLM_INDEXER_HOST}/chat/questions`,
+        `${process.env.LLM_INDEXER_HOST}/chat/external`,
         {
+          basePrompt: "seref/question_generation_prompt",
           indexIds: [indexItem.index.id],
         },
       );
@@ -323,11 +314,6 @@ class Indexer {
     }
 
     try {
-      await axios.post(
-        `${process.env.LLM_INDEXER_HOST}/indexer/index`,
-        payload,
-      );
-
       await redis.publish(
         `indexStream:${embedding.index.id}`,
         JSON.stringify(itemStream.content),
