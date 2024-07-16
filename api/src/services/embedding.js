@@ -233,7 +233,6 @@ export class EmbeddingService {
     } catch (error) {
       // Log the error and rethrow it for external handling
       console.error("Exception occurred in createEmbedding:", error);
-      throw error;
     }
   }
 

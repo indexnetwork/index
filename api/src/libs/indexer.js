@@ -115,10 +115,11 @@ class Indexer {
         vector: embeddingResponse.data.vector,
         description: "Default document embeddings",
       });
-
-      logger.info(
-        `Step [0]: EmbeddingEvent trigger successful for id: ${embedding.id}`,
-      );
+      if (embedding) {
+        logger.info(
+          `Step [0]: EmbeddingEvent trigger successful for id: ${embedding.id}`,
+        );
+      }
     } catch (e) {
       logger.error(
         `Step [0]: Indexer createIndexItemEvent error: ${JSON.stringify(e)}`,
