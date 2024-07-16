@@ -78,7 +78,7 @@ export const fetchIndex = createAsyncThunk(
         }
 
         try {
-          await dispatch(fetchIndexItems({ indexID: index.id, api })).unwrap();
+          dispatch(fetchIndexItems({ indexID: index.id, api })).unwrap();
         } catch (err) {
           console.error("Error fetching index items", err);
         }
