@@ -28,6 +28,15 @@ export const appBundleFragment = `
     Article_url: url
     Article_createdAt: createdAt
   }
+  ... on Attestation {
+    Attestation_id: id
+    Attestation_attestationID: attestationID
+    Attestation_attestedDate: attestedDate
+    Attestation_subject: subject
+    Attestation_schema: schema {
+      name
+    }
+  }
   ... on WebPage {
     WebPage_title: title
     WebPage_favicon: favicon
