@@ -39,6 +39,8 @@ export default function TabContainer() {
 
     if (!indexData.hasItems) {
       setTabKey(TabKey.Index);
+    } else {
+      setTabKey(TabKey.Chat);
     }
   }, [loading, indexData]);
 
