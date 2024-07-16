@@ -82,7 +82,7 @@ export type ArticleIndexNode = {
 };
 export type AttestationIndexNode = {
   id: string;
-  attestationId: string;
+  attestationID: string;
   attestedDate: string;
   subject: string;
   schema: {
