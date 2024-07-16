@@ -19,6 +19,7 @@ import IndexIndexItem from "../IndexIndexItem";
 import DefaultIndexItem from "../DefaultIndexItem";
 import CastItem from "../CastItem";
 import ArticleItem from "../ArticleItem";
+import AttestationItem from "../AttestationItem";
 
 export interface IndexItemListProps {
   search: string;
@@ -34,6 +35,7 @@ const MemoIndexItem = memo(IndexIndexItem);
 const MemoDefaultIndexItem = memo(DefaultIndexItem);
 const MemoCastItem = memo(CastItem);
 const MemoArticleItem = memo(ArticleItem);
+const MemoAttestationItem = memo(AttestationItem);
 
 const IndexItemList: FC<IndexItemListProps> = ({
   search,
@@ -78,6 +80,16 @@ const IndexItemList: FC<IndexItemListProps> = ({
     if (item.type === "Index") {
       return (
         <MemoIndexItem
+          handleRemove={() => removeItem(item)}
+          search={!!search}
+          item={item as IndexIndexNodeItem}
+        />
+      );
+    }
+
+    if (item.type === "Attestation") {
+      return (
+        <MemoAttestationItem
           handleRemove={() => removeItem(item)}
           search={!!search}
           item={item as IndexIndexNodeItem}

@@ -80,6 +80,15 @@ export type ArticleIndexNode = {
   url: string;
   createdAt: string;
 };
+export type AttestationIndexNode = {
+  id: string;
+  attestationId: string;
+  attestedDate: string;
+  subject: string;
+  schema: {
+    name: string;
+  };
+};
 
 export type IndexWebPageItem = {
   id: string;
@@ -110,6 +119,11 @@ export type CastIndexNodeItem = {
   type: string;
   node: CastIndexNode;
 };
+export type AttestationIndexNodeItem = {
+  id: string;
+  type: string;
+  node: AttestationIndexNode;
+};
 
 export type ArticleIndexNodeItem = {
   id: string;
@@ -123,7 +137,8 @@ export type IndexItem =
   | IndexIndexNodeItem
   | DefaultIndexNodeItem
   | ArticleIndexNodeItem
-  | CastIndexNodeItem;
+  | CastIndexNodeItem
+  | AttestationIndexNodeItem;
 
 export type IndexLink = {
   id?: string;
