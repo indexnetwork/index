@@ -10,6 +10,7 @@ import {
   IndexTeamNodeItem,
   IndexWebPageItem,
   ArticleIndexNodeItem,
+  AttestationIndexNodeItem,
 } from "types/entity";
 
 import NoLinks from "../../indexes/NoLinks";
@@ -92,7 +93,7 @@ const IndexItemList: FC<IndexItemListProps> = ({
         <MemoAttestationItem
           handleRemove={() => removeItem(item)}
           search={!!search}
-          item={item as IndexIndexNodeItem}
+          item={item as AttestationIndexNodeItem}
         />
       );
     }
