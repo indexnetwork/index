@@ -30,12 +30,12 @@ const Discovery = () => {
   useEffect(() => {
     if (typeof window !== "undefined") {
       if (!apiReady || !apiService) return;
-      const isFirstLogin = localStorage.getItem("isFirstLogin") === null;
+      const isFirstLogin = localStorage.getItem("isFirstLoginNext") === null;
       const isMainnet =
         process.env.NEXT_PUBLIC_API_URL === "https://index.network/api";
 
       if (isMainnet && isFirstLogin) {
-        localStorage.setItem("isFirstLogin", "false");
+        localStorage.setItem("isFirstLoginNext", "false");
         const indexes = [
           "kjzl6kcym7w8y6b1fncbo7p7h2v6tei9llby5ai9n7wj09oy1aeae7hqsc1io0j",
           "kjzl6kcym7w8y63ksezbl4z1frr3xd0d9fg6nfmuwr1n0ue2xc4j7dtejvl4527",
