@@ -38,7 +38,7 @@ export const createCast = async (req, res, next) => {
     };
 
     let payload = removeMentionedProfiles(req.body.data);
-
+    delete payload.event_timestamp;
     const isProcessed = await redis.hIncrBy(`casts`, payload.hash, 1);
     if (isProcessed && isProcessed > 1) {
       console.log(
