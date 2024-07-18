@@ -23,7 +23,7 @@ export const search = async (req, res, next) => {
     filters: req.body.filters || [],
   };
   */
-  const { vector, sources, ...rest } = req.body;
+  const { vector, sources, page, categories, modelNames, ...rest } = req.body;
   const definition = req.app.get("runtimeDefinition");
   const didService = new DIDService(definition);
   const reqIndexIds = await flattenSources(sources, didService);
@@ -31,6 +31,9 @@ export const search = async (req, res, next) => {
   const resp = await searchItems({
     indexIds: reqIndexIds,
     vector,
+    page,
+    categories,
+    modelNames,
   });
 
   let ceramicResp = await ceramic.multiQuery(

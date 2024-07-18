@@ -8,13 +8,23 @@ const cli = knex({
 });
 
 export const searchItems = async (params) => {
-  const { indexIds, vector } = params;
-  let query = cli("index_embeddings").select(`*`).whereIn("index_id", indexIds);
+  const { indexIds, vector, page = 1, categories, modelNames } = params;
+  const itemsPerPage = 10;
+
+  if (page < 1) throw new Error("Page number must be greater than 0");
+
+  const offset = (page - 1) * itemsPerPage;
+
+  let query = cli("index_embeddings")
+    .select(`*`)
+    .whereIn("index_id", indexIds)
+    .limit(itemsPerPage)
+    .offset(offset);
 
   if (vector) {
     query = query.orderByRaw("?? <=> ?", ["vector", pgvector.toSql(vector)]);
   }
 
-  const documents = await query.limit(10);
+  const documents = await query;
   return documents;
 };

@@ -17,6 +17,7 @@ import {
   IUpdateConversationParams,
   IUpdateMessageParams,
   Message,
+  ISearchParams,
 } from "./types.js";
 import { randomString } from "./util.js";
 
@@ -222,6 +223,14 @@ export default class IndexClient {
   ): ApiResponse<any> {
     return this.request(`/indexes/${indexId}/items/${itemId}`, {
       method: "POST",
+    });
+  }
+
+  public async search(params: ISearchParams): ApiResponse<any> {
+    const body = { ...params };
+    return this.request("/discovery/search", {
+      method: "POST",
+      body: JSON.stringify(body),
     });
   }
 

@@ -1,0 +1,26 @@
+{
+  "name": "langchain",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "@getzep/zep-js": "^0.10.0",
+    "@langchain/core": "^0.2.17",
+    "@langchain/openai": "^0.2.4",
+    "ethers": "^6.13.1",
+    "langchain": "^0.2.10",
+    "zod": "^3.23.8"
+  },
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "test": "jest --silent=false",
+    "test:watch": "jest --watch"
+  },
+  "devDependencies": {
+    "vite": "^5.3.4",
+    "vite-plugin-dts": "^4.0.0-beta.0",
+    "vite-tsconfig-paths": "^4.3.2"
+  }
+}
