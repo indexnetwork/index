@@ -9,6 +9,7 @@ const cli = knex({
 
 export const searchItems = async (params) => {
   const { indexIds, vector, page = 1, categories, modelNames } = params;
+  console.log({ indexIds, vector, page, categories, modelNames });
   const itemsPerPage = 10;
 
   if (page < 1) throw new Error("Page number must be greater than 0");

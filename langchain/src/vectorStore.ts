@@ -24,13 +24,9 @@ export interface IZepArgs {
 /**
  * Interface for the configuration options for a ZepVectorStore instance.
  */
-export interface IZepConfig {
+export interface IIndexConfig {
   client: IndexClient;
-  collectionName: string;
-  description?: string;
-  metadata?: Record<string, never>;
-  embeddingDimensions?: number;
-  isAutoEmbedded?: boolean;
+  sources: string[];
 }
 
 interface ISearchParams {
@@ -43,17 +39,15 @@ interface ISearchParams {
 
 export class IndexVectorStore extends VectorStore {
   public client: IndexClient;
-
-  public collection: DocumentCollection;
-
+  public sources: string[];
   private initPromise: Promise<void>;
-
   private autoEmbed = false;
 
-  constructor(embeddings: EmbeddingsInterface, args: IZepConfig) {
+  constructor(embeddings: EmbeddingsInterface, args: IIndexConfig) {
     super(embeddings, args);
 
     this.embeddings = embeddings;
+    this.sources = args.sources;
 
     // eslint-disable-next-line no-instanceof/no-instanceof
     if (this.embeddings instanceof FakeEmbeddings) {
@@ -66,23 +60,24 @@ export class IndexVectorStore extends VectorStore {
     });
   }
 
-  static async init(zepConfig: IZepConfig) {
-    const instance = new this(new FakeEmbeddings(), zepConfig);
+  static async init(embeddings: EmbeddingsInterface, zepConfig: IIndexConfig) {
+    const instance = new this(embeddings, zepConfig);
     // Wait for collection to be initialized
     await instance.initPromise;
     return instance;
   }
 
-  private async initCollection(args: IZepConfig) {
+  private async initCollection(args: IIndexConfig) {
     this.client = args.client;
     await this.client.authenticate();
     // this.collection = await this.client.document.getCollection(
     //   args.collectionName,
     // );
   }
+
   private async addDocument(doc: IDocument) {}
   // createCollection
-  private async createCollection(args: IZepConfig) {}
+  private async createCollection(args: IIndexConfig) {}
   async addVectors(
     vectors: number[][],
     documents: Document[],
@@ -123,8 +118,12 @@ export class IndexVectorStore extends VectorStore {
     k: number,
     filter?: Record<string, unknown> | undefined,
   ): Promise<[Document, number][]> {
-    return new Promise((resolve, reject) => {
-      resolve([]);
+    console.log("similaritySearchVectorWithScore");
+    console.log({ query, k, filter });
+    console.log(this.sources);
+    return this.client.search({
+      sources: this.sources,
+      // vector: query,
     });
   }
 
