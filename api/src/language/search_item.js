@@ -15,6 +15,6 @@ export const searchItems = async (params) => {
     query = query.orderByRaw("?? <=> ?", ["vector", pgvector.toSql(vector)]);
   }
 
-  const documents = await query.limit(10);
+  const documents = await query.limit(30);
   return documents;
 };
