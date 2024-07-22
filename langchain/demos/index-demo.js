@@ -23,9 +23,14 @@ async function main() {
   });
 
   const retriever = vectorStore.asRetriever();
-  const result = await retriever.invoke("hello");
+  const result = await retriever.invoke(
+    "Algorithm for Interpolating Irregularly-Spaced Data with Applications in Terrain Modelling Written by Paul Bourke Presented at Pan Pacific Computer Conference",
+  );
 
-  console.log("result", result);
+  console.log(
+    "result",
+    result.map((r) => JSON.parse(r.pageContent)),
+  );
 }
 
 main();

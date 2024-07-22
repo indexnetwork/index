@@ -28,31 +28,36 @@ export const search = async (req, res, next) => {
   const didService = new DIDService(definition);
   const reqIndexIds = await flattenSources(sources, didService);
 
-  const resp = await searchItems({
-    indexIds: reqIndexIds,
-    vector,
-    page,
-    categories,
-    modelNames,
-  });
+  try {
+    const resp = await searchItems({
+      indexIds: reqIndexIds,
+      vector,
+      page,
+      categories,
+      modelNames,
+    });
 
-  let ceramicResp = await ceramic.multiQuery(
-    resp.map((doc) => {
+    let ceramicResp = await ceramic.multiQuery(
+      resp.map((doc) => {
+        return {
+          streamId: doc.item_id,
+        };
+      }),
+    );
+
+    ceramicResp = Object.values(ceramicResp).map((doc) => {
       return {
-        streamId: doc.item_id,
+        id: doc.id.toString(),
+        controllerDID: doc.state.metadata.controllers[0],
+        ...doc.content,
       };
-    }),
-  );
+    });
 
-  ceramicResp = Object.values(ceramicResp).map((doc) => {
-    return {
-      id: doc.id.toString(),
-      controllerDID: doc.state.metadata.controllers[0],
-      ...doc.content,
-    };
-  });
-
-  return res.status(200).json(ceramicResp);
+    return res.status(200).json(ceramicResp);
+  } catch (error) {
+    console.error("An error occurred:", error.message);
+    res.status(500).json({ error: error.message });
+  }
 };
 
 export const completions = async (req, res, next) => {

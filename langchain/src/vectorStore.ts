@@ -41,18 +41,12 @@ export class IndexVectorStore extends VectorStore {
   public client: IndexClient;
   public sources: string[];
   private initPromise: Promise<void>;
-  private autoEmbed = false;
 
   constructor(embeddings: EmbeddingsInterface, args: IIndexConfig) {
     super(embeddings, args);
 
     this.embeddings = embeddings;
     this.sources = args.sources;
-
-    // eslint-disable-next-line no-instanceof/no-instanceof
-    if (this.embeddings instanceof FakeEmbeddings) {
-      this.autoEmbed = true;
-    }
 
     this.initPromise = this.initCollection(args).catch((err) => {
       console.error("Error initializing collection:", err);
@@ -62,7 +56,6 @@ export class IndexVectorStore extends VectorStore {
 
   static async init(embeddings: EmbeddingsInterface, zepConfig: IIndexConfig) {
     const instance = new this(embeddings, zepConfig);
-    // Wait for collection to be initialized
     await instance.initPromise;
     return instance;
   }
@@ -70,37 +63,42 @@ export class IndexVectorStore extends VectorStore {
   private async initCollection(args: IIndexConfig) {
     this.client = args.client;
     await this.client.authenticate();
-    // this.collection = await this.client.document.getCollection(
-    //   args.collectionName,
-    // );
+  }
+
+  toDocumentsAndScore(results: any[]): [Document, number][] {
+    return results.map((d) => [
+      new Document({
+        id: d.id,
+        pageContent: JSON.stringify(d),
+      }),
+      d.score ? d.score : 0,
+    ]);
+  }
+
+  async similaritySearchVectorWithScore(
+    query: number[],
+    k: number,
+    filter?: Record<string, unknown> | undefined,
+  ): Promise<[Document, number][]> {
+    const result = await this.client.search({
+      sources: this.sources,
+      vector: query,
+    });
+
+    return this.toDocumentsAndScore(result);
   }
 
   private async addDocument(doc: IDocument) {}
-  // createCollection
+
   private async createCollection(args: IIndexConfig) {}
+
   async addVectors(
     vectors: number[][],
     documents: Document[],
   ): Promise<string[]> {
-    if (!this.autoEmbed && vectors.length === 0) {
-      throw new Error(`Vectors must be provided if autoEmbed is false`);
-    }
-    if (!this.autoEmbed && vectors.length !== documents.length) {
-      throw new Error(`Vectors and documents must have the same length`);
-    }
-
-    const docs: Array<IDocument> = [];
-    for (let i = 0; i < documents.length; i += 1) {
-      const doc: IDocument = {
-        content: documents[i].pageContent,
-        metadata: documents[i].metadata,
-        embedding: vectors.length > 0 ? vectors[i] : undefined,
-      };
-      docs.push(doc);
-    }
-    // Wait for collection to be initialized
-    await this.initPromise;
-    return await this.collection.addDocuments(docs);
+    return new Promise((resolve, reject) => {
+      resolve([]);
+    });
   }
 
   async addDocuments(documents: Document[]): Promise<string[]> {
@@ -111,20 +109,6 @@ export class IndexVectorStore extends VectorStore {
 
   async search(params: ISearchParams) {
     return this.client.search(params);
-  }
-
-  async similaritySearchVectorWithScore(
-    query: number[],
-    k: number,
-    filter?: Record<string, unknown> | undefined,
-  ): Promise<[Document, number][]> {
-    console.log("similaritySearchVectorWithScore");
-    console.log({ query, k, filter });
-    console.log(this.sources);
-    return this.client.search({
-      sources: this.sources,
-      // vector: query,
-    });
   }
 
   _vectorstoreType(): string {
