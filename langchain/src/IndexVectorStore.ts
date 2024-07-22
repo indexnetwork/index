@@ -1,68 +1,25 @@
-import {
-  DocumentCollection,
-  IDocument,
-  NotFoundError,
-  ZepClient,
-} from "@getzep/zep-js";
-
 import IndexClient from "@indexnetwork/sdk";
-
-import {
-  MaxMarginalRelevanceSearchOptions,
-  VectorStore,
-} from "@langchain/core/vectorstores";
-import type { EmbeddingsInterface } from "@langchain/core/embeddings";
 import { Document } from "@langchain/core/documents";
-import { Callbacks } from "@langchain/core/callbacks/manager";
-import { maximalMarginalRelevance } from "@langchain/core/utils/math";
-import { FakeEmbeddings } from "@langchain/core/utils/testing";
-
-export interface IZepArgs {
-  collection: DocumentCollection;
-}
-
-/**
- * Interface for the configuration options for a ZepVectorStore instance.
- */
-export interface IIndexConfig {
-  client: IndexClient;
-  sources: string[];
-}
-
-interface ISearchParams {
-  sources: string[];
-  vector?: number[];
-  page?: number;
-  categories?: string[];
-  modelNames?: string[];
-}
+import type { EmbeddingsInterface } from "@langchain/core/embeddings";
+import { VectorStore } from "@langchain/core/vectorstores";
+import { IDocument, IIndexConfig, ISearchParams } from "./types";
 
 export class IndexVectorStore extends VectorStore {
   public client: IndexClient;
   public sources: string[];
-  private initPromise: Promise<void>;
 
   constructor(embeddings: EmbeddingsInterface, args: IIndexConfig) {
     super(embeddings, args);
 
     this.embeddings = embeddings;
     this.sources = args.sources;
-
-    this.initPromise = this.initCollection(args).catch((err) => {
-      console.error("Error initializing collection:", err);
-      throw err;
-    });
-  }
-
-  static async init(embeddings: EmbeddingsInterface, zepConfig: IIndexConfig) {
-    const instance = new this(embeddings, zepConfig);
-    await instance.initPromise;
-    return instance;
-  }
-
-  private async initCollection(args: IIndexConfig) {
     this.client = args.client;
-    await this.client.authenticate();
+  }
+
+  private async init() {
+    if (!this.client) {
+      throw new Error("IndexClient not provided");
+    }
   }
 
   toDocumentsAndScore(results: any[]): [Document, number][] {

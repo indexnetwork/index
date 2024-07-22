@@ -1,6 +1,5 @@
+import IndexClient, { IndexVectorStore } from "@indexnetwork/sdk";
 import { OpenAIEmbeddings } from "@langchain/openai";
-import { IndexVectorStore } from "../dist/index.es.js";
-import IndexClient from "@indexnetwork/sdk";
 import { Wallet } from "ethers";
 
 async function main() {
@@ -15,11 +14,11 @@ async function main() {
     model: "text-embedding-ada-002",
   });
 
-  const vectorStore = await IndexVectorStore.init(embeddings, {
+  const sourceIndexId =
+    "kjzl6kcym7w8y7lvuklrt4mmon5h9u3wpkm9jd9rtdbghl9df2ujsyid8d0qxj4";
+  const vectorStore = new IndexVectorStore(embeddings, {
     client: indexClient,
-    sources: [
-      "kjzl6kcym7w8y7lvuklrt4mmon5h9u3wpkm9jd9rtdbghl9df2ujsyid8d0qxj4",
-    ],
+    sources: [sourceIndexId],
   });
 
   const retriever = vectorStore.asRetriever();

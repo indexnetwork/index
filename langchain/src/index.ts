@@ -1,1 +1,1 @@
-export * from "./vectorStore";
+export * from "./IndexVectorStore";

@@ -6,6 +6,7 @@
   "license": "MIT",
   "dependencies": {
     "@getzep/zep-js": "^0.10.0",
+    "@indexnetwork/sdk": "^0.1.26",
     "@langchain/core": "^0.2.17",
     "@langchain/openai": "^0.2.4",
     "ethers": "^6.13.1",

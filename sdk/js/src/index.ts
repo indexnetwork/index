@@ -5,7 +5,7 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import { Wallet, randomBytes } from "ethers";
 import IndexConfig from "./config.js";
-import IndexVectorStore from "./lib/chroma.js";
+import IndexVectorStore from "./lib/IndexVectorStore";
 import {
   IGetItemQueryParams,
   IIndex,
@@ -77,26 +77,6 @@ export default class IndexClient {
     // Chroma initialization logic (e.g., this.chroma = new Chroma(this.session))
   }
 
-  public async getVectorStore({
-    embeddings,
-    sources,
-    filters,
-  }: {
-    embeddings: OpenAIEmbeddings;
-    sources: string[];
-    filters: object;
-  }) {
-    let indexChromaURL =
-      this.network === "mainnet"
-        ? "https://index.network/api/chroma"
-        : "https://dev.index.network/api/chroma";
-
-    return IndexVectorStore.fromExistingCollection(embeddings, {
-      collectionName: "chroma-indexer",
-      url: indexChromaURL,
-    });
-  }
-
   private async request<T>(
     endpoint: string,
     options: RequestInit,
@@ -118,7 +98,7 @@ export default class IndexClient {
       }
 
       return response.json() as Promise<T>;
-    } catch (error) {
+    } catch (error: any) {
       throw new Error(`Network error: ${error.message}`);
     }
   }
@@ -433,7 +413,12 @@ export default class IndexClient {
     const params = { query, sources, session: this.session };
     for (const key in params) {
       if (params.hasOwnProperty(key)) {
-        queryParams.append(key, params[key]);
+        const value = params[key as keyof typeof params];
+        if (Array.isArray(value)) {
+          value.forEach((v) => queryParams.append(key, v));
+        } else if (value !== undefined) {
+          queryParams.append(key, value);
+        }
       }
     }
 
