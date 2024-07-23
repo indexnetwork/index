@@ -106,7 +106,7 @@ export class Agent {
         });
 
         const queryVector = await embeddingModel.embedQuery(
-          formatChatHistory(requestMessages.slice(-1)),
+          formatChatHistory(requestMessages),
         );
         payload.vector = queryVector;
       }
@@ -120,6 +120,12 @@ export class Agent {
       retrievedDocs = response.data
         .map((doc: any) => JSON.stringify(doc))
         .join('\n');
+
+      console.log({
+        payload,
+        requestMessages,
+        retrievedDocs,
+      });
     }
 
     const parser = new StringOutputParser();
