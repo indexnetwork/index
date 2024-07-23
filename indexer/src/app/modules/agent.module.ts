@@ -106,7 +106,7 @@ export class Agent {
         });
 
         const queryVector = await embeddingModel.embedQuery(
-          formatChatHistory(requestMessages),
+          formatChatHistory(requestMessages.slice(-1)),
         );
         payload.vector = queryVector;
       }
