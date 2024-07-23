@@ -17,18 +17,19 @@ import { DynamicModule, Logger, Module } from '@nestjs/common';
 import { pull } from 'langchain/hub';
 import { HttpService } from '@nestjs/axios';
 
-const formatChatHistory = (chatHistory: string | string[]) => {
+const formatChatHistory = (chatHistory: any) => {
   if (Array.isArray(chatHistory)) {
     const updatedChat = chatHistory
-      .map((dialogTurn: any) => {
-        if (dialogTurn['role'] == 'user') {
-          return `Human: ${dialogTurn['content']}`;
+      .map((dialogTurn: HumanMessage | AIMessage | SystemMessage) => {
+        const mType = dialogTurn._getType();
+        if (mType == 'human') {
+          return `Human: ${dialogTurn.content}`;
         }
-        if (dialogTurn['role'] == 'assistant') {
-          return `AI: ${dialogTurn['content']}`;
+        if (mType === 'ai') {
+          return `AI: ${dialogTurn.content}`;
         }
-        if (dialogTurn['role'] == 'system') {
-          return `System: ${dialogTurn['content']}`;
+        if (mType == 'system') {
+          return `System: ${dialogTurn.content}`;
         }
       })
       .join('\n');
