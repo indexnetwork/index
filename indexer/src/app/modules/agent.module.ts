@@ -122,9 +122,9 @@ export class Agent {
         .join('\n');
 
       console.log({
-        payload,
+        payload: JSON.stringify(payload),
         requestMessages,
-        retrievedDocs,
+        docs: response.data.map((d: any) => d.id),
       });
     }
 
