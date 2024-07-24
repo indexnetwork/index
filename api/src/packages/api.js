@@ -381,6 +381,9 @@ app.post(
     Joi.object({
       sources: Joi.array().items(Joi.string()).required(),
       vector: Joi.array().items(Joi.number()).optional(),
+      page: Joi.number().optional(),
+      categories: Joi.array().items(Joi.string()).optional(),
+      modelNames: Joi.array().items(Joi.string()).optional(),
     }),
   ),
   discoveryController.search,
