@@ -364,6 +364,18 @@ app.post(
 );
 
 app.post(
+  "/discovery/completions",
+  validator.body(
+    Joi.object({
+      messages: Joi.array().items(Joi.any()),
+      prompt: Joi.string(),
+      sources: Joi.array().items(Joi.string()).required(),
+    }).xor("messages", "prompt"),
+  ),
+  discoveryController.completions,
+);
+
+app.post(
   "/discovery/search",
   validator.body(
     Joi.object({
