@@ -1,6 +1,9 @@
 import IndexClient, { IndexVectorStore } from "@indexnetwork/sdk";
-import { Wallet } from "ethers";
+// import IndexClient, {
+//   IndexVectorStore,
+// } from "../../sdk/js/dist/indexclient.es.js";
 import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
+import { Wallet } from "ethers";
 import { ConversationalRetrievalQAChain } from "langchain/chains";
 
 async function main() {
@@ -9,8 +12,10 @@ async function main() {
     const indexClient = new IndexClient({
       network: "dev", // or mainnet
       wallet, // or session
-      domain: "index.network",
+      domain: "indexd",
     });
+
+    // await indexClient.authenticate();
 
     const embeddings = new OpenAIEmbeddings({
       apiKey: process.env.OPENAI_API_KEY,
@@ -20,14 +25,10 @@ async function main() {
     const sourceIndexId =
       "kjzl6kcym7w8y7lvuklrt4mmon5h9u3wpkm9jd9rtdbghl9df2ujsyid8d0qxj4";
 
-    const vectorStore = await IndexVectorStore.init(embeddings, {
+    const vectorStore = new IndexVectorStore(embeddings, {
       client: indexClient,
       sources: [sourceIndexId],
     });
-
-    const retriever = vectorStore.asRetriever();
-    const result = await retriever.invoke("mesh.xyz");
-    console.log("result", result);
 
     /* Run vector store search */
     const question = "What is mesh.xyz?";

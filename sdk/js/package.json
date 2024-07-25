@@ -1,6 +1,6 @@
 {
   "name": "@indexnetwork/sdk",
-  "version": "0.1.24",
+  "version": "0.1.26",
   "main": "dist/indexclient.cjs.js",
   "module": "dist/indexclient.es.js",
   "types": "dist/index.d.ts",
@@ -30,8 +30,8 @@
   "dependencies": {
     "@didtools/cacao": "^3.0.1",
     "@langchain/community": "^0.0.53",
+    "@langchain/core": "^0.2.18",
     "@langchain/openai": "^0.0.28",
-    "chromadb": "^1.8.1",
     "cross-eventsource": "^1.0.0",
     "did-session": "^3.1.0",
     "ethers": "^6.12.0",

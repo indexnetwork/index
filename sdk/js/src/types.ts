@@ -117,3 +117,11 @@ export interface IUpdateMessageParams {
 export interface IDeleteMessageParams {
   deleteAfter: boolean;
 }
+
+export interface ISearchParams {
+  sources: string[];
+  vector?: number[];
+  page?: number;
+  categories?: string[];
+  modelNames?: string[];
+}

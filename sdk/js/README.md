@@ -216,3 +216,87 @@ const stopListening = indexClient.listenToIndexUpdates(
   handleError,
 );
 ```
+
+## Vector Search
+Index allows you to search by vectors, by providing a LangChain plugin. This document will guide you through the steps to use this feature.
+
+
+### Search by Vector using IndexVectorStore
+First install and import necessary libraries.
+
+```typescript
+import IndexClient, {
+  IndexVectorStore,
+} from "@indexnetwork/sdk";
+import { Wallet } from "ethers";
+import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
+```
+
+Then, create the IndexVectorStore instance with your configuration. The sources are the IDs of the Indexes that the search will operate on.
+
+```typescript
+const wallet = new Wallet(process.env.PRIVATE_KEY);
+const indexClient = new IndexClient({
+  network: "dev", // or mainnet
+  wallet, // or session
+  domain: "index.network",
+});
+
+const embeddings = new OpenAIEmbeddings({
+  apiKey: process.env.OPENAI_API_KEY,
+  model: "text-embedding-ada-002",
+});
+
+const sourceIndexId = "kjzl6kcym7w8y7lvuklrt4mmon5h9u3wpkm9jd9rtdbghl9df2ujsyid8d0qxj4";
+
+const vectorStore = new IndexVectorStore(embeddings, {
+  client: indexClient,
+  sources: [sourceIndexId],
+});
+```
+
+### Perform operations using the VectorStore
+VectorStore object provides the same Langchain methods. Here are a few examples:
+
+Similarity Search
+
+```typescript
+const question = "What is mesh.xyz?";
+const response = await vectorStore.similaritySearch(question, 1);
+```
+
+It should print as below. Remember that pageContent is the stringified item data JSON.
+```typescript
+[
+    {
+    "pageContent": "{...}",
+    "metadata": {},
+    "id": "kjzl6kcym7w8y5slja1yq8upkixhskarjd8292qsa9bmhh15xci1ndlzkhju9ie"
+ },
+]
+```
+
+Conversational Retrieval
+
+```typescript
+const model = new ChatOpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  model: "gpt-3.5-turbo",
+});
+
+const chain = ConversationalRetrievalQAChain.fromLLM(
+  model,
+  vectorStore.asRetriever(),
+);
+
+/* Ask it a question */
+const response = await chain.invoke({ question, chat_history: [] });const message = "hello world";
+```
+
+Response would be as following:
+
+```typescript
+{
+   "text": "Mesh.xyz is a platform that connects people, projects, and protocols building Web3. Founded in 2015 by Ethereum co-founder Joseph Lubin, Mesh has four core components..."
+}
+```
