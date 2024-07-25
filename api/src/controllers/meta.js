@@ -22,6 +22,9 @@ export const getAvatar = async (ensName) => {
     const resolver = await ethProvider.getResolver(ensName);
     const avatar = await resolver?.getText("avatar");
     if (!avatar || avatar.length === 0) return null;
+    if (avatar.startsWith(`eip155`)) {
+      return null
+    }
     return avatar;
   } catch (error) {
     console.log(`get Avatar error`, error);
