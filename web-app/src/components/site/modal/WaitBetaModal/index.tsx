@@ -86,7 +86,7 @@ const WaitBetaModal = ({
           <Col pullRight>
             <Button
               onClick={() => {
-                window.open("https://sjxy3b643r8.typeform.com/to/phuRF52O");
+                window.open("https://forms.gle/RDUuZrjUBhQ9SyCTA");
               }}
               theme="primary"
               size="lg"

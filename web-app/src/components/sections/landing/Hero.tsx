@@ -1,6 +1,5 @@
 import Button from "@/components/new/Button";
 import { useAuth } from "@/context/AuthContext";
-import useTypingAnimation from "@/hooks/useTypingAnimation";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
@@ -9,16 +8,6 @@ const HeroSection = () => {
   const router = useRouter();
   const query = useSearchParams();
   const { connect } = useAuth();
-
-  const words = [
-    "AI Agents",
-    "Web3 Builders",
-    "Networks",
-    "Ecosystems",
-    "Curious People",
-    "Communities",
-  ];
-  const typingText = useTypingAnimation(words);
 
   const allowed = useMemo(() => {
     return query.get("allowed") === "true";
@@ -39,9 +28,7 @@ const HeroSection = () => {
 
         <div className="lg:pt-32 font-secondary z-10 flex flex-col items-center justify-center gap-4 px-8 text-center  lg:w-[575px] lg:items-start lg:px-0 lg:pr-6 ">
           <h1 className="font-title text-center lg:text-start text-[1.9rem] leading-[2.25rem] md:text-4xl lg:text-5xl lg:leading-[3.6rem]">
-            The First <br />
-            Discovery Protocol <br /> for{" "}
-            <span className="text-highlightBlue">{typingText}|</span>
+            Discovery Protocol
           </h1>
 
           <p className="hidden text-start md:block text-base md:text-xl">
