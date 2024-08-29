@@ -58,7 +58,7 @@ export class ComposeDBService {
       return data[`create${this.modelFragment.name}`].document;
     } catch (error) {
       // Log the error and rethrow it for external handling
-      console.error(`Exception occured in create${this.modelFragment.name}`, {
+      console.error(`Exception occurred in create${this.modelFragment.name}`, {
         error,
         input: JSON.stringify(content, null, 2),
       });
