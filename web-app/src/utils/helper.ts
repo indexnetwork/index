@@ -72,17 +72,6 @@ export const setDates = <
   return obj;
 };
 
-export const switchNetwork = async (chainId: string) => {
-  try {
-    await window.ethereum.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId }],
-    });
-    return true;
-  } catch (e: any) {
-    if (e.code === 4001) return false; // Reject to switch
-  }
-};
 export const getCurrentDateTime = () => moment.utc().toISOString();
 
 const isValidUrl = (url: string) => {

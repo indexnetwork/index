@@ -15,10 +15,12 @@ import { useAuth } from "@/context/AuthContext";
 import { DIDSession } from "did-session";
 import { createIndex } from "@/store/api";
 import { useAppDispatch } from "@/store/store";
+import { useSDK } from "@metamask/sdk-react";
 
 const Home: NextPage = () => {
   const { transactionApprovalWaiting, handleTransactionCancel } = useApp();
 
+  const { provider: ethProvider, sdk } = useSDK();
   const { setSession } = useAuth();
 
   const { api, ready: apiReady } = useApi();
