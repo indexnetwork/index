@@ -4,6 +4,7 @@ export default function PageHead() {
   return (
     <Head>
       <link rel="shortcut icon" href="/favicon-white.png" />
+      <link rel="manifest" href="/manifest.json"/>
       <title>Index Network | Discovery Protocol</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta
