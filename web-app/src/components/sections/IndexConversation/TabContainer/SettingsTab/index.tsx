@@ -8,6 +8,7 @@ import Image from "next/image";
 import Link from "next/link";
 import React, { useCallback, useState } from "react";
 import toast from "react-hot-toast";
+import { useSDK } from "@metamask/sdk-react";
 import { CodeSnippetReact, CodeSnippetsWithTabs } from "./CodeSnippets";
 import SettingsModal, { SettingsModalStep } from "./SettingsModal";
 
@@ -17,6 +18,7 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   const [secretKey, setSecretKey] = useState<string | undefined>();
   const { isOwner } = useRole();
   const [showModal, setShowModal] = useState(false);
+  const { provider: ethProvider, sdk } = useSDK();
 
   const [step, setStep] = useState<SettingsModalStep>("waiting");
 
@@ -29,7 +31,11 @@ const IndexSettingsTabSection: React.FC<IndexSettingsTabSectionProps> = () => {
   const handleCreate = useCallback(async () => {
     setShowModal(true);
     try {
-      const sessionResponse = await didService.getNewDIDSession();
+      if (!ethProvider || !sdk) {
+        throw new Error(`No metamask`);
+      }
+
+      const sessionResponse = await didService.getNewDIDSession(ethProvider, sdk);
       setSecretKey(sessionResponse);
       setStep("done");
     } catch (e) {

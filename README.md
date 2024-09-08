@@ -32,7 +32,7 @@
 
 ## About Index Network
 
-Index is a discovery protocol that allows you to create truly personalized and autonomous discovery experiences across the web.
+Index Network is a decentralized discovery protocol that enables personalized and autonomous information retrieval through a composable vector database and an agent-based query engine.
 
 To achieve this, Index provides a decentralized semantic index that eliminates data fragmentation, a composable discovery protocol that allows data to be queried from multiple sources, in a user-centric manner. On top of this, it provides a real-time environment for agents that facilitates integration with algorithms and services and ensures that information acquires a fluid, social, and autonomous structure.
 

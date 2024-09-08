@@ -124,7 +124,7 @@ let defaultRuntime = {
       },
     },
     PublicEncryptionDID: {
-      publicEncryptionDID: { type: "did", required: true, immutable: false },
+      publicEncryptionDID: { type: "did", indexed: true, required: true, immutable: false },
       controllerDID: { type: "view", viewType: "documentAccount" },
     },
     EncryptedMessage: {

@@ -72,7 +72,7 @@ jobs:
           DOCKER_TAG: indexnetwork/web3-web-app:${{ steps.build-time.outputs.time }}
           DOCKER_REGISTRY: 236785930124.dkr.ecr.us-east-1.amazonaws.com
         run: |
-          docker build --build-arg API_URL=${API_URL} -t $DOCKER_TAG .
+          docker build --build-arg INFURA_API_KEY=${{ secrets.INFURA_API_KEY }} --build-arg API_URL=${API_URL} -t $DOCKER_TAG .
           docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
           docker push $DOCKER_REGISTRY/$DOCKER_TAG
           docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexnetwork/web3-web-app:latest-${GITHUB_REF#refs/heads/}
