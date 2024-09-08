@@ -1,7 +1,7 @@
 {
   "name":"Index Network",
   "short_name":"Index",
-  "start_url":"/notifications",
+  "start_url":"/",
   "display":"standalone",
   "background_color":"black",
   "theme_color":"black",

@@ -81,6 +81,7 @@ const Notifications: NextPage = () => {
     return (
         <div>
           <h1>Web Push Notifications</h1>
+          <a href="/">Home</a>
           {isSubscribed ? (
             <button onClick={handleUnsubscribe}>Bildirimleri Kapat</button>
           ) : (
