@@ -1,21 +1,22 @@
 {
-    "name": "Index Network",
-    "short_name": "Index",
-    "start_url": "/",
-    "display": "standalone",
-    "background_color": "#black",
-    "theme_color": "#90cdf4",
-    "orientation": "portrait-primary",
-    "icons": [
-      {
-        "src": "favicon-white.png",
-        "sizes": "500x500",
-        "type": "image&#x2F;png"
-      },
-      {
-        "src": "favicon-white.png",
-        "sizes": "192x192",
-        "type": "image&#x2F;png"
-      }
-    ]
-  }
+  "name":"Index Network",
+  "short_name":"Index",
+  "start_url":"/notifications",
+  "display":"standalone",
+  "background_color":"black",
+  "theme_color":"black",
+  "orientation":"portrait-primary",
+  "icons":[
+     {
+        "src":"favicon-white.png",
+        "sizes":"500x500",
+        "type":"image&#x2F;png"
+     },
+     {
+        "src":"favicon-white.png",
+        "sizes":"192x192",
+        "type":"image&#x2F;png"
+     }
+  ],
+  "permissions": ["notifications"]
+}

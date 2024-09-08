@@ -351,6 +351,50 @@ export class DIDService {
       throw error;
     }
   }
+
+  async getControllerDIDByEncryptionDID(userEncryptionDID) {
+    try {
+      const query = `
+        query {
+          publicEncryptionDIDIndex(first: 10, filters: {
+            where: {
+              publicEncryptionDID: {
+                equalTo: "${userEncryptionDID}"
+              }
+            }
+          }) {
+            edges {
+              node {
+                id
+                controllerDID {
+                  id
+                }
+                publicEncryptionDID {
+                  id
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      const { data, errors } = await this.client.executeQuery(query);
+
+      if (errors) {
+        throw new Error(`Error getting controller DID: ${JSON.stringify(errors)}`);
+      }
+
+      if (!data || !data.publicEncryptionDIDIndex || data.publicEncryptionDIDIndex.edges.length === 0) {
+        throw new Error("Controller DID not found");
+      }
+
+      return data.publicEncryptionDIDIndex.edges[0].node.controllerDID.id;
+    } catch (error) {
+      console.error("Exception occurred in getControllerDIDByEncryptionDID:", error);
+      throw error;
+    }
+  }
+
   async publicEncryptionDID() {
     if (!this.did) {
       throw new Error("DID not set. Use setDID() to set the did.");

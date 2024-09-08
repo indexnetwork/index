@@ -34,6 +34,7 @@
     "codeco": "^1.2.1",
     "cookie-parser": "~1.4.6",
     "cross-eventsource": "^1.0.0",
+    "crypto": "^1.0.1",
     "debug": "~2.6.9",
     "did-session": "^2.1.2",
     "dotenv": "^16.0.3",

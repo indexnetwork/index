@@ -1,4 +1,8 @@
 import { DIDService } from "../services/did.js";
+import crypto from 'crypto';
+import axios from "axios";
+
+
 export const getIndexes = async (req, res) => {
   // sendLit(req.params.id) // TODO Fix later.
   const definition = req.app.get("runtimeDefinition");
@@ -85,6 +89,21 @@ export const getProfileFromSession = async (req, res, next) => {
         id: req.params.did,
       };
     }
+    
+    profile.hmac = crypto.createHmac('sha256', process.env.MAGICBELL_API_SECRET)
+    .update(req.session.did.parent)
+    .digest('base64');
+
+    await axios.post('https://api.magicbell.com/users', {
+      user: {
+        external_id: req.session.did.parent
+      }
+    }, {
+      headers: {
+        'X-MAGICBELL-API-KEY': process.env.MAGICBELL_API_KEY,
+        'X-MAGICBELL-API-SECRET': process.env.MAGICBELL_API_SECRET
+      }
+    });
 
     res.status(200).json(profile);
   } catch (error) {
