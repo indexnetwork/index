@@ -35,7 +35,7 @@ const Notifications: NextPage = () => {
             console.log(profile);
 
             const webPushClient = new WebPushClient({
-              apiKey: process.env.MAGICBELL_API_KEY || "",
+              apiKey: process.env.NEXT_PUBLIC_MAGICBELL_API_KEY || "",
               userExternalId: profile?.id,
               userHmac: profile.hmac!,
               serviceWorkerPath: "/sw.js",
