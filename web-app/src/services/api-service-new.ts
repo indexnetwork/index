@@ -15,6 +15,7 @@ const API_ENDPOINTS = {
   STAR_INDEX: "/dids/:did/indexes/:indexId/star",
   OWN_INDEX: "/dids/:did/indexes/:indexId/own",
   GET_PROFILE: "/dids/:did/profile",
+  GET_CURRENT_PROFILE: "/profile",
   UPDATE_PROFILE: "/profile",
   UPLOAD_AVATAR: "/profile/upload_avatar",
   GET_ITEMS: "/indexes/:indexId/items",
@@ -97,6 +98,12 @@ class ApiService {
 
   async getProfile(did: string): Promise<Users> {
     const url = API_ENDPOINTS.GET_PROFILE.replace(":did", did);
+    const { data } = await this.apiAxios.get<Users>(url);
+    return data;
+  }
+
+  async getCurrentProfile(): Promise<Users> {
+    const url = API_ENDPOINTS.GET_CURRENT_PROFILE;
     const { data } = await this.apiAxios.get<Users>(url);
     return data;
   }

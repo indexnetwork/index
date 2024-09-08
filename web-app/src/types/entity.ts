@@ -218,6 +218,7 @@ export interface Users {
   name?: string;
   bio?: string;
   avatar?: string;
+  hmac?: string;
   createdAt?: string;
   updatedAt?: string;
 }

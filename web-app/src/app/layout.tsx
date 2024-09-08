@@ -8,6 +8,7 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   metadataBase: new URL("https://index.network"),
   title: "Index Network | Discovery Protocol",
+  manifest: "/manifest.json",
   description:
     "Index allows you to create truly personalised and autonomous discovery experiences across the web",
   referrer: "origin-when-cross-origin",
