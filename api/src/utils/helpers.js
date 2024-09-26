@@ -8,9 +8,9 @@ import { Ed25519Provider } from "key-did-provider-ed25519";
 import { getResolver } from "key-did-resolver";
 import { fromString } from "uint8arrays/from-string";
 
-import pinataSDK from "@pinata/sdk";
+// import pinataSDK from "@pinata/sdk";
 
-import { Readable } from "stream";
+//import { Readable } from "stream";
 
 import RedisClient from "../clients/redis.js";
 
@@ -61,7 +61,7 @@ export const generateLITAction = async (conditions, definition) => {
   });
 
   actionStr = actionStr.replace("__REPLACE_THIS_AS_MODELS_OBJECT__", models);
-
+  /*
   const pinata = new pinataSDK({ pinataJWTKey: process.env.PINATA_JWT_KEY });
 
   const buffer = Buffer.from(actionStr, "utf8");
@@ -73,6 +73,7 @@ export const generateLITAction = async (conditions, definition) => {
     pinataMetadata: { name: "signerFunction" },
   });
   return resp.IpfsHash;
+   */
 };
 
 export const flattenSources = async (sources, didService) => {

@@ -652,6 +652,8 @@ app.get(
 );
 app.get("/ens/:ensName", metaController.getWalletByENSHandler);
 
+app.get("/avatar/:cid", fileController.getAvatar);
+
 app.post(
   "/profile/upload_avatar",
   isImage.single("file"),

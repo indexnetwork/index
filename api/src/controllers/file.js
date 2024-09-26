@@ -1,46 +1,32 @@
-import fs from 'fs'
-import pinataSDK  from '@pinata/sdk';
-import { Readable } from "stream";
+import { PinataSDK } from "pinata";
 
+const pinata = new PinataSDK({
+  pinataJwt: process.env.PINATA_JWT_KEY,
+  pinataGateway: "ipfs.index.network",
+});
 
-const bufferToStream = (buffer) => {
-  const stream = new Readable();
-  stream.push(buffer);
-  stream.push(null); // Indicate end of stream
-  return stream;
+export const getAvatar = async (req, res, next) => {
+  const url = await pinata.gateways.createSignedURL({
+    cid: req.params.cid,
+    expires: 30000,
+  });
+  return res.redirect(302, url);
 };
-
 export const uploadAvatar = async (req, res, next) => {
+  try {
+    // Assuming multer is used to handle file uploads and the file is stored temporarily
 
-    try {
+    const file = new File([req.file.buffer], "profilePicture.jpg", {
+      type: req.file.mimetype,
+    });
 
-        const pinata = new pinataSDK({ pinataJWTKey: process.env.PINATA_JWT_KEY});
-        // Assuming multer is used to handle file uploads and the file is stored temporarily
+    // Upload the file to IPFS via Pinata
+    const result = await pinata.upload.file(file);
 
-
-        const readableStreamForFile = bufferToStream(req.file.buffer);
-
-        // Add the file to IPFS
-        const options = {
-            pinataMetadata: {
-                name: "profilePicture.jpg",
-                keyvalues: {
-                    // Add any key-values here you wish to associate with the upload
-                }
-            },
-            pinataOptions: {
-                cidVersion: 0
-            }
-        };
-
-        const result = await pinata.pinFileToIPFS(readableStreamForFile, options);
-
-
-        // Respond with the IPFS hash
-        res.json({ cid: result.IpfsHash });
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('An error occurred while uploading the file to IPFS.');
-    }
-
-}
+    // Respond with the IPFS CID
+    res.json({ cid: result.cid });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("An error occurred while uploading the file to IPFS.");
+  }
+};
