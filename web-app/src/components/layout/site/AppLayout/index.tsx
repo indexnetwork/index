@@ -21,7 +21,7 @@ export const AppLayout = ({ children }: AppLayoutProps) => (
       sdkOptions={{
         dappMetadata: {
           name: "Index Network",
-          url: window.location.href,
+          url: typeof window !== 'undefined' ? window.location.href : "https://index.network",
         },
         infuraAPIKey: process.env.INFURA_API_KEY,
       }}
