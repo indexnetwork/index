@@ -39,6 +39,7 @@
     "@radix-ui/react-tooltip": "^1.0.6",
     "@reduxjs/toolkit": "^1.8.2",
     "@self.id/web": "^0.5.0",
+    "@sentry/nextjs": "^8",
     "@stablelib/random": "^1.0.1",
     "@types/react-infinite-scroll-component": "^5.0.0",
     "add": "^2.0.6",
