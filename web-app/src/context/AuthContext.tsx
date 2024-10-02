@@ -96,47 +96,52 @@ export const AuthProvider = ({ children }: any) => {
       return false
     }
 
-    const accounts = await sdk?.connect();
+    try {
+      const accounts = await sdk?.connect();
 
-    const accountId = await getAccountId(ethProvider, accounts?.[0]);
-    const normAccount = normalizeAccountId(accountId);
-    const keySeed = randomBytes(32);
-    const didKey = await createDIDKey(keySeed);
-    console.log(didKey)
-    const now = new Date();
-    const twentyFiveDaysLater = new Date(
-      now.getTime() + 365 * 24 * 60 * 60 * 1000,
-    );
+      const accountId = await getAccountId(ethProvider, accounts?.[0]);
+      const normAccount = normalizeAccountId(accountId);
+      const keySeed = randomBytes(32);
+      const didKey = await createDIDKey(keySeed);
+      console.log(didKey)
+      const now = new Date();
+      const twentyFiveDaysLater = new Date(
+        now.getTime() + 365 * 24 * 60 * 60 * 1000,
+      );
 
-    const siweMessage = new SiweMessage({
-      domain: window.location.host,
-      address: getAddress(normAccount.address),
-      statement: "Give this application access to some of your data on Ceramic",
-      uri: didKey.id,
-      version: "1",
-      chainId: "1",
-      nonce: randomString(10),
-      issuedAt: now.toISOString(),
-      expirationTime: twentyFiveDaysLater.toISOString(),
-      resources: ["ceramic://*"],
-    });
+      const siweMessage = new SiweMessage({
+        domain: window.location.host,
+        address: getAddress(normAccount.address),
+        statement: "Give this application access to some of your data on Ceramic",
+        uri: didKey.id,
+        version: "1",
+        chainId: "1",
+        nonce: randomString(10),
+        issuedAt: now.toISOString(),
+        expirationTime: twentyFiveDaysLater.toISOString(),
+        resources: ["ceramic://*"],
+      });
 
-    const signature =  await ethProvider.request({
-      method: "personal_sign",
-      params: [siweMessage.signMessage(), getAddress(accountId.address)],
-    });
-    if (signature === null) {
-      throw new Error("Failed to sign message");
+      const signature =  await ethProvider.request({
+        method: "personal_sign",
+        params: [siweMessage.signMessage(), getAddress(accountId.address)],
+      });
+      if (signature === null) {
+        throw new Error("Failed to sign message");
+      }
+
+      siweMessage.signature = signature as string
+      const cacao = Cacao.fromSiweMessage(siweMessage);
+      const did = await createDIDCacao(didKey, cacao);
+      const newSession = new DIDSession({ cacao, keySeed, did });
+
+      localStorage.setItem(SESSION_KEY, newSession.serialize());
+      setSession(newSession);
+      return true
+    } catch (error) {
+      console.error("Error starting session:", error);
+      return false;
     }
-
-    siweMessage.signature = signature as string
-    const cacao = Cacao.fromSiweMessage(siweMessage);
-    const did = await createDIDCacao(didKey, cacao);
-    const newSession = new DIDSession({ cacao, keySeed, did });
-
-    localStorage.setItem(SESSION_KEY, newSession.serialize());
-    setSession(newSession);
-    return true
   }, [ethProvider]);
 
   const authenticate = useCallback(async () => {
