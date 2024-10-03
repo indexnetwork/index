@@ -50,7 +50,18 @@ export const AuthProvider = ({ children }: any) => {
   const SESSION_KEY = "did";
 
   const { provider: ethProvider, sdk } = useSDK();
+  const [isSDKConnected, setIsSDKConnected] = useState(false);
 
+  useEffect(() => {
+    const checkSDKConnection = async () => {
+      if (sdk && typeof sdk.isInitialized === 'function') {
+        const connected = sdk.isInitialized();
+        setIsSDKConnected(connected);
+      }
+    };
+
+    checkSDKConnection();
+  }, [sdk]);
 
   const [session, setSession] = useState<DIDSession | undefined>();
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
@@ -91,13 +102,23 @@ export const AuthProvider = ({ children }: any) => {
   }, [session]);
 
   const startSession = useCallback(async (): Promise<boolean> => {
-    
-    if (!ethProvider) {
-      return false
+    if (!ethProvider || !sdk) {
+      console.warn("Ethereum provider or SDK not available");
+      return false;
     }
 
     try {
-      const accounts = await sdk?.connect();
+      if (!isSDKConnected) {
+        const accounts = await sdk.connect();
+        if (!accounts || accounts.length === 0) {
+          throw new Error("Failed to connect accounts");
+        }
+      }
+
+      const accounts = await ethProvider.request({ method: 'eth_accounts' });
+      if (!accounts || accounts.length === 0) {
+        throw new Error("No accounts available");
+      }
 
       const accountId = await getAccountId(ethProvider, accounts?.[0]);
       const normAccount = normalizeAccountId(accountId);
@@ -142,7 +163,7 @@ export const AuthProvider = ({ children }: any) => {
       console.error("Error starting session:", error);
       return false;
     }
-  }, [ethProvider]);
+  }, [ethProvider, sdk, isSDKConnected]);
 
   const authenticate = useCallback(async () => {
     
