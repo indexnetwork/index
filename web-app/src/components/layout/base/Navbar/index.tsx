@@ -58,6 +58,16 @@ const Navbar = ({
   const router = useRouter();
   const { leftSidebarOpen, setLeftTabKey, setLeftSidebarOpen } = useApp();
 
+  /*
+  const [showTestnetWarning, setShowTestnetWarning] = useState(false);
+  useEffect(() => {
+    const handleChainChanged = (newChainId: string) => setShowTestnetWarning(newChainId !== appConfig.testNetwork.chainId);
+    handleChainChanged(window.ethereum?.chainId);
+    window.ethereum?.on("chainChanged", handleChainChanged);
+    return () => window.ethereum?.removeListener("chainChanged", handleChainChanged);
+  }, []);
+   */
+
   useEffect(() => {
     if (sticky) {
       if (typeof yOffSet === "number") {

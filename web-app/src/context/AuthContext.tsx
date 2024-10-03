@@ -9,7 +9,12 @@ import { randomBytes, randomString } from "@stablelib/random";
 import { DIDSession, createDIDCacao, createDIDKey } from "did-session";
 import React, { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { useSDK } from "@metamask/sdk-react";
+
+declare global {
+  interface Window {
+    ethereum: any;
+  }
+}
 
 export enum AuthStatus {
   CONNECTED = "CONNECTED",
@@ -49,20 +54,6 @@ export const AuthContext =
 export const AuthProvider = ({ children }: any) => {
   const SESSION_KEY = "did";
 
-  const { provider: ethProvider, sdk } = useSDK();
-  const [isSDKConnected, setIsSDKConnected] = useState(false);
-
-  useEffect(() => {
-    const checkSDKConnection = async () => {
-      if (sdk && typeof sdk.isInitialized === 'function') {
-        const connected = sdk.isInitialized();
-        setIsSDKConnected(connected);
-      }
-    };
-
-    checkSDKConnection();
-  }, [sdk]);
-
   const [session, setSession] = useState<DIDSession | undefined>();
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
 
@@ -101,73 +92,59 @@ export const AuthProvider = ({ children }: any) => {
     return !existingSession.isExpired;
   }, [session]);
 
-  const startSession = useCallback(async (): Promise<boolean> => {
-    if (!ethProvider || !sdk) {
-      console.warn("Ethereum provider or SDK not available");
-      return false;
-    }
+  const startSession = useCallback(async (): Promise<void> => {
+    const ethProvider = window.ethereum;
 
-    try {
-      if (!isSDKConnected) {
-        const accounts = await sdk.connect();
-        if (!accounts || accounts.length === 0) {
-          throw new Error("Failed to connect accounts");
-        }
-      }
+    // if (ethProvider.chainId !== appConfig.testNetwork.chainId) {
+    /*const switchRes = await switchTestNetwork();
+      if (!switchRes) {
+        throw new Error("Network error.");
+        }*/
+    // }
 
-      const accounts = await ethProvider.request({ method: 'eth_accounts' });
-      if (!accounts || accounts.length === 0) {
-        throw new Error("No accounts available");
-      }
+    // request ethereum accounts.
+    const addresses = await ethProvider.enable({
+      method: "eth_requestAccounts",
+    });
 
-      const accountId = await getAccountId(ethProvider, accounts?.[0]);
-      const normAccount = normalizeAccountId(accountId);
-      const keySeed = randomBytes(32);
-      const didKey = await createDIDKey(keySeed);
-      console.log(didKey)
-      const now = new Date();
-      const twentyFiveDaysLater = new Date(
-        now.getTime() + 365 * 24 * 60 * 60 * 1000,
-      );
+    const accountId = await getAccountId(ethProvider, addresses[0]);
+    const normAccount = normalizeAccountId(accountId);
+    const keySeed = randomBytes(32);
+    const didKey = await createDIDKey(keySeed);
 
-      const siweMessage = new SiweMessage({
-        domain: window.location.host,
-        address: getAddress(normAccount.address),
-        statement: "Give this application access to some of your data on Ceramic",
-        uri: didKey.id,
-        version: "1",
-        chainId: "1",
-        nonce: randomString(10),
-        issuedAt: now.toISOString(),
-        expirationTime: twentyFiveDaysLater.toISOString(),
-        resources: ["ceramic://*"],
-      });
+    const now = new Date();
+    const twentyFiveDaysLater = new Date(
+      now.getTime() + 365 * 24 * 60 * 60 * 1000,
+    );
 
-      const signature =  await ethProvider.request({
-        method: "personal_sign",
-        params: [siweMessage.signMessage(), getAddress(accountId.address)],
-      });
-      if (signature === null) {
-        throw new Error("Failed to sign message");
-      }
+    const siweMessage = new SiweMessage({
+      domain: window.location.host,
+      address: getAddress(normAccount.address),
+      statement: "Give this application access to some of your data on Ceramic",
+      uri: didKey.id,
+      version: "1",
+      chainId: "1",
+      nonce: randomString(10),
+      issuedAt: now.toISOString(),
+      expirationTime: twentyFiveDaysLater.toISOString(),
+      resources: ["ceramic://*"],
+    });
 
-      siweMessage.signature = signature as string
-      const cacao = Cacao.fromSiweMessage(siweMessage);
-      const did = await createDIDCacao(didKey, cacao);
-      const newSession = new DIDSession({ cacao, keySeed, did });
+    siweMessage.signature = await ethProvider.request({
+      method: "personal_sign",
+      params: [siweMessage.signMessage(), getAddress(accountId.address)],
+    });
 
-      localStorage.setItem(SESSION_KEY, newSession.serialize());
-      setSession(newSession);
-      return true
-    } catch (error) {
-      console.error("Error starting session:", error);
-      return false;
-    }
-  }, [ethProvider, sdk, isSDKConnected]);
+    const cacao = Cacao.fromSiweMessage(siweMessage);
+    const did = await createDIDCacao(didKey, cacao);
+    const newSession = new DIDSession({ cacao, keySeed, did });
+
+    localStorage.setItem(SESSION_KEY, newSession.serialize());
+    setSession(newSession);
+  }, []);
 
   const authenticate = useCallback(async () => {
-    
-    if (!ethProvider) {
+    if (!window.ethereum) {
       console.warn(
         "Skipping wallet connection: No injected Ethereum provider found.",
       );
@@ -185,26 +162,20 @@ export const AuthProvider = ({ children }: any) => {
 
       if (!sessionIsValid) {
         console.log("No valid session found, starting new session...");
-        const sessionResponse = await startSession();
-        if (sessionResponse) {
-          console.log("Session is valid, connecting...");
-
-          setStatus(AuthStatus.CONNECTED);
-          toast.success("Successfully connected to your wallet.");
-          trackEvent(WALLET_CONNECTED);
-        }else {
-          console.error("Error during authentication process");
-          setStatus(AuthStatus.FAILED);
-        }
+        await startSession();
       }
 
+      console.log("Session is valid, connecting...");
 
+      setStatus(AuthStatus.CONNECTED);
+      toast.success("Successfully connected to your wallet.");
+      trackEvent(WALLET_CONNECTED);
     } catch (err) {
       console.error("Error during authentication process:", err);
       setStatus(AuthStatus.FAILED);
       toast.error("Failed to connect to your wallet. Please try again.");
     }
-  }, [ethProvider, status, checkSession, startSession]);
+  }, [status, checkSession, startSession]);
 
   return (
     <AuthContext.Provider
