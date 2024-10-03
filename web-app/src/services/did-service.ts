@@ -7,17 +7,14 @@ import { getAddress } from "@ethersproject/address";
 import { HDNodeWallet, Wallet } from "ethers";
 
 class DIDService {
-  async getNewDIDSession(ethProvider: any, sdk: any) {
-    // const { provider: ethProvider, sdk } = useSDK();
+  async getNewDIDSession() {
+    const ethProvider = window.ethereum;
 
     // request ethereum accounts.
-    const addresses = await ethProvider?.request({
+    const addresses = await ethProvider.enable({
       method: "eth_requestAccounts",
     });
-
-    const accounts = await sdk?.connect();
-
-    const accountId = await getAccountId(ethProvider, accounts?.[0]);
+    const accountId = await getAccountId(ethProvider, addresses[0]);
     const normAccount = normalizeAccountId(accountId);
     const keySeed = randomBytes(32);
     const didKey = await createDIDKey(keySeed);

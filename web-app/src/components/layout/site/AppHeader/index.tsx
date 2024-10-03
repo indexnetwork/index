@@ -170,24 +170,6 @@ const AppHeader = () => {
                   </Text>
                 </div>
               </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => {
-                  router.push("/notifications");
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "start",
-                  }}
-                >
-                  <IconHistory width={16} height="100%" />
-                  <Text className="ml-3" element="span" size="md">
-                    Notifications
-                  </Text>
-                </div>
-              </DropdownMenuItem>
               <DropdownMenuItem divider />
               <DropdownMenuItem onClick={handleDisconnect}>
                 <div
