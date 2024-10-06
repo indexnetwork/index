@@ -315,6 +315,18 @@ class Indexer {
     }
 
     try {
+      const updatePayload = {
+        vector: embedding.vector,
+        item: itemStream.content,
+        indexId: embedding.index.id,
+        itemId: embedding.itemId,
+      };
+      await axios.post('http://app-api/api/updates', updatePayload);
+    } catch (e) {
+      console.log("App is down");
+    }
+
+    try {
       await redis.publish(
         `indexStream:${embedding.index.id}`,
         JSON.stringify(itemStream.content),
