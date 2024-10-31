@@ -10,6 +10,7 @@
     "reIndex": "node  --experimental-fetch src/utils/reIndex.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.682.0",
     "@ceramicnetwork/codecs": "^4.2.0",
     "@ceramicnetwork/streamid": "^3.2.0",
     "@composedb/client": "0.7.1",
