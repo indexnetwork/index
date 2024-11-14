@@ -9,30 +9,37 @@ const cli = knex({
 
 export const searchItems = async (params) => {
   const { indexIds, vector, page = 1, categories, modelNames } = params;
-  const itemsPerPage = 10;
+  const itemsPerPage = 500;
 
   if (page < 1) throw new Error("Page number must be greater than 0");
+  if (!vector || vector.length !== 1536) throw new Error("Invalid embedding size");
 
-  const offset = (page - 1) * itemsPerPage;
+  // Set HNSW search parameter
+  await cli.raw('SET hnsw.ef_search = 1000');
 
-  const baseQuery = cli("index_embeddings")
-    .select("*")
-    .whereIn("index_id", indexIds)
-    .limit(itemsPerPage)
-    .offset(offset);
+  const query = cli('index_embeddings')
+    .select([
+      'index_id',
+      'item_id', 
+      'model_id',
+      'stream_id',
+      'category',
+      'model_name',
+      'description',
+      'created_at',
+      'updated_at',
+      cli.raw('vector <=> ?::vector AS distance', [cli.raw(`'[${vector.join(',')}]'::vector(1536)`)])
+    ])
+    .whereIn('index_id', indexIds)
+    .orderBy('distance')
+    .limit(itemsPerPage);
 
-  let query = baseQuery;
-  if (vector) {
-    const formattedVector = pgvector.toSql(vector);
-    //TODO: get dynamically
-    if (vector.length !== 1536)
-      query
-        .select(
-          cli.raw("1 - (vector <=> ?::vector) AS score", [formattedVector]),
-        )
-        .orderByRaw("vector <=> ?", [formattedVector]);
-  }
+  const results = await query;
+  console.log("results", results.length)
+  return results;
 
   const documents = await query;
   return documents;
+
 };
+

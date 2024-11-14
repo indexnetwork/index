@@ -324,7 +324,6 @@ export class ConversationService {
 
     const conversation = await this.getConversation(conversationId);
 
-    console.log("conversation", conversation, `heheh`);
     const content = {
       conversationId,
       payload: await createDagJWE(

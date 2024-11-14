@@ -41,10 +41,7 @@ const formatChatHistory = (chatHistory: any) => {
 
 export class Agent {
   private readonly httpService: HttpService;
-  // RESEARCH TODOS:
-  // TODO: Also add method type -> reAcT , selfAsk, etc
-  // TODO: Can we also add context type by intent find?
-  // TODO: Research on low-computation models for subtasks
+  
 
   constructor() {
     this.httpService = new HttpService();
@@ -105,7 +102,6 @@ export class Agent {
         const embeddingModel = new OpenAIEmbeddings({
           modelName: process.env.MODEL_EMBEDDING as string,
         });
-
         const queryVector = await embeddingModel.embedQuery(
           formatChatHistory(requestMessages),
         );
@@ -119,14 +115,27 @@ export class Agent {
       });
 
       retrievedDocs = response.data
-        .map((doc: any) => JSON.stringify(doc))
+        .map((doc: any) => {
+          if (doc.object === "cast") {
+            return `Cast details: 
+- text: ${doc.text}
+- link: https://warpcast.com/${doc.author.username}/${doc.hash.substring(0, 12)}
+- author: [${doc.author.name ? doc.author.name : doc.author.username}](https://warpcast.com/${doc.author.username})
+- created_at: ${doc.timestamp}
+              ----
+`
+          } else {
+            return JSON.stringify(doc)
+          }
+          
+        })
         .join('\n');
 
-      console.log({
-        payload: JSON.stringify(payload),
-        requestMessages,
-        docs: response.data.map((d: any) => d.id),
-      });
+      // console.log({
+      //   payload: JSON.stringify(payload),
+      //   requestMessages,
+      //   docs: response.data.map((d: any) => d.id),
+      // });
     }
 
     const parser = new StringOutputParser();
