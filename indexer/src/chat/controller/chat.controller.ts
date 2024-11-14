@@ -19,7 +19,7 @@ export class ChatController {
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('Content-Encoding', 'none');
 
-      Logger.log(`Processing ${JSON.stringify(body)}`, 'chatController:stream');
+      // Logger.log(`Processing ${JSON.stringify(body)}`, 'chatController:stream');
       const stream = await this.chatService.streamExternal(body);
 
       for await (const chunk of stream) {

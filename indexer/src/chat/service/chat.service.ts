@@ -15,10 +15,7 @@ export class ChatService {
    * @returns
    */
   async streamExternal(body: any) {
-    Logger.log(
-      `Processing ${JSON.stringify(body)}`,
-      'chatService:streamExternal',
-    );
+    
     try {
       return await this.agentClient.createDynamicChain(body);
       // Invoke the agent

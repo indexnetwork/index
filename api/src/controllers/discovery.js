@@ -36,7 +36,7 @@ export const search = async (req, res, next) => {
       categories,
       modelNames,
     });
-
+    
     let ceramicResp = await ceramic.multiQuery(
       resp.map((doc) => {
         return {
@@ -44,15 +44,18 @@ export const search = async (req, res, next) => {
         };
       }),
     );
+    
 
     ceramicResp = Object.values(ceramicResp).map((doc) => {
+      const { vector, ...contentWithoutVector } = doc.content;
       return {
         id: doc.id.toString(),
         controllerDID: doc.state.metadata.controllers[0],
-        ...doc.content,
+        ...contentWithoutVector,
       };
     });
 
+    
     return res.status(200).json(ceramicResp);
   } catch (error) {
     console.error("An error occurred:", error.message);
