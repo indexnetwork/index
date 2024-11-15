@@ -7,9 +7,9 @@ import * as ejv from "express-joi-validation";
 
 import RedisClient from "../clients/redis.js";
 
-import { createProxyMiddleware } from "http-proxy-middleware";
 
 const app = express();
+
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
@@ -60,7 +60,9 @@ import {
   isStreamID,
 } from "../types/validators.js";
 
-app.use(/^\/(?!chroma).*/, express.json());
+app.use(express.json({
+  limit: '50mb'
+}));
 
 const validator = ejv.createValidator({
   passError: true,
@@ -75,17 +77,6 @@ const simpleRequestLogger = (proxyServer, options) => {
   });
 };
 
-// Chroma Proxy
-app.use(
-  "/chroma",
-  createProxyMiddleware({
-    target: process.env.CHROMA_URL,
-    changeOrigin: true,
-    plugins: [simpleRequestLogger],
-    proxyTimeout: 5000,
-    timeout: 5000,
-  }),
-);
 
 // DIDs
 app.get(
