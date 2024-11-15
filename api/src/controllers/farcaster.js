@@ -202,11 +202,13 @@ export const createCast = async (req, res, next) => {
     if (payload.channel) {
       payload.channel.warpcast_url = `https://warpcast.com/~/channel/${payload.channel.id}`;
     }
+    console.log(payload)
     const cast = await composeDBService.createNode({
       ...payload,
     });
 
     
+    console.log(cast)
 
     const itemService = new ItemService(definition).setSession(session);
     const item = await itemService.addItem("kjzl6kcym7w8y75v5w44wgqe85eorq339wzndczlvgm7vzc3ebu743sgdwaeyhd", cast.id);
