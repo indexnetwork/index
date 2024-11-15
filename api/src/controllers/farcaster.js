@@ -106,6 +106,7 @@ export const createCast = async (req, res, next) => {
       return obj;
     };
 
+    console.log(req.body.data)
     let payload = removeMentionedProfiles(req.body.data);
     delete payload.event_timestamp;
 
