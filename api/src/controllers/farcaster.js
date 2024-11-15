@@ -22,7 +22,7 @@ const isWorthwhile = async (update) => {
   const spamPrompt = await hub.pull("v2_farcaster_spam_filter");
   const spamPromptText = spamPrompt.promptMessages[0].prompt.template;
   
-  const updatePrompt = `No carefully evaluate this update: 
+  const updatePrompt = `Now carefully evaluate this update: 
   ${update.text}
 `
   const aiResponse = await observeOpenAI(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), {
@@ -40,7 +40,7 @@ const isWorthwhile = async (update) => {
   });
 
   const response = JSON.parse(aiResponse.choices[0].message.content);
-  if (response.decision == "spam") {
+  if (response.decision === "spam") {
     return false
   }
   return true
@@ -106,9 +106,10 @@ export const createCast = async (req, res, next) => {
       return obj;
     };
 
-    console.log(req.body.data)
+    
     let payload = removeMentionedProfiles(req.body.data);
     delete payload.event_timestamp;
+    delete payload.frames;
 
     if (payload.parent_hash) {
       return res.status(200).json({ status: 'rejected', message: 'No replies' });
@@ -132,7 +133,7 @@ export const createCast = async (req, res, next) => {
 
     if (!pass) {
       const openRankPercentile = await getOpenRank(payload.author.fid);
-      if (!openRankPercentile || openRankPercentile < 97) {
+      if (!openRankPercentile || openRankPercentile < 94) {
         return res.status(200).json({ status: 'rejected', message: 'Spam' });
       }
     }
@@ -177,6 +178,7 @@ export const createCast = async (req, res, next) => {
       delete payload.author.experimental;
     }
 
+    
     payload = cleanPayload(payload);
 
     if (payload.reactions) {
@@ -203,18 +205,16 @@ export const createCast = async (req, res, next) => {
     if (payload.channel) {
       payload.channel.warpcast_url = `https://warpcast.com/~/channel/${payload.channel.id}`;
     }
-    console.log(payload)
+    //console.log(payload)
     const cast = await composeDBService.createNode({
       ...payload,
     });
 
     
-    console.log(cast)
 
     const itemService = new ItemService(definition).setSession(session);
-    const item = await itemService.addItem("kjzl6kcym7w8y75v5w44wgqe85eorq339wzndczlvgm7vzc3ebu743sgdwaeyhd", cast.id);
+    const item = await itemService.addItem("kjzl6kcym7w8yb1lw37upcpbxllni7f5gqoonmp2i68ijfp37jitiy9ymm21pmu", cast.id);
 
-    console.log(item)
     res.status(201).json({ did: session.did.parent, cast, item, indexId });
   } catch (error) {
     res.status(500).json({ error: error.message, input: req.body.data });
