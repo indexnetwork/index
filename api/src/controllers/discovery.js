@@ -107,11 +107,6 @@ export const updates = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   const { query, sources } = req.query;
 
-  const session = await DIDSession.fromSession(req.query.session);
-  if (!session || !session.isAuthorized()) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -122,17 +117,14 @@ export const updates = async (req, res, next) => {
 
   await pubSubClient.subscribe(reqIndexChannels, async (payload, channel) => {
     const indexId = channel.replace(`indexStream:`, "");
-    if (response) {
-      res.write(
-        `data: ${JSON.stringify({
-          indexId,
-          data: {
-            relevance: response,
-            node: JSON.parse(payload),
-          },
-        })}\n\n`,
-      );
-    }
+    res.write(
+      `data: ${JSON.stringify({
+        indexId,
+        data: {
+          node: JSON.parse(payload),
+        },
+      })}\n\n`,
+    );
   });
 
   // Cleanup on client disconnect
