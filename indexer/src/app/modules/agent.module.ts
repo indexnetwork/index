@@ -53,12 +53,16 @@ export class Agent {
     messages,
     indexIds,
   }: any): Promise<any> {
+    const startTime = Date.now();
+    Logger.log('Starting createDynamicChain', 'Agent:createDynamicChain');
+
     const model = new ChatOpenAI({
       modelName: process.env.MODEL_CHAT as string,
       streaming: true,
       temperature: 0.0,
       maxRetries: 4,
     });
+    Logger.log(`Model initialization: ${Date.now() - startTime}ms`, 'Agent:createDynamicChain');
 
     let requestMessages = [];
     // Use provided messages; otherwise, use the prompt as the system message
@@ -94,6 +98,7 @@ export class Agent {
     let retrievedDocs = '';
 
     if (indexIds) {
+      const retrievalStartTime = Date.now();
       // If exists
       const payload = {
         sources: indexIds,
@@ -113,8 +118,10 @@ export class Agent {
         method: 'POST',
         data: payload,
       });
+      Logger.log(`Retrieval time: ${Date.now() - retrievalStartTime}ms`, 'Agent:createDynamicChain');
 
       retrievedDocs = response.data
+        .slice(0, 100)
         .map((doc: any) => {
           if (doc.object === "cast") {
             return `Cast details: 
@@ -138,6 +145,7 @@ export class Agent {
       // });
     }
 
+    const chainStartTime = Date.now();
     const parser = new StringOutputParser();
     const retrievalChain = RunnableSequence.from([
       promptTemplate,
@@ -145,10 +153,14 @@ export class Agent {
       parser,
     ]);
 
-    return await retrievalChain.stream({
+    const result = await retrievalChain.stream({
       context: retrievedDocs,
       messages: requestMessages,
     });
+    Logger.log(`Chain execution time: ${Date.now() - chainStartTime}ms`, 'Agent:createDynamicChain');
+    Logger.log(`Total execution time: ${Date.now() - startTime}ms`, 'Agent:createDynamicChain');
+
+    return result;
   }
 }
 
