@@ -75,6 +75,7 @@ export const completions = async (req, res, next) => {
   };
   if (messages) {
     payload.messages = messages;
+    payload.basePrompt= "seref/first-system"
   } else if (prompt) {
     payload.prompt = prompt;
   }
