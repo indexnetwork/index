@@ -16,7 +16,7 @@ export const searchItems = async (params) => {
 
   // Set HNSW search parameter
   await cli.raw('SET hnsw.ef_search = 1000');
-  await cli.raw('SET hnsw.iterative_scan = strict_order');
+  // await cli.raw('SET hnsw.iterative_scan = strict_order');
 
   const query = cli('index_embeddings')
     .select([
