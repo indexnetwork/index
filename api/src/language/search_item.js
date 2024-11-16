@@ -1,5 +1,12 @@
-import pgvector from "pgvector/knex";
+import { CeramicClient } from "@ceramicnetwork/http-client";
 import pkg from "knex";
+import OpenAI from "openai";
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+const ceramic = new CeramicClient(process.env.CERAMIC_HOST);
 const { knex } = pkg;
 
 const cli = knex({
@@ -8,17 +15,15 @@ const cli = knex({
 });
 
 export const searchItems = async (params) => {
-  const { indexIds, vector, page = 1, categories, modelNames } = params;
-  const itemsPerPage = 500;
+  const { 
+    indexIds, 
+    query, 
+    limit = 500, 
+    offset = 0, 
+    dateFilter  // Add date filter parameter
+  } = params;
 
-  if (page < 1) throw new Error("Page number must be greater than 0");
-  if (!vector || vector.length !== 1536) throw new Error("Invalid embedding size");
-
-  // Set HNSW search parameter
-  await cli.raw('SET hnsw.ef_search = 1000');
-  // await cli.raw('SET hnsw.iterative_scan = strict_order');
-
-  const query = cli('index_embeddings')
+  let embeddingQuery = cli('index_embeddings')
     .select([
       'index_id',
       'item_id', 
@@ -28,18 +33,68 @@ export const searchItems = async (params) => {
       'model_name',
       'description',
       'created_at',
-      'updated_at',
-      cli.raw('vector <=> ?::vector AS distance', [cli.raw(`'[${vector.join(',')}]'::vector(1536)`)])
+      'updated_at'
     ])
     .whereIn('index_id', indexIds)
-    .orderBy('distance')
-    .limit(itemsPerPage);
+    .whereNull('deleted_at');
 
-  const results = await query;
+  // Only add vector search if query is provided
+  if (query) {
+    const embeddingResponse = await openai.embeddings.create({
+      model: process.env.MODEL_EMBEDDING,
+      input: query,
+    });
+    const vector = embeddingResponse.data[0].embedding;
+
+    // Set HNSW search parameter
+    await cli.raw('SET hnsw.ef_search = 1000');
+    
+    // Add vector similarity search to select clause
+    embeddingQuery = embeddingQuery.select(
+      cli.raw('vector <=> ?::vector AS distance', [cli.raw(`'[${vector.join(',')}]'::vector(1536)`)])
+    );
+    
+    // Order by distance when doing vector search
+    embeddingQuery = embeddingQuery.orderBy('distance');
+  }
+
+  // Add date filters if provided
+  if (dateFilter) {
+    if (dateFilter.from) {
+      embeddingQuery = embeddingQuery.where('created_at', '>=', dateFilter.from);
+    }
+    if (dateFilter.to) {
+      embeddingQuery = embeddingQuery.where('created_at', '<=', dateFilter.to);
+    }
+  }
+
+  embeddingQuery = embeddingQuery
+    .limit(limit)
+    .offset(offset);
+
+    
+
+  const results = await embeddingQuery;
   console.log("results", results.length)
-  return results;
 
+  let ceramicResp = await ceramic.multiQuery(
+    results.map((doc) => {
+      return {
+        streamId: doc.item_id,
+      };
+    }),
+  );
+  
+  ceramicResp = Object.values(ceramicResp).map((doc) => {
+    const { vector, ...contentWithoutVector } = doc.content;
+    return {
+      id: doc.id.toString(),
+      modelName: doc.model,
+      controllerDID: doc.state.metadata.controllers[0],
+      ...contentWithoutVector,
+    };
+  });
 
-
+  return ceramicResp;
 };
 

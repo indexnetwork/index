@@ -7,13 +7,14 @@ import { handleNewItemEvent } from "../agents/basic_subscriber.js";
 import { ConversationService } from "../services/conversation.js";
 import RedisClient from "../clients/redis.js";
 import { CeramicClient } from "@ceramicnetwork/http-client";
-
+import * as hub from "langchain/hub";
 import { ethers } from "ethers";
 
 import Logger from "../utils/logger.js";
 import { DIDSession } from "did-session";
 import { handleUserMessage } from "../agents/basic_assistant.js";
 import { getAgentDID } from "../utils/helpers.js";
+import { handleCompletions } from "../language/completions.js";
 
 const logger = Logger.getInstance();
 
@@ -148,7 +149,6 @@ class Indexer {
         `Step [1]: Indexer session created for index: ${indexItem.index.id}`,
       );
 
-      // const updateURL = `${process.env.LLM_INDEXER_HOST}/indexer/item?indexId=${indexItem.indexId}&itemId=${indexItem.itemId}`;
 
       if (indexItem.deletedAt !== null) {
         logger.info(`Step [1]: IndexItem DeleteEvent trigger for id: ${id}`);
@@ -162,13 +162,22 @@ class Indexer {
 
   async updateQuestions(indexItem) {
     try {
-      let response = await axios.post(
-        `${process.env.LLM_INDEXER_HOST}/chat/external`,
-        {
-          basePrompt: "seref/question_generation_prompt",
-          indexIds: [indexItem.index.id],
-        },
-      );
+
+      const questionPrompt = await hub.pull("v2_web_question_generation");
+      const questionPromptText = questionPrompt.promptMessages[0].prompt.template;
+    
+      const response = await handleCompletions({
+        messages: [{
+          role: "system",
+          content: questionPromptText
+        }],
+        indexIds: [indexItem.index.id],
+        stream: false,
+        schema:  z.object({
+          questions: z.array(z.string()),
+        })
+      });
+
       const sourcesHash = ethers.utils.keccak256(
         ethers.utils.toUtf8Bytes(JSON.stringify([indexItem.index.id])),
       );
@@ -367,6 +376,7 @@ class Indexer {
       return;
     }
 
+    
     const conversation = await conversationService.getConversation(
       message.conversationId,
     );
@@ -381,6 +391,7 @@ class Indexer {
       message.content &&
       message.content.length > 0
     ) {
+      
       handleUserMessage(message, this.definition, pubSubClient, redisClient);
     }
   }

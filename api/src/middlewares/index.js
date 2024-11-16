@@ -2,14 +2,9 @@ import {DIDSession} from "did-session";
 
 
 export const errorMiddleware = (err, req, res, next) => {
-    if (err && err.error && err.error.isJoi) {
-        res.status(400).json({
-            type: err.type,
-            message: err.error.toString()
-        });
-    } else {
-        next(err);
-    }
+    // Log the error details
+    
+next()
 }
 
 export const authenticateMiddleware = async (req, res, next) => {
@@ -43,9 +38,11 @@ export const authenticateMiddleware = async (req, res, next) => {
             console.log("Session Authenticated", req.session.did.parent);
         }
 
-    } catch (e){
-      console.log(e)
-        console.log("Authorization error", e);
+    } catch (error) {
+        console.error('Authentication error:', {
+            message: error.message,
+            stack: error.stack
+        });
     }
 
     next();

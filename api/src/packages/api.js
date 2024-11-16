@@ -46,7 +46,6 @@ import * as modelController from "../controllers/model.js";
 
 import {
   authenticateMiddleware,
-  errorMiddleware,
   authCheckMiddleware,
 } from "../middlewares/index.js";
 
@@ -71,12 +70,23 @@ const validator = ejv.createValidator({
 // Authenticate
 app.use(authenticateMiddleware);
 
-const simpleRequestLogger = (proxyServer, options) => {
-  proxyServer.on("proxyReq", (proxyReq, req, res) => {
-    console.log(`[HPM] [${req.method}] ${req.url}`); // outputs: [HPM] GET /users
-  });
-};
 
+app.use((err, req, res, next) => {
+  console.error('Error details:', {
+    message: err.message,
+    stack: err.stack,
+    path: req.path,
+    method: req.method,
+    timestamp: new Date().toISOString()
+  });
+
+  res.status(err.status || 500).json({
+    error: {
+      message: err.message || 'Internal Server Error',
+      status: err.status || 500
+    }
+  });
+});
 
 // DIDs
 app.get(
@@ -358,10 +368,9 @@ app.post(
   "/discovery/completions",
   validator.body(
     Joi.object({
-      messages: Joi.array().items(Joi.any()),
-      prompt: Joi.string(),
-      sources: Joi.array().items(Joi.string()).required(),
-    }).xor("messages", "prompt"),
+      messages: Joi.array().items(Joi.any()).min(1).required(),
+      sources: Joi.array().items(Joi.string()).min(1).required(),
+    })
   ),
   discoveryController.completions,
 );
@@ -371,10 +380,13 @@ app.post(
   validator.body(
     Joi.object({
       sources: Joi.array().items(Joi.string()).required(),
-      vector: Joi.array().items(Joi.number()).optional(),
-      page: Joi.number().optional(),
-      categories: Joi.array().items(Joi.string()).optional(),
-      modelNames: Joi.array().items(Joi.string()).optional(),
+      query: Joi.string().min(1).optional(),
+      limit: Joi.number().optional(),
+      offset: Joi.number().optional(),
+      dateFilter: Joi.object({
+        from: Joi.date().iso().optional(),
+        to: Joi.date().iso().optional()
+      }).optional()
     }),
   ),
   discoveryController.search,
@@ -687,7 +699,7 @@ app.delete(
 );
 
 // Validators
-app.use(errorMiddleware);
+// app.use(errorMiddleware);
 
 app.post("/farcaster/updates", farcasterController.createCast);
 
