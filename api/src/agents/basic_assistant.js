@@ -104,6 +104,6 @@ export const handleUserMessage = async (
     }
   } catch (error) {
     // Handle the exception
-    console.error("An error occurred:", error.message);
+    console.error("An error occurred:", error);
   }
 };

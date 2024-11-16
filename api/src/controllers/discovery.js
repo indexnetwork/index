@@ -27,7 +27,7 @@ export const search = async (req, res, next) => {
     
     return res.status(200).json(resp);
   } catch (error) {
-    console.error("An error occurred:", error.message);
+    console.error("An error occurred:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -61,7 +61,7 @@ export const completions = async (req, res, next) => {
 
     res.end();
   } catch (error) {
-    console.error("An error occurred:", error.message);
+    console.error("An error occurred:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
