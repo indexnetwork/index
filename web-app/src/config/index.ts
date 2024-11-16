@@ -1,5 +1,5 @@
 export const appConfig = {
-  ipfsProxy: "https://ipfs.io/ipfs",
+  ipfsProxy: "https://index-network.mypinata.cloud/ipfs/",
   chains: {
     ethereum: {
       value: "ethereum",
