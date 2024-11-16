@@ -45,8 +45,14 @@ export const completions = async (req, res, next) => {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Content-Encoding', 'none');
 
+    const completionsPrompt = await hub.pull("v2_completions");
+    const completionsPromptText = completionsPrompt.promptMessages[0].prompt.template;
+
     const stream = await handleCompletions({
-      messages,
+      messages: [{
+        role: 'system',
+        content: completionsPromptText
+      }, ...messages],
       indexIds: reqIndexIds,
       stream: true,
     });
