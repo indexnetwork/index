@@ -3,7 +3,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const pinata = new PinataSDK({
   pinataJwt: process.env.PINATA_JWT_KEY,
-  pinataGateway: "ipfs.index.network",
+  pinataGateway: "index-network.mypinata.cloud",
 });
 
 const s3Client = new S3Client({
