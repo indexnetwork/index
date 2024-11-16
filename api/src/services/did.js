@@ -321,7 +321,7 @@ export class DIDService {
           if (ensProfile.image && ensProfile.image.startsWith(`ipfs://`)) {
             ensProfile.image = ensProfile.image.replace(
               `ipfs://`,
-              `https://https://index-network.mypinata.cloud/ipfs/`,
+              `https://ipfs.index.network/ipfs/`,
             );
           }
           return {
@@ -341,7 +341,7 @@ export class DIDService {
       delete profileObj.controllerDID;
 
       if (profileObj.avatar) {
-        profileObj.avatar = `https://index-network.mypinata.cloud/ipfs/${profileObj.avatar}`;
+        profileObj.avatar = `https://ipfs.index.network/ipfs/${profileObj.avatar}`;
       }
 
       return profileObj;
