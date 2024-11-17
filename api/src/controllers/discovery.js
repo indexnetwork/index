@@ -34,39 +34,46 @@ export const search = async (req, res, next) => {
 
 export const completions = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
-  const { messages, sources, timeFilter } = req.body;
+  const { messages, sources, timeFilter, stream = true } = req.body;
 
   try {
     const didService = new DIDService(definition);
     const reqIndexIds = await flattenSources(sources, didService);
-    // Set SSE headers
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('Content-Encoding', 'none');
+    
+    // Only set SSE headers if streaming is enabled
+    if (stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Content-Encoding', 'none');
+    }
 
     const completionsPrompt = await hub.pull("v2_completions");
     const completionsPromptText = completionsPrompt.promptMessages[0].prompt.template;
 
-    const stream = await handleCompletions({
+    const response = await handleCompletions({
       messages: [{
         role: 'system',
         content: completionsPromptText
       }, ...messages],
       indexIds: reqIndexIds,
-      stream: true,
+      stream,
       timeFilter,
     });
 
-    // Stream the response
-    for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) {
-        res.write(content);
+    // Handle streaming response
+    if (stream) {
+      for await (const chunk of response) {
+        const content = chunk.choices[0]?.delta?.content;
+        if (content) {
+          res.write(content);
+        }
       }
+      res.end();
+    } else {
+      // Handle non-streaming response
+      return res.json(response.choices[0].message.content);
     }
-
-    res.end();
   } catch (error) {
     console.error("An error occurred:", error);
     res.status(500).json({ error: "Internal Server Error" });

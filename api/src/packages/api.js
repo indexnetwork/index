@@ -373,7 +373,8 @@ app.post(
       timeFilter: Joi.object({
         from: Joi.date().iso().optional(),
         to: Joi.date().iso().optional()
-      }).optional()
+      }).optional(),
+      stream: Joi.boolean().optional()
     })
   ),
   discoveryController.completions,
