@@ -20,7 +20,7 @@ export const searchItems = async (params) => {
     query, 
     limit = 500, 
     offset = 0, 
-    dateFilter  // Add date filter parameter
+    timeFilter  // Add timeFilter parameter
   } = params;
 
   let embeddingQuery = cli('index_embeddings')
@@ -38,6 +38,16 @@ export const searchItems = async (params) => {
     .whereIn('index_id', indexIds)
     .whereNull('deleted_at');
 
+    // Add date filters if provided
+  if (timeFilter) {
+    if (timeFilter.from) {
+      embeddingQuery = embeddingQuery.where('created_at', '>=', timeFilter.from);
+    }
+    if (timeFilter.to) {
+      embeddingQuery = embeddingQuery.where('created_at', '<=', timeFilter.to);
+    }
+  }
+  
   // Only add vector search if query is provided
   if (query) {
     const embeddingResponse = await openai.embeddings.create({
@@ -58,15 +68,7 @@ export const searchItems = async (params) => {
     embeddingQuery = embeddingQuery.orderBy('distance');
   }
 
-  // Add date filters if provided
-  if (dateFilter) {
-    if (dateFilter.from) {
-      embeddingQuery = embeddingQuery.where('created_at', '>=', dateFilter.from);
-    }
-    if (dateFilter.to) {
-      embeddingQuery = embeddingQuery.where('created_at', '<=', dateFilter.to);
-    }
-  }
+  
 
   embeddingQuery = embeddingQuery
     .limit(limit)
@@ -75,7 +77,7 @@ export const searchItems = async (params) => {
     
 
   const results = await embeddingQuery;
-  console.log("results", results.length)
+  console.log("results", embeddingQuery)
 
   let ceramicResp = await ceramic.multiQuery(
     results.map((doc) => {
