@@ -34,7 +34,7 @@ export const search = async (req, res, next) => {
 
 export const completions = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
-  const { messages, sources } = req.body;
+  const { messages, sources, timeFilter } = req.body;
 
   try {
     const didService = new DIDService(definition);
@@ -55,6 +55,7 @@ export const completions = async (req, res, next) => {
       }, ...messages],
       indexIds: reqIndexIds,
       stream: true,
+      timeFilter,
     });
 
     // Stream the response
@@ -86,14 +87,13 @@ export const updates = async (req, res, next) => {
 
   await pubSubClient.subscribe(reqIndexChannels, async (payload, channel) => {
     const indexId = channel.replace(`indexStream:`, "");
-    res.write(
-      `data: ${JSON.stringify({
-        indexId,
-        data: {
-          node: JSON.parse(payload),
-        },
-      })}\n\n`,
-    );
+    const message = {
+      indexId,
+      data: {
+        node: JSON.parse(payload),
+      },
+    };
+    res.write(`data: ${JSON.stringify(message)}\n\n`);
   });
 
   // Cleanup on client disconnect

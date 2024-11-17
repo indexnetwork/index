@@ -370,6 +370,10 @@ app.post(
     Joi.object({
       messages: Joi.array().items(Joi.any()).min(1).required(),
       sources: Joi.array().items(Joi.string()).min(1).required(),
+      timeFilter: Joi.object({
+        from: Joi.date().iso().optional(),
+        to: Joi.date().iso().optional()
+      }).optional()
     })
   ),
   discoveryController.completions,

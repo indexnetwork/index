@@ -12,7 +12,7 @@ const formatChatHistory = (messages) => {
   return messages.map(m => `${m.role}: ${m.content}`).join('\n');
 };
 
-export const handleCompletions = async ({ messages, indexIds, maxDocs=500, stream, schema }) => {
+export const handleCompletions = async ({ messages, indexIds, maxDocs=500, stream, schema, timeFilter }) => {
 
   // TODO indexIds is optional because of chat summary.
   
@@ -20,7 +20,8 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
   const docs = await searchItems({
     indexIds,
     query: formatChatHistory(messages),
-    limit: maxDocs
+    limit: maxDocs,
+    timeFilter
   }); 
 
   
