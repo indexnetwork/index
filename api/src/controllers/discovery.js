@@ -6,7 +6,6 @@ import { flattenSources } from "../utils/helpers.js";
 import { DIDService } from "../services/did.js";
 import { searchItems } from "../language/search_item.js";
 import { handleCompletions } from "../language/completions.js";
-import { jsonSchemaToZod } from "json-schema-to-zod";
 
 const redis = RedisClient.getInstance();
 const pubSubClient = RedisClient.getPubSubInstance();
@@ -62,7 +61,7 @@ export const completions = async (req, res, next) => {
       indexIds: reqIndexIds,
       stream,
       timeFilter,
-      schema: schema ? jsonSchemaToZod(schema) : undefined
+      schema,
     });
 
     // Handle streaming response
@@ -77,7 +76,7 @@ export const completions = async (req, res, next) => {
     } else {
       // Handle non-streaming response
       console.log(response.choices[0].message.content, schema, 'manyak')
-      return res.json(response.choices[0].message.content);
+      return res.json(JSON.parse(response.choices[0].message.content));
     }
   } catch (error) {
     console.error("An error occurred:", error);
