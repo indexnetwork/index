@@ -157,7 +157,7 @@ export const createCast = async (req, res, next) => {
 
       if (!pass) {
         const openRankPercentile = await getOpenRank(payload.author.fid);
-        if (!openRankPercentile || openRankPercentile < 97) {
+        if (!openRankPercentile || openRankPercentile < 98) {
           return res.status(200).json({ status: 'rejected', message: 'Spam' });
         }
       }
