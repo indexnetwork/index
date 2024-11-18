@@ -8243,6 +8243,11 @@ json-ptr@^3.1.1:
   resolved "https://registry.yarnpkg.com/json-ptr/-/json-ptr-3.1.1.tgz#184c3d48db659fa9bbc1519f7db6f390ddffb659"
   integrity sha512-SiSJQ805W1sDUCD1+/t1/1BIrveq2Fe9HJqENxZmMCILmrPI7WhS/pePpIOx85v6/H2z1Vy7AI08GV2TzfXocg==
 
+json-schema-to-zod@^2.4.1:
+  version "2.4.1"
+  resolved "https://registry.yarnpkg.com/json-schema-to-zod/-/json-schema-to-zod-2.4.1.tgz#bd1e66b4ac4da4d3293e59d9a582b77d8ce9744b"
+  integrity sha512-aMoez9TxgnfLAIZaWTPaQ+j7rOt1K9Ew/TBI85XcnhcFlo/47b1MDgpi4r07XndLSZWOX/KsJiRJvhdzSvo2Dw==
+
 json-schema-traverse@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz#ae7bcb3656ab77a73ba5c49bf654f38e6b6860e2"
@@ -9690,10 +9695,10 @@ pify@^3.0.0:
   resolved "https://registry.yarnpkg.com/pify/-/pify-3.0.0.tgz#e5a4acd2c101fdf3d9a4d07f0dbc4db49dd28176"
   integrity sha512-C3FsVNH1udSEX48gGX1xfvwTWfsYWj5U+8/uK15BGzIGrKoUpghX8hWZwa/OFnakBiiVNmBvemTJR5mcy7iPcg==
 
-pinata@^1.4.1:
-  version "1.4.1"
-  resolved "https://registry.yarnpkg.com/pinata/-/pinata-1.4.1.tgz#c489c483fcbf19dc8d396fa90643d7d5b0652877"
-  integrity sha512-F6JEal1QbajRF1gmaCyUoBzxvQbxUNu30pEpVRMHoACS5tZWa9uGeW2A00B7wmnyYy36g7OhfA9bzx+rw8MRVA==
+pinata@^1.7.2:
+  version "1.7.2"
+  resolved "https://registry.yarnpkg.com/pinata/-/pinata-1.7.2.tgz#3b8229e610d18af6f554fc289ea72921acd495c6"
+  integrity sha512-O/cUx0+Prgt6ZNGi6ehV1Wyrab+kXLWyYgRdgmQ92AzSTiE+nL76zOBDtGSkaYS7f5x1xqGVz/8L3H0Aca2Bbw==
   dependencies:
     is-ipfs "^8.0.4"
     node-fetch "^3.3.1"
