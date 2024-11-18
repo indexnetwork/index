@@ -374,7 +374,8 @@ app.post(
         from: Joi.date().iso().optional(),
         to: Joi.date().iso().optional()
       }).optional(),
-      stream: Joi.boolean().optional()
+      stream: Joi.boolean().optional(),
+      schema: Joi.object().optional(),
     })
   ),
   discoveryController.completions,
