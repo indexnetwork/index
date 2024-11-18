@@ -1,7 +1,9 @@
 import OpenAI from 'openai';
 import { searchItems } from "./search_item.js";
 import { zodResponseFormat } from "openai/helpers/zod";
+import { jsonSchemaToZod } from "json-schema-to-zod";
 
+import { z } from "zod";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -24,6 +26,7 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
     timeFilter
   }); 
 
+  console.log(timeFilter, docs.length)
   
 
   const retrievedDocs = docs
@@ -58,10 +61,22 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
     stream: stream,
   };
 
-  // Add response_format if zodSchema is provided and streaming is disabled
+  // Add response_format if schema is provided and streaming is disabled
   if (schema && !stream) {
-    completionOptions.response_format = zodResponseFormat(schema, 'response');
+    // Add validation to ensure schema has the expected structure
+    if (!schema.definitions?.response) {
+      throw new Error('Invalid schema format: missing definitions.response');
+    }
+    
+    try {
+      const zodSchema = eval(jsonSchemaToZod(schema.definitions.response));
+      completionOptions.response_format = zodResponseFormat(zodSchema, 'response');
+    } catch (error) {
+      console.error('Error processing schema:', error);
+      throw new Error('Failed to process schema format');
+    }
   }
 
-  return openai.chat.completions.create(completionOptions);
+  const result =  openai.chat.completions.create(completionOptions);
+  return result
 };
