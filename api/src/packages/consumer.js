@@ -1,13 +1,14 @@
 import dotenv from "dotenv";
 import * as Sentry from "@sentry/node"
+import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   integrations: [
     nodeProfilingIntegration(),
   ],
-  // Tracing
-  tracesSampleRate: 1.0, //  Capture 100% of the transactions
+  tracesSampleRate: 1.0, 
+  profilesSampleRate: 1.0,
 });
 
 if (process.env.NODE_ENV !== "production") {
