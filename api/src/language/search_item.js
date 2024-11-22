@@ -77,7 +77,6 @@ export const searchItems = async (params) => {
     
 
   const results = await embeddingQuery;
-  console.log("results", embeddingQuery)
 
   let ceramicResp = await ceramic.multiQuery(
     results.map((doc) => {

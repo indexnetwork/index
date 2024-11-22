@@ -13,37 +13,44 @@ import { getOpenRank } from "../libs/openrank.js";
 const redis = RedisClient.getInstance();
 
 const isWorthwhile = async (update) => {
+  try {
+    const decisionSchema = z.object({
+      decision: z.enum(['spam', 'worthwhile']),
+      rationale: z.string().optional().describe("Rationale for the decision."),
+    });
 
-  const decisionSchema = z.object({
-    decision: z.enum(['spam', 'worthwhile']),
-    rationale: z.string().optional().describe("Rationale for the decision."),
-  });
-
-  const spamPrompt = await hub.pull("v2_farcaster_spam_filter");
-  const spamPromptText = spamPrompt.promptMessages[0].prompt.template;
-  
-  const updatePrompt = `Now carefully evaluate this update: 
-  ${update.text}
-`
-  const aiResponse = await observeOpenAI(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), {
-    metadata: {
-      cast_hash: update.hash,
-      function: "is_worthwhile",
+    const spamPrompt = await hub.pull("v2_farcaster_spam_filter");
+    if (!spamPrompt?.promptMessages?.[0]?.prompt?.template) {
+      console.error('Failed to load spam filter prompt');
+      return false; // Fail open to avoid blocking legitimate content
     }
-  }).chat.completions.create({
+
+    const spamPromptText = spamPrompt.promptMessages[0].prompt.template;
+    const updatePrompt = `Now carefully evaluate this update: 
+    ${update.text}
+    `
+
+    const aiResponse = await observeOpenAI(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), {
+      metadata: {
+        cast_hash: update.hash,
+        function: "is_worthwhile",
+      }
+    }).chat.completions.create({
       model: process.env.MODEL_SPAM_FILTER,
       messages: [{ role: "system", content: spamPromptText }, {
         role: "user", content: updatePrompt
       }],
       response_format: zodResponseFormat(decisionSchema, "spam_filter"),
       stream: false,
-  });
+    });
 
-  const response = JSON.parse(aiResponse.choices[0].message.content);
-  if (response.decision === "spam") {
-    return false
+    const response = JSON.parse(aiResponse.choices[0].message.content);
+    return response && response.decision === "worthwhile";
+    
+  } catch (error) {
+    console.error('Error in isWorthwhile:', error, { hash: update.hash, text: update.text });
+    return false;
   }
-  return true
 }
 
 const cleanPayload = (payload) => {
