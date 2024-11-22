@@ -35,7 +35,6 @@ export const search = async (req, res, next) => {
 export const completions = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
 
-  console.log(req.body)
   const { messages, sources, timeFilter, stream = true, schema } = req.body;
 
   try {
@@ -75,7 +74,6 @@ export const completions = async (req, res, next) => {
       res.end();
     } else {
       // Handle non-streaming response
-      console.log(response.choices[0].message.content, schema, 'manyak')
       return res.json(JSON.parse(response.choices[0].message.content));
     }
   } catch (error) {

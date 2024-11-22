@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { z } from "zod";
 import { searchItems } from "./search_item.js";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { jsonSchemaToZod } from "json-schema-to-zod";
