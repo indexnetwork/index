@@ -1,30 +1,23 @@
+import "../utils/sentry.js";
+
 import dotenv from "dotenv";
 
 import express from "express";
+import * as Sentry from "@sentry/node";
+
 
 import Joi from "joi";
 import * as ejv from "express-joi-validation";
 
 import RedisClient from "../clients/redis.js";
 
-import * as Sentry from "@sentry/node";
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
 
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  integrations: [
-    nodeProfilingIntegration(),
-  ],
-  tracesSampleRate: 1.0,
-  profilesSampleRate: 1.0,
-});
 
 const app = express();
-
 
 const port = process.env.PORT || 3001;
 
