@@ -91,23 +91,6 @@ const validator = ejv.createValidator({
 app.use(authenticateMiddleware);
 
 
-app.use((err, req, res, next) => {
-  console.error('Error details:', {
-    message: err.message,
-    stack: err.stack,
-    path: req.path,
-    method: req.method,
-    timestamp: new Date().toISOString()
-  });
-
-  res.status(err.status || 500).json({
-    error: {
-      message: err.message || 'Internal Server Error',
-      status: err.status || 500
-    }
-  });
-});
-
 // DIDs
 app.get(
   "/dids/:did/indexes/:type?",
