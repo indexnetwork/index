@@ -20,7 +20,8 @@ const isWorthwhile = async (update) => {
     });
 
     // Try to get cached prompt first
-    let spamPrompt = await redis.get('spam_filter_prompt');
+    let spamPromptText
+    let spamPrompt = await redis.get('prompt:v2_farcaster_spam_filter');
     if (!spamPrompt) {
       // If not in cache, pull from hub
       spamPrompt = await hub.pull("v2_farcaster_spam_filter");
@@ -28,17 +29,15 @@ const isWorthwhile = async (update) => {
         console.error('Failed to load spam filter prompt');
         return false; // Fail open to avoid blocking legitimate content
       }
-      // Cache the prompt for future use
-      await redis.set('spam_filter_prompt', JSON.stringify(spamPrompt), 'EX', 3600); // Cache for 1 hour
+      spamPromptText = spamPrompt?.promptMessages?.[0]?.prompt?.template
+      
+      await redis.set('prompt:v2_farcaster_spam_filter', spamPromptText, 'EX', 3600); // Cache for 1 hour
     } else {
-      // Parse cached prompt
-      spamPrompt = JSON.parse(spamPrompt);
+      spamPromptText = spamPrompt;
     }
 
-    const spamPromptText = spamPrompt.promptMessages[0].prompt.template;
     const updatePrompt = `Now carefully evaluate this update: 
-    ${update.text}
-    `
+    ${update.text}`
 
     const aiResponse = await observeOpenAI(new OpenAI({ apiKey: process.env.OPENAI_API_KEY }), {
       metadata: {
