@@ -1,9 +1,9 @@
 import "../utils/sentry.js";
 
 import dotenv from "dotenv";
-
-import express from "express";
 import * as Sentry from "@sentry/node";
+import express from "express";
+
 
 
 import Joi from "joi";
