@@ -19,10 +19,20 @@ const isWorthwhile = async (update) => {
       rationale: z.string().optional().describe("Rationale for the decision."),
     });
 
-    const spamPrompt = await hub.pull("v2_farcaster_spam_filter");
-    if (!spamPrompt?.promptMessages?.[0]?.prompt?.template) {
-      console.error('Failed to load spam filter prompt');
-      return false; // Fail open to avoid blocking legitimate content
+    // Try to get cached prompt first
+    let spamPrompt = await redis.get('spam_filter_prompt');
+    if (!spamPrompt) {
+      // If not in cache, pull from hub
+      spamPrompt = await hub.pull("v2_farcaster_spam_filter");
+      if (!spamPrompt?.promptMessages?.[0]?.prompt?.template) {
+        console.error('Failed to load spam filter prompt');
+        return false; // Fail open to avoid blocking legitimate content
+      }
+      // Cache the prompt for future use
+      await redis.set('spam_filter_prompt', JSON.stringify(spamPrompt), 'EX', 3600); // Cache for 1 hour
+    } else {
+      // Parse cached prompt
+      spamPrompt = JSON.parse(spamPrompt);
     }
 
     const spamPromptText = spamPrompt.promptMessages[0].prompt.template;
@@ -246,12 +256,7 @@ export const createCast = async (req, res, next) => {
       const itemService = new ItemService(definition).setSession(session);
       const item = await itemService.addItem("kjzl6kcym7w8yb1lw37upcpbxllni7f5gqoonmp2i68ijfp37jitiy9ymm21pmu", cast.id);
 
-      // Add logging for successful record
-      console.log('Successfully created cast:', {
-        hash: payload.hash,
-        author: payload.author.username,
-        text: payload.text.substring(0, 100) + (payload.text.length > 100 ? '...' : '')
-      });
+
 
       res.status(201).json({ did: session.did.parent, cast, item  });
     } catch (error) {
