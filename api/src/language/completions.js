@@ -22,9 +22,6 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
     timeFilter
   }); 
 
-  console.log(timeFilter, docs.length)
-  
-
   const retrievedDocs = docs
     .map(doc => {
       if (doc.object === "cast") {
