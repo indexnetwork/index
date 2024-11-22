@@ -1,5 +1,5 @@
 export const appConfig = {
-  ipfsProxy: "https://ipfs.index.network/ipfs/",
+  ipfsProxy: "https://ipfs.index.network/files/",
   chains: {
     ethereum: {
       value: "ethereum",

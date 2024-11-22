@@ -3,8 +3,6 @@ import { searchItems } from "./search_item.js";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { jsonSchemaToZod } from "json-schema-to-zod";
 
-import { z } from "zod";
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -16,9 +14,6 @@ const formatChatHistory = (messages) => {
 
 export const handleCompletions = async ({ messages, indexIds, maxDocs=500, stream, schema, timeFilter }) => {
 
-  // TODO indexIds is optional because of chat summary.
-  
-  // Fetch relevant documents
   const docs = await searchItems({
     indexIds,
     query: formatChatHistory(messages),
@@ -32,13 +27,18 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
   const retrievedDocs = docs
     .map(doc => {
       if (doc.object === "cast") {
-        return `Cast details: 
-- text: ${doc.text}
-- link: https://warpcast.com/${doc.author.username}/${doc.hash.substring(0, 12)}
-- author: [${doc.author.name || doc.author.username}](https://warpcast.com/${doc.author.username})
-- created_at: ${doc.timestamp}
-          ----
-`;
+        const authorName = doc.author.name || doc.author.username;
+        const castUrl = `https://warpcast.com/${doc.author.username}/${doc.hash.substring(0, 12)}`;
+        const authorUrl = `https://warpcast.com/${doc.author.username}`;
+        
+        return [
+          'Cast details:',
+          `- text: ${doc.text}`,
+          `- link: ${castUrl}`, 
+          `- author: [${authorName}](${authorUrl})`,
+          `- created_at: ${doc.timestamp}`,
+          '----'
+        ].join('\n');
       }
       return JSON.stringify(doc);
     })
@@ -53,7 +53,6 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
     });
   }
 
-  
   const completionOptions = {
     model: process.env.MODEL_CHAT,
     messages,
@@ -61,9 +60,7 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
     stream: stream,
   };
 
-  // Add response_format if schema is provided and streaming is disabled
   if (schema && !stream) {
-    // Add validation to ensure schema has the expected structure
     if (!schema.definitions?.response) {
       throw new Error('Invalid schema format: missing definitions.response');
     }

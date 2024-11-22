@@ -3,7 +3,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 const pinata = new PinataSDK({
   pinataJwt: process.env.PINATA_JWT_KEY,
-  pinataGateway: "index-network.mypinata.cloud",
+  pinataGateway: "ipfs.index.network",
 });
 
 const s3Client = new S3Client({
@@ -29,7 +29,7 @@ export const uploadAvatar = async (req, res, next) => {
     });
 
     // Upload to IPFS via Pinata
-    const pinataResult = await pinata.upload.file(file);
+    const pinataResult = (await pinata.upload.file(file).group(`019335a5-ed91-770d-8f81-db7182c70c2e`));
 
     // Upload to S3
     const s3Params = {
@@ -44,6 +44,7 @@ export const uploadAvatar = async (req, res, next) => {
     // Respond with both IPFS CID and S3 URL
     res.json({
       cid: pinataResult.cid,
+      pinata: `https://ipfs.index.network/files/${pinataResult.cid}`,
       s3: `https://app-static.index.network/avatars/${pinataResult.cid}.jpg`,
     });
   } catch (error) {
