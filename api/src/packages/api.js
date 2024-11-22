@@ -26,11 +26,6 @@ Sentry.init({
 const app = express();
 
 
-Sentry.setupExpressErrorHandler(app);
-
-
-
-
 const port = process.env.PORT || 3001;
 
 const redis = RedisClient.getInstance();
@@ -709,7 +704,9 @@ app.delete(
 app.post("/farcaster/updates", farcasterController.createCast);
 
 
-
+app.get("/debug-sentry", function mainHandler(req, res) {
+  throw new Error("My first Sentry error!");
+});
 
 const start = async () => {
   console.log("Starting API ...", port);
@@ -718,6 +715,7 @@ const start = async () => {
 
   await setIndexedModelParams(app);
 
+  Sentry.setupExpressErrorHandler(app);
   app.listen(port, async () => {
     console.log(`API listening on port ${port}`);
   });
