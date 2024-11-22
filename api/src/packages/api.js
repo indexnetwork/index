@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import Moralis from "moralis";
+
 import express from "express";
 
 import Joi from "joi";
@@ -10,30 +10,26 @@ import RedisClient from "../clients/redis.js";
 import * as Sentry from "@sentry/node";
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config();
+}
+
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
   integrations: [
-    // Add our Profiling integration
     nodeProfilingIntegration(),
   ],
-
-  // Add Tracing by setting tracesSampleRate
-  // We recommend adjusting this value in production
   tracesSampleRate: 1.0,
-
-  // Set sampling rate for profiling
-  // This is relative to tracesSampleRate
   profilesSampleRate: 1.0,
 });
 
 const app = express();
 
+
 Sentry.setupExpressErrorHandler(app);
 
 
-if (process.env.NODE_ENV !== "production") {
-  dotenv.config();
-}
+
 
 const port = process.env.PORT || 3001;
 
@@ -712,6 +708,9 @@ app.delete(
 
 app.post("/farcaster/updates", farcasterController.createCast);
 
+
+
+
 const start = async () => {
   console.log("Starting API ...", port);
   await redis.connect();
@@ -719,12 +718,9 @@ const start = async () => {
 
   await setIndexedModelParams(app);
 
-  await Moralis.start({
-    apiKey: process.env.MORALIS_API_KEY,
-  });
-
   app.listen(port, async () => {
     console.log(`API listening on port ${port}`);
   });
 };
+
 start();
