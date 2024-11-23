@@ -87,25 +87,48 @@ export const searchItems = async (params) => {
   const results = await embeddingQuery;
   console.timeEnd('database-query');
 
-  console.time('ceramic-query');
-  let ceramicResp = await ceramic.multiQuery(
-    results.map((doc) => {
-      return {
-        streamId: doc.item_id,
-      };
-    }),
-  );
-  console.timeEnd('ceramic-query');
+  console.time('model-content-query');
+  // Group results by model_id
+  const groupedByModel = results.reduce((acc, doc) => {
+    if (!acc[doc.model_id]) {
+      acc[doc.model_id] = [];
+    }
+    acc[doc.model_id].push(doc);
+    return acc;
+  }, {});
 
-  ceramicResp = Object.values(ceramicResp).map((doc) => {
-    const { vector, ...contentWithoutVector } = doc.content;
-    return {
-      id: doc.id.toString(),
-      modelName: doc.model,
-      controllerDID: doc.state.metadata.controllers[0],
-      ...contentWithoutVector,
-    };
+  // Query each model table once with all relevant stream_ids
+  const contentPromises = Object.entries(groupedByModel).map(async ([modelId, docs]) => {
+    const streamIds = docs.map(doc => doc.item_id);
+    const modelResults = await cli(modelId)
+      .select(['stream_id', 'stream_content'])
+      .whereIn('stream_id', streamIds);
+
+    // Create a lookup map for quick access
+    const contentMap = modelResults.reduce((acc, row) => {
+      acc[row.stream_id] = row.stream_content;
+      return acc;
+    }, {});
+
+    // Map back to original order with content
+    return docs.map(doc => {
+      const content = contentMap[doc.item_id];
+      if (!content) return null;
+
+      const { vector, ...contentWithoutVector } = content;
+      return {
+        id: doc.item_id,
+        modelName: doc.model_name,
+        controllerDID: content.controllers?.[0] || null,
+        ...contentWithoutVector,
+      };
+    });
   });
+
+  const ceramicResp = (await Promise.all(contentPromises))
+    .flat()
+    .filter(Boolean);
+  console.timeEnd('model-content-query');
 
   console.timeEnd('searchItems-total');
   return ceramicResp;
