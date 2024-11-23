@@ -15,6 +15,7 @@ const cli = knex({
 });
 
 export const searchItems = async (params) => {
+  console.time('searchItems-total');
   const { 
     indexIds, 
     query, 
@@ -50,10 +51,12 @@ export const searchItems = async (params) => {
   
   // Only add vector search if query is provided
   if (query) {
+    console.time('embedding-generation');
     const embeddingResponse = await openai.embeddings.create({
       model: process.env.MODEL_EMBEDDING,
       input: query,
     });
+    console.timeEnd('embedding-generation');
     const vector = embeddingResponse.data[0].embedding;
 
     // Set HNSW search parameter
@@ -76,8 +79,15 @@ export const searchItems = async (params) => {
 
     
 
+  // Log the final query before execution
+  const queryString = embeddingQuery.toString();
+  console.log('Executing query:', queryString);
+  
+  console.time('database-query');
   const results = await embeddingQuery;
+  console.timeEnd('database-query');
 
+  console.time('ceramic-query');
   let ceramicResp = await ceramic.multiQuery(
     results.map((doc) => {
       return {
@@ -85,7 +95,8 @@ export const searchItems = async (params) => {
       };
     }),
   );
-  
+  console.timeEnd('ceramic-query');
+
   ceramicResp = Object.values(ceramicResp).map((doc) => {
     const { vector, ...contentWithoutVector } = doc.content;
     return {
@@ -96,6 +107,7 @@ export const searchItems = async (params) => {
     };
   });
 
+  console.timeEnd('searchItems-total');
   return ceramicResp;
 };
 
