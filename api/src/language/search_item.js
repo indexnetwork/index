@@ -1,4 +1,3 @@
-import { CeramicClient } from "@ceramicnetwork/http-client";
 import pkg from "knex";
 import OpenAI from "openai";
 
@@ -6,7 +5,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const ceramic = new CeramicClient(process.env.CERAMIC_HOST);
+
 const { knex } = pkg;
 
 const cli = knex({
@@ -15,7 +14,7 @@ const cli = knex({
 });
 
 export const searchItems = async (params) => {
-  console.time('searchItems-total');
+  
   const { 
     indexIds, 
     query, 
@@ -51,12 +50,10 @@ export const searchItems = async (params) => {
   
   // Only add vector search if query is provided
   if (query) {
-    console.time('embedding-generation');
     const embeddingResponse = await openai.embeddings.create({
       model: process.env.MODEL_EMBEDDING,
       input: query,
     });
-    console.timeEnd('embedding-generation');
     const vector = embeddingResponse.data[0].embedding;
 
     // Set HNSW search parameter
@@ -79,15 +76,9 @@ export const searchItems = async (params) => {
 
     
 
-  // Log the final query before execution
-  const queryString = embeddingQuery.toString();
-  console.log('Executing query:', queryString);
   
-  console.time('database-query');
   const results = await embeddingQuery;
-  console.timeEnd('database-query');
 
-  console.time('model-content-query');
   // Group results by model_id
   const groupedByModel = results.reduce((acc, doc) => {
     if (!acc[doc.model_id]) {
@@ -128,9 +119,7 @@ export const searchItems = async (params) => {
   const ceramicResp = (await Promise.all(contentPromises))
     .flat()
     .filter(Boolean);
-  console.timeEnd('model-content-query');
 
-  console.timeEnd('searchItems-total');
   return ceramicResp;
 };
 

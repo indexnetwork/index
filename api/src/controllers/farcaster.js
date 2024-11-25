@@ -245,7 +245,7 @@ export const createCast = async (req, res, next) => {
       if (payload.channel) {
         payload.channel.warpcast_url = `https://warpcast.com/~/channel/${payload.channel.id}`;
       }
-      //console.log(payload)
+      console.log(payload)
       const cast = await composeDBService.createNode({
         ...payload,
       });
