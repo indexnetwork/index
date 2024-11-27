@@ -49,13 +49,13 @@ export const createEvent = async (req, res, next) => {
 
       let payload = cleanPayload(req.body);
       // Check for duplicate events
-      const key = `processed_event:${payload.title}_${payload.start_time}`;
-      const exists = await redis.get(key);
+      const member = `${payload.title}_${payload.start_time}`;
+      const exists = await redis.hget(`processed_events`, member);
       if (exists) {
         return res.status(200).json({ status: 'rejected', message: 'Duplicate event, skipped processing' });
       }
-      await redis.set(key, 'true');
-      console.log(payload)
+      await redis.hset(`processed_events`, member, '1');
+      
       const event = await composeDBService.createNode({
         ...payload,
       });
