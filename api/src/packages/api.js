@@ -32,6 +32,7 @@ import * as didController from "../controllers/did.js";
 import * as discoveryController from "../controllers/discovery.js";
 
 import * as farcasterController from "../controllers/farcaster.js";
+import * as lumaController from "../controllers/luma.js";
 
 import * as litProtocol from "../controllers/lit-protocol.js";
 
@@ -695,6 +696,7 @@ app.delete(
 // app.use(errorMiddleware);
 
 app.post("/farcaster/updates", farcasterController.createCast);
+app.post("/luma/updates", lumaController.createEvent);
 
 
 app.get("/debug-sentry", function mainHandler(req, res) {
