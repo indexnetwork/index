@@ -8,6 +8,7 @@ const redis = RedisClient.getInstance();
 const cleanPayload = (payload) => {
   // Basic validation and cleaning of event data
   const cleanedPayload = {
+    event_id: payload.event_id,
     title: payload.title?.trim(),
     description: payload.description?.trim(),
     start_time: payload.start_time,
@@ -46,21 +47,20 @@ export const createEvent = async (req, res, next) => {
         eventFragment,
       ).setSession(session);
 
-      let payload = cleanPayload(req.body.data);
-
+      let payload = cleanPayload(req.body);
       // Check for duplicate events
       const key = `processed_event:${payload.title}_${payload.start_time}`;
       const result = await redis.set(key, 'true');
       if (!result) {
         return res.status(200).json({ status: 'rejected', message: 'Duplicate event, skipped processing' });
       }
-
+      console.log(payload)
       const event = await composeDBService.createNode({
         ...payload,
       });
 
       const itemService = new ItemService(definition).setSession(session);
-      const item = await itemService.addItem("kjzl6hvfrbw6c9mxmf3qq4i4pcq0b26z7ns8drwsrr5hotcbmkwz7gobki2az9d", event.id);
+      const item = await itemService.addItem("kjzl6kcym7w8y8ej6pxznwuowag6xervzjacejoegy3xn8l5mgu1f1v3l9hp3wt", event.id);
 
       res.status(201).json({ did: session.did.parent, event, item });
     } catch (error) {
