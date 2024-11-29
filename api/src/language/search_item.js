@@ -109,6 +109,7 @@ export const searchItems = async (params) => {
       const { vector, ...contentWithoutVector } = content;
       return {
         id: doc.item_id,
+        modelId: doc.model_id,
         modelName: doc.model_name,
         controllerDID: content.controllers?.[0] || null,
         ...contentWithoutVector,

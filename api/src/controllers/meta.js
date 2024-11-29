@@ -17,6 +17,52 @@ const ethProvider = new ethers.providers.InfuraProvider("mainnet", {
 import RedisClient from "../clients/redis.js";
 const redis = RedisClient.getInstance();
 
+
+export const getConfig = async (req, res) => {
+  return res.json({
+    "indexes": [
+      {
+        "id": "farcaster",
+        "name": "Farcaster",
+        "icon": "@/assets/images/icons/farcaster.png",
+        "status": "available"
+      },
+      {
+        "id": "luma",
+        "name": "Luma",
+        "icon": "@/assets/images/icons/luma.png",
+        "status": "available"
+      },
+      {
+        "id": "paragraph",
+        "name": "Paragraph.xyz",
+        "icon": "@/assets/images/icons/paragraph.png",
+        "status": "coming_soon"
+      }
+    ],
+    "agents": [
+      {
+        "id": "index",
+        "name": "Index",
+        "icon": "@/assets/images/icons/agent-index.png",
+        "description": "Your primary assistant that answers questions"
+      },
+      {
+        "id": "context_broker",
+        "name": "Context Broker",
+        "icon": "@/assets/images/icons/agent-context_broker.png",
+        "description": "Discovers relevant conversations while protecting everyone's privacy"
+      },
+      {
+        "id": "listener",
+        "name": "Listener",
+        "icon": "@/assets/images/icons/agent-listener.png",
+        "description": "Tracks your curiosities and sends updates when relevant."
+      }
+    ]
+  })  
+}
+
 export const getAvatar = async (ensName) => {
   try {
     const resolver = await ethProvider.getResolver(ensName);

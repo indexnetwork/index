@@ -699,6 +699,11 @@ app.post("/farcaster/updates", farcasterController.createCast);
 app.post("/luma/updates", lumaController.createEvent);
 
 
+app.get(
+  "/config",
+  metaController.getConfig,
+);
+
 app.get("/debug-sentry", function mainHandler(req, res) {
   throw new Error("My first Sentry error!");
 });
