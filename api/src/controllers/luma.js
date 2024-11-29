@@ -61,7 +61,7 @@ export const createEvent = async (req, res, next) => {
       });
 
       const itemService = new ItemService(definition).setSession(session);
-      const item = await itemService.addItem("kjzl6kcym7w8y8ej6pxznwuowag6xervzjacejoegy3xn8l5mgu1f1v3l9hp3wt", event.id);
+      const item = await itemService.addItem("kjzl6kcym7w8yay64ivr2h7xc12d580nt5xes8ozqac356u7tbp8d8i755iz40l", event.id);
 
       res.status(201).json({ did: session.did.parent, event, item });
     } catch (error) {
