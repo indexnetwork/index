@@ -3,17 +3,30 @@ import { z } from "zod";
 import { searchItems } from "./search_item.js";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { jsonSchemaToZod } from "json-schema-to-zod";
+import tiktoken from 'tiktoken';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+const encoding = tiktoken.encoding_for_model(process.env.MODEL_CHAT);
 
 const formatChatHistory = (messages) => {
   if (!Array.isArray(messages)) return '';
   return messages.map(m => `${m.role}: ${m.content}`).join('\n');
 };
 
+const countTokens = (text) => {
+  try {
+    return encoding.encode(text).length;
+  } catch (error) {
+    console.warn("Warning: model not found. Using o200k_base encoding.");
+  }
+};
+
 export const handleCompletions = async ({ messages, indexIds, maxDocs=500, stream, schema, timeFilter }) => {
+  const MAX_TOKENS = 100000;
+  let totalTokens = 0;
 
   const docs = await searchItems({
     indexIds,
@@ -22,27 +35,38 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
     timeFilter
   }); 
 
-  const retrievedDocs = docs
-    .map(doc => {
-      if (doc.object === "cast") {
-        const authorName = doc.author.name || doc.author.username;
-        const castUrl = `https://warpcast.com/${doc.author.username}/${doc.hash.substring(0, 12)}`;
-        const authorUrl = `https://warpcast.com/${doc.author.username}`;
-        
-        return [
-          'Cast details:',
-          `- text: ${doc.text}`,
-          `- link: ${castUrl}`, 
-          `- author: [${authorName}](${authorUrl})`,
-          `- created_at: ${doc.timestamp}`,
-          '----'
-        ].join('\n');
-      }
-      return JSON.stringify(doc);
-    })
-    .join('\n');
+  const filteredDocs = [];
+  for (const doc of docs) {
+    let docText;
+    if (doc.object === "cast") {
+      const authorName = doc.author.name || doc.author.username;
+      const castUrl = `https://warpcast.com/${doc.author.username}/${doc.hash.substring(0, 12)}`;
+      const authorUrl = `https://warpcast.com/${doc.author.username}`;
+      
+      docText = [
+        'Cast details:',
+        `- text: ${doc.text}`,
+        `- link: ${castUrl}`, 
+        `- author: [${authorName}](${authorUrl})`,
+        `- created_at: ${doc.timestamp}`,
+        '----'
+      ].join('\n');
+    } else {
+      docText = JSON.stringify(doc);
+    }
+
+    const docTokens = countTokens(docText);
+    if (totalTokens + docTokens <= MAX_TOKENS) {
+      filteredDocs.push(docText);
+      totalTokens += docTokens;
+    } else {
+      break;
+    }
+  }
+
+  const retrievedDocs = filteredDocs.join('\n');
   
-    
+  console.log('totalTokens', totalTokens)
 
   if (retrievedDocs) {
     messages.push({
