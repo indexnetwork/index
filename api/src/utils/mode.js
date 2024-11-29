@@ -6,7 +6,8 @@ export async function getModelInfo() {
   }
 
   try {
-    const modelResponse = await fetch(`http://localhost:8000/model/info`);
+    const port = process.env.PORT || 8000;
+    const modelResponse = await fetch(`http://localhost:${port}/model/info`);
     const modelInfo = await modelResponse.json();
     return modelInfo;
   } catch (error) {
