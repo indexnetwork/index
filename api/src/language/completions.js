@@ -9,7 +9,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const encoding = tiktoken.encoding_for_model(process.env.MODEL_CHAT);
+const encoding = tiktoken.encoding_for_model('gpt-4o');
 
 const formatChatHistory = (messages) => {
   if (!Array.isArray(messages)) return '';
@@ -67,6 +67,7 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
   const retrievedDocs = filteredDocs.join('\n');
   
   console.log('totalTokens', totalTokens)
+  console.log('totalTokens)
 
   if (retrievedDocs) {
     messages.push({
