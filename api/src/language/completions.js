@@ -67,7 +67,7 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
   const retrievedDocs = filteredDocs.join('\n');
   
   console.log('totalTokens', totalTokens)
-  console.log('totalTokens)
+  
 
   if (retrievedDocs) {
     messages.push({
