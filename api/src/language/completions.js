@@ -4,6 +4,7 @@ import { searchItems } from "./search_item.js";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { jsonSchemaToZod } from "json-schema-to-zod";
 import tiktoken from 'tiktoken';
+import { getModelInfo } from '../utils/mode.js';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -35,10 +36,14 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
     timeFilter
   }); 
 
+  const { runtimeDefinition } = await getModelInfo();
+
+
   const filteredDocs = [];
   for (const doc of docs) {
     let docText;
-    if (doc.object === "cast") {
+    //console.log(doc.modelId, runtimeDefinition.models.Cast.id, runtimeDefinition.models.Event.id)
+    if (doc.modelId === runtimeDefinition.models.Cast.id) {
       const authorName = doc.author.name || doc.author.username;
       const castUrl = `https://warpcast.com/${doc.author.username}/${doc.hash.substring(0, 12)}`;
       const authorUrl = `https://warpcast.com/${doc.author.username}`;
@@ -51,7 +56,18 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
         `- created_at: ${doc.timestamp}`,
         '----'
       ].join('\n');
-    } else {
+    } else if (doc.modelId == runtimeDefinition.models.Event.id) {
+      docText = [
+        'Event details:',
+        `- title: ${doc.title}`,
+        `- location: ${doc.location}`,
+        `- start time: ${doc.start_time}`,
+        `- end time: ${doc.end_time}`,
+        `- link: ${doc.link}`,
+        `- description: ${doc.description}`,
+        '----'
+      ].join('\n');
+    }  else {
       docText = JSON.stringify(doc);
     }
 
