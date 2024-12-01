@@ -26,7 +26,7 @@ const chromaClient = new ChromaClient({
 });
 
 const collection = await chromaClient.getOrCreateCollection({
-  name: "index_mainnet",
+  name: process.env.CHROMA_COLLECTION_NAME || "index_mainnet",
 });
 
 
