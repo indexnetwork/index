@@ -1,4 +1,6 @@
 import OpenAI from 'openai';
+import { traceable } from "langsmith/traceable";
+import { wrapOpenAI } from "langsmith/wrappers";
 import { z } from "zod";
 import { searchItems } from "./search_item.js";
 import { zodResponseFormat } from "openai/helpers/zod";
@@ -6,9 +8,9 @@ import { jsonSchemaToZod } from "json-schema-to-zod";
 import tiktoken from 'tiktoken';
 import { getModelInfo } from '../utils/mode.js';
 
-const openai = new OpenAI({
+const openai = wrapOpenAI(new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}));
 
 const encoding = tiktoken.encoding_for_model('gpt-4o');
 
@@ -25,13 +27,45 @@ const countTokens = (text) => {
   }
 };
 
-export const handleCompletions = async ({ messages, indexIds, maxDocs=500, stream, schema, timeFilter }) => {
+const getDocText = (doc, metadata, runtimeDefinition) => {
+  if (metadata.modelId === runtimeDefinition.models.Cast.id) {
+    const authorName = doc.author.name || doc.author.username;
+    const castUrl = `https://warpcast.com/${doc.author.username}/${doc.hash.substring(0, 12)}`;
+    const authorUrl = `https://warpcast.com/${doc.author.username}`;
+    
+    return [
+      'Cast details:',
+      `- text: ${doc.text}`,
+      `- link: ${castUrl}`, 
+      `- author: [${authorName}](${authorUrl})`,
+      `- created_at: ${doc.timestamp}`,
+      '----'
+    ].join('\n');
+  } 
+  
+  if (metadata.modelId === runtimeDefinition.models.Event.id) {
+    return [
+      'Event details:',
+      `- title: ${doc.title}`,
+      `- location: ${doc.location}`,
+      `- start time: ${doc.start_time}`,
+      `- end time: ${doc.end_time}`,
+      `- link: ${doc.link}`,
+      `- description: ${doc.description}`,
+      '----'
+    ].join('\n');
+  }
+  
+  return JSON.stringify(doc);
+};
+
+export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=500, stream, schema, timeFilter }) => {
   const MAX_TOKENS = 100000;
   let totalTokens = 0;
 
   const docs = await searchItems({
     indexIds,
-    query: formatChatHistory(messages),
+    query: formatChatHistory(messages.filter(m => m.role === 'user')),
     limit: maxDocs,
     timeFilter
   }); 
@@ -40,37 +74,9 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
 
 
   const filteredDocs = [];
-  for (const doc of docs) {
-    let docText;
-    //console.log(doc.modelId, runtimeDefinition.models.Cast.id, runtimeDefinition.models.Event.id)
-    if (doc.modelId === runtimeDefinition.models.Cast.id) {
-      const authorName = doc.author.name || doc.author.username;
-      const castUrl = `https://warpcast.com/${doc.author.username}/${doc.hash.substring(0, 12)}`;
-      const authorUrl = `https://warpcast.com/${doc.author.username}`;
-      
-      docText = [
-        'Cast details:',
-        `- text: ${doc.text}`,
-        `- link: ${castUrl}`, 
-        `- author: [${authorName}](${authorUrl})`,
-        `- created_at: ${doc.timestamp}`,
-        '----'
-      ].join('\n');
-    } else if (doc.modelId == runtimeDefinition.models.Event.id) {
-      docText = [
-        'Event details:',
-        `- title: ${doc.title}`,
-        `- location: ${doc.location}`,
-        `- start time: ${doc.start_time}`,
-        `- end time: ${doc.end_time}`,
-        `- link: ${doc.link}`,
-        `- description: ${doc.description}`,
-        '----'
-      ].join('\n');
-    }  else {
-      docText = JSON.stringify(doc);
-    }
-
+  for (const item of docs) {
+    const docText = getDocText(item.data, item.metadata, runtimeDefinition);
+    
     const docTokens = countTokens(docText);
     if (totalTokens + docTokens <= MAX_TOKENS) {
       filteredDocs.push(docText);
@@ -79,6 +85,7 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
       break;
     }
   }
+
 
   const retrievedDocs = filteredDocs.join('\n');
   
@@ -115,4 +122,4 @@ export const handleCompletions = async ({ messages, indexIds, maxDocs=500, strea
 
   const result =  openai.chat.completions.create(completionOptions);
   return result
-};
+});

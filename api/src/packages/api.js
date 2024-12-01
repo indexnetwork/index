@@ -704,6 +704,11 @@ app.get(
   metaController.getConfig,
 );
 
+app.get(
+  "/batch",
+  embeddingController.findAndUpsertEmbeddingsByIndexIds,
+);
+
 app.get("/debug-sentry", function mainHandler(req, res) {
   throw new Error("My first Sentry error!");
 });

@@ -10,11 +10,25 @@ import { CeramicClient } from "@ceramicnetwork/http-client";
 import * as hub from "langchain/hub";
 import { ethers } from "ethers";
 
+
+
+
 import Logger from "../utils/logger.js";
 import { DIDSession } from "did-session";
 import { handleUserMessage } from "../agents/basic_assistant.js";
 import { getAgentDID } from "../utils/helpers.js";
 import { handleCompletions } from "../language/completions.js";
+import { ChromaClient } from "chromadb";
+
+
+const chromaClient = new ChromaClient({
+  path: 'http://chroma-chromadb.env-mainnet:8000'
+});
+
+const collection = await chromaClient.getOrCreateCollection({
+  name: "index_mainnet",
+});
+
 
 const logger = Logger.getInstance();
 
@@ -50,6 +64,8 @@ class Indexer {
 
     const itemService = new ItemService(this.definition);
     const indexItem = await itemService.getIndexItemById(id, false);
+
+    const itemStream = await ceramic.loadStream(indexItem.itemId);
 
     if (indexItem.index.controllerDID.id !== indexItem.controllerDID.id) {
       logger.warn(
@@ -116,6 +132,26 @@ class Indexer {
         vector: embeddingResponse.data.vector,
         description: "Default document embeddings",
       });
+
+    
+      
+
+      // Add vector index upsert
+      await collection.upsert({
+        ids: [embedding.id],
+        embeddings: [embeddingResponse.data.vector],
+        documents: [JSON.stringify(itemStream.content)],
+        metadatas: [{
+          modelName: embeddingResponse.data.model,
+          modelId: indexItem.modelId,
+          indexId: indexItem.indexId,
+          itemId: indexItem.itemId,
+          createdAt: new Date(indexItem.createdAt).getTime(),
+          updatedAt: new Date(indexItem.updatedAt).getTime(),
+        }]
+      });
+
+
       if (embedding) {
         logger.info(
           `Step [0]: EmbeddingEvent trigger successful for id: ${embedding.id}`,

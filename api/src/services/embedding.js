@@ -1,6 +1,24 @@
 import { ComposeClient } from "@composedb/client";
 import { getCurrentDateTime } from "../utils/helpers.js";
 import { IndexService } from "./index.js";
+import pkg from "knex";
+import { ChromaClient } from 'chromadb';
+
+const { knex } = pkg;
+
+const cli = knex({
+  client: "pg",
+  connection: process.env.POSTGRES_CONNECTION_STRING,
+});
+
+const chromaClient = new ChromaClient({
+  path: 'http://chroma-chromadb.env-mainnet:8000'
+});
+
+const collection = await chromaClient.getOrCreateCollection({
+  name: "index_mainnet",
+});
+
 
 export class EmbeddingService {
   constructor(definition) {
@@ -307,5 +325,58 @@ export class EmbeddingService {
       deletedAt: getCurrentDateTime(),
     };
     return await this.updateEmbedding(content);
+  }
+
+  
+  async findAndUpsertEmbeddingsByIndexIds(indexIds) {
+    try {
+      const BATCH_SIZE = 1000;
+      let processedCount = 0;
+      
+      while (true) {
+        const embeddings = await cli('index_embeddings')
+          .select('*')
+          .whereIn('index_id', indexIds)
+          .whereNull('deleted_at')
+          .offset(processedCount)
+          .limit(BATCH_SIZE);
+
+        if (embeddings.length === 0) break;
+
+        const newIds = embeddings.map(e => e.stream_id);
+        const newVectors = embeddings.map(e => JSON.parse(e.vector));
+        const newMetadatas = embeddings.map(embedding => ({
+          modelName: embedding.model_name,
+          modelId: embedding.model_id,
+          indexId: embedding.index_id,
+          itemId: embedding.item_id,
+          createdAt: new Date(embedding.created_at).toISOString(),
+          updatedAt: new Date(embedding.updated_at).toISOString(),
+        }));
+        const newDatas = await Promise.all(embeddings.map(async (a) => {
+          const itemStream = await cli(a.model_id)
+            .select('stream_content')
+            .where('stream_id', a.item_id)
+            .first();
+          return JSON.stringify(itemStream.stream_content);
+        }));
+
+        await collection.add({
+          ids: newIds,
+          embeddings: newVectors,  // Use existing vectors
+          metadatas: newMetadatas,
+          documents: newDatas,
+        });
+
+        console.log(processedCount)
+        processedCount += embeddings.length;
+        if (embeddings.length < BATCH_SIZE) break;
+      }
+
+      return processedCount;
+    } catch (error) {
+      console.error("Error in findAndUpsertEmbeddingsByIndexIds:", error);
+      throw error;
+    }
   }
 }
