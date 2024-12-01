@@ -60,18 +60,21 @@ const getDocText = (doc, metadata, runtimeDefinition) => {
 };
 
 export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=500, stream, schema, timeFilter }) => {
+  console.time('handleCompletions:total');
   const MAX_TOKENS = 100000;
   let totalTokens = 0;
 
+  console.time('handleCompletions:search');
   const docs = await searchItems({
     indexIds,
     query: formatChatHistory(messages.filter(m => m.role === 'user')),
     limit: maxDocs,
     timeFilter
   }); 
+  console.timeEnd('handleCompletions:search');
 
+  console.time('handleCompletions:processDocuments');
   const { runtimeDefinition } = await getModelInfo();
-
 
   const filteredDocs = [];
   for (const item of docs) {
@@ -86,8 +89,8 @@ export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=
     }
   }
 
-
   const retrievedDocs = filteredDocs.join('\n');
+  console.timeEnd('handleCompletions:processDocuments');
   
   console.log('totalTokens', totalTokens)
   
@@ -120,6 +123,10 @@ export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=
     }
   }
 
-  const result =  openai.chat.completions.create(completionOptions);
-  return result
+  console.time('handleCompletions:completion');
+  const result = await openai.chat.completions.create(completionOptions);
+  console.timeEnd('handleCompletions:completion');
+
+  console.timeEnd('handleCompletions:total');
+  return result;
 });
