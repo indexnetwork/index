@@ -361,7 +361,7 @@ export class EmbeddingService {
           return JSON.stringify(itemStream.stream_content);
         }));
 
-        await collection.add({
+        await collection.upsert({
           ids: newIds,
           embeddings: newVectors,  // Use existing vectors
           metadatas: newMetadatas,
