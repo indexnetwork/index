@@ -26,25 +26,33 @@ export const searchItems = async (params) => {
   // If there's a query, perform vector similarity search
   if (query) {
     const embeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-3-large",
+      model: process.env.MODEL_EMBEDDING,
       input: query,
     });
     const vector = embeddingResponse.data[0].embedding;
 
     // Build where clause for ChromaDB
     let whereClause = {};
+    const conditions = [];
+    
     if (indexIds?.length) {
-      whereClause.indexId = { $in: indexIds };
+      conditions.push({ indexId: { $in: indexIds } });
     }
+    
     if (timeFilter) {
       if (timeFilter.from) {
-        whereClause.createdAt = { $gte: new Date(timeFilter.from).getTime() };
+        conditions.push({ createdAt: { $gte: new Date(timeFilter.from).getTime() } });
       }
       if (timeFilter.to) {
-        whereClause.createdAt = { $lte: new Date(timeFilter.to).getTime() };
+        conditions.push({ createdAt: { $lte: new Date(timeFilter.to).getTime() } });
       }
     }
 
+    if (conditions.length > 0) {
+      whereClause = conditions.length === 1 ? conditions[0] : { $and: conditions };
+    }
+
+    console.log('whereClause', whereClause);
     const results = await collection.query({
       queryEmbeddings: [vector],
       nResults: 1000,
