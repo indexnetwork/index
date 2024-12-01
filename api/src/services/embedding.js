@@ -423,7 +423,7 @@ export class EmbeddingService {
 
           const newEmbeddingVectors = await Promise.all(formattedTexts.map(async (text) => {
             const response = await openai.embeddings.create({
-              model: MODEL_EMBEDDING,
+              model: process.env.MODEL_EMBEDDING,
               input: text,
             });
             return response.data[0].embedding;
