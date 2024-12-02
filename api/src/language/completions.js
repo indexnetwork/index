@@ -6,6 +6,7 @@ import { searchItems } from "./search_item.js";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { jsonSchemaToZod } from "json-schema-to-zod";
 import tiktoken from 'tiktoken';
+import * as hub from "langchain/hub";
 import { getModelInfo } from '../utils/mode.js';
 
 const openai = wrapOpenAI(new OpenAI({
@@ -59,7 +60,7 @@ const getDocText = (doc, metadata, runtimeDefinition) => {
   return JSON.stringify(doc);
 };
 
-export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=500, stream, schema, timeFilter }) => {
+export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=500, stream, prompt, schema, timeFilter }) => {
   console.time('handleCompletions:total');
   const MAX_TOKENS = 100000;
   let totalTokens = 0;
@@ -94,17 +95,19 @@ export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=
   
   console.log('totalTokens', totalTokens)
   
+  const completionsPrompt = await hub.pull(prompt || "v2_completions");
+  const completionsPromptText = completionsPrompt.promptMessages[0].prompt.template;
 
-  if (retrievedDocs) {
-    messages.push({
-      role: 'system',
-      content: `Context information:\n${retrievedDocs}`
-    });
-  }
 
   const completionOptions = {
     model: process.env.MODEL_CHAT,
-    messages,
+    messages: [ {
+      role: 'system',
+      content: completionsPromptText
+    },{
+      role: 'system', 
+      content: `Context information:\n${retrievedDocs || 'No context found'}`
+    }, ...messages],
     temperature: 0,
     stream: stream,
   };

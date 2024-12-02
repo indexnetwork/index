@@ -357,6 +357,7 @@ app.post(
   validator.body(
     Joi.object({
       messages: Joi.array().items(Joi.any()).min(1).required(),
+      prompt: Joi.string().optional(),
       sources: Joi.array().items(Joi.string()).min(1).required(),
       timeFilter: Joi.object({
         from: Joi.date().iso().optional(),

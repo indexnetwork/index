@@ -35,13 +35,12 @@ export const search = async (req, res, next) => {
 export const completions = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
 
-  const { messages, sources, timeFilter, stream = true, schema } = req.body;
+  const { messages, sources, timeFilter, stream = true, prompt, schema } = req.body;
 
   try {
     const didService = new DIDService(definition);
     const reqIndexIds = await flattenSources(sources, didService);
     
-    // Only set SSE headers if streaming is enabled
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -49,18 +48,14 @@ export const completions = async (req, res, next) => {
       res.setHeader('Content-Encoding', 'none');
     }
 
-    const completionsPrompt = await hub.pull("v2_completions");
-    const completionsPromptText = completionsPrompt.promptMessages[0].prompt.template;
 
     const response = await handleCompletions({
-      messages: [{
-        role: 'system',
-        content: completionsPromptText
-      }, ...messages],
+      messages,
       indexIds: reqIndexIds,
       stream,
       timeFilter,
       schema,
+      prompt,
     });
 
     // Handle streaming response
@@ -78,7 +73,9 @@ export const completions = async (req, res, next) => {
     }
   } catch (error) {
     console.error("An error occurred:", error);
-    res.status(500).json({ error: "Internal Server Error" });
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Internal Server Error" });
+    }
   }
 };
 
