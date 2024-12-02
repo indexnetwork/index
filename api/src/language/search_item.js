@@ -11,7 +11,7 @@ const chromaClient = new ChromaClient({
 });
 
 const collection = await chromaClient.getOrCreateCollection({
-  name: process.env.CHROMA_COLLECTION_NAME || "index_mainnet",
+  name: process.env.CHROMA_COLLECTION_NAME || "index_mainnet"
 });
 
 export const searchItems = async (params) => {
@@ -68,29 +68,34 @@ export const searchItems = async (params) => {
 
   } else {
     // For non-query searches, get all documents and filter
+    // Build where clause for ChromaDB
+    let whereClause = { indexId: { $in: indexIds } };
+    
+    if (timeFilter) {
+      whereClause = {
+        $and: [
+          whereClause,
+          timeFilter.from && { createdAt: { $gte: new Date(timeFilter.from).getTime() } },
+          timeFilter.to && { createdAt: { $lte: new Date(timeFilter.to).getTime() } }
+        ].filter(Boolean)
+      };
+    }
+
     const results = await collection.get({
-      where: { indexId: { $in: indexIds } },
+      where: whereClause,
       limit: limit + offset
     });
 
-    // Filter and paginate results
+    // Map results
     const filteredResults = results.ids
       .map((id, index) => ({
         id,
         metadata: results.metadatas[index],
         data: JSON.parse(results.documents[index])
       }))
-      .filter(doc => {
-        if (timeFilter) {
-          const createdAt = doc.metadata.createdAt;
-          if (timeFilter.from && createdAt < new Date(timeFilter.from).getTime()) return false;
-          if (timeFilter.to && createdAt > new Date(timeFilter.to).getTime()) return false;
-        }
-        return true;
-      })
       .slice(offset, offset + limit);
 
-    // Log unique model IDs from the filtered results
+    // Log unique model IDs from the filtered results  
     const uniqueModelIds = [...new Set(filteredResults.map(r => r.metadata.modelId))];
     console.log('Unique model IDs in filtered results:', uniqueModelIds);
 

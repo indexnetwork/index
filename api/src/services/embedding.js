@@ -26,7 +26,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const getDocText = (doc, metadata, runtimeDefinition) => {
+export const getDocText = (doc, metadata, runtimeDefinition) => {
 
 
   if (metadata.modelId === runtimeDefinition.models.Cast.id) {
@@ -59,7 +59,6 @@ const getDocText = (doc, metadata, runtimeDefinition) => {
   
   return JSON.stringify(doc);
 };
-
 
 export class EmbeddingService {
   constructor(definition) {
@@ -369,6 +368,47 @@ export class EmbeddingService {
   }
 
   
+
+ async updateEmbeddingMetadataFormat() {
+  try {
+    const BATCH_SIZE = 1000;
+    let processedCount = 0;
+
+    while (true) {
+      // Get embeddings in batches
+      const result = await collection.get({
+        limit: BATCH_SIZE,
+        offset: processedCount
+      });
+
+      if (!result.ids.length) break;
+
+      // Convert dates to timestamps
+      const updatedMetadatas = result.metadatas.map(metadata => ({
+        ...metadata,
+        createdAt: new Date(metadata.createdAt).getTime(),
+        updatedAt: new Date(metadata.updatedAt).getTime()
+      }));
+
+      // Update the collection with new metadata format
+      await collection.update({
+        ids: result.ids,
+        metadatas: updatedMetadatas
+      });
+
+      processedCount += result.ids.length;
+      console.log(`Processed ${processedCount} embeddings`);
+
+      if (result.ids.length < BATCH_SIZE) break;
+    }
+
+    return processedCount;
+  } catch (error) {
+    console.error("Error in updateEmbeddingMetadataFormat:", error);
+    throw error;
+  }
+}
+
   async findAndUpsertEmbeddingsByIndexIds(indexIds) {
     try {
       const BATCH_SIZE = 1000;
@@ -435,8 +475,8 @@ export class EmbeddingService {
             modelId: embedding.model_id,
             indexId: embedding.index_id,
             itemId: embedding.item_id,
-            createdAt: new Date(embedding.created_at).toISOString(),
-            updatedAt: new Date(embedding.updated_at).toISOString(),
+            createdAt: new Date(embedding.created_at).getTime(),
+            updatedAt: new Date(embedding.updated_at).getTime(),
           }));
 
           await collection.upsert({

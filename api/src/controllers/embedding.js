@@ -47,6 +47,9 @@ export const deleteEmbedding = async (req, res, next) => {
 };
 
 export const findAndUpsertEmbeddingsByIndexIds = async (req, res, next) => {
+
+  return res.status(500).json({ error: 'Disabled' });
+
   const definition = req.app.get("runtimeDefinition");
   try {
     const embeddingService = new EmbeddingService(definition);
