@@ -9,9 +9,9 @@ import tiktoken from 'tiktoken';
 import * as hub from "langchain/hub";
 import { getModelInfo } from '../utils/mode.js';
 
-const openai = wrapOpenAI(new OpenAI({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-}));
+});
 
 const encoding = tiktoken.encoding_for_model('gpt-4o');
 
@@ -62,8 +62,10 @@ const getDocText = (doc, metadata, runtimeDefinition) => {
 
 export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=500, stream, prompt, schema, timeFilter }) => {
   console.time('handleCompletions:total');
+  console.time('handleCompletions:init');
   const MAX_TOKENS = 100000;
   let totalTokens = 0;
+  console.timeEnd('handleCompletions:init');
 
   console.time('handleCompletions:search');
   const docs = await searchItems({
@@ -74,9 +76,12 @@ export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=
   }); 
   console.timeEnd('handleCompletions:search');
 
-  console.time('handleCompletions:processDocuments');
+  console.time('handleCompletions:modelInfo');
   const { runtimeDefinition } = await getModelInfo();
+  console.timeEnd('handleCompletions:modelInfo');
 
+  console.time('handleCompletions:processDocuments');
+  console.time('handleCompletions:tokenCounting');
   const filteredDocs = [];
   for (const item of docs) {
     const docText = getDocText(item.data, item.metadata, runtimeDefinition);
@@ -89,12 +94,12 @@ export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=
       break;
     }
   }
+  console.timeEnd('handleCompletions:tokenCounting');
 
   const retrievedDocs = filteredDocs.join('\n');
   console.timeEnd('handleCompletions:processDocuments');
   
-  console.log('totalTokens', totalTokens)
-  
+  console.time('handleCompletions:promptSetup');
   const completionsPrompt = await hub.pull(prompt || "v2_completions");
   const completionsPromptText = completionsPrompt.promptMessages[0].prompt.template;
 
@@ -111,8 +116,10 @@ export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=
     temperature: 0,
     stream: stream,
   };
+  console.timeEnd('handleCompletions:promptSetup');
 
   if (schema && !stream) {
+    console.time('handleCompletions:schema');
     if (!schema.definitions?.response) {
       throw new Error('Invalid schema format: missing definitions.response');
     }
@@ -124,10 +131,13 @@ export const handleCompletions = traceable(async ({ messages, indexIds, maxDocs=
       console.error('Error processing schema:', error);
       throw new Error('Failed to process schema format');
     }
+    console.timeEnd('handleCompletions:schema');
   }
 
   console.time('handleCompletions:completion');
+  console.time('handleCompletions:apiCall');
   const result = await openai.chat.completions.create(completionOptions);
+  console.timeEnd('handleCompletions:apiCall');
   console.timeEnd('handleCompletions:completion');
 
   console.timeEnd('handleCompletions:total');
