@@ -55,7 +55,7 @@ export const searchItems = async (params) => {
     console.log('whereClause', whereClause);
     const results = await collection.query({
       queryEmbeddings: [vector],
-      nResults: 1000,
+      nResults: 300,
       where: Object.keys(whereClause).length ? whereClause : undefined,
     });
 
