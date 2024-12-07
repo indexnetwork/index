@@ -115,7 +115,7 @@ class Indexer {
         return;
       }
 
-      const { runtimeDefinition } = await getModelInfo();
+      const {runtimeDefinition } = await getModelInfo();
       // await this.processAllSubscriptions(indexItem);
 
       const docText = await getDocText(itemStream.content, {

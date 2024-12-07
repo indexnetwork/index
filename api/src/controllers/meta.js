@@ -24,19 +24,19 @@ export const getConfig = async (req, res) => {
       {
         "id": "farcaster",
         "name": "Farcaster",
-        "icon": "@/assets/images/icons/farcaster.png",
+        "icon": "https://ipfs.index.network/files/bafkreier4wpucogz5ges5vv52biixsvbtsigf7wn5ofl6tyxfp72my6pxi",
         "status": "available"
       },
       {
         "id": "luma",
         "name": "Luma",
-        "icon": "@/assets/images/icons/luma.png",
+        "icon": "https://ipfs.index.network/files/bafkreiaxldbxxawcdf7xx4yjbckbf7g55k5r2ytvi6ovfs3bczlpyweql4",
         "status": "available"
       },
       {
         "id": "paragraph",
         "name": "Paragraph.xyz",
-        "icon": "@/assets/images/icons/paragraph.png",
+        "icon": "https://ipfs.index.network/files/bafkreigd5ptivtvh2d3jpkjpxfmrnwq3466j7gaxquv5avtfvuakr7mv6i",
         "status": "coming_soon"
       }
     ],
@@ -44,19 +44,19 @@ export const getConfig = async (req, res) => {
       {
         "id": "index",
         "name": "Index",
-        "icon": "@/assets/images/icons/agent-index.png",
+        "icon": "https://ipfs.index.network/files/bafkreicytja56tvcuia3vnswnvcakos5iqiz5qd5eei4shjaxoecgwu7om",
         "description": "Your primary assistant that answers questions"
       },
       {
         "id": "context_broker",
         "name": "Context Broker",
-        "icon": "@/assets/images/icons/agent-context_broker.png",
+        "icon": "https://ipfs.index.network/files/bafkreigr2z6zmivpy7nzgaowofydkvtw7qt2nzlck435ynrygv7hupfgu4",
         "description": "Discovers relevant conversations while protecting everyone's privacy"
       },
       {
         "id": "listener",
         "name": "Listener",
-        "icon": "@/assets/images/icons/agent-listener.png",
+        "icon": "https://ipfs.index.network/files/bafkreieuxfzvqf3skzk7lr6xu4ce7gixrd46jjofmmzgj6cwijddwlb6jy",
         "description": "Tracks your curiosities and sends updates when relevant."
       }
     ]
