@@ -34,9 +34,11 @@ const getDocText = (doc, metadata, runtimeDefinition) => {
     const castUrl = `https://warpcast.com/${doc.author.username}/${doc.hash.substring(0, 12)}`;
     const authorUrl = `https://warpcast.com/${doc.author.username}`;
     
+    const formattedText = doc.text.replace(/\\n\\n/g, '\n').replace(/\\n/g, '\n');
+    
     return [
       'Cast details:',
-      `- text: ${doc.text}`,
+      `- text: ${formattedText}`,
       `- link: ${castUrl}`, 
       `- author: [${authorName}](${authorUrl})`,
       `- created_at: ${doc.timestamp}`,

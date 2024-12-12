@@ -44,23 +44,24 @@ export const getConfig = async (req, res) => {
       {
         "id": "index",
         "name": "Index",
-        "icon": "https://ipfs.index.network/files/bafkreicytja56tvcuia3vnswnvcakos5iqiz5qd5eei4shjaxoecgwu7om",
+        "icon": "https://ipfs.index.network/files/bafkreiae3iniramo3pcndjyxhp7f6j2p3jmxvk3ucfxwbzo64i5urhtwqe",
         "description": "Your primary assistant that answers questions"
       },
       {
         "id": "context_broker",
         "name": "Context Broker",
-        "icon": "https://ipfs.index.network/files/bafkreigr2z6zmivpy7nzgaowofydkvtw7qt2nzlck435ynrygv7hupfgu4",
+        "icon": "https://ipfs.index.network/files/bafkreibaeqrgneaiycjxepk7y27win3wg5oc54wxgxq52zozmbhwl6a2rm",
         "description": "Discovers relevant conversations while protecting everyone's privacy"
       },
       {
         "id": "listener",
         "name": "Listener",
-        "icon": "https://ipfs.index.network/files/bafkreieuxfzvqf3skzk7lr6xu4ce7gixrd46jjofmmzgj6cwijddwlb6jy",
-        "description": "Tracks your curiosities and sends updates when relevant."
+        "icon": "https://ipfs.index.network/files/bafkreicv4efbogifz5vz3semshdkhs2uq3js3ssbep6qfqkjwzcavkg7ya",
+        "description": "Tracks your curiosities and sends updates when it's relevant."
       }
     ]
   })  
+
 }
 
 export const getAvatar = async (ensName) => {
