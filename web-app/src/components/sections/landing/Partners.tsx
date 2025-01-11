@@ -26,7 +26,7 @@ const PartnersSection = () => {
                   height={30}
                 />
               </a>
-              
+
             </div>
 
             <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-[108px]">

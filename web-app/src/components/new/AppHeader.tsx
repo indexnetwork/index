@@ -51,7 +51,7 @@ const AppHeader = () => {
                 HOME
               </a>
             </li>
-            
+
             <li>
               <a
                 target="_blank"
@@ -71,13 +71,13 @@ const AppHeader = () => {
               </a>
             </li>
           </ul>
-          <Button  onClick={() => {
+          <Button onClick={() => {
               router.push("https://testflight.apple.com/join/e6sekS5x");
             }}>Download Beta App</Button>
         </div>
 
         <div className="md:hidden flex flex-row gap-4 items-center">
-          <Button  onClick={() => {
+          <Button onClick={() => {
               router.push("https://testflight.apple.com/join/e6sekS5x");
             }}>Download Beta App</Button>
           <button
@@ -110,7 +110,7 @@ const AppHeader = () => {
                 HOME
               </a>
             </li>
-            
+
             <li>
               <a href="https://blog.index.network" className="hover:underline">
                 BLOG
