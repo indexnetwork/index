@@ -52,7 +52,7 @@ export const AuthContext =
   React.createContext<AuthContextType>(defaultAuthContext);
 
 export const AuthProvider = ({ children }: any) => {
-  const SESSION_KEY = "did";
+  const SESSION_KEY = "ex_did";
 
   const [session, setSession] = useState<DIDSession | undefined>();
   const [status, setStatus] = useState<AuthStatus>(AuthStatus.IDLE);
