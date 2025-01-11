@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import PlausibleProvider from "next-plausible";
 import { Inter } from "next/font/google";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -58,7 +59,9 @@ export default function RootLayout({
   return (
     <html lang="en" id="landing">
       <body className={inter.className}>
-        {children}
+        <PlausibleProvider domain="index.network">
+          {children}
+        </PlausibleProvider>
       </body>
     </html>
   );
