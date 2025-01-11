@@ -51,15 +51,7 @@ const AppHeader = () => {
                 HOME
               </a>
             </li>
-            <li>
-              <a
-                href="#"
-                onClick={() => scrollIntoSection("UseCases")}
-                className="hover:underline"
-              >
-                USE CASES
-              </a>
-            </li>
+            
             <li>
               <a
                 target="_blank"
@@ -79,11 +71,15 @@ const AppHeader = () => {
               </a>
             </li>
           </ul>
-          <Button onClick={connect}>Connect</Button>
+          <Button  onClick={() => {
+              router.push("https://testflight.apple.com/join/e6sekS5x");
+            }}>Download Beta App</Button>
         </div>
 
         <div className="md:hidden flex flex-row gap-4 items-center">
-          <Button onClick={connect}>Connect</Button>
+          <Button  onClick={() => {
+              router.push("https://testflight.apple.com/join/e6sekS5x");
+            }}>Download Beta App</Button>
           <button
             className="text-white"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
@@ -114,15 +110,7 @@ const AppHeader = () => {
                 HOME
               </a>
             </li>
-            <li>
-              <a
-                onClick={() => scrollIntoSection("UseCases")}
-                href="#"
-                className="hover:underline"
-              >
-                USE CASES
-              </a>
-            </li>
+            
             <li>
               <a href="https://blog.index.network" className="hover:underline">
                 BLOG

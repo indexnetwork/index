@@ -41,7 +41,9 @@ const HeroSection = () => {
             discovery experiences across the web.
           </p>
           <div className="flex gap-4">
-            <Button onClick={connect}>Connect</Button>
+            <Button onClick={() => {
+              router.push("https://testflight.apple.com/join/e6sekS5x");
+            }}>Download Beta App</Button>
             <Button
               variant="outline"
               onClick={() => {

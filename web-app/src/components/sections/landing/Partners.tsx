@@ -26,14 +26,7 @@ const PartnersSection = () => {
                   height={30}
                 />
               </a>
-              <a href="https://fluence.dev/" target="_blank">
-                <Image
-                  src="/images/partners/ic_fluence.png"
-                  alt="IPFS"
-                  width={117}
-                  height={50}
-                />
-              </a>
+              
             </div>
 
             <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-[108px]">

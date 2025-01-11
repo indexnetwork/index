@@ -178,7 +178,15 @@ export const AppContextProvider = ({ children }: AppContextProviderProps) => {
   );
 
   useEffect(() => {
+
+    if (path) {
+      router.push('/');
+      return;
+    }
+    
     if (isLanding || !apiReady) return;
+
+    
 
     if (isConversation) {
       console.log("fetching conversation");
