@@ -1,4 +1,3 @@
-import { AppLayout } from "components/layout/site/AppLayout";
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { headers } from "next/headers";
@@ -60,7 +59,7 @@ export default function RootLayout({
   return (
     <html lang="en" id={page}>
       <body className={inter.className}>
-        <AppLayout>{children}</AppLayout>
+      {children}
       </body>
     </html>
   );

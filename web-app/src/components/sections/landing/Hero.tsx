@@ -1,5 +1,4 @@
 import Button from "@/components/new/Button";
-import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
@@ -7,7 +6,6 @@ import { useMemo } from "react";
 const HeroSection = () => {
   const router = useRouter();
   const query = useSearchParams();
-  const { connect } = useAuth();
 
   const allowed = useMemo(() => {
     return query.get("allowed") === "true";

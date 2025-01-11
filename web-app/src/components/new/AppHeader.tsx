@@ -1,6 +1,5 @@
 "use client";
 
-import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -9,7 +8,6 @@ import Button from "./Button";
 const AppHeader = () => {
   const router = useRouter();
   const query = useSearchParams();
-  const { connect } = useAuth();
   const [allowed, setAllowed] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
