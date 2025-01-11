@@ -41,7 +41,18 @@ const HeroSection = () => {
           <div className="flex gap-4">
             <Button onClick={() => {
               router.push("https://testflight.apple.com/join/e6sekS5x");
-            }}>Download Beta App</Button>
+            }}>
+              <div className="flex items-center gap-2">
+                <Image
+                  width={16}
+                  height={16}
+                  style={{ marginRight: "8px" }}
+                  src="/images/apple-logo.png"
+                  alt="Apple logo"
+                />
+                Download Beta
+              </div>
+            </Button>
             <Button
               variant="outline"
               onClick={() => {

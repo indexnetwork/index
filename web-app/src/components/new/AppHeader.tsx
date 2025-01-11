@@ -44,11 +44,6 @@ const AppHeader = () => {
         />
         <div className="hidden md:flex gap-24 items-center">
           <ul className="flex md:gap-4 lg:gap-12 text-white text-sm">
-            <li>
-              <a href="https://index.network" className="hover:underline">
-                HOME
-              </a>
-            </li>
 
             <li>
               <a
@@ -71,13 +66,35 @@ const AppHeader = () => {
           </ul>
           <Button onClick={() => {
               router.push("https://testflight.apple.com/join/e6sekS5x");
-            }}>Download Beta App</Button>
+            }}>
+            <div className="flex items-center gap-2">
+              <Image
+                width={16}
+                height={16}
+                style={{ marginRight: "8px" }}
+                src="/images/apple-logo.png"
+                alt="Apple logo"
+              />
+              Download Beta
+            </div>
+          </Button>
         </div>
 
         <div className="md:hidden flex flex-row gap-4 items-center">
           <Button onClick={() => {
               router.push("https://testflight.apple.com/join/e6sekS5x");
-            }}>Download Beta App</Button>
+            }}>
+            <div className="flex items-center gap-2">
+              <Image
+                width={16}
+                height={16}
+                style={{ marginRight: "8px" }}
+                src="/images/apple-logo.png"
+                alt="Apple logo"
+              />
+              Download Beta
+            </div>
+          </Button>
           <button
             className="text-white"
             onClick={() => setIsMenuOpen(!isMenuOpen)}

@@ -1,12 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  async rewrites() {
+  async redirects() {
     return [
       {
-        source: "/",
-        destination: "/home",
+        source: '/_error',
+        destination: '/',
+        permanent: false,
       },
     ];
+  },
+  async rewrites() {
+    return [];
   },
   reactStrictMode: false,
   images: {
@@ -85,7 +89,7 @@ module.exports = withSentryConfig(
     hideSourceMaps: true,
 
     // Automatically tree-shake Sentry logger statements to reduce bundle size
-    disableLogger: true,
+    disableLogger: false,
 
     // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
     // See the following for more information:
