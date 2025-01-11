@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
+import Button from "./Button";
 
 const AppHeader = () => {
   const router = useRouter();
@@ -78,9 +79,31 @@ const AppHeader = () => {
               </a>
             </li>
           </ul>
-
+          <Button onClick={connect}>Connect</Button>
         </div>
 
+        <div className="md:hidden flex flex-row gap-4 items-center">
+          <Button onClick={connect}>Connect</Button>
+          <button
+            className="text-white"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M4 6h16M4 12h16m-7 6h7"
+              ></path>
+            </svg>
+          </button>
+        </div>
       </div>
 
       {isMenuOpen && (
