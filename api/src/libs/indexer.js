@@ -29,7 +29,7 @@ const chromaClient = new ChromaClient({
 });
 
 const collection = await chromaClient.getOrCreateCollection({
-  name: process.env.CHROMA_COLLECTION_NAME || "index_mainnet",
+  name: process.env.CHROMA_COLLECTION_NAME || "index_mainnet_v3",
 });
 
 
@@ -126,23 +126,7 @@ class Indexer {
         model: process.env.MODEL_EMBEDDING,
         input: docText,
       });
-
       
-
-      /*
-      const embeddingService = new EmbeddingService(this.definition).setSession(
-        indexSession,
-      );
-      const embedding = await embeddingService.createEmbedding({
-        indexId: indexItem.indexId,
-        itemId: indexItem.itemId,
-        modelName: process.env.MODEL_EMBEDDING,
-        category: "document",
-        vector: embeddingResponse.data[0].embedding,
-        description: "Default document embeddings",
-      });
-
-      */
       
       console.log({
         ids: [indexItem.itemId],
@@ -172,6 +156,19 @@ class Indexer {
           updatedAt: new Date(indexItem.updatedAt).getTime(),
         }]
       });
+
+      const embeddingService = new EmbeddingService(this.definition).setSession(
+        indexSession,
+      );
+      const embedding = await embeddingService.createEmbedding({
+        indexId: indexItem.indexId,
+        itemId: indexItem.itemId,
+        modelName: process.env.MODEL_EMBEDDING,
+        category: "document",
+        vector: embeddingResponse.data[0].embedding,
+        description: "Default document embeddings",
+      });
+
 
       try {
         const updatePayload = {
