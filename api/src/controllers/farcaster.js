@@ -215,7 +215,7 @@ export const createCast = async (req, res, next) => {
 
         // Remove fields not in Author schema
         delete payload.author.verified_accounts;
-        delete payload.author.experimental;
+        // delete payload.author.experimental;
       }
 
       
