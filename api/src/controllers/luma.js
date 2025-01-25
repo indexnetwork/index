@@ -52,6 +52,7 @@ export const createEvent = async (req, res, next) => {
       const member = `${payload.title}_${payload.start_time}`;
       const exists = await redis.hGet(`processed_events`, member);
       if (exists) {
+        console.log('Duplicate event, skipped processing');
         return res.status(200).json({ status: 'rejected', message: 'Duplicate event, skipped processing' });
       }
       await redis.hSet(`processed_events`, member, '1');
