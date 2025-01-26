@@ -56,9 +56,9 @@ const getMetadataForModel = (modelId, doc) => {
       start_time: new Date(doc.start_time).getTime(),
     }
   } else if (models[modelId] === 'Cast') {
-    if (doc.author && doc.author.experimental) {
+    if (doc.author && doc.author.experimental && doc.author.experimental.neynar_user_score) {
       return {
-        neynar_user_score: doc.author.experimental,
+        neynar_user_score: doc.author.experimental.neynar_user_score,
       }
     }
   }
