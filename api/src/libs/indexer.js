@@ -43,6 +43,27 @@ if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
 
+const getMetadataForModel = (modelId, doc) => {
+  const models = {
+    'kjzl6hvfrbw6c9mxmf3qq4i4pcq0b26z7ns8drwsrr5hotcbmkwz7gobki2az9d': 'Event',
+    'kjzl6hvfrbw6c6i7vhwe1dx3w4gt7k1kxvetcjrkb3shp8p8fnpa228l7qcl2y8': 'Cast',
+    'kjzl6hvfrbw6cavush68sk4bipq4jtsqsdlspklfnn1c61ehwo7g1tnftt0g42w': 'Cast',
+  };
+
+  if (models[modelId] === 'Event') {
+    return {
+      location: doc.location,
+    }
+  } else if (models[modelId] === 'Cast') {
+    if (doc.author && doc.author.experimental) {
+      return {
+        neynar_user_score: doc.author.experimental,
+      }
+    }
+  }
+  return {}
+}
+
 class Indexer {
   constructor(definition, fragments) {
     this.definition = definition;
@@ -142,6 +163,13 @@ class Indexer {
         }]
       })
 
+
+      
+
+      
+
+      const metadatas = getMetadataForModel(indexItem.modelId, itemStream.content);
+
       // Add vector index upsert
       await collection.upsert({
         ids: [indexItem.itemId],
@@ -154,8 +182,11 @@ class Indexer {
           itemId: indexItem.itemId,
           createdAt: new Date(indexItem.createdAt).getTime(),
           updatedAt: new Date(indexItem.updatedAt).getTime(),
+          ...metadatas
         }]
       });
+
+
 
       const embeddingService = new EmbeddingService(this.definition).setSession(
         indexSession,
@@ -169,20 +200,6 @@ class Indexer {
         description: "Default document embeddings",
       });
 
-
-      try {
-        const updatePayload = {
-          vector: embeddingResponse.data[0].embedding,
-          item: itemStream.content,
-          modelId: indexItem.modelId,
-          indexId: indexItem.indexId,
-          itemId: indexItem.itemId,
-        };
-        await axios.post('http://app-api/api/updates', updatePayload);
-      } catch (e) {
-        console.log("App is down");
-      }
-  
 
 
       if (indexItem.itemId) {
