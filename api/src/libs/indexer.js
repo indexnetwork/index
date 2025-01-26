@@ -149,25 +149,6 @@ class Indexer {
         input: docText,
       });
       
-      
-      console.log({
-        ids: [indexItem.itemId],
-        embeddings: [embeddingResponse.data[0].embedding],
-        documents: [JSON.stringify(itemStream.content)],
-        metadatas: [{
-          modelName: process.env.MODEL_EMBEDDING,
-          modelId: indexItem.modelId,
-          indexId: indexItem.indexId,
-          itemId: indexItem.itemId,
-          createdAt: new Date(indexItem.createdAt).getTime(),
-          updatedAt: new Date(indexItem.updatedAt).getTime(),
-        }]
-      })
-
-
-      
-
-      
 
       const metadatas = getMetadataForModel(indexItem.modelId, itemStream.content);
       console.log(metadatas)
