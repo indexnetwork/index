@@ -169,6 +169,7 @@ class Indexer {
       
 
       const metadatas = getMetadataForModel(indexItem.modelId, itemStream.content);
+      console.log(metadatas)
 
       // Add vector index upsert
       await collection.upsert({
