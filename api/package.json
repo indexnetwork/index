@@ -57,6 +57,7 @@
     "jade": "^1.11.0",
     "joi": "^17.8.3",
     "json-schema-to-zod": "^2.4.1",
+    "kafkajs": "^2.2.4",
     "knex": "^3.1.0",
     "langchain": "^0.3.5",
     "langfuse": "^3.29.1",
@@ -81,5 +82,6 @@
     "winston": "^3.11.0",
     "zod": "^3.23.8"
   },
-  "type": "module"
+  "type": "module",
+  "packageManager": "yarn@1.22.21+sha1.1959a18351b811cdeedbd484a8f86c3cc3bbaf72"
 }

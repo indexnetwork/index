@@ -31,7 +31,6 @@ import * as conversationController from "../controllers/conversation.js";
 import * as didController from "../controllers/did.js";
 import * as discoveryController from "../controllers/discovery.js";
 
-import * as farcasterController from "../controllers/farcaster.js";
 import * as lumaController from "../controllers/luma.js";
 
 import * as litProtocol from "../controllers/lit-protocol.js";
@@ -689,14 +688,13 @@ app.delete(
       id: Joi.custom(isStreamID, "Model ID").required(),
     }),
   ),
-  authCheckMiddleware,
+  //authCheckMiddleware,
   modelController.remove,
 );
 
 // Validators
 // app.use(errorMiddleware);
 
-app.post("/farcaster/updates", farcasterController.createCast);
 app.post("/luma/updates", lumaController.createEvent);
 
 
