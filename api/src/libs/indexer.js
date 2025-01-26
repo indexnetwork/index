@@ -53,6 +53,7 @@ const getMetadataForModel = (modelId, doc) => {
   if (models[modelId] === 'Event') {
     return {
       location: doc.location,
+      start_time: new Date(doc.start_time).getTime(),
     }
   } else if (models[modelId] === 'Cast') {
     if (doc.author && doc.author.experimental) {
