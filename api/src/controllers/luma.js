@@ -13,7 +13,7 @@ const cleanPayload = (payload) => {
     description: payload.description?.trim(),
     start_time: payload.start_time,
     end_time: payload.end_time,
-    location: payload.location?.trim()
+    location: payload.location?.trim(),
   };
 
   // Only add link if it's valid
@@ -57,6 +57,21 @@ export const createEvent = async (req, res, next) => {
       }
       await redis.hSet(`processed_events`, member, '1');
       
+
+      const eventId = payload.event_id.split('@')[0];
+      const response = await fetch(`https://api.lu.ma/event/get?event_api_id=${eventId}`, {
+          headers: {
+              'x-luma-api-key': process.env.LUMA_API_KEY
+          }
+      });
+      const eventData = await response.json();
+
+      if (eventData && eventData.event && eventData.event.geo_address_info && eventData.event.geo_address_info.city_state) {
+        payload.location = eventData.event.geo_address_info.city_state;
+      }else {
+        return res.status(200).json({ status: 'rejected', message: 'Event not found in Luma' });
+      }
+
       const event = await composeDBService.createNode({
         ...payload,
       });
