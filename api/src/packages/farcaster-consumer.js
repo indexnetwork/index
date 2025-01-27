@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import { Kafka, logLevel } from "kafkajs";
 import { v4 as uuidv4 } from 'uuid';
-import { processFarcasterEvent } from "../libs/farcaster.js";
+import { processFarcasterEvent, processFarcasterReaction } from "../libs/farcaster.js";
 import { fetchModelInfo } from "../utils/helpers.js";
 import RedisClient from "../clients/redis.js";
 
@@ -43,8 +43,10 @@ export const startFarcasterConsumer = async (runtimeDefinition, modelFragments) 
           if (event.event_type === 'cast.created') {
             //console.log('Processing cast:', event.data.hash, 'from user:', event.data.author.fid);
             await processFarcasterEvent(event, runtimeDefinition, modelFragments);
-          } else {
-            // console.log('Skipping non-cast event:', event.event_type);
+          }
+
+          if (event.event_type === 'reaction.created') {
+            await processFarcasterReaction(event);
           }
         } catch (error) {
           console.error('Error processing message:', error);

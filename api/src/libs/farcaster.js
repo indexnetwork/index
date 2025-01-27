@@ -259,6 +259,8 @@ export const processFarcasterEvent = async (event, runtimeDefinition, modelFragm
     const itemService = new ItemService(runtimeDefinition).setSession(session);
     const item = await itemService.addItem("kjzl6kcym7w8yb1lw37upcpbxllni7f5gqoonmp2i68ijfp37jitiy9ymm21pmu", cast.id);
 
+    await redis.sAdd('inserted_casts', payload.hash);
+
     return { status: 'success', cast, item };
 
   } catch (error) {
@@ -270,3 +272,21 @@ export const processFarcasterEvent = async (event, runtimeDefinition, modelFragm
     };
   }
 };
+
+export const processFarcasterReaction = async (event) => {
+    try {
+        const isMember = await redis.sIsMember('inserted_casts', event.data.cast.hash);
+        if (!isMember) {
+            return;
+        }
+
+        // Determine the type of reaction and increment the appropriate score in the redis sorted set.
+        if (event.data.reaction_type === 1) {
+            await redis.zIncrBy('cast_reactions:likes', 1, event.data.cast.hash);
+        } else if (event.data.reaction_type === 2) {
+            await redis.zIncrBy('cast_reactions:recasts', 1, event.data.cast.hash);
+        }
+    } catch (error) {
+        console.error('Error processing Farcaster reaction:', error);
+    }
+}
