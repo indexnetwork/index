@@ -42,9 +42,7 @@ export function AgentsSection() {
       <div className="space-y-2">
         <h2 className="text-2xl font-bold">Agents</h2>
         <p className="text-md text-gray-400">
-          Discovery should be as nuanced and multifaceted as human interaction. That's why
-          the discovery process is deconstructed into specialized agents, each playing a
-          unique role in making your experience more natural and effective.
+          Here are your specialized agents, each playing a unique role in making your discovery experience more natural and effective.
         </p>
       </div>
 
