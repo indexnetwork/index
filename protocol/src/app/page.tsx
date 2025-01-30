@@ -59,13 +59,13 @@ export default function Home() {
                   <p className="font-semibold"><span className="text-white">Paragraph.xyz:</span> Long-form thought leadership (soon)</p>
                 </li>
                 <li className="flex items-center">
-                  <p className="font-semibold"><span >More sources being added regularly</span></p>
+                  <p className="font-semibold"><span>More sources being added regularly</span></p>
                 </li>
               </ul>
             </div>
 
             <div>
-              <h3 className="text-md font-medium mb-2">Private Indexes</h3>
+              <h3 className="text-md font-medium  mt-8 mb-2">Private Indexes</h3>
               <p className="text-gray-400 mb-2 text-sm">
                 Your personal spaces hold valuable context. Indexing them unlocks discovery tailored to your world.
               </p>
