@@ -17,6 +17,53 @@ const ethProvider = new ethers.providers.InfuraProvider("mainnet", {
 import RedisClient from "../clients/redis.js";
 const redis = RedisClient.getInstance();
 
+
+export const getConfig = async (req, res) => {
+  return res.json({
+    "indexes": [
+      {
+        "id": "farcaster",
+        "name": "Farcaster",
+        "icon": "https://ipfs.index.network/files/bafkreier4wpucogz5ges5vv52biixsvbtsigf7wn5ofl6tyxfp72my6pxi",
+        "status": "available"
+      },
+      {
+        "id": "luma",
+        "name": "Luma",
+        "icon": "https://ipfs.index.network/files/bafkreiaxldbxxawcdf7xx4yjbckbf7g55k5r2ytvi6ovfs3bczlpyweql4",
+        "status": "available"
+      },
+      {
+        "id": "paragraph",
+        "name": "Paragraph.xyz",
+        "icon": "https://ipfs.index.network/files/bafkreigd5ptivtvh2d3jpkjpxfmrnwq3466j7gaxquv5avtfvuakr7mv6i",
+        "status": "coming_soon"
+      }
+    ],
+    "agents": [
+      {
+        "id": "index",
+        "name": "Index",
+        "icon": "https://ipfs.index.network/files/bafkreiae3iniramo3pcndjyxhp7f6j2p3jmxvk3ucfxwbzo64i5urhtwqe",
+        "description": "Your primary assistant that answers questions"
+      },
+      {
+        "id": "context_broker",
+        "name": "Context Broker",
+        "icon": "https://ipfs.index.network/files/bafkreibaeqrgneaiycjxepk7y27win3wg5oc54wxgxq52zozmbhwl6a2rm",
+        "description": "Discovers relevant conversations while protecting everyone's privacy"
+      },
+      {
+        "id": "listener",
+        "name": "Listener",
+        "icon": "https://ipfs.index.network/files/bafkreicv4efbogifz5vz3semshdkhs2uq3js3ssbep6qfqkjwzcavkg7ya",
+        "description": "Tracks your curiosities and sends updates when it's relevant."
+      }
+    ]
+  })  
+
+}
+
 export const getAvatar = async (ensName) => {
   try {
     const resolver = await ethProvider.getResolver(ensName);

@@ -26,37 +26,40 @@ const PartnersSection = () => {
                   height={30}
                 />
               </a>
-              <a href="https://fluence.dev/" target="_blank">
+              <a href="https://fleek.network/" target="_blank">
                 <Image
-                  src="/images/partners/ic_fluence.png"
-                  alt="IPFS"
-                  width={117}
+                  src="/images/partners/ic_fleek.png"
+                  alt="Fleek Network"
+                  width={200}
                   height={50}
                 />
               </a>
+
             </div>
 
             <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-[108px]">
               <a href="https://olas.network/" target="_blank">
                 <Image
                   src="/images/partners/ic_olas.png"
-                  alt="Intuition"
+                  alt="Olas Network"
                   width={90}
                   height={50}
                 />
               </a>
-              <a href="https://disco.xyz/" target="_blank">
+
+              <a href="https://opengradient.ai/" target="_blank">
                 <Image
-                  src="/images/partners/ic_disco.png"
-                  alt="Intuition"
-                  width={50}
+                  src="/images/partners/ic_opengradient.png"
+                  alt="Opengradient"
+                  width={200}
                   height={50}
                 />
               </a>
+
               <a href="https://www.ver.ax/" target="_blank">
                 <Image
                   src="/images/partners/ic_verax.png"
-                  alt="Intuition"
+                  alt="Verax"
                   width={132}
                   height={50}
                 />

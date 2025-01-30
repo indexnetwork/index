@@ -123,7 +123,7 @@ export const getAction = async (req, res, next) => {
     });
 
     const litAction = await fetch(
-      `https://ipfs.index.network/ipfs/${cid}?pinataGatewayToken=${process.env.PINATA_IPFS_GATEWAY_KEY}`,
+      `https://ipfs.index.network/files/${cid}?pinataGatewayToken=${process.env.PINATA_IPFS_GATEWAY_KEY}`,
     );
     let litActionStr = await litAction.text();
     litActionStr = `const ACTION_CALL_MODE="read"; ${litActionStr}`;

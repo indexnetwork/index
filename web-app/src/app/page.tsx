@@ -49,9 +49,9 @@ const Landing = () => {
             borderBottom: "1px solid rgba(110, 191, 244, 0.2)",
           }}
         >
-          {true && <UseCasesSection />}
+          {false && <UseCasesSection />}
         </div>
-        <HowItWorksSection />
+        {false && <HowItWorksSection />}
         <div
           style={{
             background: "rgba(110, 191, 244, 0.07)",

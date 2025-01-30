@@ -1,5 +1,4 @@
 import { EmbeddingService } from "../services/embedding.js";
-import { IndexService } from "../services/index.js";
 
 export const listEmbeddings = async (req, res, next) => {};
 export const createEmbedding = async (req, res, next) => {

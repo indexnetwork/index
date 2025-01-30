@@ -1,33 +1,26 @@
 import { ItemService } from "../services/item.js";
 import { IndexService } from "../services/index.js";
 import axios from "axios";
+import { searchItems } from "../language/search_item.js";
+
 export const listItems = async (req, res, next) => {
   const definition = req.app.get("runtimeDefinition");
   const { indexId } = req.params;
-  const { query, cursor, limit } = req.query;
+  const { query, cursor, limit, dateFilter } = req.query;
   try {
     let response = { endCursor: null, items: [] };
     if (query) {
       try {
-        const searchRequest = {
+        const searchResults = await searchItems({
           indexIds: [indexId],
           query,
-          page: 1,
-          limit,
-        };
+          limit: parseInt(limit) || 500,
+          offset: 0,
+          dateFilter
+        });
 
-        let res = await axios.post(
-          `${process.env.LLM_INDEXER_HOST}/search/query`,
-          searchRequest,
-        );
-
-        if (res.data.length > 0) {
-          const itemService = new ItemService(definition);
-          response = await itemService.getIndexItemsByIds(
-            res.data.map((i) => i.id),
-            null,
-            240,
-          );
+        if (searchResults.length > 0) {
+          response.items = searchResults;
         }
       } catch (error) {
         return res.status(400).json({ error: error.message });

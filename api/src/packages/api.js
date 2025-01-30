@@ -1,19 +1,23 @@
+import "../utils/sentry.js";
+
 import dotenv from "dotenv";
-import Moralis from "moralis";
+import * as Sentry from "@sentry/node";
 import express from "express";
+
+
 
 import Joi from "joi";
 import * as ejv from "express-joi-validation";
 
 import RedisClient from "../clients/redis.js";
 
-import { createProxyMiddleware } from "http-proxy-middleware";
-
-const app = express();
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
+
+
+const app = express();
 
 const port = process.env.PORT || 3001;
 
@@ -27,7 +31,7 @@ import * as conversationController from "../controllers/conversation.js";
 import * as didController from "../controllers/did.js";
 import * as discoveryController from "../controllers/discovery.js";
 
-import * as farcasterController from "../controllers/farcaster.js";
+import * as lumaController from "../controllers/luma.js";
 
 import * as litProtocol from "../controllers/lit-protocol.js";
 
@@ -46,7 +50,6 @@ import * as modelController from "../controllers/model.js";
 
 import {
   authenticateMiddleware,
-  errorMiddleware,
   authCheckMiddleware,
 } from "../middlewares/index.js";
 
@@ -60,7 +63,9 @@ import {
   isStreamID,
 } from "../types/validators.js";
 
-app.use(/^\/(?!chroma).*/, express.json());
+app.use(express.json({
+  limit: '50mb'
+}));
 
 const validator = ejv.createValidator({
   passError: true,
@@ -69,23 +74,6 @@ const validator = ejv.createValidator({
 // Authenticate
 app.use(authenticateMiddleware);
 
-const simpleRequestLogger = (proxyServer, options) => {
-  proxyServer.on("proxyReq", (proxyReq, req, res) => {
-    console.log(`[HPM] [${req.method}] ${req.url}`); // outputs: [HPM] GET /users
-  });
-};
-
-// Chroma Proxy
-app.use(
-  "/chroma",
-  createProxyMiddleware({
-    target: process.env.CHROMA_URL,
-    changeOrigin: true,
-    plugins: [simpleRequestLogger],
-    proxyTimeout: 5000,
-    timeout: 5000,
-  }),
-);
 
 // DIDs
 app.get(
@@ -367,10 +355,16 @@ app.post(
   "/discovery/completions",
   validator.body(
     Joi.object({
-      messages: Joi.array().items(Joi.any()),
-      prompt: Joi.string(),
-      sources: Joi.array().items(Joi.string()).required(),
-    }).xor("messages", "prompt"),
+      messages: Joi.array().items(Joi.any()).min(1).required(),
+      prompt: Joi.string().optional(),
+      sources: Joi.array().items(Joi.string()).min(1).required(),
+      timeFilter: Joi.object({
+        from: Joi.date().iso().optional(),
+        to: Joi.date().iso().optional()
+      }).optional(),
+      stream: Joi.boolean().optional(),
+      schema: Joi.object().optional(),
+    })
   ),
   discoveryController.completions,
 );
@@ -380,10 +374,13 @@ app.post(
   validator.body(
     Joi.object({
       sources: Joi.array().items(Joi.string()).required(),
-      vector: Joi.array().items(Joi.number()).optional(),
-      page: Joi.number().optional(),
-      categories: Joi.array().items(Joi.string()).optional(),
-      modelNames: Joi.array().items(Joi.string()).optional(),
+      query: Joi.string().min(1).optional(),
+      limit: Joi.number().optional(),
+      offset: Joi.number().optional(),
+      dateFilter: Joi.object({
+        from: Joi.date().iso().optional(),
+        to: Joi.date().iso().optional()
+      }).optional()
     }),
   ),
   discoveryController.search,
@@ -691,14 +688,25 @@ app.delete(
       id: Joi.custom(isStreamID, "Model ID").required(),
     }),
   ),
-  authCheckMiddleware,
+  //authCheckMiddleware,
   modelController.remove,
 );
 
 // Validators
-app.use(errorMiddleware);
+// app.use(errorMiddleware);
 
-app.post("/farcaster/updates", farcasterController.createCast);
+app.post("/luma/updates", lumaController.createEvent);
+
+
+app.get(
+  "/config",
+  metaController.getConfig,
+);
+
+
+app.get("/debug-sentry", function mainHandler(req, res) {
+  throw new Error("My first Sentry error!");
+});
 
 const start = async () => {
   console.log("Starting API ...", port);
@@ -707,12 +715,10 @@ const start = async () => {
 
   await setIndexedModelParams(app);
 
-  await Moralis.start({
-    apiKey: process.env.MORALIS_API_KEY,
-  });
-
+  Sentry.setupExpressErrorHandler(app);
   app.listen(port, async () => {
     console.log(`API listening on port ${port}`);
   });
 };
+
 start();

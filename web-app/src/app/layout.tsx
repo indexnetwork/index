@@ -1,7 +1,8 @@
-import { AppLayout } from "components/layout/site/AppLayout";
 import type { Metadata, Viewport } from "next";
+import PlausibleProvider from "next-plausible";
 import { Inter } from "next/font/google";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -48,19 +49,19 @@ export default function RootLayout({
   const heads = headers();
   const pathname = heads.get("x-url");
 
-  let page = "landing";
   if (pathname) {
     const urlObj1 = new URL(pathname);
-
     if (urlObj1.pathname !== "/") {
-      page = "app";
+      redirect("/");
     }
   }
 
   return (
-    <html lang="en" id={page}>
+    <html lang="en" id="landing">
       <body className={inter.className}>
-        <AppLayout>{children}</AppLayout>
+        <PlausibleProvider domain="index.network">
+          {children}
+        </PlausibleProvider>
       </body>
     </html>
   );

@@ -1,4 +1,17 @@
 import dotenv from "dotenv";
+import * as Sentry from "@sentry/node"
+import { nodeProfilingIntegration } from '@sentry/profiling-node';
+import { startFarcasterConsumer } from "./farcaster-consumer.js";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  integrations: [
+    nodeProfilingIntegration(),
+  ],
+  tracesSampleRate: 1.0, 
+  profilesSampleRate: 1.0,
+});
+
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
 }
@@ -25,6 +38,13 @@ async function start() {
   await redisClient.connect();
   let { runtimeDefinition, modelFragments } = await fetchModelInfo();
   let indexer = new Indexer(runtimeDefinition, modelFragments);
+
+  // Start Farcaster consumer in parallel
+  startFarcasterConsumer(runtimeDefinition, modelFragments).catch(error => {
+    console.error('Failed to start Farcaster consumer:', error);
+    Sentry.captureException(error);
+  });
+
   pubSubClient.subscribe(`newModel`, async (id) => {
     console.log("New model detected, fetching model info", id);
     ({ runtimeDefinition, modelFragments } = await fetchModelInfo());

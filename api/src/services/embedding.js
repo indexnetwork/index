@@ -2,6 +2,41 @@ import { ComposeClient } from "@composedb/client";
 import { getCurrentDateTime } from "../utils/helpers.js";
 import { IndexService } from "./index.js";
 
+
+export const getDocText = (doc, metadata, runtimeDefinition) => {
+
+
+  if (metadata.modelId === runtimeDefinition.models.Cast.id) {
+    const authorName = doc.author.name || doc.author.username;
+    const castUrl = `https://warpcast.com/${doc.author.username}/${doc.hash.substring(0, 12)}`;
+    const authorUrl = `https://warpcast.com/${doc.author.username}`;
+    
+    return [
+      'Cast details:',
+      `- text: ${doc.text}`,
+      `- link: ${castUrl}`, 
+      `- author: [${authorName}](${authorUrl})`,
+      `- created_at: ${doc.timestamp}`,
+      '----'
+    ].join('\n');
+  } 
+  
+  if (metadata.modelId === runtimeDefinition.models.Event.id) {
+    return [
+      'Event details:',
+      `- title: ${doc.title}`,
+      `- location: ${doc.location}`,
+      `- start time: ${doc.start_time}`,
+      `- end time: ${doc.end_time}`,
+      `- link: ${doc.link}`,
+      `- description: ${doc.description}`,
+      '----'
+    ].join('\n');
+  }
+  
+  return JSON.stringify(doc);
+};
+
 export class EmbeddingService {
   constructor(definition) {
     this.definition = definition;
@@ -308,4 +343,7 @@ export class EmbeddingService {
     };
     return await this.updateEmbedding(content);
   }
+
+
+  
 }

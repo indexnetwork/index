@@ -2,7 +2,8 @@ import { ConversationService } from "../services/conversation.js";
 import RedisClient from "../clients/redis.js";
 import { DIDSession } from "did-session";
 import { DIDService } from "../services/did.js";
-import axios from "axios";
+import * as hub from "langchain/hub";
+import { handleCompletions } from "../language/completions.js";
 
 const pubSubClient = RedisClient.getPubSubInstance();
 const redisClient = RedisClient.getInstance();
@@ -144,20 +145,18 @@ export const refreshSummary = async (req, res, next) => {
       return res.status(404).json({ error: "Conversation not found" });
     }
 
-    const response = await axios.post(
-      `${process.env.LLM_INDEXER_HOST}/chat/external`,
-      {
-        basePrompt: "seref/index-conversation-summary",
-        messages: [...conversation.messages],
-      },
-      {
-        responseType: "text",
-      },
-    );
+    const titlePrompt = await hub.pull("v2_web_title");
+    const titlePromptText = titlePrompt.promptMessages[0].prompt.template;
+    
+    const title = await handleCompletions({
+      messages: [{role: "system", content: titlePromptText}, ...messages],
+      indexIds: [],
+      stream: false
+    })
 
     const updated = await conversationService.updateConversation(id, {
       sources: conversation.sources,
-      summary: response.data,
+      summary: title,
     });
 
     res.status(200).json(updated);

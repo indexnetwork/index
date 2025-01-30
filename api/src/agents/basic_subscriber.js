@@ -11,6 +11,8 @@ export const handleNewItemEvent = async (
   redisClient,
 ) => {
   console.log(`New item subscriber for ${chatId}`);
+
+  return 
   const subscriptionResp = await redisClient.hGet(`subscriptions`, chatId);
   if (!subscriptionResp) {
     return;

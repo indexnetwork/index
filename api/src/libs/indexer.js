@@ -2,18 +2,36 @@ import dotenv from "dotenv";
 import axios from "axios";
 import { ItemService } from "../services/item.js";
 import { ComposeDBService } from "../services/composedb.js";
-import { EmbeddingService } from "../services/embedding.js";
+import { EmbeddingService, getDocText } from "../services/embedding.js";
 import { handleNewItemEvent } from "../agents/basic_subscriber.js";
 import { ConversationService } from "../services/conversation.js";
 import RedisClient from "../clients/redis.js";
 import { CeramicClient } from "@ceramicnetwork/http-client";
-
+import * as hub from "langchain/hub";
 import { ethers } from "ethers";
+import OpenAI from "openai";
 
 import Logger from "../utils/logger.js";
 import { DIDSession } from "did-session";
 import { handleUserMessage } from "../agents/basic_assistant.js";
 import { getAgentDID } from "../utils/helpers.js";
+import { handleCompletions } from "../language/completions.js";
+import { ChromaClient } from "chromadb";
+import { getModelInfo } from "../utils/mode.js";
+
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+const chromaClient = new ChromaClient({
+  path: 'http://chroma-chromadb.env-mainnet:8000'
+});
+
+const collection = await chromaClient.getOrCreateCollection({
+  name: process.env.CHROMA_COLLECTION_NAME || "index_mainnet_v3",
+});
+
 
 const logger = Logger.getInstance();
 
@@ -23,6 +41,28 @@ const ceramic = new CeramicClient(process.env.CERAMIC_HOST);
 
 if (process.env.NODE_ENV !== "production") {
   dotenv.config();
+}
+
+const getMetadataForModel = (modelId, doc) => {
+  const models = {
+    'kjzl6hvfrbw6c9mxmf3qq4i4pcq0b26z7ns8drwsrr5hotcbmkwz7gobki2az9d': 'Event',
+    'kjzl6hvfrbw6c6i7vhwe1dx3w4gt7k1kxvetcjrkb3shp8p8fnpa228l7qcl2y8': 'Cast',
+    'kjzl6hvfrbw6cavush68sk4bipq4jtsqsdlspklfnn1c61ehwo7g1tnftt0g42w': 'Cast',
+  };
+
+  if (models[modelId] === 'Event') {
+    return {
+      location: doc.location,
+      start_time: new Date(doc.start_time).getTime(),
+    }
+  } else if (models[modelId] === 'Cast') {
+    if (doc.author && doc.author.experimental && doc.author.experimental.neynar_user_score) {
+      return {
+        neynar_user_score: doc.author.experimental.neynar_user_score,
+      }
+    }
+  }
+  return {}
 }
 
 class Indexer {
@@ -49,6 +89,8 @@ class Indexer {
 
     const itemService = new ItemService(this.definition);
     const indexItem = await itemService.getIndexItemById(id, false);
+
+    const itemStream = await ceramic.loadStream(indexItem.itemId);
 
     if (indexItem.index.controllerDID.id !== indexItem.controllerDID.id) {
       logger.warn(
@@ -95,14 +137,39 @@ class Indexer {
         return;
       }
 
-      await this.processAllSubscriptions(indexItem);
+      const {runtimeDefinition } = await getModelInfo();
+      // await this.processAllSubscriptions(indexItem);
 
-      const embeddingResponse = await axios.post(
-        `${process.env.LLM_INDEXER_HOST}/indexer/embeddings`,
-        {
-          content: indexItem.item.content ?? JSON.stringify(indexItem.item),
-        },
-      );
+      const docText = await getDocText(itemStream.content, {
+        modelId: indexItem.modelId,
+      }, runtimeDefinition)
+
+      const embeddingResponse = await openai.embeddings.create({
+        model: process.env.MODEL_EMBEDDING,
+        input: docText,
+      });
+      
+
+      const metadatas = getMetadataForModel(indexItem.modelId, itemStream.content);
+      console.log(metadatas)
+
+      // Add vector index upsert
+      await collection.upsert({
+        ids: [indexItem.itemId],
+        embeddings: [embeddingResponse.data[0].embedding],
+        documents: [JSON.stringify(itemStream.content)],
+        metadatas: [{
+          modelName: process.env.MODEL_EMBEDDING,
+          modelId: indexItem.modelId,
+          indexId: indexItem.indexId,
+          itemId: indexItem.itemId,
+          createdAt: new Date(indexItem.createdAt).getTime(),
+          updatedAt: new Date(indexItem.updatedAt).getTime(),
+          ...metadatas
+        }]
+      });
+
+
 
       const embeddingService = new EmbeddingService(this.definition).setSession(
         indexSession,
@@ -110,17 +177,21 @@ class Indexer {
       const embedding = await embeddingService.createEmbedding({
         indexId: indexItem.indexId,
         itemId: indexItem.itemId,
-        modelName: embeddingResponse.data.model,
+        modelName: process.env.MODEL_EMBEDDING,
         category: "document",
-        vector: embeddingResponse.data.vector,
+        vector: embeddingResponse.data[0].embedding,
         description: "Default document embeddings",
       });
-      if (embedding) {
+
+
+
+      if (indexItem.itemId) {
         logger.info(
-          `Step [0]: EmbeddingEvent trigger successful for id: ${embedding.id}`,
+          `Step [0]: EmbeddingEvent trigger successful for id: ${indexItem.itemId}`,
         );
       }
     } catch (e) {
+      console.log(e)
       logger.error(
         `Step [0]: Indexer createIndexItemEvent error: ${JSON.stringify(e)}`,
       );
@@ -128,6 +199,8 @@ class Indexer {
   }
   // Index item (UD)
   async updateIndexItemEvent(id) {
+
+    return
     logger.info(`Step [1]: UpdateIndexItemEvent trigger for id: ${id}`);
 
     const itemService = new ItemService(this.definition);
@@ -148,7 +221,6 @@ class Indexer {
         `Step [1]: Indexer session created for index: ${indexItem.index.id}`,
       );
 
-      // const updateURL = `${process.env.LLM_INDEXER_HOST}/indexer/item?indexId=${indexItem.indexId}&itemId=${indexItem.itemId}`;
 
       if (indexItem.deletedAt !== null) {
         logger.info(`Step [1]: IndexItem DeleteEvent trigger for id: ${id}`);
@@ -162,13 +234,22 @@ class Indexer {
 
   async updateQuestions(indexItem) {
     try {
-      let response = await axios.post(
-        `${process.env.LLM_INDEXER_HOST}/chat/external`,
-        {
-          basePrompt: "seref/question_generation_prompt",
-          indexIds: [indexItem.index.id],
-        },
-      );
+
+      const questionPrompt = await hub.pull("v2_web_question_generation");
+      const questionPromptText = questionPrompt.promptMessages[0].prompt.template;
+    
+      const response = await handleCompletions({
+        messages: [{
+          role: "system",
+          content: questionPromptText
+        }],
+        indexIds: [indexItem.index.id],
+        stream: false,
+        schema:  z.object({
+          questions: z.array(z.string()),
+        })
+      });
+
       const sourcesHash = ethers.utils.keccak256(
         ethers.utils.toUtf8Bytes(JSON.stringify([indexItem.index.id])),
       );
@@ -185,6 +266,8 @@ class Indexer {
   }
 
   async updateWebPageEvent(id) {
+
+    return;
     logger.info(`Step [2]: UpdateWebPageEvent trigger for id: ${id}`);
 
     const webPageFragment = this.fragments.filter(
@@ -220,12 +303,7 @@ class Indexer {
             this.definition,
           ).setSession(indexSession);
 
-          const embeddingResponse = await axios.post(
-            `${process.env.LLM_INDEXER_HOST}/indexer/embeddings`,
-            {
-              content: webPageItem.content,
-            },
-          );
+          
 
           logger.info(
             `Step [2]: Embedding created for indexItem: ${indexItem.id} with vector length ${embeddingResponse.data.vector?.length}`,
@@ -254,6 +332,8 @@ class Indexer {
   }
 
   async processAllSubscriptions(indexItem) {
+
+    return
     const itemStream = await ceramic.loadStream(indexItem.itemId);
 
     const allSubscriptions = await redis.hGetAll(`subscriptions`);
@@ -277,6 +357,8 @@ class Indexer {
   }
 
   async createEmbeddingEvent(id) {
+
+    return
     logger.info(`Step [3]: createEmbeddingEvent trigger for id: ${id}`);
 
     const embeddingService = new EmbeddingService(this.definition);
@@ -315,18 +397,6 @@ class Indexer {
     }
 
     try {
-      const updatePayload = {
-        vector: embedding.vector,
-        item: itemStream.content,
-        indexId: embedding.index.id,
-        itemId: embedding.itemId,
-      };
-      await axios.post('http://app-api/api/updates', updatePayload);
-    } catch (e) {
-      console.log("App is down");
-    }
-
-    try {
       await redis.publish(
         `indexStream:${embedding.index.id}`,
         JSON.stringify(itemStream.content),
@@ -342,6 +412,7 @@ class Indexer {
       );
     }
   }
+
   async updateEmbeddingEvent(id) {
     logger.info("updateEmbeddingEvent", id);
   }
@@ -367,6 +438,7 @@ class Indexer {
       return;
     }
 
+    
     const conversation = await conversationService.getConversation(
       message.conversationId,
     );
@@ -381,6 +453,7 @@ class Indexer {
       message.content &&
       message.content.length > 0
     ) {
+      
       handleUserMessage(message, this.definition, pubSubClient, redisClient);
     }
   }

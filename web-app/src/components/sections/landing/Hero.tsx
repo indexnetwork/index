@@ -1,5 +1,4 @@
 import Button from "@/components/new/Button";
-import { useAuth } from "@/context/AuthContext";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
@@ -7,7 +6,6 @@ import { useMemo } from "react";
 const HeroSection = () => {
   const router = useRouter();
   const query = useSearchParams();
-  const { connect } = useAuth();
 
   const allowed = useMemo(() => {
     return query.get("allowed") === "true";
@@ -41,7 +39,20 @@ const HeroSection = () => {
             discovery experiences across the web.
           </p>
           <div className="flex gap-4">
-            <Button onClick={connect}>Connect</Button>
+            <Button onClick={() => {
+              router.push("https://testflight.apple.com/join/e6sekS5x");
+            }}>
+              <div className="flex items-center gap-2">
+                <Image
+                  width={16}
+                  height={16}
+                  style={{ marginRight: "8px" }}
+                  src="/images/apple-logo.png"
+                  alt="Apple logo"
+                />
+                Download Beta
+              </div>
+            </Button>
             <Button
               variant="outline"
               onClick={() => {

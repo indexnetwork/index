@@ -321,7 +321,7 @@ export class DIDService {
           if (ensProfile.image && ensProfile.image.startsWith(`ipfs://`)) {
             ensProfile.image = ensProfile.image.replace(
               `ipfs://`,
-              `https://ipfs.io/ipfs/`,
+              `https://ipfs.index.network/files/`,
             );
           }
           return {
@@ -341,7 +341,7 @@ export class DIDService {
       delete profileObj.controllerDID;
 
       if (profileObj.avatar) {
-        profileObj.avatar = `https://ipfs.io/ipfs/${profileObj.avatar}`;
+        profileObj.avatar = `https://ipfs.index.network/files/${profileObj.avatar}`;
       }
 
       return profileObj;
