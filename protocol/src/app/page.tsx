@@ -37,7 +37,7 @@ export default function Home() {
         {/* Indexes Section */}
         <section className="space-y-8">
           <div className="space-y-2">
-            <h2 className="text-2xl font-bold">Indexes</h2>
+            <h2 className="text-2xl font-bold text-violet-200">Indexes</h2>
           </div>
           <div className="space-y-4">
             <div>
@@ -85,7 +85,7 @@ export default function Home() {
 
         {/* Testimonials Section */}
         <section className="space-y-8">
-          <h2 className="text-2xl font-bold">
+          <h2 className="text-2xl font-bold text-violet-200">
             What people are saying
           </h2>
           <div className="space-y-6">
@@ -94,7 +94,7 @@ export default function Home() {
                 <blockquote className="">
                   <p className="text-gray-400 text-sm">“{testimonial.quote}”</p>
                   <footer className="text-sm mt-1">
-                    <p className="text-gray-400"><cite className="font-medium  text-white not-italic"><u>{testimonial.author}</u></cite> - {testimonial.title}</p>
+                    <p className="text-gray-400"><cite className="font-medium text-white not-italic"><u><a href={testimonial.link} target="_blank" rel="noopener noreferrer">{testimonial.author}</a></u></cite> - {testimonial.title}</p>
                   </footer>
                 </blockquote>
               </div>
@@ -114,31 +114,35 @@ export default function Home() {
     </>
   );
 }
-
 const testimonials = [
   {
     quote: "Apps need to deliver better information and experiences faster. Index's semantic index does that. Index can make better discovery a primitive all apps rely on.",
     author: "Danny Zuckerman",
-    title: "3Box Labs, Co-founder"
+    title: "3Box Labs, Co-founder",
+    link: "https://twitter.com/dazuck"
   },
   {
     quote: "Index is attempting to create a totally novel discovery and social experience. They aim to deploy autonomous agents in a way that can uniquely benefit from web3 technology and I'm really excited to see their progress.",
     author: "Oak",
-    title: "Autonolas, Co-founder"
+    title: "Autonolas, Co-founder",
+    link: "https://x.com/tannedoaksprout"
   },
   {
     quote: "Index Network is a foundational base layer for the user owned web. We're so glad to be collaborators on privacy at Lit Protocol!",
     author: "David Sneider",
-    title: "Lit Protocol, Co-founder"
+    title: "Lit Protocol, Co-founder",
+    link: "https://x.com/davidlsneider"
   },
   {
     quote: "Index Network is going to change the way we think about discovering information and interacting with the web. The ability to use autonomous AI agents to index and interpret data from multiple sources through an intuitive natural language interface is a total game changer!",
     author: "Simon Brown",
-    title: "Consensys, Researcher & Advisor"
+    title: "Consensys, Researcher & Advisor",
+    link: "https://x.com/orbmis"
   },
   {
     quote: "The future is AI. And in this future, the efficacy of AI will only be as good as the data our agents are ingesting. Index plays a pivotal role in this future, enabling our AI counterparts to return increasingly relevant, contextual, and accurate results and information.",
     author: "Billy Luedtke",
-    title: "Intuition Systems, Founder"
+    title: "Intuition Systems, Founder",
+    link: "https://x.com/0xbilly"
   }
 ];

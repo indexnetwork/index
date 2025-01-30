@@ -40,7 +40,7 @@ export function AgentsSection() {
   return (
     <section className="space-y-8">
       <div className="space-y-2">
-        <h2 className="text-2xl font-bold">Agents</h2>
+        <h2 className="text-2xl font-bold text-violet-200">Agents</h2>
         <p className="text-md text-gray-400">
           Here are your specialized agents, each playing a unique role in making your discovery experience more natural and effective.
         </p>
@@ -49,12 +49,12 @@ export function AgentsSection() {
       <div className="space-y-4">
         {agents.map((agent, index) => (
           <div key={index} className="flex gap-3 py-3">
-            <div className="w-12 h-12 flex-shrink-0 mt-1">
+            <div className="w-16 h-16 flex-shrink-0 mt-1">
               <Image
                 src={agent.icon}
                 alt={`${agent.title} icon`}
-                width={48}
-                height={48}
+                width={80}
+                height={80}
               />
             </div>
             <div className="space-y-2 flex-1">
