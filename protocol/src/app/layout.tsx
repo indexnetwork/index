@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import Script from 'next/script';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -37,6 +38,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <script defer data-domain="index.network" src="https://plausible.io/js/script.js"></script>
+      </head>
       <body className={`${inter.className} min-h-screen`}>
         <main className="container mx-auto px-4 py-8">
           {children}
