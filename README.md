@@ -155,7 +155,7 @@ Index Network leverages the power of several open protocols to enhance its capab
 - **[Index Network](https://index.network)** to explore the app.
 - **[Discord](https://discord.gg/wvdxP6XvYu)** for support and discussions with the community and the team.
 - **[GitHub](https://github.com/indexas/indexas)** for source code, project board, issues, and pull requests.
-- **[Twitter](https://twitter.com/indexas)** for the latest updates on the product and published blogs.
+- **[X](https://x.com/indexnetwork_)** for the latest updates on the product.
 
 ## License
 
