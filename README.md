@@ -13,7 +13,7 @@
 
 <h4 align="center">
   <a href="https://github.com/amplication/amplication/actions/workflows/ci.yml">
-    <img src="https://github.com/indexnetwork/index/actions/workflows/api-ci.yaml/badge.svg" alt="continuous integration">
+    <img src="https://github.com/indexnetwork/index/actions/workflows/web-sdk-ci.yml/badge.svg" alt="continuous integration">
   </a>
   <a href="https://github.com/indexnetwork/index/graphs/contributors">
     <img src="https://img.shields.io/github/contributors-anon/indexnetwork/index?color=yellow&style=flat-square" alt="contributers">
