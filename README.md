@@ -13,9 +13,9 @@
 
 <h4 align="center">
   <a href="https://github.com/amplication/amplication/actions/workflows/ci.yml">
-    <img src="https://github.com/indexas/web3-web-app/actions/workflows/build.yaml/badge.svg" alt="continuous integration">
+    <img src="https://github.com/indexnetwork/index/actions/workflows/build.yaml/badge.svg" alt="continuous integration">
   </a>
-  <a href="https://github.com/indexas/web3-web-app/graphs/contributors">
+  <a href="https://github.com/indexnetwork/index/graphs/contributors">
     <img src="https://img.shields.io/github/contributors-anon/indexas/web3-web-app?color=yellow&style=flat-square" alt="contributers">
   </a>
   <a href="https://opensource.org/licenses/MIT">
