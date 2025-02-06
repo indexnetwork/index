@@ -45,9 +45,6 @@ const styles: { [key: string]: CSSProperties } = {
     borderRadius: "4px",
     cursor: "pointer",
     transition: "background-color 0.3s ease",
-    "&:hover": {
-      backgroundColor: "#c82333",
-    },
   },
 };
 
@@ -91,6 +88,7 @@ const AccountDeletionRequest = () => {
           </p>
 
           <button 
+            className="hover:bg-[#c82333]"
             style={styles.button}
             onClick={handleDeleteRequest}
           >
