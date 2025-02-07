@@ -57,10 +57,6 @@ To illustrate, here is an example of an agent message that’s possible using In
 
 ## Components
 
-### Web App
-
-The [Web App](web-app) component is where you can find the code for the web application. The web app provides a user-friendly interface that allows creators to explore indexes, manage their data, and configure them.
-
 ### Indexer
 
 The [Indexer](indexer) component hosts the code for the indexer. It acts as the backbone of the natural language operations, providing the necessary methods to consume data from Ceramic, interact with large language models. It listenes Apache Kafka to consume Ceramic Network events consumes to ChromaDB by running `yarn consumer`
