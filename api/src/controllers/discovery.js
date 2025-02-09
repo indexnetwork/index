@@ -68,8 +68,11 @@ export const completions = async (req, res, next) => {
       }
       res.end();
     } else {
-      // Handle non-streaming response
-      return res.json(JSON.parse(response.choices[0].message.content));
+      if (schema) {
+        return res.json(JSON.parse(response.choices[0].message.content));
+      } else {
+        return res.send(response.choices[0].message.content);
+      }
     }
   } catch (error) {
     console.error("An error occurred:", error);
