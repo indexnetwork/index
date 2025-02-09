@@ -285,8 +285,6 @@ class Indexer {
   }
 
   async updateWebPageEvent(id) {
-
-    return;
     logger.info(`Step [2]: UpdateWebPageEvent trigger for id: ${id}`);
 
     const webPageFragment = this.fragments.filter(
@@ -322,11 +320,32 @@ class Indexer {
             this.definition,
           ).setSession(indexSession);
 
-          
+          const {runtimeDefinition } = await getModelInfo();
+          const docText = await getDocText(webPageItem.content, {
+            modelId: indexItem.modelId,
+          }, runtimeDefinition);
 
-          logger.info(
-            `Step [2]: Embedding created for indexItem: ${indexItem.id} with vector length ${embeddingResponse.data.vector?.length}`,
-          );
+          const embeddingResponse = await openai.embeddings.create({
+            model: process.env.MODEL_EMBEDDING,
+            input: docText,
+          });
+
+          const metadatas = getMetadataForModel(indexItem.modelId, webPageItem.content);
+          // Add vector index upsert to public collection
+          await publicCollection.upsert({
+            ids: [indexItem.itemId],
+            embeddings: [embeddingResponse.data[0].embedding],
+            documents: [JSON.stringify(webPageItem.content)],
+            metadatas: [{
+              modelName: process.env.MODEL_EMBEDDING,
+              modelId: indexItem.modelId,
+              indexId: indexItem.indexId,
+              itemId: indexItem.itemId,
+              createdAt: new Date(indexItem.createdAt).getTime(),
+              updatedAt: new Date(indexItem.updatedAt).getTime(),
+              ...metadatas
+            }]
+          });
 
           const embedding = await embeddingService.createEmbedding({
             indexId: indexItem.index.id,
