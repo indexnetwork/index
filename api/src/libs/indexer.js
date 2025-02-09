@@ -350,15 +350,15 @@ class Indexer {
           const embedding = await embeddingService.createEmbedding({
             indexId: indexItem.index.id,
             itemId: indexItem.item.id,
-            modelName: embeddingResponse.data.model,
+            modelName: process.env.MODEL_EMBEDDING,
             category: "document",
-            vector: embeddingResponse.data.vector,
+            vector: embeddingResponse.data[0].embedding,
             description: "Default document embeddings",
           });
 
           this.updateQuestions(indexItem);
           logger.info(
-            `Step [2]: EmbeddingEvent trigger successfull for id: ${embedding.id}`,
+            `Step [2]: EmbeddingEvent trigger successful for id: ${embedding.id}`,
           );
         }
       }
