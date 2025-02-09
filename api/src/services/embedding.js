@@ -39,7 +39,8 @@ export const getDocText = (doc, metadata, runtimeDefinition) => {
       'Hackathon details:',
       `- name: ${doc.name}`,
       `- description: ${doc.description}`,
-      `- location: ${doc.location}`,
+      `- longDescription: ${doc.longDescription}`,
+      `- link: ${doc.link}`,
       '----'
     ].join('\n');
   }
