@@ -32,6 +32,10 @@ const collection = await chromaClient.getOrCreateCollection({
   name: process.env.CHROMA_COLLECTION_NAME || "index_mainnet_v3",
 });
 
+const publicCollection = await chromaClient.getOrCreateCollection({
+  name: "index_public",
+});
+
 
 const logger = Logger.getInstance();
 
@@ -169,11 +173,26 @@ class Indexer {
         }]
       });
 
-
+      // Add vector index upsert
+      await publicCollection.upsert({
+        ids: [indexItem.itemId],
+        embeddings: [embeddingResponse.data[0].embedding],
+        documents: [JSON.stringify(itemStream.content)],
+        metadatas: [{
+          modelName: process.env.MODEL_EMBEDDING,
+          modelId: indexItem.modelId,
+          indexId: indexItem.indexId,
+          itemId: indexItem.itemId,
+          createdAt: new Date(indexItem.createdAt).getTime(),
+          updatedAt: new Date(indexItem.updatedAt).getTime(),
+          ...metadatas
+        }]
+      });
 
       const embeddingService = new EmbeddingService(this.definition).setSession(
         indexSession,
       );
+
       const embedding = await embeddingService.createEmbedding({
         indexId: indexItem.indexId,
         itemId: indexItem.itemId,
