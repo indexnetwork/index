@@ -33,7 +33,17 @@ export const getDocText = (doc, metadata, runtimeDefinition) => {
       '----'
     ].join('\n');
   }
-  
+
+  if (metadata.modelId === runtimeDefinition.models.Hackathon.id) {
+    return [
+      'Hackathon details:',
+      `- name: ${doc.name}`,
+      `- description: ${doc.description}`,
+      `- location: ${doc.location}`,
+      '----'
+    ].join('\n');
+  }
+
   return JSON.stringify(doc);
 };
 
