@@ -54,6 +54,11 @@ export const appBundleFragment = `
     Cast_text: text
     Cast_timestamp: timestamp
   }
+  ... on Hackathon {
+    hackathonId
+    name
+    slug
+  }
 `;
 
 export const indexItemFragment = `
