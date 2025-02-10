@@ -40,6 +40,7 @@ export const getDocText = (doc, metadata, runtimeDefinition) => {
       `- name: ${doc.name}`,
       `- description: ${doc.description}`,
       `- longDescription: ${doc.longDescription}`,
+      `- orgName: ${doc.orgName}`,
       `- link: ${doc.link}`,
       '----'
     ].join('\n');
