@@ -1,5 +1,4 @@
 import dotenv from "dotenv";
-import axios from "axios";
 import { ItemService } from "../services/item.js";
 import { ComposeDBService } from "../services/composedb.js";
 import { EmbeddingService, getDocText } from "../services/embedding.js";
@@ -19,6 +18,13 @@ import { handleCompletions } from "../language/completions.js";
 import { ChromaClient } from "chromadb";
 import { getModelInfo } from "../utils/mode.js";
 
+import knex from 'knex';
+
+const appDb = knex({
+    client: 'pg',
+    connection: process.env.POSTGRES_CONNECTION_STRING_APP,
+    searchPath: ['knex', 'public'],
+});
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -36,6 +42,12 @@ const publicCollection = await chromaClient.getOrCreateCollection({
   name: "index_public",
 });
 
+const models = {
+  'kjzl6hvfrbw6c9mxmf3qq4i4pcq0b26z7ns8drwsrr5hotcbmkwz7gobki2az9d': 'Event',
+  'kjzl6hvfrbw6c6i7vhwe1dx3w4gt7k1kxvetcjrkb3shp8p8fnpa228l7qcl2y8': 'Cast',
+  'kjzl6hvfrbw6cavush68sk4bipq4jtsqsdlspklfnn1c61ehwo7g1tnftt0g42w': 'Cast',
+};
+
 
 const logger = Logger.getInstance();
 
@@ -48,11 +60,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 const getMetadataForModel = (modelId, doc) => {
-  const models = {
-    'kjzl6hvfrbw6c9mxmf3qq4i4pcq0b26z7ns8drwsrr5hotcbmkwz7gobki2az9d': 'Event',
-    'kjzl6hvfrbw6c6i7vhwe1dx3w4gt7k1kxvetcjrkb3shp8p8fnpa228l7qcl2y8': 'Cast',
-    'kjzl6hvfrbw6cavush68sk4bipq4jtsqsdlspklfnn1c61ehwo7g1tnftt0g42w': 'Cast',
-  };
+
 
   if (models[modelId] === 'Event') {
     return {
@@ -68,6 +76,37 @@ const getMetadataForModel = (modelId, doc) => {
   }
   return {}
 }
+
+const upsertToCollection = async (collection, indexItem, embeddingResponse, itemContent, metadatas, isPublic=true) => {
+  
+  // webpage is not send to public collection.
+  // cast and event are send to public collection.
+  // cast and event are also sent to private collection. 
+
+  await collection.upsert({
+    ids: [indexItem.itemId],
+    embeddings: [embeddingResponse.data[0].embedding],
+    documents: [JSON.stringify(itemContent)],
+    metadatas: [{
+      modelName: process.env.MODEL_EMBEDDING,
+      modelId: indexItem.modelId,
+      indexId: indexItem.indexId,
+      itemId: indexItem.itemId,
+      createdAt: new Date(indexItem.createdAt).getTime(),
+      updatedAt: new Date(indexItem.updatedAt).getTime(),
+      ...metadatas
+    }]
+  });
+  if (!isPublic && models[indexItem.modelId]) {
+    await appDb('indexes').insert({
+      index_id: indexItem.indexId,
+      item_id: indexItem.itemId,
+      item_type: models[indexItem.modelId].toLowerCase(),
+      vector: embeddingResponse.data[0].embedding,
+      data: JSON.stringify(itemContent)
+    });
+  }
+};
 
 class Indexer {
   constructor(definition, fragments) {
@@ -155,39 +194,12 @@ class Indexer {
       
 
       const metadatas = getMetadataForModel(indexItem.modelId, itemStream.content);
-      console.log(metadatas)
+      
 
-      // Add vector index upsert
-      await collection.upsert({
-        ids: [indexItem.itemId],
-        embeddings: [embeddingResponse.data[0].embedding],
-        documents: [JSON.stringify(itemStream.content)],
-        metadatas: [{
-          modelName: process.env.MODEL_EMBEDDING,
-          modelId: indexItem.modelId,
-          indexId: indexItem.indexId,
-          itemId: indexItem.itemId,
-          createdAt: new Date(indexItem.createdAt).getTime(),
-          updatedAt: new Date(indexItem.updatedAt).getTime(),
-          ...metadatas
-        }]
-      });
-
-      // Add vector index upsert
-      await publicCollection.upsert({
-        ids: [indexItem.itemId],
-        embeddings: [embeddingResponse.data[0].embedding],
-        documents: [JSON.stringify(itemStream.content)],
-        metadatas: [{
-          modelName: process.env.MODEL_EMBEDDING,
-          modelId: indexItem.modelId,
-          indexId: indexItem.indexId,
-          itemId: indexItem.itemId,
-          createdAt: new Date(indexItem.createdAt).getTime(),
-          updatedAt: new Date(indexItem.updatedAt).getTime(),
-          ...metadatas
-        }]
-      });
+      // Replace duplicate upsert calls with the new function
+      await upsertToCollection(collection, indexItem, embeddingResponse, itemStream.content, metadatas, false);
+  
+      await upsertToCollection(publicCollection, indexItem, embeddingResponse, itemStream.content, metadatas, true);
 
       const embeddingService = new EmbeddingService(this.definition).setSession(
         indexSession,
@@ -331,21 +343,8 @@ class Indexer {
           });
 
           const metadatas = getMetadataForModel(indexItem.modelId, webPageItem.content);
-          // Add vector index upsert to public collection
-          await publicCollection.upsert({
-            ids: [indexItem.itemId],
-            embeddings: [embeddingResponse.data[0].embedding],
-            documents: [JSON.stringify(webPageItem.content)],
-            metadatas: [{
-              modelName: process.env.MODEL_EMBEDDING,
-              modelId: indexItem.modelId,
-              indexId: indexItem.indexId,
-              itemId: indexItem.itemId,
-              createdAt: new Date(indexItem.createdAt).getTime(),
-              updatedAt: new Date(indexItem.updatedAt).getTime(),
-              ...metadatas
-            }]
-          });
+          // Replace upsert call with the new function
+          await upsertToCollection(publicCollection, indexItem, embeddingResponse, webPageItem.content, metadatas, true);
 
           const embedding = await embeddingService.createEmbedding({
             indexId: indexItem.index.id,
