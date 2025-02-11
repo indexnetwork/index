@@ -98,13 +98,16 @@ const upsertToCollection = async (collection, indexItem, embeddingResponse, item
     }]
   });
   if (!isPublic && models[indexItem.modelId]) {
-    await appDb('indexes').insert({
-      index_id: indexItem.indexId,
-      item_id: indexItem.itemId,
-      item_type: models[indexItem.modelId].toLowerCase(),
-      vector: embeddingResponse.data[0].embedding,
-      data: JSON.stringify(itemContent)
-    });
+    await appDb.raw(
+      'insert into "indexes" ("data", "index_id", "item_id", "item_type", "vector") values (?, ?, ?, ?, ?)',
+      [
+        JSON.stringify(itemContent),
+        indexItem.indexId,
+        indexItem.itemId,
+        models[indexItem.modelId].toLowerCase(),
+        JSON.stringify(embeddingResponse.data[0].embedding)
+      ]
+    );
   }
 };
 
