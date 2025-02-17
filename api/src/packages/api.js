@@ -657,6 +657,11 @@ app.post(
   fileController.uploadAvatar,
 );
 
+app.get(
+  "/profile/upload_avatar_from_url",
+  fileController.uploadAvatarFromUrl,
+);
+
 app.post(
   "/site/subscribe",
   validator.body(

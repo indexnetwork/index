@@ -52,3 +52,54 @@ export const uploadAvatar = async (req, res, next) => {
     res.status(500).send("An error occurred while uploading the file.");
   }
 };
+
+export const uploadAvatarFromUrl = async (req, res, next) => {
+  try {
+    const { url } = req.query;
+    if (!url) {
+      return res.status(400).send("URL is required");
+    }
+
+    // Get file extension from URL
+    const extension = url.split('.').pop().split(/[#?]/)[0].toLowerCase();
+    if (!['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension)) {
+      return res.status(400).send("Unsupported file type");
+    }
+
+    // Fetch the remote file
+    const response = await fetch(url);
+    if (!response.ok) {
+      return res.status(400).send("Failed to fetch remote file");
+    }
+    const buffer = await response.arrayBuffer();
+
+    // Create File object with proper extension
+    const file = new File([buffer], `profilePicture.${extension}`, {
+      type: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+    });
+
+    // Upload to IPFS via Pinata
+    const pinataResult = await pinata.upload.file(file)
+      .group(`019335a5-ed91-770d-8f81-db7182c70c2e`);
+
+    // Upload to S3
+    const s3Params = {
+      Bucket: process.env.S3_BUCKET_NAME,
+      Key: `avatars/${pinataResult.cid}.${extension}`,
+      Body: Buffer.from(buffer),
+      ContentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+    };
+
+    await s3Client.send(new PutObjectCommand(s3Params));
+
+    // Respond with both IPFS CID and S3 URL
+    res.json({
+      cid: pinataResult.cid,
+      pinata: `https://ipfs.index.network/files/${pinataResult.cid}`,
+      s3: `https://app-static.index.network/avatars/${pinataResult.cid}.${extension}`,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("An error occurred while uploading the file.");
+  }
+};
