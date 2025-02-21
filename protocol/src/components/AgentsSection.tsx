@@ -11,7 +11,7 @@ const agents = [
     exampleResponse: "Here is the summary of discussions about your project from Farcaster."
   },
   {
-    title: "Listener",
+    title: "Semantic Listener",
     icon: "/icons/listener.png",
     description: "Tracks updates across platforms to bring you relevant insights",
     exampleResponse: "Since you're curious about AI agents, I'll send you relevant updates."
