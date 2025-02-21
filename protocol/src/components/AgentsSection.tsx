@@ -19,13 +19,13 @@ const agents = [
   {
     title: "Context Broker",
     icon: "/icons/context_broker.png",
-    description: "Connects peers contextually while respecting privacy",
+    description: "The matchmaking agent that identifies people who should connect, helps them find great opportunities, and builds communities.",
     exampleResponse: "I noticed your curiousity about decentralized AI events, you might want to join Adam's conversation."
   },
   {
     title: "Link",
     icon: "/icons/link.png",
-    description: "Connects the right minds to Index App at the perfect time",
+    description: "Invites relevant people to conversations at the perfect time",
     exampleResponse: "As you're discussing AI agents, I sent an invite to Simon on Twitter, since he's an expert in AI."
   },
   {
