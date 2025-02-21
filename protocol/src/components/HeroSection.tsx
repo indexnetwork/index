@@ -20,7 +20,7 @@ export function HeroSection() {
         Let The Agents Do The Finding
       </h1>
       <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-        Index connects you with the right ideas and people. All while respecting your privacy.
+Index is a discovery protocol that connects you with the right ideas and people while respecting your privacy.
       </p>
       <div className="flex justify-center gap-4 mt-0">
         <Link target='_blank' href="https://docs.google.com/forms/d/e/1FAIpQLSfRpjybSA43mJD9K9Gbj2p3fmeSk1MeH1r9fr-VRZrmFI8fGg/viewform" className="border border-white text-white bg-transparent py-2 px-4 rounded">
