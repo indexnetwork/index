@@ -192,6 +192,11 @@ export const processFarcasterEvent = async (event, runtimeDefinition, modelFragm
       payload = removeMentionedProfiles(payload);
       delete payload.event_timestamp;
       delete payload.frames;
+      delete payload.app;
+      delete payload.mentioned_profiles_ranges;
+      delete payload.mentioned_channels;
+      delete payload.mentioned_channels_ranges;
+      
 
 
     if (payload.author) {
