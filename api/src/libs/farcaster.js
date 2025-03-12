@@ -265,6 +265,7 @@ export const processFarcasterEvent = async (event, runtimeDefinition, modelFragm
     const item = await itemService.addItem("kjzl6kcym7w8yb1lw37upcpbxllni7f5gqoonmp2i68ijfp37jitiy9ymm21pmu", cast.id);
 
     await redis.sAdd('inserted_casts', payload.hash);
+    await redis.publish('inserted_casts', cast.id);
 
     return { status: 'success', cast, item };
 
