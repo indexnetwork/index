@@ -1,0 +1,121 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AgentRole {
+  ADMIN
+  USER
+  SYSTEM
+}
+
+model User {
+  id            String        @id @default(uuid())
+  email         String        @unique
+  name          String
+  avatar        String?
+  role          String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+  intents       Intent[]
+  connections   Connection[] // Accessor, will be computed froms intent pair event 
+  indexes       Index[]
+  memberOf      Index[]       @relation("IndexMembers")
+}
+
+model Agent {
+  id        String    @id @default(uuid())
+  name      String
+  role      AgentRole
+  avatar    String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  backers   Backer[]
+}
+
+model Intent {
+  id          String        @id @default(uuid())
+  title       String
+  payload     String
+  updatedAt   DateTime      @updatedAt
+  status      String
+  user        User          @relation(fields: [userId], references: [id])
+  userId      String
+  indexes     Index[]
+  intentPairs IntentPair[] @relation("IntentPairs")
+}
+
+model Index {
+  id               String         @id @default(uuid())
+  name             String
+  createdAt        DateTime       @default(now())
+  user             User           @relation(fields: [userId], references: [id])
+  userId           String
+  members          User[]         @relation("IndexMembers")
+  files            File[]
+}
+
+model File {
+  id        String   @id @default(uuid())
+  name      String
+  size      BigInt
+  date      DateTime
+  index     Index    @relation(fields: [indexId], references: [id])
+  indexId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([indexId])
+}
+
+model Backer {
+  id           String   @id @default(uuid())
+  confidence   Float
+  agent        Agent    @relation(fields: [agentId], references: [id])
+  agentId      String
+  intentPair   IntentPair @relation(fields: [intentPairId], references: [id])
+  intentPairId String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  @@index([agentId])
+  @@index([intentPairId])
+}
+
+enum IntentPairEvent {
+  REQUEST
+  SKIP
+  CANCEL
+  ACCEPT
+  DECLINE
+  REMOVE
+}
+
+model IntentPair {
+  id                  String           @id @default(uuid())
+  intents             Intent[]         @relation("IntentPairs")
+  lastEvent           IntentPairEvent?
+  lastEventTimestamp  DateTime?
+  backers             Backer[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  deletedAt           DateTime?
+
+  @@index([lastEventTimestamp])
+  @@check(length(intents) = 2)
+}
