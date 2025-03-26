@@ -30,7 +30,6 @@ model User {
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?
   intents       Intent[]
-  connections   Connection[] // Accessor, will be computed froms intent pair event 
   indexes       Index[]
   memberOf      Index[]       @relation("IndexMembers")
 }
@@ -66,6 +65,7 @@ model Index {
   userId           String
   members          User[]         @relation("IndexMembers")
   files            File[]
+  intents          Intent[]
 }
 
 model File {
@@ -117,5 +117,4 @@ model IntentPair {
   deletedAt           DateTime?
 
   @@index([lastEventTimestamp])
-  @@check(length(intents) = 2)
 }
