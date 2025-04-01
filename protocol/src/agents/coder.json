@@ -1,0 +1,85 @@
+{
+  "name": "coder",
+  "displayName": "Coding Agent",
+  "version": "1.0.0",
+  "description": "AI agent specialized in code generation, debugging, and software development using LangGraph workflows",
+  "role": "SYSTEM",
+  "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=coder",
+  "capabilities": [
+    "Code generation in multiple languages",
+    "Code review and optimization",
+    "Bug detection and fixing",
+    "Test case generation",
+    "Documentation generation",
+    "Architecture planning"
+  ],
+  "langGraphSpec": {
+    "workflow": "coding_workflow",
+    "nodes": [
+      {
+        "id": "requirement_analyzer",
+        "type": "agent",
+        "description": "Analyzes coding requirements and specifications"
+      },
+      {
+        "id": "code_generator",
+        "type": "agent",
+        "description": "Generates code based on requirements"
+      },
+      {
+        "id": "code_reviewer",
+        "type": "agent",
+        "description": "Reviews generated code for quality and best practices"
+      },
+      {
+        "id": "test_generator",
+        "type": "agent",
+        "description": "Generates unit tests for the code"
+      },
+      {
+        "id": "debugger",
+        "type": "agent",
+        "description": "Identifies and fixes bugs in the code"
+      },
+      {
+        "id": "optimizer",
+        "type": "agent",
+        "description": "Optimizes code for performance and readability"
+      }
+    ],
+    "edges": [
+      {"from": "requirement_analyzer", "to": "code_generator"},
+      {"from": "code_generator", "to": "code_reviewer"},
+      {"from": "code_reviewer", "to": "test_generator"},
+      {"from": "test_generator", "to": "optimizer"}
+    ],
+    "conditionalEdges": [
+      {
+        "from": "code_reviewer",
+        "condition": "has_issues",
+        "to": "debugger"
+      },
+      {
+        "from": "debugger",
+        "condition": "fixed",
+        "to": "code_reviewer"
+      }
+    ]
+  },
+  "tools": [
+    "code_executor",
+    "syntax_checker",
+    "linter",
+    "formatter",
+    "package_manager",
+    "git_client",
+    "documentation_generator"
+  ],
+  "configuration": {
+    "supported_languages": ["python", "javascript", "typescript", "go", "rust", "java"],
+    "max_file_size": "10MB",
+    "testing_framework": "auto-detect",
+    "code_style": "pep8"
+  },
+  "implementation": "TODO: Implement LangGraph workflow for coding agent"
+} 
