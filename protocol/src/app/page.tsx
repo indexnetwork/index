@@ -29,8 +29,10 @@ export default function Home() {
           </div>
         </nav>
       </header>
-
       <div className="max-w-3xl mx-auto px-4 space-y-16 ">
+      <HeroSection />
+      </div>
+      { false && <div className="max-w-3xl mx-auto px-4 space-y-16 ">
         <HeroSection />
         <AgentsSection />
 
@@ -110,7 +112,7 @@ export default function Home() {
             <Link href="https://blog.index.network" className="nav-link">Blog</Link>
           </div>
         </section>
-      </div>
+      </div>}
     </>
   );
 }
