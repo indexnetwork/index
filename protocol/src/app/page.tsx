@@ -24,13 +24,15 @@ export default function Home() {
             />
           </Link>
           <div className="flex gap-6">
-            <Link href="https://blog.index.network/" className="nav-link">Blog </Link>
+          <Link href="https://x.com/indexnetwork_" className="nav-link">x.com</Link>
+          <Link href="https://blog.index.network" className="nav-link">blog</Link>
             <GitHubButton href="https://github.com/indexnetwork/index" data-color-scheme="no-preference: dark; light: dark; dark: dark;" data-size="large" data-show-count="true" aria-label="Star indexnetwork/index on GitHub">Star</GitHubButton>
           </div>
         </nav>
       </header>
       <div className="max-w-3xl mx-auto px-4 space-y-16 ">
       <HeroSection />
+
       </div>
       { false && <div className="max-w-3xl mx-auto px-4 space-y-16 ">
         <HeroSection />
@@ -104,14 +106,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Socials Section */}
-        <section className="text-center space-y-4">
-          <div className="flex justify-center gap-4 items-center">
-            <Link href="https://github.com/indexnetwork/index" className="nav-link">Github</Link>
-            <Link href="https://x.com/indexnetwork_" className="nav-link">X.com</Link>
-            <Link href="https://blog.index.network" className="nav-link">Blog</Link>
-          </div>
-        </section>
+
       </div>}
     </>
   );
