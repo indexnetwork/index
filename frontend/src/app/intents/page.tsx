@@ -3,77 +3,21 @@
 import { useState } from 'react';
 import { PlusCircle, Filter, Clock, ArrowUpRight, Zap, Award, Lock, Users, Settings, BellDot, Bot } from 'lucide-react';
 import Link from 'next/link';
-
-type Intent = {
-  id: number;
-  title: string;
-  status: 'active' | 'draft' | 'completed';
-  matches: number;
-  stakes: number;
-  createdAt: string;
-};
-
-// Mock data for intents
-const mockIntents: Intent[] = [
-  {
-    id: 1,
-    title: "Looking for a founding engineer focused on privacy-preserving AI",
-    status: "active",
-    matches: 3,
-    stakes: 750,
-    createdAt: "2 days ago"
-  },
-  {
-    id: 2,
-    title: "Exploring investors aligned with decentralized identity and confidential compute",
-    status: "active",
-    matches: 5,
-    stakes: 1250,
-    createdAt: "1 week ago"
-  },
-  {
-    id: 3,
-    title: "Need collaborator for zero-knowledge proof implementation",
-    status: "active",
-    matches: 2,
-    stakes: 425,
-    createdAt: "3 days ago"
-  },
-  {
-    id: 4,
-    title: "Looking for senior Rust developer with experience in privacy solutions",
-    status: "active",
-    matches: 1,
-    stakes: 550,
-    createdAt: "5 days ago"
-  },
-  {
-    id: 5,
-    title: "Seeking market insights for decentralized identity products",
-    status: "completed",
-    matches: 7,
-    stakes: 0,
-    createdAt: "2 weeks ago"
-  },
-  {
-    id: 6,
-    title: "Need technical advisor with experience in scaling web3 applications",
-    status: "draft",
-    matches: 0,
-    stakes: 0,
-    createdAt: "1 day ago"
-  }
-];
+import { useIntent } from '@/contexts/IntentContext';
 
 export default function IntentsPage() {
   const [activeTab, setActiveTab] = useState<'active' | 'draft' | 'completed'>('active');
-  const [intents, setIntents] = useState<Intent[]>(mockIntents);
+  const { intents } = useIntent();
 
-  const filteredIntents = intents.filter(intent => intent.status === activeTab);
+  const filteredIntents = intents.filter(intent => {
+    if (activeTab === 'active') return intent.status === 'active';
+    if (activeTab === 'draft') return intent.status === 'draft';
+    if (activeTab === 'completed') return intent.status === 'completed';
+    return false;
+  });
 
   return (
     <div className="flex flex-col min-h-screen">
-
       <main className="flex-1 px-6 py-8">
         <div className="max-w-6xl mx-auto">
           {/* Page Title and Actions */}
@@ -133,7 +77,11 @@ export default function IntentsPage() {
           {/* Intent List */}
           <div className="space-y-4">
             {filteredIntents.map((intent) => (
-              <div key={intent.id} className="bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow">
+              <Link 
+                key={intent.id}
+                href={`/intents/${intent.id}`}
+                className="block bg-white rounded-lg shadow p-6 hover:shadow-md transition-shadow"
+              >
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <h3 className="text-lg font-medium text-gray-900 mb-2">{intent.title}</h3>
@@ -161,13 +109,10 @@ export default function IntentsPage() {
                         </div>
                       )}
                     </div>
-                    <Link 
-                      href={`/intents/${intent.id}`}
-                      className="flex items-center text-sm text-indigo-600 hover:text-indigo-800"
-                    >
+                    <div className="flex items-center text-sm text-indigo-600 hover:text-indigo-800">
                       View Details
                       <ArrowUpRight className="h-3.5 w-3.5 ml-1" />
-                    </Link>
+                    </div>
                   </div>
                 </div>
                 
@@ -175,7 +120,6 @@ export default function IntentsPage() {
                 {intent.status === 'active' && intent.matches > 0 && (
                   <div className="mt-4 pt-4 border-t border-gray-100">
                     <div className="flex items-center">
-
                       <Bot className="h-4 w-4 text-green-500 mr-2" />
                       <span className="text-sm text-gray-600">
                         <span className="font-medium">3 broker agents</span> are competing to find you matches
@@ -183,7 +127,7 @@ export default function IntentsPage() {
                     </div>
                   </div>
                 )}
-              </div>
+              </Link>
             ))}
 
             {filteredIntents.length === 0 && (
@@ -215,8 +159,6 @@ export default function IntentsPage() {
           </div>
         </div>
       </main>
-
-      
     </div>
   );
 } 

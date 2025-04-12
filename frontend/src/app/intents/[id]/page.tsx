@@ -1,101 +1,24 @@
 'use client';
 
-import { useState } from 'react';
 import ProposalCard from '@/components/ProposalCard';
 import IntentHeader from '@/components/IntentHeader';
 import Link from 'next/link';
+import { useIntent } from '@/contexts/IntentContext';
+import { useParams } from 'next/navigation';
 
-type Intent = {
-  id: number;
-  title: string;
-  createdAt: string;
-  status: 'active' | 'stopped';
-  userStake: number;
-  agentStake: number;
-  pendingProposals: number;
-  acceptedProposals: number;
-  totalProposals: number;
-};
+export default function IntentPage() {
+  const { id } = useParams();
+  const { getIntentById, getProposalsByIntentId, updateIntentStatus, handleProposalAction } = useIntent();
+  
+  const intent = getIntentById(Number(id));
+  const proposals = getProposalsByIntentId(Number(id));
 
-// Mock data for a single intent
-const mockIntent: Intent = {
-  id: 1,
-  title: 'Looking for a founding engineer focused on privacy-preserving AI',
-  createdAt: '2024-04-10',
-  status: 'active',
-  userStake: 20,
-  agentStake: 15,
-  pendingProposals: 3,
-  acceptedProposals: 2,
-  totalProposals: 5,
-};
-
-// Mock data for proposals
-const mockProposals = [
-  {
-    id: 1,
-    name: 'Sarah Chen',
-    role: 'Senior AI Engineer',
-    avatar: 'https://i.pravatar.cc/150?img=1',
-    matchReason: 'Extensive experience in privacy-preserving ML and federated learning. Previously worked at DeepMind on confidential computing.',
-    createdAt: '2024-04-11',
-    stakeDistribution: {
-      reputation: 0.8,
-      relevancy: 0.9,
-      urgency: 0.7,
-      intentHistory: 0.5,
-    },
-    backers: [
-      {
-        name: 'AI Talent Scout',
-        feedback: 'Strong match based on technical expertise and previous work in privacy-preserving AI',
-        successRate: 0.85,
-        stakedAmount: 10,
-      },
-    ],
-  },
-  {
-    id: 2,
-    name: 'Michael Rodriguez',
-    role: 'ML Engineer',
-    avatar: 'https://i.pravatar.cc/150?img=2',
-    matchReason: 'Specialized in differential privacy and secure multi-party computation. Open source contributor to privacy-focused ML frameworks.',
-    createdAt: '2024-04-12',
-    stakeDistribution: {
-      reputation: 0.7,
-      relevancy: 0.8,
-      urgency: 0.6,
-      intentHistory: 0.5,
-    },
-    backers: [
-      {
-        name: 'Tech Talent Finder',
-        feedback: 'Excellent technical fit with relevant open source contributions',
-        successRate: 0.75,
-        stakedAmount: 8,
-      },
-    ],
-  },
-];
-
-export default function IntentPage({ params }: { params: { id: string } }) {
-  const [intent, setIntent] = useState(mockIntent);
-  const [proposals, setProposals] = useState(mockProposals);
+  if (!intent) {
+    return <div>Intent not found</div>;
+  }
 
   const handleStatusToggle = () => {
-    setIntent(prev => ({
-      ...prev,
-      status: prev.status === 'active' ? 'stopped' : 'active'
-    }));
-  };
-
-  const handleProposalAction = (proposalId: number, action: 'accept' | 'decline') => {
-    setProposals(prev => prev.filter(p => p.id !== proposalId));
-    setIntent(prev => ({
-      ...prev,
-      pendingProposals: prev.pendingProposals - 1,
-      acceptedProposals: action === 'accept' ? prev.acceptedProposals + 1 : prev.acceptedProposals
-    }));
+    updateIntentStatus(intent.id, intent.status === 'active' ? 'stopped' : 'active');
   };
 
   return (
@@ -126,8 +49,8 @@ export default function IntentPage({ params }: { params: { id: string } }) {
                   <ProposalCard
                     key={proposal.id}
                     proposal={proposal}
-                    onAccept={() => handleProposalAction(proposal.id, 'accept')}
-                    onDecline={() => handleProposalAction(proposal.id, 'decline')}
+                    onAccept={() => handleProposalAction(intent.id, proposal.id, 'accept')}
+                    onDecline={() => handleProposalAction(intent.id, proposal.id, 'decline')}
                   />
                 ))}
               </div>

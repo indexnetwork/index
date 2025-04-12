@@ -34,10 +34,10 @@ export default function StakeDistributionChart({ distribution }: StakeDistributi
 
   return (
     <div className="space-y-4">
-      <h2 className="text-md font-semibold">Stake Distribution by Category</h2>
+      <h4 className="text-sm font-medium text-gray-900 mb-3">Stake Distribution by Category</h4>
       
       {/* Bar Chart */}
-      <div className="h-8 flex rounded-full overflow-hidden">
+      <div className="h-6 flex rounded-full overflow-hidden">
         {percentages.map(({ category, percentage }, index) => (
           <div
             key={category}
@@ -51,8 +51,8 @@ export default function StakeDistributionChart({ distribution }: StakeDistributi
       <div className="flex flex-wrap gap-6 mt-2">
         {Object.entries(distribution).map(([category, value]) => (
           <div key={category} className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-sm ${colors[category as keyof typeof colors]}`} />
-            <span className="text-gray-400">
+            <div className={`w-2 h-2 rounded-sm ${colors[category as keyof typeof colors]}`} />
+            <span className="text-xs text-gray-400">
               {labels[category as keyof typeof labels]} ({value} $IDX)
             </span>
           </div>

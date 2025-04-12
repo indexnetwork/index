@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navigation from "@/components/Navigation";
+import { IntentProvider } from '@/contexts/IntentContext';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -18,14 +19,16 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} antialiased`}>
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-          <Navigation />
-          <main className="pl-72">
-            <div className="max-w-7xl mx-auto p-8">
-              {children}
-            </div>
-          </main>
-        </div>
+        <IntentProvider>
+          <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+            <Navigation />
+            <main className="pl-72">
+              <div className="max-w-7xl mx-auto p-8">
+                {children}
+              </div>
+            </main>
+          </div>
+        </IntentProvider>
       </body>
     </html>
   );
