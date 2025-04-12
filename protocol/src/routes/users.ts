@@ -1,14 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import prisma from '../lib/db';
-import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
-// Get all users (Admin only, with pagination)
+// Get all users (now open to all authenticated users, with pagination)
 router.get('/', 
   authenticateToken, 
-  requireAdmin,
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -44,7 +43,6 @@ router.get('/',
             email: true,
             name: true,
             avatar: true,
-            role: true,
             createdAt: true,
             updatedAt: true,
             _count: {
@@ -91,8 +89,8 @@ router.get('/:id',
 
       const { id } = req.params;
       
-      // Users can only see their own data unless they're admin
-      if (req.user!.id !== id && req.user!.role !== 'ADMIN') {
+      // Users can only see their own data
+      if (req.user!.id !== id) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
@@ -103,7 +101,6 @@ router.get('/:id',
           email: true,
           name: true,
           avatar: true,
-          role: true,
           createdAt: true,
           updatedAt: true,
           intents: {
@@ -156,7 +153,6 @@ router.put('/:id',
     param('id').isUUID(),
     body('name').optional().trim().isLength({ min: 2, max: 100 }),
     body('avatar').optional().isURL(),
-    body('role').optional().isIn(['ADMIN', 'USER']),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -166,22 +162,16 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { name, avatar, role } = req.body;
+      const { name, avatar } = req.body;
 
-      // Users can only update their own data unless they're admin
-      if (req.user!.id !== id && req.user!.role !== 'ADMIN') {
+      // Users can only update their own data
+      if (req.user!.id !== id) {
         return res.status(403).json({ error: 'Access denied' });
-      }
-
-      // Only admins can change roles
-      if (role && req.user!.role !== 'ADMIN') {
-        return res.status(403).json({ error: 'Only admins can change user roles' });
       }
 
       const updateData: any = {};
       if (name !== undefined) updateData.name = name;
       if (avatar !== undefined) updateData.avatar = avatar;
-      if (role !== undefined && req.user!.role === 'ADMIN') updateData.role = role;
 
       const user = await prisma.user.update({
         where: { id, deletedAt: null },
@@ -191,7 +181,6 @@ router.put('/:id',
           email: true,
           name: true,
           avatar: true,
-          role: true,
           createdAt: true,
           updatedAt: true
         }
@@ -199,7 +188,7 @@ router.put('/:id',
 
       res.json({ 
         message: 'User updated successfully',
-        user 
+        user
       });
     } catch (error: any) {
       if (error.code === 'P2025') {
@@ -211,10 +200,9 @@ router.put('/:id',
   }
 );
 
-// Soft delete user
+// Delete user (users can delete their own accounts)
 router.delete('/:id',
   authenticateToken,
-  requireAdmin,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -225,9 +213,9 @@ router.delete('/:id',
 
       const { id } = req.params;
 
-      // Prevent self-deletion
-      if (req.user!.id === id) {
-        return res.status(400).json({ error: 'Cannot delete your own account' });
+      // Users can only delete their own accounts
+      if (req.user!.id !== id) {
+        return res.status(403).json({ error: 'Access denied' });
       }
 
       await prisma.user.update({
@@ -242,48 +230,6 @@ router.delete('/:id',
       }
       console.error('Delete user error:', error);
       res.status(500).json({ error: 'Failed to delete user' });
-    }
-  }
-);
-
-// Restore soft-deleted user
-router.patch('/:id/restore',
-  authenticateToken,
-  requireAdmin,
-  [param('id').isUUID()],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { id } = req.params;
-
-      const user = await prisma.user.update({
-        where: { id },
-        data: { deletedAt: null },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          avatar: true,
-          role: true,
-          createdAt: true,
-          updatedAt: true
-        }
-      });
-
-      res.json({ 
-        message: 'User restored successfully',
-        user 
-      });
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      console.error('Restore user error:', error);
-      res.status(500).json({ error: 'Failed to restore user' });
     }
   }
 );

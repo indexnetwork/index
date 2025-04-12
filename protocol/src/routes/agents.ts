@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import prisma from '../lib/db';
-import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
 import fs from 'fs';
 import path from 'path';
 
@@ -35,7 +35,7 @@ router.get('/',
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('role').optional().isIn(['ADMIN', 'USER', 'SYSTEM']),
+    query('role').optional().isIn(['USER', 'SYSTEM']),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -79,7 +79,7 @@ router.get('/',
 
       // Add agent specs info
       const agentSpecs = loadAgentSpecs();
-      const agentsWithSpecs = agents.map(agent => ({
+      const agentsWithSpecs = agents.map((agent: any) => ({
         ...agent,
         hasSpec: agentSpecs.some(spec => spec.name === agent.name)
       }));
@@ -162,13 +162,12 @@ router.get('/:id',
   }
 );
 
-// Create new agent (Admin only)
+// Create new agent (now open to all authenticated users)
 router.post('/',
   authenticateToken,
-  requireAdmin,
   [
     body('name').trim().isLength({ min: 2, max: 100 }),
-    body('role').isIn(['ADMIN', 'USER', 'SYSTEM']),
+    body('role').isIn(['USER', 'SYSTEM']),
     body('avatar').isURL(),
   ],
   async (req: AuthRequest, res: Response) => {
@@ -210,14 +209,13 @@ router.post('/',
   }
 );
 
-// Update agent (Admin only)
+// Update agent (now open to all authenticated users)
 router.put('/:id',
   authenticateToken,
-  requireAdmin,
   [
     param('id').isUUID(),
     body('name').optional().trim().isLength({ min: 2, max: 100 }),
-    body('role').optional().isIn(['ADMIN', 'USER', 'SYSTEM']),
+    body('role').optional().isIn(['USER', 'SYSTEM']),
     body('avatar').optional().isURL(),
   ],
   async (req: AuthRequest, res: Response) => {
@@ -262,10 +260,9 @@ router.put('/:id',
   }
 );
 
-// Soft delete agent (Admin only)
+// Soft delete agent (now open to all authenticated users)
 router.delete('/:id',
   authenticateToken,
-  requireAdmin,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {

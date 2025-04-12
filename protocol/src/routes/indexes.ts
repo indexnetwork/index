@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import prisma from '../lib/db';
-import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
+import { authenticateToken, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -11,8 +11,8 @@ router.get('/',
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('userId').optional().isUUID(),
     query('search').optional().trim(),
+    query('userId').optional().isUUID(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -23,26 +23,21 @@ router.get('/',
 
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
-      const userId = req.query.userId as string;
       const search = req.query.search as string;
+      const userId = req.query.userId as string;
       const skip = (page - 1) * limit;
 
       const where: any = {};
-      
-      // Non-admin users can only see their own indexes or indexes they're members of
-      if (req.user!.role !== 'ADMIN') {
-        where.OR = [
-          { userId: req.user!.id },
-          { members: { some: { id: req.user!.id } } }
-        ];
-      } else if (userId) {
+
+      // Users can filter by userId if provided
+      if (userId) {
         where.userId = userId;
       }
 
       if (search) {
         where.name = {
           contains: search,
-          mode: 'insensitive' as const
+          mode: 'insensitive'
         };
       }
 
@@ -57,18 +52,8 @@ router.get('/',
               select: {
                 id: true,
                 name: true,
-                email: true,
-                avatar: true
+                email: true
               }
-            },
-            members: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                avatar: true
-              },
-              take: 5
             },
             _count: {
               select: {
@@ -114,18 +99,8 @@ router.get('/:id',
 
       const { id } = req.params;
       
-      const where: any = { id };
-      
-      // Non-admin users can only see indexes they own or are members of
-      if (req.user!.role !== 'ADMIN') {
-        where.OR = [
-          { userId: req.user!.id },
-          { members: { some: { id: req.user!.id } } }
-        ];
-      }
-
-      const index = await prisma.index.findFirst({
-        where,
+      const index = await prisma.index.findUnique({
+        where: { id },
         select: {
           id: true,
           name: true,
@@ -143,10 +118,8 @@ router.get('/:id',
               id: true,
               name: true,
               email: true,
-              avatar: true,
-              createdAt: true
-            },
-            orderBy: { name: 'asc' }
+              avatar: true
+            }
           },
           files: {
             select: {
@@ -156,7 +129,6 @@ router.get('/:id',
               date: true,
               createdAt: true
             },
-            where: { deletedAt: null },
             orderBy: { createdAt: 'desc' },
             take: 10
           },
@@ -165,41 +137,31 @@ router.get('/:id',
               id: true,
               title: true,
               status: true,
-              updatedAt: true,
-              user: {
-                select: {
-                  name: true
-                }
-              }
+              updatedAt: true
             },
             orderBy: { updatedAt: 'desc' },
-            take: 10
+            take: 5
           }
         }
       });
 
       if (!index) {
-        return res.status(404).json({ error: 'Index not found or access denied' });
+        return res.status(404).json({ error: 'Index not found' });
       }
 
-      // Check if current user is owner or member
+      // Check permissions
       const isOwner = index.user.id === req.user!.id;
-      const isMember = index.members.some(member => member.id === req.user!.id);
+      const isMember = index.members.some((member: any) => member.id === req.user!.id);
 
       res.json({ 
         index: {
           ...index,
-          files: index.files.map(file => ({
-            ...file,
-            size: file.size.toString() // Convert BigInt to string
-          }))
-        },
-        permissions: {
-          isOwner,
-          isMember,
-          canEdit: isOwner || req.user!.role === 'ADMIN',
-          canDelete: isOwner || req.user!.role === 'ADMIN',
-          canAddMembers: isOwner || req.user!.role === 'ADMIN'
+          permissions: {
+            canView: true,
+            canEdit: isOwner,
+            canDelete: isOwner,
+            canAddMembers: isOwner
+          }
         }
       });
     } catch (error) {
@@ -303,11 +265,8 @@ router.put('/:id',
       const { id } = req.params;
       const { name, description } = req.body;
 
-      const where: any = { id };
-      // Non-admin users can only update their own indexes
-      if (req.user!.role !== 'ADMIN') {
-        where.userId = req.user!.id;
-      }
+      // Users can only update their own indexes
+      const where: any = { id, userId: req.user!.id };
 
       const updateData: any = {};
       if (name !== undefined) updateData.name = name;
@@ -366,11 +325,8 @@ router.delete('/:id',
 
       const { id } = req.params;
 
-      const where: any = { id };
-      // Non-admin users can only delete their own indexes
-      if (req.user!.role !== 'ADMIN') {
-        where.userId = req.user!.id;
-      }
+      // Users can only delete their own indexes
+      const where: any = { id, userId: req.user!.id };
 
       // Check if index has files or intents
       const index = await prisma.index.findUnique({
@@ -430,11 +386,8 @@ router.post('/:id/members',
       const { id } = req.params;
       const { userIds } = req.body;
 
-      const where: any = { id };
-      // Non-admin users can only add members to their own indexes
-      if (req.user!.role !== 'ADMIN') {
-        where.userId = req.user!.id;
-      }
+      // Users can only add members to their own indexes
+      const where: any = { id, userId: req.user!.id };
 
       // Verify index exists and user has permission
       const index = await prisma.index.findUnique({

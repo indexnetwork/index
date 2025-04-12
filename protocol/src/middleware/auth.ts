@@ -6,7 +6,6 @@ interface AuthRequest extends Request {
   user?: {
     id: string;
     email: string;
-    role?: string;
   };
 }
 
@@ -24,7 +23,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     // Fetch fresh user data
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, email: true, role: true, deletedAt: true }
+      select: { id: true, email: true, deletedAt: true }
     });
 
     if (!user || user.deletedAt) {
@@ -33,8 +32,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
 
     req.user = {
       id: user.id,
-      email: user.email,
-      role: user.role || undefined
+      email: user.email
     };
 
     next();
@@ -42,18 +40,6 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     console.error('JWT verification error:', error);
     return res.status(403).json({ error: 'Invalid or expired token' });
   }
-};
-
-export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
-  if (!req.user) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  if (req.user.role !== 'ADMIN') {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
-
-  next();
 };
 
 export type { AuthRequest }; 

@@ -15,7 +15,6 @@ datasource db {
 }
 
 enum AgentRole {
-  ADMIN
   USER
   SYSTEM
 }
@@ -25,7 +24,6 @@ model User {
   email         String        @unique
   name          String
   avatar        String?
-  role          String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   deletedAt     DateTime?

@@ -29,10 +29,8 @@ router.get('/',
 
       const where: any = {};
       
-      // Non-admin users can only see their own intents
-      if (req.user!.role !== 'ADMIN') {
-        where.userId = req.user!.id;
-      } else if (userId) {
+      // Users can filter by userId if provided
+      if (userId) {
         where.userId = userId;
       }
 
@@ -118,15 +116,9 @@ router.get('/:id',
       }
 
       const { id } = req.params;
-      
-      const where: any = { id };
-      // Non-admin users can only see their own intents
-      if (req.user!.role !== 'ADMIN') {
-        where.userId = req.user!.id;
-      }
 
       const intent = await prisma.intent.findUnique({
-        where,
+        where: { id },
         select: {
           id: true,
           title: true,
@@ -304,11 +296,8 @@ router.put('/:id',
       const { id } = req.params;
       const { title, payload, status, indexIds } = req.body;
 
-      const where: any = { id };
-      // Non-admin users can only update their own intents
-      if (req.user!.role !== 'ADMIN') {
-        where.userId = req.user!.id;
-      }
+      // Users can only update their own intents
+      const where: any = { id, userId: req.user!.id };
 
       // Verify user owns the indexes they're trying to connect
       if (indexIds && indexIds.length > 0) {
@@ -389,11 +378,8 @@ router.delete('/:id',
 
       const { id } = req.params;
 
-      const where: any = { id };
-      // Non-admin users can only delete their own intents
-      if (req.user!.role !== 'ADMIN') {
-        where.userId = req.user!.id;
-      }
+      // Users can only delete their own intents
+      const where: any = { id, userId: req.user!.id };
 
       // Check if intent is part of any active intent pairs
       const intentPairs = await prisma.intentPair.findMany({
@@ -445,11 +431,11 @@ router.get('/:id/pairs',
       const limit = Number(req.query.limit) || 10;
       const skip = (page - 1) * limit;
 
-      // Verify user has access to this intent
+      // Verify user has access to this intent (users can only see pairs for their own intents)
       const intent = await prisma.intent.findUnique({
         where: { 
           id,
-          ...(req.user!.role !== 'ADMIN' && { userId: req.user!.id })
+          userId: req.user!.id
         },
         select: { id: true }
       });
