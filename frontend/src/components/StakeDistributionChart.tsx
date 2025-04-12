@@ -1,0 +1,63 @@
+'use client';
+
+interface StakeDistribution {
+  relevancy: number;
+  reputation: number;
+  intentHistory: number;
+  urgency: number;
+}
+
+interface StakeDistributionChartProps {
+  distribution: StakeDistribution;
+}
+
+export default function StakeDistributionChart({ distribution }: StakeDistributionChartProps) {
+  const colors = {
+    relevancy: 'bg-[#7B68EE]',
+    reputation: 'bg-[#2ECC71]',
+    intentHistory: 'bg-[#FFA500]',
+    urgency: 'bg-[#FF4444]'
+  };
+
+  const labels = {
+    relevancy: 'Relevancy',
+    reputation: 'Reputation',
+    intentHistory: 'Intent History',
+    urgency: 'Urgency'
+  };
+
+  const total = Object.values(distribution).reduce((sum, value) => sum + value, 0);
+  const percentages = Object.entries(distribution).map(([key, value]) => ({
+    category: key,
+    percentage: (value / total) * 100
+  }));
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-md font-semibold">Stake Distribution by Category</h2>
+      
+      {/* Bar Chart */}
+      <div className="h-8 flex rounded-full overflow-hidden">
+        {percentages.map(({ category, percentage }, index) => (
+          <div
+            key={category}
+            className={`${colors[category as keyof typeof colors]} h-full transition-all duration-300`}
+            style={{ width: `${percentage}%` }}
+          />
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-6 mt-2">
+        {Object.entries(distribution).map(([category, value]) => (
+          <div key={category} className="flex items-center gap-2">
+            <div className={`w-3 h-3 rounded-sm ${colors[category as keyof typeof colors]}`} />
+            <span className="text-gray-400">
+              {labels[category as keyof typeof labels]} ({value} $IDX)
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+} 
