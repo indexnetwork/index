@@ -35,17 +35,7 @@ export default function StakeDistributionChart({ distribution }: StakeDistributi
   return (
     <div className="space-y-4">
       <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Stake Distribution by Category</h4>
-      
-      {/* Bar Chart */}
-      <div className="h-6 flex rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700/50">
-        {percentages.map(({ category, percentage }, index) => (
-          <div
-            key={category}
-            className={`${colors[category as keyof typeof colors]} h-full transition-all duration-300`}
-            style={{ width: `${percentage}%` }}
-          />
-        ))}
-      </div>
+    
 
       {/* Legend */}
       <div className="flex flex-wrap gap-6 mt-2">

@@ -43,7 +43,7 @@ export default function FilesPage() {
   return (
     <div className="space-y-12">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Files & Integrations</h1>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Memory</h1>
         <p className="mt-2 text-gray-500 dark:text-gray-400">
           Securely manage your files and connect your accounts. All data is encrypted and only accessible to your agent.
         </p>

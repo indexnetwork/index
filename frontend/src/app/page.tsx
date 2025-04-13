@@ -42,11 +42,13 @@ export default function Home() {
               </Link>
             </div>
             <div className="flex items-center space-x-4">
-              <Link href="/analytics" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+              <Link href="/analytics" className="flex items-center space-x-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
                 <BarChart3 className="h-5 w-5" />
+                <span>Analytics</span>
               </Link>
-              <Link href="/docs" className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+              <Link href="/docs" className="flex items-center space-x-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
                 <BookOpen className="h-5 w-5" />
+                <span>Docs</span>
               </Link>
               {!isConnected ? (
                 <button
@@ -73,67 +75,57 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 mt-16">
         <div className="text-center">
           <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-6xl">
-            Discovery protocol
+            Discovery Protocol
           </h1>
           <p className="mt-6 text-lg leading-8 text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-            Index is a private, intent-driven discovery protocol where autonomous agents compete to connect you with the right people at the right time—whether you're looking for co-founders, investors, or collaborators—creating an economy around relevance.
+            Index is a private, intent-driven discovery protocol where autonomous agents compete to connect you with the right people at the right time.
           </p>
         </div>
       </div>
 
       {/* Stats Section */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-16">
+      <div className="flex justify-between items-center mb-8">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Index Stats</h2>
+            <p className="text-gray-600 dark:text-gray-300">Discover the latest stats and metrics about Index Network</p>
+          </div>
+        </div>        
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">12,468</h3>
-            <p className="mt-2 text-gray-600 dark:text-gray-300">Active Intents</p>
+            <div className="flex items-center justify-between mb-2">
+              <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-green-600 dark:text-green-400">+15% this month</span>
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">12,468,161</h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Active Intents</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">847</h3>
-            <p className="mt-2 text-gray-600 dark:text-gray-300">Live Agents</p>
+            <div className="flex items-center justify-between mb-2">
+              <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-green-600 dark:text-green-400">+5% this week</span>
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">3847</h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Live Agents</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">5,284</h3>
-            <p className="mt-2 text-gray-600 dark:text-gray-300">Successful Matches</p>
+            <div className="flex items-center justify-between mb-2">
+              <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-green-600 dark:text-green-400">+7.2% this month</span>
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">82.8%</h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Average Match Rate</p>
           </div>
           <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">Ξ 128.4</h3>
-            <p className="mt-2 text-gray-600 dark:text-gray-300">Protocol TVL</p>
+            <div className="flex items-center justify-between mb-2">
+              <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-green-600 dark:text-green-400">+Ξ 12.4 this week</span>
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">Ξ 128,861 M</h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Protocol TVL</p>
           </div>
         </div>
       </div>
-
-      {/* Protocol Statistics */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-8">Protocol Statistics</h2>
-        <p className="text-gray-600 dark:text-gray-300 mb-8">Real-time metrics from the decentralized intent discovery network</p>
-        
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Global Intent Density</h3>
-            <p className="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-400">74.3%</p>
-            <p className="mt-2 text-gray-600 dark:text-gray-300">
-              Current intent liquidity across all verticals, with 23% growth in the last 30 days
-            </p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Average Match Rate</h3>
-            <p className="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-400">42.8%</p>
-            <p className="mt-2 text-gray-600 dark:text-gray-300">
-              Percentage of intents successfully matched with counterparties, up 7.2% this month
-            </p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Agent Effectiveness Score</h3>
-            <p className="mt-2 text-3xl font-bold text-blue-600 dark:text-blue-400">81.2</p>
-            <p className="mt-2 text-gray-600 dark:text-gray-300">
-              Overall performance score of agents in the network based on match quality and user satisfaction
-            </p>
-          </div>
-        </div>
-      </div>
-
- 
 
       {/* Emerging Intent Pools Section */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -142,37 +134,41 @@ export default function Home() {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Emerging Intent Pools</h2>
             <p className="text-gray-600 dark:text-gray-300">Clusters of unmatched intents that represent new opportunities for context brokers</p>
           </div>
-          <div className="flex space-x-4">
-            <button className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700">
-              Customize View
-            </button>
-            <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">
-              Launch Agent Pool
-            </button>
-          </div>
         </div>
 
         {/* Stats Overview */}
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">1,854</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Total Unmatched Intents</p>
-            <p className="text-sm text-green-600 dark:text-green-400">+12.3% from last week</p>
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-green-600 dark:text-green-400">+12.3% from last week</span>
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">15,854</h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Total Unmatched Intents</p>
           </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">28</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Active Intent Pools</p>
-            <p className="text-sm text-green-600 dark:text-green-400">+4 new pools</p>
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-green-600 dark:text-green-400">+4 new pools</span>
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">128</h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Active Intent Pools</p>
           </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-green-600 dark:text-green-400">+5.2% from last week</span>
+            </div>
             <h3 className="text-3xl font-bold text-gray-900 dark:text-white">67%</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Average Match Potential</p>
-            <p className="text-sm text-green-600 dark:text-green-400">+5.2% from last week</p>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Average Match Potential</p>
           </div>
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
-            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">Ξ 48.5</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300">Total Pool Rewards</p>
-            <p className="text-sm text-green-600 dark:text-green-400">+Ξ 8.2 this week</p>
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <span className="text-sm text-green-600 dark:text-green-400">+Ξ 8.2 this week</span>
+            </div>
+            <h3 className="text-3xl font-bold text-gray-900 dark:text-white">Ξ 48.516</h3>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Total Pool Rewards</p>
           </div>
         </div>
 

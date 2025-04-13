@@ -40,15 +40,15 @@ export default function Navigation() {
               <span>Intents</span>
             </Link>
             <Link 
-              href="/data" 
+              href="/memory" 
               className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                isActive('/data') 
+                isActive('/memory') 
                   ? 'bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-400 font-medium' 
                   : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
               }`}
             >
               <Database className="w-5 h-5" />
-              <span>Data</span>
+              <span>Memory</span>
             </Link>
           </div>
         </div>

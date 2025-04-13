@@ -130,6 +130,53 @@ export default function CreateIntentPage() {
                   <FileUpload onFilesSelected={handleFilesSelected} />
                 </div>
 
+                {/* Integrations Section */}
+                <div className="border-t border-gray-200 dark:border-gray-700/50 pt-8">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Integrations</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">(Optional) Connect your intent to external platforms</p>
+                  
+                  <div className="grid grid-cols-3 gap-4">
+
+                    {/* My Agent Integration */}
+                    <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-400 transition-colors cursor-pointer">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-emerald-600 rounded flex items-center justify-center">
+                          <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-900 dark:text-white">My Personal Agent</h4>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">MCP Server</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Slack Integration */}
+                    <div className="p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-indigo-500 dark:hover:border-indigo-400 transition-colors cursor-pointer">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-purple-600 rounded flex items-center justify-center">
+                          <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M6 15a2 2 0 1 1 0-4 2 2 0 0 1 0 4zm12-4a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm-8 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm8 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm-8-12a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-gray-900 dark:text-white">Slack</h4>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Notifications</p>
+                        </div>
+                      </div>
+                    </div>
+
+
+                    {/* Add Integration Button */}
+                    <div className="p-4 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-500 dark:hover:border-indigo-400 transition-colors cursor-pointer flex items-center justify-center">
+                      <div className="text-center">
+                        <span className="text-gray-500 dark:text-gray-400 text-sm">+ Add Integration</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex justify-end space-x-3 mt-6">
                   <button
                     type="submit"
