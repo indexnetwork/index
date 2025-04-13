@@ -65,7 +65,7 @@ export default function BackersList({ backers }: BackersListProps) {
                 </div>
               </div>
               <div className="text-right flex-shrink-0">
-                <div className="text-sm font-semibold text-gray-900 dark:text-white">{backer.stakedAmount} Tokens</div>
+                <div className="text-sm font-semibold text-gray-900 dark:text-white">{backer.stakedAmount} IDX</div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">Staked</div>
               </div>
             </div>

@@ -55,14 +55,14 @@ export default function CreateIntentPage() {
       <main className="flex-1 px-6 py-8">
         <div className="max-w-6xl mx-auto">
           {/* Page Title and Actions */}
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create New Intent</h2>
+          <div className="flex flex-col space-y-4 mb-8">
             <Link 
               href="/intents"
-              className="flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+              className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
             >
-              Back to Intents
+              ← Back to Intents
             </Link>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create New Intent</h2>
           </div>
 
           <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-lg shadow dark:shadow-gray-900/10 p-8 border border-gray-100 dark:border-gray-700/50">
