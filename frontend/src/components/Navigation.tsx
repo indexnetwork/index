@@ -14,8 +14,11 @@ export default function Navigation() {
       <div className="p-6 h-full overflow-y-auto">
         <div className="space-y-8">
           <div className="space-y-2">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Index Protocol</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">A protocol for discovery</p>
+            <img 
+              src="/logo.svg" 
+              alt="Index Network Logo" 
+              className="h-8 w-auto"
+            />
           </div>
           
           <div className="space-y-1">
@@ -45,8 +48,16 @@ export default function Navigation() {
         </div>
       </div>
       
+      {/* Background Image */}
+      <div className="fixed bottom-40 left-2 w-50 pointer-events-none transition-all hover:-translate-y-100">
+        <img 
+          src="/permissionless.png" 
+          alt="Permissionless background" 
+          className="w-full"
+        />
+      </div>
       {/* Wallet Info Section */}
-      <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-200 dark:border-gray-800">
+      <div className="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-200 dark:border-gray-800 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm z-10">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-500 dark:text-gray-400">Wallet Balance</span>

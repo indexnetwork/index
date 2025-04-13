@@ -11,7 +11,7 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Index Protocol",
+  title: "Index Network",
   description: "A protocol for discovery",
 };
 
