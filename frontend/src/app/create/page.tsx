@@ -56,24 +56,24 @@ export default function CreateIntentPage() {
         <div className="max-w-6xl mx-auto">
           {/* Page Title and Actions */}
           <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900">Create New Intent</h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create New Intent</h2>
             <Link 
               href="/intents"
-              className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50"
             >
               Back to Intents
             </Link>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-8">
-            <p className="text-gray-600 mb-8">
+          <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-lg shadow dark:shadow-gray-900/10 p-8 border border-gray-100 dark:border-gray-700/50">
+            <p className="text-gray-600 dark:text-gray-300 mb-8">
               Define what you're looking for and choose how much to stake. Higher stakes increase your intent's visibility and potential match quality.
             </p>
             
             {!isProcessing && !isSuccess ? (
               <form onSubmit={handleSubmit} className="space-y-8">
                 <div>
-                  <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Your Intent
                   </label>
                   <input
@@ -81,14 +81,14 @@ export default function CreateIntentPage() {
                     id="title"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                     placeholder="e.g., Looking for a technical co-founder with experience in AI and privacy tech..."
                     required
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="stake" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="stake" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Stake Amount
                   </label>
                   <div className="flex items-center space-x-4">
@@ -99,13 +99,13 @@ export default function CreateIntentPage() {
                       onChange={(e) => setStake(Number(e.target.value))}
                       min="5"
                       max="100"
-                      className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-32 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-gray-900 dark:text-white"
                       required
                     />
-                    <span className="text-gray-500">Ξ</span>
-                    <span className="text-sm text-gray-500">+{currentTier.multiplier}× Match Priority</span>
+                    <span className="text-gray-500 dark:text-gray-400">Ξ</span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">+{currentTier.multiplier}× Match Priority</span>
                   </div>
-                  <p className="mt-2 text-sm text-gray-500">Estimated 48 hour resolution</p>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Estimated 48 hour resolution</p>
                 </div>
 
                 <div className="grid grid-cols-4 gap-4">
@@ -114,24 +114,24 @@ export default function CreateIntentPage() {
                       key={tier.name}
                       className={`p-4 rounded-lg border ${
                         stake >= tier.min && stake <= tier.max
-                          ? 'border-indigo-500 bg-indigo-50'
-                          : 'border-gray-200'
+                          ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-400'
+                          : 'border-gray-200 dark:border-gray-700'
                       }`}
                     >
-                      <h3 className="font-medium">{tier.name}</h3>
-                      <p className="text-sm text-gray-600">Ξ {tier.range}</p>
+                      <h3 className="font-medium text-gray-900 dark:text-white">{tier.name}</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Ξ {tier.range}</p>
                     </div>
                   ))}
                 </div>
 
-                <div className="border-t border-gray-200 pt-8">
+                <div className="border-t border-gray-200 dark:border-gray-700/50 pt-8">
                   <FileUpload onFilesSelected={handleFilesSelected} />
                 </div>
 
                 <div className="flex justify-end space-x-3 mt-6">
                   <button
                     type="submit"
-                    className="px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                    className="px-4 py-2 text-white bg-indigo-600 dark:bg-indigo-500 rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"
                   >
                     Stake & Broadcast Intent
                   </button>
@@ -139,15 +139,15 @@ export default function CreateIntentPage() {
               </form>
             ) : isProcessing ? (
               <div className="text-center py-8">
-                <h2 className="text-xl font-semibold mb-4">Processing Your Intent</h2>
-                <p className="text-gray-600 mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Processing Your Intent</h2>
+                <p className="text-gray-600 dark:text-gray-300 mb-6">
                   Your intent is being processed and broadcasted to the network. This will just take a moment...
                 </p>
                 <div className="flex justify-center space-x-2">
                   {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map((letter) => (
                     <div
                       key={letter}
-                      className="w-8 h-8 flex items-center justify-center bg-indigo-100 rounded-full animate-pulse"
+                      className="w-8 h-8 flex items-center justify-center bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full animate-pulse"
                     >
                       {letter}
                     </div>
@@ -156,28 +156,28 @@ export default function CreateIntentPage() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <h2 className="text-xl font-semibold mb-4">Intent Successfully Staked!</h2>
-                <p className="text-gray-600 mb-6">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Intent Successfully Staked!</h2>
+                <p className="text-gray-600 dark:text-gray-300 mb-6">
                   Your intent has been broadcasted to the network with a stake of Ξ {stake}. Agents will now begin searching for matches.
                 </p>
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   <div>
-                    <p className="text-2xl font-bold">14</p>
-                    <p className="text-sm text-gray-600">Agents Now Searching</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">14</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Agents Now Searching</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold">~48h</p>
-                    <p className="text-sm text-gray-600">Estimated Match Time</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">~48h</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Estimated Match Time</p>
                   </div>
                   <div>
-                    <p className="text-2xl font-bold">85%</p>
-                    <p className="text-sm text-gray-600">Match Probability</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">85%</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Match Probability</p>
                   </div>
                 </div>
                 <div className="flex justify-center space-x-3">
                   <Link
                     href="/intents"
-                    className="px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                    className="px-4 py-2 text-white bg-indigo-600 dark:bg-indigo-500 rounded-lg hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"
                   >
                     View My Intents
                   </Link>

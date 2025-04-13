@@ -13,10 +13,10 @@ interface StakeDistributionChartProps {
 
 export default function StakeDistributionChart({ distribution }: StakeDistributionChartProps) {
   const colors = {
-    relevancy: 'bg-[#7B68EE]',
-    reputation: 'bg-[#2ECC71]',
-    intentHistory: 'bg-[#FFA500]',
-    urgency: 'bg-[#FF4444]'
+    relevancy: 'bg-[#7B68EE] dark:bg-[#9B88FF]',
+    reputation: 'bg-[#2ECC71] dark:bg-[#4EEC91]',
+    intentHistory: 'bg-[#FFA500] dark:bg-[#FFB520]',
+    urgency: 'bg-[#FF4444] dark:bg-[#FF6464]'
   };
 
   const labels = {
@@ -34,10 +34,10 @@ export default function StakeDistributionChart({ distribution }: StakeDistributi
 
   return (
     <div className="space-y-4">
-      <h4 className="text-sm font-medium text-gray-900 mb-3">Stake Distribution by Category</h4>
+      <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-3">Stake Distribution by Category</h4>
       
       {/* Bar Chart */}
-      <div className="h-6 flex rounded-full overflow-hidden">
+      <div className="h-6 flex rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700/50">
         {percentages.map(({ category, percentage }, index) => (
           <div
             key={category}
@@ -52,7 +52,7 @@ export default function StakeDistributionChart({ distribution }: StakeDistributi
         {Object.entries(distribution).map(([category, value]) => (
           <div key={category} className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-sm ${colors[category as keyof typeof colors]}`} />
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-500 dark:text-gray-400">
               {labels[category as keyof typeof labels]} ({value} $IDX)
             </span>
           </div>

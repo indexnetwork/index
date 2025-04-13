@@ -5,19 +5,32 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 17, 24, 39;
-  --background-rgb: 249, 250, 251;
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+  
+  body {
+    @apply text-gray-900 dark:text-gray-100;
+  }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 
-           transition-all duration-200 ease-in-out shadow-sm hover:shadow-md;
+    @apply px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors dark:bg-blue-500 dark:hover:bg-blue-600;
   }
   
   .btn-secondary {
@@ -26,8 +39,7 @@ body {
   }
   
   .card {
-    @apply bg-white p-6 rounded-xl shadow-sm border border-gray-200 
-           hover:shadow-md transition-all duration-200 ease-in-out;
+    @apply bg-white dark:bg-gray-800 rounded-lg shadow-md p-6;
   }
 
   .input {

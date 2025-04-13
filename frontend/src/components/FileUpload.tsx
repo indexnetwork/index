@@ -30,43 +30,46 @@ export default function FileUpload({ onFilesSelected }: FileUploadProps) {
   });
 
   return (
-    <div className="w-full p-6 bg-white rounded-xl shadow-sm">
-      <h2 className="text-2xl font-bold mb-4 text-gray-900">Add Context With Private Files</h2>
-      <p className="text-gray-600 mb-6">
+    <div className="w-full p-6 bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-xl shadow-sm dark:shadow-gray-900/10 border border-gray-100 dark:border-gray-700/50">
+      <h2 className="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Add Context With Private Files</h2>
+      <p className="text-gray-600 dark:text-gray-300 mb-6">
         Upload supporting materials to improve match quality. Files are encrypted and only shared with approved matches.
       </p>
       
       <div
         {...getRootProps()}
         className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-          ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
+          ${isDragActive 
+            ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/20' 
+            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+          }`}
       >
         <input {...getInputProps()} />
         
         <div className="flex flex-col items-center space-y-4">
-          <div className="w-16 h-16 text-gray-400">
+          <div className="w-16 h-16 text-gray-400 dark:text-gray-500">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
           </div>
           
           <div>
-            <p className="text-xl font-semibold text-gray-900">Drag & drop files here</p>
-            <p className="text-gray-500 mt-1">
+            <p className="text-xl font-semibold text-gray-900 dark:text-white">Drag & drop files here</p>
+            <p className="text-gray-500 dark:text-gray-400 mt-1">
               Support for PDF, DOC, PPT, XLS, CSV, and more (up to 500MB)
             </p>
           </div>
           
           <button
             type="button"
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="px-6 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition-colors"
           >
             Select Files
           </button>
         </div>
       </div>
       
-      <p className="text-sm text-gray-500 mt-4 text-center">
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-4 text-center">
         Files are encrypted end-to-end and only processed by your agent
       </p>
     </div>
