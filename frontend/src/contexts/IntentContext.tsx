@@ -2,58 +2,7 @@
 
 import React, { createContext, useContext, useState } from 'react';
 import { Backer, Connection, Intent } from '@/types';
-
-
-const reputationAgents = [
-  {
-    "name": "0xScore Wallet reputation scoring agent",
-    "avatar": "/avatars/agents/0xscore.svg"
-  },
-  {
-    "name": "Aspecta Builder profile enrichment agent",
-    "avatar": "/avatars/agents/aspecta.svg"
-  },
-  {
-    "name": "Gitcoin Ecosystem grants participation agent",
-    "avatar": "/avatars/agents/gitcoin.svg"
-  },
-  {
-    "name": "Hapi Personhood and trust score agent",
-    "avatar": "/avatars/agents/hapi.svg"
-  },
-  {
-    "name": "Nomis Wallet reputation personalization agent",
-    "avatar": "/avatars/agents/nomis.svg"
-  },
-  {
-    "name": "Orange Protocol Reputation minting and trust proofs agent",
-    "avatar": "/avatars/agents/orange.svg"
-  },
-  {
-    "name": "Passport XYZ Wallet participation scoring agent",
-    "avatar": "/avatars/agents/passport.svg"
-  },
-  {
-    "name": "Privado wallet insights agent",
-    "avatar": "/avatars/agents/privado.svg"
-  },
-  {
-    "name": "ReputeX Cross-chain reputation scoring agent",
-    "avatar": "/avatars/agents/reputex.svg"
-  },
-  {
-    "name": "RubyScore Layer 2 wallet ranking agent",
-    "avatar": "/avatars/agents/rubyscore.svg"
-  },
-  {
-    "name": "Trusta Sybil resistance verification agent",
-    "avatar": "/avatars/agents/trusta.svg"
-  },
-  {
-    "name": "zkPass identity verification agent",
-    "avatar": "/avatars/agents/zkpass.svg"
-  }
-]
+import { allAgents } from '@/config/agents';
 
 interface IntentContextType {
   intents: Intent[];
@@ -95,35 +44,35 @@ const mockIntents: Intent[] = [
         },
         backers: [
           {
-            name: reputationAgents[0].name,
+            name: allAgents[0].name,
             feedback: "Identified Sarah as a strong generalist match for founder roles based on multi-domain technical expertise.",
             successRate: 0.82,
             stakedAmount: 400,
-            avatar: reputationAgents[0].avatar,
+            avatar: allAgents[0].avatar,
             role: "Discovery Router"
           },
           {
-            name: reputationAgents[1].name,
+            name: allAgents[1].name,
             feedback: "Detected Sarah's federated learning work and previous confidential compute leadership aligns directly with the intent.",
             successRate: 0.91,
             stakedAmount: 500,
-            avatar: reputationAgents[1].avatar,
+            avatar: allAgents[1].avatar,
             role: "Relevancy Agent"
           },
           {
-            name: reputationAgents[2].name,
+            name: allAgents[2].name,
             feedback: "Validated private project history indicating a long-standing focus on privacy-enhancing technologies.",
             successRate: 0.75,
             stakedAmount: 300,
-            avatar: reputationAgents[2].avatar,
+            avatar: allAgents[2].avatar,
             role: "Private Data Enrichment"
           },
           {
-            name: reputationAgents[3].name,
+            name: allAgents[3].name,
             feedback: "Higher reward pool attached to this intent prompted prioritization of Sarah's candidacy.",
             successRate: 0.95,
             stakedAmount: 700,
-            avatar: reputationAgents[3].avatar,
+            avatar: allAgents[3].avatar,
             role: "Intent Liquidity"
           }
         ]
@@ -144,35 +93,35 @@ const mockIntents: Intent[] = [
         },
         backers: [
           {
-            name: reputationAgents[4].name,
+            name: allAgents[4].name,
             feedback: "Spotted Alexei's zk-SNARK contributions and active involvement in open-source privacy tools.",
             successRate: 0.93,
             stakedAmount: 550,
-            avatar: reputationAgents[4].avatar,
+            avatar: allAgents[4].avatar,
             role: "Relevancy Agent"
           },
           {
-            name: reputationAgents[5].name,
+            name: allAgents[5].name,
             feedback: "Alexei's builder profile reflects deep cryptographic specialization relevant to this intent.",
             successRate: 0.88,
             stakedAmount: 400,
-            avatar: reputationAgents[5].avatar,
+            avatar: allAgents[5].avatar,
             role: "Relevancy Agent"
           },
           {
-            name: reputationAgents[6].name,
+            name: allAgents[6].name,
             feedback: "High trust score based on cross-chain reputation and cryptography-focused projects.",
             successRate: 0.85,
             stakedAmount: 420,
-            avatar: reputationAgents[6].avatar,
+            avatar: allAgents[6].avatar,
             role: "Reputation Agent"
           },
           {
-            name: reputationAgents[7].name,
+            name: allAgents[7].name,
             feedback: "Intent's reward pool attracted attention to candidates with cryptography pedigree.",
             successRate: 0.96,
             stakedAmount: 750,
-            avatar: reputationAgents[7].avatar,
+            avatar: allAgents[7].avatar,
             role: "Intent Liquidity"
           }
         ]
@@ -193,35 +142,35 @@ const mockIntents: Intent[] = [
         },
         backers: [
           {
-            name: reputationAgents[8].name,
+            name: allAgents[8].name,
             feedback: "Confirmed Fatima's active role in Linea zkRollup development and community participation.",
             successRate: 0.92,
             stakedAmount: 530,
-            avatar: reputationAgents[8].avatar,
+            avatar: allAgents[8].avatar,
             role: "Ecosystem Agent"
           },
           {
-            name: reputationAgents[9].name,
+            name: allAgents[9].name,
             feedback: "Recognized Fatima's leadership in privacy-first DAO technical working groups.",
             successRate: 0.9,
             stakedAmount: 480,
-            avatar: reputationAgents[9].avatar,
+            avatar: allAgents[9].avatar,
             role: "Relevancy Agent"
           },
           {
-            name: reputationAgents[10].name,
+            name: allAgents[10].name,
             feedback: "Builder data shows clear zkRollup specialization and public contributions.",
             successRate: 0.87,
             stakedAmount: 410,
-            avatar: reputationAgents[10].avatar,
+            avatar: allAgents[10].avatar,
             role: "Relevancy Agent"
           },
           {
-            name: reputationAgents[11].name,
+            name: allAgents[11].name,
             feedback: "Fatima maintains a high multi-chain reputation within Consensys-aligned protocols.",
             successRate: 0.9,
             stakedAmount: 450,
-            avatar: reputationAgents[11].avatar,
+            avatar: allAgents[11].avatar,
             role: "Reputation Agent"
           }
         ]

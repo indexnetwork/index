@@ -7,6 +7,7 @@ import { FileProvider } from '@/contexts/FileContext';
 import { IntegrationProvider } from '@/contexts/IntegrationContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import ClientLayout from '@/components/ClientLayout';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -27,17 +28,7 @@ export default function RootLayout({
           <IntentProvider>
             <FileProvider>
               <IntegrationProvider>
-                <div className="min-h-screen">
-                  <div className="fixed top-4 right-4 z-50">
-                    <ThemeToggle />
-                  </div>
-                  <Navigation />
-                  <main className="pl-72">
-                    <div className="max-w-7xl mx-auto p-8">
-                      {children}
-                    </div>
-                  </main>
-                </div>
+                <ClientLayout>{children}</ClientLayout>
               </IntegrationProvider>
             </FileProvider>
           </IntentProvider>

@@ -1,11 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Database, FileText, Target } from 'lucide-react';
 
 export default function Navigation() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleDisconnect = () => {
+    // TODO: Add any wallet disconnect logic here
+    router.push('/');
+  };
 
   const isActive = (path: string) => pathname === path;
 
@@ -75,7 +81,7 @@ export default function Navigation() {
               Profile Settings
             </Link>
             <button
-              onClick={() => {/* TODO: Implement disconnect */}}
+              onClick={handleDisconnect}
               className="px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
             >
               Disconnect
