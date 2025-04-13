@@ -33,4 +33,27 @@ export interface Intent {
   confirmedConnections: number;
   totalConnections: number;
   connections: Connection[];
+}
+
+export type IntegrationSource = 'linkedin' | 'gmail' | 'calendar';
+
+export interface Integration {
+  id: string;
+  source: IntegrationSource;
+  name: string;
+  status: 'connected' | 'disconnected' | 'error';
+  lastSyncedAt?: string;
+  error?: string;
+}
+
+export interface File {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  uploadedAt: string;
+  status: 'encrypted' | 'processing' | 'ready';
+  encryptionKey?: string;
+  source: IntegrationSource;
+  integrationId?: string;
 } 

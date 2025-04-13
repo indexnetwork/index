@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import Navigation from "@/components/Navigation";
 import { IntentProvider } from '@/contexts/IntentContext';
+import { FileProvider } from '@/contexts/FileContext';
+import { IntegrationProvider } from '@/contexts/IntegrationContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -23,17 +25,21 @@ export default function RootLayout({
       <body className={`${inter.className} antialiased bg-gray-50 dark:bg-gray-900`}>
         <ThemeProvider>
           <IntentProvider>
-            <div className="min-h-screen">
-              <div className="fixed top-4 right-4 z-50">
-                <ThemeToggle />
-              </div>
-              <Navigation />
-              <main className="pl-72">
-                <div className="max-w-7xl mx-auto p-8">
-                  {children}
+            <FileProvider>
+              <IntegrationProvider>
+                <div className="min-h-screen">
+                  <div className="fixed top-4 right-4 z-50">
+                    <ThemeToggle />
+                  </div>
+                  <Navigation />
+                  <main className="pl-72">
+                    <div className="max-w-7xl mx-auto p-8">
+                      {children}
+                    </div>
+                  </main>
                 </div>
-              </main>
-            </div>
+              </IntegrationProvider>
+            </FileProvider>
           </IntentProvider>
         </ThemeProvider>
       </body>

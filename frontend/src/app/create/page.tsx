@@ -66,8 +66,8 @@ export default function CreateIntentPage() {
           </div>
 
           <div className="bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-lg shadow dark:shadow-gray-900/10 p-8 border border-gray-100 dark:border-gray-700/50">
-            <p className="text-gray-600 dark:text-gray-300 mb-8">
-              Define what you're looking for and choose how much to stake. Higher stakes increase your intent's visibility and potential match quality.
+            <p className="text-lg leading-8 text-gray-600 dark:text-gray-300/95 font-light tracking-normal mb-10 max-w-2xl">
+              Define what you're looking for and choose how much to stake. <br />Higher stakes increase your intent's visibility and potential match quality.
             </p>
             
             {!isProcessing && !isSuccess ? (
@@ -76,13 +76,15 @@ export default function CreateIntentPage() {
                   <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Your Intent
                   </label>
-                  <input
-                    type="text"
+                  <textarea
                     id="title"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
-                    placeholder="e.g., Looking for a technical co-founder with experience in AI and privacy tech..."
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 min-h-[120px] whitespace-pre-line"
+                    placeholder={`Examples:
+• Looking for experienced ZK proof researchers interested in privacy-preserving identity systems
+• Seeking co-founder with ML expertise for healthcare startup with early traction
+• Want to connect with climate tech investors focused on hardware solutions`}
                     required
                   />
                 </div>
