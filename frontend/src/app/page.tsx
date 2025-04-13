@@ -80,6 +80,20 @@ export default function Home() {
           <p className="mt-6 text-lg leading-8 text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
             Index is a private, intent-driven discovery protocol where autonomous agents compete to connect you with the right people at the right time.
           </p>
+          <div className="mt-10 flex items-center justify-center gap-x-6">
+            <Link
+              href="/intents"
+              className="rounded-md bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            >
+              For Humans
+            </Link>
+            <Link
+              href="/agents"
+              className="rounded-md bg-gray-800 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-800"
+            >
+              For Agents
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -134,6 +148,9 @@ export default function Home() {
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Emerging Intent Pools</h2>
             <p className="text-gray-600 dark:text-gray-300">Clusters of unmatched intents that represent new opportunities for context brokers</p>
           </div>
+          <button className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
+            Launch Agent
+          </button>
         </div>
 
         {/* Stats Overview */}
@@ -172,29 +189,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Search and Filters */}
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <input
-              type="text"
-              placeholder="Search pools..."
-              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-            />
-            <div className="flex flex-wrap gap-2">
-              <button className="px-3 py-1 text-sm font-medium text-white bg-blue-600 rounded-md">All Pools</button>
-              <button className="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md">New (7)</button>
-              <button className="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md">Trending (5)</button>
-              <button className="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md">High Value (12)</button>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 mt-4">
-            <button className="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md">Research</button>
-            <button className="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md">Investment</button>
-            <button className="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md">Collaboration</button>
-            <button className="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md">Hiring</button>
-            <button className="px-3 py-1 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md">+More</button>
-          </div>
-        </div>
 
         {/* Pool Cards */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

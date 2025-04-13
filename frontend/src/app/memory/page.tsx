@@ -41,7 +41,8 @@ export default function FilesPage() {
   };
 
   return (
-    <div className="space-y-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-6 space-y-12">
+      
       <div>
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Memory</h1>
         <p className="mt-2 text-gray-500 dark:text-gray-400">
