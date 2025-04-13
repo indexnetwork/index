@@ -23,6 +23,7 @@ export interface Connection {
   stakeDistribution: StakeDistribution;
   backers: Backer[];
   createdAt: string;
+  status: 'potential' | 'pending' | 'accepted' | 'declined';
 }
 
 export interface Intent {

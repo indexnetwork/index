@@ -39,18 +39,34 @@ export default function ConnectionCard({ connection, intentId, onAccept, onDecli
           </div>
         </div>
         <div className="flex space-x-3">
-          <button
-            onClick={onDecline}
-            className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          >
-            Decline
-          </button>
-          <button
-            onClick={onAccept}
-            className="px-4 py-2 text-white bg-indigo-600 dark:bg-indigo-500 rounded-md hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"
-          >
-            Accept
-          </button>
+          {connection.status === 'potential' ? (
+            <>
+              <button
+                onClick={onDecline}
+                className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                Decline
+              </button>
+              <button
+                onClick={onAccept}
+                className="px-4 py-2 text-white bg-indigo-600 dark:bg-indigo-500 rounded-md hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"
+              >
+                Accept
+              </button>
+            </>
+          ) : connection.status === 'pending' ? (
+            <span className="px-4 py-2 text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 rounded-md">
+              Pending other user's approval
+            </span>
+          ) : connection.status === 'accepted' ? (
+            <span className="px-4 py-2 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 rounded-md">
+              Accepted
+            </span>
+          ) : (
+            <span className="px-4 py-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-md">
+              Declined
+            </span>
+          )}
         </div>
       </div>
 

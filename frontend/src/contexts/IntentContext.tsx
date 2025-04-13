@@ -84,8 +84,9 @@ const mockIntents: Intent[] = [
         name: 'Sarah Chen',
         role: 'Senior AI Engineer',
         avatar: 'https://i.pravatar.cc/150?img=1',
-        matchReason: 'Sarah Chen brings deep expertise in privacy-preserving ML and federated learning, crucial for our needs. She has hands-on experience building systems that protect data privacy while enabling decentralized model training. At DeepMind, she led confidential computing projects, developing secure computation protocols and managing complex initiatives successfully. Her work is widely recognized, with numerous publications in top conferences. Sarah’s unique blend of technical skill and leadership makes her an excellent fit for our founding engineer role, driving secure and innovative AI solutions.',
+        matchReason: 'Sarah Chen brings deep expertise in privacy-preserving ML and federated learning, crucial for our needs. She has hands-on experience building systems that protect data privacy while enabling decentralized model training. At DeepMind, she led confidential computing projects, developing secure computation protocols and managing complex initiatives successfully. Her work is widely recognized, with numerous publications in top conferences. Sarah\'s unique blend of technical skill and leadership makes her an excellent fit for our founding engineer role, driving secure and innovative AI solutions.',
         createdAt: '2024-04-11',
+        status: 'potential',
         stakeDistribution: {
           reputation: 0.87,
           relevancy: 0.92,
@@ -134,6 +135,7 @@ const mockIntents: Intent[] = [
         avatar: 'https://i.pravatar.cc/150?img=2',
         matchReason: 'PhD in cryptography with a focus on zk-SNARKs, contributor to open-source privacy protocols.',
         createdAt: '2024-04-10',
+        status: 'potential',
         stakeDistribution: {
           reputation: 0.9,
           relevancy: 0.88,
@@ -182,6 +184,7 @@ const mockIntents: Intent[] = [
         avatar: 'https://i.pravatar.cc/150?img=3',
         matchReason: 'Worked on zkRollup architecture at Consensys Linea, active in privacy DAO initiatives.',
         createdAt: '2024-04-09',
+        status: 'potential',
         stakeDistribution: {
           reputation: 0.88,
           relevancy: 0.9,
@@ -249,11 +252,20 @@ const IntentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) =
   const handleConnectionAction = (intentId: number, connectionId: number, action: 'accept' | 'decline') => {
     setIntents(prev => prev.map(intent => {
       if (intent.id === intentId) {
+        const updatedConnections = intent.connections.map(connection => {
+          if (connection.id === connectionId) {
+            return {
+              ...connection,
+              status: action === 'accept' ? 'pending' : 'declined'
+            };
+          }
+          return connection;
+        });
         return {
           ...intent,
-          connections: intent.connections.filter(c => c.id !== connectionId),
-          pendingConnections: intent.pendingConnections - 1,
-          confirmedConnections: action === 'accept' ? intent.confirmedConnections + 1 : intent.confirmedConnections
+          connections: updatedConnections,
+          pendingConnections: action === 'accept' ? intent.pendingConnections + 1 : intent.pendingConnections,
+          confirmedConnections: action === 'accept' ? intent.confirmedConnections : intent.confirmedConnections - 1
         };
       }
       return intent;
