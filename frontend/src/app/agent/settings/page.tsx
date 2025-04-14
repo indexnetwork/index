@@ -4,11 +4,22 @@ import { useState } from 'react';
 import Link from 'next/link';
 
 export default function AgentSettings() {
-  const [agentName, setAgentName] = useState('');
-  const [agentPrompt, setAgentPrompt] = useState('');
-  const [intentListeners, setIntentListeners] = useState(['', '']);
+  const [agentName, setAgentName] = useState('ConsenSys Network Coordinator');
+  const [agentPrompt, setAgentPrompt] = useState(`Proactively source potential new deals and opportunities within and beyond the ecosystem.
+Identify and connect founders, builders, and collaborators with complementary goals.
+Increase synergy across the network by facilitating meaningful, context-rich introductions.
+Promote ecosystem events, initiatives, and updates to relevant participants.
+`);
+  const [intentListeners, setIntentListeners] = useState<string[]>([
+    "When seeking co-founders for AI startup",
+    "When interested in early-stage investment opportunities",
+    "When seeking advisors for blockchain project",
+    "When looking for ecosystem partners",
+    "When interested in startup accelerators",
+    "When interested in tech meetups and events",
+  ]);
   const [selectedModel, setSelectedModel] = useState('DeepSeek-V3-0324');
-  const [networkBackingEnabled, setNetworkBackingEnabled] = useState(false);
+  const [networkBackingEnabled, setNetworkBackingEnabled] = useState(true);
 
   const aiModels = [
     { id: 'DeepSeek-V3-0324', name: 'DeepSeek-V3-0324', description: "DeepSeek's updated V3 model released on 03/24/2025.", type: 'LLM', precision: 'FP8', status: 'New' },
@@ -114,7 +125,7 @@ export default function AgentSettings() {
                 </label>
                 <textarea
                   id="agentPrompt"
-                  rows={4}
+                  rows={5}
                   placeholder="I am an agent that helps connect researchers working on similar problems..."
                   className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:border-gray-600"
                   value={agentPrompt}
