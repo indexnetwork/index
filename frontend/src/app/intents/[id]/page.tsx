@@ -40,7 +40,7 @@ export default function IntentPage() {
 
             {/* Connections Section */}
             <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-gray-900">Connections</h2>
+              <h2 className="text-xl font-semibold text-white-900">Connections</h2>
               <div className="space-y-4">
                 {connections.map((connection) => (
                   <ConnectionCard

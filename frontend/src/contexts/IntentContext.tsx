@@ -19,7 +19,7 @@ const IntentContext = createContext<IntentContextType | undefined>(undefined);
 // Mock data
 
 
-const mockIntents: Intent[] = [
+const mockIntents2: Intent[] = [
   {
     id: 1,
     title: "Looking for a founding engineer experienced in privacy-preserving AI and confidential compute.",
@@ -172,6 +172,135 @@ const mockIntents: Intent[] = [
             stakedAmount: 450,
             avatar: allAgents[11].avatar,
             role: "Reputation Agent"
+          }
+        ]
+      }
+    ]
+  }
+];
+
+const mockIntents: Intent[] = [
+  {
+    id: 1,
+    title: "Looking for someone who’s been experimenting with soft consensus in human+agent networks.",
+    status: "open",
+    pendingConnections: 2,
+    confirmedConnections: 0,
+    totalConnections: 2,
+    connections: [
+      {
+        id: 1,
+        name: 'Maya Chen',
+        role: 'Coordination Architect',
+        avatar: 'https://i.pravatar.cc/150?img=4',
+        matchReason: 'Maya Chen has been prototyping coordination patterns using agent-mediated voting and low-friction feedback loops. She recently authored a design note on "consensus shadows" and has been part of two working groups exploring alternatives to snapshot-style governance. Her work bridges UX, protocol design, and agent autonomy—making her a strong fit for early exploration in soft consensus models.',
+        createdAt: '2025-04-13',
+        status: 'potential',
+        stakeDistribution: {
+          reputation: 0.92,
+          relevancy: 0.94,
+          urgency: 0.8,
+          intentHistory: 0.85
+        },
+        backers: [
+          {
+            name: 'Semantic Relevancy Agent',
+            feedback: "Detected high alignment with Maya’s work on 'ambient decision flows' and her prior intent on non-binding coordination.",
+            successRate: 0.86,
+            stakedAmount: 450,
+            avatar: '/avatars/agents/automata.svg',
+            role: "Relevancy Agent"
+          },
+          {
+            name: 'ConsenSys Network Coordinator',
+            feedback: "Verified Maya's contributions to coordination experiments across Protocol Labs, DAObots, and internal pods. Strong match for soft consensus ideation.",
+            successRate: 0.9,
+            stakedAmount: 700,
+            avatar: `/avatars/agents/consensys.jpg`,
+            role: "Network Agent"
+          },
+          {
+            name: '0xScore',
+            feedback: "Maya's onchain activity reflects sustained experimentation with coordination and DAO infrastructure, ranking in the top 10% for signal diversity and governance tool engagement.",
+            successRate: 0.88,
+            stakedAmount: 600,
+            avatar: `/avatars/agents/0xscore.svg`,
+            role: "Reputation Agent"
+          },
+          {
+            name: 'Gitcoin',
+            feedback: "Maya's contributions to open-source projects on GitHub demonstrate her active involvement in agent ecosystems and off-chain coordination models, aligning well with Gitcoin's mission to support open-source development.",
+            successRate: 0.85,
+            stakedAmount: 500,
+            avatar: `/avatars/agents/gitcoin.svg`,
+            role: "Reputation Agent"
+          },
+          
+
+          {
+            name: 'CommonGraph',
+            feedback: "Mapped strong network proximity via shared coordination guilds and ConsenSys community calls.",
+            successRate: 0.82,
+            stakedAmount: 350,
+            avatar: 'https://i.pravatar.cc/150?img=16',
+            role: "Social Graph Agent"
+          }
+        ]
+      },
+      {
+        id: 2,
+        name: 'Aliya Qureshi',
+        role: 'Coordination Designer',
+        avatar: 'https://i.pravatar.cc/150?img=5',
+        matchReason: 'Aliya Qureshi tested a lightweight contributor overview in a Linea side project. She focuses on making participation visible without adding friction, aligning well with soft consensus and async coordination needs.',
+        createdAt: '2025-04-13',
+        status: 'potential',
+        stakeDistribution: {
+          reputation: 0.84,
+          relevancy: 0.88,
+          urgency: 0.75,
+          intentHistory: 0.8
+        },
+        backers: [
+          {
+            name: 'Nomis',
+            feedback: "Aliya’s wallet activity shows recurring engagement with tooling DAOs and non-tokenized coordination tools.",
+            successRate: 0.82,
+            stakedAmount: 310,
+            avatar: 'https://i.pravatar.cc/150?img=17',
+            role: "Reputation Agent"
+          },
+          {
+            name: 'Orange Protocol',
+            feedback: "Aliya holds verified credentials from async coordination pilots and pod leadership roles.",
+            successRate: 0.8,
+            stakedAmount: 290,
+            avatar: 'https://i.pravatar.cc/150?img=18',
+            role: "Reputation Agent"
+          },
+          {
+            name: 'ConsenSys Network Coordination',
+            feedback: "Confirmed Aliya’s involvement in async workflows within MetaMask and Linea experiments.",
+            successRate: 0.85,
+            stakedAmount: 410,
+            avatar: 'https://i.pravatar.cc/150?img=19',
+            role: "Internal Agent"
+          },
+          {
+            name: 'Semantic Relevancy Agent',
+            feedback: "Aliya previously shared intents on low-friction team visibility and contributed feedback on async rotation models.",
+            successRate: 0.8,
+            stakedAmount: 190,
+            avatar: 'https://i.pravatar.cc/150?img=20',
+            role: "Relevancy Agent"
+          },
+          {
+            name: 'Okapi',
+            feedback: "Identified indirect coordination overlap via shared working group chats and async forums.",
+            successRate: 0.78,
+            stakedAmount: 220,
+            avatar: 'https://i.pravatar.cc/150?img=21',
+            role: "Social Discovery Agent"
           }
         ]
       }
