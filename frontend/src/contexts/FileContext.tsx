@@ -15,20 +15,47 @@ const FileContext = createContext<FileContextType | undefined>(undefined);
 export function FileProvider({ children }: { children: React.ReactNode }) {
   const [files, setFiles] = useState<File[]>([
     {
-      id: 'pitch-deck-123',
-      name: 'pitch_deck.pdf',
-      size: 7.5 * 1024 * 1024, // 7.5MB
-      type: 'application/pdf',
-      uploadedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+      id: 'blueyard-thesis-123',
+      name: 'blueyard-thesis.yml',
+      size: 0.1 * 1024 * 1024, // 0.1MB
+      type: 'text/yaml',
+      uploadedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
       status: 'encrypted',
       source: 'linkedin'
     },
     {
-      id: 'onepager-456',
+      id: 'match-reasoning-456',
+      name: 'match-reasoning-templates.md',
+      size: 0.2 * 1024 * 1024, // 0.2MB
+      type: 'text/markdown',
+      uploadedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      status: 'encrypted',
+      source: 'linkedin'
+    },
+    {
+      id: 'blueyard-insights-789',
+      name: 'blueyard-confidential-insights.csv',
+      size: 0.5 * 1024 * 1024, // 0.5MB
+      type: 'text/csv',
+      uploadedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      status: 'encrypted',
+      source: 'linkedin'
+    },
+    {
+      id: 'pitch-deck-101',
+      name: 'pitch_deck.pdf',
+      size: 7.5 * 1024 * 1024, // 7.5MB
+      type: 'application/pdf',
+      uploadedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      status: 'encrypted',
+      source: 'linkedin'
+    },
+    {
+      id: 'onepager-202',
       name: 'onepager.pdf',
       size: 1.2 * 1024 * 1024, // 1.2MB
       type: 'application/pdf',
-      uploadedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+      uploadedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
       status: 'encrypted',
       source: 'linkedin'
     }

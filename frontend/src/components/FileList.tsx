@@ -3,6 +3,7 @@
 import { useFiles } from '@/contexts/FileContext';
 import { FileText, Lock, Trash2, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { usePathname } from 'next/navigation';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
@@ -14,8 +15,16 @@ function formatBytes(bytes: number): string {
 
 export default function FileList() {
   const { files, removeFile } = useFiles();
+  const pathname = usePathname();
 
-  if (files.length === 0) {
+  // Filter files based on the current route
+  const filteredFiles = files.filter(file => {
+    const isAgentMemory = pathname === '/agent/memory';
+    const isInAgentMemory = file.name.includes('blueyard') || file.name.includes('match-reasoning');
+    return isAgentMemory ? isInAgentMemory : !isInAgentMemory;
+  });
+
+  if (filteredFiles.length === 0) {
     return (
       <div className="relative overflow-hidden rounded-xl border border-dashed border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800/50 p-12">
         <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.05]" 
@@ -37,7 +46,7 @@ export default function FileList() {
 
   return (
     <div className="space-y-4">
-      {files.map((file) => (
+      {filteredFiles.map((file) => (
         <div
           key={file.id}
           className="group relative overflow-hidden rounded-xl border transition-all duration-200 bg-white dark:bg-gray-800/50 border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"

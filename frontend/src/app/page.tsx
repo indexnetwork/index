@@ -88,7 +88,7 @@ export default function Home() {
               For Humans
             </Link>
             <Link
-              href="/agents"
+              href="/agent"
               className="rounded-md bg-gray-800 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-800"
             >
               For Agents

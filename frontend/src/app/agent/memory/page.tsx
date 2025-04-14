@@ -4,6 +4,7 @@ import { useState } from 'react';
 import FileUpload from '@/components/FileUpload';
 import FileList from '@/components/FileList';
 import IntegrationList from '@/components/IntegrationList';
+import NetworkList from '@/components/NetworkList';
 import { useFiles } from '@/contexts/FileContext';
 import { File as FileType } from '@/types';
 
@@ -69,6 +70,16 @@ export default function AgentMemory() {
           </div>
           <FileList />
           <FileUpload onFilesSelected={handleFilesSelected} />
+        </div>
+
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Network</h2>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              View and manage your professional relationships and connections.
+            </p>
+          </div>
+          <NetworkList />
         </div>
       </div>
     </div>
