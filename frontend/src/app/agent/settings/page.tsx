@@ -8,6 +8,7 @@ export default function AgentSettings() {
   const [agentPrompt, setAgentPrompt] = useState('');
   const [intentListeners, setIntentListeners] = useState(['', '']);
   const [selectedModel, setSelectedModel] = useState('DeepSeek-V3-0324');
+  const [networkBackingEnabled, setNetworkBackingEnabled] = useState(false);
 
   const aiModels = [
     { id: 'DeepSeek-V3-0324', name: 'DeepSeek-V3-0324', description: "DeepSeek's updated V3 model released on 03/24/2025.", type: 'LLM', precision: 'FP8', status: 'New' },
@@ -119,6 +120,35 @@ export default function AgentSettings() {
                   value={agentPrompt}
                   onChange={(e) => setAgentPrompt(e.target.value)}
                 />
+              </div>
+
+              {/* Network Backing Toggle */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                  <div className="space-y-1">
+                    <label htmlFor="networkBacking" className="block text-base font-medium text-gray-900 dark:text-white">
+                      Network Backing
+                    </label>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Enable automatic staking and connection recommendations for your network. When enabled, your agent will automatically stake required amounts and explain connection rationales.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={networkBackingEnabled}
+                    className={`${
+                      networkBackingEnabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+                    } relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2`}
+                    onClick={() => setNetworkBackingEnabled(!networkBackingEnabled)}
+                  >
+                    <span
+                      className={`${
+                        networkBackingEnabled ? 'translate-x-6' : 'translate-x-0'
+                      } pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out`}
+                    />
+                  </button>
+                </div>
               </div>
 
               {/* Intent Listeners */}
