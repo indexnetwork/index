@@ -181,6 +181,124 @@ const mockIntents2: Intent[] = [
 
 const mockIntents: Intent[] = [
   {
+    id: 3,
+    title: "Looking to meet early‑stage founders building privacy‑preserving agent coordination infrastructure.",
+    status: "open",
+    pendingConnections: 2,
+    confirmedConnections: 0,
+    totalConnections: 2,
+    connections: [
+      {
+        id: 1,
+        name: "Nina Patel",
+        role: "Founder",
+        avatar: "https://i.pravatar.cc/150?img=22",
+        matchReason:
+          "Nina’s body of work covers the full stack of privacy‑preserving coordination: she has designed and maintained an encrypted agent‑to‑agent routing library, authored reference implementations for zero‑metadata task hand‑offs, and recently shipped a modular “privacy‑first coordination layer” that plugs into existing agent frameworks with minimal overhead. Her repositories document threat‑modeling for both replay and correlation attacks, showcase live SGX- and Nitro‑backed demos, and include thorough benchmarking against conventional relay solutions. Taken together, these contributions line up point‑for‑point with Max’s current investment thesis around secure, agent‑native infrastructure and make Nina a high‑conviction target for early engagement.",
+        createdAt: "2025-04-17",
+        status: "potential",
+        stakeDistribution: {
+          reputation: 0.91,
+          relevancy: 0.94,
+          urgency: 0.82,
+          intentHistory: 0.86
+        },
+        backers: [
+          {
+            name: "ProofLayer",
+            feedback:
+              "Deep‑dive code review of Nina’s coordination prototype shows clean modularity, clear roadmap, and early traction.",
+            successRate: 0.88,
+            stakedAmount: 240,
+            avatar: "/avatars/agents/passport.svg",
+            role: "Due Diligence Agent"
+          },
+          {
+            name: "BlueYard Network Manager Agent",
+            feedback:
+              "I remember a meeting with Nina two years ago, noting ongoing thesis alignment around encrypted agent networks and ‘coordination without platforms’.",
+            successRate: 0.9,
+            stakedAmount: 540,
+            avatar: "/avatars/agents/blueyard.jpg",
+            role: "Network Manager"
+          },
+          {
+            name: "Semantic Relevancy Agent",
+            feedback:
+              "High textual overlap between Nina’s intents and Max’s stated interest in private task routing.",
+            successRate: 0.84,
+            stakedAmount: 250,
+            avatar: "/avatars/agents/automata.svg",
+            role: "Relevancy Agent"
+          },
+          {
+            name: "Aspecta",
+            feedback:
+              "GitHub graph highlights sustained contributions to coordination protocols and modular agent systems.",
+            successRate: 0.83,
+            stakedAmount: 310,
+            avatar: "/avatars/agents/aspecta.svg",
+            role: "Reputation Agent"
+          }
+        ]
+      },
+      {
+        id: 2,
+        name: "Daniel Okafor",
+        role: "Founder",
+        avatar: "https://i.pravatar.cc/150?img=23",
+        matchReason:
+          "Daniel’s prototype tackles lightweight agent messaging under privacy constraints—an exploratory fit with BlueYard’s interests.",
+        createdAt: "2025-04-17",
+        status: "potential",
+        stakeDistribution: {
+          reputation: 0.79,
+          relevancy: 0.85,
+          urgency: 0.75,
+          intentHistory: 0.72
+        },
+        backers: [
+          {
+            name: "ProofLayer",
+            feedback:
+              "Deep‑dive code review of Nina’s coordination prototype shows clean modularity, clear roadmap, and early traction.",
+            successRate: 0.88,
+            stakedAmount: 240,
+            avatar: "/avatars/agents/passport.svg",
+            role: "Due Diligence Agent"
+          },
+          {
+            name: "BlueYard Network Manager Agent",
+            feedback:
+              "I remember a meeting with Nina two years ago, noting ongoing thesis alignment around encrypted agent networks and ‘coordination without platforms’.",
+            successRate: 0.9,
+            stakedAmount: 540,
+            avatar: "/avatars/agents/blueyard.jpg",
+            role: "Network Manager"
+          },
+          {
+            name: "Semantic Relevancy Agent",
+            feedback:
+              "High textual overlap between Nina’s intents and Max’s stated interest in private task routing.",
+            successRate: 0.84,
+            stakedAmount: 250,
+            avatar: "/avatars/agents/automata.svg",
+            role: "Relevancy Agent"
+          },
+          {
+            name: "Aspecta",
+            feedback:
+              "GitHub graph highlights sustained contributions to coordination protocols and modular agent systems.",
+            successRate: 0.83,
+            stakedAmount: 310,
+            avatar: "/avatars/agents/aspecta.svg",
+            role: "Reputation Agent"
+          }
+        ]
+      }
+    ]
+  },
+  {
     id: 1,
     title: "Looking for someone who’s been experimenting with soft consensus in human+agent networks.",
     status: "open",
@@ -303,6 +421,125 @@ const mockIntents: Intent[] = [
             role: "Social Discovery Agent"
           }
         ]
+      }
+    ]
+  },
+  {
+    id: 2,
+    title: "Seeking a vendor experienced with confidential compute and agent RPC—ideally with a track record in TEE-based APIs or trusted relays.",
+    status: "open",
+    pendingConnections: 2,
+    confirmedConnections: 0,
+    totalConnections: 2,
+    connections: [
+      {
+        id: 1,
+        name: "Sandeep Rao",
+        role: "Founder @ EnclaveLabs",
+        avatar: "", // No avatar provided
+        matchReason:
+          "EnclaveLabs is building StealthMesh, a trusted relay system designed for confidential agent RPC using Intel SGX. Sandeep has deployed agent-native APIs that preserve both message integrity and route obfuscation. Their architecture is aligned with intent-driven systems where agents compete in secure coordination environments.",
+        stakeDistribution: {
+          relevancy: 390,
+          reputation: (490 + 360 + 400 + 390 + 450) / 5,
+          intentHistory: 0,
+          urgency: 0
+        },
+        backers: [
+          {
+            name: "PrivadoID",
+            feedback: "Tracked consistent builder activity in enclave-native compute environments and confidential infrastructure design. High trust signals across privacy-focused GitHub orgs.",
+            successRate: 0,
+            stakedAmount: 490,
+            role: "Reputation Agent",
+            avatar: '/avatars/agents/privado.svg'
+          },
+          {
+            name: "zkPass",
+            feedback: "Verified history in zk tooling and agent compute primitives. Noted for multiple enclave + zk interop experiments.",
+            successRate: 0,
+            stakedAmount: 360,
+            role: "Reputation Agent",
+            avatar: '/avatars/agents/zkpass.svg'
+          },
+          {
+            name: "RelayMatch",
+            feedback: "Analyzed vendor-product fit for agent orchestration platforms. Found high compatibility with teams needing secure multi-agent relay protocols.",
+            successRate: 0,
+            stakedAmount: 400,
+            role: "Sales Agent",
+            avatar: '/avatars/agents/relaymatch.svg'
+          },
+          {
+            name: "Semantic Relevancy Agent",
+            feedback: "Detected direct overlap with intent phrasing—Sandeep’s documentation outlines 'TEE-secured RPC between agents' as a primary use case.",
+            successRate: 0,
+            stakedAmount: 390,
+            role: ""
+          },
+          {
+            name: "ComputeCommons",
+            feedback: "Confirms Sandeep’s tools implement standard TEE modules (SGX SDK, attestation flow) and RPC semantics compliant with enclave privacy guarantees.",
+            successRate: 0,
+            stakedAmount: 450,
+            role: "General Knowledge Agent"
+          }
+        ],
+        createdAt: "2025-04-14T00:00:00Z",
+        status: "potential"
+      },
+      {
+        id: 2,
+        name: "Lucía Morales",
+        role: "Co-founder @ ProxyMesh",
+        avatar: "", // No avatar provided
+        matchReason:
+          "ProxyMesh’s EnclaveProxy is a lightweight middleware for agent RPC secured via Nitro Enclaves and WASM sandboxing. Lucía’s work bridges UX-aware interface design with confidential systems—enabling real-time coordination while safeguarding metadata.",
+        stakeDistribution: {
+          relevancy: 410,
+          reputation: (430 + 350 + 370 + 410 + 430) / 5,
+          intentHistory: 0,
+          urgency: 0
+        },
+        backers: [
+          {
+            name: "Aspecta",
+            feedback: "GitHub contributions highlight modularity, boundary enforcement, and clean integration with LLM agents. Ranked top 15% among coordination protocol devs.",
+            successRate: 0,
+            stakedAmount: 430,
+            role: "Reputation Agent"
+          },
+          {
+            name: "RubyScore",
+            feedback: "Indexed across MPC, zk tooling, and trusted relay bounties. Labeled as 'core contributor' in coordination DAOs.",
+            successRate: 0,
+            stakedAmount: 350,
+            role: "Reputation Agent"
+          },
+          {
+            name: "BridgeLayer",
+            feedback: "Suggested as a vendor fit for zero-trust messaging systems and tokenless coordination pilots. Identified as ready for proof-of-concept work.",
+            successRate: 0,
+            stakedAmount: 370,
+            role: "Sales Agent"
+          },
+          {
+            name: "Semantic Relevancy Agent",
+            feedback: "ProxyMesh’s latest docs mention 'agent-native secure routing with drop-in TEE support'—matching your phrasing nearly word-for-word.",
+            successRate: 0,
+            stakedAmount: 410,
+            role: ""
+          },
+          {
+            name: "ComputeCommons",
+            feedback: "Validated use of cross-TEE abstractions and resource isolation patterns. ProxyMesh showcases forward-compatibility with confidential LLM orchestration.",
+            successRate: 0,
+            stakedAmount: 430,
+            role: "General Knowledge Agent"
+          }
+        ],
+        createdAt: "2025-04-14T00:00:00Z",
+        status: "potential"
       }
     ]
   }
