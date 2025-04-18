@@ -1,0 +1,34 @@
+[
+  {
+    "id": "0xdddddddddddddddddddddddddddddddddddddddd",
+    "type": "eth_wallet"
+  },
+  {
+    "id": "alumni1@former-consensys.com",
+    "type": "email"
+  },
+  {
+    "id": "former.eth",
+    "type": "ens"
+  },
+  {
+    "id": "did:ethr:0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "type": "did"
+  },
+  {
+    "id": "alumni2@independent.dev",
+    "type": "email"
+  },
+  {
+    "id": "0xffffffffffffffffffffffffffffffffffffffff",
+    "type": "eth_wallet"
+  },
+  {
+    "id": "veteran.consensys.eth",
+    "type": "ens"
+  },
+  {
+    "id": "entrepreneur@newventure.io",
+    "type": "email"
+  }
+] 

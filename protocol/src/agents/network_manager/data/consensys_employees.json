@@ -1,0 +1,34 @@
+[
+  {
+    "id": "0x1234567890123456789012345678901234567890",
+    "type": "eth_wallet"
+  },
+  {
+    "id": "did:ethr:0xabcdef0123456789abcdef0123456789abcdef01",
+    "type": "did"
+  },
+  {
+    "id": "alice.consensys.eth",
+    "type": "ens"
+  },
+  {
+    "id": "bob@consensys.net",
+    "type": "email"
+  },
+  {
+    "id": "0x9876543210987654321098765432109876543210",
+    "type": "eth_wallet"
+  },
+  {
+    "id": "charlie.eth",
+    "type": "ens"
+  },
+  {
+    "id": "did:ethr:0x1111222233334444555566667777888899990000",
+    "type": "did"
+  },
+  {
+    "id": "diana@consensys.net",
+    "type": "email"
+  }
+] 

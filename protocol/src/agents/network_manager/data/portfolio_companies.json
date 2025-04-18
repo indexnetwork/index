@@ -1,0 +1,34 @@
+[
+  {
+    "id": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "type": "eth_wallet"
+  },
+  {
+    "id": "founder@startupx.com",
+    "type": "email"
+  },
+  {
+    "id": "startupx.eth",
+    "type": "ens"
+  },
+  {
+    "id": "did:ethr:0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "type": "did"
+  },
+  {
+    "id": "ceo@web3corp.io",
+    "type": "email"
+  },
+  {
+    "id": "0xcccccccccccccccccccccccccccccccccccccccc",
+    "type": "eth_wallet"
+  },
+  {
+    "id": "web3corp.eth",
+    "type": "ens"
+  },
+  {
+    "id": "lead@defiprotocol.xyz",
+    "type": "email"
+  }
+] 

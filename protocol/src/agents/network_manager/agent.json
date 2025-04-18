@@ -1,0 +1,73 @@
+{
+  "name": "network_manager",
+  "displayName": "ConsensysVibeStaker Network Manager Agent",
+  "version": "1.0.0",
+  "description": "AI agent that automatically stakes on matches when compatible activity, complementary needs, or converging themes are detected between audience members to increase ecosystem synergy",
+  "role": "NETWORK_COORDINATOR",
+  "avatar": "https://api.dicebear.com/7.x/bottts/svg?seed=network_manager",
+  "capabilities": [
+    "Intent pattern matching",
+    "Ecosystem synergy detection",
+    "Automated staking on connections",
+    "Network coordination facilitation"
+  ],
+  "langGraphSpec": {
+    "workflow": "network_synergy_workflow", 
+    "nodes": [
+      {
+        "id": "intent_detector",
+        "type": "agent",
+        "description": "Detects intents from audience member activities"
+      },
+      {
+        "id": "pattern_matcher",
+        "type": "agent", 
+        "description": "Matches compatible activities and complementary needs"
+      },
+      {
+        "id": "synergy_evaluator",
+        "type": "agent",
+        "description": "Evaluates potential synergies and convergent themes"
+      },
+      {
+        "id": "stake_decisioner",
+        "type": "agent",
+        "description": "Decides whether to stake on detected matches"
+      }
+    ],
+    "edges": [
+      {"from": "intent_detector", "to": "pattern_matcher"},
+      {"from": "pattern_matcher", "to": "synergy_evaluator"},
+      {"from": "synergy_evaluator", "to": "stake_decisioner"}
+    ],
+    "conditionalEdges": [
+      {
+        "from": "stake_decisioner",
+        "condition": "high_synergy_match",
+        "to": "execute_stake"
+      }
+    ]
+  },
+  "triggers": [
+    "founder_raise_intent",
+    "ecosystem_team_hire",
+    "sales_partnership_conversation"
+  ],
+  "audience": [
+    "consensys_employees",
+    "portfolio_companies", 
+    "alumni_network"
+  ],
+  "tools": [
+    "semantic_intent_analyzer",
+    "pattern_matcher",
+    "synergy_calculator",
+    "staking_engine"
+  ],
+  "configuration": {
+    "synergy_threshold": 0.7,
+    "stake_confidence_threshold": 0.8,
+    "max_daily_stakes": 50
+  },
+  "implementation": "src/agents/network_manager/workflow.ts"
+}
