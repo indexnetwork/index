@@ -3,9 +3,27 @@ import { ChatOpenAI } from "@langchain/openai";
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Simple state annotation
+// Intent type based on database schema
+interface Intent {
+  id: string;
+  title: string;
+  payload: string;
+  status: string;
+  userId: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  indexes?: Array<{
+    id: string;
+    name: string;
+  }>;
+}
+
+// Simplified state annotation
 const NetworkManagerState = Annotation.Root({
-  input: Annotation<string>,
+  intentData: Annotation<string>, // JSON stringified intent data
   output: Annotation<string>
 });
 
@@ -18,7 +36,7 @@ const llm = new ChatOpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// Load audience data
+// Load audience data for context
 function loadAudienceData(): { [key: string]: any[] } {
   const dataDir = path.join(__dirname, 'data');
   const audiences = ['consensys_employees', 'portfolio_companies', 'alumni_network'];
@@ -38,50 +56,70 @@ function loadAudienceData(): { [key: string]: any[] } {
   return audienceData;
 }
 
-// Combined network analysis node
-async function networkAnalyzer(state: StateType): Promise<Partial<StateType>> {
+// Combined intent processing node
+async function intentProcessor(state: StateType): Promise<Partial<StateType>> {
+  let intentData;
+  try {
+    intentData = JSON.parse(state.intentData);
+  } catch (error) {
+    return { output: "Error: Invalid intent data format" };
+  }
+  
+  const { newIntent, existingIntents = [] } = intentData;
   const audienceData = loadAudienceData();
-  const allUsers = Object.values(audienceData).flat();
+  const synergyThreshold = 0.7;
+  const convictionThreshold = 0.8;
   
   const systemPrompt = `
-You are the ConsensysVibeStaker Network Manager Agent. Your goal is to increase ecosystem synergy by detecting compatible activities, complementary needs, and converging themes between network participants.
+You are the ConsensysVibeStaker Network Manager. Analyze the new intent for synergistic matches and make staking decisions.
 
-Process:
-1. Detect intents from input related to:
-   - Fundraising activities  
-   - New team member hires
-   - Sales or partnership conversations
+NEW INTENT:
+- ID: ${newIntent.id}
+- Title: ${newIntent.title}
+- Description: ${newIntent.payload}
+- Status: ${newIntent.status}
+- User: ${newIntent.user?.name || newIntent.userId}
 
-2. Find potential matches between users based on compatibility
+EXISTING INTENTS:
+${existingIntents.map((i: Intent) => `
+- ID: ${i.id}
+- Title: ${i.title}
+- Description: ${i.payload}
+- User: ${i.user?.name || i.userId}
+`).join('')}
 
-3. Evaluate synergy potential considering:
-   - Network-wide synergy potential
-   - Cold start reduction impact  
-   - Coordination acceleration benefits
+NETWORK CONTEXT:
+${JSON.stringify(audienceData, null, 2)}
 
-4. Make staking decisions for high-synergy matches (threshold: 0.7)
+PROCESS:
+1. Analyze for compatible activities and complementary needs
+2. Evaluate synergy potential and ecosystem benefits
+3. Make staking decisions (synergy ≥ ${synergyThreshold}, conviction ≥ ${convictionThreshold})
 
-5. Execute stakes with conviction >= 0.8
+OUTPUT FORMAT:
+Provide analysis and execution summary. If staking on matches, include:
+- Target intent IDs
+- Synergy scores
+- Conviction levels
+- Reasoning
+- Stake amounts (1-100 based on conviction)
 
-Available network participants:
-${JSON.stringify(allUsers, null, 2)}
-
-Input to analyze: ${state.input}
-
-Provide a comprehensive analysis and execution summary of any stakes made.
+Focus on increasing network coordination and reducing cold starts.
 `;
 
   try {
     const response = await llm.invoke(systemPrompt);
-    const output = response.content as string;
+    const analysis = response.content as string;
     
-    return { 
-      output: `ConsensysVibeStaker Network Manager - Analysis Complete:\n\n${output}`
-    };
+    const output = `ConsensysVibeStaker Network Manager - Intent Analysis\n\n` +
+                  `Intent: "${newIntent.title}" (${newIntent.id})\n\n` +
+                  `${analysis}`;
+    
+    return { output };
   } catch (error) {
-    console.error("Network analysis failed:", error);
+    console.error("Intent processing failed:", error);
     return { 
-      output: `Error in network analysis: ${error instanceof Error ? error.message : 'Unknown error'}`
+      output: `Error processing intent: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 }
@@ -89,25 +127,44 @@ Provide a comprehensive analysis and execution summary of any stakes made.
 // Create the workflow
 export function createNetworkManagerWorkflow() {
   const workflow = new StateGraph(NetworkManagerState)
-    .addNode("analyzer", networkAnalyzer)
-    .addEdge(START, "analyzer")
-    .addEdge("analyzer", END);
+    .addNode("processor", intentProcessor)
+    .addEdge(START, "processor")
+    .addEdge("processor", END);
   
   return workflow;
 }
 
-// Main execution function
-export async function runNetworkManager(input: string): Promise<string> {
+// Main execution function for processing new intents
+export async function processIntent(
+  newIntent: Intent, 
+  existingIntents: Intent[] = []
+): Promise<string> {
   const workflow = createNetworkManagerWorkflow();
   const app = workflow.compile();
   
+  const intentData = JSON.stringify({ newIntent, existingIntents });
+  
   try {
-    const result = await app.invoke({ input });
+    const result = await app.invoke({ intentData });
     return result.output || "No output generated";
   } catch (error) {
     console.error("Network Manager workflow error:", error);
     return `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
   }
+}
+
+// Legacy function for backward compatibility
+export async function runNetworkManager(input: string): Promise<string> {
+  // Create a mock intent from string input for testing
+  const mockIntent: Intent = {
+    id: "mock-" + Date.now(),
+    title: "Test Intent",
+    payload: input,
+    status: "active",
+    userId: "test-user"
+  };
+  
+  return processIntent(mockIntent, []);
 }
 
 export default createNetworkManagerWorkflow; 
