@@ -7,12 +7,7 @@ const sampleIntents = [
     title: "DeFi Protocol Fundraising",
     payload: "Looking to raise $2M Series A for our DeFi lending protocol. Need strategic partners with liquidity management expertise and regulatory knowledge.",
     status: "active",
-    userId: "user-alice",
-    user: {
-      id: "user-alice",
-      name: "Alice Chen",
-      email: "alice.consensys.eth"
-    },
+    userId: "alice.consensys.eth",
     indexes: []
   },
   {
@@ -20,12 +15,7 @@ const sampleIntents = [
     title: "Security Engineer Expertise Available",
     payload: "Former Ethereum Foundation security engineer now available for consulting. 5+ years experience with smart contract audits, wallet security, and MEV protection.",
     status: "active",
-    userId: "user-bob",
-    user: {
-      id: "user-bob",
-      name: "Bob Martinez",
-      email: "bob@consensys.net"
-    },
+    userId: "bob@consensys.net",
     indexes: []
   },
   {
@@ -33,12 +23,7 @@ const sampleIntents = [
     title: "Smart Contract Audit Partnership",
     payload: "ConsenSys Diligence seeking partnerships with early-stage DeFi protocols for comprehensive security audits. Special rates for portfolio companies launching on mainnet.",
     status: "active", 
-    userId: "user-consensys",
-    user: {
-      id: "user-consensys",
-      name: "ConsenSys Diligence",
-      email: "partnerships@consensys.net"
-    },
+    userId: "diana@consensys.net",
     indexes: []
   }
 ];
@@ -54,7 +39,7 @@ async function main() {
     
     console.log(`\n📋 Processing Intent ${i + 1}: ${currentIntent.title}`);
     console.log(`🆔 ID: ${currentIntent.id}`);
-    console.log(`👤 User: ${currentIntent.user.name}`);
+    console.log(`👤 User ID: ${currentIntent.userId}`);
     console.log(`📝 Description: ${currentIntent.payload.substring(0, 100)}...`);
     console.log(`📊 Existing Intents for Comparison: ${existingIntents.length}`);
     console.log("⚡ Processing...\n");
@@ -88,12 +73,7 @@ async function demonstrateSpecificScenario() {
     title: "DevOps Infrastructure Partnership",
     payload: "Web3 startup needs experienced DevOps engineer for Kubernetes deployment and CI/CD pipeline setup. Budget: $5k/month for 6-month engagement.",
     status: "active",
-    userId: "user-startup",
-    user: {
-      id: "user-startup", 
-      name: "StartupX",
-      email: "founder@startupx.com"
-    },
+    userId: "founder@startupx.com",
     indexes: []
   };
 
@@ -102,12 +82,7 @@ async function demonstrateSpecificScenario() {
     title: "Senior DevOps Engineer Available",
     payload: "Former ConsenSys DevOps engineer with 7+ years Kubernetes and AWS experience. Specializing in blockchain infrastructure and Web3 deployments. Available for contract work.",
     status: "active",
-    userId: "user-devops",
-    user: {
-      id: "user-devops",
-      name: "DevOps Expert",
-      email: "alumni1@former-consensys.com"
-    },
+    userId: "alumni1@former-consensys.com",
     indexes: []
   };
 
