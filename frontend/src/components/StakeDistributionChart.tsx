@@ -43,7 +43,7 @@ export default function StakeDistributionChart({ distribution }: StakeDistributi
           <div key={category} className="flex items-center gap-2">
             <div className={`w-2 h-2 rounded-sm ${colors[category as keyof typeof colors]}`} />
             <span className="text-xs text-gray-500 dark:text-gray-400">
-              {labels[category as keyof typeof labels]} ({value} $IDX)
+              {labels[category as keyof typeof labels]} (${value})
             </span>
           </div>
         ))}

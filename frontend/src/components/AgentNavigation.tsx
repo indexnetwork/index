@@ -88,7 +88,7 @@ export default function AgentNavigation() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-500 dark:text-gray-400">Wallet Balance</span>
-            <span className="text-sm font-medium text-gray-900 dark:text-white">1,250 $IDX</span>
+            <span className="text-sm font-medium text-gray-900 dark:text-white">$ 1,250</span>
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 truncate">
             <span className="w-2 h-2 rounded-full bg-green-500"></span>

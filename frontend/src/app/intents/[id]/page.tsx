@@ -35,12 +35,12 @@ export default function IntentPage() {
             </Link>
           </div>
 
-          <div className="space-y-8">
+          <div className="space-y-6">
             <IntentHeader intent={intent} />
 
             {/* Connections Section */}
-            <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-white-900">Connections</h2>
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold text-white-900">Relevant Connections</h2>
               <div className="space-y-4">
                 {connections.map((connection) => (
                   <ConnectionCard
