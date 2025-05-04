@@ -10,12 +10,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   return (
     <div className="min-h-screen">
-      <div className="fixed top-4 right-4 z-50">
-        <ThemeToggle />
-      </div>
-      {!isLandingPage && <Navigation />}
-      <main className={!isLandingPage ? "pl-72" : ""}>
-        <div className={!isLandingPage ? "max-w-7xl mx-auto p-8" : ""}>
+
+      {false && !isLandingPage && <Navigation />}
+      <main className={!isLandingPage ? "px-40" : ""}>
+        <div className={!isLandingPage ? "max-w-7xl mx-auto p-2" : ""}>
           {children}
         </div>
       </main>

@@ -23,7 +23,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} antialiased bg-gray-50 dark:bg-gray-900`}>
+      <body className={`${inter.className} antialiased `}>
         <ThemeProvider>
           <IntentProvider>
             <FileProvider>
