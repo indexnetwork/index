@@ -3,38 +3,29 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { FolderOpen, Upload } from "lucide-react";
 
-interface IntentModalProps {
+interface CreateIndexModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-// Sample indexes data
-const SAMPLE_INDEXES = [
-  { id: 1, name: "Portfolio", members: 3, lastUpdated: "May 4" },
-  { id: 2, name: "2025 Thesis", members: 10, lastUpdated: "May 4" },
-  { id: 3, name: "2024 Thesis", members: 3, lastUpdated: "May 4" },
-  { id: 4, name: "AI Startups", members: 2, lastUpdated: "May 4" },
-  { id: 5, name: "Web3 Startups", members: 2, lastUpdated: "May 4" },
-  { id: 6, name: "Climate Startups", members: 2, lastUpdated: "May 4" },
-];
-
-export default function IntentModal({ open, onOpenChange }: IntentModalProps) {
-  const [title, setTitle] = useState('');
-  const [selectedIndexes, setSelectedIndexes] = useState<number[]>([2, 3, 4]);
+export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModalProps) {
+  const [name, setName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
     
     await new Promise(resolve => setTimeout(resolve, 2000));
-    console.log('Creating intent:', { title, selectedIndexes });
+    console.log('Creating index:', { name, selectedFiles });
     
-    setTitle('');
-    setSelectedIndexes([]);
+    setName('');
+    setSelectedFiles([]);
     setIsProcessing(false);
     setIsSuccess(true);
     
@@ -44,21 +35,13 @@ export default function IntentModal({ open, onOpenChange }: IntentModalProps) {
     }, 3000);
   };
 
-  const toggleIndex = (indexId: number) => {
-    setSelectedIndexes(prev => 
-      prev.includes(indexId) 
-        ? prev.filter(id => id !== indexId)
-        : [...prev, indexId]
-    );
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg mx-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex">Create New Intent</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex">Create New Index</DialogTitle>
           <DialogDescription>
-            Broadcast your intent to connect with others across selected indexes.
+            Create a new index to organize and share your knowledge base.
           </DialogDescription>
         </DialogHeader>
 
@@ -66,25 +49,42 @@ export default function IntentModal({ open, onOpenChange }: IntentModalProps) {
           {!isProcessing && !isSuccess ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label htmlFor="title" className="block text-sm font-medium text-gray-900 mb-2">
-                  What are you looking for?
+                <label htmlFor="name" className="block text-sm font-medium text-gray-900 mb-2">
+                  Index Name
                 </label>
-                <textarea
-                  id="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-100 border border-gray-500  focus:outline-none focus:ring-2 focus:ring-gray-200 text-gray-800 min-h-[120px] text-md"
-                  placeholder="Enter your intent here..."
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-100 border border-gray-500"
+                  placeholder="Enter index name..."
                   required
                 />
               </div>
 
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <div className="flex flex-col items-center">
+                  <FolderOpen className="h-12 w-12 text-gray-400 mb-4" />
+                  <p className="text-gray-600 mb-2">Drag and drop files here, or</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex items-center gap-2"
+                    onClick={() => {/* Handle file selection */}}
+                  >
+                    <Upload className="h-4 w-4" />
+                    Browse Files
+                  </Button>
+                </div>
+              </div>
+
               <div className="bg-yellow-50 p-4 border border-gray-200">
-                <p className="text-gray-800 text-sm mb-4">Examples:</p>
+                <p className="text-gray-800 text-sm mb-4">Supported file types:</p>
                 <ul className="text-gray-800 text-sm list-disc list-inside space-y-2">
-                  <li>Looking for experienced ZK proof researchers interested in privacy-preserving identity systems</li>
-                  <li>Seeking co-founder with ML expertise for healthcare startup with early traction</li>
-                  <li>Want to connect with climate tech investors focused on hardware solutions</li>
+                  <li>PDF documents (.pdf)</li>
+                  <li>Text files (.txt, .md)</li>
+                  <li>Word documents (.doc, .docx)</li>
+                  <li>Spreadsheets (.xls, .xlsx)</li>
                 </ul>
               </div>
 
@@ -100,45 +100,45 @@ export default function IntentModal({ open, onOpenChange }: IntentModalProps) {
                   type="submit"
                   className="font-medium bg-gray-800 hover:bg-black text-white"
                 >
-                  Broadcast Intent
+                  Create Index
                 </Button>
               </div>
             </form>
           ) : isProcessing ? (
             <div className="text-center py-8 space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex">Processing Your Intent</h2>
+              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex">Processing Your Index</h2>
               <p className="text-gray-600">
-                Your intent is being processed and broadcasted. This will just take a moment...
+                Your index is being created. This will just take a moment...
               </p>
               <div className="flex justify-center space-x-2">
-                {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map((letter) => (
+                {['1', '2', '3', '4', '5', '6', '7', '8'].map((number) => (
                   <div
-                    key={letter}
+                    key={number}
                     className="w-8 h-8 flex items-center justify-center bg-[#1a2634] text-gray-300 border border-gray-200 rounded-md"
                   >
-                    {letter}
+                    {number}
                   </div>
                 ))}
               </div>
             </div>
           ) : (
             <div className="text-center py-8 space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex">Intent Successfully Created!</h2>
+              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex">Index Successfully Created!</h2>
               <p className="text-gray-600">
-                Your intent has been broadcasted across {selectedIndexes.length} selected {selectedIndexes.length === 1 ? 'index' : 'indexes'}.
+                Your new index "{name}" has been created and is ready to use.
               </p>
               <div className="grid grid-cols-3 gap-4">
                 <div className="border border-gray-200 p-4 rounded-md bg-white">
-                  <p className="text-2xl font-bold text-gray-900">{selectedIndexes.length}</p>
-                  <p className="text-sm text-gray-600">Indexes Searched</p>
+                  <p className="text-2xl font-bold text-gray-900">0</p>
+                  <p className="text-sm text-gray-600">Documents</p>
                 </div>
                 <div className="border border-gray-200 p-4 rounded-md bg-white">
-                  <p className="text-2xl font-bold text-gray-900">~24h</p>
-                  <p className="text-sm text-gray-600">Estimated Time</p>
+                  <p className="text-2xl font-bold text-gray-900">0</p>
+                  <p className="text-sm text-gray-600">Members</p>
                 </div>
                 <div className="border border-gray-200 p-4 rounded-md bg-white">
-                  <p className="text-2xl font-bold text-gray-900">85%</p>
-                  <p className="text-sm text-gray-600">Match Probability</p>
+                  <p className="text-2xl font-bold text-gray-900">Ready</p>
+                  <p className="text-sm text-gray-600">Status</p>
                 </div>
               </div>
               <div className="flex justify-center">
@@ -146,7 +146,7 @@ export default function IntentModal({ open, onOpenChange }: IntentModalProps) {
                   className="font-medium bg-gray-800 hover:bg-black text-white"
                   onClick={() => onOpenChange(false)}
                 >
-                  View My Intents
+                  View My Indexes
                 </Button>
               </div>
             </div>

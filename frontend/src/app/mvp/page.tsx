@@ -20,7 +20,9 @@ import { useIntent } from "@/contexts/IntentContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Image from "next/image";
-import IntentModal from "./IntentModal";
+import CreateIntentModal from "@/components/modals/CreateIntentModal";
+import CreateIndexModal from "@/components/modals/CreateIndexModal";
+import ConfigureModal from "@/components/modals/ConfigureModal";
 
 export default function MVPPage() {
   const [activeTab, setActiveTab] = useState("my-indexes");
@@ -28,6 +30,7 @@ export default function MVPPage() {
   const { intents } = useIntent();
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showIntentModal, setShowIntentModal] = useState(false);
+  const [showIndexModal, setShowIndexModal] = useState(false);
 
   const mcpServerConfig = {
     "mcpServers": {
@@ -141,9 +144,6 @@ export default function MVPPage() {
           </div>
         </div>
 
-        {/* Create Intent Modal */}
-        <IntentModal open={showIntentModal} onOpenChange={setShowIntentModal} />
-
         {/* Main Content */}
         <div className="flex-1   px-8">
           {/* MCP Server Config Dialog */}
@@ -210,16 +210,17 @@ export default function MVPPage() {
                       <div className="flex gap-2 mb-2 sm:mt-0">
                         <Button 
                           className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white"
-                          onClick={() => setShowConfigDialog(true)}
+                          onClick={() => setShowIndexModal(true)}
                         >
                           <ArrowUpRight className="h-4 w-4" />
                           Create New Index
                         </Button>
                         <Button 
                           className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white"
+                          onClick={() => setShowConfigDialog(true)}
                         >
                           <Upload className="h-4 w-4" />
-                          Congure MCP
+                          Configure MCP
                         </Button>
                       </div>
                     </div>
@@ -362,6 +363,11 @@ export default function MVPPage() {
           )}
         </div>
       </div>
+
+      {/* Modals */}
+      <CreateIntentModal open={showIntentModal} onOpenChange={setShowIntentModal} />
+      <CreateIndexModal open={showIndexModal} onOpenChange={setShowIndexModal} />
+      <ConfigureModal open={showConfigDialog} onOpenChange={setShowConfigDialog} />
     </div>
   );
 }
