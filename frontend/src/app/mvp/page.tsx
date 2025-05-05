@@ -20,12 +20,14 @@ import { useIntent } from "@/contexts/IntentContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Image from "next/image";
+import IntentModal from "./IntentModal";
 
 export default function MVPPage() {
   const [activeTab, setActiveTab] = useState("my-indexes");
   const [activeMenu, setActiveMenu] = useState("indexes");
   const { intents } = useIntent();
   const [showConfigDialog, setShowConfigDialog] = useState(false);
+  const [showIntentModal, setShowIntentModal] = useState(false);
 
   const mcpServerConfig = {
     "mcpServers": {
@@ -80,7 +82,7 @@ export default function MVPPage() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2 hover:bg-gray-50 text-gray-700">
                 <UserCircle className="h-6 w-6" />
-                <span className="hidden sm:inline">John Doe</span>
+                <span className="hidden sm:inline">Seref</span>
                 <ChevronDown className="h-4 w-4 opacity-50" />
               </Button>
             </DropdownMenuTrigger>
@@ -139,21 +141,44 @@ export default function MVPPage() {
           </div>
         </div>
 
+        {/* Create Intent Modal */}
+        <IntentModal open={showIntentModal} onOpenChange={setShowIntentModal} />
+
         {/* Main Content */}
         <div className="flex-1   px-8">
           {/* MCP Server Config Dialog */}
           <Dialog open={showConfigDialog} onOpenChange={setShowConfigDialog}>
-            <DialogContent className="max-w-md mx-auto">
+            <DialogContent className="max-w-lg mx-auto">
               <DialogHeader>
                 <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex">MCP Server Configuration</DialogTitle>
                 <DialogDescription>
                   Use this configuration to set up your Model Context Protocol server.
                 </DialogDescription>
               </DialogHeader>
-              <div className="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-md overflow-auto">
-                <pre className="text-sm text-gray-900 dark:text-gray-300 whitespace-pre-wrap">
-                  {JSON.stringify(mcpServerConfig, null, 2)}
-                </pre>
+              <div className="space-y-6">
+                <div className="bg-gray-50 p-4 rounded-md overflow-auto border border-gray-200">
+                  <pre className="text-sm text-gray-900 whitespace-pre-wrap">
+                    {JSON.stringify(mcpServerConfig, null, 2)}
+                  </pre>
+                </div>
+                <div className="flex justify-end space-x-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowConfigDialog(false)}
+                    className="font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    className="font-medium bg-gray-800 hover:bg-black text-white"
+                    onClick={() => {
+                      // Add copy to clipboard functionality
+                      navigator.clipboard.writeText(JSON.stringify(mcpServerConfig, null, 2));
+                    }}
+                  >
+                    Copy Configuration
+                  </Button>
+                </div>
               </div>
             </DialogContent>
           </Dialog>
@@ -188,13 +213,13 @@ export default function MVPPage() {
                           onClick={() => setShowConfigDialog(true)}
                         >
                           <ArrowUpRight className="h-4 w-4" />
-                          Configure MCP
+                          Create New Index
                         </Button>
                         <Button 
                           className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white"
                         >
                           <Upload className="h-4 w-4" />
-                          Upload
+                          Congure MCP
                         </Button>
                       </div>
                     </div>
@@ -204,7 +229,7 @@ export default function MVPPage() {
                       {/* Index Item 1 */}
                       <div className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6">
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Portfolio</h3>
+                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Index dataroom</h3>
                           <p className="text-gray-500 text-sm">Updated May 4 • 3 members</p>
                         </div>
                         <Button 
@@ -219,7 +244,7 @@ export default function MVPPage() {
                       {/* Index Item 2 */}
                       <div className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200">
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">2025 Thesis</h3>
+                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Ambient discovery research</h3>
                           <p className="text-gray-500 text-sm">Updated May 4 • 10 members</p>
                         </div>
                         <Button 
@@ -231,74 +256,9 @@ export default function MVPPage() {
                         </Button>
                       </div>
                       
-                      {/* Index Item 3 */}
-                      <div className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200">
-                        <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">2024 Thesis</h3>
-                          <p className="text-gray-500 text-sm">Updated May 4 • 3 members</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
-                          >
-                            Open
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="border-gray-400 bg-gray-800 text-white hover:bg-black"
-                          >
-                            Share
-                          </Button>
-                        </div>
-                      </div>
+                     
                       
-                      {/* Index Item 4 */}
-                      <div className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200">
-                        <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">AI Startups</h3>
-                          <p className="text-gray-500 text-sm">Updated May 4 • 2 members</p>
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
-                        >
-                          Manage
-                        </Button>
-                      </div>
                       
-                      {/* Index Item 5 */}
-                      <div className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200">
-                        <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Web3 Startups</h3>
-                          <p className="text-gray-500 text-sm">Updated May 4 • 2 members</p>
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
-                        >
-                          Manage
-                        </Button>
-                      </div>
-                      
-                      {/* Index Item 6 */}
-                      <div className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200">
-                        <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Climate Startups</h3>
-                          <p className="text-gray-500 text-sm">Updated May 4 • 2 members</p>
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
-                        >
-                          Manage
-                        </Button>
-                      </div>
                     </TabsContent>
                     
                     {/* Shared With Me Content */}
@@ -349,16 +309,12 @@ export default function MVPPage() {
                       <div className="flex gap-2 mb-2 sm:mt-0">
                         <Button 
                           className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white"
+                          onClick={() => setShowIntentModal(true)}
                         >
                           <ArrowUpRight className="h-4 w-4" />
                           Create Intent
                         </Button>
-                        <Button 
-                          className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white"
-                        >
-                          <Upload className="h-4 w-4" />
-                          Import
-                        </Button>
+ 
                       </div>
                     </div>
                   
@@ -367,7 +323,7 @@ export default function MVPPage() {
                       {/* Intent Item 1 */}
                       <div className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6">
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">AI Research</h3>
+                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Looking to meet early stage founders building privacy-preserving agent coordination infra.</h3>
                           <p className="text-gray-500 text-sm">Updated May 6 • 4 connections</p>
                         </div>
                         <Button 
@@ -379,44 +335,6 @@ export default function MVPPage() {
                         </Button>
                       </div>
                       
-                      {/* Intent Item 2 */}
-                      <div className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200">
-                        <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Market Research</h3>
-                          <p className="text-gray-500 text-sm">Updated May 5 • 3 connections</p>
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
-                        >
-                          Manage
-                        </Button>
-                      </div>
-                      
-                      {/* Intent Item 3 */}
-                      <div className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200">
-                        <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Competitive Analysis</h3>
-                          <p className="text-gray-500 text-sm">Updated May 4 • 2 connections</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
-                          >
-                            Open
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="border-gray-400 bg-gray-800 text-white hover:bg-black"
-                          >
-                            Share
-                          </Button>
-                        </div>
-                      </div>
                     </TabsContent>
                     
                     {/* Shared With Me Content */}
