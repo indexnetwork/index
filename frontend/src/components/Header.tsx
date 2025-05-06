@@ -11,14 +11,16 @@ export default function Header() {
     <div>
       <header className="w-full py-4 flex justify-between items-center">
         <div className="flex items-center">
-          <div className="relative mr-2 cursor-pointer">
-            <img 
-              src="/logo-black.svg" 
-              alt="Index Protocol" 
-              width={200} 
-              className="object-contain"
-            />
-          </div>
+          <Link href="/indexes">
+            <div className="relative mr-2 cursor-pointer">
+              <img 
+                src="/logo-black.svg" 
+                alt="Index Protocol" 
+                width={200} 
+                className="object-contain"
+              />
+            </div>
+          </Link>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
