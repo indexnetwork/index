@@ -70,13 +70,13 @@ export default function IndexesPage() {
                   {/* Action Buttons - directly next to tabs */}
                   <div className="flex gap-2 mb-2 sm:mt-0">
                     <Button 
-                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white"
+                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white rounded-[1px]"
                       onClick={() => setShowIndexModal(true)}
                     >
                       Create New Index
                     </Button>
                     <Button 
-                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white"
+                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white  rounded-[1px]"
                       onClick={() => setShowConfigDialog(true)}
                     >
                       Configure MCP
@@ -101,7 +101,7 @@ export default function IndexesPage() {
                       <Button 
                         variant="outline" 
                         size="sm"
-                        className="border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                        className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedIndex("Index dataroom");
@@ -116,7 +116,7 @@ export default function IndexesPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                            className="border-gray-400 text-gray-700 hover:bg-gray-100  rounded-[1px] hover:text-black"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical className="h-4 w-4" />
@@ -148,34 +148,69 @@ export default function IndexesPage() {
                       </DropdownMenu>
                     </div>
                   </div>
-                  
-                  {/* Index Item 2 */}
+
                   <div 
-                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer border-t border-gray-200 hover:bg-gray-50 transition-colors"
                     onClick={() => {
-                      window.location.href = `/mvp/indexes/ambient-discovery-research`;
+                      window.location.href = `/mvp/indexes/index-dataroom`;
                     }}
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Ambient discovery research</h3>
-                      <p className="text-gray-500 text-sm">Updated May 4 • 10 members</p>
+                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Index dataroom</h3>
+                      <p className="text-gray-500 text-sm">Updated May 4 • 3 members</p>
                     </div>
                     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                       <Button 
                         variant="outline" 
                         size="sm"
-                        className="border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                        className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedIndex("Ambient discovery research");
+                          setSelectedIndex("Index dataroom");
                           setShowShareSettingsModal(true);
                         }}
                       >
                         <Share2 className="h-4 w-4 mr-2" />
                         Share
                       </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-gray-400 text-gray-700 hover:bg-gray-100  rounded-[1px] hover:text-black"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="bg-white border border-gray-200  rounded-[1px] ">
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRenameIndex("Index dataroom");
+                            }} 
+                            className="hover:bg-gray-50 cursor-pointer text-gray-700 focus:text-gray-900"
+                          >
+                            <Pencil className="h-4 w-4 mr-2" />
+                            Rename
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-gray-100" />
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveIndex("Index dataroom");
+                            }}
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer focus:text-red-700"
+                          >
+                            <Trash className="h-4 w-4 mr-2" />
+                            Remove
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
-                  </div>
+                  </div>                  
+
                 </TabsContent>
                 
                 {/* Shared With Me Content */}

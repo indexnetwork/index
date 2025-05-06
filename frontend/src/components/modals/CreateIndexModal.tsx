@@ -62,32 +62,6 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
                 />
               </div>
 
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                <div className="flex flex-col items-center">
-                  <FolderOpen className="h-12 w-12 text-gray-400 mb-4" />
-                  <p className="text-gray-600 mb-2">Drag and drop files here, or</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex items-center gap-2"
-                    onClick={() => {/* Handle file selection */}}
-                  >
-                    <Upload className="h-4 w-4" />
-                    Browse Files
-                  </Button>
-                </div>
-              </div>
-
-              <div className="bg-yellow-50 p-4 border border-gray-200">
-                <p className="text-gray-800 text-sm mb-4">Supported file types:</p>
-                <ul className="text-gray-800 text-sm list-disc list-inside space-y-2">
-                  <li>PDF documents (.pdf)</li>
-                  <li>Text files (.txt, .md)</li>
-                  <li>Word documents (.doc, .docx)</li>
-                  <li>Spreadsheets (.xls, .xlsx)</li>
-                </ul>
-              </div>
-
               <div className="flex justify-end space-x-3">
                 <Button
                   variant="outline" 
@@ -100,7 +74,7 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
                   type="submit"
                   className="font-medium bg-gray-800 hover:bg-black text-white"
                 >
-                  Create Index
+                  Create
                 </Button>
               </div>
             </form>

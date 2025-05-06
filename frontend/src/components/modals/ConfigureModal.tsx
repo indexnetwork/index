@@ -50,7 +50,7 @@ export default function ConfigureModal({ open, onOpenChange }: ConfigureModalPro
               <Button
                 variant="outline"
                 size="sm"
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 text-gray-700"
                 onClick={handleCopyConfig}
               >
                 {copied ? (

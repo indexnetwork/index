@@ -68,10 +68,10 @@ export default function IntentDetailPage() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button className="bg-gray-900 hover:bg-black text-white">
+                <Button className="bg-gray-900 hover:bg-black  rounded-[1px] text-white">
                   Accept Match
                 </Button>
-                <Button variant="outline" className="border-gray-300 text-gray-700 hover:text-gray-900">
+                <Button variant="outline" className="border-gray-300 text-gray-700  rounded-[1px] hover:text-gray-900">
                   Decline
                 </Button>
               </div>
@@ -145,10 +145,10 @@ export default function IntentDetailPage() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button className="bg-gray-900 hover:bg-black text-white">
+                <Button className="bg-gray-900 hover:bg-black  rounded-[1px] text-white">
                   Accept Match
                 </Button>
-                <Button variant="outline" className="border-gray-300 text-gray-700 hover:text-gray-900">
+                <Button variant="outline" className="border-gray-300 text-gray-700  rounded-[1px] hover:text-gray-900">
                   Decline
                 </Button>
               </div>

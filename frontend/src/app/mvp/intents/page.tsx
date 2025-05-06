@@ -59,7 +59,7 @@ export default function IntentsPage() {
                   {/* Action Buttons - directly next to tabs */}
                   <div className="flex gap-2 mb-2 sm:mt-0">
                     <Button 
-                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white"
+                      className="flex items-center gap-2 bg-gray-800 hover:bg-black rounded-[1px] text-white"
                       onClick={() => setShowIntentModal(true)}
                     >
                       Create Intent
@@ -81,7 +81,7 @@ export default function IntentsPage() {
                     <Button 
                       variant="outline" 
                       size="sm"
-                      className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                      className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100   rounded-[1px] hover:text-black"
                       onClick={(e) => {
                         e.stopPropagation();
                         // Add manage functionality here
@@ -101,7 +101,7 @@ export default function IntentsPage() {
                     <Button 
                       variant="outline" 
                       size="sm"
-                      className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                      className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100  rounded-[1px] hover:text-black"
                       onClick={(e) => {
                         e.stopPropagation();
                         // Add manage functionality here
