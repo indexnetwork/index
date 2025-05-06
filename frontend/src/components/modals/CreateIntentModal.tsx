@@ -63,10 +63,10 @@ export default function CreateIntentModal({ open, onOpenChange }: CreateIntentMo
 
         <div className="space-y-6">
           {!isProcessing && !isSuccess ? (
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-3">
               <div>
-                <label htmlFor="title" className="block text-sm font-medium text-gray-900 mb-2">
-                  What are you looking for?
+                <label htmlFor="title" className="text-md font-medium font-ibm-plex text-black">
+                  <div className="mb-2">What are you looking for?</div>
                 </label>
                 <textarea
                   id="title"
@@ -91,13 +91,13 @@ export default function CreateIntentModal({ open, onOpenChange }: CreateIntentMo
                 <Button
                   variant="outline" 
                   onClick={() => onOpenChange(false)}
-                  className="font-medium text-gray-700 hover:bg-gray-50"
+                  className="font-medium text-gray-700 rounded-[1px] hover:bg-gray-50"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  className="font-medium bg-gray-800 hover:bg-black text-white"
+                  className="font-medium bg-gray-800 rounded-[1px] hover:bg-black text-white"
                 >
                   Broadcast Intent
                 </Button>

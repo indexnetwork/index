@@ -49,14 +49,14 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
           {!isProcessing && !isSuccess ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-900 mb-2">
-                  Index Name
+                <label htmlFor="name" className="text-md font-medium font-ibm-plex text-black">
+                  <div className="mb-2">Index Name</div>
                 </label>
                 <Input
                   id="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-100 border border-gray-500"
+                  className="w-full px-4 py-3 bg-gray-100 border border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200 text-gray-800  text-md"
                   placeholder="Enter index name..."
                   required
                 />

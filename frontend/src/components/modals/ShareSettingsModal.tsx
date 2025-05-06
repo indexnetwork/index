@@ -61,7 +61,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
               <h3 className="text-md font-medium font-ibm-plex text-black">Share link</h3>
               <Button
                 variant="outline"
-                size="md"
+                size="lg"
                 className="h-9 px-3 bg-white border border-gray-200 rounded-[1px] hover:bg-gray-50 text-gray-700"
                 onClick={generateNewLink}
               >
