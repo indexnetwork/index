@@ -62,7 +62,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
               <Button
                 variant="outline"
                 size="lg"
-                className="h-9 px-3 bg-white border border-gray-200 rounded-[1px] hover:bg-gray-50 text-gray-700"
+                className="h-9 px-3 bg-white border border-gray-200 rounded-[1px] cursor-pointer hover:bg-gray-50 text-gray-700"
                 onClick={generateNewLink}
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -81,7 +81,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-10 px-4 bg-white border border-gray-200 rounded-[1px] hover:bg-gray-50 text-gray-700"
+                    className="h-10 px-4 bg-white border border-gray-200 rounded-[1px] cursor-pointer hover:bg-gray-50 text-gray-700"
                     onClick={() => handleCopyLink(link.url)}
                   >
                     <Copy className="h-4 w-4" />
@@ -89,7 +89,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-10 px-4 bg-white border border-gray-200 rounded-[1px] hover:bg-gray-50 text-red-500 hover:text-red-600"
+                    className="h-10 px-4 bg-white border border-gray-200 rounded-[1px] cursor-pointer hover:bg-gray-50 text-red-500 hover:text-red-600"
                     onClick={() => removeLink(link.id)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -118,7 +118,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-red-500 hover:text-red-700 p-0"
+                      className="text-red-500 cursor-pointer hover:text-red-700 p-0"
                     >
                       <Trash2 className="h-5 w-5" />
                     </Button>
