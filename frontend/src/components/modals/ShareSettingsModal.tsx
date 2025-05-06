@@ -20,7 +20,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([
     { 
       id: '1', 
-      url: 'https://index.protocol/share/p2orda',
+      url: 'https://index.network/share/p2orda',
       createdAt: new Date().toISOString()
     }
   ]);
@@ -36,7 +36,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
   const generateNewLink = () => {
     const newLink: ShareLink = {
       id: Math.random().toString(36).substring(7),
-      url: `https://index.protocol/share/${Math.random().toString(36).substring(7)}`,
+      url: `https://index.network/share/${Math.random().toString(36).substring(7)}`,
       createdAt: new Date().toISOString()
     };
     setShareLinks([...shareLinks, newLink]);
@@ -57,12 +57,12 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
 
         <div className="space-y-8 mt-6">
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl text-black">Share link</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-md font-medium font-ibm-plex text-black">Share link</h3>
               <Button
                 variant="outline"
-                size="sm"
-                className="h-9 px-3 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700"
+                size="md"
+                className="h-9 px-3 bg-white border border-gray-200 rounded-[1px] hover:bg-gray-50 text-gray-700"
                 onClick={generateNewLink}
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -75,13 +75,13 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
                   key={link.id}
                   className="flex items-center gap-2"
                 >
-                  <div className="flex-1 bg-white border border-gray-200 rounded-lg px-4 py-2.5 text-gray-600">
+                  <div className="flex-1 bg-white border border-gray-200 rounded-[1px] px-4 py-1.75 text-gray-600">
                     {link.url}
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-10 px-4 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700"
+                    className="h-10 px-4 bg-white border border-gray-200 rounded-[1px] hover:bg-gray-50 text-gray-700"
                     onClick={() => handleCopyLink(link.url)}
                   >
                     <Copy className="h-4 w-4" />
@@ -89,7 +89,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-10 px-4 bg-white border border-gray-200 hover:bg-gray-50 text-red-500 hover:text-red-600"
+                    className="h-10 px-4 bg-white border border-gray-200 rounded-[1px] hover:bg-gray-50 text-red-500 hover:text-red-600"
                     onClick={() => removeLink(link.id)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -100,7 +100,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
           </div>
 
           <div>
-            <h3 className="text-xl text-black mb-6">People with access</h3>
+            <h3 className="text-md font-medium font-ibm-plex text-black mb-3">People with access</h3>
             <div className="space-y-3">
               {[
                 { name: "Alice Smith", email: "alice@example.com", role: "Editor" },
@@ -108,14 +108,13 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
               ].map((viewer, index) => (
                 <div
                   key={index}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                  className="flex items-center justify-between p-4 bg-gray-50 "
                 >
                   <div>
                     <p className="text-xl text-black">{viewer.name}</p>
                     <p className="text-gray-600">{viewer.email}</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-gray-700">{viewer.role}</span>
                     <Button
                       variant="ghost"
                       size="sm"
