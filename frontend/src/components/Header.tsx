@@ -64,34 +64,34 @@ export default function Header() {
       <div className="w-full flex justify-center my-6">
         <div className="flex gap-8">
           {/* Indexes Menu Item */}
-          <Link href="/mvp/indexes">
+          <Link href="/indexes">
             <div className="flex flex-col items-center cursor-pointer">
               <div className="w-18 h-18 flex items-center justify-center">
                 <img 
                   src="/icon-folder.svg" 
                   width={48} 
                   className="object-contain p-1"
-                  style={{filter: pathname.startsWith("/mvp/indexes") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
+                  style={{filter: pathname.startsWith("/indexes") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
                 />
               </div>
-              <span className={`text-sm font-ibm-plex ${pathname.startsWith("/mvp/indexes") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
+              <span className={`text-sm font-ibm-plex ${pathname.startsWith("/indexes") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
                 Indexes
               </span>
             </div>
           </Link>
           
           {/* Intents Menu Item */}
-          <Link href="/mvp/intents">
+          <Link href="/intents">
             <div className="flex flex-col items-center cursor-pointer">
               <div className="w-18 h-18 flex items-center justify-center">
                 <img 
                   src="/icon-intent.svg" 
                   width={48} 
                   className="object-contain p-1"
-                  style={{filter: pathname.startsWith("/mvp/intents") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
+                  style={{filter: pathname.startsWith("/intents") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
                 />
               </div>
-              <span className={`text-sm font-ibm-plex ${pathname.startsWith("/mvp/intents")  ? "text-amber-500 font-medium" : "text-gray-500"}`}>
+              <span className={`text-sm font-ibm-plex ${pathname.startsWith("/intents")  ? "text-amber-500 font-medium" : "text-gray-500"}`}>
                 Intents
               </span>
             </div>

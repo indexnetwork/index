@@ -90,7 +90,7 @@ export default function IndexesPage() {
                   <div 
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors"
                     onClick={() => {
-                      window.location.href = `/mvp/indexes/index-dataroom`;
+                      window.location.href = `/indexes/index-dataroom`;
                     }}
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
@@ -152,7 +152,7 @@ export default function IndexesPage() {
                   <div 
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer border-t border-gray-200 hover:bg-gray-50 transition-colors"
                     onClick={() => {
-                      window.location.href = `/mvp/indexes/index-dataroom`;
+                      window.location.href = `/indexes/index-dataroom`;
                     }}
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">

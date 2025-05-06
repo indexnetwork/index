@@ -78,7 +78,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
               
 
         <div className="bg-white px-4 pt-1.5 pb-1 border border-black  border border-b-0 inline-block">
-          <Link href="/mvp/indexes" className="inline-flex items-center text-gray-600 hover:text-gray-900">
+          <Link href="/indexes" className="inline-flex items-center text-gray-600 hover:text-gray-900">
             <ArrowLeft className="h-4 w-4 mr-2" />
             <span className="font-ibm-plex text-[14px] text-black font-medium">Back to indexes</span>
           </Link>

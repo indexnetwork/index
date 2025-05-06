@@ -1,149 +1,136 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { PlusCircle, Filter, Clock, ArrowUpRight, Zap, Award, Lock, Users, Settings, BellDot, Bot } from 'lucide-react';
-import Link from 'next/link';
-import { useIntent } from '@/contexts/IntentContext';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { useIntent } from "@/contexts/IntentContext";
+import Header from "@/components/Header";
+import CreateIntentModal from "@/components/modals/CreateIntentModal";
 
 export default function IntentsPage() {
-  const [activeTab, setActiveTab] = useState<'open' | 'closed'>('open');
+  const router = useRouter();
   const { intents } = useIntent();
+  const [showIntentModal, setShowIntentModal] = useState(false);
 
-  const filteredIntents = intents.filter(intent => {
-    if (activeTab === 'open') return intent.status === 'open';
-    if (activeTab === 'closed') return intent.status === 'closed';
-    return false;
-  });
+  const handleIntentClick = (intentId: string) => {
+    router.push(`/intents/${intentId}`);
+  };
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <main className="flex-1 px-6 py-8">
-        <div className="max-w-6xl mx-auto">
-          {/* Page Title and Actions */}
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">My Intents</h2>
-            <div className="flex space-x-3">
-              <button className="flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                <Filter className="h-4 w-4 mr-2 text-gray-500 dark:text-gray-400" />
-                Filter
-              </button>
-              <Link 
-                href="/create"
-                className="flex items-center px-4 py-2 bg-indigo-600 dark:bg-indigo-500 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 dark:hover:bg-indigo-600"
-              >
-                <PlusCircle className="h-4 w-4 mr-2" />
-                New Intent
-              </Link>
-            </div>
-          </div>
+    <div className="backdrop relative">
+      <style jsx>{`
+        .backdrop:after {
+          content: "";
+          position: fixed;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          right: 0;
+          background: url(https://www.trychroma.com/img/noise.jpg);
+          opacity: .12;
+          pointer-events: none;
+          z-index: -1;
+        }
+      `}</style>
+      <div className="flex flex-col">
+        <Header />
 
-          {/* Tabs */}
-          <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex space-x-8">
-              <button
-                onClick={() => setActiveTab('open')}
-                className={`pb-4 font-medium text-sm ${
-                  activeTab === 'open'
-                    ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-              >
-                Open Intents
-              </button>
-              <button
-                onClick={() => setActiveTab('closed')}
-                className={`pb-4 font-medium text-sm ${
-                  activeTab === 'closed'
-                    ? 'text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400'
-                    : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                }`}
-              >
-                Closed
-              </button>
-            </div>
-          </div>
-
-          {/* Intent List */}
-          <div className="space-y-4">
-            {filteredIntents.map((intent) => (
-              <Link 
-                key={intent.id}
-                href={`/intents/${intent.id}`}
-                className="block bg-white dark:bg-gray-800/50 backdrop-blur-sm rounded-lg shadow dark:shadow-gray-900/10 p-6 hover:shadow-md dark:hover:shadow-gray-900/20 transition-all border border-gray-100 dark:border-gray-700/50"
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">{intent.title}</h3>
-                    <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
-                      <Clock className="h-4 w-4 mr-1.5" />
-                      <span>Total Connections: {intent.totalConnections}</span>
-                    </div>
-                  </div>
-                  <div className="ml-6 flex flex-col items-end">
-                    <div className="flex space-x-6 mb-3">
-                      <div className="flex flex-col items-center">
-                        <div className="flex items-center text-indigo-600 dark:text-indigo-400 font-medium">
-                          <Users className="h-4 w-4 mr-1" />
-                          <span>{intent.pendingConnections}</span>
-                        </div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Pending</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                        <div className="flex items-center text-indigo-600 dark:text-indigo-400 font-medium">
-                          <Zap className="h-4 w-4 mr-1" />
-                          <span>{intent.confirmedConnections}</span>
-                        </div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Confirmed</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                      View Details
-                      <ArrowUpRight className="h-3.5 w-3.5 ml-1" />
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Agent activity indicator (only for open intents with pending connections) */}
-                {intent.status === 'open' && intent.pendingConnections > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700/50">
-                    <div className="flex items-center">
-                      <Bot className="h-4 w-4 text-green-500 dark:text-green-400 mr-2" />
-                      <span className="text-sm text-gray-600 dark:text-gray-300">
-                        <span className="font-medium">3 broker agents</span> are competing to find you matches
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </Link>
-            ))}
-
-            {filteredIntents.length === 0 && (
-              <div className="text-center py-12">
-                <div className="mx-auto h-12 w-12 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                  <Filter className="h-6 w-6 text-gray-400 dark:text-gray-500" />
-                </div>
-                <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No intents found</h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {activeTab === 'open' 
-                    ? "You don't have any open intents yet." 
-                    : "You don't have any closed intents."}
-                </p>
-                {activeTab !== 'closed' && (
-                  <div className="mt-6">
-                    <Link 
-                      href="/create"
-                      className="flex items-center px-4 py-2 bg-indigo-600 dark:bg-indigo-500 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:bg-indigo-700 dark:hover:bg-indigo-600 mx-auto"
+        {/* Main Content */}
+        <div className="flex-1 px-2 sm:px-2 md:px-32">
+          {/* Main Tabs */}
+          <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
+              backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
+              backgroundColor: 'white',
+              backgroundSize: '888px'
+            }}>
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-4">
+              <Tabs defaultValue="my-intents" className="flex-grow">
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between">
+                  <TabsList className="w-full sm:w-auto h-auto border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
+                    <TabsTrigger value="my-intents" className="font-ibm-plex">
+                      Active
+                    </TabsTrigger>
+                    <TabsTrigger value="archived" className="font-ibm-plex">
+                      Archived
+                    </TabsTrigger>
+                  </TabsList>
+                  
+                  {/* Action Buttons - directly next to tabs */}
+                  <div className="flex gap-2 mb-2 sm:mt-0">
+                    <Button 
+                      className="flex items-center gap-2 bg-gray-800 hover:bg-black rounded-[1px] text-white"
+                      onClick={() => setShowIntentModal(true)}
                     >
-                      <PlusCircle className="h-4 w-4 mr-2" />
-                      Create New Intent
-                    </Link>
+                      Create Intent
+                    </Button>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              
+                {/* My Intents Content */}
+                <TabsContent value="my-intents" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
+                  {/* Intent Item 1 */}
+                  <div 
+                    onClick={() => handleIntentClick("1")}
+                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="w-full sm:w-auto mb-2 sm:mb-0">
+                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Looking to meet early stage founders building privacy-preserving agent coordination infra.</h3>
+                      <p className="text-gray-500 text-sm">Updated May 6 • 4 connections</p>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100   rounded-[1px] hover:text-black"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Add manage functionality here
+                      }}
+                    >
+                      Manage
+                    </Button>
+                  </div>
+                  <div 
+                    onClick={() => handleIntentClick("2")}
+                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="w-full sm:w-auto mb-2 sm:mb-0">
+                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Looking to meet early stage founders building privacy-preserving agent coordination infra.</h3>
+                      <p className="text-gray-500 text-sm">Updated May 6 • 4 connections</p>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100  rounded-[1px] hover:text-black"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // Add manage functionality here
+                      }}
+                    >
+                      Manage
+                    </Button>
+                  </div>
+                </TabsContent>
+                
+                {/* Archived Content */}
+                <TabsContent value="archived" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
+                  <div className="py-8 text-center text-gray-500">
+                    No archived intents
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </div>
+          
+          {/* Footer Info */}
+          <div className="mt-4 text-center text-sm text-gray-500 p-4">
+            Intents help you connect to and search across multiple indexes with a specific purpose
           </div>
         </div>
-      </main>
+      </div>
+
+      {/* Modals */}
+      <CreateIntentModal open={showIntentModal} onOpenChange={setShowIntentModal} />
     </div>
   );
 } 
