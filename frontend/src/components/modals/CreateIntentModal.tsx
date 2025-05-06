@@ -77,15 +77,14 @@ export default function CreateIntentModal({ open, onOpenChange }: CreateIntentMo
                   required
                 />
               </div>
-
               <div className="bg-yellow-50 p-4 border border-gray-200">
-                <p className="text-gray-800 text-sm mb-4">Examples:</p>
-                <ul className="text-gray-800 text-sm list-disc list-inside space-y-2">
-                  <li>Looking for experienced ZK proof researchers interested in privacy-preserving identity systems</li>
-                  <li>Seeking co-founder with ML expertise for healthcare startup with early traction</li>
-                  <li>Want to connect with climate tech investors focused on hardware solutions</li>
-                </ul>
-              </div>
+              <p className="text-gray-800 text-sm mb-4">Examples:</p>
+              <ol className="text-gray-800 text-sm list-disc list-inside space-y-2">
+                <li>Looking for experienced ZK proof researchers interested in privacy-preserving identity systems</li>
+                <li>Seeking co-founder with ML expertise for healthcare startup with early traction</li>
+                <li>Want to connect with climate tech investors focused on hardware solutions</li>
+              </ol>
+            </div>
 
               <div className="flex justify-end space-x-3">
                 <Button
