@@ -26,14 +26,16 @@ export default function IntentDetailPage() {
 
       <Header />
 
-      <div className="max-w-4xl mx-auto mt-16 px-4 py-12 rounded-lg" style={{
-        backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
-        backgroundColor: 'white',
-        backgroundSize: '888px'
-      }}>
-        {/* Back Navigation */}
+      <div className="flex-1 px-2 sm:px-2 md:px-32">
+          {/* Main Tabs */}
+          <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
+              backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
+              backgroundColor: 'white',
+              backgroundSize: '888px'
+            }}>
+                      {/* Back Navigation */}
         <div className="bg-white px-4 pt-4 pb-4 mb-4 border-b-2 border-gray-800">
-          <Link href="/mvp" className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6">
+          <Link href="/mvp/intents" className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to intents
           </Link>
@@ -200,7 +202,9 @@ export default function IntentDetailPage() {
             </div>
           </div>
         </div>
+          </div>
       </div>
+
     </div>
   );
 } 
