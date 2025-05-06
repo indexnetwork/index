@@ -70,3 +70,15 @@
     @apply bg-gray-100 text-gray-800;
   }
 } 
+
+
+#privy-modal-content {
+  border-radius: 0px;
+  .login-method-button, button {
+    border-radius: 0px !important;
+  }
+}
+a#protected-by-privy {
+  display: none;
+}
+
