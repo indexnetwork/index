@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,7 +15,11 @@ import {
   FolderOpen,
   Rocket,
   LogOut,
-  ChevronDown
+  ChevronDown,
+  Share2,
+  MoreVertical,
+  Pencil,
+  Trash
 } from "lucide-react";
 import { useIntent } from "@/contexts/IntentContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -23,14 +28,22 @@ import Image from "next/image";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 import CreateIndexModal from "@/components/modals/CreateIndexModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
+import IndexDetailModal from "@/components/modals/IndexDetailModal";
+import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
+import Header from "@/components/Header";
 
 export default function MVPPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("my-indexes");
   const [activeMenu, setActiveMenu] = useState("indexes");
   const { intents } = useIntent();
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showIntentModal, setShowIntentModal] = useState(false);
   const [showIndexModal, setShowIndexModal] = useState(false);
+  const [showIndexDetailModal, setShowIndexDetailModal] = useState(false);
+  const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState("");
+  const [indexToRename, setIndexToRename] = useState("");
 
   const mcpServerConfig = {
     "mcpServers": {
@@ -51,6 +64,21 @@ export default function MVPPage() {
     }
   };
 
+  const handleRenameIndex = (indexName: string) => {
+    setIndexToRename(indexName);
+    // TODO: Implement rename functionality
+    console.log("Rename index:", indexName);
+  };
+
+  const handleRemoveIndex = (indexName: string) => {
+    // TODO: Implement remove functionality
+    console.log("Remove index:", indexName);
+  };
+
+  const handleIntentClick = (intentId: string) => {
+    router.push(`/mvp/intents/${intentId}`);
+  };
+
   return (
     <div className="backdrop relative">
       <style jsx>{`
@@ -68,40 +96,7 @@ export default function MVPPage() {
         }
       `}</style>
       <div className="flex flex-col">
-        {/* Header with Logo and User Avatar */}
-        <header className="w-full px-6 py-4 flex justify-between items-center ">
-          <div className="flex items-center">
-            <div className="relative mr-2">
-              <img 
-                src="/logo-black.svg" 
-                alt="Index Protocol" 
-                width={200} 
-                className="object-contain"
-              />
-            </div>
-          </div>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="flex items-center gap-2 hover:bg-gray-50 text-gray-700">
-                <UserCircle className="h-6 w-6" />
-                <span className="hidden sm:inline">Seref</span>
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 bg-white border border-gray-100 shadow-md rounded-md">
-              <DropdownMenuItem className="cursor-pointer hover:bg-gray-50 flex items-center px-4 py-3">
-                <UserCircle className="mr-2 h-5 w-5 text-gray-500" />
-                <span>Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-gray-100" />
-              <DropdownMenuItem className="cursor-pointer text-red-600 hover:bg-red-50 flex items-center px-4 py-3">
-                <LogOut className="mr-2 h-5 w-5" />
-                <span>Logout</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </header>
+        <Header />
 
         {/* Top Navigation Menu */}
         <div className="w-full flex justify-center my-6">
@@ -145,7 +140,7 @@ export default function MVPPage() {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1   px-8">
+        <div className="flex-1 px-2 sm:px-2 md:px-32">
           {/* MCP Server Config Dialog */}
           <Dialog open={showConfigDialog} onOpenChange={setShowConfigDialog}>
             <DialogContent className="max-w-lg mx-auto">
@@ -201,9 +196,7 @@ export default function MVPPage() {
                         <TabsTrigger value="shared-with-me" className="font-ibm-plex">
                           Shared with me
                         </TabsTrigger>
-                        <TabsTrigger value="requests" pending={5} className="font-ibm-plex">
-                          Requests
-                        </TabsTrigger>  
+                        
                       </TabsList>
                       
                       {/* Action Buttons - directly next to tabs */}
@@ -233,13 +226,57 @@ export default function MVPPage() {
                           <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Index dataroom</h3>
                           <p className="text-gray-500 text-sm">Updated May 4 • 3 members</p>
                         </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
-                        >
-                          Manage
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                            onClick={() => {
+                              setSelectedIndex("Index dataroom");
+                              setShowIndexDetailModal(true);
+                            }}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                            onClick={() => {
+                              setSelectedIndex("Index dataroom");
+                              setShowShareSettingsModal(true);
+                            }}
+                          >
+                            <Share2 className="h-4 w-4 mr-2" />
+                            Share
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-white border border-gray-200 shadow-md rounded-lg">
+                              <DropdownMenuItem onClick={() => handleRenameIndex("Index dataroom")} className="hover:bg-gray-50 cursor-pointer text-gray-700 focus:text-gray-900">
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Rename
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator className="bg-gray-200" />
+                              <DropdownMenuItem 
+                                onClick={() => handleRemoveIndex("Index dataroom")}
+                                className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer focus:text-red-700"
+                              >
+                                <Trash className="h-4 w-4 mr-2" />
+                                Remove
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
                       
                       {/* Index Item 2 */}
@@ -248,17 +285,33 @@ export default function MVPPage() {
                           <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Ambient discovery research</h3>
                           <p className="text-gray-500 text-sm">Updated May 4 • 10 members</p>
                         </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
-                        >
-                          Manage
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                            onClick={() => {
+                              setSelectedIndex("Ambient discovery research");
+                              setShowIndexDetailModal(true);
+                            }}
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            View
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                            onClick={() => {
+                              setSelectedIndex("Ambient discovery research");
+                              setShowShareSettingsModal(true);
+                            }}
+                          >
+                            <Share2 className="h-4 w-4 mr-2" />
+                            Share
+                          </Button>
+                        </div>
                       </div>
-                      
-                     
-                      
                       
                     </TabsContent>
                     
@@ -268,13 +321,7 @@ export default function MVPPage() {
                         No indexes shared with you yet
                       </div>
                     </TabsContent>
-                    
-                    {/* Requests Content */}
-                    <TabsContent value="requests" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
-                      <div className="py-8 text-center text-gray-500">
-                        Loading requests...
-                      </div>
-                    </TabsContent>
+      
                   </Tabs>
                 </div>
               </div>
@@ -315,14 +362,16 @@ export default function MVPPage() {
                           <ArrowUpRight className="h-4 w-4" />
                           Create Intent
                         </Button>
- 
                       </div>
                     </div>
                   
                     {/* My Intents Content */}
                     <TabsContent value="my-intents" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
                       {/* Intent Item 1 */}
-                      <div className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6">
+                      <div 
+                        onClick={() => handleIntentClick("1")}
+                        className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors"
+                      >
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
                           <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Looking to meet early stage founders building privacy-preserving agent coordination infra.</h3>
                           <p className="text-gray-500 text-sm">Updated May 6 • 4 connections</p>
@@ -331,11 +380,34 @@ export default function MVPPage() {
                           variant="outline" 
                           size="sm"
                           className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Add manage functionality here
+                          }}
                         >
                           Manage
                         </Button>
                       </div>
-                      
+                      <div 
+                        onClick={() => handleIntentClick("2")}
+                        className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="w-full sm:w-auto mb-2 sm:mb-0">
+                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Looking to meet early stage founders building privacy-preserving agent coordination infra.</h3>
+                          <p className="text-gray-500 text-sm">Updated May 6 • 4 connections</p>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 hover:text-black"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Add manage functionality here
+                          }}
+                        >
+                          Manage
+                        </Button>
+                      </div>
                     </TabsContent>
                     
                     {/* Shared With Me Content */}
@@ -368,6 +440,16 @@ export default function MVPPage() {
       <CreateIntentModal open={showIntentModal} onOpenChange={setShowIntentModal} />
       <CreateIndexModal open={showIndexModal} onOpenChange={setShowIndexModal} />
       <ConfigureModal open={showConfigDialog} onOpenChange={setShowConfigDialog} />
+      <IndexDetailModal 
+        open={showIndexDetailModal} 
+        onOpenChange={setShowIndexDetailModal}
+        indexName={selectedIndex}
+      />
+      <ShareSettingsModal 
+        open={showShareSettingsModal} 
+        onOpenChange={setShowShareSettingsModal}
+        indexName={selectedIndex}
+      />
     </div>
   );
 }
