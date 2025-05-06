@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { UserCircle, ChevronDown, LogOut } from "lucide-react";
+import { UserCircle, ChevronDown, LogOut, MoreVertical, Trash, Pencil } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 
@@ -20,27 +20,44 @@ export default function Header() {
             />
           </div>
         </div>
-        
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2 hover:bg-gray-50 text-gray-700">
-              <UserCircle className="h-6 w-6" />
-              <span className="hidden sm:inline">Seref</span>
-              <ChevronDown className="h-4 w-4 opacity-50" />
+          <Button variant="outline" className="flex items-center rounded-[1px] px-3 py-6 gap-2 hover:bg-gray-50 text-gray-700 border-[#9F9F9F]">
+              <img 
+                src="/icon-person.svg" 
+                alt="Index Network" 
+                width={32} 
+                className="object-contain"
+            />
+              <span className="hidden sm:inline mx-4">Seref</span>
+              <ChevronDown className="h-4 w-4  opacity-50" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 bg-white border border-gray-100 shadow-md rounded-md">
-            <DropdownMenuItem className="cursor-pointer hover:bg-gray-50 flex items-center px-4 py-3">
-              <UserCircle className="mr-2 h-5 w-5 text-gray-500" />
-              <span>Profile</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-gray-100" />
-            <DropdownMenuItem className="cursor-pointer text-red-600 hover:bg-red-50 flex items-center px-4 py-3">
-              <LogOut className="mr-2 h-5 w-5" />
-              <span>Logout</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <DropdownMenuContent align="end" className="bg-white border border-gray-200  rounded-[1px] ">
+              <DropdownMenuItem 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  
+                }} 
+                className="hover:bg-gray-50 cursor-pointer text-gray-700 focus:text-gray-900"
+              >
+                <UserCircle className="mr-2 h-5 w-5 text-black" />
+                <span>Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-gray-100" />
+              <DropdownMenuItem 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  
+                }}
+                className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer focus:text-red-700"
+              >
+                <LogOut className="mr-2 h-5 w-5" />
+                <span>Logout</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+       
       </header>
 
       {/* Top Navigation Menu */}
