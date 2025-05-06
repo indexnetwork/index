@@ -116,19 +116,19 @@ export default function IndexesPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="border-gray-400 text-gray-700 hover:bg-gray-100  rounded-[1px] hover:text-black"
+                            className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-white border border-gray-200 shadow-md rounded-lg">
+                        <DropdownMenuContent align="end" className="bg-white border border-gray-200  rounded-[1px]">
                           <DropdownMenuItem 
                             onClick={(e) => {
                               e.stopPropagation();
                               handleRenameIndex("Index dataroom");
                             }} 
-                            className="hover:bg-gray-50 cursor-pointer text-gray-700 focus:text-gray-900"
+                            className="hover:bg-gray-50 cursor-pointer text-gray-700  rounded-[1px] focus:text-gray-900"
                           >
                             <Pencil className="h-4 w-4 mr-2" />
                             Rename
@@ -139,7 +139,7 @@ export default function IndexesPage() {
                               e.stopPropagation();
                               handleRemoveIndex("Index dataroom");
                             }}
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer focus:text-red-700"
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer  rounded-[1px] focus:text-red-700"
                           >
                             <Trash className="h-4 w-4 mr-2" />
                             Remove
