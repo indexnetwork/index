@@ -91,7 +91,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 <div className="flex gap-2 mt-4 sm:mt-0">
                   <Button
                     variant="outline"
-                    className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black"
+                    className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                     onClick={() => setShowShareSettingsModal(true)}
                   >
                     <Share2 className="h-4 w-4 mr-2" />
@@ -110,15 +110,15 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                     {files.map((file, index) => (
                       <div
                         key={index}
-                        className="flex items-center justify-between p-4 bg-gray-50  hover:bg-gray-100 transition-colors"
+                        className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <h4 className="text-lg font-medium text-gray-900">{file.name}</h4>
+                            <h4 className="text-lg font-medium text-gray-900 cursor-pointer">{file.name}</h4>
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="p-0 hover:bg-transparent text-gray-500 hover:text-gray-900"
+                              className="p-0 hover:bg-transparent text-gray-500 hover:text-gray-900 cursor-pointer"
                             >
                               <ArrowUpRight className="h-4 w-4" />
                             </Button>
@@ -130,7 +130,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 cursor-pointer"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

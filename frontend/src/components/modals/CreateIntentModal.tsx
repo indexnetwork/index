@@ -90,13 +90,13 @@ export default function CreateIntentModal({ open, onOpenChange }: CreateIntentMo
                 <Button
                   variant="outline" 
                   onClick={() => onOpenChange(false)}
-                  className="font-medium text-gray-700 rounded-[1px] hover:bg-gray-50"
+                  className="font-medium text-gray-700 rounded-[1px] cursor-pointer hover:bg-gray-50"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  className="font-medium bg-gray-800 rounded-[1px] hover:bg-black text-white"
+                  className="font-medium bg-gray-800 rounded-[1px] cursor-pointer hover:bg-black text-white"
                 >
                   Broadcast Intent
                 </Button>

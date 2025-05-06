@@ -48,10 +48,10 @@ export default function IntentsPage() {
               <Tabs defaultValue="my-intents" className="flex-grow">
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between">
                   <TabsList className="w-full sm:w-auto h-auto border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
-                    <TabsTrigger value="my-intents" className="font-ibm-plex">
+                    <TabsTrigger value="my-intents" className="font-ibm-plex cursor-pointer">
                       Active
                     </TabsTrigger>
-                    <TabsTrigger value="archived" className="font-ibm-plex">
+                    <TabsTrigger value="archived" className="font-ibm-plex cursor-pointer">
                       Archived
                     </TabsTrigger>
                   </TabsList>
@@ -59,7 +59,7 @@ export default function IntentsPage() {
                   {/* Action Buttons - directly next to tabs */}
                   <div className="flex gap-2 mb-2 sm:mt-0">
                     <Button 
-                      className="flex items-center gap-2 bg-gray-800 hover:bg-black rounded-[1px] text-white"
+                      className="flex items-center gap-2 bg-gray-800 hover:bg-black rounded-[1px] text-white cursor-pointer"
                       onClick={() => setShowIntentModal(true)}
                     >
                       Create Intent
@@ -81,7 +81,7 @@ export default function IntentsPage() {
                     <Button 
                       variant="outline" 
                       size="sm"
-                      className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100   rounded-[1px] hover:text-black"
+                      className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
                         // Add manage functionality here
@@ -101,7 +101,7 @@ export default function IntentsPage() {
                     <Button 
                       variant="outline" 
                       size="sm"
-                      className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100  rounded-[1px] hover:text-black"
+                      className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                       onClick={(e) => {
                         e.stopPropagation();
                         // Add manage functionality here

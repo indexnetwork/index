@@ -50,7 +50,7 @@ export default function ConfigureModal({ open, onOpenChange }: ConfigureModalPro
               <Button
                 variant="outline"
                 size="sm"
-                className="flex items-center gap-2 text-gray-700"
+                className="flex items-center rounded-[1px] gap-2 text-gray-700"
                 onClick={handleCopyConfig}
               >
                 {copied ? (
@@ -84,13 +84,13 @@ export default function ConfigureModal({ open, onOpenChange }: ConfigureModalPro
             <Button
               variant="outline" 
               onClick={() => onOpenChange(false)}
-              className="font-medium text-gray-700 hover:bg-gray-50"
+              className="font-medium text-gray-700 rounded-[1px] cursor-pointer hover:bg-gray-50"
             >
               Cancel
             </Button>
             <Button
               onClick={() => onOpenChange(false)}
-              className="font-medium bg-gray-800 hover:bg-black text-white"
+              className="font-medium bg-gray-800 rounded-[1px] cursor-pointer hover:bg-black text-white"
             >
               Done
             </Button>

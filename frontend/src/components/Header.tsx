@@ -11,7 +11,7 @@ export default function Header() {
     <div>
       <header className="w-full py-4 flex justify-between items-center">
         <div className="flex items-center">
-          <div className="relative mr-2">
+          <div className="relative mr-2 cursor-pointer">
             <img 
               src="/logo-black.svg" 
               alt="Index Protocol" 
@@ -22,7 +22,7 @@ export default function Header() {
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="flex items-center rounded-[1px] px-3 py-6 gap-2 hover:bg-gray-50 text-gray-700 border-[#9F9F9F]">
+          <Button variant="outline" className="flex items-center rounded-[1px] px-3 py-6 gap-2 hover:bg-gray-50 text-gray-700 border-[#9F9F9F] cursor-pointer">
               <img 
                 src="/icon-person.svg" 
                 alt="Index Network" 
@@ -64,9 +64,9 @@ export default function Header() {
       <div className="w-full flex justify-center my-6">
         <div className="flex gap-8">
           {/* Indexes Menu Item */}
-          <Link href="/indexes">
+          <Link href="/indexes" className="cursor-pointer">
             <div className="flex flex-col items-center cursor-pointer">
-              <div className="w-18 h-18 flex items-center justify-center">
+              <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
                 <img 
                   src="/icon-folder.svg" 
                   width={48} 
@@ -81,9 +81,9 @@ export default function Header() {
           </Link>
           
           {/* Intents Menu Item */}
-          <Link href="/intents">
+          <Link href="/intents" className="cursor-pointer">
             <div className="flex flex-col items-center cursor-pointer">
-              <div className="w-18 h-18 flex items-center justify-center">
+              <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
                 <img 
                   src="/icon-intent.svg" 
                   width={48} 

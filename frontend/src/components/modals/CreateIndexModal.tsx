@@ -56,7 +56,7 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
                   id="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-100 border border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200 text-gray-800  text-md"
+                  className="w-full px-4 py-3 bg-gray-100 rounded-[1px] border border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200 text-gray-800  text-md"
                   placeholder="Enter index name..."
                   required
                 />
@@ -66,13 +66,13 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
                 <Button
                   variant="outline" 
                   onClick={() => onOpenChange(false)}
-                  className="font-medium text-gray-700 hover:bg-gray-50"
+                  className="font-medium text-gray-700 cursor-pointer rounded-[1px] hover:bg-gray-50"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  className="font-medium bg-gray-800 hover:bg-black text-white"
+                  className="font-medium bg-gray-800 cursor-pointer rounded-[1px] hover:bg-black text-white"
                 >
                   Create
                 </Button>

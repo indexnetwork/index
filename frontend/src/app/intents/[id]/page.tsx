@@ -35,7 +35,7 @@ export default function IntentDetailPage() {
             }}>
 
         <div className="bg-white px-4 pt-1.5 pb-1 border border-black  border border-b-0 inline-block">
-          <Link href="/intents" className="inline-flex items-center text-gray-600 hover:text-gray-900">
+          <Link href="/intents" className="inline-flex items-center text-gray-600 hover:text-gray-900 cursor-pointer">
             <ArrowLeft className="h-4 w-4 mr-2" />
             <span className="font-ibm-plex text-[14px] text-black font-medium">Back to intents</span>
           </Link>
@@ -68,10 +68,10 @@ export default function IntentDetailPage() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button className="bg-gray-900 hover:bg-black  rounded-[1px] text-white">
+                <Button className="bg-gray-900 hover:bg-black rounded-[1px] text-white cursor-pointer">
                   Accept Match
                 </Button>
-                <Button variant="outline" className="border-gray-300 text-gray-700  rounded-[1px] hover:text-gray-900">
+                <Button variant="outline" className="border-gray-300 text-gray-700 rounded-[1px] hover:text-gray-900 cursor-pointer">
                   Decline
                 </Button>
               </div>
@@ -145,10 +145,10 @@ export default function IntentDetailPage() {
                 </div>
               </div>
               <div className="flex gap-3">
-                <Button className="bg-gray-900 hover:bg-black  rounded-[1px] text-white">
+                <Button className="bg-gray-900 hover:bg-black rounded-[1px] text-white cursor-pointer">
                   Accept Match
                 </Button>
-                <Button variant="outline" className="border-gray-300 text-gray-700  rounded-[1px] hover:text-gray-900">
+                <Button variant="outline" className="border-gray-300 text-gray-700 rounded-[1px] hover:text-gray-900 cursor-pointer">
                   Decline
                 </Button>
               </div>

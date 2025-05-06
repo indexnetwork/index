@@ -59,10 +59,10 @@ export default function IndexesPage() {
               <Tabs defaultValue="my-indexes" className="flex-grow">
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between">
                   <TabsList className="w-full sm:w-auto border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
-                    <TabsTrigger value="my-indexes" className="font-ibm-plex">
+                    <TabsTrigger value="my-indexes" className="font-ibm-plex cursor-pointer">
                       My indexes
                     </TabsTrigger>
-                    <TabsTrigger value="shared-with-me" className="font-ibm-plex">
+                    <TabsTrigger value="shared-with-me" className="font-ibm-plex cursor-pointer">
                       Shared with me
                     </TabsTrigger>
                   </TabsList>
@@ -70,13 +70,13 @@ export default function IndexesPage() {
                   {/* Action Buttons - directly next to tabs */}
                   <div className="flex gap-2 mb-2 sm:mt-0">
                     <Button 
-                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white rounded-[1px]"
+                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white rounded-[1px] cursor-pointer"
                       onClick={() => setShowIndexModal(true)}
                     >
                       Create New Index
                     </Button>
                     <Button 
-                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white  rounded-[1px]"
+                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white rounded-[1px] cursor-pointer"
                       onClick={() => setShowConfigDialog(true)}
                     >
                       Configure MCP
@@ -101,7 +101,7 @@ export default function IndexesPage() {
                       <Button 
                         variant="outline" 
                         size="sm"
-                        className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black"
+                        className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedIndex("Index dataroom");
@@ -116,7 +116,7 @@ export default function IndexesPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black"
+                            className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical className="h-4 w-4" />
@@ -128,7 +128,7 @@ export default function IndexesPage() {
                               e.stopPropagation();
                               handleRenameIndex("Index dataroom");
                             }} 
-                            className="hover:bg-gray-50 cursor-pointer text-gray-700  rounded-[1px] focus:text-gray-900"
+                            className="hover:bg-gray-50 cursor-pointer text-gray-700 rounded-[1px] focus:text-gray-900"
                           >
                             <Pencil className="h-4 w-4 mr-2" />
                             Rename
@@ -139,7 +139,7 @@ export default function IndexesPage() {
                               e.stopPropagation();
                               handleRemoveIndex("Index dataroom");
                             }}
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer  rounded-[1px] focus:text-red-700"
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer rounded-[1px] focus:text-red-700"
                           >
                             <Trash className="h-4 w-4 mr-2" />
                             Remove
@@ -163,7 +163,7 @@ export default function IndexesPage() {
                       <Button 
                         variant="outline" 
                         size="sm"
-                        className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black"
+                        className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedIndex("Index dataroom");
@@ -178,7 +178,7 @@ export default function IndexesPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="border-gray-400 text-gray-700 hover:bg-gray-100  rounded-[1px] hover:text-black"
+                            className="border-gray-400 text-gray-700 hover:bg-gray-100  rounded-[1px] hover:text-black cursor-pointer"
                             onClick={(e) => e.stopPropagation()}
                           >
                             <MoreVertical className="h-4 w-4" />
