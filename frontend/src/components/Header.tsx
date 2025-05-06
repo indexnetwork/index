@@ -54,10 +54,10 @@ export default function Header() {
                   src="/icon-folder.svg" 
                   width={48} 
                   className="object-contain p-1"
-                  style={{filter: pathname === "/mvp/indexes" ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
+                  style={{filter: pathname.startsWith("/mvp/indexes") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
                 />
               </div>
-              <span className={`text-sm font-ibm-plex ${pathname === "/mvp/indexes" ? "text-amber-500 font-medium" : "text-gray-500"}`}>
+              <span className={`text-sm font-ibm-plex ${pathname.startsWith("/mvp/indexes") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
                 Indexes
               </span>
             </div>

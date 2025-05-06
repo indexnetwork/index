@@ -33,12 +33,15 @@ export default function IntentDetailPage() {
               backgroundColor: 'white',
               backgroundSize: '888px'
             }}>
-                      {/* Back Navigation */}
-        <div className="bg-white px-4 pt-4 pb-4 mb-4 border-b-2 border-gray-800">
-          <Link href="/mvp/intents" className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6">
+
+        <div className="bg-white px-4 pt-1.5 pb-1 border border-black  border border-b-0 inline-block">
+          <Link href="/mvp/intents" className="inline-flex items-center text-gray-600 hover:text-gray-900">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to intents
+            <span className="font-ibm-plex text-[14px] text-black font-medium">Back to intents</span>
           </Link>
+        </div>
+
+        <div className="bg-white px-4 pt-4 pb-4 mb-4 border border-black border-b-0 border-b-2">
 
           {/* Intent Title */}
           <h1 className="text-xl font-medium text-gray-900">
@@ -49,7 +52,7 @@ export default function IntentDetailPage() {
         {/* Match Cards Grid */}
         <div className="grid grid-cols-1 gap-6">
           {/* First Match */}
-          <div className="bg-white border border-gray-200 p-6">
+          <div className="bg-white border border-black border-b-0 border-b-2 p-6">
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center gap-4">
                 <Image
@@ -126,7 +129,7 @@ export default function IntentDetailPage() {
           </div>
 
           {/* Second Match */}
-          <div className="bg-white border border-gray-200 p-6">
+          <div className="bg-white border border-black border-b-0 border-b-2 p-6">
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center gap-4">
                 <Image
