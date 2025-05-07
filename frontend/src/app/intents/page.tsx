@@ -4,13 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { useIntent } from "@/contexts/IntentContext";
 import Header from "@/components/Header";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 
 export default function IntentsPage() {
   const router = useRouter();
-  const { intents } = useIntent();
   const [showIntentModal, setShowIntentModal] = useState(false);
 
   const handleIntentClick = (intentId: string) => {

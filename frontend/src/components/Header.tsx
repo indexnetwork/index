@@ -4,11 +4,16 @@ import { UserCircle, ChevronDown, LogOut, MoreVertical, Trash, Pencil } from "lu
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
+import { useEffect } from "react";
+import { useAuthContext } from '@/contexts/AuthContext';
 
 export default function Header() {
   const pathname = usePathname();
-  const { logout, user } = useAuth();
+  const { logout, user, isAuthenticated } = useAuthContext();
   
+  useEffect(() => {
+    console.log("user", isAuthenticated, user)
+  },[user])
   // Extract name from user email or use default
   const displayName = user?.email ? String(user.email).split('@')[0] : 'User';
 
@@ -60,7 +65,7 @@ export default function Header() {
                 className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer focus:text-red-700"
               >
                 <LogOut className="mr-2 h-5 w-5" />
-                <span>Logout</span>
+                <span>Disconnect</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

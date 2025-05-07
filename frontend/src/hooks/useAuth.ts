@@ -22,7 +22,9 @@ export function useAuth() {
   useEffect(() => {
     if (authenticated && user?.id) {
       setAuthToken(user.id);
-      router.push('/indexes');
+      if (window.location.pathname === '/') {
+        router.push('/indexes');
+      }
     }
     
     if (ready) {

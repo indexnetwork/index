@@ -1,12 +1,13 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, User } from '@privy-io/react-auth';
 import { setAuthToken, removeAuthToken } from '@/lib/auth';
 
 type AuthContextType = {
   isAuthenticated: boolean;
   isLoading: boolean;
+  user: User | null;
   login: () => void;
   logout: () => Promise<void>;
 };
@@ -55,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         isAuthenticated: authenticated,
         isLoading,
+        user,
         login,
         logout,
       }}
