@@ -3,9 +3,14 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { UserCircle, ChevronDown, LogOut, MoreVertical, Trash, Pencil } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function Header() {
   const pathname = usePathname();
+  const { logout, user } = useAuth();
+  
+  // Extract name from user email or use default
+  const displayName = user?.email ? String(user.email).split('@')[0] : 'User';
 
   return (
     <div>
@@ -31,7 +36,7 @@ export default function Header() {
                 width={32} 
                 className="object-contain"
             />
-              <span className="hidden sm:inline mx-4">Seref</span>
+              <span className="hidden sm:inline mx-4">{displayName}</span>
               <ChevronDown className="h-4 w-4  opacity-50" />
             </Button>
           </DropdownMenuTrigger>
@@ -50,7 +55,7 @@ export default function Header() {
               <DropdownMenuItem 
                 onClick={(e) => {
                   e.stopPropagation();
-                  
+                  logout();
                 }}
                 className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer focus:text-red-700"
               >
