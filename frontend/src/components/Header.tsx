@@ -7,6 +7,40 @@ import { useEffect } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAuthContext } from "@/contexts/AuthContext";
 
+const getUnifiedName = (user: any): string => {
+  if (!user) return 'User';
+  
+  const linkedAccounts = user.linkedAccounts || [];
+  
+  // Check for Google account name (usually full name)
+  const googleAccount = linkedAccounts.find((account: any) => account.type === 'google_oauth');
+  if (googleAccount?.name) return googleAccount.name;
+  
+  // Check for LinkedIn account name (usually full name)
+  const linkedinAccount = linkedAccounts.find((account: any) => account.type === 'linkedin_oauth');
+  if (linkedinAccount?.name) return linkedinAccount.name;
+  
+  // Check for GitHub account name
+  const githubAccount = linkedAccounts.find((account: any) => account.type === 'github_oauth');
+  if (githubAccount?.name) return githubAccount.name;
+  
+  // Check for Twitter display name
+  const twitterAccount = linkedAccounts.find((account: any) => account.type === 'twitter_oauth');
+  if (twitterAccount?.name) return twitterAccount.name;
+  
+  // Check for Farcaster display name
+  const farcasterAccount = linkedAccounts.find((account: any) => account.type === 'farcaster');
+  if (farcasterAccount?.displayName) return farcasterAccount.displayName;
+  
+  // Fall back to email username if available
+  if (user.email) {
+    return user.email.split('@')[0];
+  }
+  
+  // Final fallback
+  return 'User';
+};
+
 export default function Header() {
   const pathname = usePathname();
   const {
@@ -17,8 +51,9 @@ export default function Header() {
   useEffect(() => {
     console.log("user",  user)
   },[user])
-  // Extract name from user email or use default
-  const displayName = user?.email ? String(user.email).split('@')[0] : 'User';
+
+  // Use the new unified name function
+  const displayName = getUnifiedName(user);
 
   return (
     <div>
