@@ -31,10 +31,11 @@ export default function IntentsPage() {
           z-index: -1;
         }
       `}</style>
+      
       <div className="flex flex-col">
         <Header />
 
-        {/* Main Content */}
+        
         <div className="flex-1 px-2 sm:px-2 md:px-32">
           {/* Main Tabs */}
           <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{

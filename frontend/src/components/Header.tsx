@@ -1,18 +1,21 @@
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { UserCircle, ChevronDown, LogOut, MoreVertical, Trash, Pencil } from "lucide-react";
+import { UserCircle, ChevronDown, LogOut} from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
-import { useAuthContext } from '@/contexts/AuthContext';
+import { usePrivy } from "@privy-io/react-auth";
+import { useAuthContext } from "@/contexts/AuthContext";
 
 export default function Header() {
   const pathname = usePathname();
-  const { logout, user, isAuthenticated } = useAuthContext();
+  const {
+    user
+  } = usePrivy();
+  const { logout } = useAuthContext();
   
   useEffect(() => {
-    console.log("user", isAuthenticated, user)
+    console.log("user",  user)
   },[user])
   // Extract name from user email or use default
   const displayName = user?.email ? String(user.email).split('@')[0] : 'User';

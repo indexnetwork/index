@@ -1,63 +1,66 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { usePrivy, User } from '@privy-io/react-auth';
-import { setAuthToken, removeAuthToken } from '@/lib/auth';
+import { usePrivy, useLogin, User, Wallet } from '@privy-io/react-auth';
+import { useRouter } from 'next/navigation';
 
 type AuthContextType = {
-  isAuthenticated: boolean;
+  isReady: boolean;
   isLoading: boolean;
-  user: User | null;
-  login: () => void;
+  isAuthenticated: boolean;
   logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { ready, authenticated, user, login: privyLogin, logout: privyLogout } = usePrivy();
-  const [isLoading, setIsLoading] = useState(true);
+  const {
+    ready,
+    authenticated,
+    user,
+    logout: privyLogout,
+    createWallet,
+    linkWallet,
+    unlinkWallet,
+  } = usePrivy();
+  const { login: privyLogin } = useLogin();
 
-  // Store authentication token when user is authenticated
+  const [isLoading, setIsLoading] = useState(!ready);
+  const router = useRouter();
+
+  // Handle navigation based on authentication status
   useEffect(() => {
-    console.log('Authenticated:', authenticated);
-    if (authenticated && user?.id) {
-      setAuthToken(user.id);
-      console.log('User authenticated:', user);
-    }
-  }, [authenticated, user]);
+    if (!ready) return;
 
-  // Update loading state when ready
-  useEffect(() => {
-    if (ready) {
-      setIsLoading(false);
+    const pathname = window.location.pathname;
+    const isHomePage = pathname === '/';
+    
+    if (authenticated && isHomePage) {
+      router.push('/indexes');
+    } else if (!authenticated && !isHomePage) {
+      router.push('/');
     }
-  }, [ready]);
+    
+    setIsLoading(false);
+  }, [authenticated, ready, router]);
 
-  const login = () => {
-    console.log("logging in")
-    privyLogin();
-  };
 
   const logout = async () => {
     try {
       await privyLogout();
-      // Clear auth token
-      removeAuthToken();
+      router.push('/');
     } catch (error) {
       console.error('Logout error:', error);
-      // Still remove token even if privy logout fails
-      removeAuthToken();
+      router.push('/');
     }
   };
 
   return (
     <AuthContext.Provider
       value={{
-        isAuthenticated: authenticated,
+        isReady: ready,
         isLoading,
-        user,
-        login,
+        isAuthenticated: authenticated,
         logout,
       }}
     >
@@ -72,4 +75,4 @@ export function useAuthContext() {
     throw new Error('useAuthContext must be used within an AuthProvider');
   }
   return context;
-} 
+}

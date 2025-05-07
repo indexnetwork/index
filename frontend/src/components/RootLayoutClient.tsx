@@ -1,18 +1,20 @@
 'use client';
 
 import { PropsWithChildren } from 'react';
-import { ThemeProvider } from '@/contexts/ThemeContext';
 import ClientLayout from '@/components/ClientLayout';
-import { PrivyProvider } from '@/components/PrivyProvider';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { PrivyProvider } from '@privy-io/react-auth';
+import { privy } from '@/lib/privy';
 
 export default function RootLayoutClient({ children }: PropsWithChildren) {
   return (
-    <PrivyProvider>
+    <PrivyProvider
+      appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID as string}
+      clientId={process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID as string}
+      config={privy}
+    >
       <AuthProvider>
-        <ThemeProvider>
-          <ClientLayout>{children}</ClientLayout>
-        </ThemeProvider>
+        <ClientLayout>{children}</ClientLayout>
       </AuthProvider>
     </PrivyProvider>
   );

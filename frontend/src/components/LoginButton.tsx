@@ -1,7 +1,9 @@
-import { useAuth } from '@/hooks/useAuth';
+import { useAuthContext } from '@/contexts/AuthContext';
+import { useLogin } from '@privy-io/react-auth';
 
 export function LoginButton() {
-  const { isAuthenticated, login, logout } = useAuth();
+  const { login } = useLogin();
+  const { isAuthenticated, logout } = useAuthContext();
 
   return (
     <button
