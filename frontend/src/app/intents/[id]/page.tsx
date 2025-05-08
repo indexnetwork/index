@@ -55,15 +55,15 @@ export default function IntentDetailPage() {
           <div className="bg-white border border-black border-b-0 border-b-2 p-6">
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center gap-4">
-                <Image
-                  src="/avatars/agents/reclaim.svg"
-                  alt="Arya Mehta"
+                <img
+                  src="https://i.pravatar.cc/300?u=b"
+                  alt="Seref"
                   width={48}
                   height={48}
                   className="rounded-full"
                 />
                 <div>
-                  <h2 className="text-lg font-medium text-gray-900">Arya Mehta</h2>
+                  <h2 className="text-lg font-medium text-gray-900">Seref Yarar</h2>
                   <p className="text-sm text-gray-600">Co-founder of Lighthouse</p>
                 </div>
               </div>
@@ -132,8 +132,8 @@ export default function IntentDetailPage() {
           <div className="bg-white border border-black border-b-0 border-b-2 p-6">
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center gap-4">
-                <Image
-                  src="/avatars/agents/reclaim.svg"
+                <img
+                  src="https://i.pravatar.cc/300"
                   alt="Arya Mehta"
                   width={48}
                   height={48}

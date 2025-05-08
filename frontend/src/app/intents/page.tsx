@@ -94,7 +94,7 @@ export default function IntentsPage() {
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 border-t border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Looking to meet early stage founders building privacy-preserving agent coordination infra.</h3>
+                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Want to connect with investors interested in funding user-centric technologies.</h3>
                       <p className="text-gray-500 text-sm">Updated May 6 • 4 connections</p>
                     </div>
                     <Button 
