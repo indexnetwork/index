@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import prisma from '../lib/db';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { triggerAgentsOnIntentCreated, triggerAgentsOnIntentUpdated } from '../agents';
 
 const router = Router();
 
@@ -264,6 +265,12 @@ router.post('/',
         }
       });
 
+      // Trigger agents after successful intent creation
+      triggerAgentsOnIntentCreated(intent.id).catch(error => {
+        console.error('Agent triggering failed for created intent:', error);
+        // Don't affect the response - agents run in background
+      });
+
       res.status(201).json({
         message: 'Intent created successfully',
         intent
@@ -298,6 +305,18 @@ router.put('/:id',
 
       // Users can only update their own intents
       const where: any = { id, userId: req.user!.id };
+
+      // First, get the current intent to capture the previous status
+      const currentIntent = await prisma.intent.findUnique({
+        where,
+        select: { status: true }
+      });
+
+      if (!currentIntent) {
+        return res.status(404).json({ error: 'Intent not found or access denied' });
+      }
+
+      const previousStatus = currentIntent.status;
 
       // Verify user owns the indexes they're trying to connect
       if (indexIds && indexIds.length > 0) {
@@ -349,6 +368,12 @@ router.put('/:id',
             }
           }
         }
+      });
+
+      // Trigger agents after successful intent update with previous status
+      triggerAgentsOnIntentUpdated(intent.id, previousStatus).catch(error => {
+        console.error('Agent triggering failed for updated intent:', error);
+        // Don't affect the response - agents run in background
       });
 
       res.json({
