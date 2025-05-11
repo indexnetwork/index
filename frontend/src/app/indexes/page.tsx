@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Eye, Share2, MoreVertical, Pencil, Trash } from "lucide-react";
@@ -9,6 +9,7 @@ import Header from "@/components/Header";
 import CreateIndexModal from "@/components/modals/CreateIndexModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
+import { indexesService, Index } from "@/services/indexes";
 
 export default function IndexesPage() {
   const [showConfigDialog, setShowConfigDialog] = useState(false);
@@ -16,16 +17,50 @@ export default function IndexesPage() {
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState("");
   const [indexToRename, setIndexToRename] = useState("");
+  const [indexes, setIndexes] = useState<Index[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleRenameIndex = (indexName: string) => {
+  useEffect(() => {
+    const fetchIndexes = async () => {
+      try {
+        const data = await indexesService.getIndexes();
+        setIndexes(data);
+      } catch (error) {
+        console.error('Error fetching indexes:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchIndexes();
+  }, []);
+
+  const handleRenameIndex = async (indexName: string) => {
     setIndexToRename(indexName);
     // TODO: Implement rename functionality
     console.log("Rename index:", indexName);
   };
 
-  const handleRemoveIndex = (indexName: string) => {
-    // TODO: Implement remove functionality
-    console.log("Remove index:", indexName);
+  const handleRemoveIndex = async (indexName: string) => {
+    try {
+      const index = indexes.find(i => i.name === indexName);
+      if (index) {
+        await indexesService.deleteIndex(index.id);
+        setIndexes(prev => prev.filter(i => i.id !== index.id));
+      }
+    } catch (error) {
+      console.error('Error removing index:', error);
+    }
+  };
+
+  const handleCreateIndex = async (index: Omit<Index, 'id'>) => {
+    try {
+      const newIndex = await indexesService.createIndex(index);
+      setIndexes(prev => [...prev, newIndex]);
+      setShowIndexModal(false);
+    } catch (error) {
+      console.error('Error creating index:', error);
+    }
   };
 
   return (
@@ -86,131 +121,76 @@ export default function IndexesPage() {
               
                 {/* My Indexes Content */}
                 <TabsContent value="my-indexes" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
-                  {/* Index Item 1 */}
-                  <div 
-                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors"
-                    onClick={() => {
-                      window.location.href = `/indexes/index-dataroom`;
-                    }}
-                  >
-                    <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Index dataroom</h3>
-                      <p className="text-gray-500 text-sm">Updated May 4 • 3 members</p>
-                    </div>
-                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedIndex("Index dataroom");
-                          setShowShareSettingsModal(true);
+                  {loading ? (
+                    <div className="py-8 text-center text-gray-500">Loading...</div>
+                  ) : indexes.length === 0 ? (
+                    <div className="py-8 text-center text-gray-500">No indexes found</div>
+                  ) : (
+                    indexes.map((index) => (
+                      <div 
+                        key={index.id}
+                        className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
+                        onClick={() => {
+                          window.location.href = `/indexes/${index.id}`;
                         }}
                       >
-                        <Share2 className="h-4 w-4 mr-2" />
-                        Share
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
+                        <div className="w-full sm:w-auto mb-2 sm:mb-0">
+                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">{index.name}</h3>
+                          <p className="text-gray-500 text-sm">Updated {index.createdAt} • {index.members} members</p>
+                        </div>
+                        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                          <Button 
+                            variant="outline" 
                             size="sm"
                             className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-white border border-gray-200  rounded-[1px]">
-                          <DropdownMenuItem 
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleRenameIndex("Index dataroom");
-                            }} 
-                            className="hover:bg-gray-50 cursor-pointer text-gray-700 rounded-[1px] focus:text-gray-900"
-                          >
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator className="bg-gray-100" />
-                          <DropdownMenuItem 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveIndex("Index dataroom");
+                              setSelectedIndex(index.name);
+                              setShowShareSettingsModal(true);
                             }}
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer rounded-[1px] focus:text-red-700"
                           >
-                            <Trash className="h-4 w-4 mr-2" />
-                            Remove
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-
-                  <div 
-                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer border-t border-gray-200 hover:bg-gray-50 transition-colors"
-                    onClick={() => {
-                      window.location.href = `/indexes/index-dataroom`;
-                    }}
-                  >
-                    <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Index dataroom</h3>
-                      <p className="text-gray-500 text-sm">Updated May 4 • 3 members</p>
-                    </div>
-                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedIndex("Index dataroom");
-                          setShowShareSettingsModal(true);
-                        }}
-                      >
-                        <Share2 className="h-4 w-4 mr-2" />
-                        Share
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-gray-400 text-gray-700 hover:bg-gray-100  rounded-[1px] hover:text-black cursor-pointer"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreVertical className="h-4 w-4" />
+                            <Share2 className="h-4 w-4 mr-2" />
+                            Share
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-white border border-gray-200  rounded-[1px] ">
-                          <DropdownMenuItem 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRenameIndex("Index dataroom");
-                            }} 
-                            className="hover:bg-gray-50 cursor-pointer text-gray-700 focus:text-gray-900"
-                          >
-                            <Pencil className="h-4 w-4 mr-2" />
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator className="bg-gray-100" />
-                          <DropdownMenuItem 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveIndex("Index dataroom");
-                            }}
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer focus:text-red-700"
-                          >
-                            <Trash className="h-4 w-4 mr-2" />
-                            Remove
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>                  
-
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-white border border-gray-200 rounded-[1px]">
+                              <DropdownMenuItem 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRenameIndex(index.name);
+                                }} 
+                                className="hover:bg-gray-50 cursor-pointer text-gray-700 rounded-[1px] focus:text-gray-900"
+                              >
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Rename
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator className="bg-gray-100" />
+                              <DropdownMenuItem 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveIndex(index.name);
+                                }}
+                                className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer rounded-[1px] focus:text-red-700"
+                              >
+                                <Trash className="h-4 w-4 mr-2" />
+                                Remove
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </TabsContent>
                 
                 {/* Shared With Me Content */}
@@ -231,7 +211,11 @@ export default function IndexesPage() {
       </div>
 
       {/* Modals */}
-      <CreateIndexModal open={showIndexModal} onOpenChange={setShowIndexModal} />
+      <CreateIndexModal 
+        open={showIndexModal} 
+        onOpenChange={setShowIndexModal}
+        onSubmit={handleCreateIndex}
+      />
       <ConfigureModal open={showConfigDialog} onOpenChange={setShowConfigDialog} />
       <ShareSettingsModal 
         open={showShareSettingsModal} 

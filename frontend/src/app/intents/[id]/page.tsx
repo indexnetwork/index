@@ -1,12 +1,66 @@
 "use client";
 
+import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import Header from "@/components/Header";
+import { intentsService, Intent, IntentConnection, agents } from "@/services/intents";
 
-export default function IntentDetailPage() {
+interface IntentDetailPageProps {
+  params: Promise<{
+    id: string;
+  }>;
+}
+
+export default function IntentDetailPage({ params }: IntentDetailPageProps) {
+  const resolvedParams = use(params);
+  const [intent, setIntent] = useState<Intent | null>(null);
+  const [connections, setConnections] = useState<IntentConnection[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchIntentData = async () => {
+      try {
+        const [intentData, connectionsData] = await Promise.all([
+          intentsService.getIntent(resolvedParams.id),
+          intentsService.getIntentConnections(resolvedParams.id)
+        ]);
+        setIntent(intentData || null);
+        setConnections(connectionsData);
+      } catch (error) {
+        console.error('Error fetching intent data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchIntentData();
+  }, [resolvedParams.id]);
+
+  if (loading) {
+    return (
+      <div className="backdrop relative min-h-screen">
+        <Header />
+        <div className="flex-1 px-2 sm:px-2 md:px-32">
+          <div className="py-8 text-center text-gray-500">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!intent) {
+    return (
+      <div className="backdrop relative min-h-screen">
+        <Header />
+        <div className="flex-1 px-2 sm:px-2 md:px-32">
+          <div className="py-8 text-center text-gray-500">Intent not found</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="backdrop relative min-h-screen">
       <style jsx>{`
@@ -42,172 +96,79 @@ export default function IntentDetailPage() {
         </div>
 
         <div className="bg-white px-4 pt-4 pb-4 mb-4 border border-black border-b-0 border-b-2">
-
           {/* Intent Title */}
           <h1 className="text-xl font-medium text-gray-900">
-            Looking to connect with investors interested in early-stage teams building privacy-preserving agent coordination infrastructure.
+            {intent.title}
           </h1>
         </div>
 
-        {/* Match Cards Grid */}
+        {/* Connection Cards Grid */}
         <div className="grid grid-cols-1 gap-6">
-          {/* First Match */}
-          <div className="bg-white border border-black border-b-0 border-b-2 p-6">
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <img
-                  src="https://i.pravatar.cc/300?u=b"
-                  alt="Seref"
-                  width={48}
-                  height={48}
-                  className="rounded-full"
-                />
-                <div>
-                  <h2 className="text-lg font-medium text-gray-900">Seref Yarar</h2>
-                  <p className="text-sm text-gray-600">Co-founder of Lighthouse</p>
+          {connections.map((connection) => (
+            <div key={connection.id} className="bg-white border border-black border-b-0 border-b-2 p-6">
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <img
+                    src={connection.avatar}
+                    alt={connection.name}
+                    width={48}
+                    height={48}
+                    className="rounded-full"
+                  />
+                  <div>
+                    <h2 className="text-lg font-medium text-gray-900">{connection.name}</h2>
+                    <p className="text-sm text-gray-600">{connection.role}</p>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <Button className="bg-gray-900 hover:bg-black rounded-[1px] text-white cursor-pointer">
+                    Accept Connection
+                  </Button>
+                  <Button variant="outline" className="border-gray-300 text-gray-700 rounded-[1px] hover:text-gray-900 cursor-pointer">
+                    Decline
+                  </Button>
                 </div>
               </div>
-              <div className="flex gap-3">
-                <Button className="bg-gray-900 hover:bg-black rounded-[1px] text-white cursor-pointer">
-                  Accept Match
-                </Button>
-                <Button variant="outline" className="border-gray-300 text-gray-700 rounded-[1px] hover:text-gray-900 cursor-pointer">
-                  Decline
-                </Button>
+
+              {/* Why this connection matters */}
+              <div className="mb-6 border-b border-gray-200 pb-6">
+                <h3 className="font-medium text-gray-700 mb-3">Why this connection matters</h3>
+                <p className="text-gray-700">
+                  {connection.connectionRationale}
+                </p>
               </div>
-            </div>
 
-            {/* Why this match matters */}
-            <div className="mb-6 border-b border-gray-200 pb-6">
-              <h3 className="font-medium text-gray-700 mb-3">Why this match matters</h3>
-              <p className="text-gray-700">
-                Both share a strong focus on advancing privacy-preserving AI technologies, suggesting a natural alignment in values and vision. Notably, your research has been cited in Arya's work, which highlights an already established intellectual connection and mutual recognition within the academic and technical communities. This foundation could serve as a meaningful basis for further collaboration or shared exploration.
-              </p>
-            </div>
-
-            {/* Who's backing this match */}
-            <div>
-              <h3 className="font-medium text-gray-700 mb-4">Who's backing this match</h3>
-              <div className="flex flex-wrap gap-2">
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                  <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Image src="/avatars/agents/privado.svg" alt="ProofLayer" width={16} height={16} />
-                  </div>
-                  <span className="font-medium text-gray-900">ProofLayer</span>
-                  <span className="text-gray-500 text-sm">Due Diligence Agent</span>
-                </div>
-
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                  <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Image src="/avatars/agents/reputex.svg" alt="Threshold" width={16} height={16} />
-                  </div>
-                  <span className="font-medium text-gray-900">Threshold</span>
-                  <span className="text-gray-500 text-sm">Network Manager Agent</span>
-                </div>
-
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                  <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Image src="/avatars/agents/hapi.svg" alt="Aspecta" width={16} height={16} />
-                  </div>
-                  <span className="font-medium text-gray-900">Aspecta</span>
-                  <span className="text-gray-500 text-sm">Reputation Agent</span>
-                </div>
-
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                  <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Image src="/avatars/agents/trusta.svg" alt="Semantic Relevancy" width={16} height={16} />
-                  </div>
-                  <span className="font-medium text-gray-900">Semantic Relevancy</span>
-                  <span className="text-gray-500 text-sm">Relevancy Agent</span>
-                </div>
-
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                  <span className="text-gray-600">+3</span>
+              {/* Who's backing this connection */}
+              <div>
+                <h3 className="font-medium text-gray-700 mb-4">Who's backing this connection</h3>
+                <div className="flex flex-wrap gap-2">
+                  {connection.backers.map((backer, index) => {
+                    const agent = agents.find(a => a.id === backer.agentId);
+                    if (!agent) return null;
+                    
+                    return (
+                      <div key={index} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
+                        <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                          <Image src={agent.avatar} alt={agent.name} width={16} height={16} />
+                        </div>
+                        <span className="font-medium text-gray-900">{agent.name}</span>
+                        <span className="text-gray-500 text-sm">{agent.role}</span>
+                        <span className="text-gray-400 text-xs">({Math.round(backer.confidence * 100)}%)</span>
+                      </div>
+                    );
+                  })}
+                  {connection.backers.length > 4 && (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
+                      <span className="text-gray-600">+{connection.backers.length - 4}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Second Match */}
-          <div className="bg-white border border-black border-b-0 border-b-2 p-6">
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <img
-                  src="https://i.pravatar.cc/300"
-                  alt="Arya Mehta"
-                  width={48}
-                  height={48}
-                  className="rounded-full"
-                />
-                <div>
-                  <h2 className="text-lg font-medium text-gray-900">Arya Mehta</h2>
-                  <p className="text-sm text-gray-600">Co-founder of Lighthouse</p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <Button className="bg-gray-900 hover:bg-black rounded-[1px] text-white cursor-pointer">
-                  Accept Match
-                </Button>
-                <Button variant="outline" className="border-gray-300 text-gray-700 rounded-[1px] hover:text-gray-900 cursor-pointer">
-                  Decline
-                </Button>
-              </div>
-            </div>
-
-            {/* Why this match matters */}
-            <div className="mb-6 border-b border-gray-200 pb-6">
-              <h3 className="font-medium text-gray-700 mb-3">Why this match matters</h3>
-              <p className="text-gray-700">
-                Both share a strong focus on advancing privacy-preserving AI technologies, suggesting a natural alignment in values and vision. Notably, your research has been cited in Arya's work, which highlights an already established intellectual connection and mutual recognition within the academic and technical communities. This foundation could serve as a meaningful basis for further collaboration or shared exploration.
-              </p>
-            </div>
-
-            {/* Who's backing this match */}
-            <div>
-              <h3 className="font-medium text-gray-700 mb-4">Who's backing this match</h3>
-              <div className="flex flex-wrap gap-2">
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                  <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Image src="/avatars/agents/privado.svg" alt="ProofLayer" width={16} height={16} />
-                  </div>
-                  <span className="font-medium text-gray-900">ProofLayer</span>
-                  <span className="text-gray-500 text-sm">Due Diligence Agent</span>
-                </div>
-
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                  <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Image src="/avatars/agents/reputex.svg" alt="Threshold" width={16} height={16} />
-                  </div>
-                  <span className="font-medium text-gray-900">Threshold</span>
-                  <span className="text-gray-500 text-sm">Network Manager Agent</span>
-                </div>
-
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                  <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Image src="/avatars/agents/hapi.svg" alt="Aspecta" width={16} height={16} />
-                  </div>
-                  <span className="font-medium text-gray-900">Aspecta</span>
-                  <span className="text-gray-500 text-sm">Reputation Agent</span>
-                </div>
-
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                  <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Image src="/avatars/agents/trusta.svg" alt="Semantic Relevancy" width={16} height={16} />
-                  </div>
-                  <span className="font-medium text-gray-900">Semantic Relevancy</span>
-                  <span className="text-gray-500 text-sm">Relevancy Agent</span>
-                </div>
-
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                  <span className="text-gray-600">+3</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
           </div>
       </div>
-
     </div>
   );
 } 

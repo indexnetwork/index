@@ -19,7 +19,7 @@ export interface Connection {
   name: string;
   role: string;
   avatar: string;
-  matchReason: string;
+  connectionRationale: string;
   stakeDistribution: StakeDistribution;
   backers: Backer[];
   createdAt: string;
