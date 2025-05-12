@@ -49,115 +49,99 @@ const mockIndexes: Index[] = [
 export const indexesService = {
   getIndexes: (): Promise<Index[]> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(mockIndexes);
-      }, 500);
+      resolve(mockIndexes);
     });
   },
 
   getIndex: (id: string): Promise<Index | undefined> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(mockIndexes.find(index => index.id === id));
-      }, 500);
+      resolve(mockIndexes.find(index => index.id === id));
     });
   },
 
   createIndex: (index: Omit<Index, 'id'>): Promise<Index> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const newIndex = {
-          ...index,
-          id: Math.random().toString(36).substr(2, 9)
-        };
-        mockIndexes.push(newIndex);
-        resolve(newIndex);
-      }, 500);
+      const newIndex = {
+        ...index,
+        id: Math.random().toString(36).substr(2, 9)
+      };
+      mockIndexes.push(newIndex);
+      resolve(newIndex);
     });
   },
 
   updateIndex: (id: string, updates: Partial<Index>): Promise<Index | undefined> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const index = mockIndexes.findIndex(index => index.id === id);
-        if (index !== -1) {
-          mockIndexes[index] = { ...mockIndexes[index], ...updates };
-          resolve(mockIndexes[index]);
-        } else {
-          resolve(undefined);
-        }
-      }, 500);
+      const index = mockIndexes.findIndex(index => index.id === id);
+      if (index !== -1) {
+        mockIndexes[index] = { ...mockIndexes[index], ...updates };
+        resolve(mockIndexes[index]);
+      } else {
+        resolve(undefined);
+      }
     });
   },
 
   deleteIndex: (id: string): Promise<boolean> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const index = mockIndexes.findIndex(index => index.id === id);
-        if (index !== -1) {
-          mockIndexes.splice(index, 1);
-          resolve(true);
-        } else {
-          resolve(false);
-        }
-      }, 500);
+      const index = mockIndexes.findIndex(index => index.id === id);
+      if (index !== -1) {
+        mockIndexes.splice(index, 1);
+        resolve(true);
+      } else {
+        resolve(false);
+      }
     });
   },
 
   uploadFile: (indexId: string, file: File): Promise<IndexFile> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const index = mockIndexes.find(index => index.id === indexId);
-        if (index) {
-          const newFile = {
-            name: file.name,
-            size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-            date: new Date().toISOString().split('T')[0]
-          };
-          index.files.unshift(newFile);
-          resolve(newFile);
-        } else {
-          throw new Error('Index not found');
-        }
-      }, 500);
+      const index = mockIndexes.find(index => index.id === indexId);
+      if (index) {
+        const newFile = {
+          name: file.name,
+          size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+          date: new Date().toISOString().split('T')[0]
+        };
+        index.files.unshift(newFile);
+        resolve(newFile);
+      } else {
+        throw new Error('Index not found');
+      }
     });
   },
 
   deleteFile: (indexId: string, fileName: string): Promise<boolean> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const index = mockIndexes.find(index => index.id === indexId);
-        if (index) {
-          const fileIndex = index.files.findIndex(file => file.name === fileName);
-          if (fileIndex !== -1) {
-            index.files.splice(fileIndex, 1);
-            resolve(true);
-          } else {
-            resolve(false);
-          }
+      const index = mockIndexes.find(index => index.id === indexId);
+      if (index) {
+        const fileIndex = index.files.findIndex(file => file.name === fileName);
+        if (fileIndex !== -1) {
+          index.files.splice(fileIndex, 1);
+          resolve(true);
         } else {
           resolve(false);
         }
-      }, 500);
+      } else {
+        resolve(false);
+      }
     });
   },
 
   addSuggestedIntent: (indexId: string, intentId: string): Promise<boolean> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const index = mockIndexes.find(index => index.id === indexId);
-        if (index) {
-          const intentIndex = index.suggestedIntents.findIndex(intent => intent.id === intentId);
-          if (intentIndex !== -1) {
-            index.suggestedIntents.splice(intentIndex, 1);
-            resolve(true);
-          } else {
-            resolve(false);
-          }
+      const index = mockIndexes.find(index => index.id === indexId);
+      if (index) {
+        const intentIndex = index.suggestedIntents.findIndex(intent => intent.id === intentId);
+        if (intentIndex !== -1) {
+          index.suggestedIntents.splice(intentIndex, 1);
+          resolve(true);
         } else {
           resolve(false);
         }
-      }, 500);
+      } else {
+        resolve(false);
+      }
     });
   }
 }; 

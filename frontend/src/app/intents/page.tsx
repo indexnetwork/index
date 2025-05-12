@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 import Header from "@/components/Header";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 import { intentsService, Intent } from "@/services/intents";
@@ -41,7 +42,7 @@ export default function IntentsPage() {
     router.push(`/intents/${intentId}`);
   };
 
-  const handleCreateIntent = async (intent: Omit<Intent, 'id'>) => {
+  const handleCreateIntent = async (intent: { title: string; indexIds: string[] }) => {
     try {
       const newIntent = await intentsService.createIntent(intent);
       setActiveIntents(prev => [...prev, newIntent]);
@@ -99,6 +100,7 @@ export default function IntentsPage() {
                       className="flex items-center gap-2 bg-gray-800 hover:bg-black rounded-[1px] text-white cursor-pointer"
                       onClick={() => setShowIntentModal(true)}
                     >
+                      <Plus className="h-4 w-4" />
                       Create Intent
                     </Button>
                   </div>

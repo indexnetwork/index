@@ -38,6 +38,11 @@ export interface Intent {
   updatedAt: string;
   connections: number;
   status: 'active' | 'archived' | 'suggested';
+  indexes: {
+    id: string;
+    name: string;
+    members: number;
+  }[];
 }
 
 export interface IntentConnection {
@@ -59,28 +64,32 @@ const mockIntents: Intent[] = [
     title: "Looking to meet early stage founders building privacy-preserving agent coordination infra.",
     updatedAt: "May 6",
     connections: 4,
-    status: "active"
+    status: "active",
+    indexes: []
   },
   {
     id: "2",
     title: "Want to connect with investors interested in funding user-centric technologies.",
     updatedAt: "May 6",
     connections: 4,
-    status: "active"
+    status: "active",
+    indexes: []
   },
   {
     id: "3",
     title: "Looking for AI researchers working on multi-agent systems.",
     updatedAt: "May 5",
     connections: 0,
-    status: "suggested"
+    status: "suggested",
+    indexes: []
   },
   {
     id: "4",
     title: "Interested in connecting with developers building privacy-preserving protocols.",
     updatedAt: "May 5",
     connections: 0,
-    status: "suggested"
+    status: "suggested",
+    indexes: []
   }
 ];
 
@@ -141,70 +150,66 @@ const mockConnections: IntentConnection[] = [
 export const intentsService = {
   getIntents: (status?: 'active' | 'archived' | 'suggested'): Promise<Intent[]> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        if (status) {
-          resolve(mockIntents.filter(intent => intent.status === status));
-        } else {
-          resolve(mockIntents);
-        }
-      }, 500);
+      if (status) {
+        resolve(mockIntents.filter(intent => intent.status === status));
+      } else {
+        resolve(mockIntents);
+      }
     });
   },
 
   getIntent: (id: string): Promise<Intent | undefined> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(mockIntents.find(intent => intent.id === id));
-      }, 500);
+      resolve(mockIntents.find(intent => intent.id === id));
     });
   },
 
   getIntentConnections: (intentId: string): Promise<IntentConnection[]> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve(mockConnections);
-      }, 500);
+      resolve(mockConnections);
     });
   },
 
-  createIntent: (intent: Omit<Intent, 'id'>): Promise<Intent> => {
+  createIntent: (intent: { title: string; indexIds: string[] }): Promise<Intent> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const newIntent = {
-          ...intent,
-          id: Math.random().toString(36).substr(2, 9)
-        };
-        mockIntents.push(newIntent);
-        resolve(newIntent);
-      }, 500);
+      const newIntent = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: intent.title,
+        updatedAt: new Date().toISOString(),
+        connections: 0,
+        status: 'active' as const,
+        indexes: intent.indexIds.map(id => ({
+          id,
+          name: `Index ${id}`, // This would be replaced with actual index data
+          members: Math.floor(Math.random() * 10) + 1
+        }))
+      };
+      mockIntents.push(newIntent);
+      resolve(newIntent);
     });
   },
 
   updateIntent: (id: string, updates: Partial<Intent>): Promise<Intent | undefined> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const index = mockIntents.findIndex(intent => intent.id === id);
-        if (index !== -1) {
-          mockIntents[index] = { ...mockIntents[index], ...updates };
-          resolve(mockIntents[index]);
-        } else {
-          resolve(undefined);
-        }
-      }, 500);
+      const index = mockIntents.findIndex(intent => intent.id === id);
+      if (index !== -1) {
+        mockIntents[index] = { ...mockIntents[index], ...updates };
+        resolve(mockIntents[index]);
+      } else {
+        resolve(undefined);
+      }
     });
   },
 
   deleteIntent: (id: string): Promise<boolean> => {
     return new Promise((resolve) => {
-      setTimeout(() => {
-        const index = mockIntents.findIndex(intent => intent.id === id);
-        if (index !== -1) {
-          mockIntents.splice(index, 1);
-          resolve(true);
-        } else {
-          resolve(false);
-        }
-      }, 500);
+      const index = mockIntents.findIndex(intent => intent.id === id);
+      if (index !== -1) {
+        mockIntents.splice(index, 1);
+        resolve(true);
+      } else {
+        resolve(false);
+      }
     });
   }
 }; 

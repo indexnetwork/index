@@ -15,13 +15,11 @@ export default function ConfigureModal({ open, onOpenChange }: ConfigureModalPro
 
   const mcpServerConfig = {
     "mcpServers": {
-      "github": {
-        "command": "docker",
+      "index-network": {
+        "command": "npx",
         "args": [
-          "run",
-          "-i",
-          "--rm",
-          "mcp/github"
+          "-y",
+          "@indexnetwork/mcp"
         ]
       }
     }
@@ -81,13 +79,7 @@ export default function ConfigureModal({ open, onOpenChange }: ConfigureModalPro
           </div>
 
           <div className="flex justify-end space-x-3">
-            <Button
-              variant="outline" 
-              onClick={() => onOpenChange(false)}
-              className="font-medium text-gray-700 rounded-[1px] cursor-pointer hover:bg-gray-50"
-            >
-              Cancel
-            </Button>
+            
             <Button
               onClick={() => onOpenChange(false)}
               className="font-medium bg-gray-800 rounded-[1px] cursor-pointer hover:bg-black text-white"

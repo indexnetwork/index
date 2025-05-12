@@ -3,13 +3,14 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Eye, Share2, MoreVertical, Pencil, Trash } from "lucide-react";
+import { Eye, Share2, MoreVertical, Pencil, Trash, Plus } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Header from "@/components/Header";
 import CreateIndexModal from "@/components/modals/CreateIndexModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import { indexesService, Index } from "@/services/indexes";
+import { MCP } from '@lobehub/icons';
 
 export default function IndexesPage() {
   const [showConfigDialog, setShowConfigDialog] = useState(false);
@@ -108,12 +109,14 @@ export default function IndexesPage() {
                       className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white rounded-[1px] cursor-pointer"
                       onClick={() => setShowIndexModal(true)}
                     >
+                      <Plus className="h-4 w-4" />
                       Create New Index
                     </Button>
                     <Button 
                       className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white rounded-[1px] cursor-pointer"
                       onClick={() => setShowConfigDialog(true)}
                     >
+                      <MCP className="h-4 w-4" />
                       Configure MCP
                     </Button>
                   </div>
