@@ -20,7 +20,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([
     { 
       id: '1', 
-      url: 'https://index.network/share/p2orda',
+      url: 'http://localhost:3000/share/1',
       createdAt: new Date().toISOString()
     }
   ]);

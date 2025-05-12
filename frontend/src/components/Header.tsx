@@ -41,7 +41,7 @@ const getUnifiedName = (user: any): string => {
   return 'User';
 };
 
-export default function Header() {
+export default function Header({ showNavigation = true }: { showNavigation?: boolean }) {
   const pathname = usePathname();
   const {
     user
@@ -110,7 +110,7 @@ export default function Header() {
        
       </header>
 
-      {/* Top Navigation Menu */}
+      { showNavigation && 
       <div className="w-full flex justify-center my-6">
         <div className="flex gap-8">
           {/* Indexes Menu Item */}
@@ -148,6 +148,7 @@ export default function Header() {
           </Link>
         </div>
       </div>
+      }
     </div>
   );
 } 

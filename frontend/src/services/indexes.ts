@@ -5,6 +5,8 @@ export interface Index {
   members: number;
   files: IndexFile[];
   suggestedIntents: SuggestedIntent[];
+  avatar?: string;
+  role?: string;
 }
 
 export interface IndexFile {
@@ -139,6 +141,19 @@ export const indexesService = {
         } else {
           resolve(false);
         }
+      } else {
+        resolve(false);
+      }
+    });
+  },
+
+  requestConnection: (indexId: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const index = mockIndexes.find(index => index.id === indexId);
+      if (index) {
+        // In a real implementation, this would send a connection request
+        // For now, we'll just simulate success
+        resolve(true);
       } else {
         resolve(false);
       }
