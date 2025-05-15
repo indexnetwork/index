@@ -31,7 +31,7 @@ type StateType = typeof NetworkManagerState.State;
 
 // Initialize OpenAI
 const llm = new ChatOpenAI({
-  model: "gpt-4",
+  model: "gpt-4o",
   temperature: 0.1,
   apiKey: process.env.OPENAI_API_KEY
 });
