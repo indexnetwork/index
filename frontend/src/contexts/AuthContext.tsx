@@ -34,11 +34,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const pathname = window.location.pathname;
     const isHomePage = pathname === '/';
-    const isSharePage = pathname.startsWith('/share');
+    const isPublicPage = pathname.startsWith('/share') || pathname.startsWith('/simulation');
     
     if (authenticated && isHomePage) {
       router.push('/indexes');
-    } else if (!authenticated && !isHomePage && !isSharePage) {
+    } else if (!authenticated && !isHomePage && !isPublicPage) {
       router.push('/');
     }
     
