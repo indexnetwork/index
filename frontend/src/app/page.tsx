@@ -50,13 +50,13 @@ export default function LandingPage() {
             Get Started
           </button>
         </div>
-        <div className="flex-1 flex justify-end">
+        <div className="flex-1 flex justify-end xl:px-0">
           <Image
             src="/landing/hero.png"
             alt="Hero Illustration"
-            width={400}
-            height={400}
-            className="object-contain"
+            width={600}
+            height={600}
+            className="object-contain w-full max-w-[400px] lg:max-w-[600px]"
             priority
           />
         </div>
