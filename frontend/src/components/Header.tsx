@@ -8,7 +8,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useAuthContext } from "@/contexts/AuthContext";
 
 const getUnifiedName = (user: any): string => {
-  if (!user) return 'User';
+  if (!user) return 'Guest';
   
   const linkedAccounts = user.linkedAccounts || [];
   
@@ -44,7 +44,8 @@ const getUnifiedName = (user: any): string => {
 export default function Header({ showNavigation = true }: { showNavigation?: boolean }) {
   const pathname = usePathname();
   const {
-    user
+    user,
+    login
   } = usePrivy();
   const { logout } = useAuthContext();
   
@@ -70,24 +71,24 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
             </div>
           </Link>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="flex items-center rounded-[1px] px-3 py-6 gap-2 hover:bg-gray-50 text-gray-700 border-[#9F9F9F] cursor-pointer">
-              <img 
-                src="/icon-person.svg" 
-                alt="Index Network" 
-                width={32} 
-                className="object-contain"
-            />
-              <span className="hidden sm:inline mx-4">{displayName}</span>
-              <ChevronDown className="h-4 w-4  opacity-50" />
-            </Button>
-          </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-white border border-gray-200  rounded-[1px] ">
+        {user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="flex items-center rounded-[1px] px-3 py-6 gap-2 hover:bg-gray-50 text-gray-700 border-[#9F9F9F] cursor-pointer">
+                <img 
+                  src="/icon-person.svg" 
+                  alt="Index Network" 
+                  width={32} 
+                  className="object-contain"
+                />
+                <span className="hidden sm:inline mx-4">{displayName}</span>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="bg-white border border-gray-200 rounded-[1px]">
               <DropdownMenuItem 
                 onClick={(e) => {
                   e.stopPropagation();
-                  
                 }} 
                 className="hover:bg-gray-50 cursor-pointer text-gray-700 focus:text-gray-900"
               >
@@ -107,7 +108,21 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-       
+        ) : (
+          <Button 
+            onClick={login}
+            variant="outline" 
+            className="flex items-center rounded-[1px] px-3 py-6 gap-2 hover:bg-gray-50 text-gray-700 border-[#9F9F9F] cursor-pointer"
+          >
+            <img 
+              src="/icon-person.svg" 
+              alt="Index Network" 
+              width={32} 
+              className="object-contain"
+            />
+            <span className="hidden sm:inline mx-4">Connect</span>
+          </Button>
+        )}
       </header>
 
       { showNavigation && 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Eye, Share2, MoreVertical, Pencil, Trash, Plus } from "lucide-react";
+import { Eye, Share2, MoreVertical, Pencil, Trash, Plus, Lock } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import Header from "@/components/Header";
 import CreateIndexModal from "@/components/modals/CreateIndexModal";
@@ -126,73 +126,104 @@ export default function IndexesPage() {
                 <TabsContent value="my-indexes" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
                   {loading ? (
                     <div className="py-8 text-center text-gray-500">Loading...</div>
-                  ) : indexes.length === 0 ? (
-                    <div className="py-8 text-center text-gray-500">No indexes found</div>
                   ) : (
-                    indexes.map((index) => (
+                    <>
+                      {/* Other Indexes */}
+                      {indexes.map((index) => (
+                        <div 
+                          key={index.id}
+                          className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
+                          onClick={() => {
+                            window.location.href = `/indexes/${index.id}`;
+                          }}
+                        >
+                          <div className="w-full sm:w-auto mb-2 sm:mb-0">
+                            <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">{index.name}</h3>
+                            <p className="text-gray-500 text-sm">Updated {index.createdAt} • {index.members} members</p>
+                          </div>
+                          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedIndex(index.name);
+                                setShowShareSettingsModal(true);
+                              }}
+                            >
+                              <Share2 className="h-4 w-4 mr-2" />
+                              Share
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="bg-white border border-gray-200 rounded-[1px]">
+                                <DropdownMenuItem 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRenameIndex(index.name);
+                                  }} 
+                                  className="hover:bg-gray-50 cursor-pointer text-gray-700 rounded-[1px] focus:text-gray-900"
+                                >
+                                  <Pencil className="h-4 w-4 mr-2" />
+                                  Rename
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator className="bg-gray-100" />
+                                <DropdownMenuItem 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemoveIndex(index.name);
+                                  }}
+                                  className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer rounded-[1px] focus:text-red-700"
+                                >
+                                  <Trash className="h-4 w-4 mr-2" />
+                                  Remove
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Private Index */}
                       <div 
-                        key={index.id}
                         className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                         onClick={() => {
-                          window.location.href = `/indexes/${index.id}`;
+                          window.location.href = `/indexes/private`;
                         }}
                       >
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">{index.name}</h3>
-                          <p className="text-gray-500 text-sm">Updated {index.createdAt} • {index.members} members</p>
+                          <div className="flex items-center gap-2">
+                            <Lock className="h-4 w-4 text-gray-900" />
+                            <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Personal Index</h3>
+                          </div>
+                          <p className="text-gray-500 text-sm">Your personal knowledge base</p>
                         </div>
                         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedIndex(index.name);
-                              setShowShareSettingsModal(true);
+                              window.location.href = `/indexes/private`;
                             }}
                           >
-                            <Share2 className="h-4 w-4 mr-2" />
-                            Share
+                            <Lock className="h-4 w-4 mr-2" />
+                            Manage
                           </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-white border border-gray-200 rounded-[1px]">
-                              <DropdownMenuItem 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRenameIndex(index.name);
-                                }} 
-                                className="hover:bg-gray-50 cursor-pointer text-gray-700 rounded-[1px] focus:text-gray-900"
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />
-                                Rename
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator className="bg-gray-100" />
-                              <DropdownMenuItem 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRemoveIndex(index.name);
-                                }}
-                                className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer rounded-[1px] focus:text-red-700"
-                              >
-                                <Trash className="h-4 w-4 mr-2" />
-                                Remove
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
                         </div>
                       </div>
-                    ))
+                    </>
                   )}
                 </TabsContent>
                 

@@ -2,123 +2,194 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Database, Target, Zap, Shield } from "lucide-react";
+import { ArrowRight, Database, Target, Zap, Shield, Mail, Github, X } from "lucide-react";
 import Link from "next/link";
 import { LoginButton } from "@/components/LoginButton";
+import Header from "@/components/Header";
+import Image from "next/image";
 
 export default function LandingPage() {
   const [isHovered, setIsHovered] = useState("");
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-800">
+    <div className="backdrop relative">
+      <style jsx>{`
+        .backdrop:after {
+          content: "";
+          position: fixed;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          right: 0;
+          background: url(https://www.trychroma.com/img/noise.jpg);
+          opacity: .12;
+          pointer-events: none;
+          z-index: -1;
+        }
+      `}</style>
+    <div className="min-h-screen bg-[#fafbfc] flex flex-col">
+      {/* Header */}
+      <div className="px-4 sm:px-6 md:px-8 lg:px-12 xl:px-48 py-3">
+        <Header showNavigation={false} />
+      </div>
+
       {/* Hero Section */}
-      <section className="relative pt-20 pb-32 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h1 className="text-5xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">
-              The Protocol for{" "}
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-amber-500 to-amber-600">
-                Discovery
-              </span>
-            </h1>
-            <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto mb-8">
-              Index Protocol enables efficient and decentralized data discovery through intent-driven indexing and semantic search.
-            </p>
-            <div className="flex justify-center gap-4">
-              <LoginButton />
-              <Link href="/docs" className="btn-secondary">
-                View Documentation
-              </Link>
-            </div>
-          </div>
+      <section className="flex flex-col md:flex-row items-center justify-between max-w-6xl mx-auto mt-8 mb-4 px-4 gap-8">
+        <div className="flex-1 max-w-xl">
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6 leading-tight font-playfair">
+            Find people, privately.
+          </h1>
+          <p className="text-lg text-gray-700 mb-8 font-sans">
+            Index is a private, intent-driven discovery protocol where autonomous agents compete to connect you with the right people at the right time.
+          </p>
+          <button
+            onClick={() => router.push("/indexes")}
+            className="bg-black text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors"
+          >
+            Get Started
+          </button>
         </div>
-
-        {/* Background Elements */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] opacity-30 dark:opacity-20 blur-3xl bg-gradient-to-r from-amber-200 to-amber-400 rounded-full -z-10" />
+        <div className="flex-1 flex justify-end">
+          <Image
+            src="/landing/hero.png"
+            alt="Hero Illustration"
+            width={400}
+            height={400}
+            className="object-contain"
+            priority
+          />
+        </div>
       </section>
 
-      {/* Features Section */}
-      <section className="py-24 bg-white dark:bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
-              Why Choose Index Protocol?
-            </h2>
-            <p className="text-gray-600 dark:text-gray-300">
-              Built for the future of decentralized data discovery
-            </p>
-          </div>
+      {/* Main UI Mockup Section */}
+      <div className="flex justify-center mt-8 mb-16 px-4">
+        <Image
+          src="/landing/main.png"
+          alt="App UI Mockup"
+          width={900}
+          height={600}
+          className=""
+        />
+      </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Target,
-                title: "Intent-Driven",
-                description:
-                  "Express your data needs through intents and let the protocol handle discovery",
-              },
-              {
-                icon: Database,
-                title: "Efficient Indexing",
-                description:
-                  "Optimized indexing strategies ensure fast and reliable data access",
-              },
-              {
-                icon: Shield,
-                title: "Secure & Decentralized",
-                description:
-                  "Built on blockchain technology for transparent and secure operations",
-              },
-            ].map((feature) => (
-              <div
-                key={feature.title}
-                className="card hover:shadow-lg transition-shadow duration-300"
-                onMouseEnter={() => setIsHovered(feature.title)}
-                onMouseLeave={() => setIsHovered("")}
-              >
-                <div className="flex flex-col items-center text-center p-6">
-                  <feature.icon
-                    className={`w-12 h-12 mb-4 transition-colors duration-300 ${
-                      isHovered === feature.title
-                        ? "text-amber-500"
-                        : "text-gray-700 dark:text-gray-300"
-                    }`}
-                  />
-                  <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-                    {feature.title}
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    {feature.description}
-                  </p>
-                </div>
+      {/* Shared container for How it works and Who is it for? */}
+      <div className="max-w-4xl mx-auto px-8">
+        {/* How it works Section */}
+        <section className="mb-20">
+          <h2 className="text-2xl md:text-3xl font-bold text-black mb-8">How it works</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Row 1 */}
+            <div className="border border-[#0A0A0A] p-5 flex gap-4 items-start bg-white">
+              {/* Icon */}
+              <span className="mt-1"><svg width="28" height="28" fill="none"><rect width="28" height="28" rx="6" fill="#F3E8FF"/><path d="M8 14h12M14 8v12" stroke="#A21CAF" strokeWidth="2" strokeLinecap="round"/></svg></span>
+              <div>
+              <div className="font-semibold font-ibm-plex mb-1 text-black">CREATE INTENT</div>
+              <div className="text-sm  text-gray-700 font-sans">Say what you're looking for—plain and simple.<br/>"Looking for privacy infra founders."<br/>"Hiring in ZK ML."</div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-gradient-to-r from-amber-500 to-amber-600 rounded-2xl p-8 md:p-12 shadow-xl">
-            <div className="text-center">
-              <h2 className="text-3xl font-bold text-white mb-4">
-                Ready to Get Started?
-              </h2>
-              <p className="text-amber-50 mb-8 max-w-2xl mx-auto">
-                Join the future of decentralized data discovery and start building with Index Protocol today.
-              </p>
-              <button
-                onClick={() => router.push("/indexes")}
-                className="bg-white text-amber-600 px-8 py-3 rounded-lg font-medium hover:bg-gray-50 transition-colors"
-              >
-                Launch App
-              </button>
+            </div>
+            <div className="border border-[#0A0A0A] p-5 flex gap-4 items-start bg-white">
+              <span className="mt-1"><svg width="28" height="28" fill="none"><rect width="28" height="28" rx="6" fill="#FEF3C7"/><path d="M9 19V9a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2Z" stroke="#D97706" strokeWidth="2"/></svg></span>
+              <div>
+                <div className="font-semibold font-ibm-plex mb-1 text-black">CREATE INDEX</div>
+                <div className="text-sm text-gray-700 font-sans">Files, docs, notes, decks. Stored in TEE.<br/>Used to boost match accuracy, and shared automatically with people you match with.</div>
+              </div>
+            </div>
+            {/* Row 2 */}
+            <div className="border  border-[#0A0A0A] p-5 flex gap-4 items-start bg-white">
+              <span className="mt-1"><svg width="28" height="28" fill="none"><rect width="28" height="28" rx="6" fill="#DBEAFE"/><path d="M14 8v12M8 14h12" stroke="#2563EB" strokeWidth="2" strokeLinecap="round"/></svg></span>
+              <div>
+                <div className="font-semibold font-ibm-plex mb-1 text-black">AGENTS COMPETE TO MATCH YOU</div>
+                <div className="text-sm text-gray-700 font-sans">They analyze your intent + index. If both sides accept, the agent earns.<br/>Agents can be built by anyone and earn through outcomes—no gatekeeping, just relevance.</div>
+              </div>
+            </div>
+            <div className="border  border-[#0A0A0A] p-5 flex gap-4 items-start bg-white">
+              <span className="mt-1"><svg width="28" height="28" fill="none"><rect width="28" height="28" rx="6" fill="#DCFCE7"/><path d="M9 14l4 4 6-6" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"/></svg></span>
+              <div>
+                <div className="font-semibold font-ibm-plex mb-1 text-black">MATCH → COLLABORATE INSTANTLY</div>
+                <div className="text-sm text-gray-700 font-sans">Skip intros. Jump straight to context.<br/>Work together with full visibility—files, notes, and goals already in sync.</div>
+              </div>
+            </div>
+            {/* Row 3 */}
+            <div className="border  border-[#0A0A0A] p-5 flex gap-4 items-start bg-white md:col-span-2">
+              <span className="mt-1"><svg width="28" height="28" fill="none"><rect width="28" height="28" rx="6" fill="#FCE7F3"/><path d="M14 8v12M8 14h12" stroke="#DB2777" strokeWidth="2" strokeLinecap="round"/></svg></span>
+              <div>
+                <div className="font-semibold font-ibm-plex mb-1 text-black">INDEXES, ACTIVATED WITH MCP</div>
+                <div className="text-sm text-gray-700 font-sans">Your context connects to agents through the Model Context Protocol.<br/>Structured, real-time access—without compromising privacy.</div>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+
+        {/* Who is it for? Section */}
+        <section className="mb-20">
+          <h2 className="text-2xl md:text-3xl font-bold text-black mb-8">Who is it for?</h2>
+          <p className="mb-6 text-gray-800">You're not here to scroll.<br/>You're here to find the right person, fast—without broadcasting your intent.<br/>Index is for:</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+            <div className="flex gap-4 items-center">
+              {/* Avatar */}
+              <span><svg width="48" height="48" fill="none"><rect width="48" height="48" rx="12" fill="#F3F4F6"/><circle cx="24" cy="24" r="16" fill="#A3A3A3"/><rect x="18" y="32" width="12" height="4" rx="2" fill="#6B7280"/></svg></span>
+              <div>
+                <div className="font-bold text-black text-xs tracking-widest mb-1">FOUNDERS</div>
+                <div className="text-sm text-black font-mono">building in public, matching in private</div>
+              </div>
+            </div>
+            <div className="flex gap-4 items-center">
+              <span><svg width="48" height="48" fill="none"><rect width="48" height="48" rx="12" fill="#F3F4F6"/><circle cx="24" cy="24" r="16" fill="#F59E42"/><rect x="18" y="32" width="12" height="4" rx="2" fill="#FBBF24"/></svg></span>
+              <div>
+                <div className="font-bold text-black text-xs tracking-widest mb-1">INVESTORS</div>
+                <div className="text-sm text-black font-mono">who care about context</div>
+              </div>
+            </div>
+            <div className="flex gap-4 items-center">
+              <span><svg width="48" height="48" fill="none"><rect width="48" height="48" rx="12" fill="#F3F4F6"/><circle cx="24" cy="24" r="16" fill="#60A5FA"/><rect x="18" y="32" width="12" height="4" rx="2" fill="#3B82F6"/></svg></span>
+              <div>
+                <div className="font-bold text-black text-xs tracking-widest mb-1">ECOSYSTEMS</div>
+                <div className="text-sm text-black font-mono">mapping intent across teams</div>
+              </div>
+            </div>
+            <div className="flex gap-4 items-center">
+              <span><svg width="48" height="48" fill="none"><rect width="48" height="48" rx="12" fill="#F3F4F6"/><circle cx="24" cy="24" r="16" fill="#F472B6"/><rect x="18" y="32" width="12" height="4" rx="2" fill="#EC4899"/></svg></span>
+              <div>
+                <div className="font-bold text-black text-xs tracking-widest mb-1">SALES TEAMS</div>
+                <div className="text-sm text-black font-mono">looking for high-signal opportunities</div>
+              </div>
+            </div>
+          </div>
+          <div className="mt-12">
+            <div className="text-lg text-black font-serif font-semibold mb-4">Trusted by</div>
+            <div className="flex gap-10 items-center grayscale opacity-80">
+              <Image src="/logos/consensys.png" alt="Consensys" width={180} height={72} />
+              <Image src="/logos/seedclub.png" alt="Seed Club Ventures" width={80} height={32} />
+              <Image src="/logos/mesh.png" alt="Mesh" width={80} height={32} />
+              <Image src="/logos/blueyard.png" alt="Blue Yard" width={80} height={32} />
+            </div>
+          </div>
+          {/* Contact Section - now inside the same container */}
+          <div className="mt-16">
+            <div className="text-lg text-black font-serif font-semibold mb-4 text-left">Contact</div>
+            <ul className="space-y-6 text-left">
+              <li className="flex items-center gap-2">
+                <span><Database className="w-5 h-5 text-black" /></span>
+                <a href="#" className="font-mono text-sm text-black hover:text-gray-700">Subscribe our newsletter</a>
+              </li>
+              <li className="flex items-center gap-2">
+                <span><X className="w-5 h-5 text-black" /></span>
+                <a href="#" className="font-mono text-sm text-black hover:text-gray-700">Follow us on X</a>
+              </li>
+              <li className="flex items-center gap-2">
+                <span><X className="w-5 h-5 text-black" /></span>
+                <a href="mailto:hello@index.network" className="font-mono text-sm text-black hover:text-gray-700">Send an email</a>
+              </li>
+              <li className="flex items-center gap-2">
+                <span><Github className="w-5 h-5 text-black" /></span>
+                <a href="#" className="font-mono text-sm text-black hover:text-gray-700">Github</a>
+              </li>
+            </ul>
+          </div>
+        </section>
+      </div>
+    </div>
     </div>
   );
 }

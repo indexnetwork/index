@@ -65,6 +65,8 @@ const IndexNetworkSimulation = () => {
 
   const [personMarkets, setPersonMarkets] = useState<Record<string, MarketState>>({});
 
+  const [resolvedPeople, setResolvedPeople] = useState<Record<string, boolean>>({});
+
   // Initialize market for each person
   useEffect(() => {
     const markets: Record<string, MarketState> = {};
@@ -217,6 +219,36 @@ const IndexNetworkSimulation = () => {
     });
   };
 
+  // Handle connect (resolution)
+  const handleConnect = (personId: string) => {
+    const market = personMarkets[personId];
+    if (!market) return;
+    setAvailableAgents(prevAgents => {
+      // Find YES and NO agents for this person
+      const result = searchResults.find(r => r.id === personId);
+      if (!result) return prevAgents;
+      const yesAgents = result.yesAgents || [];
+      const noAgents = result.noAgents || [];
+      // Reward YES agents, penalize NO agents
+      return prevAgents.map(agent => {
+        // YES
+        const yesAgent = yesAgents.find(a => a.id === agent.id);
+        if (yesAgent && yesAgent.stakedAmount) {
+          const reward = calculateReward(market, yesAgent.stakedAmount, 'YES');
+          return { ...agent, budget: agent.budget + reward };
+        }
+        // NO
+        const noAgent = noAgents.find(a => a.id === agent.id);
+        if (noAgent && noAgent.stakedAmount) {
+          const penalty = calculatePenalty(market, noAgent.stakedAmount, 'NO');
+          return { ...agent, budget: agent.budget - penalty };
+        }
+        return agent;
+      });
+    });
+    setResolvedPeople(prev => ({ ...prev, [personId]: true }));
+  };
+
   return (
     <div className="flex  bg-gray-50">
       {/* Main content */}
@@ -250,6 +282,7 @@ const IndexNetworkSimulation = () => {
         <div className="space-y-2">
           {searchResults.map((result, index) => {
             const wasReordered = initialResults.findIndex(r => r.id === result.id) !== index;
+            const isResolved = resolvedPeople[result.id];
             return (
               <div 
                 key={result.id} 
@@ -260,8 +293,19 @@ const IndexNetworkSimulation = () => {
                     {result.avatar}
                   </div>
                   <div className="flex-1">
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <h3 className="font-medium text-gray-900">{result.name}</h3>
+                      {/* Connect button or Connected state */}
+                      {isResolved ? (
+                        <span className="ml-2 px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">Connected!</span>
+                      ) : (
+                        <button
+                          className="ml-2 px-3 py-1 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700"
+                          onClick={() => handleConnect(result.id)}
+                        >
+                          Connect
+                        </button>
+                      )}
                     </div>
                     <div className="text-sm text-gray-700">{result.title}</div>
                     <div className="text-sm text-gray-600">{result.location}</div>
@@ -278,13 +322,13 @@ const IndexNetworkSimulation = () => {
                       <div 
                         className={`flex-1 p-3 rounded-lg border-2 min-h-[100px] ${
                           draggedAgent ? 'border-green-500 bg-green-50' : 'border-gray-200'
-                        }`}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => handleDrop(result.id, 'YES')}
+                        } ${isResolved ? 'opacity-50 pointer-events-none' : ''}`}
+                        onDragOver={e => !isResolved && e.preventDefault()}
+                        onDrop={() => !isResolved && handleDrop(result.id, 'YES')}
                       >
                         <div className="text-center font-medium text-green-700 mb-2">YES</div>
                         <div className="text-center text-sm text-gray-600 mb-2">
-                          {result.yesStaked || 0} IDX staked
+                          {result.yesStaked || 0} staked
                         </div>
                         <div className="space-y-2">
                           {result.yesAgents?.map(agent => (
@@ -296,24 +340,23 @@ const IndexNetworkSimulation = () => {
                                 <div className="mr-2">{agent.icon}</div>
                                 <div>
                                   <div className="text-xs font-medium text-gray-900">{agent.name}</div>
-                                  <div className="text-xs text-gray-600">{agent.stakedAmount} IDX</div>
+                                  <div className="text-xs text-gray-600">{agent.stakedAmount} </div>
                                 </div>
                               </div>
                             </div>
                           ))}
                         </div>
                       </div>
-                      
                       <div 
                         className={`flex-1 p-3 rounded-lg border-2 min-h-[100px] ${
                           draggedAgent ? 'border-red-500 bg-red-50' : 'border-gray-200'
-                        }`}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => handleDrop(result.id, 'NO')}
+                        } ${isResolved ? 'opacity-50 pointer-events-none' : ''}`}
+                        onDragOver={e => !isResolved && e.preventDefault()}
+                        onDrop={() => !isResolved && handleDrop(result.id, 'NO')}
                       >
                         <div className="text-center font-medium text-red-700 mb-2">NO</div>
                         <div className="text-center text-sm text-gray-600 mb-2">
-                          {result.noStaked || 0} IDX staked
+                          {result.noStaked || 0} staked
                         </div>
                         <div className="space-y-2">
                           {result.noAgents?.map(agent => (
@@ -325,7 +368,7 @@ const IndexNetworkSimulation = () => {
                                 <div className="mr-2">{agent.icon}</div>
                                 <div>
                                   <div className="text-xs font-medium text-gray-900">{agent.name}</div>
-                                  <div className="text-xs text-gray-600">{agent.stakedAmount} IDX</div>
+                                  <div className="text-xs text-gray-600">{agent.stakedAmount} </div>
                                 </div>
                               </div>
                             </div>
