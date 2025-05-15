@@ -28,7 +28,7 @@ export default function LandingPage() {
           z-index: -1;
         }
       `}</style>
-    <div className="min-h-screen bg-[#fafbfc] flex flex-col">
+    <div className="min-h-screen flex flex-col">
       {/* Header */}
       <div className="px-4 sm:px-6 md:px-8 lg:px-12 xl:px-48 py-3">
         <Header showNavigation={false} />
@@ -127,29 +127,52 @@ export default function LandingPage() {
           <p className="mb-6 text-gray-800">You're not here to scroll.<br/>You're here to find the right person, fast—without broadcasting your intent.<br/>Index is for:</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
             <div className="flex gap-4 items-center">
-              {/* Avatar */}
-              <span><svg width="48" height="48" fill="none"><rect width="48" height="48" rx="12" fill="#F3F4F6"/><circle cx="24" cy="24" r="16" fill="#A3A3A3"/><rect x="18" y="32" width="12" height="4" rx="2" fill="#6B7280"/></svg></span>
+              <Image
+                src="/logos/founder.png"
+                alt="Founder"
+                width={48}
+                height={48}
+                className="object-contain"
+              />
               <div>
                 <div className="font-bold text-black text-xs tracking-widest mb-1">FOUNDERS</div>
                 <div className="text-sm text-black font-mono">building in public, matching in private</div>
               </div>
             </div>
             <div className="flex gap-4 items-center">
-              <span><svg width="48" height="48" fill="none"><rect width="48" height="48" rx="12" fill="#F3F4F6"/><circle cx="24" cy="24" r="16" fill="#F59E42"/><rect x="18" y="32" width="12" height="4" rx="2" fill="#FBBF24"/></svg></span>
+              <Image
+                src="/logos/investor.png"
+                alt="Investor"
+                width={48}
+                height={48}
+                className="object-contain"
+              />
               <div>
                 <div className="font-bold text-black text-xs tracking-widest mb-1">INVESTORS</div>
                 <div className="text-sm text-black font-mono">who care about context</div>
               </div>
             </div>
             <div className="flex gap-4 items-center">
-              <span><svg width="48" height="48" fill="none"><rect width="48" height="48" rx="12" fill="#F3F4F6"/><circle cx="24" cy="24" r="16" fill="#60A5FA"/><rect x="18" y="32" width="12" height="4" rx="2" fill="#3B82F6"/></svg></span>
+              <Image
+                src="/logos/ecosystem.png"
+                alt="Ecosystem"
+                width={48}
+                height={48}
+                className="object-contain"
+              />
               <div>
                 <div className="font-bold text-black text-xs tracking-widest mb-1">ECOSYSTEMS</div>
                 <div className="text-sm text-black font-mono">mapping intent across teams</div>
               </div>
             </div>
             <div className="flex gap-4 items-center">
-              <span><svg width="48" height="48" fill="none"><rect width="48" height="48" rx="12" fill="#F3F4F6"/><circle cx="24" cy="24" r="16" fill="#F472B6"/><rect x="18" y="32" width="12" height="4" rx="2" fill="#EC4899"/></svg></span>
+              <Image
+                src="/logos/sales.png"
+                alt="Sales"
+                width={48}
+                height={48}
+                className="object-contain"
+              />
               <div>
                 <div className="font-bold text-black text-xs tracking-widest mb-1">SALES TEAMS</div>
                 <div className="text-sm text-black font-mono">looking for high-signal opportunities</div>
@@ -158,7 +181,7 @@ export default function LandingPage() {
           </div>
           <div className="mt-12">
             <div className="text-lg text-black font-serif font-semibold mb-4">Trusted by</div>
-            <div className="flex gap-10 items-center grayscale opacity-80">
+            <div className="flex -ml-2 gap-10 items-center grayscale opacity-80">
               <Image src="/logos/consensys.png" alt="Consensys" width={180} height={72} />
               <Image src="/logos/seedclub.png" alt="Seed Club Ventures" width={80} height={32} />
               <Image src="/logos/mesh.png" alt="Mesh" width={80} height={32} />
@@ -168,7 +191,7 @@ export default function LandingPage() {
           {/* Contact Section - now inside the same container */}
           <div className="mt-16">
             <div className="text-lg text-black font-serif font-semibold mb-4 text-left">Contact</div>
-            <ul className="space-y-6 text-left">
+            <ul className="space-y-4 text-left">
               <li className="flex items-center gap-2">
                 <span><Database className="w-5 h-5 text-black" /></span>
                 <a href="#" className="font-mono text-sm text-black hover:text-gray-700">Subscribe our newsletter</a>
