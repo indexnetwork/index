@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Lock, ArrowLeft, MessageSquare, Mail, Calendar, Linkedin } from "lucide-react";
+import { Lock, ArrowLeft, MessageSquare, Mail, Calendar, Linkedin, FileText } from "lucide-react";
 import Header from "@/components/Header";
 import Link from "next/link";
+import ClientLayout from "@/components/ClientLayout";
 
 interface Integration {
   id: string;
@@ -16,6 +17,13 @@ interface Integration {
 
 export default function PrivateIndexPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([
+    {
+      id: "notion",
+      name: "Notion",
+      icon: <FileText className="h-6 w-6 text-gray-900" />,
+      description: "Connect your Notion workspace to access pages and databases",
+      connected: false
+    },
     {
       id: "slack",
       name: "Slack",
@@ -64,82 +72,59 @@ export default function PrivateIndexPage() {
   };
 
   return (
-    <div className="backdrop relative">
-      <style jsx>{`
-        .backdrop:after {
-          content: "";
-          position: fixed;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          right: 0;
-          background: url(https://www.trychroma.com/img/noise.jpg);
-          opacity: .12;
-          pointer-events: none;
-          z-index: -1;
-        }
-      `}</style>
-      <div className="flex flex-col min-h-screen">
-        <Header />
+    <ClientLayout showNavigation={true}>
+      <div className="w-full h-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
+        backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
+        backgroundColor: 'white',
+        backgroundSize: '888px'
+      }}>
+        <div className="bg-white px-4 pt-1.5 pb-1 border border-black border border-b-0 inline-block">
+          <Link href="/indexes" className="inline-flex items-center text-gray-600 hover:text-gray-900">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            <span className="font-ibm-plex text-[14px] text-black font-medium">Back to indexes</span>
+          </Link>
+        </div>
 
-        {/* Main Content */}
-        <div className="flex-1 px-2 sm:px-2 md:px-32">
-          <div className="space-y-6 h-full">
-            {/* Header Box */}
-            <div className="w-full h-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
-              backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
-              backgroundColor: 'white',
-              backgroundSize: '888px'
-            }}>
-              <div className="bg-white px-4 pt-1.5 pb-1 border border-black border border-b-0 inline-block">
-                <Link href="/indexes" className="inline-flex items-center text-gray-600 hover:text-gray-900">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  <span className="font-ibm-plex text-[14px] text-black font-medium">Back to indexes</span>
-                </Link>
-              </div>
-
-              <div className="flex flex-col sm:flex-row py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
-                <div className="flex items-center gap-3">
-                  <Lock className="h-6 w-6 text-gray-900" />
-                  <div>
-                    <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex mb-2">Personal Index</h1>
-                    <p className="text-gray-500">Connect your services to build your private knowledge base</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Integrations Grid */}
-              <div className="grid grid-cols-1 ] md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-                {integrations.map((integration) => (
-                  <div
-                    key={integration.id}
-                    className="flex flex-col p-6 bg-white border border-black border-b-2 rounded-[1px]  transition-colors"
-                  >
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 bg-gray-100 rounded-lg">
-                        {integration.icon}
-                      </div>
-                      <h3 className="text-lg font-semibold text-gray-900">{integration.name}</h3>
-                    </div>
-                    <p className="text-gray-500 mb-4 flex-grow">{integration.description}</p>
-                    <Button
-                      variant={integration.connected ? "outline" : "default"}
-                      onClick={() => handleConnect(integration.id)}
-                    >
-                      {integration.connected ? "Disconnect" : "Connect"}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Footer Info */}
-            <div className="mt-4 text-center text-sm text-gray-500 p-4">
-              Your private index data is encrypted and only accessible to you
+        <div className="flex flex-col sm:flex-row py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
+          <div className="flex items-center gap-3">
+            <Lock className="h-6 w-6 text-gray-900" />
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex mb-2">Personal Index</h1>
+              <p className="text-gray-500">Connect your services to build your private knowledge base</p>
             </div>
           </div>
         </div>
+
+        {/* Integrations Grid */}
+        <div className="grid grid-cols-1 ] md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+          {integrations.map((integration) => (
+            <div
+              key={integration.id}
+              className="flex flex-col p-6 bg-white border border-black border-b-2 rounded-[1px]  transition-colors"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-gray-100 rounded-lg">
+                  {integration.icon}
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">{integration.name}</h3>
+              </div>
+              <p className="text-gray-500 mb-4 flex-grow">{integration.description}</p>
+              <Button
+                variant={integration.connected ? "outline" : "default"}
+                onClick={() => handleConnect(integration.id)}
+              >
+                {integration.connected ? "Disconnect" : "Connect"}
+              </Button>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+
+      {/* Footer Info */}
+      <div className="mt-4 text-center text-sm text-gray-500 p-4">
+        Your private index data is encrypted and only accessible to you
+      </div>
+    </ClientLayout>
+    
   );
 } 

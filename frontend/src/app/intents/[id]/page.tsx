@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import Header from "@/components/Header";
 import { intentsService, Intent, IntentConnection, agents } from "@/services/intents";
+import ClientLayout from "@/components/ClientLayout";
 
 interface IntentDetailPageProps {
   params: Promise<{
@@ -41,52 +41,28 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
   if (loading) {
     return (
-      <div className="backdrop relative min-h-screen">
-        <Header />
-        <div className="flex-1 px-2 sm:px-2 md:px-32">
-          <div className="py-8 text-center text-gray-500">Loading...</div>
-        </div>
-      </div>
+      <ClientLayout>
+        <div className="py-8 text-center text-gray-500">Loading...</div>
+      </ClientLayout>
     );
   }
 
   if (!intent) {
     return (
-      <div className="backdrop relative min-h-screen">
-        <Header />
-        <div className="flex-1 px-2 sm:px-2 md:px-32">
-          <div className="py-8 text-center text-gray-500">Intent not found</div>
-        </div>
-      </div>
+      <ClientLayout>
+        <div className="py-8 text-center text-gray-500">Intent not found</div>
+      </ClientLayout>
     );
   }
 
   return (
-    <div className="backdrop relative min-h-screen">
-      <style jsx>{`
-        .backdrop:after {
-          content: "";
-          position: fixed;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          right: 0;
-          background: url(https://www.trychroma.com/img/noise.jpg);
-          opacity: .12;
-          pointer-events: none;
-          z-index: -1;
-        }
-      `}</style>
-
-      <Header />
-
-      <div className="flex-1 px-2">
-          {/* Main Tabs */}
-          <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
-              backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
-              backgroundColor: 'white',
-              backgroundSize: '888px'
-            }}>
+    <ClientLayout>
+      {/* Main Tabs */}
+      <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
+          backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
+          backgroundColor: 'white',
+          backgroundSize: '888px'
+        }}>
 
         <div className="bg-white px-4 pt-1.5 pb-1 border border-black  border border-b-0 inline-block">
           <Link href="/intents" className="inline-flex items-center text-gray-600 hover:text-gray-900 cursor-pointer">
@@ -167,8 +143,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
             </div>
           ))}
         </div>
-          </div>
       </div>
-    </div>
+    </ClientLayout>
   );
 } 

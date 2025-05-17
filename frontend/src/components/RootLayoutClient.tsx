@@ -14,7 +14,7 @@ export default function RootLayoutClient({ children }: PropsWithChildren) {
       config={privy}
     >
       <AuthProvider>
-        <ClientLayout>{children}</ClientLayout>
+        {children}
       </AuthProvider>
     </PrivyProvider>
   );
