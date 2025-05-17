@@ -139,7 +139,7 @@ export default function IndexesPage() {
                         >
                           <div className="w-full sm:w-auto mb-2 sm:mb-0">
                             <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{index.name}</h3>
-                            <p className="text-gray-500 text-sm font-normal">Updated {index.createdAt} • {index.members} members</p>
+                            <p className="text-gray-500 text-sm font-ibm-plex-mono">Updated {index.createdAt} • {index.members} members</p>
                           </div>
                           <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                             <Button 

@@ -121,7 +121,7 @@ export default function IntentsPage() {
                       >
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
                           <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.title}</h3>
-                          <p className="text-gray-500 text-sm">Updated {intent.updatedAt} • {intent.connections} connections</p>
+                          <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {intent.updatedAt} • {intent.connections} connections</p>
                         </div>
                         <Button 
                           variant="outline" 
@@ -153,7 +153,7 @@ export default function IntentsPage() {
                       >
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
                           <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.title}</h3>
-                          <p className="text-gray-500 text-sm">Updated {intent.updatedAt} • {intent.connections} connections</p>
+                          <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {intent.updatedAt} • {intent.connections} connections</p>
                         </div>
                         <Button 
                           variant="outline" 
