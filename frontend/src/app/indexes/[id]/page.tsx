@@ -167,16 +167,16 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
               </div>
 
               <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
-              <div className="space-y-6 w-full">
+              <div className="space-y-3 w-full">
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl mt-2 font-semibold text-gray-900">Files</h2>
                 </div>
                 
-                <div className="space-y-4 flex-1">
+                <div className="space-y-2 flex-1">
                     {index.files.map((file, index) => (
                       <div
                         key={index}
-                        className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
+                        className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
