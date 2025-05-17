@@ -83,13 +83,13 @@ export default function IntentsPage() {
               <Tabs defaultValue="my-intents" className="flex-grow">
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between">
                   <TabsList className="w-full sm:w-auto h-auto border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
-                    <TabsTrigger value="my-intents" className="font-ibm-plex cursor-pointer">
+                    <TabsTrigger value="my-intents" className="font-ibm-plex-mono cursor-pointer">
                       Active
                     </TabsTrigger>
-                    <TabsTrigger value="archived" className="font-ibm-plex cursor-pointer">
+                    <TabsTrigger value="archived" className="font-ibm-plex-mono cursor-pointer">
                       Archived
                     </TabsTrigger>
-                    <TabsTrigger value="suggested" className="font-ibm-plex cursor-pointer">
+                    <TabsTrigger value="suggested" className="font-ibm-plex-mono cursor-pointer">
                       Suggested
                     </TabsTrigger>
                   </TabsList>
@@ -97,7 +97,7 @@ export default function IntentsPage() {
                   {/* Action Buttons - directly next to tabs */}
                   <div className="flex gap-2 mb-2 sm:mt-0">
                     <Button 
-                      className="flex items-center gap-2 bg-gray-800 hover:bg-black rounded-[1px] text-white cursor-pointer"
+                      className="gap-2"
                       onClick={() => setShowIntentModal(true)}
                     >
                       <Plus className="h-4 w-4" />
@@ -120,13 +120,12 @@ export default function IntentsPage() {
                         className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                       >
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">{intent.title}</h3>
+                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.title}</h3>
                           <p className="text-gray-500 text-sm">Updated {intent.updatedAt} • {intent.connections} connections</p>
                         </div>
                         <Button 
                           variant="outline" 
                           size="sm"
-                          className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                           onClick={(e) => {
                             e.stopPropagation();
                             // Add manage functionality here
@@ -153,13 +152,12 @@ export default function IntentsPage() {
                         className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                       >
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">{intent.title}</h3>
+                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.title}</h3>
                           <p className="text-gray-500 text-sm">Updated {intent.updatedAt} • {intent.connections} connections</p>
                         </div>
                         <Button 
                           variant="outline" 
                           size="sm"
-                          className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                           onClick={(e) => {
                             e.stopPropagation();
                             // Add manage functionality here
@@ -185,12 +183,11 @@ export default function IntentsPage() {
                         className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                       >
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">{intent.title}</h3>
+                          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.title}</h3>
                         </div>
                         <Button 
                           variant="outline" 
                           size="sm"
-                          className="w-full sm:w-auto border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                           onClick={(e) => {
                             e.stopPropagation();
                             // Add functionality here

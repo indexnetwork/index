@@ -47,7 +47,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
     user,
     login
   } = usePrivy();
-  const { logout } = useAuthContext();
+  const { logout, isAuthenticated } = useAuthContext();
   
   useEffect(() => {
     console.log("user",  user)
@@ -60,7 +60,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
     <div>
       <header className="w-full py-4 flex justify-between items-center">
         <div className="flex items-center">
-          <Link href="/indexes">
+          <Link href={isAuthenticated ? "/indexes" : "/"}>
             <div className="relative mr-2 cursor-pointer">
               <img 
                 src="/logo-black.svg" 
@@ -74,15 +74,15 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
         {user ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="flex items-center rounded-[1px] px-3 py-6 gap-2 hover:bg-gray-50 text-gray-700 border-[#9F9F9F] cursor-pointer">
+              <Button variant="outline" className="items-center px-3 py-5">
                 <img 
                   src="/icon-person.svg" 
                   alt="Index Network" 
                   width={32} 
                   className="object-contain"
                 />
-                <span className="hidden sm:inline mx-4">{displayName}</span>
-                <ChevronDown className="h-4 w-4 opacity-50" />
+                <span className="hidden sm:inline mx-2">{displayName}</span>
+                <ChevronDown className="h-4 w-4 " />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="bg-white border border-gray-200 rounded-[1px]">
@@ -112,7 +112,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
           <Button 
             onClick={login}
             variant="outline" 
-            className="flex items-center rounded-[1px] px-3 py-6 gap-2 hover:bg-gray-50 text-gray-700 border-[#9F9F9F] cursor-pointer"
+            className="flex items-center px-3 py-5"
           >
             <img 
               src="/icon-person.svg" 
@@ -120,7 +120,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
               width={32} 
               className="object-contain"
             />
-            <span className="hidden sm:inline mx-4">Connect</span>
+            <span className="hidden sm:inline mx-2">Connect</span>
           </Button>
         )}
       </header>
@@ -139,7 +139,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
                   style={{filter: pathname.startsWith("/indexes") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
                 />
               </div>
-              <span className={`text-sm font-ibm-plex ${pathname.startsWith("/indexes") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
+              <span className={`text-sm font-ibm-plex-mono ${pathname.startsWith("/indexes") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
                 Indexes
               </span>
             </div>
@@ -151,12 +151,12 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
               <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
                 <img 
                   src="/icon-intent.svg" 
-                  width={48} 
+                  width={44} 
                   className="object-contain p-1"
                   style={{filter: pathname.startsWith("/intents") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
                 />
               </div>
-              <span className={`text-sm font-ibm-plex ${pathname.startsWith("/intents")  ? "text-amber-500 font-medium" : "text-gray-500"}`}>
+              <span className={`text-sm font-ibm-plex-mono ${pathname.startsWith("/intents")  ? "text-amber-500 font-medium" : "text-gray-500"}`}>
                 Intents
               </span>
             </div>

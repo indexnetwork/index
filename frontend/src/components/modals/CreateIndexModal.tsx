@@ -39,7 +39,7 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg mx-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex">Create New Index</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Create New Index</DialogTitle>
           <DialogDescription>
             Create a new index to organize and share your knowledge base.
           </DialogDescription>
@@ -49,14 +49,14 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
           {!isProcessing && !isSuccess ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label htmlFor="name" className="text-md font-medium font-ibm-plex text-black">
+                <label htmlFor="name" className="text-md font-medium font-ibm-plex-mono text-black">
                   <div className="mb-2">Index Name</div>
                 </label>
                 <Input
                   id="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-100 rounded-[1px] border border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200 text-gray-800  text-md"
+                  className=" px-4 py-3"
                   placeholder="Enter index name..."
                   required
                 />
@@ -66,13 +66,11 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
                 <Button
                   variant="outline" 
                   onClick={() => onOpenChange(false)}
-                  className="font-medium text-gray-700 cursor-pointer rounded-[1px] hover:bg-gray-50"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  className="font-medium bg-gray-800 cursor-pointer rounded-[1px] hover:bg-black text-white"
                 >
                   Create
                 </Button>
@@ -80,7 +78,7 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
             </form>
           ) : isProcessing ? (
             <div className="text-center py-8 space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex">Processing Your Index</h2>
+              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Processing Your Index</h2>
               <p className="text-gray-600">
                 Your index is being created. This will just take a moment...
               </p>
@@ -97,7 +95,7 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
             </div>
           ) : (
             <div className="text-center py-8 space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex">Index Successfully Created!</h2>
+              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Index Successfully Created!</h2>
               <p className="text-gray-600">
                 Your new index "{name}" has been created and is ready to use.
               </p>
@@ -117,7 +115,6 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
               </div>
               <div className="flex justify-center">
                 <Button
-                  className="font-medium bg-gray-800 hover:bg-black text-white"
                   onClick={() => onOpenChange(false)}
                 >
                   View My Indexes

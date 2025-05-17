@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Link, Trash2, Copy, Plus } from "lucide-react";
 import { useState } from "react";
+import { Input } from "../ui/input";
 
 interface ShareLink {
   id: string;
@@ -58,11 +59,11 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
         <div className="space-y-8 mt-6">
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-md font-medium font-ibm-plex text-black">Share link</h3>
+              <h3 className="text-md font-medium font-ibm-plex-mono text-black">Share link</h3>
               <Button
                 variant="outline"
                 size="lg"
-                className="h-9 px-3 bg-white border border-gray-200 rounded-[1px] cursor-pointer hover:bg-gray-50 text-gray-700"
+                className="h-9 px-3"
                 onClick={generateNewLink}
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -75,13 +76,19 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
                   key={link.id}
                   className="flex items-center gap-2"
                 >
-                  <div className="flex-1 bg-white border border-gray-200 rounded-[1px] px-4 py-1.75 text-gray-600">
-                    {link.url}
-                  </div>
+                  
+                  <Input
+                    readOnly
+                    id="name"
+                    value={link.url}
+                    className=" px-4 py-3"
+                    placeholder="Enter index name..."
+                    required
+                  />
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-10 px-4 bg-white border border-gray-200 rounded-[1px] cursor-pointer hover:bg-gray-50 text-gray-700"
+                    className="h-10 px-4"
                     onClick={() => handleCopyLink(link.url)}
                   >
                     <Copy className="h-4 w-4" />
@@ -89,7 +96,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-10 px-4 bg-white border border-gray-200 rounded-[1px] cursor-pointer hover:bg-gray-50 text-red-500 hover:text-red-600"
+                    className="h-10 px-4 text-red-500 hover:text-red-600"
                     onClick={() => removeLink(link.id)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -100,7 +107,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
           </div>
 
           <div>
-            <h3 className="text-md font-medium font-ibm-plex text-black mb-3">People with access</h3>
+            <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-3">People with access</h3>
             <div className="space-y-3">
               {[
                 { name: "Alice Smith", email: "alice@example.com", role: "Editor" },
@@ -118,7 +125,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-red-500 cursor-pointer hover:text-red-700 p-0"
+                      className="text-red-500 hover:text-red-700"
                     >
                       <Trash2 className="h-5 w-5" />
                     </Button>

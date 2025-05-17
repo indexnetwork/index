@@ -35,7 +35,7 @@ export default function ConfigureModal({ open, onOpenChange }: ConfigureModalPro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg mx-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex">Configure MCP Server</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Configure MCP Server</DialogTitle>
           <DialogDescription>
             Set up your Model Context Protocol server configuration.
           </DialogDescription>
@@ -48,7 +48,7 @@ export default function ConfigureModal({ open, onOpenChange }: ConfigureModalPro
               <Button
                 variant="outline"
                 size="sm"
-                className="flex items-center rounded-[1px] gap-2 text-gray-700"
+                className="gap-2"
                 onClick={handleCopyConfig}
               >
                 {copied ? (
@@ -82,7 +82,6 @@ export default function ConfigureModal({ open, onOpenChange }: ConfigureModalPro
             
             <Button
               onClick={() => onOpenChange(false)}
-              className="font-medium bg-gray-800 rounded-[1px] cursor-pointer hover:bg-black text-white"
             >
               Done
             </Button>

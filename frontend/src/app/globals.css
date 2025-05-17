@@ -1,4 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @tailwind base;
@@ -35,10 +37,6 @@
 }
 
 @layer components {
-  .font-ibm-plex {
-    font-family: 'IBM Plex Mono', monospace;
-  }
-
   .btn-primary {
     @apply px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors dark:bg-blue-500 dark:hover:bg-blue-600;
   }
@@ -69,8 +67,19 @@
   .badge-secondary {
     @apply bg-gray-100 text-gray-800;
   }
-} 
 
+  .font-inter {
+    @apply font-['Inter'];
+  }
+
+  .font-playfair {
+    @apply font-['Playfair_Display'];
+  }
+
+  .font-ibm-plex-mono {
+    @apply font-['IBM_Plex_Mono'];
+  }
+} 
 
 #privy-modal-content {
   border-radius: 0px;

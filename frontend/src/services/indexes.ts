@@ -24,14 +24,14 @@ export interface SuggestedIntent {
 const mockIndexes: Index[] = [
   {
     id: "1",
-    name: "Index dataroom",
+    name: "2025 Thesis",
     createdAt: "March 15, 2024",
     members: 3,
     files: [
-      { name: "document1.pdf", size: "2.4 MB", date: "2024-03-20" },
-      { name: "research.docx", size: "1.1 MB", date: "2024-03-19" },
-      { name: "data.csv", size: "4.2 MB", date: "2024-03-18" },
-      { name: "presentation.pptx", size: "5.6 MB", date: "2024-03-17" },
+      { name: "2025 Thesis.pdf", size: "2.4 MB", date: "2024-03-20" },
+      { name: "portfolio.csv", size: "1.1 MB", date: "2024-03-19" },
+      { name: "blog.md", size: "4.2 MB", date: "2024-03-18" },
+      { name: "thesis.pptx", size: "5.6 MB", date: "2024-03-17" },
       { name: "notes.txt", size: "0.3 MB", date: "2024-03-16" },
     ],
     suggestedIntents: [

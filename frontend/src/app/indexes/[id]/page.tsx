@@ -147,18 +147,17 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         <div className="bg-white px-4 pt-1.5 pb-1 border border-black  border border-b-0 inline-block">
           <Link href="/indexes" className="inline-flex items-center text-gray-600 hover:text-gray-900">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            <span className="font-ibm-plex text-[14px] text-black font-medium">Back to indexes</span>
+            <span className="font-ibm-plex-mono text-[14px] text-black font-medium">Back to indexes</span>
           </Link>
         </div>
               <div className="flex flex-col sm:flex-row py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex mb-2">{index.name}</h1>
-                  <p className="text-gray-500">Created {index.createdAt} • {index.members} members</p>
+                  <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-2">{index.name}</h1>
+                  <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {index.createdAt}</p>
                 </div>
                 <div className="flex gap-2 mt-4 sm:mt-0">
                   <Button
                     variant="outline"
-                    className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                     onClick={() => setShowShareSettingsModal(true)}
                   >
                     <Share2 className="h-4 w-4 mr-2" />
@@ -181,13 +180,14 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                       >
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <h4 className="text-lg font-medium text-gray-900 cursor-pointer">{file.name}</h4>
+                            
                             <Button
                               variant="ghost"
-                              size="sm"
-                              className="p-0 hover:bg-transparent text-gray-500 hover:text-gray-900 cursor-pointer"
+                              className="p-0"
+                              size="lg"
                             >
-                              <ArrowUpRight className="h-4 w-4" />
+                              <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
+                              <ArrowUpRight className="ml-1 h-4 w-4" />
                             </Button>
                           </div>
                           <p className="text-sm text-gray-500">
@@ -197,7 +197,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                          className="text-red-500 hover:text-red-700 "
                           onClick={() => handleFileDelete(file.name)}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -256,13 +256,12 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                     <div key={intent.id} className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <h4 className="text-lg font-medium text-gray-900">{intent.title}</h4>
+                          <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.title}</h4>
                         </div>
                       </div>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                         onClick={() => handleAddIntent(intent.id)}
                       >
                         Add

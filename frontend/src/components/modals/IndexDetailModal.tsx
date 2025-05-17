@@ -47,7 +47,7 @@ export default function IndexDetailModal({ open, onOpenChange, indexName }: Inde
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex">
+          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">
             {indexName}
           </DialogTitle>
         </DialogHeader>

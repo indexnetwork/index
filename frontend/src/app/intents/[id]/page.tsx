@@ -91,13 +91,13 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
         <div className="bg-white px-4 pt-1.5 pb-1 border border-black  border border-b-0 inline-block">
           <Link href="/intents" className="inline-flex items-center text-gray-600 hover:text-gray-900 cursor-pointer">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            <span className="font-ibm-plex text-[14px] text-black font-medium">Back to intents</span>
+            <span className="font-ibm-plex-mono text-[14px] text-black font-medium">Back to intents</span>
           </Link>
         </div>
 
         <div className="bg-white px-4 pt-4 pb-4 mb-4 border border-black border-b-0 border-b-2">
           {/* Intent Title */}
-          <h1 className="text-xl font-medium text-gray-900">
+          <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900">
             {intent.title}
           </h1>
         </div>
@@ -121,10 +121,10 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                   </div>
                 </div>
                 <div className="flex gap-3">
-                  <Button className="bg-gray-900 hover:bg-black rounded-[1px] text-white cursor-pointer">
+                  <Button>
                     Accept Connection
                   </Button>
-                  <Button variant="outline" className="border-gray-300 text-gray-700 rounded-[1px] hover:text-gray-900 cursor-pointer">
+                  <Button variant="outline">
                     Decline
                   </Button>
                 </div>

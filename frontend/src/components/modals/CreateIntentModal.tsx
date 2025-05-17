@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { indexesService, Index } from "@/services/indexes";
+import { Textarea } from "../ui/textarea";
 
 interface CreateIntentModalProps {
   open: boolean;
@@ -70,7 +71,7 @@ export default function CreateIntentModal({ open, onOpenChange, onSubmit }: Crea
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg mx-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex">Create New Intent</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Create New Intent</DialogTitle>
           <DialogDescription>
             Broadcast your intent to connect with others across selected indexes.
           </DialogDescription>
@@ -80,21 +81,21 @@ export default function CreateIntentModal({ open, onOpenChange, onSubmit }: Crea
           {!isProcessing && !isSuccess ? (
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label htmlFor="title" className="text-md font-medium font-ibm-plex text-black">
+                <label htmlFor="title" className="text-md font-medium font-ibm-plex-mono text-black">
                   <div className="mb-2">What are you looking for?</div>
                 </label>
-                <textarea
+                <Textarea
                   id="title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-100 border border-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-200 text-gray-800 min-h-[120px] text-md"
+                  className=""
                   placeholder="Enter your intent here..."
                   required
                 />
               </div>
 
               <div>
-                <label className="text-md font-medium font-ibm-plex text-black">
+                <label className="text-md font-medium font-ibm-plex-mono text-black">
                   <div className="mb-2">Share when this intent is matched</div>
                 </label>
                 <div className="space-y-2 max-h-[200px] overflow-y-auto">
@@ -136,13 +137,11 @@ export default function CreateIntentModal({ open, onOpenChange, onSubmit }: Crea
                 <Button
                   variant="outline" 
                   onClick={() => onOpenChange(false)}
-                  className="font-medium text-gray-700 rounded-[1px] cursor-pointer hover:bg-gray-50"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  className="font-medium bg-gray-800 rounded-[1px] cursor-pointer hover:bg-black text-white"
                 >
                   Broadcast Intent
                 </Button>
@@ -150,7 +149,7 @@ export default function CreateIntentModal({ open, onOpenChange, onSubmit }: Crea
             </form>
           ) : isProcessing ? (
             <div className="text-center py-8 space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex">Processing Your Intent</h2>
+              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Processing Your Intent</h2>
               <p className="text-gray-600">
                 Your intent is being processed and broadcasted. This will just take a moment...
               </p>
@@ -167,7 +166,7 @@ export default function CreateIntentModal({ open, onOpenChange, onSubmit }: Crea
             </div>
           ) : (
             <div className="text-center py-8 space-y-6">
-              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex">Intent Successfully Created!</h2>
+              <h2 className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Intent Successfully Created!</h2>
               <p className="text-gray-600">
                 Your intent has been broadcasted across {selectedIndexes.length} selected {selectedIndexes.length === 1 ? 'index' : 'indexes'}.
               </p>

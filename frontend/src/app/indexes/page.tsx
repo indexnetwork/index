@@ -95,10 +95,10 @@ export default function IndexesPage() {
               <Tabs defaultValue="my-indexes" className="flex-grow">
                 <div className="flex flex-col sm:flex-row sm:items-end justify-between">
                   <TabsList className="w-full sm:w-auto border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
-                    <TabsTrigger value="my-indexes" className="font-ibm-plex cursor-pointer">
+                    <TabsTrigger value="my-indexes" className="font-ibm-plex-mono cursor-pointer">
                       My indexes
                     </TabsTrigger>
-                    <TabsTrigger value="shared-with-me" className="font-ibm-plex cursor-pointer">
+                    <TabsTrigger value="shared-with-me" className="font-ibm-plex-mono cursor-pointer">
                       Shared with me
                     </TabsTrigger>
                   </TabsList>
@@ -106,14 +106,14 @@ export default function IndexesPage() {
                   {/* Action Buttons - directly next to tabs */}
                   <div className="flex gap-2 mb-2 sm:mt-0">
                     <Button 
-                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white rounded-[1px] cursor-pointer"
+                      className="flex items-center gap-2"
                       onClick={() => setShowIndexModal(true)}
                     >
                       <Plus className="h-4 w-4" />
                       Create New Index
                     </Button>
                     <Button 
-                      className="flex items-center gap-2 bg-gray-800 hover:bg-black text-white rounded-[1px] cursor-pointer"
+                      className="flex items-center gap-2"
                       onClick={() => setShowConfigDialog(true)}
                     >
                       <MCP className="h-4 w-4" />
@@ -138,14 +138,13 @@ export default function IndexesPage() {
                           }}
                         >
                           <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                            <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">{index.name}</h3>
-                            <p className="text-gray-500 text-sm">Updated {index.createdAt} • {index.members} members</p>
+                            <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{index.name}</h3>
+                            <p className="text-gray-500 text-sm font-normal">Updated {index.createdAt} • {index.members} members</p>
                           </div>
                           <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                             <Button 
                               variant="outline" 
                               size="sm"
-                              className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedIndex(index.name);
@@ -160,7 +159,6 @@ export default function IndexesPage() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <MoreVertical className="h-4 w-4" />
@@ -204,15 +202,14 @@ export default function IndexesPage() {
                         <div className="w-full sm:w-auto mb-2 sm:mb-0">
                           <div className="flex items-center gap-2">
                             <Lock className="h-4 w-4 text-gray-900" />
-                            <h3 className="font-bold text-lg text-gray-900 font-ibm-plex">Personal Index</h3>
+                            <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">Personal Index</h3>
                           </div>
-                          <p className="text-gray-500 text-sm">Your personal knowledge base</p>
+                          <p className="text-gray-500 text-sm font-normal">Your personal knowledge base</p>
                         </div>
                         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                           <Button
                             variant="outline"
                             size="sm"
-                            className="border-gray-400 text-gray-700 hover:bg-gray-100 rounded-[1px] hover:text-black cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
                               window.location.href = `/indexes/private`;

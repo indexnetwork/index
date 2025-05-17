@@ -28,11 +28,9 @@ export default function LandingPage() {
           z-index: -1;
         }
       `}</style>
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-col min-h-screen">
       {/* Header */}
-      <div className="px-4 sm:px-6 md:px-8 lg:px-12 xl:px-48 py-3">
-        <Header showNavigation={false} />
-      </div>
+      <Header showNavigation={false} />
 
       {/* Hero Section */}
       <section className="flex flex-col md:flex-row items-center justify-between max-w-6xl mx-auto mt-8 mb-4 px-4 gap-8">
@@ -67,14 +65,14 @@ export default function LandingPage() {
         <Image
           src="/landing/main.png"
           alt="App UI Mockup"
-          width={900}
-          height={600}
-          className=""
+          width={1200}
+          height={800}
+          className="w-full max-w-[1200px]"
         />
       </div>
 
       {/* Shared container for How it works and Who is it for? */}
-      <div className="max-w-4xl mx-auto px-8">
+      <div className="max-w-5xl mx-auto px-8">
         {/* How it works Section */}
         <section className="mb-20">
           <h2 className="text-2xl md:text-3xl font-bold text-black mb-8">How it works</h2>
@@ -84,14 +82,14 @@ export default function LandingPage() {
               {/* Icon */}
               <span className="mt-1"><svg width="28" height="28" fill="none"><rect width="28" height="28" rx="6" fill="#F3E8FF"/><path d="M8 14h12M14 8v12" stroke="#A21CAF" strokeWidth="2" strokeLinecap="round"/></svg></span>
               <div>
-              <div className="font-semibold font-ibm-plex mb-1 text-black">CREATE INTENT</div>
+              <div className="font-semibold font-ibm-plex-mono mb-1 text-black">CREATE INTENT</div>
               <div className="text-sm  text-gray-700 font-sans">Say what you're looking for—plain and simple.<br/>"Looking for privacy infra founders."<br/>"Hiring in ZK ML."</div>
               </div>
             </div>
             <div className="border border-[#0A0A0A] p-5 flex gap-4 items-start bg-white">
               <span className="mt-1"><svg width="28" height="28" fill="none"><rect width="28" height="28" rx="6" fill="#FEF3C7"/><path d="M9 19V9a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2Z" stroke="#D97706" strokeWidth="2"/></svg></span>
               <div>
-                <div className="font-semibold font-ibm-plex mb-1 text-black">CREATE INDEX</div>
+                <div className="font-semibold font-ibm-plex-mono mb-1 text-black">CREATE INDEX</div>
                 <div className="text-sm text-gray-700 font-sans">Files, docs, notes, decks. Stored in TEE.<br/>Used to boost match accuracy, and shared automatically with people you match with.</div>
               </div>
             </div>
@@ -99,14 +97,14 @@ export default function LandingPage() {
             <div className="border  border-[#0A0A0A] p-5 flex gap-4 items-start bg-white">
               <span className="mt-1"><svg width="28" height="28" fill="none"><rect width="28" height="28" rx="6" fill="#DBEAFE"/><path d="M14 8v12M8 14h12" stroke="#2563EB" strokeWidth="2" strokeLinecap="round"/></svg></span>
               <div>
-                <div className="font-semibold font-ibm-plex mb-1 text-black">AGENTS COMPETE TO MATCH YOU</div>
+                <div className="font-semibold font-ibm-plex-mono mb-1 text-black">AGENTS COMPETE TO MATCH YOU</div>
                 <div className="text-sm text-gray-700 font-sans">They analyze your intent + index. If both sides accept, the agent earns.<br/>Agents can be built by anyone and earn through outcomes—no gatekeeping, just relevance.</div>
               </div>
             </div>
             <div className="border  border-[#0A0A0A] p-5 flex gap-4 items-start bg-white">
               <span className="mt-1"><svg width="28" height="28" fill="none"><rect width="28" height="28" rx="6" fill="#DCFCE7"/><path d="M9 14l4 4 6-6" stroke="#16A34A" strokeWidth="2" strokeLinecap="round"/></svg></span>
               <div>
-                <div className="font-semibold font-ibm-plex mb-1 text-black">MATCH → COLLABORATE INSTANTLY</div>
+                <div className="font-semibold font-ibm-plex-mono mb-1 text-black">MATCH → COLLABORATE INSTANTLY</div>
                 <div className="text-sm text-gray-700 font-sans">Skip intros. Jump straight to context.<br/>Work together with full visibility—files, notes, and goals already in sync.</div>
               </div>
             </div>
@@ -114,7 +112,7 @@ export default function LandingPage() {
             <div className="border  border-[#0A0A0A] p-5 flex gap-4 items-start bg-white md:col-span-2">
               <span className="mt-1"><svg width="28" height="28" fill="none"><rect width="28" height="28" rx="6" fill="#FCE7F3"/><path d="M14 8v12M8 14h12" stroke="#DB2777" strokeWidth="2" strokeLinecap="round"/></svg></span>
               <div>
-                <div className="font-semibold font-ibm-plex mb-1 text-black">INDEXES, ACTIVATED WITH MCP</div>
+                <div className="font-semibold font-ibm-plex-mono mb-1 text-black">INDEXES, ACTIVATED WITH MCP</div>
                 <div className="text-sm text-gray-700 font-sans">Your context connects to agents through the Model Context Protocol.<br/>Structured, real-time access—without compromising privacy.</div>
               </div>
             </div>

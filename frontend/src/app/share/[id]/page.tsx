@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, ArrowLeft } from "lucide-react";
+import { Upload, ArrowLeft, ArrowUpRight } from "lucide-react";
 import Header from "@/components/Header";
 import Link from "next/link";
 import { indexesService, Index } from "@/services/indexes";
@@ -127,53 +127,56 @@ export default function SharePage({ params }: SharePageProps) {
               <div className=" border border-black border-b-0 border-b-2 bg-white  py-4 px-3 sm:px-6">
 
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex mb-2">{index.name}</h1>
-                  <p className="text-gray-500">Created {index.createdAt} • {index.members} members</p>
-                  
-                </div>
-                <div className="flex gap-2 mt-4 sm:mt-0">
-                  
-                </div>
+                    <div>
+                    <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-1">{index.name}</h1>
+                    <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {index.createdAt}</p>
+                    
+                    </div>
+
                 </div>
                 
               </div>
 
 
 
-              <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
+              <div className="flex flex-col sm:flex-col flex-1 mt-4 py-6 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
                 <div className="space-y-6 w-full">
-
-                  {index.files.length > 0 && (
-                    <div className="mt-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Shared Files</h3>
-                      <div className="space-y-4">
-                        {index.files.map((file, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
-                          >
-                            <div className="flex-1">
-                              <h4 className="text-lg font-medium text-gray-900">{file.name}</h4>
-                              <p className="text-sm text-gray-500">
-                                {file.size} • {file.date}
-                              </p>
-                            </div>
+                <div className="flex justify-between items-center">
+                  <h2 className="text-xl mt-2 font-semibold text-gray-900">Files</h2>
+                </div>
+                <div className="space-y-4 flex-1">
+                {index.files.map((file, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            
+                            <Button
+                              variant="ghost"
+                              className="p-0"
+                              size="lg"
+                            >
+                              <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
+                              <ArrowUpRight className="ml-1 h-4 w-4" />
+                            </Button>
                           </div>
-                        ))}
+                          <p className="text-sm text-gray-500">
+                            {file.size} • {file.date}
+                          </p>
+                        </div>
                       </div>
+                    ))}
                     </div>
-                  )}
 
                 </div>
               </div>
-              <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
-                <div className="space-y-6 w-full">
+              <div className="flex flex-col sm:flex-col flex-1 mt-4 py-6 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
+                <div className="w-full">
 
                   { /* Alignment block start */}  
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-xl mt-2 font-semibold text-gray-900">Drop your files to see our alignment</h2> 
-                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Drop your files to see our alignment</h3>
                   <div className="mt-4 p-4 bg-white border border-gray-200 rounded-lg">
                     <div className="flex items-start space-x-4">
                       <div className="flex-1">
@@ -256,7 +259,7 @@ export default function SharePage({ params }: SharePageProps) {
 
                   
 
-                  {false &&
+                  {true &&
                   <div className="mt-8 border-t pt-8">
                     <div className="flex items-start justify-between mb-6">
                       <div className="flex items-center gap-4">
@@ -276,11 +279,10 @@ export default function SharePage({ params }: SharePageProps) {
                         <Button 
                           onClick={handleRequestConnection}
                           disabled={requestSent}
-                          className="bg-gray-900 hover:bg-black rounded-[1px] text-white cursor-pointer"
                         >
                           {requestSent ? "Request Sent" : "Request Connection"}
                         </Button>
-                        <Button variant="outline" className="border-gray-300 text-gray-700 rounded-[1px] hover:text-gray-900 cursor-pointer">
+                        <Button variant="outline">
                           Decline
                         </Button>
                       </div>

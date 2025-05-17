@@ -109,11 +109,11 @@ export default function PrivateIndexPage() {
               </div>
 
               {/* Integrations Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+              <div className="grid grid-cols-1 ] md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
                 {integrations.map((integration) => (
                   <div
                     key={integration.id}
-                    className="flex flex-col p-6 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+                    className="flex flex-col p-6 bg-white border border-black border-b-2 rounded-[1px]  transition-colors"
                   >
                     <div className="flex items-center gap-3 mb-4">
                       <div className="p-2 bg-gray-100 rounded-lg">
@@ -124,11 +124,6 @@ export default function PrivateIndexPage() {
                     <p className="text-gray-500 mb-4 flex-grow">{integration.description}</p>
                     <Button
                       variant={integration.connected ? "outline" : "default"}
-                      className={`w-full ${
-                        integration.connected
-                          ? "border-gray-400 text-gray-700 hover:bg-gray-100"
-                          : "bg-gray-800 hover:bg-black text-white"
-                      }`}
                       onClick={() => handleConnect(integration.id)}
                     >
                       {integration.connected ? "Disconnect" : "Connect"}

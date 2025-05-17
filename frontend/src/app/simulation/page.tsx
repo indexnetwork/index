@@ -29,7 +29,12 @@ interface Agent {
   budget: number;
   stakedAmount?: number;
   position?: 'YES' | 'NO';
-  stakedIn?: string; // ID of the person this agent is staked in
+  stakedIn?: string;
+  triggers?: {
+    type: string;
+    condition: (result: SearchResult) => boolean;
+  }[];
+  audience?: string[];
 }
 
 const IndexNetworkSimulation = () => {
@@ -45,12 +50,70 @@ const IndexNetworkSimulation = () => {
 
   // Available agents with their own budgets
   const initialAgents: Agent[] = [
-    { id: 'agent1', name: 'Relevancy Agent', description: 'Analyzes past investment patterns', icon: <BarChart2 size={20} />, color: 'bg-blue-100', target: ['res3', 'res5'], budget: 100 },
-    { id: 'agent2', name: 'Reputation Agent', description: 'Evaluates professional reputation', icon: <Award size={20} />, color: 'bg-purple-100', target: ['res2', 'res4'], budget: 80 },
-    { id: 'agent3', name: 'Due Diligence Agent', description: 'Checks investment thesis alignment', icon: <FileText size={20} />, color: 'bg-green-100', target: ['res1', 'res6'], budget: 120 },
-    { id: 'agent4', name: 'Community Agent', description: 'Identifies common network connections', icon: <Users size={20} />, color: 'bg-yellow-100', target: ['res2', 'res5'], budget: 60 },
-    { id: 'agent5', name: 'Sales Network Agent', description: 'Finds shared business opportunities', icon: <DollarSign size={20} />, color: 'bg-red-100', target: ['res3', 'res4'], budget: 90 },
-    { id: 'agent6', name: 'Value Promoter', description: 'Highlights shared values and missions', icon: <Shield size={20} />, color: 'bg-indigo-100', target: ['res1', 'res6'], budget: 110 },
+    { 
+      id: 'agent1', 
+      name: 'Consensys Network Manager', 
+      description: 'Identifies compatible activity and complementary needs', 
+      icon: <Users size={20} />, 
+      color: 'bg-blue-100', 
+      target: ['res1', 'res3', 'res5'], 
+      budget: 150,
+      triggers: [
+        {
+          type: 'fundraising',
+          condition: (result) => result.title.toLowerCase().includes('raising') || result.title.toLowerCase().includes('funding')
+        },
+        {
+          type: 'hiring',
+          condition: (result) => result.title.toLowerCase().includes('hiring') || result.title.toLowerCase().includes('joining')
+        },
+        {
+          type: 'partnership',
+          condition: (result) => result.title.toLowerCase().includes('partnership') || result.title.toLowerCase().includes('collaboration')
+        }
+      ],
+      audience: ['Consensys Employees', 'Portfolio Companies', 'Alumni Network']
+    },
+    { 
+      id: 'agent2', 
+      name: 'BuilderCred', 
+      description: 'Evaluates technical contributions and open-source work', 
+      icon: <FileText size={20} />, 
+      color: 'bg-purple-100', 
+      target: ['res2', 'res4'], 
+      budget: 120,
+      triggers: [
+        {
+          type: 'developer_search',
+          condition: (result) => result.title.toLowerCase().includes('developer') || result.title.toLowerCase().includes('engineer')
+        },
+        {
+          type: 'technical_partnership',
+          condition: (result) => result.title.toLowerCase().includes('technical') || result.title.toLowerCase().includes('integration')
+        }
+      ],
+      audience: ['Everyone']
+    },
+    { 
+      id: 'agent3', 
+      name: 'Tethics & Chill', 
+      description: 'Identifies alignment with privacy and ethical AI', 
+      icon: <Shield size={20} />, 
+      color: 'bg-green-100', 
+      target: ['res1', 'res6'], 
+      budget: 100,
+      triggers: [
+        {
+          type: 'privacy_tech',
+          condition: (result) => result.title.toLowerCase().includes('privacy') || result.title.toLowerCase().includes('decentralization')
+        },
+        {
+          type: 'ethical_ai',
+          condition: (result) => result.title.toLowerCase().includes('ai') || result.title.toLowerCase().includes('ethics')
+        }
+      ],
+      audience: ['Tethics & Chill Members']
+    }
   ];
 
   const [searchResults, setSearchResults] = useState<SearchResult[]>(initialResults);
@@ -248,6 +311,86 @@ const IndexNetworkSimulation = () => {
     });
     setResolvedPeople(prev => ({ ...prev, [personId]: true }));
   };
+
+  // Add auto-staking functionality
+  const autoStakeBasedOnTriggers = (result: SearchResult) => {
+    availableAgents.forEach(agent => {
+      if (!agent.triggers) return;
+      
+      // Check if any trigger conditions are met
+      const triggered = agent.triggers.some(trigger => trigger.condition(result));
+      
+      if (triggered) {
+        // Calculate stake based on agent's confidence
+        const stake = calculateStake(0.8);
+        
+        // Only proceed if agent has enough budget
+        if (agent.budget >= stake) {
+          // Update agent's state
+          const updatedAgent: Agent = {
+            ...agent,
+            budget: agent.budget - stake,
+            stakedAmount: stake,
+            position: 'YES' as const,
+            stakedIn: result.id
+          };
+          
+          // Update available agents
+          setAvailableAgents(prev => prev.map(a => 
+            a.id === agent.id ? updatedAgent : a
+          ));
+          
+          // Update the LMSR market for this person
+          setPersonMarkets(prev => {
+            const currentMarket = prev[result.id];
+            if (!currentMarket) return prev;
+            
+            const action = {
+              type: 'BUY' as const,
+              amount: stake,
+              agentId: agent.id,
+              confidence: 0.8,
+              outcome: 'YES' as const
+            };
+            
+            const newMarket = updateMarketState(currentMarket, action);
+            return { ...prev, [result.id]: newMarket };
+          });
+          
+          // Update search results
+          setSearchResults(prev => {
+            const newResults = prev.map(r => {
+              if (r.id === result.id) {
+                const yesAgents = [...(r.yesAgents || []), updatedAgent];
+                const yesStaked = yesAgents.reduce((sum, a) => sum + (a.stakedAmount || 0), 0);
+                const noStaked = (r.noStaked || 0);
+                const totalStaked = yesStaked + noStaked;
+                const netAmount = yesStaked - noStaked;
+                
+                return {
+                  ...r,
+                  yesAgents,
+                  yesStaked,
+                  totalStaked,
+                  netAmount
+                };
+              }
+              return r;
+            });
+            
+            return newResults.sort((a, b) => (b.netAmount || 0) - (a.netAmount || 0));
+          });
+        }
+      }
+    });
+  };
+
+  // Add useEffect to trigger auto-staking when search results change
+  useEffect(() => {
+    searchResults.forEach(result => {
+      autoStakeBasedOnTriggers(result);
+    });
+  }, [searchResults]);
 
   return (
     <div className="flex  bg-gray-50">
