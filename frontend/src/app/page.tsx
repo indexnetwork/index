@@ -7,6 +7,7 @@ import Link from "next/link";
 import { LoginButton } from "@/components/LoginButton";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
+import { Button } from "@/components/ui/button";
 
 export default function LandingPage() {
   const [isHovered, setIsHovered] = useState("");
@@ -18,28 +19,57 @@ export default function LandingPage() {
         {/* Hero Section */}
         <section className="flex flex-col md:flex-row items-center justify-between max-w-6xl mx-auto mt-8 mb-4 px-4 gap-8">
           <div className="flex-1 max-w-xl">
-            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6 leading-tight font-playfair">
-              Find people, privately.
+            <h1 className="text-5xl md:text-5xl font-medium text-gray-900 mb-6 leading-tight font-playfair">
+              Let the agents do the finding.
             </h1>
             <p className="text-lg text-gray-700 mb-8 font-sans">
-              Index is a private, intent-driven discovery protocol where autonomous agents compete to connect you with the right people at the right time.
-            </p>
-            <button
+            AI agents run in the background, ambiently picking up signals from your files and connecting you with who matters most.            </p>
+            <Button
+              
+              size="lg"
               onClick={() => router.push("/indexes")}
-              className="bg-black text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors"
+              className=" transition-colors"
             >
               Get Started
-            </button>
+            </Button>
           </div>
           <div className="flex-1 flex justify-end xl:px-0">
-            <Image
-              src="/landing/hero.png"
-              alt="Hero Illustration"
-              width={600}
-              height={600}
-              className="object-contain w-full max-w-[400px] lg:max-w-[600px]"
-              priority
-            />
+            <div className="relative max-w-[400px] lg:max-w-[600px]">
+              <Image
+                src="/landing/anim/hero.png"
+                alt="Hero Illustration"
+                width={600}
+                height={600}
+                className="w-full h-auto"
+              />
+              <Image 
+                className="absolute top-[46%] left-[37%] w-[19%] h-auto"
+                src={'/landing/anim/eyeanim.gif'} 
+                alt="Hero Illustration" 
+                width={200} 
+                height={150} 
+                style={{
+                  //animation: 'mymove 1.5s infinite alternate linear'
+                }}
+              />
+             
+              <Image 
+                className="absolute top-[35%] left-[50%] w-[50%] h-auto"
+                src={'/landing/anim/banim.gif'} 
+                alt="Hero Illustration" 
+                width={300} 
+                height={200} 
+                style={{
+                  animation: 'mymove 3s infinite alternate linear'
+                }}
+              />
+              <style jsx>{`
+                @keyframes mymove {
+                  from {left: 50%;}
+                  to {left: 54%;}
+                }
+              `}</style>
+            </div>
           </div>
         </section>
 
@@ -58,7 +88,7 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto px-8">
           {/* How it works Section */}
           <section className="mb-20">
-            <h2 className="text-2xl md:text-3xl font-bold text-black mb-8">How it works</h2>
+            <h2 className="text-2xl md:text-3xl font-bold font-ibm-plex-mono text-black mb-8">How it works</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Row 1 */}
               <div className="border border-[#0A0A0A] p-5 flex gap-4 items-start bg-white">
@@ -104,7 +134,7 @@ export default function LandingPage() {
 
           {/* Who is it for? Section */}
           <section className="mb-20">
-            <h2 className="text-2xl md:text-3xl font-bold text-black mb-8">Who is it for?</h2>
+            <h2 className="text-2xl md:text-3xl font-bold font-ibm-plex-mono text-black mb-8">Who is it for?</h2>
             <p className="mb-6 text-gray-800">You're not here to scroll.<br/>You're here to find the right person, fast—without broadcasting your intent.<br/>Index is for:</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
               <div className="flex gap-4 items-center">
@@ -161,7 +191,7 @@ export default function LandingPage() {
               </div>
             </div>
             <div className="mt-12">
-              <div className="text-lg text-black font-serif font-semibold mb-4">Trusted by</div>
+            <h2 className="text-2xl md:text-3xl font-bold font-ibm-plex-mono text-black mb-8">Trusted by</h2>
               <div className="flex -ml-2 gap-10 items-center grayscale opacity-80">
                 <Image src="/logos/consensys.png" alt="Consensys" width={180} height={72} />
                 <Image src="/logos/seedclub.png" alt="Seed Club Ventures" width={80} height={32} />
@@ -171,7 +201,7 @@ export default function LandingPage() {
             </div>
             {/* Contact Section - now inside the same container */}
             <div className="mt-16">
-              <div className="text-lg text-black font-serif font-semibold mb-4 text-left">Contact</div>
+            <h2 className="text-2xl md:text-3xl font-bold font-ibm-plex-mono text-black mb-8">Reach out</h2>
               <ul className="space-y-4 text-left">
                 <li className="flex items-center gap-2">
                   <span><Database className="w-5 h-5 text-black" /></span>
