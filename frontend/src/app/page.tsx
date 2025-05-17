@@ -36,7 +36,7 @@ export default function LandingPage() {
           <div className="flex-1 flex justify-end xl:px-0">
             <div className="relative max-w-[400px] lg:max-w-[600px]">
               <Image
-                src="/landing/anim/hero.png"
+                src="/landing/hero.png"
                 alt="Hero Illustration"
                 width={600}
                 height={600}
@@ -45,7 +45,7 @@ export default function LandingPage() {
               />
               <Image 
                 className="absolute top-[45%] left-[37%] w-[19%] h-auto"
-                src={'/landing/anim/eyeanim.gif'} 
+                src={'/landing/eyeanim.gif'} 
                 alt="Hero Illustration" 
                 width={200} 
                 height={150} 
@@ -58,7 +58,7 @@ export default function LandingPage() {
              
               <Image 
                 className="absolute top-[35%] left-[50%] w-[50%] h-auto"
-                src={'/landing/anim/banim.gif'} 
+                src={'/landing/banim.gif'} 
                 alt="Hero Illustration" 
                 width={300} 
                 height={200} 
