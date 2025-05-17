@@ -23,7 +23,7 @@ export default function LandingPage() {
               Let the agents do the finding.
             </h1>
             <p className="text-lg text-gray-700 mb-8 font-sans">
-            AI agents run in the background, ambiently picking up signals from your files and connecting you with who matters most.            </p>
+            AI agents run in the background, ambiently picking up signals from your files and connecting you with who matters most.</p>
             <Button
               
               size="lg"
@@ -41,15 +41,18 @@ export default function LandingPage() {
                 width={600}
                 height={600}
                 className="w-full h-auto"
+                style={{ imageRendering: 'auto' }}
               />
               <Image 
-                className="absolute top-[46%] left-[37%] w-[19%] h-auto"
+                className="absolute top-[45%] left-[37%] w-[19%] h-auto"
                 src={'/landing/anim/eyeanim.gif'} 
                 alt="Hero Illustration" 
                 width={200} 
                 height={150} 
                 style={{
-                  //animation: 'mymove 1.5s infinite alternate linear'
+                  imageRendering: 'auto',
+                  
+                  
                 }}
               />
              
@@ -60,7 +63,8 @@ export default function LandingPage() {
                 width={300} 
                 height={200} 
                 style={{
-                  animation: 'mymove 3s infinite alternate linear'
+                  animation: 'mymove 3s infinite alternate linear',
+                  imageRendering: 'auto'
                 }}
               />
               <style jsx>{`
