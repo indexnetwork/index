@@ -84,17 +84,17 @@ export default function IndexesPage() {
         <Header />
 
         {/* Main Content */}
-        <div className="flex-1 px-2 sm:px-2 md:px-32">
+        <div className="flex-1 px-2">
           {/* Main Tabs */}
           <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
               backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
               backgroundColor: 'white',
               backgroundSize: '888px'
             }}>
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-4">
+            <div className="flex flex-col justify-between mb-4">
               <Tabs defaultValue="my-indexes" className="flex-grow">
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between">
-                  <TabsList className="w-full sm:w-auto border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
+                <div className="flex  flex-row items-end justify-between">
+                  <TabsList className=" border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
                     <TabsTrigger value="my-indexes" className="font-ibm-plex-mono cursor-pointer">
                       My indexes
                     </TabsTrigger>
@@ -110,14 +110,14 @@ export default function IndexesPage() {
                       onClick={() => setShowIndexModal(true)}
                     >
                       <Plus className="h-4 w-4" />
-                      Create New Index
+                      <span className="hidden sm:inline">Create New Index</span>
                     </Button>
                     <Button 
                       className="flex items-center gap-2"
                       onClick={() => setShowConfigDialog(true)}
                     >
                       <MCP className="h-4 w-4" />
-                      Configure MCP
+                      <span className="hidden sm:inline">Configure MCP</span>
                     </Button>
                   </div>
                 </div>

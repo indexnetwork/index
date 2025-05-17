@@ -134,7 +134,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         <Header />
 
         {/* Main Content */}
-        <div className="flex-1 px-2 sm:px-2 md:px-32">
+        <div className="flex-1 px-2 ">
           <div className="space-y-6 h-full">
             {/* Header Box */}
             <div className="w-full h-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{

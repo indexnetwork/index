@@ -72,18 +72,19 @@ export default function IntentsPage() {
       <div className="flex flex-col">
         <Header />
 
-        <div className="flex-1 px-2 sm:px-2 md:px-32">
+        <div className="flex-1 px-2">
           {/* Main Tabs */}
           <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
               backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
               backgroundColor: 'white',
               backgroundSize: '888px'
             }}>
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-4">
-              <Tabs defaultValue="my-intents" className="flex-grow">
-                <div className="flex flex-col sm:flex-row sm:items-end justify-between">
-                  <TabsList className="w-full sm:w-auto h-auto border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
-                    <TabsTrigger value="my-intents" className="font-ibm-plex-mono cursor-pointer">
+            <div className="flex flex-col mb-4">
+              <Tabs defaultValue="my-intents" className="flex-groaw">
+
+              <div className="flex  flex-row items-end justify-between">
+                  <TabsList className=" border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
+                  <TabsTrigger value="my-intents" className="font-ibm-plex-mono cursor-pointer">
                       Active
                     </TabsTrigger>
                     <TabsTrigger value="archived" className="font-ibm-plex-mono cursor-pointer">
@@ -96,15 +97,17 @@ export default function IntentsPage() {
                   
                   {/* Action Buttons - directly next to tabs */}
                   <div className="flex gap-2 mb-2 sm:mt-0">
-                    <Button 
+                  <Button 
                       className="gap-2"
                       onClick={() => setShowIntentModal(true)}
                     >
                       <Plus className="h-4 w-4" />
-                      Create Intent
+                      
+                      <span className="hidden sm:inline">Create Intent</span>
                     </Button>
                   </div>
-                </div>
+                </div>                
+
               
                 {/* My Intents Content */}
                 <TabsContent value="my-intents" className="p-0 mt-0 bg-white border-b-2 border-gray-800">

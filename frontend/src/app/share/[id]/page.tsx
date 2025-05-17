@@ -117,7 +117,7 @@ export default function SharePage({ params }: SharePageProps) {
       <div className="flex flex-col min-h-screen">
         <Header showNavigation={false}  />
 
-        <div className="pt-16 flex-1 px-2 sm:px-2 md:px-32">
+        <div className="pt-16 flex-1 px-2">
           <div className="space-y-6 h-full">
             <div className="w-full h-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
               backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',

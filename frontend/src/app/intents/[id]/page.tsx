@@ -80,7 +80,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
       <Header />
 
-      <div className="flex-1 px-2 sm:px-2 md:px-32">
+      <div className="flex-1 px-2">
           {/* Main Tabs */}
           <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
               backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
