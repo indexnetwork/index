@@ -1,5 +1,6 @@
 import { StateGraph, START, END, Annotation } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
+import prisma from "../../lib/db";
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -31,7 +32,7 @@ type StateType = typeof NetworkManagerState.State;
 
 // Initialize OpenAI
 const llm = new ChatOpenAI({
-  model: "gpt-4o",
+  model: "gpt-4o-mini",  // Using cheaper model for simple decisions
   temperature: 0.1,
   apiKey: process.env.OPENAI_API_KEY
 });
@@ -56,8 +57,8 @@ function loadAudienceData(): { [key: string]: any[] } {
   return audienceData;
 }
 
-// Combined intent processing node
-async function intentProcessor(state: StateType): Promise<Partial<StateType>> {
+// Simplified network backing decision node
+async function makeNetworkBackingDecision(state: StateType): Promise<Partial<StateType>> {
   let intentData;
   try {
     intentData = JSON.parse(state.intentData);
@@ -66,60 +67,95 @@ async function intentProcessor(state: StateType): Promise<Partial<StateType>> {
   }
   
   const { newIntent, existingIntents = [] } = intentData;
-  const audienceData = loadAudienceData();
-  const synergyThreshold = 0.7;
-  const convictionThreshold = 0.8;
   
-  const systemPrompt = `
-You are the ConsensysVibeStaker Network Manager. Analyze the new intent for synergistic matches and make staking decisions.
+  // Simple OpenAI call for network synergy decisions
+  const prompt = `
+You are a network manager agent that identifies synergistic intent pairs for backing.
 
-NEW INTENT:
-- ID: ${newIntent.id}
-- Title: ${newIntent.title}
-- Description: ${newIntent.payload}
-- Status: ${newIntent.status}
-- User: ${newIntent.user?.name || newIntent.userId}
+NEW INTENT: ${newIntent.title} - ${newIntent.payload}
 
 EXISTING INTENTS:
-${existingIntents.map((i: Intent) => `
-- ID: ${i.id}
-- Title: ${i.title}
-- Description: ${i.payload}
-- User: ${i.user?.name || i.userId}
-`).join('')}
+${existingIntents.map((i: Intent, idx: number) => `${idx + 1}. ${i.title} - ${i.payload}`).join('\n')}
 
-NETWORK CONTEXT:
-${JSON.stringify(audienceData, null, 2)}
+Identify intents that could create network synergies or collaborations with the new intent.
+Return ONLY a JSON array with format:
+[{"intentId": "intent_id", "confidence": 0.85, "shouldBack": true}, ...]
 
-PROCESS:
-1. Analyze for compatible activities and complementary needs
-2. Evaluate synergy potential and ecosystem benefits
-3. Make staking decisions (synergy ≥ ${synergyThreshold}, conviction ≥ ${convictionThreshold})
-
-OUTPUT FORMAT:
-Provide analysis and execution summary. If staking on matches, include:
-- Target intent IDs
-- Synergy scores
-- Conviction levels
-- Reasoning
-- Stake amounts (1-100 based on conviction)
-
-Focus on increasing network coordination and reducing cold starts.
+Only include intents you would back (shouldBack: true). Confidence should be 0.7-1.0.
+Focus on potential collaborations, complementary skills, or ecosystem benefits.
 `;
 
   try {
-    const response = await llm.invoke(systemPrompt);
-    const analysis = response.content as string;
+    const response = await llm.invoke(prompt);
+    const content = response.content as string;
     
-    const output = `ConsensysVibeStaker Network Manager - Intent Analysis\n\n` +
-                  `Intent: "${newIntent.title}" (${newIntent.id})\n\n` +
-                  `${analysis}`;
-    
+    // Parse OpenAI response
+    let decisions = [];
+    try {
+      const jsonMatch = content.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        decisions = JSON.parse(jsonMatch[0]);
+      }
+    } catch (parseError) {
+      console.error("Failed to parse OpenAI response:", parseError);
+      decisions = [];
+    }
+
+    // Store backing decisions in database
+    let backedCount = 0;
+    for (const decision of decisions) {
+      if (decision.shouldBack && decision.confidence >= 0.7) {
+        try {
+          // Create intent pair
+          const intentPair = await prisma.intentPair.create({
+            data: {
+              intents: {
+                connect: [
+                  { id: newIntent.id },
+                  { id: decision.intentId }
+                ]
+              }
+            }
+          });
+
+          // Get network manager agent
+          let agent = await prisma.agent.findFirst({
+            where: { name: "network_manager" }
+          });
+
+          if (!agent) {
+            agent = await prisma.agent.create({
+              data: {
+                name: "network_manager",
+                role: "SYSTEM",
+                avatar: "🌐"
+              }
+            });
+          }
+
+          // Create backing record
+          await prisma.backer.create({
+            data: {
+              confidence: decision.confidence,
+              agentId: agent.id,
+              intentPairId: intentPair.id
+            }
+          });
+
+          backedCount++;
+        } catch (dbError) {
+          console.error("Database error creating backing:", dbError);
+        }
+      }
+    }
+
+    const output = `Network Manager Agent backed ${backedCount} intent pairs for "${newIntent.title}"`;
     return { output };
+
   } catch (error) {
-    console.error("Intent processing failed:", error);
+    console.error("Network backing decision failed:", error);
     return { 
-      output: `Error processing intent: ${error instanceof Error ? error.message : 'Unknown error'}`
+      output: `Error making backing decisions: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 }
@@ -127,9 +163,9 @@ Focus on increasing network coordination and reducing cold starts.
 // Create the workflow
 export function createNetworkManagerWorkflow() {
   const workflow = new StateGraph(NetworkManagerState)
-    .addNode("processor", intentProcessor)
-    .addEdge(START, "processor")
-    .addEdge("processor", END);
+    .addNode("networkBacking", makeNetworkBackingDecision)
+    .addEdge(START, "networkBacking")
+    .addEdge("networkBacking", END);
   
   return workflow;
 }
