@@ -56,17 +56,17 @@ const mockIndexes: Index[] = [
     suggestedIntents: [
       {
         id: "3",
-        title: "Looking for developers with experience in blockchain technology",
+        title: "Looking for protocols startups building new coordination models",
         isAdded: false
       },
       {
         id: "4",
-        title: "Interested in connecting with AI researchers working on large language models",
+        title: "Interested in open networks that enables new ownership, identity",
         isAdded: false
       },
       {
         id: "5",
-        title: "Seeking collaboration with data scientists specializing in time series analysis",
+        title: "Looking for protocols rethinking how value moves, aggregates, or is secured",
         isAdded: false
       }
     ]

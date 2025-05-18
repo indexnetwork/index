@@ -97,7 +97,7 @@ const mockConnections: IntentConnection[] = [
   {
     id: "1",
     name: "Seref Yarar",
-    role: "Co-founder of Lighthouse",
+    role: "Co-founder of Index Network",
     avatar: "https://i.pravatar.cc/300?u=b",
     connectionRationale: "Both share a strong focus on advancing privacy-preserving AI technologies, suggesting a natural alignment in values and vision. Notably, your research has been cited in Arya's work, which highlights an already established intellectual connection and mutual recognition within the academic and technical communities. This foundation could serve as a meaningful basis for further collaboration or shared exploration.",
     backers: [

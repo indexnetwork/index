@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Play, Archive, Pause } from "lucide-react";
+import { ArrowLeft, Play, Archive, Pause, Loader2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { intentsService, Intent, IntentConnection, agents } from "@/services/intents";
@@ -20,6 +20,8 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const [connections, setConnections] = useState<IntentConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const [activeAgentIndex, setActiveAgentIndex] = useState<number>(-1);
+  const [isThinking, setIsThinking] = useState(false);
 
   useEffect(() => {
     const fetchIntentData = async () => {
@@ -39,6 +41,27 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
     fetchIntentData();
   }, [resolvedParams.id]);
+
+  // Add this new function to handle agent animation
+  const startAgentAnimation = (connection: IntentConnection) => {
+    setActiveAgentIndex(-1);
+    setIsThinking(true);
+    
+    // Simulate agents speaking one by one
+    connection.backers.forEach((_, index) => {
+      setTimeout(() => {
+        setIsThinking(false);
+        setActiveAgentIndex(index);
+        setIsThinking(true);
+      }, index * 2000); // Each agent takes 2 seconds to "speak"
+    });
+
+    // Reset after all agents have spoken
+    setTimeout(() => {
+      setIsThinking(false);
+      setActiveAgentIndex(-1);
+    }, connection.backers.length * 2000);
+  };
 
   if (loading) {
     return (
@@ -112,13 +135,13 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                 variant="bordered" 
                   size="sm"
                   onClick={() => setIsPaused(true)}
-                  className="relative group text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer rounded-[1px] focus:text-red-700"
+                  className="relative group hover:bg-red-50 hover:text-red-700"
                 >
                   <div className="flex items-center gap-2">
                     <div className="relative w-4 h-4">
                       <div className="relative w-4 h-4 flex mt-0.5 ml-0.5 ">
-                        <div className="absolute inset-0 w-3 h-3 rounded-full bg-green-500 group-hover:hidden" />
-                        <div className="absolute inset-0 w-3 h-3 rounded-full bg-green-500 animate-ping opacity-100 group-hover:hidden" />
+                        <div className="absolute inset-0 w-3 h-3 rounded-full bg-[#2EFF0A] group-hover:hidden" />
+                        <div className="absolute inset-0 w-3 h-3 rounded-full bg-[#2EFF0A] animate-ping opacity-100 group-hover:hidden" />
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                         <Pause className="h-4 w-4" />
@@ -162,9 +185,17 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
               {/* Why this connection matters */}
               <div className="mb-6 border-b border-gray-200 pb-6">
                 <h3 className="font-medium text-gray-700 mb-3">Why this connection matters</h3>
-                <p className="text-gray-700">
-                  {connection.connectionRationale}
-                </p>
+                <div className="relative min-h-[100px]">
+                  <p className="text-gray-700">
+                    {connection.connectionRationale}
+                  </p>
+                  {isThinking && (
+                    <div className="absolute bottom-0 right-0 flex items-center gap-2 text-gray-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">Thinking...</span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Who's backing this connection */}
@@ -175,9 +206,20 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                     const agent = agents.find(a => a.id === backer.agentId);
                     if (!agent) return null;
                     
+                    const isActive = index === activeAgentIndex;
+                    const hasSpoken = index < activeAgentIndex;
+                    
                     return (
-                      <div key={index} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                        <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <div 
+                        key={index} 
+                        className={`flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full transition-all duration-300 ${
+                          isActive ? 'border-blue-500 shadow-md scale-105' : 
+                          hasSpoken ? 'opacity-100' : 'opacity-50'
+                        }`}
+                      >
+                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors duration-300 ${
+                          isActive ? 'bg-blue-100' : 'bg-gray-100'
+                        }`}>
                           <Image src={agent.avatar} alt={agent.name} width={16} height={16} />
                         </div>
                         <span className="font-medium text-gray-900">{agent.name}</span>
@@ -186,11 +228,6 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                       </div>
                     );
                   })}
-                  {connection.backers.length > 4 && (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                      <span className="text-gray-600">+{connection.backers.length - 4}</span>
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
