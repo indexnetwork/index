@@ -18,6 +18,7 @@ export interface IndexFile {
 export interface SuggestedIntent {
   id: string;
   title: string;
+  isAdded?: boolean;
 }
 
 // Mock data
@@ -37,11 +38,36 @@ const mockIndexes: Index[] = [
     suggestedIntents: [
       {
         id: "1",
-        title: "Looking for AI researchers working on multi-agent systems"
+        title: "Looking for AI researchers working on multi-agent systems",
+        isAdded: false
       },
       {
         id: "2",
-        title: "Interested in connecting with developers building privacy-preserving protocols"
+        title: "Interested in connecting with developers building privacy-preserving protocols",
+        isAdded: false
+      }
+    ]
+  }, {
+    id: "2",
+    name: "My first index",
+    createdAt: "March 15, 2024",
+    members: 3,
+    files: [],
+    suggestedIntents: [
+      {
+        id: "3",
+        title: "Looking for developers with experience in blockchain technology",
+        isAdded: false
+      },
+      {
+        id: "4",
+        title: "Interested in connecting with AI researchers working on large language models",
+        isAdded: false
+      },
+      {
+        id: "5",
+        title: "Seeking collaboration with data scientists specializing in time series analysis",
+        isAdded: false
       }
     ]
   }
@@ -98,18 +124,20 @@ export const indexesService = {
 
   uploadFile: (indexId: string, file: File): Promise<IndexFile> => {
     return new Promise((resolve) => {
-      const index = mockIndexes.find(index => index.id === indexId);
-      if (index) {
-        const newFile = {
-          name: file.name,
-          size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-          date: new Date().toISOString().split('T')[0]
-        };
-        index.files.unshift(newFile);
-        resolve(newFile);
-      } else {
-        throw new Error('Index not found');
-      }
+      setTimeout(() => {
+        const index = mockIndexes.find(index => index.id === indexId);
+        if (index) {
+          const newFile = {
+            name: file.name,
+            size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+            date: new Date().toISOString().split('T')[0]
+          };
+          index.files.unshift(newFile);
+          resolve(newFile);
+        } else {
+          throw new Error('Index not found');
+        }
+      }, 3000);
     });
   },
 
@@ -132,11 +160,17 @@ export const indexesService = {
 
   addSuggestedIntent: (indexId: string, intentId: string): Promise<boolean> => {
     return new Promise((resolve) => {
-      const index = mockIndexes.find(index => index.id === indexId);
-      if (index) {
-        const intentIndex = index.suggestedIntents.findIndex(intent => intent.id === intentId);
+      const indexIndex = mockIndexes.findIndex(index => index.id === indexId);
+      if (indexIndex !== -1) {
+        const intentIndex = mockIndexes[indexIndex].suggestedIntents.findIndex(intent => intent.id === intentId);
         if (intentIndex !== -1) {
-          index.suggestedIntents.splice(intentIndex, 1);
+          // Create a new array to ensure state update
+          const updatedIntents = [...mockIndexes[indexIndex].suggestedIntents];
+          updatedIntents[intentIndex] = {
+            ...updatedIntents[intentIndex],
+            isAdded: true
+          };
+          mockIndexes[indexIndex].suggestedIntents = updatedIntents;
           resolve(true);
         } else {
           resolve(false);

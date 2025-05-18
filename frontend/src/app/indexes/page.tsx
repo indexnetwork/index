@@ -113,7 +113,7 @@ export default function IndexesPage() {
                   {indexes.map((index) => (
                     <div 
                       key={index.id}
-                      className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
+                      className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                       onClick={() => {
                         window.location.href = `/indexes/${index.id}`;
                       }}

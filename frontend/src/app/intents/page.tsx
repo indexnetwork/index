@@ -97,7 +97,7 @@ export default function IntentsPage() {
                   <div 
                     key={intent.id}
                     onClick={() => handleIntentClick(intent.id)}
-                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
+                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
                       <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.title}</h3>
@@ -129,7 +129,7 @@ export default function IntentsPage() {
                   <div 
                     key={intent.id}
                     onClick={() => handleIntentClick(intent.id)}
-                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
+                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
                       <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.title}</h3>
@@ -160,7 +160,7 @@ export default function IntentsPage() {
                 suggestedIntents.map((intent) => (
                   <div 
                     key={intent.id}
-                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
+                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
                       <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.title}</h3>

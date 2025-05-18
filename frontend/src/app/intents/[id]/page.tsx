@@ -72,10 +72,24 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
         </div>
 
         <div className="bg-white px-4 pt-4 pb-4 mb-4 border border-black border-b-0 border-b-2">
-          {/* Intent Title */}
-          <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900">
-            {intent.title}
-          </h1>
+          {/* Intent Title and Info */}
+          <div className="flex flex-wrap sm:flex-nowrap justify-between items-center">
+            <div className="w-full sm:w-auto mb-2 sm:mb-0">
+              <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900">
+                {intent.title}
+              </h1>
+              <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {intent.updatedAt} • {connections.length} connections</p>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                // Add manage functionality here
+              }}
+            >
+              Manage
+            </Button>
+          </div>
         </div>
 
         {/* Connection Cards Grid */}

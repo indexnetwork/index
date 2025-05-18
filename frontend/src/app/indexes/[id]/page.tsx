@@ -21,12 +21,24 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
   const [index, setIndex] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
+  const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set());
+  const [addedIntents, setAddedIntents] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchIndex = async () => {
       try {
         const data = await indexesService.getIndex(resolvedParams.id);
         setIndex(data || null);
+        // Initialize addedIntents from the index data
+        if (data?.suggestedIntents) {
+          const added = new Set(
+            data.suggestedIntents
+              .filter(intent => intent.isAdded)
+              .map(intent => intent.id)
+          );
+          setAddedIntents(added);
+        }
       } catch (error) {
         console.error('Error fetching index:', error);
       } finally {
@@ -54,6 +66,11 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (index && droppedFiles.length > 0) {
       try {
+        // Add files to uploading state
+        const newUploadingFiles = new Set(uploadingFiles);
+        droppedFiles.forEach(file => newUploadingFiles.add(file.name));
+        setUploadingFiles(newUploadingFiles);
+
         for (const file of droppedFiles) {
           await indexesService.uploadFile(index.id, file);
         }
@@ -62,6 +79,9 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         setIndex(updatedIndex || null);
       } catch (error) {
         console.error('Error uploading files:', error);
+      } finally {
+        // Clear uploading state
+        setUploadingFiles(new Set());
       }
     }
   };
@@ -69,12 +89,19 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const handleFileDelete = async (fileName: string) => {
     if (index) {
       try {
+        setDeletingFiles(prev => new Set([...prev, fileName]));
         await indexesService.deleteFile(index.id, fileName);
         // Refresh index data
         const updatedIndex = await indexesService.getIndex(resolvedParams.id);
         setIndex(updatedIndex || null);
       } catch (error) {
         console.error('Error deleting file:', error);
+      } finally {
+        setDeletingFiles(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(fileName);
+          return newSet;
+        });
       }
     }
   };
@@ -82,10 +109,16 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const handleAddIntent = async (intentId: string) => {
     if (index) {
       try {
-        await indexesService.addSuggestedIntent(index.id, intentId);
-        // Refresh index data
-        const updatedIndex = await indexesService.getIndex(resolvedParams.id);
-        setIndex(updatedIndex || null);
+        const success = await indexesService.addSuggestedIntent(index.id, intentId);
+        if (success) {
+          // Update local state immediately
+          setAddedIntents(prev => new Set([...prev, intentId]));
+          // Then refresh the index data
+          const updatedIndex = await indexesService.getIndex(resolvedParams.id);
+          if (updatedIndex) {
+            setIndex(updatedIndex);
+          }
+        }
       } catch (error) {
         console.error('Error adding intent:', error);
       }
@@ -122,7 +155,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             <span className="font-ibm-plex-mono text-[14px] text-black font-medium">Back to indexes</span>
           </Link>
         </div>
-        <div className="flex flex-col sm:flex-row py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
+        <div className="flex flex-col sm:flex-row py-4 px-2 sm:px-4 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-2">{index.name}</h1>
             <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {index.createdAt}</p>
@@ -152,7 +185,6 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        
                         <Button
                           variant="ghost"
                           className="p-0"
@@ -169,14 +201,49 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-red-500 hover:text-red-700 "
+                      className="text-red-500 hover:text-red-700"
                       onClick={() => handleFileDelete(file.name)}
+                      disabled={deletingFiles.has(file.name)}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      {deletingFiles.has(file.name) ? (
+                        <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
                     </Button>
                   </div>
                 ))}
-              </div>
+                {uploadingFiles.size > 0 && Array.from(uploadingFiles).map((fileName) => (
+                  <div
+                  key={fileName}
+                  className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        className="p-0"
+                        size="lg"
+                      >
+                        <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{fileName}</h4>
+                        <ArrowUpRight className="ml-1 h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-sm text-gray-400">Uploading...</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-gray-400"
+                    disabled
+                  >
+                    <div className="h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                  </Button>
+                </div>
+                
+                
+                ))}
+            </div>
 
             {/* Upload Section */}
             <div 
@@ -197,10 +264,19 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 onChange={(e) => {
                   const files = Array.from(e.target.files || []);
                   if (index && files.length > 0) {
+                    // Add files to uploading state
+                    const newUploadingFiles = new Set(uploadingFiles);
+                    files.forEach(file => newUploadingFiles.add(file.name));
+                    setUploadingFiles(newUploadingFiles);
+
                     Promise.all(files.map(file => indexesService.uploadFile(index.id, file)))
                       .then(() => indexesService.getIndex(resolvedParams.id))
                       .then(updatedIndex => setIndex(updatedIndex || null))
-                      .catch(error => console.error('Error uploading files:', error));
+                      .catch(error => console.error('Error uploading files:', error))
+                      .finally(() => {
+                        // Clear uploading state
+                        setUploadingFiles(new Set());
+                      });
                   }
                 }}
               />
@@ -216,7 +292,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           </div>
         </div>
 
-        {/* Suggested Intents Section */}
+        { index.files.length > 0 && 
         <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
           <div className="space-y-6 w-full">
             <div className="flex justify-between items-center">
@@ -232,17 +308,21 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                     </div>
                   </div>
                   <Button
-                    variant="outline"
+                    variant={addedIntents.has(intent.id) ? "default" : "outline"}
                     size="sm"
-                    onClick={() => handleAddIntent(intent.id)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleAddIntent(intent.id);
+                    }}
                   >
-                    Add
+                    {addedIntents.has(intent.id) ? "View" : "Add"}
                   </Button>
                 </div>
               ))}
             </div>
           </div>
-        </div>
+        </div> }
 
       </div>
 
