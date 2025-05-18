@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Play, Archive, Pause } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { intentsService, Intent, IntentConnection, agents } from "@/services/intents";
@@ -19,6 +19,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const [intent, setIntent] = useState<Intent | null>(null);
   const [connections, setConnections] = useState<IntentConnection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isPaused, setIsPaused] = useState(false);
 
   useEffect(() => {
     const fetchIntentData = async () => {
@@ -78,17 +79,55 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
               <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900">
                 {intent.title}
               </h1>
-              <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {intent.updatedAt} • {connections.length} connections</p>
+              <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">Updated {intent.updatedAt} • {connections.length} connections</p>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => {
-                // Add manage functionality here
-              }}
-            >
-              Manage
-            </Button>
+            <div className="flex gap-2 min-w-[90px] sm:min-w-[90px] sm:justify-end">
+              {isPaused ? (
+                <>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={() => {
+                      // Add archive functionality here
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Archive className="h-4 w-4" />
+                    </div>
+                  </Button>                
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={() => setIsPaused(false)}
+                    className="relative group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Play className="h-4 w-4" />
+                    </div>
+                  </Button>
+
+                </>
+              ) : (
+                <Button 
+                variant="bordered" 
+                  size="sm"
+                  onClick={() => setIsPaused(true)}
+                  className="relative group text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer rounded-[1px] focus:text-red-700"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="relative w-4 h-4">
+                      <div className="relative w-4 h-4 flex mt-0.5 ml-0.5 ">
+                        <div className="absolute inset-0 w-3 h-3 rounded-full bg-green-500 group-hover:hidden" />
+                        <div className="absolute inset-0 w-3 h-3 rounded-full bg-green-500 animate-ping opacity-100 group-hover:hidden" />
+                      </div>
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Pause className="h-4 w-4" />
+                      </div>
+                    </div>
+                  </div>
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
