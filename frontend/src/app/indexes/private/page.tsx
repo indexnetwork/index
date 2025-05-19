@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Lock, ArrowLeft, MessageSquare, Mail, Calendar, Linkedin, FileText } from "lucide-react";
+import { Lock, ArrowLeft, MessageSquare, Mail, Calendar, Linkedin, FileText, Slack, LinkedinIcon } from "lucide-react";
 import Header from "@/components/Header";
 import Link from "next/link";
 import ClientLayout from "@/components/ClientLayout";
+import { Google, Notion } from "@lobehub/icons";
 
 interface Integration {
   id: string;
@@ -20,14 +21,14 @@ export default function PrivateIndexPage() {
     {
       id: "notion",
       name: "Notion",
-      icon: <FileText className="h-6 w-6 text-gray-900" />,
+      icon: <Notion className="h-6 w-6 text-gray-900" />,
       description: "Connect your Notion workspace to access pages and databases",
       connected: false
     },
     {
       id: "slack",
       name: "Slack",
-      icon: <MessageSquare className="h-6 w-6 text-gray-900" />,
+      icon: <Slack className="h-6 w-6 text-gray-900" />,
       description: "Connect your Slack workspace to access messages and channels",
       connected: false
     },
@@ -41,7 +42,7 @@ export default function PrivateIndexPage() {
     {
       id: "gmail",
       name: "Gmail",
-      icon: <Mail className="h-6 w-6 text-gray-900" />,
+      icon: <Google className="h-6 w-6 text-gray-900" />,
       description: "Connect your Gmail account to access emails and calendar",
       connected: false
     },
@@ -55,7 +56,7 @@ export default function PrivateIndexPage() {
     {
       id: "linkedin",
       name: "LinkedIn",
-      icon: <Linkedin className="h-6 w-6 text-gray-900" />,
+      icon: <LinkedinIcon className="h-6 w-6 text-gray-900" />,
       description: "Connect your LinkedIn account to access connections and messages",
       connected: false
     }
@@ -100,21 +101,28 @@ export default function PrivateIndexPage() {
           {integrations.map((integration) => (
             <div
               key={integration.id}
-              className="flex flex-col p-6 bg-white border border-black border-b-2 rounded-[1px]  transition-colors"
+              className="flex items-center justify-between p-4 bg-white border border-black border-b-2 rounded-[1px] transition-colors"
             >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-gray-100 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 bg-gray-100 rounded-lg">
                   {integration.icon}
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900">{integration.name}</h3>
+                <h3 className="text-base font-medium text-gray-900">{integration.name}</h3>
               </div>
-              <p className="text-gray-500 mb-4 flex-grow">{integration.description}</p>
-              <Button
-                variant={integration.connected ? "outline" : "default"}
-                onClick={() => handleConnect(integration.id)}
-              >
-                {integration.connected ? "Disconnect" : "Connect"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <div 
+                  onClick={() => handleConnect(integration.id)}
+                  className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${
+                    integration.connected ? 'bg-black' : 'bg-gray-200'
+                  }`}
+                >
+                  <div 
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
+                      integration.connected ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </div>
+              </div>
             </div>
           ))}
         </div>
