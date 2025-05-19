@@ -61,7 +61,7 @@ export interface IntentConnection {
 const mockIntents: Intent[] = [
   {
     id: "1",
-    title: "Looking to meet early stage founders building privacy-preserving agent coordination infra.",
+    title: "Looking for startups building new coordination models",
     updatedAt: "May 6",
     connections: 4,
     status: "active",

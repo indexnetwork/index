@@ -55,8 +55,8 @@ const mockIndexes: Index[] = [
     files: [],
     suggestedIntents: [
       {
-        id: "3",
-        title: "Looking for protocols startups building new coordination models",
+        id: "1",
+        title: "Looking for startups building new coordination models",
         isAdded: false
       },
       {
@@ -137,7 +137,7 @@ export const indexesService = {
         } else {
           throw new Error('Index not found');
         }
-      }, 3000);
+      }, 1500);
     });
   },
 
