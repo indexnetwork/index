@@ -168,7 +168,7 @@ Gives trusted agents real context to understand you.</div>
                 />
                 <div>
                   <div className="font-bold text-black text-xs tracking-widest mb-1">FOUNDERS</div>
-                  <div className="text-sm text-black font-mono">building in public, matching in private</div>
+                  <div className="text-sm text-black font-mono">those who like building in private</div>
                 </div>
               </div>
               <div className="flex gap-4 items-center">
@@ -181,7 +181,7 @@ Gives trusted agents real context to understand you.</div>
                 />
                 <div>
                   <div className="font-bold text-black text-xs tracking-widest mb-1">INVESTORS</div>
-                  <div className="text-sm text-black font-mono">who care about context</div>
+                  <div className="text-sm text-black font-mono">who wants to spot conviction before the pitch</div>
                 </div>
               </div>
               <div className="flex gap-4 items-center">
