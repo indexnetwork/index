@@ -1,5 +1,7 @@
 import { Annotation, START, END, StateGraph } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
+import prisma from "../../lib/db";
+import { llm, createBacking, parseAgentDecisions } from "../../lib/agents";
 
 // Type definitions matching the database schema
 interface Intent {
@@ -29,7 +31,7 @@ type StateType = typeof SemanticRelevancyState.State;
 
 // Initialize OpenAI
 const llm = new ChatOpenAI({
-  model: "gpt-4o",
+  model: "gpt-4o-mini",  // Using cheaper model for simple decisions
   temperature: 0.1,
   apiKey: process.env.OPENAI_API_KEY
 });
@@ -113,12 +115,72 @@ Focus on maximizing intent matching precision through semantic understanding.
   }
 }
 
+// Simplified backing decision node
+async function makeBackingDecision(state: StateType): Promise<Partial<StateType>> {
+  let intentData;
+  try {
+    intentData = JSON.parse(state.intentData);
+  } catch (error) {
+    return { output: "Error: Invalid intent data format" };
+  }
+  
+  const { newIntent, existingIntents = [] } = intentData;
+  
+  // Simple OpenAI call for backing decisions
+  const prompt = `
+You are a semantic relevancy agent that decides whether to back intent pairs.
+
+NEW INTENT: ${newIntent.title} - ${newIntent.payload}
+
+EXISTING INTENTS:
+${existingIntents.map((i: Intent, idx: number) => `${idx + 1}. ID: ${i.id}, Title: ${i.title} - ${i.payload}`).join('\n')}
+
+For each existing intent, decide if it's semantically relevant to the new intent.
+Return ONLY a JSON array with format:
+[{"intentId": "intent_id", "confidence": 0.85, "shouldBack": true}, ...]
+
+Only include intents you would back (shouldBack: true). Confidence should be 0.7-1.0.
+Be selective - only back truly relevant semantic matches.
+`;
+
+  try {
+    const response = await llm.invoke(prompt);
+    const content = response.content as string;
+    
+    // Parse OpenAI response
+    const decisions = parseAgentDecisions(content);
+
+    // Store backing decisions in database
+    let backedCount = 0;
+    for (const decision of decisions) {
+      if (decision.shouldBack && decision.confidence >= 0.7) {
+        const success = await createBacking(
+          newIntent.id, 
+          decision.intentId, 
+          "semantic_relevancy", 
+          decision.confidence
+        );
+        if (success) backedCount++;
+      }
+    }
+
+    const output = `Semantic Relevancy Agent backed ${backedCount} intent pairs for "${newIntent.title}"`;
+    return { output };
+
+  } catch (error) {
+    console.error("Backing decision failed:", error);
+    return { 
+      output: `Error making backing decisions: ${error instanceof Error ? error.message : 'Unknown error'}`
+    };
+  }
+}
+
 // Create the workflow
 export function createSemanticRelevancyWorkflow() {
   const workflow = new StateGraph(SemanticRelevancyState)
-    .addNode("semanticProcessor", semanticProcessor)
-    .addEdge(START, "semanticProcessor")
-    .addEdge("semanticProcessor", END);
+    .addNode("backingDecision", makeBackingDecision)
+    .addEdge(START, "backingDecision")
+    .addEdge("backingDecision", END);
   
   return workflow;
 }

@@ -96,8 +96,7 @@ export async function onIntentCreated(intentId: string): Promise<void> {
     console.log(`📊 Result: ${result.substring(0, 200)}...`);
     
     // TODO: Store the semantic analysis result and any stake decisions in the database
-    // This could be stored in a new table like SemanticAnalysis or IntentRelevancyScore
-    
+
   } catch (error) {
     console.error(`❌ Semantic Relevancy Agent failed for intent ${intentId}:`, error);
     // Don't throw - we don't want to break the intent creation flow
