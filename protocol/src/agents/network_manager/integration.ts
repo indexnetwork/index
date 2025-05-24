@@ -39,8 +39,6 @@ export async function onIntentCreated(intentId: string): Promise<void> {
         user: {
           select: {
             id: true,
-            name: true,
-            email: true
           }
         },
         indexes: {
@@ -72,8 +70,6 @@ export async function onIntentCreated(intentId: string): Promise<void> {
         user: {
           select: {
             id: true,
-            name: true,
-            email: true
           }
         },
         indexes: {
@@ -122,8 +118,6 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
         user: {
           select: {
             id: true,
-            name: true,
-            email: true
           }
         },
         indexes: {
@@ -166,8 +160,6 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
         user: {
           select: {
             id: true,
-            name: true,
-            email: true
           }
         },
         indexes: {

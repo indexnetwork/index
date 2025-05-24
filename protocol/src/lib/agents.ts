@@ -49,8 +49,15 @@ export async function createBacking(
       }
     });
 
-    // Get agent
-    const agent = await ensureAgent(agentName, agentName === "semantic_relevancy" ? "🧠" : "🌐");
+    // Get agent with appropriate avatar
+    let avatar = "🌐"; // default
+    if (agentName === "semantic_relevancy") {
+      avatar = "🧠";
+    } else if (agentName === "proof_layer") {
+      avatar = "🔍";
+    }
+    
+    const agent = await ensureAgent(agentName, avatar);
 
     // Create backing record
     await prisma.backer.create({

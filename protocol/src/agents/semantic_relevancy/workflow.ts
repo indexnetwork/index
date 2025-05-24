@@ -29,13 +29,6 @@ const SemanticRelevancyState = Annotation.Root({
 
 type StateType = typeof SemanticRelevancyState.State;
 
-// Initialize OpenAI
-const llm = new ChatOpenAI({
-  model: "gpt-4o-mini",  // Using cheaper model for simple decisions
-  temperature: 0.1,
-  apiKey: process.env.OPENAI_API_KEY
-});
-
 // Semantic relevancy analysis node
 async function semanticProcessor(state: StateType): Promise<Partial<StateType>> {
   let intentData;

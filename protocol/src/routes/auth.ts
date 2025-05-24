@@ -30,22 +30,15 @@ router.post('/register', [
       return res.status(400).json({ error: 'User already exists with this email' });
     }
 
-    // Hash password
-    const saltRounds = 12;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-
+  
     // Create user
     const user = await prisma.user.create({
       data: {
-        email,
-        name,
         // Note: password field not in schema, storing separately would require auth table
         role: 'USER'
       },
       select: {
         id: true,
-        email: true,
-        name: true,
         role: true,
         createdAt: true
       }

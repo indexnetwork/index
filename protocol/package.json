@@ -12,6 +12,7 @@
     "prisma:studio": "prisma studio --schema=agent_schema.prisma"
   },
   "dependencies": {
+    "@langchain/community": "^0.3.44",
     "@langchain/core": "^0.3.57",
     "@langchain/langgraph": "^0.2.73",
     "@langchain/openai": "^0.5.11",
@@ -25,7 +26,8 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "multer": "^1.4.5-lts.1"
+    "multer": "^1.4.5-lts.1",
+    "openai": "^4.103.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
