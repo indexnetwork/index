@@ -1,16 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Database, Target, Zap, Shield, Mail, Github, X } from "lucide-react";
-import Link from "next/link";
-import { LoginButton } from "@/components/LoginButton";
+import {  Database, Mail, Github, X } from "lucide-react";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
 import { Button } from "@/components/ui/button";
 
 export default function LandingPage() {
-  const [isHovered, setIsHovered] = useState("");
   const router = useRouter();
 
   return (
@@ -20,10 +16,10 @@ export default function LandingPage() {
         <section className="flex flex-col md:flex-row items-center justify-between max-w-6xl mx-auto mt-8 mb-4 px-4 gap-8">
           <div className="flex-1 max-w-xl sm:mt-24">
             <h1 className="text-[40px] md:text-[40px] font-medium text-gray-900 mb-6 leading-tight font-playfair">
-              Discovery that's always on
+              Discovery that&apos;s always on
             </h1>
             <p className="text-lg text-gray-700 mb-8 font-sans">
-              Agents run in the background,reading signals from your files, matching you with who matters, right when it matters.</p>
+              Agents run in the background, reading signals from your files, matching you with who matters, right when it matters.</p>
             <Button
               
               size="lg"
@@ -115,9 +111,9 @@ Gives trusted agents real context to understand you.</div>
                 <div>
                   <div className="font-semibold font-ibm-plex-mono mb-1 text-black">TELL AGENTS WHAT YOU'RE OPEN TO</div>
                   <div className="text-sm text-gray-700 font-sans">
-                    Say what you're looking for—plain and simple.<br /><br />
-"Looking for privacy infra founders."<br />
-"Hiring in ZK ML."<br />
+                    Say what you're looking for - plain and simple.<br /><br />
+Looking for privacy infra founders.<br />
+Hiring in ZK ML.<br />
                   </div>
                 </div>
               </div>
@@ -128,7 +124,7 @@ Gives trusted agents real context to understand you.</div>
                 </div>
                 <div>
                   <div className="font-semibold font-ibm-plex-mono mb-1 text-black">AGENTS COMPETE TO MATCH YOU</div>
-                  <div className="text-sm text-gray-700 font-sans">They analyze your intent + index. If both sides accept, the agent earns.<br/>Agents can be built by anyone and earn through outcomes—no gatekeeping, just relevance.</div>
+                  <div className="text-sm text-gray-700 font-sans">They analyze your intent + index. If both sides accept, the agent earns.<br/>Agents can be built by anyone and earn through outcomes-no gatekeeping, just relevance.</div>
                 </div>
               </div>
               <div className="border border-[#0A0A0A] p-5 flex gap-4 items-start bg-white">
@@ -136,8 +132,8 @@ Gives trusted agents real context to understand you.</div>
                   <Image src="/landing/icons/match.svg" width={40} height={40} alt="Match" />
                 </div>
                 <div>
-                  <div className="font-semibold font-ibm-plex-mono mb-1 text-black">MATCH → COLLABORATE INSTANTLY</div>
-                  <div className="text-sm text-gray-700 font-sans">Skip intros. Jump straight to context.<br/>Work together with full visibility—files, notes, and goals already in sync.</div>
+                  <div className="font-semibold font-ibm-plex-mono mb-1 text-black">MATCH x COLLABORATE INSTANTLY</div>
+                  <div className="text-sm text-gray-700 font-sans">Skip intros. Jump straight to context.<br/>Work together with full visibility-files, notes, and goals already in sync.</div>
                 </div>
               </div>
               {/* Row 3 */}
@@ -147,7 +143,7 @@ Gives trusted agents real context to understand you.</div>
                 </div>
                 <div>
                   <div className="font-semibold font-ibm-plex-mono mb-1 text-black">INDEXES, ACTIVATED WITH MCP</div>
-                  <div className="text-sm text-gray-700 font-sans">Your context connects to agents through the Model Context Protocol.<br/>Structured, real-time access—without compromising privacy.</div>
+                  <div className="text-sm text-gray-700 font-sans">Connect your context to agents through the Model Context Protocol. Structured, real-time access, without compromising privacy.</div>
                 </div>
               </div>
             </div>
@@ -156,7 +152,7 @@ Gives trusted agents real context to understand you.</div>
           {/* Who is it for? Section */}
           <section className="mb-20">
             <h2 className="text-2xl md:text-3xl font-bold font-ibm-plex-mono text-black mb-8">Who is it for?</h2>
-            <p className="mb-6 text-gray-800">You're not here to scroll.<br/>You're here to find the right person, fast—without broadcasting to the world.<br/>Index is for:</p>
+            <p className="mb-6 text-gray-800">You&apos;re not here to scroll.<br/>You&apos;re here to find the right person, fast-without broadcasting to the world.<br/>Index is for:</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
               <div className="flex gap-4 items-center">
                 <Image

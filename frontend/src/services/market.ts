@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { calculateStake, updateMarketState, calculateReward, calculatePenalty, type MarketState as LMSRMarketState } from './lmsr';
+import { updateMarketState, calculateReward, calculatePenalty, type MarketState as LMSRMarketState } from './lmsr';
 
 const prisma = new PrismaClient();
 
@@ -8,6 +8,7 @@ export interface MarketAction {
   amount: number;
   agentId: string;
   confidence: number;
+  outcome: 'YES' | 'NO'; // Which outcome to buy/sell
 }
 
 export async function initializeIntentPairMarket(intentPairId: string) {
@@ -38,7 +39,10 @@ export async function executeMarketAction(intentPairId: string, action: MarketAc
     intentPairId: currentMarketState.intentPairId,
     q: currentMarketState.q,
     price: currentMarketState.price,
-    liquidity: currentMarketState.liquidity
+    liquidity: currentMarketState.liquidity,
+    volume: 0, // TODO: Track volume in database
+    yesShares: 0, // TODO: Track YES shares in database
+    noShares: 0 // TODO: Track NO shares in database
   };
 
   // Calculate new market state
@@ -96,9 +100,24 @@ export async function processMatchOutcome(intentPairId: string, isSuccessful: bo
 
   // Process each agent's stake
   for (const action of marketState.marketActions) {
+    // Convert to LMSR market state format for reward/penalty calculation
+    const lmsrMarketState: LMSRMarketState = {
+      intentPairId: marketState.intentPairId,
+      q: marketState.q,
+      price: marketState.price,
+      liquidity: marketState.liquidity,
+      volume: 0, // TODO: Track volume in database
+      yesShares: 0, // TODO: Track YES shares in database
+      noShares: 0 // TODO: Track NO shares in database
+    };
+
+    // For now, assume outcome is 'YES' - this should be determined by the action's outcome property
+    // when the database schema is updated to include the outcome field
+    const outcome: 'YES' | 'NO' = 'YES'; // TODO: Get from action.outcome when database schema is updated
+    
     const reward = isSuccessful
-      ? calculateReward(marketState, action.amount)
-      : calculatePenalty(marketState, action.amount);
+      ? calculateReward(lmsrMarketState, action.amount, outcome)
+      : calculatePenalty(lmsrMarketState, action.amount, outcome);
 
     // Update agent's stake
     await prisma.agent.update({

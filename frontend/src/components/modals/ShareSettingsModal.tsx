@@ -1,7 +1,6 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Link, Trash2, Copy, Plus } from "lucide-react";
+import { Trash2, Copy, Plus } from "lucide-react";
 import { useState } from "react";
 import { Input } from "../ui/input";
 
@@ -16,6 +15,40 @@ interface ShareSettingsModalProps {
   onOpenChange: (open: boolean) => void;
   indexName: string;
 }
+
+interface DialogProps {
+  className?: string;
+  children: React.ReactNode;
+  [key: string]: unknown;
+}
+
+// Create simple wrapper components for dialog parts
+const DialogContent = ({ className, children, ...props }: DialogProps) => (
+  <Dialog.Portal>
+    <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+    <Dialog.Content
+      className={`fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white p-6 shadow-lg duration-200 sm:rounded-lg ${className}`}
+      {...props}
+    >
+      {children}
+      <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
+        <span className="sr-only">Close</span>
+      </Dialog.Close>
+    </Dialog.Content>
+  </Dialog.Portal>
+);
+
+const DialogHeader = ({ className, children, ...props }: DialogProps) => (
+  <div className={`flex flex-col space-y-1.5 text-center sm:text-left ${className}`} {...props}>
+    {children}
+  </div>
+);
+
+const DialogTitle = ({ className, children, ...props }: DialogProps) => (
+  <Dialog.Title className={`text-lg font-semibold leading-none tracking-tight ${className}`} {...props}>
+    {children}
+  </Dialog.Title>
+);
 
 export default function ShareSettingsModal({ open, onOpenChange, indexName }: ShareSettingsModalProps) {
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([
@@ -48,7 +81,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold text-black font-mono">
@@ -136,6 +169,6 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
           </div>
         </div>
       </DialogContent>
-    </Dialog>
+    </Dialog.Root>
   );
 } 

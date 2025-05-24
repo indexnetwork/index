@@ -2,8 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, ArrowLeft, ArrowUpRight } from "lucide-react";
-import Link from "next/link";
+import { Upload, ArrowUpRight } from "lucide-react";
 import { indexesService, Index } from "@/services/indexes";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
@@ -147,7 +146,7 @@ export default function SharePage({ params }: SharePageProps) {
                 <div className="flex-1">
                   <h3 className="font-medium text-gray-700 mb-2">Your content will be evaluated by</h3>
                   <p className="text-sm text-gray-500 mb-4">
-                    Each agent will analyze your content from their specialized perspective. Once uploaded, you'll receive a detailed breakdown of how your content aligns with our network's goals and potential collaboration opportunities.
+                    Each agent will analyze your content from their specialized perspective. Once uploaded, you&apos;ll receive a detailed breakdown of how your content aligns with our network&apos;s goals and potential collaboration opportunities.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
@@ -225,7 +224,7 @@ export default function SharePage({ params }: SharePageProps) {
             <div className="mt-8 border-t pt-8">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-4">
-                  <img
+                  <Image
                     src={index.avatar || "https://www.trychroma.com/img/noise.jpg"}
                     alt={index.name}
                     width={48}
@@ -253,11 +252,11 @@ export default function SharePage({ params }: SharePageProps) {
               <div className="mb-6 border-b border-gray-200 pb-6">
                 <h3 className="font-medium text-gray-700 mb-3">Why this connection matters</h3>
                 <p className="text-gray-700">
-                  We both share a strong focus on advancing privacy-preserving AI technologies, suggesting a natural alignment in values and vision. Notably, your research has been cited in Arya's work, which highlights an already established intellectual connection and mutual recognition within the academic and technical communities. This foundation could serve as a meaningful basis for further collaboration or shared exploration.
+                  We both share a strong focus on advancing privacy-preserving AI technologies, suggesting a natural alignment in values and vision. Notably, your research has been cited in Arya&apos;s work, which highlights an already established intellectual connection and mutual recognition within the academic and technical communities. This foundation could serve as a meaningful basis for further collaboration or shared exploration.
                 </p>
               </div>
 
-              <h4 className="text-lg font-semibold text-gray-900 mb-4">Who's backing this connection</h4>
+              <h4 className="text-lg font-semibold text-gray-900 mb-4">Who&apos;s backing this connection</h4>
               <div className="flex flex-wrap gap-2">
                 <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
                   <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">

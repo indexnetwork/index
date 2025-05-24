@@ -1,60 +1,12 @@
-import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { UserCircle, ChevronDown, LogOut} from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useEffect } from "react";
-import { usePrivy } from "@privy-io/react-auth";
-import { useAuthContext } from "@/contexts/AuthContext";
+import Image from "next/image";
 
-const getUnifiedName = (user: any): string => {
-  if (!user) return 'Guest';
-  
-  const linkedAccounts = user.linkedAccounts || [];
-  
-  // Check for Google account name (usually full name)
-  const googleAccount = linkedAccounts.find((account: any) => account.type === 'google_oauth');
-  if (googleAccount?.name) return googleAccount.name;
-  
-  // Check for LinkedIn account name (usually full name)
-  const linkedinAccount = linkedAccounts.find((account: any) => account.type === 'linkedin_oauth');
-  if (linkedinAccount?.name) return linkedinAccount.name;
-  
-  // Check for GitHub account name
-  const githubAccount = linkedAccounts.find((account: any) => account.type === 'github_oauth');
-  if (githubAccount?.name) return githubAccount.name;
-  
-  // Check for Twitter display name
-  const twitterAccount = linkedAccounts.find((account: any) => account.type === 'twitter_oauth');
-  if (twitterAccount?.name) return twitterAccount.name;
-  
-  // Check for Farcaster display name
-  const farcasterAccount = linkedAccounts.find((account: any) => account.type === 'farcaster');
-  if (farcasterAccount?.displayName) return farcasterAccount.displayName;
-  
-  // Fall back to email username if available
-  if (user.email) {
-    return user.email.split('@')[0];
-  }
-  
-  // Final fallback
-  return 'User';
-};
 
 export default function Header({ showNavigation = true }: { showNavigation?: boolean }) {
   const pathname = usePathname();
-  const {
-    user,
-    login
-  } = usePrivy();
-  const { logout, isAuthenticated } = useAuthContext();
-  
-  useEffect(() => {
-    console.log("user",  user)
-  },[user])
 
-  // Use the new unified name function
-  const displayName = getUnifiedName(user);
+  const isAuthenticated = false;
 
   return (
     <div>
@@ -62,67 +14,16 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
         <div className="flex items-center">
           <Link href={isAuthenticated ? "/indexes" : "/"}>
             <div className="relative mr-2 cursor-pointer">
-              <img 
+              <Image 
                 src="/logo-black.svg" 
                 alt="Index Protocol" 
-                width={200} 
+                width={200}
+                height={40}
                 className="object-contain"
               />
             </div>
           </Link>
         </div>
-        {user ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="items-center px-3 py-5">
-                <img 
-                  src="/icon-person.svg" 
-                  alt="Index Network" 
-                  width={32} 
-                  className="object-contain"
-                />
-                <span className="hidden sm:inline mx-2">{displayName}</span>
-                <ChevronDown className="h-4 w-4 " />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="bg-white border border-gray-200 rounded-[1px]">
-              <DropdownMenuItem 
-                onClick={(e) => {
-                  e.stopPropagation();
-                }} 
-                className="hover:bg-gray-50 cursor-pointer text-gray-700 focus:text-gray-900"
-              >
-                <UserCircle className="mr-2 h-5 w-5 text-black" />
-                <span>Profile</span>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator className="bg-gray-100" />
-              <DropdownMenuItem 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  logout();
-                }}
-                className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer focus:text-red-700"
-              >
-                <LogOut className="mr-2 h-5 w-5" />
-                <span>Disconnect</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <Button 
-            onClick={login}
-            variant="outline" 
-            className="flex items-center px-3 py-5"
-          >
-            <img 
-              src="/icon-person.svg" 
-              alt="Index Network" 
-              width={32} 
-              className="object-contain"
-            />
-            <span className="hidden sm:inline mx-2">Connect</span>
-          </Button>
-        )}
       </header>
 
       { showNavigation && 
@@ -132,9 +33,11 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
           <Link href="/indexes" className="cursor-pointer">
             <div className="flex flex-col items-center cursor-pointer">
               <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
-                <img 
+                <Image 
                   src="/icon-folder.svg" 
-                  width={48} 
+                  alt="Indexes"
+                  width={48}
+                  height={48}
                   className="object-contain p-1"
                   style={{filter: pathname.startsWith("/indexes") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
                 />
@@ -149,9 +52,11 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
           <Link href="/intents" className="cursor-pointer">
             <div className="flex flex-col items-center cursor-pointer">
               <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
-                <img 
+                <Image 
                   src="/icon-intent.svg" 
-                  width={44} 
+                  alt="Intents"
+                  width={44}
+                  height={44}
                   className="object-contain p-1"
                   style={{filter: pathname.startsWith("/intents") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
                 />

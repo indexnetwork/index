@@ -164,7 +164,7 @@ export const intentsService = {
     });
   },
 
-  getIntentConnections: (intentId: string): Promise<IntentConnection[]> => {
+  getIntentConnections: (): Promise<IntentConnection[]> => {
     return new Promise((resolve) => {
       resolve(mockConnections);
     });

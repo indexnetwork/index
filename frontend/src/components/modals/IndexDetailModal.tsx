@@ -1,6 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import * as Dialog from "@radix-ui/react-dialog";
 import { Upload, Trash2, ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 
@@ -44,81 +42,85 @@ export default function IndexDetailModal({ open, onOpenChange, indexName }: Inde
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">
-            {indexName}
-          </DialogTitle>
-        </DialogHeader>
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-[90vh] overflow-hidden">
+          <div className="p-6">
+            <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono mb-4">
+              {indexName}
+            </Dialog.Title>
 
-        <div className="mt-4">
-          <ScrollArea className="h-[400px] rounded-md border">
-            <div className="space-y-4 p-4">
-              {files.map((file, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-lg font-medium text-gray-900">{file.name}</h4>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="p-0 hover:bg-transparent text-gray-500 hover:text-gray-900"
-                      >
-                        <ArrowUpRight className="h-4 w-4" />
-                      </Button>
+            <div className="mt-4">
+              <div className="h-[400px] rounded-md border overflow-y-auto">
+                <div className="space-y-4 p-4">
+                  {files.map((file, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-lg font-medium text-gray-900">{file.name}</h4>
+                          <button className="p-0 hover:bg-transparent text-gray-500 hover:text-gray-900 bg-transparent border-none cursor-pointer">
+                            <ArrowUpRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <p className="text-sm text-gray-500">
+                          {file.size} • {file.date}
+                        </p>
+                      </div>
+                      <button className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded bg-transparent border-none cursor-pointer">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
-                    <p className="text-sm text-gray-500">
-                      {file.size} • {file.date}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </ScrollArea>
+              </div>
 
-          <div 
-            className={`mt-4 border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors cursor-pointer ${
-              isDragging 
-                ? "border-gray-400 bg-gray-100" 
-                : "border-gray-200 bg-gray-50 hover:bg-gray-100"
-            }`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <input
-              type="file"
-              className="hidden"
-              id="file-upload"
-              multiple
-              onChange={(e) => {
-                const files = Array.from(e.target.files || []);
-                console.log('Selected files:', files);
-                // Handle file upload logic here
-              }}
-            />
-            <label
-              htmlFor="file-upload"
-              className="flex flex-col items-center cursor-pointer w-full"
-            >
-              <Upload className={`h-6 w-6 mb-2 ${isDragging ? 'text-gray-600' : 'text-gray-400'}`} />
-              <p className="text-sm font-medium text-gray-900">Upload Files</p>
-              <p className="text-xs text-gray-500 mt-1">Drag and drop your files here or click to browse</p>
-            </label>
+              <div 
+                className={`mt-4 border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-colors cursor-pointer ${
+                  isDragging 
+                    ? "border-gray-400 bg-gray-100" 
+                    : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <input
+                  type="file"
+                  className="hidden"
+                  id="file-upload"
+                  multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    console.log('Selected files:', files);
+                    // Handle file upload logic here
+                  }}
+                />
+                <label
+                  htmlFor="file-upload"
+                  className="flex flex-col items-center cursor-pointer w-full"
+                >
+                  <Upload className={`h-6 w-6 mb-2 ${isDragging ? 'text-gray-600' : 'text-gray-400'}`} />
+                  <p className="text-sm font-medium text-gray-900">Upload Files</p>
+                  <p className="text-xs text-gray-500 mt-1">Drag and drop your files here or click to browse</p>
+                </label>
+              </div>
+            </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+
+          <Dialog.Close asChild>
+            <button 
+              className="absolute top-4 right-4 p-2 rounded-full hover:bg-gray-100 bg-transparent border-none cursor-pointer"
+              aria-label="Close"
+            >
+              <span className="text-gray-500 hover:text-gray-700">✕</span>
+            </button>
+          </Dialog.Close>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 } 

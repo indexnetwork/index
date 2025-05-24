@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import * as Tabs from "@radix-ui/react-tabs";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
@@ -38,11 +38,11 @@ export default function IntentsPage() {
     fetchIntents();
   }, []);
 
-  const handleIntentClick = (intentId: string) => {
+  const handleIntentClick = useCallback((intentId: string) => {
     router.push(`/intents/${intentId}`);
-  };
+  }, [router]);
 
-  const handleCreateIntent = async (intent: { title: string; indexIds: string[] }) => {
+  const handleCreateIntent = useCallback(async (intent: { title: string; indexIds: string[]; attachments: File[] }) => {
     try {
       const newIntent = await intentsService.createIntent(intent);
       setActiveIntents(prev => [...prev, newIntent]);
@@ -50,7 +50,7 @@ export default function IntentsPage() {
     } catch (error) {
       console.error('Error creating intent:', error);
     }
-  };
+  }, []);
 
   return (
     <ClientLayout>
@@ -60,19 +60,19 @@ export default function IntentsPage() {
         backgroundSize: '888px'
       }}>
         <div className="flex flex-col mb-4">
-          <Tabs defaultValue="my-intents" className="flex-grow">
+          <Tabs.Root defaultValue="my-intents" className="flex-grow">
             <div className="flex flex-row items-end justify-between">
-              <TabsList className="border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
-                <TabsTrigger value="my-intents" className="font-ibm-plex-mono cursor-pointer">
+              <Tabs.List className="border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
+                <Tabs.Trigger value="my-intents" className="font-ibm-plex-mono cursor-pointer">
                   Active
-                </TabsTrigger>
-                <TabsTrigger value="archived" className="font-ibm-plex-mono cursor-pointer">
+                </Tabs.Trigger>
+                <Tabs.Trigger value="archived" className="font-ibm-plex-mono cursor-pointer">
                   Archived
-                </TabsTrigger>
-                <TabsTrigger value="suggested" className="font-ibm-plex-mono cursor-pointer">
+                </Tabs.Trigger>
+                <Tabs.Trigger value="suggested" className="font-ibm-plex-mono cursor-pointer">
                   Suggested
-                </TabsTrigger>
-              </TabsList>
+                </Tabs.Trigger>
+              </Tabs.List>
               
               {/* Action Buttons - directly next to tabs */}
               <div className="flex gap-2 mb-2 sm:mt-0">
@@ -87,7 +87,7 @@ export default function IntentsPage() {
             </div>
 
             {/* My Intents Content */}
-            <TabsContent value="my-intents" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
+            <Tabs.Content value="my-intents" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
               {loading ? (
                 <div className="py-8 text-center text-gray-500">Loading...</div>
               ) : activeIntents.length === 0 ? (
@@ -116,10 +116,10 @@ export default function IntentsPage() {
                   </div>
                 ))
               )}
-            </TabsContent>
+            </Tabs.Content>
             
             {/* Archived Content */}
-            <TabsContent value="archived" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
+            <Tabs.Content value="archived" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
               {loading ? (
                 <div className="py-8 text-center text-gray-500">Loading...</div>
               ) : archivedIntents.length === 0 ? (
@@ -148,10 +148,10 @@ export default function IntentsPage() {
                   </div>
                 ))
               )}
-            </TabsContent>
+            </Tabs.Content>
 
             {/* Suggested Content */}
-            <TabsContent value="suggested" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
+            <Tabs.Content value="suggested" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
               {loading ? (
                 <div className="py-8 text-center text-gray-500">Loading...</div>
               ) : suggestedIntents.length === 0 ? (
@@ -178,8 +178,8 @@ export default function IntentsPage() {
                   </div>
                 ))
               )}
-            </TabsContent>
-          </Tabs>
+            </Tabs.Content>
+          </Tabs.Root>
         </div>
       </div>
 

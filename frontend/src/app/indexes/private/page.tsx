@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Lock, ArrowLeft, MessageSquare, Mail, Calendar, Linkedin, FileText, Slack, LinkedinIcon } from "lucide-react";
-import Header from "@/components/Header";
+import { Lock, ArrowLeft, MessageSquare, Calendar, Slack, LinkedinIcon } from "lucide-react";
 import Link from "next/link";
 import ClientLayout from "@/components/ClientLayout";
 import { Google, Notion } from "@lobehub/icons";

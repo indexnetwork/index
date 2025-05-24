@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Search, Users, FileText, Award, BarChart2, Shield, DollarSign, ChevronUp, UserCheck, X, Plus } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { Search, Users, FileText, Shield, UserCheck } from 'lucide-react';
 import { initializeMarket, calculateStake, updateMarketState, calculateReward, calculatePenalty, type MarketState } from '@/services/lmsr';
 
 interface SearchResult {
@@ -39,14 +39,14 @@ interface Agent {
 
 const IndexNetworkSimulation = () => {
   // Initial search results
-  const initialResults: SearchResult[] = [
+  const initialResults: SearchResult[] = useMemo(() => [
     { id: 'res1', name: 'Matthew Mandel', title: 'Investor at USV', location: 'New York, NY', avatar: '👨‍💼', mutual: 'Nick Grossman' },
     { id: 'res2', name: 'Alexa Grabelle', title: 'Investor at Bessemer Venture Partners', location: 'New York, NY', avatar: '👩‍💼', mutual: 'Jack O\'Brien, Sophy Li' },
     { id: 'res3', name: 'Alexander Chen', title: 'Investor at General Catalyst', location: 'New York, NY', avatar: '👨‍💼', mutual: 'Sophy Li' },
     { id: 'res4', name: 'Irene Gendelman', title: 'Investor at Avid Ventures', location: 'New York, NY', avatar: '👩‍💼', mutual: '' },
     { id: 'res5', name: 'Alara Dinc', title: 'Investor @ TIA Ventures', location: 'New York, NY', avatar: '👩‍💼', mutual: 'Aylin Sahin, Samet Ozkale' },
     { id: 'res6', name: 'Allie Molner', title: 'Investor at Torch Capital', location: 'New York, NY', avatar: '👩‍💼', mutual: 'Sophy Li' },
-  ];
+  ], []);
 
   // Available agents with their own budgets
   const initialAgents: Agent[] = [
@@ -119,12 +119,7 @@ const IndexNetworkSimulation = () => {
   const [searchResults, setSearchResults] = useState<SearchResult[]>(initialResults);
   const [draggedAgent, setDraggedAgent] = useState<Agent | null>(null);
   const [availableAgents, setAvailableAgents] = useState<Agent[]>(initialAgents);
-  const [stakeAmount, setStakeAmount] = useState(100);
   const [searchQuery, setSearchQuery] = useState('investor');
-  const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
-
-  // Add market state
-  const [marketState, setMarketState] = useState<MarketState>(initializeMarket('simulation'));
 
   const [personMarkets, setPersonMarkets] = useState<Record<string, MarketState>>({});
 
@@ -137,31 +132,32 @@ const IndexNetworkSimulation = () => {
       markets[result.id] = initializeMarket(result.id);
     });
     setPersonMarkets(markets);
-  }, []);
+  }, [initialResults]);
 
-  const addAgent = (agent: Agent) => {
-    // Only add if not already in active agents and have enough budget
-    if (!availableAgents.some(a => a.id === agent.id) && agent.budget >= 20) {
-      setAvailableAgents([...availableAgents, agent]);
-    }
-  };
+  // TODO: Add functionality to dynamically add/remove agents
+  // const addAgent = (agent: Agent) => {
+  //   // Only add if not already in active agents and have enough budget
+  //   if (!availableAgents.some(a => a.id === agent.id) && agent.budget >= 20) {
+  //     setAvailableAgents([...availableAgents, agent]);
+  //   }
+  // };
 
-  const removeAgent = (agentId: string) => {
-    // Return the agent's stake to their budget when removed
-    const agent = availableAgents.find(a => a.id === agentId);
-    if (agent) {
-      const updatedAgent = {
-        ...agent,
-        budget: agent.budget + 20 // Return the stake amount
-      };
-      setAvailableAgents(availableAgents.filter(a => a.id !== agentId));
-      // Update the agent in availableAgents
-      const agentIndex = availableAgents.findIndex(a => a.id === agentId);
-      if (agentIndex !== -1) {
-        availableAgents[agentIndex] = updatedAgent;
-      }
-    }
-  };
+  // const removeAgent = (agentId: string) => {
+  //   // Return the agent's stake to their budget when removed
+  //   const agent = availableAgents.find(a => a.id === agentId);
+  //   if (agent) {
+  //     const updatedAgent = {
+  //       ...agent,
+  //       budget: agent.budget + 20 // Return the stake amount
+  //     };
+  //     setAvailableAgents(availableAgents.filter(a => a.id !== agentId));
+  //     // Update the agent in availableAgents
+  //     const agentIndex = availableAgents.findIndex(a => a.id === agentId);
+  //     if (agentIndex !== -1) {
+  //       availableAgents[agentIndex] = updatedAgent;
+  //     }
+  //   }
+  // };
 
   // Remove IDX coin and update market info to show YES/NO prices and shares per person
   // Add function to render market info for a person
@@ -194,18 +190,18 @@ const IndexNetworkSimulation = () => {
     );
   };
 
-  // Add function to toggle agent prediction
-  const toggleAgentPrediction = (agentId: string) => {
-    setAvailableAgents(prev => prev.map(agent => {
-      if (agent.id === agentId) {
-        return {
-          ...agent,
-          position: agent.position === 'YES' ? 'NO' : 'YES'
-        };
-      }
-      return agent;
-    }));
-  };
+  // TODO: Add function to toggle agent prediction
+  // const toggleAgentPrediction = (agentId: string) => {
+  //   setAvailableAgents(prev => prev.map(agent => {
+  //     if (agent.id === agentId) {
+  //       return {
+  //         ...agent,
+  //         position: agent.position === 'YES' ? 'NO' : 'YES'
+  //       };
+  //     }
+  //     return agent;
+  //   }));
+  // };
 
   const handleDragStart = (agent: Agent) => {
     setDraggedAgent(agent);
@@ -313,7 +309,7 @@ const IndexNetworkSimulation = () => {
   };
 
   // Add auto-staking functionality
-  const autoStakeBasedOnTriggers = (result: SearchResult) => {
+  const autoStakeBasedOnTriggers = useCallback((result: SearchResult) => {
     availableAgents.forEach(agent => {
       if (!agent.triggers) return;
       
@@ -383,14 +379,14 @@ const IndexNetworkSimulation = () => {
         }
       }
     });
-  };
+  }, [availableAgents, setAvailableAgents, setSearchResults, setPersonMarkets]);
 
   // Add useEffect to trigger auto-staking when search results change
   useEffect(() => {
     searchResults.forEach(result => {
       autoStakeBasedOnTriggers(result);
     });
-  }, [searchResults]);
+  }, [searchResults, autoStakeBasedOnTriggers]);
 
   return (
     <div className="flex  bg-gray-50">
@@ -413,7 +409,7 @@ const IndexNetworkSimulation = () => {
           
           <div className="flex justify-between items-center mb-2">
             <div className="text-gray-800 font-medium">
-              Results for "{searchQuery}"
+              Results for &ldquo;{searchQuery}&rdquo;
             </div>
             <div className="text-sm text-gray-600">
               {searchResults.length} people found

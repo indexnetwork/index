@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Play, Archive, Pause, Loader2 } from "lucide-react";
+import { ArrowLeft, Play, Archive, Pause } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { intentsService, Intent, IntentConnection, agents } from "@/services/intents";
@@ -20,15 +20,16 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const [connections, setConnections] = useState<IntentConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
-  const [activeAgentIndex, setActiveAgentIndex] = useState<number>(-1);
-  const [isThinking, setIsThinking] = useState(false);
+  // TODO: Add agent animation state when implementing animation feature
+  // const [activeAgentIndex, setActiveAgentIndex] = useState<number>(-1);
+  // const [isThinking, setIsThinking] = useState(false);
 
   useEffect(() => {
     const fetchIntentData = async () => {
       try {
         const [intentData, connectionsData] = await Promise.all([
           intentsService.getIntent(resolvedParams.id),
-          intentsService.getIntentConnections(resolvedParams.id)
+          intentsService.getIntentConnections()
         ]);
         setIntent(intentData || null);
         setConnections(connectionsData);
@@ -42,26 +43,26 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
     fetchIntentData();
   }, [resolvedParams.id]);
 
-  // Add this new function to handle agent animation
-  const startAgentAnimation = (connection: IntentConnection) => {
-    setActiveAgentIndex(-1);
-    setIsThinking(true);
-    
-    // Simulate agents speaking one by one
-    connection.backers.forEach((_, index) => {
-      setTimeout(() => {
-        setIsThinking(false);
-        setActiveAgentIndex(index);
-        setIsThinking(true);
-      }, index * 2000); // Each agent takes 2 seconds to "speak"
-    });
-
-    // Reset after all agents have spoken
-    setTimeout(() => {
-      setIsThinking(false);
-      setActiveAgentIndex(-1);
-    }, connection.backers.length * 2000);
-  };
+  // TODO: Add agent animation functionality
+  // const startAgentAnimation = (connection: IntentConnection) => {
+  //   setActiveAgentIndex(-1);
+  //   setIsThinking(true);
+  //   
+  //   // Simulate agents speaking one by one
+  //   connection.backers.forEach((_, index) => {
+  //     setTimeout(() => {
+  //       setIsThinking(false);
+  //       setActiveAgentIndex(index);
+  //       setIsThinking(true);
+  //     }, index * 2000); // Each agent takes 2 seconds to "speak"
+  //   });
+  //
+  //   // Reset after all agents have spoken
+  //   setTimeout(() => {
+  //     setIsThinking(false);
+  //     setActiveAgentIndex(-1);
+  //   }, connection.backers.length * 2000);
+  // };
 
   if (loading) {
     return (
@@ -160,7 +161,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
             <div key={connection.id} className="bg-white border border-black border-b-0 border-b-2 p-6">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-4">
-                  <img
+                  <Image
                     src={connection.avatar}
                     alt={connection.name}
                     width={48}
@@ -189,16 +190,16 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                   <p className="text-gray-700">
                     {connection.connectionRationale}
                   </p>
-                  {isThinking && (
+                  {/* TODO: Add thinking animation when implementing agent animation feature */}
+                  {/* {isThinking && (
                     <div className="absolute bottom-0 right-0 flex items-center gap-2 text-gray-500">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       <span className="text-sm">Thinking...</span>
                     </div>
-                  )}
+                  )} */}
                 </div>
               </div>
 
-              {/* Who's backing this connection */}
               <div>
                 <h3 className="font-medium text-gray-700 mb-4">Who's backing this connection</h3>
                 <div className="flex flex-wrap gap-2">
@@ -206,8 +207,9 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                     const agent = agents.find(a => a.id === backer.agentId);
                     if (!agent) return null;
                     
-                    const isActive = index === activeAgentIndex;
-                    const hasSpoken = index < activeAgentIndex;
+                    // TODO: Add agent animation state when implementing animation feature
+                    const isActive = false; // index === activeAgentIndex;
+                    const hasSpoken = false; // index < activeAgentIndex;
                     
                     return (
                       <div 

@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import * as Tabs from "@radix-ui/react-tabs";
 import { Button } from "@/components/ui/button";
-import { Eye, Share2, MoreVertical, Pencil, Trash, Plus, Lock } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Share2, Plus, Lock } from "lucide-react";
 import CreateIndexModal from "@/components/modals/CreateIndexModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
@@ -17,7 +16,6 @@ export default function IndexesPage() {
   const [showIndexModal, setShowIndexModal] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState("");
-  const [indexToRename, setIndexToRename] = useState("");
   const [indexes, setIndexes] = useState<Index[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,24 +33,6 @@ export default function IndexesPage() {
 
     fetchIndexes();
   }, []);
-
-  const handleRenameIndex = async (indexName: string) => {
-    setIndexToRename(indexName);
-    // TODO: Implement rename functionality
-    console.log("Rename index:", indexName);
-  };
-
-  const handleRemoveIndex = async (indexName: string) => {
-    try {
-      const index = indexes.find(i => i.name === indexName);
-      if (index) {
-        await indexesService.deleteIndex(index.id);
-        setIndexes(prev => prev.filter(i => i.id !== index.id));
-      }
-    } catch (error) {
-      console.error('Error removing index:', error);
-    }
-  };
 
   const handleCreateIndex = async (index: Omit<Index, 'id'>) => {
     try {
@@ -73,16 +53,16 @@ export default function IndexesPage() {
           backgroundSize: '888px'
         }}>
         <div className="flex flex-col justify-between mb-4">
-          <Tabs defaultValue="my-indexes" className="flex-grow">
+          <Tabs.Root defaultValue="my-indexes" className="flex-grow">
             <div className="flex  flex-row items-end justify-between">
-              <TabsList className=" border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
-                <TabsTrigger value="my-indexes" className="font-ibm-plex-mono cursor-pointer">
+              <Tabs.List className=" border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
+                <Tabs.Trigger value="my-indexes" className="font-ibm-plex-mono cursor-pointer">
                   My indexes
-                </TabsTrigger>
-                <TabsTrigger value="shared-with-me" className="font-ibm-plex-mono cursor-pointer">
+                </Tabs.Trigger>
+                <Tabs.Trigger value="shared-with-me" className="font-ibm-plex-mono cursor-pointer">
                   Shared with me
-                </TabsTrigger>
-              </TabsList>
+                </Tabs.Trigger>
+              </Tabs.List>
               
               {/* Action Buttons - directly next to tabs */}
               <div className="flex gap-2 mb-2 sm:mt-0">
@@ -104,7 +84,7 @@ export default function IndexesPage() {
             </div>
           
             {/* My Indexes Content */}
-            <TabsContent value="my-indexes" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
+            <Tabs.Content value="my-indexes" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
               {loading ? (
                 <div className="py-8 text-center text-gray-500">Loading...</div>
               ) : (
@@ -135,40 +115,6 @@ export default function IndexesPage() {
                           <Share2 className="h-4 w-4 mr-2" />
                           Share
                         </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="bg-white border border-gray-200 rounded-[1px]">
-                            <DropdownMenuItem 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRenameIndex(index.name);
-                              }} 
-                              className="hover:bg-gray-50 cursor-pointer text-gray-700 rounded-[1px] focus:text-gray-900"
-                            >
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Rename
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator className="bg-gray-100" />
-                            <DropdownMenuItem 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveIndex(index.name);
-                              }}
-                              className="text-red-600 hover:bg-red-50 hover:text-red-700 cursor-pointer rounded-[1px] focus:text-red-700"
-                            >
-                              <Trash className="h-4 w-4 mr-2" />
-                              Remove
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
                       </div>
                     </div>
                   ))}
@@ -203,15 +149,15 @@ export default function IndexesPage() {
                   </div>
                 </>
               )}
-            </TabsContent>
+            </Tabs.Content>
             
             {/* Shared With Me Content */}
-            <TabsContent value="shared-with-me" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
+            <Tabs.Content value="shared-with-me" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
               <div className="py-8 text-center text-gray-500">
                 No indexes shared with you yet
               </div>
-            </TabsContent>
-          </Tabs>
+            </Tabs.Content>
+          </Tabs.Root>
         </div>
       </div>
 

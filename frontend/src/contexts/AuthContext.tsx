@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { usePrivy, useLogin, User, Wallet } from '@privy-io/react-auth';
+import { usePrivy } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 
 type AuthContextType = {
@@ -17,13 +17,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const {
     ready,
     authenticated,
-    user,
     logout: privyLogout,
-    createWallet,
-    linkWallet,
-    unlinkWallet,
   } = usePrivy();
-  const { login: privyLogin } = useLogin();
+  // const { login: privyLogin } = useLogin();
 
   const [isLoading, setIsLoading] = useState(!ready);
   const router = useRouter();

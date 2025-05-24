@@ -2,12 +2,12 @@
 
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft } from "lucide-react";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import Link from "next/link";
 import { indexesService, Index } from "@/services/indexes";
 import ClientLayout from "@/components/ClientLayout";
+import CreateIntentModal from "@/components/modals/CreateIntentModal";
 
 interface IndexDetailPageProps {
   params: Promise<{
@@ -19,6 +19,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const resolvedParams = use(params);
   const [isDragging, setIsDragging] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
+  const [showCreateIntentModal, setShowCreateIntentModal] = useState(false);
+  const [selectedSuggestedIntent, setSelectedSuggestedIntent] = useState<{ title: string; id: string } | null>(null);
   const [index, setIndex] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
@@ -108,20 +110,31 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
   const handleAddIntent = async (intentId: string) => {
     if (index) {
-      try {
-        const success = await indexesService.addSuggestedIntent(index.id, intentId);
-        if (success) {
-          // Update local state immediately
-          setAddedIntents(prev => new Set([...prev, intentId]));
-          // Then refresh the index data
-          const updatedIndex = await indexesService.getIndex(resolvedParams.id);
-          if (updatedIndex) {
-            setIndex(updatedIndex);
-          }
-        }
-      } catch (error) {
-        console.error('Error adding intent:', error);
+      const suggestedIntent = index.suggestedIntents.find(intent => intent.id === intentId);
+      if (suggestedIntent) {
+        setSelectedSuggestedIntent({
+          title: suggestedIntent.title,
+          id: intentId
+        });
+        setShowCreateIntentModal(true);
       }
+    }
+  };
+
+  const handleCreateIntent = async () => {
+    try {
+      // const newIntent = await intentsService.createIntent(intent);
+      // Update local state immediately
+      setAddedIntents(prev => new Set([...prev, selectedSuggestedIntent?.id || '']));
+      // Then refresh the index data
+      const updatedIndex = await indexesService.getIndex(resolvedParams.id);
+      if (updatedIndex) {
+        setIndex(updatedIndex);
+      }
+      setShowCreateIntentModal(false);
+      setSelectedSuggestedIntent(null);
+    } catch (error) {
+      console.error('Error creating intent:', error);
     }
   };
 
@@ -331,6 +344,13 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         open={showShareSettingsModal} 
         onOpenChange={setShowShareSettingsModal}
         indexName={index.name}
+      />
+      <CreateIntentModal 
+        open={showCreateIntentModal}
+        onOpenChange={setShowCreateIntentModal}
+        onSubmit={handleCreateIntent}
+        initialTitle={selectedSuggestedIntent?.title}
+        initialIndexIds={[index.id]}
       />
     </ClientLayout>
   );

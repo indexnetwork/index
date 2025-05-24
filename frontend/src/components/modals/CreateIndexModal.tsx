@@ -1,15 +1,67 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { FolderOpen, Upload } from "lucide-react";
+import { X } from "lucide-react";
+import React from "react";
+// import { FolderOpen, Upload } from "lucide-react";
 
 interface CreateIndexModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
+interface DialogComponentProps extends React.HTMLAttributes<HTMLDivElement> {
+  className?: string;
+  children?: React.ReactNode;
+}
+
+interface DialogTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
+  className?: string;
+  children?: React.ReactNode;
+}
+
+interface DialogDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {
+  className?: string;
+  children?: React.ReactNode;
+}
+
+// Create simple wrapper components for dialog parts
+const DialogContent = ({ className, children, ...props }: DialogComponentProps) => (
+  <Dialog.Portal>
+    <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+    <Dialog.Content
+      className={`fixed left-[50%] top-[50%] z-50 grid w-full translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white p-6 shadow-lg duration-200 sm:rounded-lg ${className}`}
+      {...props}
+    >
+      {children}
+      <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
+        <X className="h-4 w-4" />
+        <span className="sr-only">Close</span>
+      </Dialog.Close>
+    </Dialog.Content>
+  </Dialog.Portal>
+);
+
+const DialogHeader = ({ className, children, ...props }: DialogComponentProps) => (
+  <div className={`flex flex-col space-y-1.5 text-center sm:text-left ${className}`} {...props}>
+    {children}
+  </div>
+);
+
+const DialogTitle = ({ className, children, ...props }: DialogTitleProps) => (
+  <Dialog.Title className={`text-lg font-semibold leading-none tracking-tight ${className}`} {...props}>
+    {children}
+  </Dialog.Title>
+);
+
+const DialogDescription = ({ className, children, ...props }: DialogDescriptionProps) => (
+  <Dialog.Description className={`text-sm text-gray-500 ${className}`} {...props}>
+    {children}
+  </Dialog.Description>
+);
 
 export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModalProps) {
   const [name, setName] = useState('');
@@ -36,7 +88,7 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg mx-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Create New Index</DialogTitle>
@@ -97,7 +149,7 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
             <div className="text-center py-8 space-y-6">
               <h2 className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Index Successfully Created!</h2>
               <p className="text-gray-600">
-                Your new index "{name}" has been created and is ready to use.
+                Your new index &ldquo;{name}&rdquo; has been created and is ready to use.
               </p>
               <div className="grid grid-cols-3 gap-4">
                 <div className="border border-gray-200 p-4 rounded-md bg-white">
@@ -124,6 +176,6 @@ export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModa
           )}
         </div>
       </DialogContent>
-    </Dialog>
+    </Dialog.Root>
   );
 } 
