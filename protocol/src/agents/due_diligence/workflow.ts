@@ -70,27 +70,63 @@ async function filterVCFounderMatches(state: StateType): Promise<Partial<StateTy
   
   const { newIntent, existingIntents = [] } = intentData;
   
-  // Keywords that indicate VC or Founder related content
-  const vcKeywords = [
-    "venture capital", "VC", "investment", "funding", "investor", "seed", "series A", "series B",
-    "startup funding", "angel investor", "pitch deck", "portfolio", "due diligence", "valuation"
-  ];
-  
-  const founderKeywords = [
-    "founder", "entrepreneur", "startup", "company", "business", "CEO", "CTO", "co-founder",
-    "founding team", "startup idea", "business plan", "product launch", "MVP", "market validation"
-  ];
-  
   try {
-    // Check if new intent is VC or Founder related
-    const newIntentText = `${newIntent.title} ${newIntent.payload}`.toLowerCase();
-    const isVCRelated = vcKeywords.some(keyword => newIntentText.includes(keyword.toLowerCase()));
-    const isFounderRelated = founderKeywords.some(keyword => newIntentText.includes(keyword.toLowerCase()));
+    // Use OpenAI to classify if new intent is VC or Founder related
+    const classificationPrompt = `
+You are an expert analyst specializing in venture capital and startup ecosystems.
+
+Analyze the following intent and determine if it is related to venture capital, investment, or entrepreneurship/founding activities.
+
+INTENT TO ANALYZE:
+Title: ${newIntent.title}
+Description: ${newIntent.payload}
+
+EVALUATION CRITERIA:
+- Venture Capital: investment activities, funding rounds, due diligence, portfolio management, investor relations, VC firms, angel investing
+- Founder/Entrepreneur: startup creation, business development, product launch, team building, market validation, founding teams
+- Startup Ecosystem: accelerators, incubators, pitch decks, fundraising, scaling businesses, entrepreneurship
+
+RESPONSE FORMAT:
+Respond with a JSON object containing:
+{
+  "isVCRelated": boolean,
+  "isFounderRelated": boolean,
+  "category": "vc" | "founder" | "both" | "neither",
+  "confidence": number (0.0-1.0),
+  "reasoning": "brief explanation"
+}
+
+Response:`;
+
+    const classificationResponse = await dueDiligenceLLM.invoke(classificationPrompt);
+    const classificationContent = classificationResponse.content as string;
     
-    if (!isVCRelated && !isFounderRelated) {
+    let newIntentClassification;
+    try {
+      // Extract JSON from response
+      const jsonMatch = classificationContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        newIntentClassification = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No JSON found in response");
+      }
+    } catch (parseError) {
+      console.error("Failed to parse classification response:", parseError);
+      // Fallback classification
+      newIntentClassification = {
+        isVCRelated: false,
+        isFounderRelated: false,
+        category: "neither",
+        confidence: 0.0,
+        reasoning: "Classification failed"
+      };
+    }
+
+    // Skip if not VC or Founder related
+    if (!newIntentClassification.isVCRelated && !newIntentClassification.isFounderRelated) {
       return { 
         vcFounderMatches: [],
-        output: "Intent not related to VC-Founder ecosystem. Skipping due diligence."
+        output: `Intent not related to VC-Founder ecosystem (${newIntentClassification.reasoning}). Skipping due diligence.`
       };
     }
     
@@ -99,33 +135,81 @@ async function filterVCFounderMatches(state: StateType): Promise<Partial<StateTy
     
     const vcFounderMatches: Intent[] = [];
     
+    // Classify each existing intent using OpenAI
     for (const intent of existingIntents) {
-      const intentText = `${intent.title} ${intent.payload}`.toLowerCase();
-      const isIntentVCRelated = vcKeywords.some(keyword => intentText.includes(keyword.toLowerCase()));
-      const isIntentFounderRelated = founderKeywords.some(keyword => intentText.includes(keyword.toLowerCase()));
-      
-      // Only consider intents that are VC or Founder related
-      if (isIntentVCRelated || isIntentFounderRelated) {
-        const intentEmbedding = await embeddings.embedQuery(`${intent.title}: ${intent.payload}`);
+      const intentClassificationPrompt = `
+You are an expert analyst specializing in venture capital and startup ecosystems.
+
+Analyze the following intent and determine if it is related to venture capital, investment, or entrepreneurship/founding activities.
+
+INTENT TO ANALYZE:
+Title: ${intent.title}
+Description: ${intent.payload}
+
+EVALUATION CRITERIA:
+- Venture Capital: investment activities, funding rounds, due diligence, portfolio management, investor relations, VC firms, angel investing
+- Founder/Entrepreneur: startup creation, business development, product launch, team building, market validation, founding teams
+- Startup Ecosystem: accelerators, incubators, pitch decks, fundraising, scaling businesses, entrepreneurship
+
+RESPONSE FORMAT:
+Respond with a JSON object containing:
+{
+  "isVCRelated": boolean,
+  "isFounderRelated": boolean,
+  "category": "vc" | "founder" | "both" | "neither",
+  "confidence": number (0.0-1.0),
+  "reasoning": "brief explanation"
+}
+
+Response:`;
+
+      try {
+        const intentClassificationResponse = await dueDiligenceLLM.invoke(intentClassificationPrompt);
+        const intentClassificationContent = intentClassificationResponse.content as string;
         
-        // Calculate cosine similarity
-        const similarity = cosineSimilarity(newIntentEmbedding, intentEmbedding);
+        let intentClassification;
+        try {
+          const jsonMatch = intentClassificationContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            intentClassification = JSON.parse(jsonMatch[0]);
+          } else {
+            continue; // Skip this intent if classification fails
+          }
+        } catch (parseError) {
+          console.error("Failed to parse intent classification:", parseError);
+          continue; // Skip this intent if classification fails
+        }
         
-        // Include if similarity is above threshold (0.7) and represents a VC-Founder match
-        if (similarity > 0.7) {
-          const isComplementaryMatch = (isVCRelated && isIntentFounderRelated) || 
-                                     (isFounderRelated && isIntentVCRelated);
+        // Only consider intents that are VC or Founder related with good confidence
+        if ((intentClassification.isVCRelated || intentClassification.isFounderRelated) && 
+            intentClassification.confidence >= 0.6) {
           
-          if (isComplementaryMatch) {
-            vcFounderMatches.push(intent);
+          const intentEmbedding = await embeddings.embedQuery(`${intent.title}: ${intent.payload}`);
+          
+          // Calculate cosine similarity
+          const similarity = cosineSimilarity(newIntentEmbedding, intentEmbedding);
+          
+          // Include if similarity is above threshold (0.7) and represents a VC-Founder match
+          if (similarity > 0.7) {
+            const isComplementaryMatch = 
+              (newIntentClassification.isVCRelated && intentClassification.isFounderRelated) || 
+              (newIntentClassification.isFounderRelated && intentClassification.isVCRelated) ||
+              (newIntentClassification.category === "both" || intentClassification.category === "both");
+            
+            if (isComplementaryMatch) {
+              vcFounderMatches.push(intent);
+            }
           }
         }
+      } catch (error) {
+        console.error("Classification failed for intent:", intent.id, error);
+        continue; // Skip this intent if there's an error
       }
     }
     
     return { 
       vcFounderMatches,
-      output: `Found ${vcFounderMatches.length} VC-Founder matching intents for due diligence analysis.`
+      output: `Found ${vcFounderMatches.length} VC-Founder matching intents for due diligence analysis. New intent classified as: ${newIntentClassification.category} (confidence: ${newIntentClassification.confidence.toFixed(2)}).`
     };
     
   } catch (error) {
