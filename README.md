@@ -12,9 +12,6 @@
 </p>
 
 <h4 align="center">
-  <a href="https://github.com/indexnetwork/index/graphs/contributors">
-    <img src="https://img.shields.io/github/contributors-anon/indexnetwork/index?color=yellow&style=flat-square" alt="contributers">
-  </a>
   <a href="https://opensource.org/licenses/MIT">
     <img src="https://img.shields.io/badge/mit-blue.svg?label=license" alt="license">
   </a>
@@ -195,7 +192,7 @@ git push origin feature/your-feature-name
 - **[index.network](https://index.network)** - Production application
 - **[GitHub](https://github.com/indexnetwork/index)** - Source code and issue tracking
 - **[Twitter](https://x.com/indexnetwork_)** - Latest updates and announcements
-- **[Blog](https://blog.indexnetwork)** - Latest insights and updates
+- **[Blog](https://blog.index.network)** - Latest insights and updates
 - **[Book a Call](https://calendly.com/d/2vj-8d8-skt/call-with-seren-and-seref)** - Direct contact with founders
 
 ## License
