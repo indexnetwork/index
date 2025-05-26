@@ -202,8 +202,3 @@ git push origin feature/your-feature-name
 
 Index Network is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
----
-
-<p align="center">
-  <i>Building the future of discovery, one connection at a time.</i>
-</p>
