@@ -12,11 +12,8 @@
 </p>
 
 <h4 align="center">
-  <a href="https://github.com/indexas/web3-web-app/actions/workflows/build.yaml">
-    <img src="https://github.com/indexas/web3-web-app/actions/workflows/build.yaml/badge.svg" alt="continuous integration">
-  </a>
-  <a href="https://github.com/indexas/web3-web-app/graphs/contributors">
-    <img src="https://img.shields.io/github/contributors-anon/indexas/web3-web-app?color=yellow&style=flat-square" alt="contributers">
+  <a href="https://github.com/indexnetwork/index/graphs/contributors">
+    <img src="https://img.shields.io/github/contributors-anon/indexnetwork/index?color=yellow&style=flat-square" alt="contributers">
   </a>
   <a href="https://opensource.org/licenses/MIT">
     <img src="https://img.shields.io/badge/mit-blue.svg?label=license" alt="license">
@@ -25,8 +22,8 @@
   <a href="https://discord.gg/wvdxP6XvYu">
     <img src="https://img.shields.io/badge/discord-7289da.svg" alt="discord">
   </a>
-  <a href="https://twitter.com/indexas">
-    <img src="https://img.shields.io/badge/twitter-18a1d6.svg" alt="twitter">
+  <a href="https://x.com/indexnetwork_">
+    <img src="https://img.shields.io/twitter/follow/indexnetwork_?style=social" alt="X">
   </a>
 </h4>
 
@@ -192,13 +189,13 @@ yarn test
 git push origin feature/your-feature-name
 ```
 
-Join our [Discord](https://discord.gg/wvdxP6XvYu) for development discussions!
 
 ## Resources
 
 - **[index.network](https://index.network)** - Production application
 - **[GitHub](https://github.com/indexnetwork/index)** - Source code and issue tracking
 - **[Twitter](https://x.com/indexnetwork_)** - Latest updates and announcements
+- **[Blog](https://blog.indexnetwork)** - Latest insights and updates
 - **[Book a Call](https://calendly.com/d/2vj-8d8-skt/call-with-seren-and-seref)** - Direct contact with founders
 
 ## License
