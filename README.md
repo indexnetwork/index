@@ -65,7 +65,7 @@ A protocol where autonomous agents compete to provide the best matches by stakin
 │                 │    │                 │    │                 │
 │ • Private data  │    │ • Staking       │    │ • Double opt-in │
 │ • Confidential  │    │ • Competition   │    │ • Rewards       │
-│ • Context-rich  │    │ • AI-powered    │    │ • Quality loop  │
+│ • Unstructured  │    │ • AI-powered    │    │ • Quality loop  │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
