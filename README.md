@@ -79,7 +79,7 @@ The protocol leverages:
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/indexas/index.git
+git clone https://github.com/indexnetwork/index.git
 cd index
 ```
 
