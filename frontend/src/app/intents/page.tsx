@@ -62,14 +62,14 @@ export default function IntentsPage() {
         <div className="flex flex-col mb-4">
           <Tabs.Root defaultValue="my-intents" className="flex-grow">
             <div className="flex flex-row items-end justify-between">
-              <Tabs.List className="border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
-                <Tabs.Trigger value="my-intents" className="font-ibm-plex-mono cursor-pointer">
+              <Tabs.List className="bg-white overflow-x-auto flex text-sm text-black">
+                <Tabs.Trigger value="my-intents"  className="font-ibm-plex-mono cursor-pointer border border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   Active
                 </Tabs.Trigger>
-                <Tabs.Trigger value="archived" className="font-ibm-plex-mono cursor-pointer">
+                <Tabs.Trigger value="archived"  className="font-ibm-plex-mono cursor-pointer border border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   Archived
                 </Tabs.Trigger>
-                <Tabs.Trigger value="suggested" className="font-ibm-plex-mono cursor-pointer">
+                <Tabs.Trigger value="suggested"  className="font-ibm-plex-mono cursor-pointer border border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   Suggested
                 </Tabs.Trigger>
               </Tabs.List>
