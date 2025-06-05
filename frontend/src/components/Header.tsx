@@ -1,29 +1,39 @@
+import { Button } from "@/components/ui/button";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { UserPlus } from "lucide-react";
 
 
 export default function Header({ showNavigation = true }: { showNavigation?: boolean }) {
   const pathname = usePathname();
 
-  const isAuthenticated = false;
+
 
   return (
     <div>
       <header className="w-full py-4 flex justify-between items-center">
         <div className="flex items-center">
-          <Link href={isAuthenticated ? "/indexes" : "/"}>
+          <Link href={false ? "/indexes" : "/"}>
             <div className="relative mr-2 cursor-pointer">
               <Image 
                 src="/logo-black.svg" 
                 alt="Index Protocol" 
-                width={200}
-                height={40}
+                width={200} 
+                height={48}
                 className="object-contain"
               />
             </div>
           </Link>
         </div>
+        <Button 
+            variant="outline" 
+            className="flex items-center px-3 py-5"
+            onClick={() => window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank")}
+          >
+            <UserPlus className="h-5 w-5" />
+            <span className="hidden sm:inline mx-2">Join the waitlist</span>
+          </Button>
       </header>
 
       { showNavigation && 
@@ -35,10 +45,9 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
               <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
                 <Image 
                   src="/icon-folder.svg" 
-                  alt="Indexes"
-                  width={48}
-                  height={48}
+                  width={48} 
                   className="object-contain p-1"
+                  alt="Indexes icon"
                   style={{filter: pathname?.startsWith("/indexes") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
                 />
               </div>
@@ -54,10 +63,9 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
               <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
                 <Image 
                   src="/icon-intent.svg" 
-                  alt="Intents"
-                  width={44}
-                  height={44}
+                  width={44} 
                   className="object-contain p-1"
+                  alt="Intents icon"
                   style={{filter: pathname?.startsWith("/intents") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
                 />
               </div>
