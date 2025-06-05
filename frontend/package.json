@@ -17,6 +17,7 @@
     "@radix-ui/react-tabs": "^1.1.12",
     "@types/express": "^5.0.1",
     "@types/js-cookie": "^3.0.6",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "antd": "^5.25.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -33,6 +34,7 @@
     "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.8",
     "react-layout-kit": "^1.9.1",
+    "react-syntax-highlighter": "^15.6.1",
     "tailwind-merge": "^3.2.0"
   },
   "devDependencies": {

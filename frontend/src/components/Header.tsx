@@ -66,6 +66,56 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
               </span>
             </div>
           </Link>
+
+          {/* Stake Menu Item */}
+          <Link href="/stake" className="cursor-pointer">
+            <div className="flex flex-col items-center cursor-pointer">
+              <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
+                <svg 
+                  width={44}
+                  height={44}
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="object-contain p-1"
+                  style={{filter: pathname.startsWith("/stake") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
+                >
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <span className={`text-sm font-ibm-plex-mono ${pathname.startsWith("/stake") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
+                Stake
+              </span>
+            </div>
+          </Link>
+
+          {/* Integrate Menu Item */}
+          <Link href="/integrate" className="cursor-pointer">
+            <div className="flex flex-col items-center cursor-pointer">
+              <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
+                <svg 
+                  width={44}
+                  height={44}
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="object-contain p-1"
+                  style={{filter: pathname.startsWith("/integrate") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M14 2v6h6" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M16 13H8" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M16 17H8" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M10 9H8" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <span className={`text-sm font-ibm-plex-mono ${pathname.startsWith("/integrate") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
+                Integrate
+              </span>
+            </div>
+          </Link>
         </div>
       </div>
       }
