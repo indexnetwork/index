@@ -34,8 +34,21 @@ export default function IndexesPage() {
     fetchIndexes();
   }, []);
 
-  const handleCreateIndex = async (index: Omit<Index, 'id'>) => {
+  const handleCreateIndex = async (indexData: { name: string }) => {
     try {
+      // Create the full index object with default values
+      const index: Omit<Index, 'id'> = {
+        name: indexData.name,
+        createdAt: new Date().toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        }),
+        members: 1, // Just the creator
+        files: [],
+        suggestedIntents: []
+      };
+      
       const newIndex = await indexesService.createIndex(index);
       setIndexes(prev => [...prev, newIndex]);
       setShowIndexModal(false);

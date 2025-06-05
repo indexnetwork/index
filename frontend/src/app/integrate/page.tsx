@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Copy, Check, Code, Settings, Eye, ChevronRight, ChevronDown, FileText } from "lucide-react";
+import { Copy, Check, ChevronRight, ChevronDown, FileText } from "lucide-react";
 import ClientLayout from "@/components/ClientLayout";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import { MCP } from '@lobehub/icons';
+import Image from "next/image";
 
 interface ComponentConfig {
   id: string;
@@ -1193,9 +1194,11 @@ export default function IntegratePage() {
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Left Column: Image */}
                     <div>
-                      <img 
+                      <Image 
                         src={component.previewImage} 
                         alt={`${component.name} preview`}
+                        width={500}
+                        height={300}
                         className="w-full shadow-lg"
                       />
                     </div>

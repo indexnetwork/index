@@ -8,7 +8,6 @@ import {
   TrendingDown, 
   Activity, 
   Target, 
-  DollarSign,
   Users,
   Zap,
   AlertCircle,
