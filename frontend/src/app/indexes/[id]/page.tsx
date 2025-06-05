@@ -4,6 +4,8 @@ import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft } from "lucide-react";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
+import ConfigureModal from "@/components/modals/ConfigureModal";
+import { MCP } from '@lobehub/icons';
 import Link from "next/link";
 import { indexesService, Index } from "@/services/indexes";
 import ClientLayout from "@/components/ClientLayout";
@@ -20,6 +22,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
   const [showCreateIntentModal, setShowCreateIntentModal] = useState(false);
+  const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [selectedSuggestedIntent, setSelectedSuggestedIntent] = useState<{ title: string; id: string } | null>(null);
   const [index, setIndex] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
@@ -173,17 +176,29 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-2">{index.name}</h1>
             <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {index.createdAt}</p>
           </div>
-          <div className="flex gap-2 mt-4 sm:mt-0">
+          <div className="flex gap-2 mt-4 sm:mt-0 flex-wrap sm:flex-nowrap">
             <Button
               variant="outline"
+              size="sm"
               onClick={() => setShowShareSettingsModal(true)}
+              className="flex items-center gap-2"
             >
-              <Share2 className="h-4 w-4 mr-2" />
+              <Share2 className="h-4 w-4" />
               Share
+            </Button>
+            <Button 
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2"
+              onClick={() => setShowConfigDialog(true)}
+            >
+              <MCP className="h-4 w-4" />
+              <span className="hidden sm:inline">Configure MCP</span>
             </Button>
           </div>
         </div>
 
+        {/* Files Section */}
         <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
           <div className="space-y-3 w-full">
             <div className="flex justify-between items-center">
@@ -340,17 +355,20 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       </div>
 
       {/* Modals */}
-      <ShareSettingsModal 
-        open={showShareSettingsModal} 
+      <ShareSettingsModal
+        open={showShareSettingsModal}
         onOpenChange={setShowShareSettingsModal}
-        indexName={index.name}
+        indexName={index?.name || ''}
       />
       <CreateIntentModal 
         open={showCreateIntentModal}
         onOpenChange={setShowCreateIntentModal}
         onSubmit={handleCreateIntent}
-        initialTitle={selectedSuggestedIntent?.title}
-        initialIndexIds={[index.id]}
+        initialTitle={selectedSuggestedIntent?.title || ''}
+      />
+      <ConfigureModal 
+        open={showConfigDialog}
+        onOpenChange={setShowConfigDialog}
       />
     </ClientLayout>
   );

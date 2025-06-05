@@ -34,8 +34,21 @@ export default function IndexesPage() {
     fetchIndexes();
   }, []);
 
-  const handleCreateIndex = async (index: Omit<Index, 'id'>) => {
+  const handleCreateIndex = async (indexData: { name: string }) => {
     try {
+      // Create the full index object with default values
+      const index: Omit<Index, 'id'> = {
+        name: indexData.name,
+        createdAt: new Date().toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        }),
+        members: 1, // Just the creator
+        files: [],
+        suggestedIntents: []
+      };
+      
       const newIndex = await indexesService.createIndex(index);
       setIndexes(prev => [...prev, newIndex]);
       setShowIndexModal(false);
@@ -55,11 +68,11 @@ export default function IndexesPage() {
         <div className="flex flex-col justify-between mb-4">
           <Tabs.Root defaultValue="my-indexes" className="flex-grow">
             <div className="flex  flex-row items-end justify-between">
-              <Tabs.List className=" border border-black border-b-0 bg-transparent p-0 overflow-x-auto">
-                <Tabs.Trigger value="my-indexes" className="font-ibm-plex-mono cursor-pointer">
+            <Tabs.List className="bg-white overflow-x-auto flex text-sm text-black">
+                <Tabs.Trigger value="my-indexes" className="font-ibm-plex-mono cursor-pointer border border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   My indexes
                 </Tabs.Trigger>
-                <Tabs.Trigger value="shared-with-me" className="font-ibm-plex-mono cursor-pointer">
+                <Tabs.Trigger value="shared-with-me" className="font-ibm-plex-mono cursor-pointer border border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   Shared with me
                 </Tabs.Trigger>
               </Tabs.List>

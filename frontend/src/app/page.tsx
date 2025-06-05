@@ -1,13 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import {  Database, Mail, Github, X } from "lucide-react";
+import { Mail } from "lucide-react";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
 import { Button } from "@/components/ui/button";
 
 export default function LandingPage() {
-  const router = useRouter();
 
   return (
     <ClientLayout showNavigation={false}>
@@ -19,24 +17,24 @@ export default function LandingPage() {
               Discovery that&apos;s always on
             </h1>
             <p className="text-lg text-gray-700 mb-8 font-sans">
-              Agents run in the background, reading signals from your files, matching you with who matters, right when it matters.</p>
+              Agents run in the background, reading signals from your files, connecting you with who matters, right when it matters.</p>
             <Button
-              
+              variant="default"
               size="lg"
-              onClick={() => router.push("/indexes")}
-              className=" transition-colors"
+              onClick={() => window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank")}
+              //className="bg-amber-500 hover:bg-amber-600 text-white transition-colors"
             >
-              Get Started
+              Join the waitlist
             </Button>
           </div>
           <div className="flex-1 flex justify-end xl:px-0">
-            <div className="relative max-w-[400px] lg:max-w-[600px]">
+            <div className="relative w-full max-w-[400px] lg:max-w-[600px] ">
               <Image
                 src="/landing/hero.png"
                 alt="Hero Illustration"
                 width={600}
                 height={600}
-                className="w-full h-auto"
+                className="w-full h-auto ml-10"
                 style={{ imageRendering: 'auto' }}
               />
               <Image 
@@ -98,7 +96,7 @@ export default function LandingPage() {
                   <Image src="/landing/icons/index.svg" width={40} height={40} alt="Index" />
                 </div>
                 <div>
-                  <div className="font-semibold font-ibm-plex-mono mb-1 text-black">START WITH WHAT YOU'RE WORKING ON</div>
+                  <div className="font-medium font-ibm-plex-mono mb-1 text-black">START WITH WHAT YOU&apos;RE WORKING ON</div>
                   <div className="text-sm text-gray-700 font-sans">Upload notes, decks, anything that captures your thinking.<br/><br />
 Stored privately, shared only if you want to.<br/>
 Gives trusted agents real context to understand you.</div>
@@ -109,11 +107,12 @@ Gives trusted agents real context to understand you.</div>
                   <Image src="/landing/icons/intent.svg" width={40} height={40} alt="Intent" />
                 </div>
                 <div>
-                  <div className="font-semibold font-ibm-plex-mono mb-1 text-black">TELL AGENTS WHAT YOU'RE OPEN TO</div>
+                  <div className="font-medium font-ibm-plex-mono mb-1 text-black">TELL AGENTS WHAT YOU&apos;RE OPEN TO</div>
                   <div className="text-sm text-gray-700 font-sans">
-                    Say what you're looking for - plain and simple.<br /><br />
-Looking for privacy infra founders.<br />
-Hiring in ZK ML.<br />
+                    Say what you&apos;re looking for-plain and simple.<br /><br />
+&quot;Looking to find early-stage founders building privacy preserving agent infrastructure.&quot;<br />
+&quot;I want to connect with ZK/ML researchers and builders.&quot;<br />
+&quot;Interested in discovering confidential compute startups.&quot;<br />
                   </div>
                 </div>
               </div>
@@ -123,7 +122,7 @@ Hiring in ZK ML.<br />
                   <Image src="/landing/icons/agents.svg" width={40} height={40} alt="Agent" />
                 </div>
                 <div>
-                  <div className="font-semibold font-ibm-plex-mono mb-1 text-black">AGENTS COMPETE TO MATCH YOU</div>
+                  <div className="font-medium font-ibm-plex-mono mb-1 text-black">AGENTS COMPETE TO MATCH YOU</div>
                   <div className="text-sm text-gray-700 font-sans">They analyze your intent + index. If both sides accept, the agent earns.<br/>Agents can be built by anyone and earn through outcomes-no gatekeeping, just relevance.</div>
                 </div>
               </div>
@@ -132,7 +131,7 @@ Hiring in ZK ML.<br />
                   <Image src="/landing/icons/match.svg" width={40} height={40} alt="Match" />
                 </div>
                 <div>
-                  <div className="font-semibold font-ibm-plex-mono mb-1 text-black">MATCH x COLLABORATE INSTANTLY</div>
+                  <div className="font-medium font-ibm-plex-mono mb-1 text-black">MATCH - COLLABORATE INSTANTLY</div>
                   <div className="text-sm text-gray-700 font-sans">Skip intros. Jump straight to context.<br/>Work together with full visibility-files, notes, and goals already in sync.</div>
                 </div>
               </div>
@@ -142,8 +141,8 @@ Hiring in ZK ML.<br />
                   <Image src="/landing/icons/mcp.svg" width={40} height={40} alt="MCP" />
                 </div>
                 <div>
-                  <div className="font-semibold font-ibm-plex-mono mb-1 text-black">INDEXES, ACTIVATED WITH MCP</div>
-                  <div className="text-sm text-gray-700 font-sans">Connect your context to agents through the Model Context Protocol. Structured, real-time access, without compromising privacy.</div>
+                  <div className="font-medium font-ibm-plex-mono mb-1 text-black">INDEXES, ACTIVATED WITH MCP</div>
+                  <div className="text-sm text-gray-700 font-sans">Your context connects to agents through the Model Context Protocol.<br/>Structured, real-time access, without compromising privacy.</div>
                 </div>
               </div>
             </div>
@@ -164,7 +163,7 @@ Hiring in ZK ML.<br />
                 />
                 <div>
                   <div className="font-bold text-black text-xs tracking-widest mb-1">FOUNDERS</div>
-                  <div className="text-sm text-black font-mono">those who like building in private</div>
+                  <div className="text-sm text-black font-mono">who wants to be found by the right people, not just anyone</div>
                 </div>
               </div>
               <div className="flex gap-4 items-center">
@@ -220,23 +219,19 @@ Hiring in ZK ML.<br />
             */}
             {/* Contact Section - now inside the same container */}
             <div className="mt-16">
-            <h2 className="text-2xl md:text-3xl font-bold font-ibm-plex-mono text-black mb-8">Reach out</h2>
+            <h2 className="text-2xl md:text-3xl font-bold font-ibm-plex-mono text-black mb-8">Contact</h2>
               <ul className="space-y-4 text-left">
                 <li className="flex items-center gap-2">
-                  <span><Database className="w-5 h-5 text-black" /></span>
-                  <a href="https://blog.index.network/subscribe" className="font-mono text-sm text-black hover:text-gray-700">Subscribe our newsletter</a>
+                  <span><Image src="/index-logo-icon.svg" alt="Newsletter" width={20} height={20} className="text-black" /></span>
+                  <a href="https://blog.index.network/subscribe" className="font-mono text-sm text-black hover:text-gray-700">Subscribe to our newsletter</a>
                 </li>
                 <li className="flex items-center gap-2">
-                  <span><X className="w-5 h-5 text-black" /></span>
+                  <span><Image src="/xlogo.png" alt="X" width={16} height={16} className="ml-0.5 text-black" /></span>
                   <a href="https://x.com/indexnetwork_" className="font-mono text-sm text-black hover:text-gray-700">Follow us on X</a>
                 </li>
                 <li className="flex items-center gap-2">
                   <span><Mail className="w-5 h-5 text-black" /></span>
                   <a href="mailto:hello@index.network" className="font-mono text-sm text-black hover:text-gray-700">Send an email</a>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span><Github className="w-5 h-5 text-black" /></span>
-                  <a href="https://github.com/indexnetwork/index" className="font-mono text-sm text-black hover:text-gray-700">Github</a>
                 </li>
               </ul>
             </div>

@@ -75,7 +75,7 @@ export default function CreateIntentModal({
   const [hasInitialized, setHasInitialized] = useState(false);
 
   // Memoize the initial values to prevent unnecessary effect runs
-  const memoizedInitialIndexIds = useMemo(() => initialIndexIds, [initialIndexIds.join(',')]);
+  const memoizedInitialIndexIds = useMemo(() => initialIndexIds, [initialIndexIds]);
   const memoizedInitialTitle = useMemo(() => initialTitle, [initialTitle]);
 
   useEffect(() => {

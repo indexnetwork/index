@@ -1,6 +1,5 @@
 // LMSR market parameters
 const B = 1000; // Liquidity parameter
-const ALPHA = 0.1; // Learning rate
 const FEE_RATE = 0.02; // 2% fee on trades
 
 export interface MarketState {

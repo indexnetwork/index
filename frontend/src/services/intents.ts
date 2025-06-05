@@ -57,139 +57,159 @@ export interface IntentConnection {
   }[];
 }
 
-import { apiClient } from '../lib/api';
-import { getAuthToken } from '../lib/auth';
+// Mock data
+const mockIntents: Intent[] = [
+  {
+    id: "1",
+    title: "Looking for startups building new coordination models",
+    updatedAt: "May 6",
+    connections: 4,
+    status: "active",
+    indexes: []
+  },
+  {
+    id: "2",
+    title: "Want to connect with investors interested in funding user-centric technologies.",
+    updatedAt: "May 6",
+    connections: 4,
+    status: "active",
+    indexes: []
+  },
+  {
+    id: "3",
+    title: "Looking for AI researchers working on multi-agent systems.",
+    updatedAt: "May 5",
+    connections: 0,
+    status: "suggested",
+    indexes: []
+  },
+  {
+    id: "4",
+    title: "Interested in connecting with developers building privacy-preserving protocols.",
+    updatedAt: "May 5",
+    connections: 0,
+    status: "suggested",
+    indexes: []
+  }
+];
 
-// Real API service functions
+const mockConnections: IntentConnection[] = [
+  {
+    id: "1",
+    name: "Seref Yarar",
+    role: "Co-founder of Index Network",
+    avatar: "https://i.pravatar.cc/300?u=b",
+    connectionRationale: "Both share a strong focus on advancing privacy-preserving AI technologies, suggesting a natural alignment in values and vision. Notably, your research has been cited in Arya's work, which highlights an already established intellectual connection and mutual recognition within the academic and technical communities. This foundation could serve as a meaningful basis for further collaboration or shared exploration.",
+    backers: [
+      {
+        agentId: "proofLayer",
+        confidence: 0.95
+      },
+      {
+        agentId: "threshold",
+        confidence: 0.88
+      },
+      {
+        agentId: "aspecta",
+        confidence: 0.92
+      },
+      {
+        agentId: "semanticRelevancy",
+        confidence: 0.85
+      }
+    ]
+  },
+  {
+    id: "2",
+    name: "Arya Mehta",
+    role: "Co-founder of Lighthouse",
+    avatar: "https://i.pravatar.cc/300",
+    connectionRationale: "Both share a strong focus on advancing privacy-preserving AI technologies, suggesting a natural alignment in values and vision. Notably, your research has been cited in Arya's work, which highlights an already established intellectual connection and mutual recognition within the academic and technical communities. This foundation could serve as a meaningful basis for further collaboration or shared exploration.",
+    backers: [
+      {
+        agentId: "proofLayer",
+        confidence: 0.93
+      },
+      {
+        agentId: "threshold",
+        confidence: 0.90
+      },
+      {
+        agentId: "aspecta",
+        confidence: 0.87
+      },
+      {
+        agentId: "semanticRelevancy",
+        confidence: 0.91
+      }
+    ]
+  }
+];
+
+// Mock service functions
 export const intentsService = {
-  getIntents: async (status?: 'active' | 'archived' | 'suggested'): Promise<Intent[]> => {
-    try {
-      const token = getAuthToken();
-      const params = status ? `?status=${status}` : '';
-      const response = await apiClient.get(`/api/intents${params}`, token || undefined);
-      
-      // Transform the API response to match our frontend interface
-      return response.intents?.map((intent: any) => ({
-        id: intent.id,
-        title: intent.title,
-        updatedAt: new Date(intent.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        connections: intent.intentPairs?.length || 0,
-        status: intent.status === 'draft' ? 'suggested' : intent.status,
-        indexes: intent.indexes?.map((index: any) => ({
-          id: index.id,
-          name: index.name,
-          members: index._count?.members || 0
-        })) || []
-      })) || [];
-    } catch (error) {
-      console.error('Error fetching intents:', error);
-      return [];
-    }
+  getIntents: (status?: 'active' | 'archived' | 'suggested'): Promise<Intent[]> => {
+    return new Promise((resolve) => {
+      if (status) {
+        resolve(mockIntents.filter(intent => intent.status === status));
+      } else {
+        resolve(mockIntents);
+      }
+    });
   },
 
-  getIntent: async (id: string): Promise<Intent | undefined> => {
-    try {
-      const token = getAuthToken();
-      const response = await apiClient.get(`/api/intents/${id}`, token || undefined);
-      
-      if (!response.intent) return undefined;
-      
-      const intent = response.intent;
-      return {
-        id: intent.id,
-        title: intent.title,
-        updatedAt: new Date(intent.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        connections: intent.intentPairs?.length || 0,
-        status: intent.status === 'draft' ? 'suggested' : intent.status,
-        indexes: intent.indexes?.map((index: any) => ({
-          id: index.id,
-          name: index.name,
-          members: index.files?.length || 0
-        })) || []
-      };
-    } catch (error) {
-      console.error('Error fetching intent:', error);
-      return undefined;
-    }
+  getIntent: (id: string): Promise<Intent | undefined> => {
+    return new Promise((resolve) => {
+      resolve(mockIntents.find(intent => intent.id === id));
+    });
   },
 
-  getIntentConnections: async (): Promise<IntentConnection[]> => {
-    try {
-      // This would need to be implemented in the backend API
-      // For now, return empty array until the backend provides this endpoint
-      return [];
-    } catch (error) {
-      console.error('Error fetching intent connections:', error);
-      return [];
-    }
+  getIntentConnections: (): Promise<IntentConnection[]> => {
+    return new Promise((resolve) => {
+      resolve(mockConnections);
+    });
   },
 
-  createIntent: async (intent: { title: string; indexIds: string[] }): Promise<Intent> => {
-    try {
-      const token = getAuthToken();
-      const response = await apiClient.post('/api/intents', {
+  createIntent: (intent: { title: string; indexIds: string[] }): Promise<Intent> => {
+    return new Promise((resolve) => {
+      const newIntent = {
+        id: Math.random().toString(36).substr(2, 9),
         title: intent.title,
-        payload: intent.title, // Using title as payload for now
-        indexIds: intent.indexIds
-      }, token || undefined);
-      
-      const newIntent = response.intent;
-      return {
-        id: newIntent.id,
-        title: newIntent.title,
-        updatedAt: new Date(newIntent.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        updatedAt: new Date().toISOString(),
         connections: 0,
-        status: newIntent.status === 'draft' ? 'suggested' : newIntent.status,
-        indexes: newIntent.indexes?.map((index: any) => ({
-          id: index.id,
-          name: index.name,
-          members: Math.floor(Math.random() * 10) + 1 // Fallback until we have actual member data
-        })) || []
+        status: 'active' as const,
+        indexes: intent.indexIds.map(id => ({
+          id,
+          name: `Index ${id}`, // This would be replaced with actual index data
+          members: Math.floor(Math.random() * 10) + 1
+        }))
       };
-    } catch (error) {
-      console.error('Error creating intent:', error);
-      throw error;
-    }
+      mockIntents.push(newIntent);
+      resolve(newIntent);
+    });
   },
 
-  updateIntent: async (id: string, updates: Partial<Intent>): Promise<Intent | undefined> => {
-    try {
-      const token = getAuthToken();
-      const response = await apiClient.put(`/api/intents/${id}`, {
-        title: updates.title,
-        status: updates.status === 'suggested' ? 'draft' : updates.status,
-        indexIds: updates.indexes?.map(index => index.id)
-      }, token || undefined);
-      
-      if (!response.intent) return undefined;
-      
-      const intent = response.intent;
-      return {
-        id: intent.id,
-        title: intent.title,
-        updatedAt: new Date(intent.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        connections: intent.intentPairs?.length || 0,
-        status: intent.status === 'draft' ? 'suggested' : intent.status,
-        indexes: intent.indexes?.map((index: any) => ({
-          id: index.id,
-          name: index.name,
-          members: index.files?.length || 0
-        })) || []
-      };
-    } catch (error) {
-      console.error('Error updating intent:', error);
-      return undefined;
-    }
+  updateIntent: (id: string, updates: Partial<Intent>): Promise<Intent | undefined> => {
+    return new Promise((resolve) => {
+      const index = mockIntents.findIndex(intent => intent.id === id);
+      if (index !== -1) {
+        mockIntents[index] = { ...mockIntents[index], ...updates };
+        resolve(mockIntents[index]);
+      } else {
+        resolve(undefined);
+      }
+    });
   },
 
-  deleteIntent: async (id: string): Promise<boolean> => {
-    try {
-      const token = getAuthToken();
-      await apiClient.delete(`/api/intents/${id}`, token || undefined);
-      return true;
-    } catch (error) {
-      console.error('Error deleting intent:', error);
-      return false;
-    }
+  deleteIntent: (id: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const index = mockIntents.findIndex(intent => intent.id === id);
+      if (index !== -1) {
+        mockIntents.splice(index, 1);
+        resolve(true);
+      } else {
+        resolve(false);
+      }
+    });
   }
 }; 

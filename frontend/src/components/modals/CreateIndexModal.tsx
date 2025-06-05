@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X } from "lucide-react";
-import React from "react";
 // import { FolderOpen, Upload } from "lucide-react";
 
 interface CreateIndexModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSubmit: (index: { name: string }) => Promise<void>;
 }
 
 interface DialogComponentProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -63,28 +63,31 @@ const DialogDescription = ({ className, children, ...props }: DialogDescriptionP
   </Dialog.Description>
 );
 
-export default function CreateIndexModal({ open, onOpenChange }: CreateIndexModalProps) {
+export default function CreateIndexModal({ open, onOpenChange, onSubmit }: CreateIndexModalProps) {
   const [name, setName] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
     
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    console.log('Creating index:', { name, selectedFiles });
-    
-    setName('');
-    setSelectedFiles([]);
-    setIsProcessing(false);
-    setIsSuccess(true);
-    
-    setTimeout(() => {
-      setIsSuccess(false);
-      onOpenChange(false);
-    }, 3000);
+    try {
+      await onSubmit({ name });
+      
+      setName('');
+      setIsProcessing(false);
+      setIsSuccess(true);
+      
+      setTimeout(() => {
+        setIsSuccess(false);
+        onOpenChange(false);
+      }, 3000);
+    } catch (error) {
+      console.error('Error creating index:', error);
+      setIsProcessing(false);
+      // You might want to show an error state here
+    }
   };
 
   return (
