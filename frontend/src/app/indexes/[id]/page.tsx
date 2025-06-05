@@ -198,7 +198,6 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           </div>
         </div>
 
-        {/* Files Section */}
         <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
           <div className="space-y-3 w-full">
             <div className="flex justify-between items-center">
