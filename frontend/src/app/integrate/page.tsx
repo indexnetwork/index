@@ -216,7 +216,7 @@ const components: ComponentConfig[] = [
     id: "matchmakeragent",
     name: "MatchmakerAgent",
     description: "AI-powered matchmaking agent that provides intelligent match suggestions and facilitates connections.",
-    previewImage: "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=400&h=300&fit=crop&crop=center",
+    previewImage: "/integrate/intent.gif",
     caseStudies: [
       {
         title: "Professional Network",
