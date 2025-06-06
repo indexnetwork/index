@@ -1,15 +1,15 @@
 import { Router, Response } from 'express';
-import { body, query, param, validationResult } from 'express-validator';
+import { body, param, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { users, intents, indexes, indexMembers, files } from '../lib/schema';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { users } from '../lib/schema';
+import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, ilike, or, and, count, desc } from 'drizzle-orm';
 
 const router = Router();
 
 // Get single user by ID
 router.get('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -45,7 +45,7 @@ router.get('/:id',
 
 // Update user
 router.put('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [
     param('id').isUUID(),
     body('name').optional().trim().isLength({ min: 2, max: 100 }),
@@ -98,7 +98,7 @@ router.put('/:id',
 
 // Delete user (soft delete)
 router.delete('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {

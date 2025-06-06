@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import prisma from '../lib/db';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import fs from 'fs';
 import path from 'path';
 
@@ -31,7 +31,7 @@ const loadAgentSpecs = () => {
 
 // Get all agents with pagination
 router.get('/', 
-  authenticateToken,
+  authenticatePrivy,
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -102,7 +102,7 @@ router.get('/',
 
 // Get single agent by ID
 router.get('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -164,7 +164,7 @@ router.get('/:id',
 
 // Create new agent (now open to all authenticated users)
 router.post('/',
-  authenticateToken,
+  authenticatePrivy,
   [
     body('name').trim().isLength({ min: 2, max: 100 }),
     body('role').isIn(['USER', 'SYSTEM']),
@@ -211,7 +211,7 @@ router.post('/',
 
 // Update agent (now open to all authenticated users)
 router.put('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [
     param('id').isUUID(),
     body('name').optional().trim().isLength({ min: 2, max: 100 }),
@@ -262,7 +262,7 @@ router.put('/:id',
 
 // Soft delete agent (now open to all authenticated users)
 router.delete('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -291,7 +291,7 @@ router.delete('/:id',
 
 // Get agent specs (metadata about available agents)
 router.get('/specs/list', 
-  authenticateToken,
+  authenticatePrivy,
   async (req: AuthRequest, res: Response) => {
     try {
       const agentSpecs = loadAgentSpecs();

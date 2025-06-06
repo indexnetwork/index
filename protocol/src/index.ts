@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
+import 'dotenv/config';
 import rateLimit from 'express-rate-limit';
 
 import authRoutes from './routes/auth';
@@ -11,8 +11,6 @@ import userRoutes from './routes/users';
 import intentRoutes from './routes/intents';
 import fileRoutes from './routes/files';
 import indexRoutes from './routes/indexes';
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;

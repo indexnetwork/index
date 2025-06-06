@@ -2,14 +2,14 @@ import { Router, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
 import { intents, users, indexes, intentIndexes } from '../lib/schema';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, or, ilike } from 'drizzle-orm';
 
 const router = Router();
 
 // Get all intents with pagination
 router.get('/', 
-  authenticateToken,
+  authenticatePrivy,
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -94,7 +94,7 @@ router.get('/',
 
 // Get single intent by ID
 router.get('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -159,7 +159,7 @@ router.get('/:id',
 
 // Create new intent
 router.post('/',
-  authenticateToken,
+  authenticatePrivy,
   [
     body('title').trim().isLength({ min: 1, max: 255 }),
     body('payload').trim().isLength({ min: 1 }),
@@ -234,7 +234,7 @@ router.post('/',
 
 // Update intent
 router.put('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [
     param('id').isUUID(),
     body('title').optional().trim().isLength({ min: 1, max: 255 }),
@@ -296,7 +296,7 @@ router.put('/:id',
 
 // Delete intent (soft delete)
 router.delete('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {

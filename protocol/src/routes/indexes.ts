@@ -2,14 +2,14 @@ import { Router, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
 import { indexes, users, files, indexMembers, intentIndexes } from '../lib/schema';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, or, ilike, exists } from 'drizzle-orm';
 
 const router = Router();
 
 // Get all indexes with pagination
 router.get('/', 
-  authenticateToken,
+  authenticatePrivy,
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -116,7 +116,7 @@ router.get('/',
 
 // Get single index by ID
 router.get('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -226,7 +226,7 @@ router.get('/:id',
 
 // Create new index
 router.post('/',
-  authenticateToken,
+  authenticatePrivy,
   [
     body('title').trim().isLength({ min: 1, max: 255 }),
     body('isPublic').optional().isBoolean(),
@@ -266,7 +266,7 @@ router.post('/',
 
 // Update index
 router.put('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [
     param('id').isUUID(),
     body('title').optional().trim().isLength({ min: 1, max: 255 }),
@@ -325,7 +325,7 @@ router.put('/:id',
 
 // Delete index (soft delete)
 router.delete('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -367,7 +367,7 @@ router.delete('/:id',
 
 // Add member to index
 router.post('/:id/members',
-  authenticateToken,
+  authenticatePrivy,
   [
     param('id').isUUID(),
     body('userId').isUUID(),
@@ -431,7 +431,7 @@ router.post('/:id/members',
 
 // Remove member from index
 router.delete('/:id/members/:userId',
-  authenticateToken,
+  authenticatePrivy,
   [
     param('id').isUUID(),
     param('userId').isUUID(),

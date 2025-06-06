@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import db from '../lib/db';
 import { files, indexes, users } from '../lib/schema';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, SQL } from 'drizzle-orm';
 
 const router = Router();
@@ -46,7 +46,7 @@ const upload = multer({
 
 // Get all files with pagination
 router.get('/', 
-  authenticateToken,
+  authenticatePrivy,
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -140,7 +140,7 @@ router.get('/',
 
 // Get single file by ID
 router.get('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -205,7 +205,7 @@ router.get('/:id',
 
 // Upload file
 router.post('/',
-  authenticateToken,
+  authenticatePrivy,
   upload.single('file'),
   [
     body('indexId').isUUID(),
@@ -263,7 +263,7 @@ router.post('/',
 
 // Delete file (soft delete)
 router.delete('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
