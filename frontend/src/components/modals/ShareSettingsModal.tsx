@@ -82,7 +82,7 @@ export default function ShareSettingsModal({ open, onOpenChange, indexName }: Sh
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-lg mx-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold text-black font-mono">
             {indexName}

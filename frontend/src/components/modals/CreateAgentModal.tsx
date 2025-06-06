@@ -134,7 +134,7 @@ export default function CreateAgentModal({ open, onOpenChange, onSubmit }: Creat
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl mx-auto max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg mx-auto max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">
             Deploy New Broker Agent
