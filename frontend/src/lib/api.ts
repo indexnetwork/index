@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 
 // API Configuration
@@ -188,7 +189,7 @@ export const apiClient = new APIClient();
 export function useAuthenticatedAPI() {
   const { getAccessToken } = usePrivy();
 
-  const makeAuthenticatedRequest = async <T>(
+  const makeAuthenticatedRequest = useCallback(async <T>(
     requestFn: (accessToken: string) => Promise<T>
   ): Promise<T> => {
     try {
@@ -206,9 +207,9 @@ export function useAuthenticatedAPI() {
         401
       );
     }
-  };
+  }, [getAccessToken]);
 
-  return {
+  return useMemo(() => ({
     get: <T>(endpoint: string) =>
       makeAuthenticatedRequest<T>((token) => apiClient.get<T>(endpoint, token)),
     
@@ -228,7 +229,7 @@ export function useAuthenticatedAPI() {
       makeAuthenticatedRequest<T>((token) => 
         apiClient.uploadFile<T>(endpoint, file, token, additionalData)
       ),
-  };
+  }), [makeAuthenticatedRequest]);
 }
 
 // Utility function for non-authenticated requests

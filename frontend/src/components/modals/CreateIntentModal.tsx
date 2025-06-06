@@ -75,6 +75,7 @@ export default function CreateIntentModal({
   const [expandedProofs, setExpandedProofs] = useState<Set<string>>(new Set());
   const [hasInitialized, setHasInitialized] = useState(false);
 
+  // Fetch indexes when modal opens
   useEffect(() => {
     const fetchIndexes = async () => {
       try {
@@ -89,10 +90,17 @@ export default function CreateIntentModal({
 
     if (open) {
       fetchIndexes();
-      setSelectedIndexes(initialIndexIds);
+    }
+  }, [open, indexesService]);
+
+  // Initialize form data when modal opens
+  useEffect(() => {
+    if (open && !hasInitialized) {
+      // Set initial indexes
+      setSelectedIndexes([...initialIndexIds]);
       
       // Only enhance payload once when modal opens and has initialPayload
-      if (initialPayload && !hasInitialized) {
+      if (initialPayload) {
         const relevantContent = [
           "Found relevant content in 'research_paper.pdf': 'The implementation of zero-knowledge proofs enables privacy-preserving identity verification while maintaining security guarantees. Our approach combines zk-SNARKs with selective disclosure mechanisms.'",
           "Found relevant content in 'project_notes.md': 'Key considerations for the identity protocol: 1) User privacy must be preserved 2) Verification should be efficient 3) Interoperability with existing systems 4) Compliance with regulations'",
@@ -102,13 +110,17 @@ export default function CreateIntentModal({
         // Combine the initial payload with relevant content
         const combinedContent = `${initialPayload}\n\nAdditional context from your files:\n${relevantContent.map(content => `• ${content}`).join('\n')}`;
         setPayload(combinedContent);
-        setHasInitialized(true);
-      } else if (!initialPayload && !hasInitialized) {
+      } else {
         setPayload('');
-        setHasInitialized(true);
       }
-    } else {
-      // Reset when modal closes
+      
+      setHasInitialized(true);
+    }
+  }, [open, hasInitialized, initialIndexIds, initialPayload]);
+
+  // Reset when modal closes
+  useEffect(() => {
+    if (!open) {
       setHasInitialized(false);
       setPayload('');
       setSelectedIndexes([]);
@@ -116,7 +128,7 @@ export default function CreateIntentModal({
       setIsSuccess(false);
       setIsProcessing(false);
     }
-  }, [open, indexesService, initialIndexIds, initialPayload, hasInitialized]); // Include all dependencies
+  }, [open]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useAuthenticatedAPI } from '../lib/api';
 import { 
   Index, 
@@ -135,5 +136,5 @@ export const indexesService = {
 // Hook for using indexes service with proper error handling
 export function useIndexService() {
   const api = useAuthenticatedAPI();
-  return createIndexesService(api);
+  return useMemo(() => createIndexesService(api), [api]);
 } 
