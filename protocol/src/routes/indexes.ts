@@ -202,7 +202,10 @@ router.get('/:id',
           email: indexData.userEmail,
           avatar: indexData.userAvatar
         },
-        files: indexFiles,
+        files: indexFiles.map(file => ({
+          ...file,
+          size: file.size.toString()
+        })),
         members: indexMembersData.map(member => ({
           id: member.userId,
           name: member.userName,

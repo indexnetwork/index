@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Checkbox from "@radix-ui/react-checkbox";
-import { indexesService, Index } from "@/services/indexes";
+import { indexService, Index } from "@/services/indexes";
 import { Textarea } from "../ui/textarea";
 import { ChevronDown, ChevronUp, Check } from "lucide-react";
 
@@ -39,6 +39,7 @@ export default function CreateIntentModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
+  const indexesService = indexService();
   // const [relevantContent, setRelevantContent] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -81,8 +82,8 @@ export default function CreateIntentModal({
   useEffect(() => {
     const fetchIndexes = async () => {
       try {
-        const indexes = await indexesService.getIndexes();
-        setAvailableIndexes(indexes);
+        const response = await indexesService.getIndexes();
+        setAvailableIndexes(response.indexes || []);
         
         // Only enhance title once when modal opens and has initialTitle
         if (memoizedInitialTitle && !hasInitialized) {
@@ -393,8 +394,8 @@ export default function CreateIntentModal({
                               htmlFor={`index-${index.id}`}
                               className="text-sm text-gray-800 font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                             >
-                              {index.name}
-                              <span className="text-gray-500 text-xs ml-2">({index.members} members)</span>
+                              {index.title}
+                              <span className="text-gray-500 text-xs ml-2">({index._count?.members || 0} members)</span>
                             </label>
                           </div>
                         ))

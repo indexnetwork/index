@@ -8,7 +8,7 @@ import { files, indexes, users } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, SQL } from 'drizzle-orm';
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // Configure multer for file uploads
 const uploadDir = path.join(__dirname, '../../uploads');
@@ -44,13 +44,13 @@ const upload = multer({
   }
 });
 
-// Get all files with pagination
+// Get all files for a specific index
 router.get('/', 
   authenticatePrivy,
   [
+    param('indexId').isUUID(),
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('indexId').optional().isUUID(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -61,24 +61,20 @@ router.get('/',
 
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
-      const indexId = req.query.indexId as string;
+      const indexId = req.params.indexId;
       const skip = (page - 1) * limit;
 
-      // If indexId is provided, check user access and filter
-      if (indexId) {
-        const index = await db.select({ id: indexes.id })
-          .from(indexes)
-          .where(eq(indexes.id, indexId))
-          .limit(1);
+      // Check if index exists
+      const index = await db.select({ id: indexes.id })
+        .from(indexes)
+        .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+        .limit(1);
 
-        if (index.length === 0) {
-          return res.status(404).json({ error: 'Index not found' });
-        }
+      if (index.length === 0) {
+        return res.status(404).json({ error: 'Index not found' });
       }
 
-      const whereCondition = indexId 
-        ? and(isNull(files.deletedAt), eq(files.indexId, indexId))
-        : isNull(files.deletedAt);
+      const whereCondition = and(isNull(files.deletedAt), eq(files.indexId, indexId));
 
       const [filesResult, totalResult] = await Promise.all([
         db.select({
@@ -109,7 +105,7 @@ router.get('/',
       const formattedFiles = filesResult.map(file => ({
         id: file.id,
         name: file.name,
-        size: file.size,
+        size: file.size.toString(),
         type: file.type,
         createdAt: file.createdAt,
         index: {
@@ -138,10 +134,13 @@ router.get('/',
   }
 );
 
-// Get single file by ID
-router.get('/:id',
+// Get single file by ID within an index
+router.get('/:fileId',
   authenticatePrivy,
-  [param('id').isUUID()],
+  [
+    param('indexId').isUUID(),
+    param('fileId').isUUID()
+  ],
   async (req: AuthRequest, res: Response) => {
     try {
       const errors = validationResult(req);
@@ -149,7 +148,7 @@ router.get('/:id',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { id } = req.params;
+      const { indexId, fileId } = req.params;
 
       const file = await db.select({
         id: files.id,
@@ -168,7 +167,12 @@ router.get('/:id',
       }).from(files)
         .innerJoin(indexes, eq(files.indexId, indexes.id))
         .innerJoin(users, eq(indexes.userId, users.id))
-        .where(and(eq(files.id, id), isNull(files.deletedAt)))
+        .where(and(
+          eq(files.id, fileId), 
+          eq(files.indexId, indexId),
+          isNull(files.deletedAt),
+          isNull(indexes.deletedAt)
+        ))
         .limit(1);
 
       if (file.length === 0) {
@@ -178,7 +182,7 @@ router.get('/:id',
       const result = {
         id: file[0].id,
         name: file[0].name,
-        size: file[0].size,
+        size: file[0].size.toString(),
         type: file[0].type,
         createdAt: file[0].createdAt,
         updatedAt: file[0].updatedAt,
@@ -203,12 +207,12 @@ router.get('/:id',
   }
 );
 
-// Upload file
+// Upload file to specific index
 router.post('/',
   authenticatePrivy,
   upload.single('file'),
   [
-    body('indexId').isUUID(),
+    param('indexId').isUUID(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -221,7 +225,7 @@ router.post('/',
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const { indexId } = req.body;
+      const { indexId } = req.params;
 
       // Check if index exists and user has access
       const index = await db.select({ id: indexes.id, userId: indexes.userId })
@@ -252,7 +256,10 @@ router.post('/',
 
       return res.status(201).json({
         message: 'File uploaded successfully',
-        file: newFile[0]
+        file: {
+          ...newFile[0],
+          size: newFile[0].size.toString()
+        }
       });
     } catch (error) {
       console.error('Upload file error:', error);
@@ -261,10 +268,13 @@ router.post('/',
   }
 );
 
-// Delete file (soft delete)
-router.delete('/:id',
+// Delete file (soft delete) within an index
+router.delete('/:fileId',
   authenticatePrivy,
-  [param('id').isUUID()],
+  [
+    param('indexId').isUUID(),
+    param('fileId').isUUID()
+  ],
   async (req: AuthRequest, res: Response) => {
     try {
       const errors = validationResult(req);
@@ -272,7 +282,7 @@ router.delete('/:id',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { id } = req.params;
+      const { indexId, fileId } = req.params;
 
       // Check if file exists and user has access
       const file = await db.select({
@@ -280,7 +290,12 @@ router.delete('/:id',
         userId: indexes.userId
       }).from(files)
         .innerJoin(indexes, eq(files.indexId, indexes.id))
-        .where(and(eq(files.id, id), isNull(files.deletedAt)))
+        .where(and(
+          eq(files.id, fileId),
+          eq(files.indexId, indexId),
+          isNull(files.deletedAt),
+          isNull(indexes.deletedAt)
+        ))
         .limit(1);
 
       if (file.length === 0) {
@@ -296,7 +311,7 @@ router.delete('/:id',
           deletedAt: new Date(),
           updatedAt: new Date()
         })
-        .where(eq(files.id, id));
+        .where(eq(files.id, fileId));
 
       return res.json({ message: 'File deleted successfully' });
     } catch (error) {

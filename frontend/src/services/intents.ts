@@ -1,10 +1,16 @@
-export interface Agent {
-  id: string;
-  name: string;
-  role: string;
-  avatar: string;
-}
+import { useAuthenticatedAPI } from '../lib/api';
+import { 
+  Intent,
+  IntentConnection,
+  Agent,
+  PaginatedResponse, 
+  APIResponse, 
+  CreateIntentRequest, 
+  UpdateIntentRequest 
+} from '../lib/types';
+import { allAgents } from '../config/agents';
 
+// Transform config agents to match Agent interface
 export const agents: Agent[] = [
   {
     id: "proofLayer",
@@ -13,26 +19,27 @@ export const agents: Agent[] = [
     avatar: "/avatars/agents/privado.svg"
   },
   {
-    id: "threshold",
+    id: "threshold", 
     name: "Threshold",
     role: "Network Manager Agent",
     avatar: "/avatars/agents/reputex.svg"
   },
   {
     id: "aspecta",
-    name: "Aspecta",
+    name: "Aspecta", 
     role: "Reputation Agent",
     avatar: "/avatars/agents/hapi.svg"
   },
   {
     id: "semanticRelevancy",
     name: "Semantic Relevancy",
-    role: "Relevancy Agent",
+    role: "Relevancy Agent", 
     avatar: "/avatars/agents/trusta.svg"
   }
 ];
 
-export interface Intent {
+// Legacy interface for backward compatibility
+export interface LegacyIntent {
   id: string;
   title: string;
   updatedAt: string;
@@ -45,59 +52,12 @@ export interface Intent {
   }[];
 }
 
-export interface IntentConnection {
-  id: string;
-  name: string;
-  role: string;
-  avatar: string;
-  connectionRationale: string;
-  backers: {
-    agentId: string;
-    confidence: number;
-  }[];
-}
-
-// Mock data
-const mockIntents: Intent[] = [
-  {
-    id: "1",
-    title: "Looking for startups building new coordination models",
-    updatedAt: "May 6",
-    connections: 4,
-    status: "active",
-    indexes: []
-  },
-  {
-    id: "2",
-    title: "Want to connect with investors interested in funding user-centric technologies.",
-    updatedAt: "May 6",
-    connections: 4,
-    status: "active",
-    indexes: []
-  },
-  {
-    id: "3",
-    title: "Looking for AI researchers working on multi-agent systems.",
-    updatedAt: "May 5",
-    connections: 0,
-    status: "suggested",
-    indexes: []
-  },
-  {
-    id: "4",
-    title: "Interested in connecting with developers building privacy-preserving protocols.",
-    updatedAt: "May 5",
-    connections: 0,
-    status: "suggested",
-    indexes: []
-  }
-];
-
+// Mock data for connections (this would come from a separate service)
 const mockConnections: IntentConnection[] = [
   {
     id: "1",
     name: "Seref Yarar",
-    role: "Co-founder of Index Network",
+    role: "Co-founder of Index Network", 
     avatar: "https://i.pravatar.cc/300?u=b",
     connectionRationale: "Both share a strong focus on advancing privacy-preserving AI technologies, suggesting a natural alignment in values and vision. Notably, your research has been cited in Arya's work, which highlights an already established intellectual connection and mutual recognition within the academic and technical communities. This foundation could serve as a meaningful basis for further collaboration or shared exploration.",
     backers: [
@@ -106,7 +66,7 @@ const mockConnections: IntentConnection[] = [
         confidence: 0.95
       },
       {
-        agentId: "threshold",
+        agentId: "threshold", 
         confidence: 0.88
       },
       {
@@ -123,7 +83,7 @@ const mockConnections: IntentConnection[] = [
     id: "2",
     name: "Arya Mehta",
     role: "Co-founder of Lighthouse",
-    avatar: "https://i.pravatar.cc/300",
+    avatar: "https://i.pravatar.cc/300", 
     connectionRationale: "Both share a strong focus on advancing privacy-preserving AI technologies, suggesting a natural alignment in values and vision. Notably, your research has been cited in Arya's work, which highlights an already established intellectual connection and mutual recognition within the academic and technical communities. This foundation could serve as a meaningful basis for further collaboration or shared exploration.",
     backers: [
       {
@@ -135,7 +95,7 @@ const mockConnections: IntentConnection[] = [
         confidence: 0.90
       },
       {
-        agentId: "aspecta",
+        agentId: "aspecta", 
         confidence: 0.87
       },
       {
@@ -146,70 +106,76 @@ const mockConnections: IntentConnection[] = [
   }
 ];
 
-// Mock service functions
+// Service functions using real API
 export const intentsService = {
-  getIntents: (status?: 'active' | 'archived' | 'suggested'): Promise<Intent[]> => {
-    return new Promise((resolve) => {
-      if (status) {
-        resolve(mockIntents.filter(intent => intent.status === status));
-      } else {
-        resolve(mockIntents);
-      }
-    });
+  // Get all intents with pagination
+  getIntents: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Intent>> => {
+    const api = useAuthenticatedAPI();
+    const response = await api.get<PaginatedResponse<Intent>>(`/intents?page=${page}&limit=${limit}`);
+    return response;
   },
 
-  getIntent: (id: string): Promise<Intent | undefined> => {
-    return new Promise((resolve) => {
-      resolve(mockIntents.find(intent => intent.id === id));
-    });
+  // Get single intent by ID
+  getIntent: async (id: string): Promise<Intent> => {
+    const api = useAuthenticatedAPI();
+    const response = await api.get<APIResponse<Intent>>(`/intents/${id}`);
+    if (!response.intent) {
+      throw new Error('Intent not found');
+    }
+    return response.intent;
   },
 
-  getIntentConnections: (): Promise<IntentConnection[]> => {
+  // Get intent connections (mock for now - would need separate connections API)
+  getIntentConnections: async (): Promise<IntentConnection[]> => {
+    // TODO: Replace with real API when connections endpoint is available
     return new Promise((resolve) => {
       resolve(mockConnections);
     });
   },
 
-  createIntent: (intent: { title: string; indexIds: string[] }): Promise<Intent> => {
-    return new Promise((resolve) => {
-      const newIntent = {
-        id: Math.random().toString(36).substr(2, 9),
-        title: intent.title,
-        updatedAt: new Date().toISOString(),
-        connections: 0,
-        status: 'active' as const,
-        indexes: intent.indexIds.map(id => ({
-          id,
-          name: `Index ${id}`, // This would be replaced with actual index data
-          members: Math.floor(Math.random() * 10) + 1
-        }))
-      };
-      mockIntents.push(newIntent);
-      resolve(newIntent);
-    });
+  // Create new intent
+  createIntent: async (data: CreateIntentRequest): Promise<Intent> => {
+    const api = useAuthenticatedAPI();
+    const response = await api.post<APIResponse<Intent>>('/intents', data);
+    if (!response.intent) {
+      throw new Error('Failed to create intent');
+    }
+    return response.intent;
   },
 
-  updateIntent: (id: string, updates: Partial<Intent>): Promise<Intent | undefined> => {
-    return new Promise((resolve) => {
-      const index = mockIntents.findIndex(intent => intent.id === id);
-      if (index !== -1) {
-        mockIntents[index] = { ...mockIntents[index], ...updates };
-        resolve(mockIntents[index]);
-      } else {
-        resolve(undefined);
-      }
-    });
+  // Update intent
+  updateIntent: async (id: string, data: UpdateIntentRequest): Promise<Intent> => {
+    const api = useAuthenticatedAPI();
+    const response = await api.patch<APIResponse<Intent>>(`/intents/${id}`, data);
+    if (!response.intent) {
+      throw new Error('Failed to update intent');
+    }
+    return response.intent;
   },
 
-  deleteIntent: (id: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const index = mockIntents.findIndex(intent => intent.id === id);
-      if (index !== -1) {
-        mockIntents.splice(index, 1);
-        resolve(true);
-      } else {
-        resolve(false);
-      }
-    });
+  // Delete intent
+  deleteIntent: async (id: string): Promise<void> => {
+    const api = useAuthenticatedAPI();
+    await api.delete(`/intents/${id}`);
+  },
+
+  // Add indexes to intent
+  addIndexesToIntent: async (intentId: string, indexIds: string[]): Promise<void> => {
+    const api = useAuthenticatedAPI();
+    await api.post(`/intents/${intentId}/indexes`, { indexIds });
+  },
+
+  // Remove indexes from intent
+  removeIndexesFromIntent: async (intentId: string, indexIds: string[]): Promise<void> => {
+    const api = useAuthenticatedAPI();
+    // For DELETE with body, we can use a POST with _method override or use query params
+    // Using query params approach:
+    const queryParams = indexIds.map(id => `indexIds[]=${id}`).join('&');
+    await api.delete(`/intents/${intentId}/indexes?${queryParams}`);
   }
-}; 
+};
+
+// Hook for using intents service with proper error handling
+export function useIntentsService() {
+  return intentsService;
+} 

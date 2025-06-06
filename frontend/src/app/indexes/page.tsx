@@ -7,7 +7,8 @@ import { Share2, Plus, Lock } from "lucide-react";
 import CreateIndexModal from "@/components/modals/CreateIndexModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
-import { indexesService, Index } from "@/services/indexes";
+import { indexService } from "@/services/indexes";
+import { Index } from "@/lib/types";
 import { MCP } from '@lobehub/icons';
 import ClientLayout from "@/components/ClientLayout";
 
@@ -18,12 +19,13 @@ export default function IndexesPage() {
   const [selectedIndex, setSelectedIndex] = useState("");
   const [indexes, setIndexes] = useState<Index[]>([]);
   const [loading, setLoading] = useState(true);
+  const indexesService = indexService();
 
   useEffect(() => {
     const fetchIndexes = async () => {
       try {
-        const data = await indexesService.getIndexes();
-        setIndexes(data);
+        const response = await indexesService.getIndexes();
+        setIndexes(response.indexes || []);
       } catch (error) {
         console.error('Error fetching indexes:', error);
       } finally {
@@ -32,24 +34,16 @@ export default function IndexesPage() {
     };
 
     fetchIndexes();
-  }, []);
+  }, []); // Empty dependency array - only run once on mount
 
   const handleCreateIndex = async (indexData: { name: string }) => {
     try {
-      // Create the full index object with default values
-      const index: Omit<Index, 'id'> = {
-        name: indexData.name,
-        createdAt: new Date().toLocaleDateString('en-US', { 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric' 
-        }),
-        members: 1, // Just the creator
-        files: [],
-        suggestedIntents: []
+      const createRequest = {
+        title: indexData.name,
+        isPublic: false
       };
       
-      const newIndex = await indexesService.createIndex(index);
+      const newIndex = await indexesService.createIndex(createRequest);
       setIndexes(prev => [...prev, newIndex]);
       setShowIndexModal(false);
     } catch (error) {
@@ -112,8 +106,8 @@ export default function IndexesPage() {
                       }}
                     >
                       <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                        <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{index.name}</h3>
-                        <p className="text-gray-500 text-sm font-ibm-plex-mono">Updated {index.createdAt} • {index.members} members</p>
+                        <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{index.title}</h3>
+                        <p className="text-gray-500 text-sm font-ibm-plex-mono">Updated {new Date(index.createdAt).toLocaleDateString()} • {index._count?.members || 0} members</p>
                       </div>
                       <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                         <Button 
@@ -121,7 +115,7 @@ export default function IndexesPage() {
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedIndex(index.name);
+                            setSelectedIndex(index.title);
                             setShowShareSettingsModal(true);
                           }}
                         >

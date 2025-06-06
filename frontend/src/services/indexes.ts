@@ -1,196 +1,148 @@
-export interface Index {
-  id: string;
-  name: string;
-  createdAt: string;
-  members: number;
-  files: IndexFile[];
-  suggestedIntents: SuggestedIntent[];
-  avatar?: string;
-  role?: string;
-}
+import { useAuthenticatedAPI } from '../lib/api';
+import { 
+  Index, 
+  IndexFile, 
+  PaginatedResponse, 
+  APIResponse, 
+  CreateIndexRequest, 
+  UpdateIndexRequest, 
+  FileUploadResponse 
+} from '../lib/types';
 
-export interface IndexFile {
-  name: string;
-  size: string;
-  date: string;
-}
+// Re-export types for convenience
+export type { Index, IndexFile };
 
+// Legacy interface for backward compatibility
 export interface SuggestedIntent {
   id: string;
   title: string;
   isAdded?: boolean;
 }
 
-// Mock data
-const mockIndexes: Index[] = [
-  {
-    id: "1",
-    name: "2025 Thesis",
-    createdAt: "March 15, 2024",
-    members: 3,
-    files: [
-      { name: "2025 Thesis.pdf", size: "2.4 MB", date: "2024-03-20" },
-      { name: "portfolio.csv", size: "1.1 MB", date: "2024-03-19" },
-      { name: "blog.md", size: "4.2 MB", date: "2024-03-18" },
-      { name: "thesis.pptx", size: "5.6 MB", date: "2024-03-17" },
-      { name: "notes.txt", size: "0.3 MB", date: "2024-03-16" },
-    ],
-    suggestedIntents: [
-      {
-        id: "1",
-        title: "Looking for AI researchers working on multi-agent systems",
-        isAdded: false
-      },
-      {
-        id: "2",
-        title: "Interested in connecting with developers building privacy-preserving protocols",
-        isAdded: false
-      }
-    ]
-  }, {
-    id: "2",
-    name: "My first index",
-    createdAt: "March 15, 2024",
-    members: 3,
-    files: [],
-    suggestedIntents: [
-      {
-        id: "1",
-        title: "Looking for startups building new coordination models",
-        isAdded: false
-      },
-      {
-        id: "4",
-        title: "Interested in open networks that enables new ownership, identity",
-        isAdded: false
-      },
-      {
-        id: "5",
-        title: "Looking for protocols rethinking how value moves, aggregates, or is secured",
-        isAdded: false
-      }
-    ]
+// Helper function to format file size
+function formatFileSize(sizeInBytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = sizeInBytes;
+  let unitIndex = 0;
+  
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex++;
   }
-];
+  
+  return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
 
-// Mock service functions
+// Helper function to format date
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+}
+
+// Service functions that accept API instance as parameter
+export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
+  // Get all indexes with pagination
+  getIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index>> => {
+    console.log('getIndexes', page, limit);
+    const response = await api.get<PaginatedResponse<Index>>(`/indexes?page=${page}&limit=${limit}`);
+    return response;
+  },
+
+  // Get single index by ID
+  getIndex: async (id: string): Promise<Index> => {
+    const response = await api.get<APIResponse<Index>>(`/indexes/${id}`);
+    if (!response.index) {
+      throw new Error('Index not found');
+    }
+    return response.index;
+  },
+
+  // Create new index
+  createIndex: async (data: CreateIndexRequest): Promise<Index> => {
+    const response = await api.post<APIResponse<Index>>('/indexes', data);
+    if (!response.index) {
+      throw new Error('Failed to create index');
+    }
+    return response.index;
+  },
+
+  // Update index
+  updateIndex: async (id: string, data: UpdateIndexRequest): Promise<Index> => {
+    const response = await api.patch<APIResponse<Index>>(`/indexes/${id}`, data);
+    if (!response.index) {
+      throw new Error('Failed to update index');
+    }
+    return response.index;
+  },
+
+  // Delete index
+  deleteIndex: async (id: string): Promise<void> => {
+    await api.delete(`/indexes/${id}`);
+  },
+
+  // Upload file to index
+  uploadFile: async (indexId: string, file: File): Promise<IndexFile> => {
+    const response = await api.uploadFile<FileUploadResponse>(`/indexes/${indexId}/files`, file);
+    return response.file;
+  },
+
+  // Delete file from index
+  deleteFile: async (indexId: string, fileId: string): Promise<void> => {
+    await api.delete(`/indexes/${indexId}/files/${fileId}`);
+  },
+
+  // Add index member
+  addMember: async (indexId: string, userId: string): Promise<void> => {
+    await api.post(`/indexes/${indexId}/members`, { userId });
+  },
+
+  // Remove index member
+  removeMember: async (indexId: string, userId: string): Promise<void> => {
+    await api.delete(`/indexes/${indexId}/members/${userId}`);
+  },
+
+  // Legacy methods for backward compatibility (these would need intent service integration)
+  addSuggestedIntent: async (indexId: string, intentId: string): Promise<boolean> => {
+    try {
+      await api.post(`/intents/${intentId}/indexes`, { indexIds: [indexId] });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  requestConnection: async (indexId: string): Promise<boolean> => {
+    try {
+      // This would depend on your connection request implementation
+      // For now, returning true to maintain compatibility
+      return true;
+    } catch {
+      return false;
+    }
+  }
+});
+
+// Legacy service object for backward compatibility - but this will cause hook errors!
+// Keeping for any existing code that might import it directly
 export const indexesService = {
-  getIndexes: (): Promise<Index[]> => {
-    return new Promise((resolve) => {
-      resolve(mockIndexes);
-    });
-  },
+  getIndexes: () => { throw new Error('Use indexService() hook instead of indexesService directly'); },
+  getIndex: () => { throw new Error('Use indexService() hook instead of indexesService directly'); },
+  createIndex: () => { throw new Error('Use indexService() hook instead of indexesService directly'); },
+  updateIndex: () => { throw new Error('Use indexService() hook instead of indexesService directly'); },
+  deleteIndex: () => { throw new Error('Use indexService() hook instead of indexesService directly'); },
+  uploadFile: () => { throw new Error('Use indexService() hook instead of indexesService directly'); },
+  deleteFile: () => { throw new Error('Use indexService() hook instead of indexesService directly'); },
+  addMember: () => { throw new Error('Use indexService() hook instead of indexesService directly'); },
+  removeMember: () => { throw new Error('Use indexService() hook instead of indexesService directly'); },
+  addSuggestedIntent: () => { throw new Error('Use indexService() hook instead of indexesService directly'); },
+  requestConnection: () => { throw new Error('Use indexService() hook instead of indexesService directly'); }
+};
 
-  getIndex: (id: string): Promise<Index | undefined> => {
-    return new Promise((resolve) => {
-      resolve(mockIndexes.find(index => index.id === id));
-    });
-  },
-
-  createIndex: (index: Omit<Index, 'id'>): Promise<Index> => {
-    return new Promise((resolve) => {
-      const newIndex = {
-        ...index,
-        id: Math.random().toString(36).substr(2, 9)
-      };
-      mockIndexes.push(newIndex);
-      resolve(newIndex);
-    });
-  },
-
-  updateIndex: (id: string, updates: Partial<Index>): Promise<Index | undefined> => {
-    return new Promise((resolve) => {
-      const index = mockIndexes.findIndex(index => index.id === id);
-      if (index !== -1) {
-        mockIndexes[index] = { ...mockIndexes[index], ...updates };
-        resolve(mockIndexes[index]);
-      } else {
-        resolve(undefined);
-      }
-    });
-  },
-
-  deleteIndex: (id: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const index = mockIndexes.findIndex(index => index.id === id);
-      if (index !== -1) {
-        mockIndexes.splice(index, 1);
-        resolve(true);
-      } else {
-        resolve(false);
-      }
-    });
-  },
-
-  uploadFile: (indexId: string, file: File): Promise<IndexFile> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const index = mockIndexes.find(index => index.id === indexId);
-        if (index) {
-          const newFile = {
-            name: file.name,
-            size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-            date: new Date().toISOString().split('T')[0]
-          };
-          index.files.unshift(newFile);
-          resolve(newFile);
-        } else {
-          throw new Error('Index not found');
-        }
-      }, 1500);
-    });
-  },
-
-  deleteFile: (indexId: string, fileName: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const index = mockIndexes.find(index => index.id === indexId);
-      if (index) {
-        const fileIndex = index.files.findIndex(file => file.name === fileName);
-        if (fileIndex !== -1) {
-          index.files.splice(fileIndex, 1);
-          resolve(true);
-        } else {
-          resolve(false);
-        }
-      } else {
-        resolve(false);
-      }
-    });
-  },
-
-  addSuggestedIntent: (indexId: string, intentId: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const indexIndex = mockIndexes.findIndex(index => index.id === indexId);
-      if (indexIndex !== -1) {
-        const intentIndex = mockIndexes[indexIndex].suggestedIntents.findIndex(intent => intent.id === intentId);
-        if (intentIndex !== -1) {
-          // Create a new array to ensure state update
-          const updatedIntents = [...mockIndexes[indexIndex].suggestedIntents];
-          updatedIntents[intentIndex] = {
-            ...updatedIntents[intentIndex],
-            isAdded: true
-          };
-          mockIndexes[indexIndex].suggestedIntents = updatedIntents;
-          resolve(true);
-        } else {
-          resolve(false);
-        }
-      } else {
-        resolve(false);
-      }
-    });
-  },
-
-  requestConnection: (indexId: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const index = mockIndexes.find(index => index.id === indexId);
-      if (index) {
-        // In a real implementation, this would send a connection request
-        // For now, we'll just simulate success
-        resolve(true);
-      } else {
-        resolve(false);
-      }
-    });
-  }
-}; 
+// Hook for using indexes service with proper error handling
+export function indexService() {
+  const api = useAuthenticatedAPI();
+  return createIndexesService(api);
+} 
