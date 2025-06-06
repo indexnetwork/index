@@ -72,7 +72,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // Update index
   updateIndex: async (id: string, data: UpdateIndexRequest): Promise<Index> => {
-    const response = await api.patch<APIResponse<Index>>(`/indexes/${id}`, data);
+    const response = await api.put<APIResponse<Index>>(`/indexes/${id}`, data);
     if (!response.index) {
       throw new Error('Failed to update index');
     }

@@ -32,10 +32,18 @@ const upload = multer({
     fileSize: 100 * 1024 * 1024, // 100MB limit
   },
   fileFilter: function (req, file, cb) {
+    const allowedMimeTypes = {
+      'image': ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif', 'image/tiff', 'image/bmp', 'image/ico', 'image/cur', 'image/apng'],
+      'document': ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip', 'application/json', 'text/markdown', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/rtf', 'application/vnd.oasis.opendocument.text', 'application/vnd.oasis.opendocument.spreadsheet', 'application/vnd.oasis.opendocument.presentation', 'application/epub+zip', 'application/x-mobipocket-ebook', 'application/vnd.amazon.ebook'],
+      'media': ['video/mp4', 'audio/mpeg', 'audio/wav', 'video/x-msvideo', 'video/quicktime', 'video/webm', 'video/mpeg', 'video/3gpp', 'video/x-flv', 'application/x-shockwave-flash', 'video/x-ms-wmv', 'audio/midi', 'audio/x-midi', 'audio/x-ms-wma', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/x-m4a', 'audio/aiff', 'audio/basic', 'audio/snd'],
+      'image-raw': ['image/x-raw', 'image/x-canon-cr2', 'image/x-nikon-nef', 'image/x-sony-arw', 'image/x-panasonic-rw2', 'image/x-adobe-dng', 'image/tiff'],
+      'design': ['image/vnd.adobe.photoshop', 'application/postscript', 'image/svg+xml']
+    };
+    const mimetype = Object.values(allowedMimeTypes).flat().includes(file.mimetype);
+
     const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|txt|csv|xlsx|zip|json|md|mp4|mp3|wav|avi|mov|webm|pptx|ppt|xls|rtf|odt|ods|odp|epub|mobi|azw3|psd|ai|eps|svg|webp|heic|heif|tiff|bmp|ico|cur|apng|webp|mpg|mpeg|3gp|flv|swf|wmv|mid|midi|wma|aac|ogg|wav|flac|m4a|aiff|au|snd|wav|raw|cr2|nef|arw|rw2|dng|tif|tiff|psd|ai|eps|svg|webp|heic|heif|bmp|ico|cur|apng|webp|mpg|mpeg|3gp|flv|swf|wmv|mid|midi|wma|aac|ogg|wav|flac|m4a|aiff|au|snd|wav|raw|cr2|nef|arw|rw2|dng|tif|tiff/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    
+
     if (mimetype && extname) {
       return cb(null, true);
     } else {

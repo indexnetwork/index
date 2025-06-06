@@ -205,75 +205,62 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             </div>
             
             <div className="space-y-2 flex-1">
-                {index.files?.map((file) => (
-                  <div
-                    key={file.id}
-                    className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          className="p-0"
-                          size="lg"
-                        >
-                          <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
-                          <ArrowUpRight className="ml-1 h-4 w-4" />
-                        </Button>
-                      </div>
-                      <p className="text-sm text-gray-500">
-                        {file.size} • {new Date(file.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-500 hover:text-red-700"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleFileDelete(file.id);
-                      }}
-                      disabled={deletingFiles.has(file.id)}
+                {/* Merge uploaded files and uploading files into a single list */}
+                {(() => {
+                  const uploadedFiles = (index.files || []).map(file => ({ ...file, isUploading: false }));
+                  const uploadingFilesList = Array.from(uploadingFiles).map(fileName => ({
+                    id: `uploading-${fileName}`,
+                    name: fileName,
+                    size: '',
+                    createdAt: new Date().toISOString(),
+                    isUploading: true
+                  }));
+                  
+                  // Combine and sort: uploading files first (newest first), then uploaded files
+                  const allFiles = [...uploadingFilesList, ...uploadedFiles];
+                  
+                  return allFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
                     >
-                      {deletingFiles.has(file.id) ? (
-                        <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                ))}
-                {uploadingFiles.size > 0 && Array.from(uploadingFiles).map((fileName) => (
-                  <div
-                  key={fileName}
-                  className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            className="p-0"
+                            size="lg"
+                          >
+                            <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
+                            <ArrowUpRight className="ml-1 h-4 w-4" />
+                          </Button>
+                        </div>
+                        <p className={`text-sm ${file.isUploading ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {file.isUploading ? 'Uploading...' : `${file.size} • ${new Date(file.createdAt).toLocaleDateString()}`}
+                        </p>
+                      </div>
                       <Button
                         variant="ghost"
-                        className="p-0"
-                        size="lg"
+                        size="sm"
+                        className={file.isUploading ? "text-gray-400" : "text-red-500 hover:text-red-700"}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!file.isUploading) {
+                            handleFileDelete(file.id);
+                          }
+                        }}
+                        disabled={file.isUploading || (deletingFiles.has(file.id))}
                       >
-                        <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{fileName}</h4>
-                        <ArrowUpRight className="ml-1 h-4 w-4" />
+                        {file.isUploading || deletingFiles.has(file.id) ? (
+                          <div className={`h-4 w-4 border-2 ${file.isUploading ? 'border-gray-400' : 'border-red-500'} border-t-transparent rounded-full animate-spin`} />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </Button>
                     </div>
-                    <p className="text-sm text-gray-400">Uploading...</p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-gray-400"
-                    disabled
-                  >
-                    <div className="h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                  </Button>
-                </div>
-                
-                
-                ))}
+                  ));
+                })()}
             </div>
 
             {/* Upload Section */}
@@ -363,7 +350,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       <ShareSettingsModal
         open={showShareSettingsModal}
         onOpenChange={setShowShareSettingsModal}
-        indexName={index?.title || ''}
+        index={index}
+        onIndexUpdate={(updatedIndex) => setIndex(updatedIndex)}
       />
       <CreateIntentModal 
         open={showCreateIntentModal}

@@ -16,7 +16,7 @@ export default function IndexesPage() {
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showIndexModal, setShowIndexModal] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState<Index | null>(null);
   const [indexes, setIndexes] = useState<Index[]>([]);
   const [loading, setLoading] = useState(true);
   const indexesService = useIndexes();
@@ -113,11 +113,11 @@ export default function IndexesPage() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedIndex(index.title);
-                            setShowShareSettingsModal(true);
-                          }}
+                                                  onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedIndex(index);
+                          setShowShareSettingsModal(true);
+                        }}
                         >
                           <Share2 className="h-4 w-4 mr-2" />
                           Share
@@ -180,11 +180,17 @@ export default function IndexesPage() {
         onSubmit={handleCreateIndex}
       />
       <ConfigureModal open={showConfigDialog} onOpenChange={setShowConfigDialog} />
-      <ShareSettingsModal 
-        open={showShareSettingsModal} 
-        onOpenChange={setShowShareSettingsModal}
-        indexName={selectedIndex}
-      />
+      {selectedIndex && (
+        <ShareSettingsModal 
+          open={showShareSettingsModal} 
+          onOpenChange={setShowShareSettingsModal}
+          index={selectedIndex}
+          onIndexUpdate={(updatedIndex) => {
+            setIndexes(prev => prev.map(idx => idx.id === updatedIndex.id ? updatedIndex : idx));
+            setSelectedIndex(updatedIndex);
+          }}
+        />
+      )}
     </ClientLayout>
   );
 } 
