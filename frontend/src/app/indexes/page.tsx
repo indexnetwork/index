@@ -34,7 +34,7 @@ export default function IndexesPage() {
     };
 
     fetchIndexes();
-  }, [indexesService]); // Include indexesService dependency
+  }, [indexesService]); // Now safe with memoized service
 
   const handleCreateIndex = async (indexData: { name: string }) => {
     try {
