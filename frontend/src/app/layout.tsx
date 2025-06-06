@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import RootLayoutClient from "@/components/RootLayoutClient";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 export const metadata: Metadata = {
   title: "Index Network | Discovery Protocol",
@@ -37,7 +37,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`antialiased`}>
-        <RootLayoutClient>{children}</RootLayoutClient>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

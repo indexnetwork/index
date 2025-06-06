@@ -1,56 +1,57 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
-import { useRouter } from 'next/navigation';
+import { usePrivy, PrivyProvider } from '@privy-io/react-auth';
+import { useRouter, usePathname } from 'next/navigation';
 
 type AuthContextType = {
   isReady: boolean;
   isLoading: boolean;
   isAuthenticated: boolean;
-  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+function AuthProviderInner({ children }: { children: ReactNode }) {
   const {
     ready,
     authenticated,
-    logout: privyLogout,
   } = usePrivy();
-  // const { login: privyLogin } = useLogin();
 
-  const [isLoading, setIsLoading] = useState(!ready);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
 
   // Handle navigation based on authentication status
   useEffect(() => {
-    if (!ready) return;
-
-    const pathname = window.location.pathname;
+    if (!ready) {
+      return; // Keep loading until Privy is ready
+    }
+    
+    console.log('ready', ready);
+    console.log('authenticated', authenticated);  
+    console.log('pathname', pathname);
+    
     const isHomePage = pathname === '/';
     const isPublicPage = pathname.startsWith('/share') || pathname.startsWith('/simulation');
     
-    if (authenticated && isHomePage) {
+    // Determine if we need to redirect
+    const shouldRedirectToIndexes = authenticated && isHomePage;
+    const shouldRedirectToHome = !authenticated && !isHomePage && !isPublicPage;
+    
+    if (shouldRedirectToIndexes) {
       router.push('/indexes');
-    } else if (!authenticated && !isHomePage && !isPublicPage) {
-      router.push('/');
+      return; // Will re-evaluate when pathname changes
     }
     
-    setIsLoading(false);
-  }, [authenticated, ready, router]);
-
-
-  const logout = async () => {
-    try {
-      await privyLogout();
+    if (shouldRedirectToHome) {
       router.push('/');
-    } catch (error) {
-      console.error('Logout error:', error);
-      router.push('/');
+      return; // Will re-evaluate when pathname changes
     }
-  };
+    
+    // Only stop loading if we're on the correct page for our auth state
+    setIsLoading(false);
+  }, [authenticated, ready, router, pathname]);
 
   return (
     <AuthContext.Provider
@@ -58,11 +59,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isReady: ready,
         isLoading,
         isAuthenticated: authenticated,
-        logout,
       }}
     >
-      {children}
+      {isLoading ? (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
+  );
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  return (
+    <PrivyProvider
+      appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
+      clientId={process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID!}
+      config={{
+        // Create embedded wallets for users who don't have a wallet
+        embeddedWallets: {
+          ethereum: {
+            createOnLogin: 'users-without-wallets'
+          }
+        }
+      }}
+    >
+      <AuthProviderInner>{children}</AuthProviderInner>
+    </PrivyProvider>
   );
 }
 
