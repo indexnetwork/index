@@ -113,7 +113,7 @@ export default function CreateIntentModal({
       // Reset when modal closes
       setHasInitialized(false);
     }
-  }, [open, memoizedInitialTitle, memoizedInitialIndexIds, hasInitialized]);
+  }, [open, memoizedInitialTitle, memoizedInitialIndexIds]);
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();

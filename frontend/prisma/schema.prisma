@@ -48,6 +48,7 @@ model Agent {
 model Intent {
   id          String        @id @default(uuid())
   title       String
+  isPublic    Boolean       @default(false)
   updatedAt   DateTime      @updatedAt
   status      String
   user        User          @relation(fields: [userId], references: [id])
@@ -58,7 +59,8 @@ model Intent {
 
 model Index {
   id               String         @id @default(uuid())
-  name             String
+  title            String
+  isPublic         Boolean        @default(false)
   createdAt        DateTime       @default(now())
   user             User           @relation(fields: [userId], references: [id])
   userId           String

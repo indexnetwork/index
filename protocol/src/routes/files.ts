@@ -1,10 +1,12 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import prisma from '../lib/db';
+import db from '../lib/db';
+import { files, indexes, users } from '../lib/schema';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { eq, isNull, and, count, desc, SQL } from 'drizzle-orm';
 
 const router = Router();
 
@@ -30,8 +32,7 @@ const upload = multer({
     fileSize: 100 * 1024 * 1024, // 100MB limit
   },
   fileFilter: function (req, file, cb) {
-    // Allow common file types
-    const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|txt|csv|xlsx|zip|json|md/;
+    const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|txt|csv|xlsx|zip|json|md|mp4|mp3|wav|avi|mov|webm|pptx|ppt|xls|rtf|odt|ods|odp|epub|mobi|azw3|psd|ai|eps|svg|webp|heic|heif|tiff|bmp|ico|cur|apng|webp|mpg|mpeg|3gp|flv|swf|wmv|mid|midi|wma|aac|ogg|wav|flac|m4a|aiff|au|snd|wav|raw|cr2|nef|arw|rw2|dng|tif|tiff|psd|ai|eps|svg|webp|heic|heif|bmp|ico|cur|apng|webp|mpg|mpeg|3gp|flv|swf|wmv|mid|midi|wma|aac|ogg|wav|flac|m4a|aiff|au|snd|wav|raw|cr2|nef|arw|rw2|dng|tif|tiff/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
     
@@ -63,74 +64,76 @@ router.get('/',
       const indexId = req.query.indexId as string;
       const skip = (page - 1) * limit;
 
-      const where: any = {
-        deletedAt: null
-      };
-
       // If indexId is provided, check user access and filter
       if (indexId) {
-        const index = await prisma.index.findUnique({
-          where: { 
-            id: indexId,
-            ...(req.user!.role !== 'ADMIN' && { userId: req.user!.id })
-          },
-          select: { id: true }
-        });
+        const index = await db.select({ id: indexes.id })
+          .from(indexes)
+          .where(eq(indexes.id, indexId))
+          .limit(1);
 
-        if (!index) {
-          return res.status(404).json({ error: 'Index not found or access denied' });
+        if (index.length === 0) {
+          return res.status(404).json({ error: 'Index not found' });
         }
-
-        where.indexId = indexId;
-      } else if (req.user!.role !== 'ADMIN') {
-        // Non-admin users can only see files from their own indexes
-        where.index = {
-          userId: req.user!.id
-        };
       }
 
-      const [files, total] = await Promise.all([
-        prisma.file.findMany({
-          where,
-          select: {
-            id: true,
-            name: true,
-            size: true,
-            date: true,
-            createdAt: true,
-            index: {
-              select: {
-                id: true,
-                name: true,
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true
-                  }
-                }
-              }
-            }
-          },
-          skip,
-          take: limit,
-          orderBy: { createdAt: 'desc' }
-        }),
-        prisma.file.count({ where })
+      const whereCondition = indexId 
+        ? and(isNull(files.deletedAt), eq(files.indexId, indexId))
+        : isNull(files.deletedAt);
+
+      const [filesResult, totalResult] = await Promise.all([
+        db.select({
+          id: files.id,
+          name: files.name,
+          size: files.size,
+          type: files.type,
+          createdAt: files.createdAt,
+          updatedAt: files.updatedAt,
+          indexId: files.indexId,
+          indexTitle: indexes.title,
+          userId: indexes.userId,
+          userName: users.name,
+          userEmail: users.email
+        }).from(files)
+          .innerJoin(indexes, eq(files.indexId, indexes.id))
+          .innerJoin(users, eq(indexes.userId, users.id))
+          .where(whereCondition)
+          .orderBy(desc(files.createdAt))
+          .offset(skip)
+          .limit(limit),
+
+        db.select({ count: count() })
+          .from(files)
+          .where(whereCondition)
       ]);
 
-      res.json({
-        files,
+      const formattedFiles = filesResult.map(file => ({
+        id: file.id,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        createdAt: file.createdAt,
+        index: {
+          id: file.indexId,
+          title: file.indexTitle,
+          user: {
+            id: file.userId,
+            name: file.userName,
+          }
+        }
+      }));
+
+      return res.json({
+        files: formattedFiles,
         pagination: {
           current: page,
-          total: Math.ceil(total / limit),
-          count: files.length,
-          totalCount: total
+          total: Math.ceil(totalResult[0].count / limit),
+          count: filesResult.length,
+          totalCount: totalResult[0].count
         }
       });
     } catch (error) {
       console.error('Get files error:', error);
-      res.status(500).json({ error: 'Failed to fetch files' });
+      return res.status(500).json({ error: 'Failed to fetch files' });
     }
   }
 );
@@ -148,64 +151,64 @@ router.get('/:id',
 
       const { id } = req.params;
 
-      const where: any = { 
-        id,
-        deletedAt: null
-      };
+      const file = await db.select({
+        id: files.id,
+        name: files.name,
+        size: files.size,
+        type: files.type,
+        createdAt: files.createdAt,
+        updatedAt: files.updatedAt,
+        indexId: indexes.id,
+        indexTitle: indexes.title,
+        indexCreatedAt: indexes.createdAt,
+        userId: users.id,
+        userName: users.name,
+        userEmail: users.email,
+        userAvatar: users.avatar
+      }).from(files)
+        .innerJoin(indexes, eq(files.indexId, indexes.id))
+        .innerJoin(users, eq(indexes.userId, users.id))
+        .where(and(eq(files.id, id), isNull(files.deletedAt)))
+        .limit(1);
 
-      // Non-admin users can only access files from their own indexes
-      if (req.user!.role !== 'ADMIN') {
-        where.index = {
-          userId: req.user!.id
-        };
+      if (file.length === 0) {
+        return res.status(404).json({ error: 'File not found' });
       }
 
-      const file = await prisma.file.findUnique({
-        where,
-        select: {
-          id: true,
-          name: true,
-          size: true,
-          date: true,
-          createdAt: true,
-          updatedAt: true,
-          index: {
-            select: {
-              id: true,
-              name: true,
-              createdAt: true,
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  avatar: true
-                }
-              }
-            }
+      const result = {
+        id: file[0].id,
+        name: file[0].name,
+        size: file[0].size,
+        type: file[0].type,
+        createdAt: file[0].createdAt,
+        updatedAt: file[0].updatedAt,
+        index: {
+          id: file[0].indexId,
+          title: file[0].indexTitle,
+          createdAt: file[0].indexCreatedAt,
+          user: {
+            id: file[0].userId,
+            name: file[0].userName,
+            email: file[0].userEmail,
+            avatar: file[0].userAvatar
           }
         }
-      });
+      };
 
-      if (!file) {
-        return res.status(404).json({ error: 'File not found or access denied' });
-      }
-
-      res.json({ file });
+      return res.json({ file: result });
     } catch (error) {
       console.error('Get file error:', error);
-      res.status(500).json({ error: 'Failed to fetch file' });
+      return res.status(500).json({ error: 'Failed to fetch file' });
     }
   }
 );
 
-// Upload single file
-router.post('/upload',
+// Upload file
+router.post('/',
   authenticateToken,
   upload.single('file'),
   [
     body('indexId').isUUID(),
-    body('description').optional().trim().isLength({ max: 500 })
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -218,169 +221,47 @@ router.post('/upload',
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      const { indexId, description } = req.body;
+      const { indexId } = req.body;
 
-      // Verify user owns the index
-      const index = await prisma.index.findUnique({
-        where: { 
-          id: indexId,
-          userId: req.user!.id
-        },
-        select: { id: true, name: true }
-      });
+      // Check if index exists and user has access
+      const index = await db.select({ id: indexes.id, userId: indexes.userId })
+        .from(indexes)
+        .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
+        .limit(1);
 
-      if (!index) {
-        // Clean up uploaded file if index access denied
-        fs.unlinkSync(req.file.path);
-        return res.status(403).json({ error: 'Index not found or access denied' });
+      if (index.length === 0) {
+        return res.status(404).json({ error: 'Index not found' });
       }
 
-      const file = await prisma.file.create({
-        data: {
-          name: req.file.originalname,
-          size: BigInt(req.file.size),
-          date: new Date(),
-          indexId: indexId
-        },
-        select: {
-          id: true,
-          name: true,
-          size: true,
-          date: true,
-          createdAt: true,
-          index: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        }
+      if (index[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const newFile = await db.insert(files).values({
+        name: req.file.originalname,
+        size: BigInt(req.file.size),
+        type: req.file.mimetype,
+        indexId: indexId,
+      }).returning({
+        id: files.id,
+        name: files.name,
+        size: files.size,
+        type: files.type,
+        createdAt: files.createdAt
       });
 
-      res.status(201).json({
+      return res.status(201).json({
         message: 'File uploaded successfully',
-        file: {
-          ...file,
-          size: file.size.toString() // Convert BigInt to string for JSON
-        },
-        uploadedFile: {
-          originalName: req.file.originalname,
-          fileName: req.file.filename,
-          size: req.file.size,
-          mimeType: req.file.mimetype
-        }
+        file: newFile[0]
       });
     } catch (error) {
-      // Clean up uploaded file on error
-      if (req.file) {
-        try {
-          fs.unlinkSync(req.file.path);
-        } catch (cleanupError) {
-          console.error('Error cleaning up file:', cleanupError);
-        }
-      }
       console.error('Upload file error:', error);
-      res.status(500).json({ error: 'Failed to upload file' });
+      return res.status(500).json({ error: 'Failed to upload file' });
     }
   }
 );
 
-// Upload multiple files
-router.post('/upload-multiple',
-  authenticateToken,
-  upload.array('files', 10), // Max 10 files
-  [
-    body('indexId').isUUID(),
-    body('description').optional().trim().isLength({ max: 500 })
-  ],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const files = req.files as Express.Multer.File[];
-      if (!files || files.length === 0) {
-        return res.status(400).json({ error: 'No files uploaded' });
-      }
-
-      const { indexId, description } = req.body;
-
-      // Verify user owns the index
-      const index = await prisma.index.findUnique({
-        where: { 
-          id: indexId,
-          userId: req.user!.id
-        },
-        select: { id: true, name: true }
-      });
-
-      if (!index) {
-        // Clean up uploaded files if index access denied
-        files.forEach(file => {
-          try {
-            fs.unlinkSync(file.path);
-          } catch (cleanupError) {
-            console.error('Error cleaning up file:', cleanupError);
-          }
-        });
-        return res.status(403).json({ error: 'Index not found or access denied' });
-      }
-
-      // Create file records in database
-      const fileRecords = await Promise.all(
-        files.map(file => 
-          prisma.file.create({
-            data: {
-              name: file.originalname,
-              size: BigInt(file.size),
-              date: new Date(),
-              indexId: indexId
-            },
-            select: {
-              id: true,
-              name: true,
-              size: true,
-              date: true,
-              createdAt: true
-            }
-          })
-        )
-      );
-
-      res.status(201).json({
-        message: `${files.length} files uploaded successfully`,
-        files: fileRecords.map(file => ({
-          ...file,
-          size: file.size.toString() // Convert BigInt to string for JSON
-        })),
-        uploadedFiles: files.map(file => ({
-          originalName: file.originalname,
-          fileName: file.filename,
-          size: file.size,
-          mimeType: file.mimetype
-        }))
-      });
-    } catch (error) {
-      // Clean up uploaded files on error
-      const files = req.files as Express.Multer.File[];
-      if (files) {
-        files.forEach(file => {
-          try {
-            fs.unlinkSync(file.path);
-          } catch (cleanupError) {
-            console.error('Error cleaning up file:', cleanupError);
-          }
-        });
-      }
-      console.error('Upload multiple files error:', error);
-      res.status(500).json({ error: 'Failed to upload files' });
-    }
-  }
-);
-
-// Delete file
+// Delete file (soft delete)
 router.delete('/:id',
   authenticateToken,
   [param('id').isUUID()],
@@ -393,132 +274,34 @@ router.delete('/:id',
 
       const { id } = req.params;
 
-      const where: any = { 
-        id,
-        deletedAt: null
-      };
+      // Check if file exists and user has access
+      const file = await db.select({
+        id: files.id,
+        userId: indexes.userId
+      }).from(files)
+        .innerJoin(indexes, eq(files.indexId, indexes.id))
+        .where(and(eq(files.id, id), isNull(files.deletedAt)))
+        .limit(1);
 
-      // Non-admin users can only delete files from their own indexes
-      if (req.user!.role !== 'ADMIN') {
-        where.index = {
-          userId: req.user!.id
-        };
+      if (file.length === 0) {
+        return res.status(404).json({ error: 'File not found' });
       }
 
-      // Soft delete the file record
-      await prisma.file.update({
-        where,
-        data: { deletedAt: new Date() }
-      });
-
-      res.json({ message: 'File deleted successfully' });
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        return res.status(404).json({ error: 'File not found or access denied' });
+      if (file[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
       }
+
+      await db.update(files)
+        .set({ 
+          deletedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(files.id, id));
+
+      return res.json({ message: 'File deleted successfully' });
+    } catch (error) {
       console.error('Delete file error:', error);
-      res.status(500).json({ error: 'Failed to delete file' });
-    }
-  }
-);
-
-// Download file
-router.get('/:id/download',
-  authenticateToken,
-  [param('id').isUUID()],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { id } = req.params;
-
-      const where: any = { 
-        id,
-        deletedAt: null
-      };
-
-      // Non-admin users can only download files from their own indexes
-      if (req.user!.role !== 'ADMIN') {
-        where.index = {
-          userId: req.user!.id
-        };
-      }
-
-      const file = await prisma.file.findUnique({
-        where,
-        select: {
-          id: true,
-          name: true,
-          createdAt: true
-        }
-      });
-
-      if (!file) {
-        return res.status(404).json({ error: 'File not found or access denied' });
-      }
-
-      // For now, return file metadata (actual file serving would need proper file storage)
-      res.json({ 
-        message: 'File download endpoint',
-        file,
-        note: 'TODO: Implement actual file serving from storage'
-      });
-    } catch (error) {
-      console.error('Download file error:', error);
-      res.status(500).json({ error: 'Failed to download file' });
-    }
-  }
-);
-
-// Get file statistics for an index
-router.get('/stats/:indexId',
-  authenticateToken,
-  [param('indexId').isUUID()],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { indexId } = req.params;
-
-      // Verify user has access to this index
-      const index = await prisma.index.findUnique({
-        where: { 
-          id: indexId,
-          ...(req.user!.role !== 'ADMIN' && { userId: req.user!.id })
-        },
-        select: { id: true, name: true }
-      });
-
-      if (!index) {
-        return res.status(404).json({ error: 'Index not found or access denied' });
-      }
-
-      const stats = await prisma.file.aggregate({
-        where: {
-          indexId,
-          deletedAt: null
-        },
-        _count: { id: true },
-        _sum: { size: true }
-      });
-
-      res.json({
-        index,
-        stats: {
-          totalFiles: stats._count.id || 0,
-          totalSize: stats._sum.size?.toString() || '0',
-          totalSizeBytes: Number(stats._sum.size || 0)
-        }
-      });
-    } catch (error) {
-      console.error('Get file stats error:', error);
-      res.status(500).json({ error: 'Failed to get file statistics' });
+      return res.status(500).json({ error: 'Failed to delete file' });
     }
   }
 );

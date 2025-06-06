@@ -7,7 +7,7 @@ import rateLimit from 'express-rate-limit';
 
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
-import agentRoutes from './routes/agents';
+//import agentRoutes from './routes/agents';
 import intentRoutes from './routes/intents';
 import fileRoutes from './routes/files';
 import indexRoutes from './routes/indexes';
@@ -40,7 +40,7 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/agents', agentRoutes);
+//app.use('/api/agents', agentRoutes);
 app.use('/api/intents', intentRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/indexes', indexRoutes);

@@ -3,23 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "nodemon src/index.ts",
+    "dev": "nodemon",
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src/**/*.ts",
-    "prisma:generate": "prisma generate --schema=agent_schema.prisma",
-    "prisma:migrate": "prisma migrate dev --schema=agent_schema.prisma",
-    "prisma:studio": "prisma studio --schema=agent_schema.prisma"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@langchain/community": "^0.3.44",
     "@langchain/core": "^0.3.57",
     "@langchain/langgraph": "^0.2.73",
     "@langchain/openai": "^0.5.11",
-    "@prisma/client": "^5.7.1",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "drizzle-orm": "^0.36.4",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
     "express-validator": "^7.0.1",
@@ -27,7 +27,8 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
-    "openai": "^4.103.0"
+    "openai": "^4.103.0",
+    "postgres": "^3.4.7"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -39,9 +40,9 @@
     "@types/node": "^20.10.5",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
+    "drizzle-kit": "^0.28.1",
     "eslint": "^8.56.0",
     "nodemon": "^3.0.2",
-    "prisma": "^5.7.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   },

@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import prisma from '../lib/db';
+import db from '../lib/db';
+import { users } from '../lib/schema';
+import { eq, isNull } from 'drizzle-orm';
 
 interface AuthRequest extends Request {
   user?: {
@@ -21,21 +23,24 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
     
     // Fetch fresh user data
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: { id: true, email: true, deletedAt: true }
-    });
+    const user = await db.select({
+      id: users.id,
+      email: users.email,
+      deletedAt: users.deletedAt
+    }).from(users).where(eq(users.id, decoded.userId)).limit(1);
 
-    if (!user || user.deletedAt) {
+    const userData = user[0];
+
+    if (!userData || userData.deletedAt) {
       return res.status(401).json({ error: 'Invalid token' });
     }
 
     req.user = {
-      id: user.id,
-      email: user.email
+      id: userData.id,
+      email: userData.email
     };
 
-    next();
+    return next();
   } catch (error) {
     console.error('JWT verification error:', error);
     return res.status(403).json({ error: 'Invalid or expired token' });

@@ -1,7 +1,9 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
-import prisma from '../lib/db';
+import db from '../lib/db';
+import { indexes, users, files, indexMembers, intentIndexes } from '../lib/schema';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
+import { eq, isNull, and, count, desc, or, ilike, exists } from 'drizzle-orm';
 
 const router = Router();
 
@@ -11,8 +13,6 @@ router.get('/',
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('search').optional().trim(),
-    query('userId').optional().isUUID(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -23,65 +23,93 @@ router.get('/',
 
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
-      const search = req.query.search as string;
-      const userId = req.query.userId as string;
       const skip = (page - 1) * limit;
 
-      const where: any = {};
+      // Users can only see their own indexes or indexes they're members of
+      const whereCondition = and(
+        isNull(indexes.deletedAt),
+        or(
+          eq(indexes.userId, req.user!.id),
+          // Check if user is a member of the index
+          exists(
+            db.select({ indexId: indexMembers.indexId })
+              .from(indexMembers)
+              .where(and(
+                eq(indexMembers.indexId, indexes.id),
+                eq(indexMembers.userId, req.user!.id)
+              ))
+          )
+        )
+      ) ?? isNull(indexes.deletedAt);
 
-      // Users can filter by userId if provided
-      if (userId) {
-        where.userId = userId;
-      }
+      const [indexesResult, totalResult] = await Promise.all([
+        db.select({
+          id: indexes.id,
+          title: indexes.title,
+          isPublic: indexes.isPublic,
+          createdAt: indexes.createdAt,
+          updatedAt: indexes.updatedAt,
+          userId: indexes.userId,
+          userName: users.name,
+          userEmail: users.email,
+          userAvatar: users.avatar
+        }).from(indexes)
+          .innerJoin(users, eq(indexes.userId, users.id))
+          .where(whereCondition)
+          .orderBy(desc(indexes.createdAt))
+          .offset(skip)
+          .limit(limit),
 
-      if (search) {
-        where.name = {
-          contains: search,
-          mode: 'insensitive'
-        };
-      }
-
-      const [indexes, total] = await Promise.all([
-        prisma.index.findMany({
-          where,
-          select: {
-            id: true,
-            name: true,
-            createdAt: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true
-              }
-            },
-            _count: {
-              select: {
-                files: true,
-                intents: true,
-                members: true
-              }
-            }
-          },
-          skip,
-          take: limit,
-          orderBy: { createdAt: 'desc' }
-        }),
-        prisma.index.count({ where })
+        db.select({ count: count() })
+          .from(indexes)
+          .innerJoin(users, eq(indexes.userId, users.id))
+          .where(whereCondition)
       ]);
 
-      res.json({
-        indexes,
+      // Get file counts for each index
+      const indexesWithCounts = await Promise.all(
+        indexesResult.map(async (index) => {
+          const [fileCount, memberCount] = await Promise.all([
+            db.select({ count: count() })
+              .from(files)
+              .where(and(eq(files.indexId, index.id), isNull(files.deletedAt))),
+            db.select({ count: count() })
+              .from(indexMembers)
+              .where(eq(indexMembers.indexId, index.id))
+          ]);
+
+          return {
+            id: index.id,
+            title: index.title,
+            isPublic: index.isPublic,
+            createdAt: index.createdAt,
+            updatedAt: index.updatedAt,
+            user: {
+              id: index.userId,
+              name: index.userName,
+              email: index.userEmail,
+              avatar: index.userAvatar
+            },
+            _count: {
+              files: fileCount[0].count,
+              members: memberCount[0].count
+            }
+          };
+        })
+      );
+
+      return res.json({
+        indexes: indexesWithCounts,
         pagination: {
           current: page,
-          total: Math.ceil(total / limit),
-          count: indexes.length,
-          totalCount: total
+          total: Math.ceil(totalResult[0].count / limit),
+          count: indexesResult.length,
+          totalCount: totalResult[0].count
         }
       });
     } catch (error) {
       console.error('Get indexes error:', error);
-      res.status(500).json({ error: 'Failed to fetch indexes' });
+      return res.status(500).json({ error: 'Failed to fetch indexes' });
     }
   }
 );
@@ -98,75 +126,100 @@ router.get('/:id',
       }
 
       const { id } = req.params;
-      
-      const index = await prisma.index.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          name: true,
-          createdAt: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              avatar: true
-            }
-          },
-          members: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              avatar: true
-            }
-          },
-          files: {
-            select: {
-              id: true,
-              name: true,
-              size: true,
-              date: true,
-              createdAt: true
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 10
-          },
-          intents: {
-            select: {
-              id: true,
-              title: true,
-              status: true,
-              updatedAt: true
-            },
-            orderBy: { updatedAt: 'desc' },
-            take: 5
-          }
-        }
-      });
 
-      if (!index) {
+      const index = await db.select({
+        id: indexes.id,
+        title: indexes.title,
+        isPublic: indexes.isPublic,
+        createdAt: indexes.createdAt,
+        updatedAt: indexes.updatedAt,
+        userId: indexes.userId,
+        userName: users.name,
+        userEmail: users.email,
+        userAvatar: users.avatar
+      }).from(indexes)
+        .innerJoin(users, eq(indexes.userId, users.id))
+        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
+        .limit(1);
+
+      if (index.length === 0) {
         return res.status(404).json({ error: 'Index not found' });
       }
 
-      // Check permissions
-      const isOwner = index.user.id === req.user!.id;
-      const isMember = index.members.some((member: any) => member.id === req.user!.id);
+      // Check access permissions
+      const indexData = index[0];
+      const hasAccess = indexData.isPublic || indexData.userId === req.user!.id;
 
-      res.json({ 
-        index: {
-          ...index,
-          permissions: {
-            canView: true,
-            canEdit: isOwner,
-            canDelete: isOwner,
-            canAddMembers: isOwner
-          }
+      if (!hasAccess) {
+        // Check if user is a member
+        const membership = await db.select({ userId: indexMembers.userId })
+          .from(indexMembers)
+          .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
+          .limit(1);
+
+        if (membership.length === 0) {
+          return res.status(403).json({ error: 'Access denied' });
         }
-      });
+      }
+
+      // Get related data
+      const [indexFiles, indexMembersData, intentCount] = await Promise.all([
+        db.select({
+          id: files.id,
+          name: files.name,
+          type: files.type,
+          size: files.size,
+          createdAt: files.createdAt
+        }).from(files)
+          .where(and(eq(files.indexId, id), isNull(files.deletedAt)))
+          .orderBy(desc(files.createdAt))
+          .limit(10),
+
+        db.select({
+          userId: indexMembers.userId,
+          userName: users.name,
+          userEmail: users.email,
+          userAvatar: users.avatar
+        }).from(indexMembers)
+          .innerJoin(users, eq(indexMembers.userId, users.id))
+          .where(eq(indexMembers.indexId, id))
+          .limit(10),
+
+        db.select({ count: count() })
+          .from(intentIndexes)
+          .where(eq(intentIndexes.indexId, id))
+      ]);
+
+      const result = {
+        id: indexData.id,
+        title: indexData.title,
+        isPublic: indexData.isPublic,
+        createdAt: indexData.createdAt,
+        updatedAt: indexData.updatedAt,
+        user: {
+          id: indexData.userId,
+          name: indexData.userName,
+          email: indexData.userEmail,
+          avatar: indexData.userAvatar
+        },
+        files: indexFiles,
+        members: indexMembersData.map(member => ({
+          id: member.userId,
+          name: member.userName,
+          email: member.userEmail,
+          avatar: member.userAvatar
+        })),
+        _count: {
+          files: indexFiles.length,
+          members: indexMembersData.length,
+          intents: intentCount[0].count
+        }
+      };
+
+      return res.json({ index: result });
     } catch (error) {
       console.error('Get index error:', error);
-      res.status(500).json({ error: 'Failed to fetch index' });
+      return res.status(500).json({ error: 'Failed to fetch index' });
     }
   }
 );
@@ -175,10 +228,8 @@ router.get('/:id',
 router.post('/',
   authenticateToken,
   [
-    body('name').trim().isLength({ min: 2, max: 100 }),
-    body('description').optional().trim().isLength({ max: 500 }),
-    body('memberIds').optional().isArray(),
-    body('memberIds.*').optional().isUUID(),
+    body('title').trim().isLength({ min: 1, max: 255 }),
+    body('isPublic').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -187,62 +238,28 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { name, description, memberIds = [] } = req.body;
+      const { title, isPublic = false } = req.body;
 
-      // Verify member IDs exist and are valid users
-      if (memberIds.length > 0) {
-        const validMembers = await prisma.user.findMany({
-          where: {
-            id: { in: memberIds },
-            deletedAt: null
-          },
-          select: { id: true }
-        });
-
-        if (validMembers.length !== memberIds.length) {
-          return res.status(400).json({ error: 'Some member IDs are invalid' });
-        }
-      }
-
-      const index = await prisma.index.create({
-        data: {
-          name,
-          userId: req.user!.id,
-          members: {
-            connect: memberIds.map((id: string) => ({ id }))
-          }
-        },
-        select: {
-          id: true,
-          name: true,
-          createdAt: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          },
-          members: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          }
-        }
+      const newIndex = await db.insert(indexes).values({
+        title,
+        isPublic,
+        userId: req.user!.id,
+      }).returning({
+        id: indexes.id,
+        title: indexes.title,
+        isPublic: indexes.isPublic,
+        createdAt: indexes.createdAt,
+        updatedAt: indexes.updatedAt,
+        userId: indexes.userId
       });
 
-      res.status(201).json({
+      return res.status(201).json({
         message: 'Index created successfully',
-        index
+        index: newIndex[0]
       });
-    } catch (error: any) {
-      if (error.code === 'P2002') {
-        return res.status(400).json({ error: 'Index with this name already exists for this user' });
-      }
+    } catch (error) {
       console.error('Create index error:', error);
-      res.status(500).json({ error: 'Failed to create index' });
+      return res.status(500).json({ error: 'Failed to create index' });
     }
   }
 );
@@ -252,8 +269,8 @@ router.put('/:id',
   authenticateToken,
   [
     param('id').isUUID(),
-    body('name').optional().trim().isLength({ min: 2, max: 100 }),
-    body('description').optional().trim().isLength({ max: 500 }),
+    body('title').optional().trim().isLength({ min: 1, max: 255 }),
+    body('isPublic').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -263,56 +280,50 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { name, description } = req.body;
+      const { title, isPublic } = req.body;
 
-      // Users can only update their own indexes
-      const where: any = { id, userId: req.user!.id };
+      // Check if index exists and user owns it
+      const index = await db.select({ id: indexes.id, userId: indexes.userId })
+        .from(indexes)
+        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
+        .limit(1);
 
-      const updateData: any = {};
-      if (name !== undefined) updateData.name = name;
+      if (index.length === 0) {
+        return res.status(404).json({ error: 'Index not found' });
+      }
 
-      const index = await prisma.index.update({
-        where,
-        data: updateData,
-        select: {
-          id: true,
-          name: true,
-          createdAt: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          },
-          members: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          }
-        }
-      });
+      if (index[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
 
-      res.json({
+      const updateData: any = { updatedAt: new Date() };
+      if (title !== undefined) updateData.title = title;
+      if (isPublic !== undefined) updateData.isPublic = isPublic;
+
+      const updatedIndex = await db.update(indexes)
+        .set(updateData)
+        .where(eq(indexes.id, id))
+        .returning({
+          id: indexes.id,
+          title: indexes.title,
+          isPublic: indexes.isPublic,
+          createdAt: indexes.createdAt,
+          updatedAt: indexes.updatedAt,
+          userId: indexes.userId
+        });
+
+      return res.json({
         message: 'Index updated successfully',
-        index
+        index: updatedIndex[0]
       });
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        return res.status(404).json({ error: 'Index not found or access denied' });
-      }
-      if (error.code === 'P2002') {
-        return res.status(400).json({ error: 'Index with this name already exists for this user' });
-      }
+    } catch (error) {
       console.error('Update index error:', error);
-      res.status(500).json({ error: 'Failed to update index' });
+      return res.status(500).json({ error: 'Failed to update index' });
     }
   }
 );
 
-// Delete index
+// Delete index (soft delete)
 router.delete('/:id',
   authenticateToken,
   [param('id').isUUID()],
@@ -325,45 +336,31 @@ router.delete('/:id',
 
       const { id } = req.params;
 
-      // Users can only delete their own indexes
-      const where: any = { id, userId: req.user!.id };
+      // Check if index exists and user owns it
+      const index = await db.select({ id: indexes.id, userId: indexes.userId })
+        .from(indexes)
+        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
+        .limit(1);
 
-      // Check if index has files or intents
-      const index = await prisma.index.findUnique({
-        where,
-        select: {
-          _count: {
-            select: {
-              files: { where: { deletedAt: null } },
-              intents: true
-            }
-          }
-        }
-      });
-
-      if (!index) {
-        return res.status(404).json({ error: 'Index not found or access denied' });
+      if (index.length === 0) {
+        return res.status(404).json({ error: 'Index not found' });
       }
 
-      if (index._count.files > 0 || index._count.intents > 0) {
-        return res.status(400).json({ 
-          error: 'Cannot delete index with files or intents. Remove them first.',
-          hasFiles: index._count.files > 0,
-          hasIntents: index._count.intents > 0
-        });
+      if (index[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
       }
 
-      await prisma.index.delete({
-        where
-      });
+      await db.update(indexes)
+        .set({ 
+          deletedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(indexes.id, id));
 
-      res.json({ message: 'Index deleted successfully' });
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        return res.status(404).json({ error: 'Index not found or access denied' });
-      }
+      return res.json({ message: 'Index deleted successfully' });
+    } catch (error) {
       console.error('Delete index error:', error);
-      res.status(500).json({ error: 'Failed to delete index' });
+      return res.status(500).json({ error: 'Failed to delete index' });
     }
   }
 );
@@ -373,8 +370,7 @@ router.post('/:id/members',
   authenticateToken,
   [
     param('id').isUUID(),
-    body('userIds').isArray(),
-    body('userIds.*').isUUID(),
+    body('userId').isUUID(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -384,67 +380,51 @@ router.post('/:id/members',
       }
 
       const { id } = req.params;
-      const { userIds } = req.body;
+      const { userId } = req.body;
 
-      // Users can only add members to their own indexes
-      const where: any = { id, userId: req.user!.id };
+      // Check if index exists and user owns it
+      const index = await db.select({ id: indexes.id, userId: indexes.userId })
+        .from(indexes)
+        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
+        .limit(1);
 
-      // Verify index exists and user has permission
-      const index = await prisma.index.findUnique({
-        where,
-        select: { id: true, name: true }
-      });
-
-      if (!index) {
-        return res.status(404).json({ error: 'Index not found or access denied' });
+      if (index.length === 0) {
+        return res.status(404).json({ error: 'Index not found' });
       }
 
-      // Verify all user IDs are valid
-      const validUsers = await prisma.user.findMany({
-        where: {
-          id: { in: userIds },
-          deletedAt: null
-        },
-        select: { id: true, name: true, email: true }
-      });
-
-      if (validUsers.length !== userIds.length) {
-        return res.status(400).json({ error: 'Some user IDs are invalid' });
+      if (index[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Add members to index
-      const updatedIndex = await prisma.index.update({
-        where: { id },
-        data: {
-          members: {
-            connect: userIds.map((userId: string) => ({ id: userId }))
-          }
-        },
-        select: {
-          id: true,
-          name: true,
-          members: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              avatar: true
-            }
-          }
-        }
+      // Check if user exists
+      const user = await db.select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+        .limit(1);
+
+      if (user.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Check if membership already exists
+      const existingMember = await db.select({ userId: indexMembers.userId })
+        .from(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)))
+        .limit(1);
+
+      if (existingMember.length > 0) {
+        return res.status(400).json({ error: 'User is already a member of this index' });
+      }
+
+      await db.insert(indexMembers).values({
+        indexId: id,
+        userId: userId,
       });
 
-      res.json({
-        message: `Added ${userIds.length} member(s) to index`,
-        index: updatedIndex,
-        addedUsers: validUsers
-      });
-    } catch (error: any) {
-      if (error.code === 'P2002') {
-        return res.status(400).json({ error: 'Some users are already members of this index' });
-      }
-      console.error('Add members error:', error);
-      res.status(500).json({ error: 'Failed to add members' });
+      return res.status(201).json({ message: 'Member added successfully' });
+    } catch (error) {
+      console.error('Add member error:', error);
+      return res.status(500).json({ error: 'Failed to add member' });
     }
   }
 );
@@ -465,149 +445,32 @@ router.delete('/:id/members/:userId',
 
       const { id, userId } = req.params;
 
-      const where: any = { id };
-      // Non-admin users can only remove members from their own indexes
-      if (req.user!.role !== 'ADMIN') {
-        where.userId = req.user!.id;
+      // Check if index exists and user owns it
+      const index = await db.select({ id: indexes.id, userId: indexes.userId })
+        .from(indexes)
+        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
+        .limit(1);
+
+      if (index.length === 0) {
+        return res.status(404).json({ error: 'Index not found' });
       }
 
-      // Verify index exists and user has permission
-      const index = await prisma.index.findUnique({
-        where,
-        select: { id: true, name: true, userId: true }
-      });
-
-      if (!index) {
-        return res.status(404).json({ error: 'Index not found or access denied' });
+      if (index[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Prevent removing the owner from their own index
-      if (userId === index.userId) {
-        return res.status(400).json({ error: 'Cannot remove the owner from their own index' });
+      const result = await db.delete(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)))
+        .returning({ userId: indexMembers.userId });
+
+      if (result.length === 0) {
+        return res.status(404).json({ error: 'Member not found' });
       }
 
-      // Remove member from index
-      await prisma.index.update({
-        where: { id },
-        data: {
-          members: {
-            disconnect: { id: userId }
-          }
-        }
-      });
-
-      res.json({ message: 'Member removed from index successfully' });
+      return res.json({ message: 'Member removed successfully' });
     } catch (error) {
       console.error('Remove member error:', error);
-      res.status(500).json({ error: 'Failed to remove member' });
-    }
-  }
-);
-
-// Get index statistics
-router.get('/:id/stats',
-  authenticateToken,
-  [param('id').isUUID()],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { id } = req.params;
-
-      const where: any = { id };
-      // Non-admin users can only view stats for indexes they own or are members of
-      if (req.user!.role !== 'ADMIN') {
-        where.OR = [
-          { userId: req.user!.id },
-          { members: { some: { id: req.user!.id } } }
-        ];
-      }
-
-      const index = await prisma.index.findFirst({
-        where,
-        select: {
-          id: true,
-          name: true,
-          createdAt: true,
-          _count: {
-            select: {
-              files: { where: { deletedAt: null } },
-              intents: true,
-              members: true
-            }
-          }
-        }
-      });
-
-      if (!index) {
-        return res.status(404).json({ error: 'Index not found or access denied' });
-      }
-
-      // Get file size statistics
-      const fileSizeStats = await prisma.file.aggregate({
-        where: {
-          indexId: id,
-          deletedAt: null
-        },
-        _sum: { size: true },
-        _avg: { size: true },
-        _max: { size: true }
-      });
-
-      // Get recent activity
-      const recentFiles = await prisma.file.findMany({
-        where: {
-          indexId: id,
-          deletedAt: null
-        },
-        select: {
-          name: true,
-          createdAt: true
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 5
-      });
-
-      const recentIntents = await prisma.intent.findMany({
-        where: {
-          indexes: { some: { id } }
-        },
-        select: {
-          title: true,
-          status: true,
-          updatedAt: true
-        },
-        orderBy: { updatedAt: 'desc' },
-        take: 5
-      });
-
-      res.json({
-        index,
-        stats: {
-          files: {
-            count: index._count.files,
-            totalSize: fileSizeStats._sum.size?.toString() || '0',
-            averageSize: fileSizeStats._avg.size?.toString() || '0',
-            maxSize: fileSizeStats._max.size?.toString() || '0'
-          },
-          intents: {
-            count: index._count.intents
-          },
-          members: {
-            count: index._count.members
-          }
-        },
-        recentActivity: {
-          files: recentFiles,
-          intents: recentIntents
-        }
-      });
-    } catch (error) {
-      console.error('Get index stats error:', error);
-      res.status(500).json({ error: 'Failed to get index statistics' });
+      return res.status(500).json({ error: 'Failed to remove member' });
     }
   }
 );
