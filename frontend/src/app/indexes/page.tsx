@@ -130,7 +130,7 @@ export default function IndexesPage() {
                   <div 
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                     onClick={() => {
-                      window.location.href = `/indexes/private`;
+                      console.log("clicked");
                     }}
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
@@ -146,7 +146,7 @@ export default function IndexesPage() {
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          window.location.href = `/indexes/private`;
+                          console.log("clicked");
                         }}
                       >
                         <Lock className="h-4 w-4 mr-2" />
