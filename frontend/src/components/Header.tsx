@@ -1,15 +1,15 @@
 import { Button } from "@/components/ui/button";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserPlus } from "lucide-react";
-
+import { UserPlus, LogIn } from "lucide-react";
+import { usePrivy } from '@privy-io/react-auth';
 
 export default function Header({ showNavigation = true }: { showNavigation?: boolean }) {
   const pathname = usePathname();
-
-
-
+  const searchParams = useSearchParams();
+  const { login, logout,authenticated } = usePrivy();
+  const isAlpha = searchParams.get('alpha') === 'true';
   return (
     <div>
       <header className="w-full py-4 flex justify-between items-center">
@@ -26,7 +26,28 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
             </div>
           </Link>
         </div>
-        <Button 
+        {isAlpha ? (
+          authenticated ? (
+            <Button 
+              variant="outline" 
+              className="flex items-center px-3 py-5"
+              onClick={logout}
+            >
+              <LogIn className="h-5 w-5" />
+              <span className="hidden sm:inline mx-2">Logout</span>
+            </Button>
+          ) : (
+            <Button 
+              variant="outline" 
+              className="flex items-center px-3 py-5"
+              onClick={login}
+            >
+              <LogIn className="h-5 w-5" />
+              <span className="hidden sm:inline mx-2">Login</span>
+            </Button>
+          )
+        ) : (
+          <Button 
             variant="outline" 
             className="flex items-center px-3 py-5"
             onClick={() => window.open("https://forms.gle/nTNBKYC2gZZMnujh9", "_blank")}
@@ -34,6 +55,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
             <UserPlus className="h-5 w-5" />
             <span className="hidden sm:inline mx-2">Join the waitlist</span>
           </Button>
+        )}
       </header>
 
       { showNavigation && 
