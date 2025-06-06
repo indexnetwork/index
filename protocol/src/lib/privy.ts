@@ -1,16 +1,10 @@
 import { PrivyClient } from '@privy-io/server-auth';
 
-if (!process.env.PRIVY_APP_ID) {
-  throw new Error('PRIVY_APP_ID environment variable is required');
-}
 
-if (!process.env.PRIVY_APP_SECRET) {
-  throw new Error('PRIVY_APP_SECRET environment variable is required');
-}
 
 export const privyClient = new PrivyClient(
-  process.env.PRIVY_APP_ID,
-  process.env.PRIVY_APP_SECRET
+  process.env.PRIVY_APP_ID || "",
+  process.env.PRIVY_APP_SECRET || ""
 );
 
 // Types for Privy authentication
