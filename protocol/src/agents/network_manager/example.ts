@@ -4,7 +4,6 @@ import { processIntent } from './workflow';
 const sampleIntents = [
   {
     id: "550e8400-e29b-41d4-a716-446655440001",
-    title: "DeFi Protocol Fundraising",
     payload: "Looking to raise $2M Series A for our DeFi lending protocol. Need strategic partners with liquidity management expertise and regulatory knowledge.",
     status: "active",
     userId: "alice.consensys.eth",
@@ -12,7 +11,6 @@ const sampleIntents = [
   },
   {
     id: "550e8400-e29b-41d4-a716-446655440002", 
-    title: "Security Engineer Expertise Available",
     payload: "Former Ethereum Foundation security engineer now available for consulting. 5+ years experience with smart contract audits, wallet security, and MEV protection.",
     status: "active",
     userId: "bob@consensys.net",
@@ -20,7 +18,6 @@ const sampleIntents = [
   },
   {
     id: "550e8400-e29b-41d4-a716-446655440003",
-    title: "Smart Contract Audit Partnership",
     payload: "ConsenSys Diligence seeking partnerships with early-stage DeFi protocols for comprehensive security audits. Special rates for portfolio companies launching on mainnet.",
     status: "active", 
     userId: "diana@consensys.net",
@@ -37,7 +34,7 @@ async function main() {
     const currentIntent = sampleIntents[i];
     const existingIntents = sampleIntents.slice(0, i); // Previous intents as existing context
     
-    console.log(`\n📋 Processing Intent ${i + 1}: ${currentIntent.title}`);
+    console.log(`\n📋 Processing Intent ${i + 1}: ${currentIntent.payload.substring(0, 50)}...`);
     console.log(`🆔 ID: ${currentIntent.id}`);
     console.log(`👤 User ID: ${currentIntent.userId}`);
     console.log(`📝 Description: ${currentIntent.payload.substring(0, 100)}...`);
@@ -70,7 +67,6 @@ async function demonstrateSpecificScenario() {
   
   const newIntent = {
     id: "550e8400-e29b-41d4-a716-446655440004",
-    title: "DevOps Infrastructure Partnership",
     payload: "Web3 startup needs experienced DevOps engineer for Kubernetes deployment and CI/CD pipeline setup. Budget: $5k/month for 6-month engagement.",
     status: "active",
     userId: "founder@startupx.com",
@@ -79,7 +75,6 @@ async function demonstrateSpecificScenario() {
 
   const existingIntent = {
     id: "550e8400-e29b-41d4-a716-446655440005",
-    title: "Senior DevOps Engineer Available",
     payload: "Former ConsenSys DevOps engineer with 7+ years Kubernetes and AWS experience. Specializing in blockchain infrastructure and Web3 deployments. Available for contract work.",
     status: "active",
     userId: "alumni1@former-consensys.com",
@@ -87,8 +82,8 @@ async function demonstrateSpecificScenario() {
   };
 
   console.log("🎯 Perfect Match Scenario:");
-  console.log(`New: ${newIntent.title}`);
-  console.log(`Existing: ${existingIntent.title}`);
+  console.log(`New: ${newIntent.payload.substring(0, 50)}...`);
+  console.log(`Existing: ${existingIntent.payload.substring(0, 50)}...`);
   console.log("Expected: High synergy match with automated staking\n");
 
   try {

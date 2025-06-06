@@ -7,7 +7,6 @@ import { llm, createBacking, parseAgentDecisions } from "../../lib/agents";
 // Type definitions matching the database schema
 interface Intent {
   id: string;
-  title: string;
   payload: string;
   status: string;
   userId: string;
@@ -78,7 +77,6 @@ You are an expert analyst specializing in venture capital and startup ecosystems
 Analyze the following intent and determine if it is related to venture capital, investment, or entrepreneurship/founding activities.
 
 INTENT TO ANALYZE:
-Title: ${newIntent.title}
 Description: ${newIntent.payload}
 
 EVALUATION CRITERIA:
@@ -131,7 +129,7 @@ Response:`;
     }
     
     // Generate embeddings for semantic comparison
-    const newIntentEmbedding = await embeddings.embedQuery(`${newIntent.title}: ${newIntent.payload}`);
+    const newIntentEmbedding = await embeddings.embedQuery(`${newIntent.payload}`);
     
     const vcFounderMatches: Intent[] = [];
     
@@ -143,7 +141,6 @@ You are an expert analyst specializing in venture capital and startup ecosystems
 Analyze the following intent and determine if it is related to venture capital, investment, or entrepreneurship/founding activities.
 
 INTENT TO ANALYZE:
-Title: ${intent.title}
 Description: ${intent.payload}
 
 EVALUATION CRITERIA:
@@ -184,7 +181,7 @@ Response:`;
         if ((intentClassification.isVCRelated || intentClassification.isFounderRelated) && 
             intentClassification.confidence >= 0.6) {
           
-          const intentEmbedding = await embeddings.embedQuery(`${intent.title}: ${intent.payload}`);
+          const intentEmbedding = await embeddings.embedQuery(`${intent.payload}`);
           
           // Calculate cosine similarity
           const similarity = cosineSimilarity(newIntentEmbedding, intentEmbedding);
@@ -252,10 +249,10 @@ async function conductDueDiligence(state: StateType): Promise<Partial<StateType>
     for (const matchedIntent of state.vcFounderMatches) {
       // Conduct web research using Tavily
       const researchQueries = [
-        `${newIntent.title} ${matchedIntent.title} startup funding investment`,
+        `${newIntent.payload} ${matchedIntent.payload} startup funding investment`,
         `"${newIntent.user?.name}" "${matchedIntent.user?.name}" venture capital due diligence`,
-        `${newIntent.title} market validation business model`,
-        `${matchedIntent.title} investor portfolio track record`
+        `${newIntent.payload} market validation business model`,
+        `${matchedIntent.payload} investor portfolio track record`
       ];
       
       const webResearchFindings: string[] = [];
@@ -277,11 +274,9 @@ async function conductDueDiligence(state: StateType): Promise<Partial<StateType>
 You are ProofLayer, an expert due diligence analyst specializing in VC-Founder matching and investment risk assessment.
 
 INTENT PAIR ANALYSIS:
-New Intent (${newIntent.user?.name || 'Unknown'}): ${newIntent.title}
-Description: ${newIntent.payload}
+New Intent (${newIntent.user?.name || 'Unknown'}): ${newIntent.payload}
 
-Matched Intent (${matchedIntent.user?.name || 'Unknown'}): ${matchedIntent.title}
-Description: ${matchedIntent.payload}
+Matched Intent (${matchedIntent.user?.name || 'Unknown'}): ${matchedIntent.payload}
 
 WEB RESEARCH FINDINGS:
 ${webResearchFindings.join('\n\n')}
@@ -401,7 +396,7 @@ async function makeInvestmentDecision(state: StateType): Promise<Partial<StateTy
     }
     
     const output = `ProofLayer Due Diligence Complete\n\n` +
-                  `Intent: "${newIntent.title}" (${newIntent.id})\n` +
+                  `Intent: "${newIntent.payload}" (${newIntent.id})\n` +
                   `Analyzed: ${state.dueDiligenceResults.length} VC-Founder matches\n` +
                   `Backed: ${backedCount} high-confidence investments\n\n` +
                   `Investment Decisions:\n${investmentSummary.join('\n')}\n\n` +
@@ -474,7 +469,6 @@ export async function runProofLayer(input: string): Promise<string> {
   // Create a mock VC/Founder intent from string input for testing
   const mockIntent: Intent = {
     id: "mock-" + Date.now(),
-    title: "Test VC Investment",
     payload: input,
     status: "active",
     userId: "test-user"

@@ -4,7 +4,6 @@ import prisma from '../../lib/db';
 // Intent type matching the database schema
 interface Intent {
   id: string;
-  title: string;
   payload: string;
   status: string;
   userId: string;

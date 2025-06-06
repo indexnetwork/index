@@ -6,7 +6,6 @@ const prisma = new PrismaClient();
 // Type definitions matching the database schema
 interface Intent {
   id: string;
-  title: string;
   payload: string;
   status: string;
   userId: string;

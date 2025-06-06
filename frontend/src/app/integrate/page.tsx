@@ -216,7 +216,7 @@ const components: ComponentConfig[] = [
     id: "matchmakeragent",
     name: "MatchmakerAgent",
     description: "AI-powered matchmaking agent that provides intelligent match suggestions and facilitates connections.",
-    previewImage: "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=400&h=300&fit=crop&crop=center",
+    previewImage: "/integrate/intent.gif",
     caseStudies: [
       {
         title: "Professional Network",
@@ -443,7 +443,6 @@ const apiSections: ApiSection[] = [
         path: "/api/intents",
         description: "Create a new intent",
         params: [
-          { name: "title", type: "string", required: true, description: "Brief title describing the intent" },
           { name: "payload", type: "string", required: true, description: "Detailed description of the intent" },
           { name: "userId", type: "string", required: true, description: "ID of the user creating the intent" },
           { name: "status", type: "string", required: false, description: "Initial status (default: active)" },
@@ -456,8 +455,7 @@ const apiSections: ApiSection[] = [
     'Authorization': 'Bearer \${token}'
   },
   body: JSON.stringify({
-    title: 'AI Research Collaboration',
-    payload: 'Looking for ML researchers to collaborate on...',
+    payload: 'Looking for ML researchers to collaborate on AI research collaboration...',
     userId: 'user-123',
     status: 'active',
     indexes: ['index-ai-research']

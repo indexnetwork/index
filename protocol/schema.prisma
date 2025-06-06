@@ -6,7 +6,7 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  output   = "./src/generated/prisma"
 }
 
 datasource db {
@@ -45,7 +45,6 @@ model Agent {
 
 model Intent {
   id          String        @id @default(uuid())
-  title       String
   payload     String
   updatedAt   DateTime      @updatedAt
   status      String

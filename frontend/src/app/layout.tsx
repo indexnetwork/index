@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
-import RootLayoutClient from "@/components/RootLayoutClient";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 export const metadata: Metadata = {
   title: "Index Network | Discovery Protocol",
@@ -37,7 +38,14 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`antialiased`}>
-        <RootLayoutClient>{children}</RootLayoutClient>
+        <Script
+          defer
+          data-domain="index.network"
+          src="https://plausible.io/js/script.outbound-links.js"
+        />
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

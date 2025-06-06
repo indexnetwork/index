@@ -7,7 +7,6 @@ const prisma = new PrismaClient();
 // Type definitions matching the database schema
 interface Intent {
   id: string;
-  title: string;
   payload: string;
   status: string;
   userId: string;
@@ -27,7 +26,6 @@ You are an expert analyst specializing in venture capital and startup ecosystems
 Analyze the following intent and determine if it is related to venture capital, investment, or entrepreneurship/founding activities.
 
 INTENT TO ANALYZE:
-Title: ${intent.title}
 Description: ${intent.payload}
 
 EVALUATION CRITERIA:

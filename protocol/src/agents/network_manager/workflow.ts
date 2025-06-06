@@ -7,7 +7,6 @@ import * as path from 'path';
 // Intent type based on database schema
 interface Intent {
   id: string;
-  title: string;
   payload: string;
   status: string;
   userId: string;
@@ -72,10 +71,10 @@ async function makeNetworkBackingDecision(state: StateType): Promise<Partial<Sta
   const prompt = `
 You are a network manager agent that identifies synergistic intent pairs for backing.
 
-NEW INTENT: ${newIntent.title} - ${newIntent.payload}
+NEW INTENT: ${newIntent.payload}
 
 EXISTING INTENTS:
-${existingIntents.map((i: Intent, idx: number) => `${idx + 1}. ${i.title} - ${i.payload}`).join('\n')}
+${existingIntents.map((i: Intent, idx: number) => `${idx + 1}. ${i.payload}`).join('\n')}
 
 Identify intents that could create network synergies or collaborations with the new intent.
 Return ONLY a JSON array with format:
@@ -194,7 +193,6 @@ export async function runNetworkManager(input: string): Promise<string> {
   // Create a mock intent from string input for testing
   const mockIntent: Intent = {
     id: "mock-" + Date.now(),
-    title: "Test Intent",
     payload: input,
     status: "active",
     userId: "test-user"

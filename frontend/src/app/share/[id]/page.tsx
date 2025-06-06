@@ -3,7 +3,7 @@
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, ArrowUpRight } from "lucide-react";
-import { indexesService, Index } from "@/services/indexes";
+import { useIndexService, Index } from "@/services/indexes";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
 
@@ -19,6 +19,7 @@ export default function SharePage({ params }: SharePageProps) {
   const [index, setIndex] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
   const [requestSent, setRequestSent] = useState(false);
+  const indexesService = useIndexService();
 
   useEffect(() => {
     const fetchIndex = async () => {
@@ -33,7 +34,7 @@ export default function SharePage({ params }: SharePageProps) {
     };
 
     fetchIndex();
-  }, [resolvedParams.id]);
+  }, [resolvedParams.id, indexesService]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -67,7 +68,7 @@ export default function SharePage({ params }: SharePageProps) {
   const handleRequestConnection = async () => {
     if (index) {
       try {
-        await indexesService.requestConnection(index.id);
+        // Call service in the future.
         setRequestSent(true);
       } catch (error) {
         console.error('Error requesting connection:', error);
@@ -101,8 +102,8 @@ export default function SharePage({ params }: SharePageProps) {
         <div className="border border-black border-b-0 border-b-2 bg-white  py-4 px-3 sm:px-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-1">{index.name}</h1>
-              <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {index.createdAt}</p>
+              <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-1">{index.title}</h1>
+              <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {new Date(index.createdAt).toLocaleDateString()}</p>
             </div>
           </div>
         </div>
@@ -113,7 +114,7 @@ export default function SharePage({ params }: SharePageProps) {
               <h2 className="text-xl mt-2 font-semibold text-gray-900">Files</h2>
             </div>
             <div className="space-y-2 flex-1">
-              {index.files.map((file, index) => (
+              {index.files?.map((file, index) => (
                 <div
                   key={index}
                   className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
@@ -130,7 +131,7 @@ export default function SharePage({ params }: SharePageProps) {
                       </Button>
                     </div>
                     <p className="text-sm text-gray-500">
-                      {file.size} • {file.date}
+                      {file.size} bytes • {new Date(file.createdAt).toLocaleDateString()}
                     </p>
                   </div>
                 </div>
@@ -225,15 +226,15 @@ export default function SharePage({ params }: SharePageProps) {
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-4">
                   <Image
-                    src={index.avatar || "https://www.trychroma.com/img/noise.jpg"}
-                    alt={index.name}
+                    src={index.user.avatar || "https://www.trychroma.com/img/noise.jpg"}
+                    alt={index.user.name}
                     width={48}
                     height={48}
                     className="rounded-full"
                   />
                   <div>
-                    <h2 className="text-lg font-medium text-gray-900">{index.name}</h2>
-                    <p className="text-sm text-gray-600">{index.role || "Organization"}</p>
+                    <h2 className="text-lg font-medium text-gray-900">{index.user.name}</h2>
+                    <p className="text-sm text-gray-600">Organization</p>
                   </div>
                 </div>
                 <div className="flex gap-3">

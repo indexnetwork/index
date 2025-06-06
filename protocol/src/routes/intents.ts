@@ -1,19 +1,18 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
-import prisma from '../lib/db';
-import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { triggerAgentsOnIntentCreated, triggerAgentsOnIntentUpdated } from '../agents';
+import db from '../lib/db';
+import { intents, users, indexes, intentIndexes } from '../lib/schema';
+import { authenticatePrivy, AuthRequest } from '../middleware/auth';
+import { eq, isNull, and, count, desc, or, ilike } from 'drizzle-orm';
 
 const router = Router();
 
 // Get all intents with pagination
 router.get('/', 
-  authenticateToken,
+  authenticatePrivy,
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('status').optional().trim(),
-    query('userId').optional().isUUID(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -24,90 +23,76 @@ router.get('/',
 
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
-      const status = req.query.status as string;
-      const userId = req.query.userId as string;
       const skip = (page - 1) * limit;
 
-      const where: any = {};
-      
-      // Users can filter by userId if provided
-      if (userId) {
-        where.userId = userId;
-      }
+      const whereCondition = and(
+        isNull(intents.deletedAt),
+        eq(intents.userId, req.user!.id)
+      );
 
-      if (status) {
-        where.status = status;
-      }
+      const [intentsResult, totalResult] = await Promise.all([
+        db.select({
+          id: intents.id,
+          payload: intents.payload,
+          isPublic: intents.isPublic,
+          createdAt: intents.createdAt,
+          updatedAt: intents.updatedAt,
+          userId: intents.userId,
+          userName: users.name,
+          userEmail: users.email,
+          userAvatar: users.avatar
+        }).from(intents)
+          .innerJoin(users, eq(intents.userId, users.id))
+          .where(whereCondition)
+          .orderBy(desc(intents.createdAt))
+          .offset(skip)
+          .limit(limit),
 
-      const [intents, total] = await Promise.all([
-        prisma.intent.findMany({
-          where,
-          select: {
-            id: true,
-            title: true,
-            payload: true,
-            status: true,
-            updatedAt: true,
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true
-              }
-            },
-            indexes: {
-              select: {
-                id: true,
-                name: true
-              },
-              take: 3
-            },
-            intentPairs: {
-              select: {
-                id: true,
-                lastEvent: true,
-                lastEventTimestamp: true,
-                backers: {
-                  select: {
-                    confidence: true,
-                    agent: {
-                      select: {
-                        name: true,
-                        role: true
-                      }
-                    }
-                  }
-                }
-              },
-              take: 5
-            }
-          },
-          skip,
-          take: limit,
-          orderBy: { updatedAt: 'desc' }
-        }),
-        prisma.intent.count({ where })
+        db.select({ count: count() })
+          .from(intents)
+          .innerJoin(users, eq(intents.userId, users.id))
+          .where(whereCondition)
       ]);
 
-      res.json({
-        intents,
+      // Get index counts for each intent
+      const intentsWithCounts = await Promise.all(
+        intentsResult.map(async (intent) => {
+
+          return {
+            id: intent.id,
+            payload: intent.payload,
+            isPublic: intent.isPublic,
+            createdAt: intent.createdAt,
+            updatedAt: intent.updatedAt,
+            user: {
+              id: intent.userId,
+              name: intent.userName,
+              email: intent.userEmail,
+              avatar: intent.userAvatar
+            },
+          };
+        })
+      );
+
+      return res.json({
+        intents: intentsWithCounts,
         pagination: {
           current: page,
-          total: Math.ceil(total / limit),
-          count: intents.length,
-          totalCount: total
+          total: Math.ceil(totalResult[0].count / limit),
+          count: intentsResult.length,
+          totalCount: totalResult[0].count
         }
       });
     } catch (error) {
       console.error('Get intents error:', error);
-      res.status(500).json({ error: 'Failed to fetch intents' });
+      return res.status(500).json({ error: 'Failed to fetch intents' });
     }
   }
 );
 
 // Get single intent by ID
 router.get('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -118,94 +103,62 @@ router.get('/:id',
 
       const { id } = req.params;
 
-      const intent = await prisma.intent.findUnique({
-        where: { id },
-        select: {
-          id: true,
-          title: true,
-          payload: true,
-          status: true,
-          updatedAt: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              avatar: true
-            }
-          },
-          indexes: {
-            select: {
-              id: true,
-              name: true,
-              createdAt: true,
-              files: {
-                select: {
-                  id: true,
-                  name: true,
-                  size: true
-                },
-                take: 5
-              }
-            }
-          },
-          intentPairs: {
-            select: {
-              id: true,
-              lastEvent: true,
-              lastEventTimestamp: true,
-              intents: {
-                select: {
-                  id: true,
-                  title: true,
-                  user: {
-                    select: {
-                      name: true
-                    }
-                  }
-                }
-              },
-              backers: {
-                select: {
-                  id: true,
-                  confidence: true,
-                  agent: {
-                    select: {
-                      id: true,
-                      name: true,
-                      role: true,
-                      avatar: true
-                    }
-                  },
-                  createdAt: true
-                },
-                orderBy: { confidence: 'desc' }
-              }
-            },
-            orderBy: { lastEventTimestamp: 'desc' }
-          }
-        }
-      });
+      const intent = await db.select({
+        id: intents.id,
+        payload: intents.payload,
+        isPublic: intents.isPublic,
+        createdAt: intents.createdAt,
+        updatedAt: intents.updatedAt,
+        userId: intents.userId,
+        userName: users.name,
+        userEmail: users.email,
+        userAvatar: users.avatar
+      }).from(intents)
+        .innerJoin(users, eq(intents.userId, users.id))
+        .where(and(eq(intents.id, id), isNull(intents.deletedAt)))
+        .limit(1);
 
-      if (!intent) {
+      if (intent.length === 0) {
         return res.status(404).json({ error: 'Intent not found' });
       }
 
-      res.json({ intent });
+      // Check access permissions
+      const intentData = intent[0];
+      const hasAccess = intentData.isPublic || intentData.userId === req.user!.id;
+
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+
+      const result = {
+        id: intentData.id,
+        payload: intentData.payload,
+        isPublic: intentData.isPublic,
+        createdAt: intentData.createdAt,
+        updatedAt: intentData.updatedAt,
+        user: {
+          id: intentData.userId,
+          name: intentData.userName,
+          email: intentData.userEmail,
+          avatar: intentData.userAvatar
+        },
+      };
+
+      return res.json({ intent: result });
     } catch (error) {
       console.error('Get intent error:', error);
-      res.status(500).json({ error: 'Failed to fetch intent' });
+      return res.status(500).json({ error: 'Failed to fetch intent' });
     }
   }
 );
 
 // Create new intent
 router.post('/',
-  authenticateToken,
+  authenticatePrivy,
   [
-    body('title').trim().isLength({ min: 3, max: 200 }),
-    body('payload').trim().isLength({ min: 10, max: 5000 }),
-    body('status').optional().trim().isLength({ min: 1, max: 50 }),
+    body('payload').trim().isLength({ min: 1 }),
+    body('isPublic').optional().isBoolean(),
     body('indexIds').optional().isArray(),
     body('indexIds.*').optional().isUUID(),
   ],
@@ -216,82 +169,69 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { title, payload, status = 'draft', indexIds = [] } = req.body;
+      const { payload, isPublic = false, indexIds = [] } = req.body;
 
-      // Verify user owns the indexes they're trying to connect
+      // Verify index IDs exist and user has access to them
       if (indexIds.length > 0) {
-        const userIndexes = await prisma.index.findMany({
-          where: {
-            id: { in: indexIds },
-            userId: req.user!.id
-          },
-          select: { id: true }
-        });
+        const validIndexes = await db.select({ id: indexes.id })
+          .from(indexes)
+          .where(and(
+            isNull(indexes.deletedAt),
+            eq(indexes.userId, req.user!.id)
+          ));
 
-        if (userIndexes.length !== indexIds.length) {
-          return res.status(403).json({ error: 'You can only connect intents to your own indexes' });
+        const validIndexIds = validIndexes.map(idx => idx.id);
+        const invalidIds = indexIds.filter((id: string) => !validIndexIds.includes(id));
+
+        if (invalidIds.length > 0) {
+          return res.status(400).json({ 
+            error: 'Some index IDs are invalid or you don\'t have access to them',
+            invalidIds 
+          });
         }
       }
 
-      const intent = await prisma.intent.create({
-        data: {
-          title,
-          payload,
-          status,
-          userId: req.user!.id,
-          indexes: {
-            connect: indexIds.map((id: string) => ({ id }))
-          }
-        },
-        select: {
-          id: true,
-          title: true,
-          payload: true,
-          status: true,
-          updatedAt: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          },
-          indexes: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        }
+      const newIntent = await db.insert(intents).values({
+        payload,
+        isPublic,
+        userId: req.user!.id,
+      }).returning({
+        id: intents.id,
+        payload: intents.payload,
+        isPublic: intents.isPublic,
+        createdAt: intents.createdAt,
+        updatedAt: intents.updatedAt,
+        userId: intents.userId
       });
 
-      // Trigger agents after successful intent creation
-      triggerAgentsOnIntentCreated(intent.id).catch(error => {
-        console.error('Agent triggering failed for created intent:', error);
-        // Don't affect the response - agents run in background
-      });
+      // Associate with indexes if provided
+      if (indexIds.length > 0) {
+        await db.insert(intentIndexes).values(
+          indexIds.map((indexId: string) => ({
+            intentId: newIntent[0].id,
+            indexId: indexId
+          }))
+        );
+      }
 
-      res.status(201).json({
+      return res.status(201).json({
         message: 'Intent created successfully',
-        intent
+        intent: newIntent[0]
       });
     } catch (error) {
       console.error('Create intent error:', error);
-      res.status(500).json({ error: 'Failed to create intent' });
+      return res.status(500).json({ error: 'Failed to create intent' });
     }
   }
 );
 
 // Update intent
 router.put('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [
     param('id').isUUID(),
-    body('title').optional().trim().isLength({ min: 3, max: 200 }),
-    body('payload').optional().trim().isLength({ min: 10, max: 5000 }),
-    body('status').optional().trim().isLength({ min: 1, max: 50 }),
-    body('indexIds').optional().isArray(),
-    body('indexIds.*').optional().isUUID(),
+    body('payload').optional().trim().isLength({ min: 1 }),
+    body('isPublic').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -301,98 +241,52 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { title, payload, status, indexIds } = req.body;
+      const { payload, isPublic } = req.body;
 
-      // Users can only update their own intents
-      const where: any = { id, userId: req.user!.id };
+      // Check if intent exists and user owns it
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(and(eq(intents.id, id), isNull(intents.deletedAt)))
+        .limit(1);
 
-      // First, get the current intent to capture the previous status
-      const currentIntent = await prisma.intent.findUnique({
-        where,
-        select: { status: true }
-      });
-
-      if (!currentIntent) {
-        return res.status(404).json({ error: 'Intent not found or access denied' });
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Intent not found' });
       }
 
-      const previousStatus = currentIntent.status;
+      if (intent[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
 
-      // Verify user owns the indexes they're trying to connect
-      if (indexIds && indexIds.length > 0) {
-        const userIndexes = await prisma.index.findMany({
-          where: {
-            id: { in: indexIds },
-            userId: req.user!.id
-          },
-          select: { id: true }
+      const updateData: any = { updatedAt: new Date() };
+      if (payload !== undefined) updateData.payload = payload;
+      if (isPublic !== undefined) updateData.isPublic = isPublic;
+
+      const updatedIntent = await db.update(intents)
+        .set(updateData)
+        .where(eq(intents.id, id))
+        .returning({
+          id: intents.id,
+          payload: intents.payload,
+          isPublic: intents.isPublic,
+          createdAt: intents.createdAt,
+          updatedAt: intents.updatedAt,
+          userId: intents.userId
         });
 
-        if (userIndexes.length !== indexIds.length) {
-          return res.status(403).json({ error: 'You can only connect intents to your own indexes' });
-        }
-      }
-
-      const updateData: any = {};
-      if (title !== undefined) updateData.title = title;
-      if (payload !== undefined) updateData.payload = payload;
-      if (status !== undefined) updateData.status = status;
-
-      // Handle index connections
-      if (indexIds !== undefined) {
-        updateData.indexes = {
-          set: indexIds.map((id: string) => ({ id }))
-        };
-      }
-
-      const intent = await prisma.intent.update({
-        where,
-        data: updateData,
-        select: {
-          id: true,
-          title: true,
-          payload: true,
-          status: true,
-          updatedAt: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          },
-          indexes: {
-            select: {
-              id: true,
-              name: true
-            }
-          }
-        }
-      });
-
-      // Trigger agents after successful intent update with previous status
-      triggerAgentsOnIntentUpdated(intent.id, previousStatus).catch(error => {
-        console.error('Agent triggering failed for updated intent:', error);
-        // Don't affect the response - agents run in background
-      });
-
-      res.json({
+      return res.json({
         message: 'Intent updated successfully',
-        intent
+        intent: updatedIntent[0]
       });
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        return res.status(404).json({ error: 'Intent not found or access denied' });
-      }
+    } catch (error) {
       console.error('Update intent error:', error);
-      res.status(500).json({ error: 'Failed to update intent' });
+      return res.status(500).json({ error: 'Failed to update intent' });
     }
   }
 );
 
-// Delete intent
+// Delete intent (soft delete)
 router.delete('/:id',
-  authenticateToken,
+  authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -403,134 +297,34 @@ router.delete('/:id',
 
       const { id } = req.params;
 
-      // Users can only delete their own intents
-      const where: any = { id, userId: req.user!.id };
+      // Check if intent exists and user owns it
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(and(eq(intents.id, id), isNull(intents.deletedAt)))
+        .limit(1);
 
-      // Check if intent is part of any active intent pairs
-      const intentPairs = await prisma.intentPair.findMany({
-        where: {
-          intents: { some: { id } },
-          deletedAt: null
-        }
-      });
-
-      if (intentPairs.length > 0) {
-        return res.status(400).json({ 
-          error: 'Cannot delete intent that is part of active intent pairs',
-          activePairs: intentPairs.length
-        });
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Intent not found' });
       }
 
-      await prisma.intent.delete({
-        where
-      });
-
-      res.json({ message: 'Intent deleted successfully' });
-    } catch (error: any) {
-      if (error.code === 'P2025') {
-        return res.status(404).json({ error: 'Intent not found or access denied' });
-      }
-      console.error('Delete intent error:', error);
-      res.status(500).json({ error: 'Failed to delete intent' });
-    }
-  }
-);
-
-// Get intent pairs for an intent
-router.get('/:id/pairs',
-  authenticateToken,
-  [
-    param('id').isUUID(),
-    query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 50 }).toInt(),
-  ],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
+      if (intent[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
       }
 
-      const { id } = req.params;
-      const page = Number(req.query.page) || 1;
-      const limit = Number(req.query.limit) || 10;
-      const skip = (page - 1) * limit;
-
-      // Verify user has access to this intent (users can only see pairs for their own intents)
-      const intent = await prisma.intent.findUnique({
-        where: { 
-          id,
-          userId: req.user!.id
-        },
-        select: { id: true }
-      });
-
-      if (!intent) {
-        return res.status(404).json({ error: 'Intent not found or access denied' });
-      }
-
-      const [pairs, total] = await Promise.all([
-        prisma.intentPair.findMany({
-          where: {
-            intents: { some: { id } },
-            deletedAt: null
-          },
-          select: {
-            id: true,
-            lastEvent: true,
-            lastEventTimestamp: true,
-            createdAt: true,
-            intents: {
-              select: {
-                id: true,
-                title: true,
-                user: {
-                  select: {
-                    name: true
-                  }
-                }
-              }
-            },
-            backers: {
-              select: {
-                confidence: true,
-                agent: {
-                  select: {
-                    name: true,
-                    role: true
-                  }
-                }
-              },
-              orderBy: { confidence: 'desc' },
-              take: 3
-            }
-          },
-          skip,
-          take: limit,
-          orderBy: { lastEventTimestamp: 'desc' }
-        }),
-        prisma.intentPair.count({
-          where: {
-            intents: { some: { id } },
-            deletedAt: null
-          }
+      await db.update(intents)
+        .set({ 
+          deletedAt: new Date(),
+          updatedAt: new Date()
         })
-      ]);
+        .where(eq(intents.id, id));
 
-      res.json({
-        pairs,
-        pagination: {
-          current: page,
-          total: Math.ceil(total / limit),
-          count: pairs.length,
-          totalCount: total
-        }
-      });
+      return res.json({ message: 'Intent deleted successfully' });
     } catch (error) {
-      console.error('Get intent pairs error:', error);
-      res.status(500).json({ error: 'Failed to fetch intent pairs' });
+      console.error('Delete intent error:', error);
+      return res.status(500).json({ error: 'Failed to delete intent' });
     }
   }
 );
+
 
 export default router; 
