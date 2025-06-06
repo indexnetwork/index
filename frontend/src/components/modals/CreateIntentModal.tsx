@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Checkbox from "@radix-ui/react-checkbox";
-import { useIndexService, Index } from "@/services/indexes";
+import { useIndexes } from "@/contexts/APIContext";
+import { Index } from "@/lib/types";
 import { Textarea } from "../ui/textarea";
 import { ChevronDown, ChevronUp, Check } from "lucide-react";
 
@@ -39,7 +40,7 @@ export default function CreateIntentModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
-  const indexesService = useIndexService();
+  const indexesService = useIndexes();
   // const [relevantContent, setRelevantContent] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -76,22 +77,22 @@ export default function CreateIntentModal({
   const [hasInitialized, setHasInitialized] = useState(false);
 
   // Fetch indexes when modal opens
-  useEffect(() => {
-    const fetchIndexes = async () => {
-      try {
-        const response = await indexesService.getIndexes();
-        setAvailableIndexes(response.indexes || []);
-      } catch (error) {
-        console.error('Error fetching indexes:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchIndexes = useCallback(async () => {
+    try {
+      const response = await indexesService.getIndexes();
+      setAvailableIndexes(response.indexes || []);
+    } catch (error) {
+      console.error('Error fetching indexes:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [indexesService]);
 
+  useEffect(() => {
     if (open) {
       fetchIndexes();
     }
-  }, [open, indexesService]);
+  }, [open, fetchIndexes]);
 
   // Initialize form data when modal opens
   useEffect(() => {

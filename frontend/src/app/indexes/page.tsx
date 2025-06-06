@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Button } from "@/components/ui/button";
 import { Share2, Plus, Lock } from "lucide-react";
 import CreateIndexModal from "@/components/modals/CreateIndexModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
-import { useIndexService } from "@/services/indexes";
+import { useIndexes } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
 import { MCP } from '@lobehub/icons';
 import ClientLayout from "@/components/ClientLayout";
@@ -19,22 +19,22 @@ export default function IndexesPage() {
   const [selectedIndex, setSelectedIndex] = useState("");
   const [indexes, setIndexes] = useState<Index[]>([]);
   const [loading, setLoading] = useState(true);
-  const indexesService = useIndexService();
+  const indexesService = useIndexes();
+
+  const fetchIndexes = useCallback(async () => {
+    try {
+      const response = await indexesService.getIndexes();
+      setIndexes(response.indexes || []);
+    } catch (error) {
+      console.error('Error fetching indexes:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [indexesService]);
 
   useEffect(() => {
-    const fetchIndexes = async () => {
-      try {
-        const response = await indexesService.getIndexes();
-        setIndexes(response.indexes || []);
-      } catch (error) {
-        console.error('Error fetching indexes:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchIndexes();
-  }, [indexesService]); // Now safe with memoized service
+  }, [fetchIndexes]);
 
   const handleCreateIndex = async (indexData: { name: string }) => {
     try {

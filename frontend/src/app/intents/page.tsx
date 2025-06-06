@@ -6,9 +6,8 @@ import * as Tabs from "@radix-ui/react-tabs";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
-import { createIntentsService } from "@/services/intents";
+import { useIntents } from "@/contexts/APIContext";
 import { Intent } from "@/lib/types";
-import { useAuthenticatedAPI } from "@/lib/api";
 import ClientLayout from "@/components/ClientLayout";
 
 export default function IntentsPage() {
@@ -18,32 +17,27 @@ export default function IntentsPage() {
   const [archivedIntents, setArchivedIntents] = useState<Intent[]>([]);
   const [suggestedIntents, setSuggestedIntents] = useState<Intent[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  const api = useAuthenticatedAPI();
+  const intentsService = useIntents();
+
+  const fetchIntents = useCallback(async () => {
+    try {
+      const response = await intentsService.getIntents();
+      const intents = response.intents || [];
+      // For now, we'll use the same data for all tabs
+      // In real implementation, you'd filter by status
+      setActiveIntents(intents);
+      setArchivedIntents(intents);
+      setSuggestedIntents(intents);
+    } catch (error) {
+      console.error('Error fetching intents:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [intentsService]);
 
   useEffect(() => {
-    const fetchIntents = async () => {
-      try {
-        const intentsService = createIntentsService(api);
-        const [active, archived, suggested] = await Promise.all([
-          intentsService.getIntents(1, 10), // Using pagination parameters
-          intentsService.getIntents(1, 10),
-          intentsService.getIntents(1, 10)
-        ]);
-        console.log(active, "haha");
-        // Note: For now treating all as the same, but you would filter by status in real implementation
-        setActiveIntents(active.intents || []);
-        setArchivedIntents(archived.data || []);
-        setSuggestedIntents(suggested.data || []);
-      } catch (error) {
-        console.error('Error fetching intents:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchIntents();
-  }, [api]); // Include api dependency
+  }, [fetchIntents]);
 
   const handleIntentClick = useCallback((intentId: string) => {
     router.push(`/intents/${intentId}`);
@@ -51,14 +45,13 @@ export default function IntentsPage() {
 
   const handleCreateIntent = useCallback(async (intent: { payload: string; indexIds: string[]; attachments: File[] }) => {
     try {
-      const intentsService = createIntentsService(api);
       const newIntent = await intentsService.createIntent(intent);
       setActiveIntents(prev => [...prev, newIntent]);
       setShowIntentModal(false);
     } catch (error) {
       console.error('Error creating intent:', error);
     }
-  }, [api]);
+  }, [intentsService]);
 
   return (
     <ClientLayout>
@@ -141,7 +134,7 @@ export default function IntentsPage() {
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
                       <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.payload.substring(0, 100)}...</h3>
-                      <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {new Date(intent.updatedAt).toLocaleDateString()} • {intent._count.indexes} indexes</p>
+                      <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {new Date(intent.updatedAt).toLocaleDateString()} • {intent._count?.indexes || 0} indexes</p>
                     </div>
                     <Button 
                       variant="outline" 

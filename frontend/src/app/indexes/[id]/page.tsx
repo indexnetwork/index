@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, useCallback, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft } from "lucide-react";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import { MCP } from '@lobehub/icons';
 import Link from "next/link";
-import { useIndexService, Index } from "@/services/indexes";
+import { useIndexes } from "@/contexts/APIContext";
+import { Index } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 
@@ -29,31 +30,31 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
   const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set());
   const [addedIntents, setAddedIntents] = useState<Set<string>>(new Set());
-  const indexesService = useIndexService();
+  const indexesService = useIndexes();
+
+  const fetchIndex = useCallback(async () => {
+    try {
+      const data = await indexesService.getIndex(resolvedParams.id);
+      setIndex(data || null);
+      // Initialize addedIntents from the index data
+      if (data?.suggestedIntents) {
+        const added = new Set(
+          data.suggestedIntents
+            .filter((intent: any) => intent.isAdded)
+            .map((intent: any) => intent.id)
+        );
+        setAddedIntents(added);
+      }
+    } catch (error) {
+      console.error('Error fetching index:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [resolvedParams.id, indexesService]);
 
   useEffect(() => {
-    const fetchIndex = async () => {
-      try {
-        const data = await indexesService.getIndex(resolvedParams.id);
-        setIndex(data || null);
-        // Initialize addedIntents from the index data
-        if (data?.suggestedIntents) {
-          const added = new Set(
-            data.suggestedIntents
-              .filter(intent => intent.isAdded)
-              .map(intent => intent.id)
-          );
-          setAddedIntents(added);
-        }
-      } catch (error) {
-        console.error('Error fetching index:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchIndex();
-  }, [resolvedParams.id, indexesService]);
+  }, [fetchIndex]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -132,9 +133,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       setAddedIntents(prev => new Set([...prev, selectedSuggestedIntent?.id || '']));
       // Then refresh the index data
       const updatedIndex = await indexesService.getIndex(resolvedParams.id);
-      if (updatedIndex) {
-        setIndex(updatedIndex);
-      }
+      setIndex(updatedIndex || null);
       setShowCreateIntentModal(false);
       setSelectedSuggestedIntent(null);
     } catch (error) {
