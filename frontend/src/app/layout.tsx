@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 
@@ -37,6 +38,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`antialiased`}>
+        <Script
+          defer
+          data-domain="index.network"
+          src="https://plausible.io/js/script.outbound-links.js"
+        />
         <AuthProvider>
           {children}
         </AuthProvider>

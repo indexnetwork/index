@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as Checkbox from "@radix-ui/react-checkbox";
-import { indexService, Index } from "@/services/indexes";
+import { useIndexService, Index } from "@/services/indexes";
 import { Textarea } from "../ui/textarea";
 import { ChevronDown, ChevronUp, Check } from "lucide-react";
 
@@ -21,8 +21,8 @@ interface VerifiableProof {
 interface CreateIntentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (intent: { title: string; indexIds: string[]; attachments: File[] }) => void;
-  initialTitle?: string;
+  onSubmit: (intent: { payload: string; indexIds: string[]; attachments: File[] }) => void;
+  initialPayload?: string;
   initialIndexIds?: string[];
 }
 
@@ -30,16 +30,16 @@ export default function CreateIntentModal({
   open, 
   onOpenChange, 
   onSubmit,
-  initialTitle = '',
+  initialPayload = '',
   initialIndexIds = []
 }: CreateIntentModalProps) {
-  const [title, setTitle] = useState(initialTitle);
+  const [payload, setPayload] = useState(initialPayload);
   const [selectedIndexes, setSelectedIndexes] = useState<string[]>(initialIndexIds);
   const [availableIndexes, setAvailableIndexes] = useState<Index[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [loading, setLoading] = useState(true);
-  const indexesService = indexService();
+  const indexesService = useIndexService();
   // const [relevantContent, setRelevantContent] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -75,31 +75,11 @@ export default function CreateIntentModal({
   const [expandedProofs, setExpandedProofs] = useState<Set<string>>(new Set());
   const [hasInitialized, setHasInitialized] = useState(false);
 
-  // Memoize the initial values to prevent unnecessary effect runs
-  const memoizedInitialIndexIds = useMemo(() => initialIndexIds, [initialIndexIds]);
-  const memoizedInitialTitle = useMemo(() => initialTitle, [initialTitle]);
-
   useEffect(() => {
     const fetchIndexes = async () => {
       try {
         const response = await indexesService.getIndexes();
         setAvailableIndexes(response.indexes || []);
-        
-        // Only enhance title once when modal opens and has initialTitle
-        if (memoizedInitialTitle && !hasInitialized) {
-          const relevantContent = [
-            "Found relevant content in 'research_paper.pdf': 'The implementation of zero-knowledge proofs enables privacy-preserving identity verification while maintaining security guarantees. Our approach combines zk-SNARKs with selective disclosure mechanisms.'",
-            "Found relevant content in 'project_notes.md': 'Key considerations for the identity protocol: 1) User privacy must be preserved 2) Verification should be efficient 3) Interoperability with existing systems 4) Compliance with regulations'",
-            "Found relevant content in 'meeting_summary.txt': 'Team discussed potential integration with existing identity providers. Consensus reached on using OAuth 2.0 for initial authentication, then transitioning to our custom ZK-based system.'"
-          ];
-          
-          // Combine the initial title with relevant content
-          const combinedContent = `${memoizedInitialTitle}\n\nAdditional context from your files:\n${relevantContent.map(content => `• ${content}`).join('\n')}`;
-          setTitle(combinedContent);
-          setHasInitialized(true);
-        } else if (!memoizedInitialTitle) {
-          setTitle('');
-        }
       } catch (error) {
         console.error('Error fetching indexes:', error);
       } finally {
@@ -109,20 +89,42 @@ export default function CreateIntentModal({
 
     if (open) {
       fetchIndexes();
-      setSelectedIndexes(memoizedInitialIndexIds);
+      setSelectedIndexes(initialIndexIds);
+      
+      // Only enhance payload once when modal opens and has initialPayload
+      if (initialPayload && !hasInitialized) {
+        const relevantContent = [
+          "Found relevant content in 'research_paper.pdf': 'The implementation of zero-knowledge proofs enables privacy-preserving identity verification while maintaining security guarantees. Our approach combines zk-SNARKs with selective disclosure mechanisms.'",
+          "Found relevant content in 'project_notes.md': 'Key considerations for the identity protocol: 1) User privacy must be preserved 2) Verification should be efficient 3) Interoperability with existing systems 4) Compliance with regulations'",
+          "Found relevant content in 'meeting_summary.txt': 'Team discussed potential integration with existing identity providers. Consensus reached on using OAuth 2.0 for initial authentication, then transitioning to our custom ZK-based system.'"
+        ];
+        
+        // Combine the initial payload with relevant content
+        const combinedContent = `${initialPayload}\n\nAdditional context from your files:\n${relevantContent.map(content => `• ${content}`).join('\n')}`;
+        setPayload(combinedContent);
+        setHasInitialized(true);
+      } else if (!initialPayload && !hasInitialized) {
+        setPayload('');
+        setHasInitialized(true);
+      }
     } else {
       // Reset when modal closes
       setHasInitialized(false);
+      setPayload('');
+      setSelectedIndexes([]);
+      setAttachments([]);
+      setIsSuccess(false);
+      setIsProcessing(false);
     }
-  }, [open, memoizedInitialTitle, memoizedInitialIndexIds]);
+  }, [open, indexesService, initialIndexIds, initialPayload, hasInitialized]); // Include all dependencies
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
     
     try {
-      await onSubmit({ title, indexIds: selectedIndexes, attachments });
-      setTitle('');
+      await onSubmit({ payload, indexIds: selectedIndexes, attachments });
+      setPayload('');
       setSelectedIndexes([]);
       setAttachments([]);
       setIsSuccess(true);
@@ -136,7 +138,7 @@ export default function CreateIntentModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [title, selectedIndexes, attachments, onSubmit, onOpenChange]);
+  }, [payload, selectedIndexes, attachments, onSubmit, onOpenChange]);
 
   const toggleIndex = useCallback((indexId: string) => {
     setSelectedIndexes(prev => 
@@ -219,9 +221,9 @@ export default function CreateIntentModal({
                     </label>
                     <div className="space-y-4">
                       <Textarea
-                        id="title"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
+                        id="payload"
+                        value={payload}
+                        onChange={(e) => setPayload(e.target.value)}
                         className="min-h-[200px]"
                         placeholder="Enter your intent here..."
                         required

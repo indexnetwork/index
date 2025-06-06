@@ -3,7 +3,7 @@
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, ArrowUpRight } from "lucide-react";
-import { indexService, Index } from "@/services/indexes";
+import { useIndexService, Index } from "@/services/indexes";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
 
@@ -19,7 +19,7 @@ export default function SharePage({ params }: SharePageProps) {
   const [index, setIndex] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
   const [requestSent, setRequestSent] = useState(false);
-  const indexesService = indexService();
+  const indexesService = useIndexService();
 
   useEffect(() => {
     const fetchIndex = async () => {
@@ -34,7 +34,7 @@ export default function SharePage({ params }: SharePageProps) {
     };
 
     fetchIndex();
-  }, [resolvedParams.id]);
+  }, [resolvedParams.id, indexesService]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -68,7 +68,7 @@ export default function SharePage({ params }: SharePageProps) {
   const handleRequestConnection = async () => {
     if (index) {
       try {
-        await indexesService.requestConnection(index.id);
+        // Call service in the future.
         setRequestSent(true);
       } catch (error) {
         console.error('Error requesting connection:', error);

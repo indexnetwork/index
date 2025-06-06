@@ -16,7 +16,6 @@ export const users = pgTable('users', {
 
 export const intents = pgTable('intents', {
   id: uuid('id').primaryKey().defaultRandom(),
-  title: text('title').notNull(),
   payload: text('payload').notNull(),
   isPublic: boolean('is_public').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),

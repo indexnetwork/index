@@ -1,4 +1,3 @@
-import { useAuthenticatedAPI } from '../lib/api';
 import { 
   Intent,
   IntentConnection,
@@ -8,7 +7,6 @@ import {
   CreateIntentRequest, 
   UpdateIntentRequest 
 } from '../lib/types';
-import { allAgents } from '../config/agents';
 
 // Transform config agents to match Agent interface
 export const agents: Agent[] = [
@@ -37,20 +35,6 @@ export const agents: Agent[] = [
     avatar: "/avatars/agents/trusta.svg"
   }
 ];
-
-// Legacy interface for backward compatibility
-export interface LegacyIntent {
-  id: string;
-  title: string;
-  updatedAt: string;
-  connections: number;
-  status: 'active' | 'archived' | 'suggested';
-  indexes: {
-    id: string;
-    name: string;
-    members: number;
-  }[];
-}
 
 // Mock data for connections (this would come from a separate service)
 const mockConnections: IntentConnection[] = [
@@ -106,18 +90,16 @@ const mockConnections: IntentConnection[] = [
   }
 ];
 
-// Service functions using real API
-export const intentsService = {
+// Service functions factory that takes an authenticated API instance
+export const createIntentsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get all intents with pagination
   getIntents: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Intent>> => {
-    const api = useAuthenticatedAPI();
     const response = await api.get<PaginatedResponse<Intent>>(`/intents?page=${page}&limit=${limit}`);
     return response;
   },
 
   // Get single intent by ID
   getIntent: async (id: string): Promise<Intent> => {
-    const api = useAuthenticatedAPI();
     const response = await api.get<APIResponse<Intent>>(`/intents/${id}`);
     if (!response.intent) {
       throw new Error('Intent not found');
@@ -135,7 +117,6 @@ export const intentsService = {
 
   // Create new intent
   createIntent: async (data: CreateIntentRequest): Promise<Intent> => {
-    const api = useAuthenticatedAPI();
     const response = await api.post<APIResponse<Intent>>('/intents', data);
     if (!response.intent) {
       throw new Error('Failed to create intent');
@@ -145,7 +126,6 @@ export const intentsService = {
 
   // Update intent
   updateIntent: async (id: string, data: UpdateIntentRequest): Promise<Intent> => {
-    const api = useAuthenticatedAPI();
     const response = await api.patch<APIResponse<Intent>>(`/intents/${id}`, data);
     if (!response.intent) {
       throw new Error('Failed to update intent');
@@ -155,27 +135,35 @@ export const intentsService = {
 
   // Delete intent
   deleteIntent: async (id: string): Promise<void> => {
-    const api = useAuthenticatedAPI();
     await api.delete(`/intents/${id}`);
   },
 
   // Add indexes to intent
   addIndexesToIntent: async (intentId: string, indexIds: string[]): Promise<void> => {
-    const api = useAuthenticatedAPI();
     await api.post(`/intents/${intentId}/indexes`, { indexIds });
   },
 
   // Remove indexes from intent
   removeIndexesFromIntent: async (intentId: string, indexIds: string[]): Promise<void> => {
-    const api = useAuthenticatedAPI();
     // For DELETE with body, we can use a POST with _method override or use query params
     // Using query params approach:
     const queryParams = indexIds.map(id => `indexIds[]=${id}`).join('&');
     await api.delete(`/intents/${intentId}/indexes?${queryParams}`);
   }
+});
+
+// Backward compatibility - service that uses apiClient directly (for non-authenticated requests)
+export const intentsService = {
+  // Get intent connections (mock for now - would need separate connections API)
+  getIntentConnections: async (): Promise<IntentConnection[]> => {
+    // TODO: Replace with real API when connections endpoint is available
+    return new Promise((resolve) => {
+      resolve(mockConnections);
+    });
+  }
 };
 
 // Hook for using intents service with proper error handling
 export function useIntentsService() {
-  return intentsService;
+  return createIntentsService;
 } 

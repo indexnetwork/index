@@ -7,7 +7,7 @@ import { Share2, Plus, Lock } from "lucide-react";
 import CreateIndexModal from "@/components/modals/CreateIndexModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
-import { indexService } from "@/services/indexes";
+import { useIndexService } from "@/services/indexes";
 import { Index } from "@/lib/types";
 import { MCP } from '@lobehub/icons';
 import ClientLayout from "@/components/ClientLayout";
@@ -19,7 +19,7 @@ export default function IndexesPage() {
   const [selectedIndex, setSelectedIndex] = useState("");
   const [indexes, setIndexes] = useState<Index[]>([]);
   const [loading, setLoading] = useState(true);
-  const indexesService = indexService();
+  const indexesService = useIndexService();
 
   useEffect(() => {
     const fetchIndexes = async () => {
@@ -34,7 +34,7 @@ export default function IndexesPage() {
     };
 
     fetchIndexes();
-  }, []); // Empty dependency array - only run once on mount
+  }, [indexesService]); // Include indexesService dependency
 
   const handleCreateIndex = async (indexData: { name: string }) => {
     try {

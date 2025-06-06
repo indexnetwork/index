@@ -8,7 +8,7 @@ export class APIError extends Error {
   constructor(
     message: string,
     public status: number,
-    public response?: any
+    public response?: unknown
   ) {
     super(message);
     this.name = 'APIError';
@@ -94,7 +94,7 @@ class APIClient {
   // POST request
   async post<T>(
     endpoint: string,
-    data?: any,
+    data?: unknown,
     accessToken?: string
   ): Promise<T> {
     return this.request<T>(endpoint, {
@@ -107,7 +107,7 @@ class APIClient {
   // PUT request
   async put<T>(
     endpoint: string,
-    data?: any,
+    data?: unknown,
     accessToken?: string
   ): Promise<T> {
     return this.request<T>(endpoint, {
@@ -120,7 +120,7 @@ class APIClient {
   // PATCH request
   async patch<T>(
     endpoint: string,
-    data?: any,
+    data?: unknown,
     accessToken?: string
   ): Promise<T> {
     return this.request<T>(endpoint, {
@@ -212,13 +212,13 @@ export function useAuthenticatedAPI() {
     get: <T>(endpoint: string) =>
       makeAuthenticatedRequest<T>((token) => apiClient.get<T>(endpoint, token)),
     
-    post: <T>(endpoint: string, data?: any) =>
+    post: <T>(endpoint: string, data?: unknown) =>
       makeAuthenticatedRequest<T>((token) => apiClient.post<T>(endpoint, data, token)),
     
-    put: <T>(endpoint: string, data?: any) =>
+    put: <T>(endpoint: string, data?: unknown) =>
       makeAuthenticatedRequest<T>((token) => apiClient.put<T>(endpoint, data, token)),
     
-    patch: <T>(endpoint: string, data?: any) =>
+    patch: <T>(endpoint: string, data?: unknown) =>
       makeAuthenticatedRequest<T>((token) => apiClient.patch<T>(endpoint, data, token)),
     
     delete: <T>(endpoint: string) =>
@@ -234,8 +234,8 @@ export function useAuthenticatedAPI() {
 // Utility function for non-authenticated requests
 export const api = {
   get: <T>(endpoint: string) => apiClient.get<T>(endpoint),
-  post: <T>(endpoint: string, data?: any) => apiClient.post<T>(endpoint, data),
-  put: <T>(endpoint: string, data?: any) => apiClient.put<T>(endpoint, data),
-  patch: <T>(endpoint: string, data?: any) => apiClient.patch<T>(endpoint, data),
+  post: <T>(endpoint: string, data?: unknown) => apiClient.post<T>(endpoint, data),
+  put: <T>(endpoint: string, data?: unknown) => apiClient.put<T>(endpoint, data),
+  patch: <T>(endpoint: string, data?: unknown) => apiClient.patch<T>(endpoint, data),
   delete: <T>(endpoint: string) => apiClient.delete<T>(endpoint),
 }; 

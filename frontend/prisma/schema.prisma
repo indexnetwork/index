@@ -47,7 +47,6 @@ model Agent {
 
 model Intent {
   id          String        @id @default(uuid())
-  title       String
   isPublic    Boolean       @default(false)
   updatedAt   DateTime      @updatedAt
   status      String

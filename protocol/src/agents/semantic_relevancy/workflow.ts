@@ -6,7 +6,6 @@ import { llm, createBacking, parseAgentDecisions } from "../../lib/agents";
 // Type definitions matching the database schema
 interface Intent {
   id: string;
-  title: string;
   payload: string;
   status: string;
   userId: string;
@@ -47,7 +46,6 @@ You are the Semantic Relevancy Staker Agent. Analyze the semantic similarity bet
 
 NEW INTENT:
 - ID: ${newIntent.id}
-- Title: ${newIntent.title}
 - Description: ${newIntent.payload}
 - Status: ${newIntent.status}
 - User: ${newIntent.user?.name || newIntent.userId}
@@ -55,7 +53,6 @@ NEW INTENT:
 EXISTING INTENTS FOR COMPARISON:
 ${existingIntents.map((i: Intent) => `
 - ID: ${i.id}
-- Title: ${i.title}
 - Description: ${i.payload}
 - User: ${i.user?.name || i.userId}
 `).join('')}
@@ -96,7 +93,7 @@ Focus on maximizing intent matching precision through semantic understanding.
     const analysis = response.content as string;
     
     const output = `Semantic Relevancy Staker - Intent Analysis\n\n` +
-                  `Intent: "${newIntent.title}" (${newIntent.id})\n\n` +
+                  `Intent: "${newIntent.payload}" (${newIntent.id})\n\n` +
                   `${analysis}`;
     
     return { output };
@@ -123,10 +120,10 @@ async function makeBackingDecision(state: StateType): Promise<Partial<StateType>
   const prompt = `
 You are a semantic relevancy agent that decides whether to back intent pairs.
 
-NEW INTENT: ${newIntent.title} - ${newIntent.payload}
+NEW INTENT: ${newIntent.payload}
 
 EXISTING INTENTS:
-${existingIntents.map((i: Intent, idx: number) => `${idx + 1}. ID: ${i.id}, Title: ${i.title} - ${i.payload}`).join('\n')}
+${existingIntents.map((i: Intent, idx: number) => `${idx + 1}. ID: ${i.id} - ${i.payload}`).join('\n')}
 
 For each existing intent, decide if it's semantically relevant to the new intent.
 Return ONLY a JSON array with format:
@@ -202,7 +199,6 @@ export async function runSemanticRelevancy(input: string): Promise<string> {
   // Create a mock intent from string input for testing
   const mockIntent: Intent = {
     id: "mock-" + Date.now(),
-    title: "Test Intent",
     payload: input,
     status: "active",
     userId: "test-user"

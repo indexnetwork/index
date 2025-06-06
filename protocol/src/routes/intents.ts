@@ -33,7 +33,6 @@ router.get('/',
       const [intentsResult, totalResult] = await Promise.all([
         db.select({
           id: intents.id,
-          title: intents.title,
           payload: intents.payload,
           isPublic: intents.isPublic,
           createdAt: intents.createdAt,
@@ -61,7 +60,6 @@ router.get('/',
 
           return {
             id: intent.id,
-            title: intent.title,
             payload: intent.payload,
             isPublic: intent.isPublic,
             createdAt: intent.createdAt,
@@ -107,7 +105,6 @@ router.get('/:id',
 
       const intent = await db.select({
         id: intents.id,
-        title: intents.title,
         payload: intents.payload,
         isPublic: intents.isPublic,
         createdAt: intents.createdAt,
@@ -136,7 +133,6 @@ router.get('/:id',
 
       const result = {
         id: intentData.id,
-        title: intentData.title,
         payload: intentData.payload,
         isPublic: intentData.isPublic,
         createdAt: intentData.createdAt,
@@ -161,7 +157,6 @@ router.get('/:id',
 router.post('/',
   authenticatePrivy,
   [
-    body('title').trim().isLength({ min: 1, max: 255 }),
     body('payload').trim().isLength({ min: 1 }),
     body('isPublic').optional().isBoolean(),
     body('indexIds').optional().isArray(),
@@ -174,7 +169,7 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { title, payload, isPublic = false, indexIds = [] } = req.body;
+      const { payload, isPublic = false, indexIds = [] } = req.body;
 
       // Verify index IDs exist and user has access to them
       if (indexIds.length > 0) {
@@ -197,13 +192,11 @@ router.post('/',
       }
 
       const newIntent = await db.insert(intents).values({
-        title,
         payload,
         isPublic,
         userId: req.user!.id,
       }).returning({
         id: intents.id,
-        title: intents.title,
         payload: intents.payload,
         isPublic: intents.isPublic,
         createdAt: intents.createdAt,
@@ -237,7 +230,6 @@ router.put('/:id',
   authenticatePrivy,
   [
     param('id').isUUID(),
-    body('title').optional().trim().isLength({ min: 1, max: 255 }),
     body('payload').optional().trim().isLength({ min: 1 }),
     body('isPublic').optional().isBoolean(),
   ],
@@ -249,7 +241,7 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { title, payload, isPublic } = req.body;
+      const { payload, isPublic } = req.body;
 
       // Check if intent exists and user owns it
       const intent = await db.select({ id: intents.id, userId: intents.userId })
@@ -266,7 +258,6 @@ router.put('/:id',
       }
 
       const updateData: any = { updatedAt: new Date() };
-      if (title !== undefined) updateData.title = title;
       if (payload !== undefined) updateData.payload = payload;
       if (isPublic !== undefined) updateData.isPublic = isPublic;
 
@@ -275,7 +266,6 @@ router.put('/:id',
         .where(eq(intents.id, id))
         .returning({
           id: intents.id,
-          title: intents.title,
           payload: intents.payload,
           isPublic: intents.isPublic,
           createdAt: intents.createdAt,

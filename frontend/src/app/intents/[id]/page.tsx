@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Play, Archive, Pause } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { intentsService, Intent, IntentConnection, agents } from "@/services/intents";
+import { agents, createIntentsService } from "@/services/intents";
+import { Intent, IntentConnection } from "@/lib/types";
+import { useAuthenticatedAPI } from "@/lib/api";
 import ClientLayout from "@/components/ClientLayout";
 
 interface IntentDetailPageProps {
@@ -20,6 +22,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const [connections, setConnections] = useState<IntentConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const api = useAuthenticatedAPI();
   // TODO: Add agent animation state when implementing animation feature
   // const [activeAgentIndex, setActiveAgentIndex] = useState<number>(-1);
   // const [isThinking, setIsThinking] = useState(false);
@@ -27,6 +30,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   useEffect(() => {
     const fetchIntentData = async () => {
       try {
+        const intentsService = createIntentsService(api);
         const [intentData, connectionsData] = await Promise.all([
           intentsService.getIntent(resolvedParams.id),
           intentsService.getIntentConnections()
@@ -41,7 +45,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
     };
 
     fetchIntentData();
-  }, [resolvedParams.id]);
+  }, [resolvedParams.id, api]);
 
   // TODO: Add agent animation functionality
   // const startAgentAnimation = (connection: IntentConnection) => {
@@ -101,7 +105,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
           <div className="flex flex-wrap sm:flex-nowrap justify-between items-center">
             <div className="w-full sm:w-auto mb-2 sm:mb-0">
               <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900">
-                {intent.title}
+                {intent.payload}
               </h1>
               <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">Updated {intent.updatedAt} • {connections.length} connections</p>
             </div>

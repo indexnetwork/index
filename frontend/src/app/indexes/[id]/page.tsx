@@ -7,7 +7,7 @@ import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import { MCP } from '@lobehub/icons';
 import Link from "next/link";
-import { indexService, Index } from "@/services/indexes";
+import { useIndexService, Index } from "@/services/indexes";
 import ClientLayout from "@/components/ClientLayout";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 
@@ -23,13 +23,13 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
   const [showCreateIntentModal, setShowCreateIntentModal] = useState(false);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
-  const [selectedSuggestedIntent, setSelectedSuggestedIntent] = useState<{ title: string; id: string } | null>(null);
+  const [selectedSuggestedIntent, setSelectedSuggestedIntent] = useState<{ payload: string; id: string } | null>(null);
   const [index, setIndex] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
   const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set());
   const [addedIntents, setAddedIntents] = useState<Set<string>>(new Set());
-  const indexesService = indexService();
+  const indexesService = useIndexService();
 
   useEffect(() => {
     const fetchIndex = async () => {
@@ -53,7 +53,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     };
 
     fetchIndex();
-  }, [resolvedParams.id]);
+  }, [resolvedParams.id, indexesService]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -117,7 +117,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       const suggestedIntent = index.suggestedIntents.find(intent => intent.id === intentId);
       if (suggestedIntent) {
         setSelectedSuggestedIntent({
-          title: suggestedIntent.title,
+          payload: suggestedIntent.payload,
           id: intentId
         });
         setShowCreateIntentModal(true);
@@ -206,7 +206,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             </div>
             
             <div className="space-y-2 flex-1">
-                {index.files?.map((file, fileIndex) => (
+                {index.files?.map((file) => (
                   <div
                     key={file.id}
                     className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
@@ -336,7 +336,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 <div key={intent.id} className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.title}</h4>
+                      <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.payload.substring(0, 100)}...</h4>
                     </div>
                   </div>
                   <Button
@@ -370,7 +370,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         open={showCreateIntentModal}
         onOpenChange={setShowCreateIntentModal}
         onSubmit={handleCreateIntent}
-        initialTitle={selectedSuggestedIntent?.title || ''}
+        initialPayload={selectedSuggestedIntent?.payload || ''}
       />
       <ConfigureModal 
         open={showConfigDialog}

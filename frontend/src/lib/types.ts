@@ -48,14 +48,14 @@ export interface IndexMember {
 
 export interface SuggestedIntent {
   id: string;
-  title: string;
+  payload: string;
   isAdded?: boolean;
 }
 
 // Intent types
 export interface Intent {
   id: string;
-  title: string;
+  payload: string;
   createdAt: string;
   updatedAt: string;
   user: {
@@ -151,12 +151,12 @@ export interface UpdateIndexRequest {
 }
 
 export interface CreateIntentRequest {
-  title: string;
+  payload: string;
   indexIds: string[];
 }
 
 export interface UpdateIntentRequest {
-  title?: string;
+  payload?: string;
 }
 
 export interface UpdateProfileRequest {
