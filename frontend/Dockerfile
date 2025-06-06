@@ -1,6 +1,15 @@
 # Build stage
 FROM node:24.1.0-alpine AS builder
 WORKDIR /app
+
+# Accept build arguments
+ARG NEXT_PUBLIC_PRIVY_APP_ID
+ARG NEXT_PUBLIC_PRIVY_CLIENT_ID
+
+# Set environment variables from build arguments
+ENV NEXT_PUBLIC_PRIVY_APP_ID=$NEXT_PUBLIC_PRIVY_APP_ID
+ENV NEXT_PUBLIC_PRIVY_CLIENT_ID=$NEXT_PUBLIC_PRIVY_CLIENT_ID
+
 COPY package*.json ./
 RUN npm install
 COPY . .

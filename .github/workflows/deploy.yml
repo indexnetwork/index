@@ -57,7 +57,7 @@ jobs:
           DOCKER_TAG: indexnetwork/website:${{ steps.build-time.outputs.time }}
           DOCKER_REGISTRY: 236785930124.dkr.ecr.us-east-1.amazonaws.com
         run: |
-          docker build -t $DOCKER_TAG ./frontend
+          docker build --build-arg NEXT_PUBLIC_PRIVY_APP_ID=${{ secrets.NEXT_PUBLIC_PRIVY_APP_ID }} --build-arg NEXT_PUBLIC_PRIVY_CLIENT_ID=${{ secrets.NEXT_PUBLIC_PRIVY_CLIENT_ID }} -t $DOCKER_TAG ./frontend
           docker tag $DOCKER_TAG $DOCKER_REGISTRY/$DOCKER_TAG
           docker push $DOCKER_REGISTRY/$DOCKER_TAG
           docker tag $DOCKER_TAG $DOCKER_REGISTRY/indexnetwork/website:latest-${GITHUB_REF#refs/heads/}
