@@ -367,7 +367,6 @@ async function demoIntentInferrer(folderPath?: string) {
       result.intents.slice(0, 5).forEach((intent, index) => {
           console.log(`  ${index + 1}. ${intent.payload}`);
           console.log(`     Confidence: ${(intent.confidence * 100).toFixed(1)}%`);
-          console.log(`     Files: ${intent.relevantFiles.slice(0, 3).join(', ')}${intent.relevantFiles.length > 3 ? '...' : ''}`);
           console.log();
         });
 

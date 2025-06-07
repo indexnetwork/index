@@ -9,7 +9,6 @@ import * as fs from 'fs';
 export interface InferredIntent {
   payload: string;
   confidence: number;
-  relevantFiles: string[];
 }
 // State annotation for the workflow
 const IntentInferrerState = Annotation.Root({
@@ -139,8 +138,7 @@ OUTPUT REQUIREMENTS:
 Return a JSON array of 8-15 intent objects with this exact structure:
 [{
   "payload": "Clear, specific intent describing what the user wants to accomplish, referencing actual document content and patterns found",
-  "confidence": 0.85,
-  "relevantFiles": ["file1.pdf", "file2.docx", "folder/file3.txt"]
+  "confidence": 0.85
 }]
 
 Generate evidence-based intents with valid JSON format. Reference actual content and use appropriate confidence scores.
@@ -168,8 +166,7 @@ Generate evidence-based intents with valid JSON format. Reference actual content
       )
       .map(intent => ({
         payload: intent.payload,
-        confidence: Math.min(intent.confidence, 1.0),
-        relevantFiles: intent.relevantFiles || []
+        confidence: Math.min(intent.confidence, 1.0)
       }));
 
     console.log(`🎯 Generated ${validIntents.length} high-quality intents`);
@@ -201,7 +198,9 @@ export function createIntentInferrerWorkflow() {
   .addEdge("processDocuments", "generateIntents")
   .addEdge("generateIntents", END);
 
-  return workflow.compile({ checkpointer });
+  return workflow.compile({ 
+    checkpointer,
+  });
 }
 
 // Main execution function

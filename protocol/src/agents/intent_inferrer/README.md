@@ -128,7 +128,6 @@ Each intent includes comprehensive metadata:
 interface InferredIntent {
   payload: string;                  // Intent description
   confidence: number;               // Confidence score (0.0-1.0)
-  relevantFiles: string[];          // Related documents
 }
 ```
 
