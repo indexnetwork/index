@@ -1,0 +1,142 @@
+{
+  "name": "intent_inferrer",
+  "displayName": "Intent Inferrer Agent",
+  "description": "Advanced document analysis and intent inference using LangChain's UnstructuredDirectoryLoader and LangGraph workflow automation",
+  "version": "3.0.0",
+  "category": "analysis",
+  "workflow": {
+    "nodes": [
+      {
+        "name": "loadDocuments",
+        "description": "Load documents using UnstructuredDirectoryLoader"
+      },
+      {
+        "name": "processDocuments", 
+        "description": "Process documents into structured content"
+      },
+      {
+        "name": "generateIntents",
+        "description": "Generate intents using LLM analysis"
+      }
+    ]
+  },
+
+  "configuration": {
+    "environment_variables": {
+      "required": [
+        {
+          "name": "OPENAI_API_KEY",
+          "description": "OpenAI API key for LLM-based intent generation",
+          "type": "string"
+        }
+      ],
+      "optional": [
+        {
+          "name": "UNSTRUCTURED_API_KEY",
+          "description": "Unstructured.io API key for advanced document parsing",
+          "type": "string",
+          "benefit": "Enables parsing of PDFs, DOCX, PPTX, Excel, emails, and more"
+        },
+        {
+          "name": "UNSTRUCTURED_SERVER_URL", 
+          "description": "URL for local Unstructured server (Docker)",
+          "type": "string",
+          "default": "http://localhost:8000",
+          "benefit": "Offline document processing with local server"
+        },
+        {
+          "name": "UNSTRUCTURED_API_URL",
+          "description": "Custom Unstructured API endpoint",
+          "type": "string", 
+          "default": "https://api.unstructured.io"
+        }
+      ]
+    },
+    
+    "limits": {
+      "processing_timeout": "300000ms",
+      "max_documents_summary": 50,
+      "content_preview_length": 1000
+    },
+
+    "filtering": {
+      "skip_directories": [
+        "node_modules", 
+        ".git", 
+        "dist", 
+        "build", 
+        ".next", 
+        "__pycache__", 
+        ".pytest_cache", 
+        ".venv", 
+        "venv"
+      ],
+      "unknown_file_handling": "ignore"
+    }
+  },
+
+  "output_format": {
+    "intent_structure": {
+      "payload": "string",
+      "confidence": "number (0.0-1.0)",
+      "relevantFiles": "string[]"
+    },
+    
+    "categories": [
+      "learning",
+      "analysis", 
+      "implementation",
+      "troubleshooting",
+      "documentation",
+      "integration",
+      "optimization",
+      "compliance"
+    ]
+  },
+
+  "integration": {
+    "langchain_version": "^0.3.0",
+    "unstructured_community": "@langchain/community",
+    "langgraph_version": "^0.2.0",
+    "memory_persistence": "MemorySaver",
+    "state_management": "StateGraph"
+  },
+
+  "usage_scenarios": [
+    {
+      "scenario": "Research Document Analysis",
+      "description": "Analyze research papers, reports, and documentation to understand research directions and gaps",
+      "best_for": ["PDF research papers", "Technical documentation", "Regulatory documents"]
+    },
+    {
+      "scenario": "Codebase Intent Discovery", 
+      "description": "Understand developer intentions and common use cases from code repositories",
+      "best_for": ["Source code files", "Configuration files", "API documentation"]
+    },
+    {
+      "scenario": "Business Document Processing",
+      "description": "Extract insights and action items from business documents and presentations",
+      "best_for": ["Word documents", "PowerPoint presentations", "Excel spreadsheets"]
+    },
+    {
+      "scenario": "Email and Communication Analysis",
+      "description": "Analyze email threads and communication patterns for intent discovery",
+      "best_for": ["Email files (.eml, .msg)", "Communication archives"]
+    }
+  ],
+
+  "limitations": [
+    "Large document collections may require significant processing time",
+    "Complex document layouts may have parsing variations", 
+    "Intent quality depends on document content richness and clarity",
+    "Unstructured API requires internet connection",
+    "Advanced document types require Unstructured API or local server setup",
+    "Processing timeout may be reached for very large document collections"
+  ],
+
+  "setup_instructions": {
+    "basic": "Works out of the box with OPENAI_API_KEY for text-based files",
+    "advanced": "Set UNSTRUCTURED_API_KEY for full document type support", 
+    "local": "Run 'docker run -p 8000:8000 -d downloads.unstructured.io/unstructured-io/unstructured-api:latest' and set UNSTRUCTURED_SERVER_URL"
+  }
+} 

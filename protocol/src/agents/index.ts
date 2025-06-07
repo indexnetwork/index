@@ -26,6 +26,12 @@ export {
   getAgentConfig as networkAgentConfig
 } from './network_manager/integration';
 
+export {
+  analyzeFolder as intentInferrerAnalyzeFolder,
+  getIntents as intentInferrerGetIntents,
+  getAgentConfig as intentInferrerAgentConfig
+} from './intent_inferrer/integration';
+
 /**
  * Agent system configuration
  */
