@@ -120,7 +120,6 @@ async function generateIntents(state: StateType): Promise<Partial<StateType>> {
   const processedContent = state.processedContent;
   const documents = state.documents || [];
   
-  console.log("makayella", state.processedContent)
   if (!processedContent || documents.length === 0) {
     return { 
       intents: [],
@@ -146,8 +145,6 @@ Return a JSON array of 8-15 intent objects with this exact structure:
 
 Generate evidence-based intents with valid JSON format. Reference actual content and use appropriate confidence scores.
 `;
-
-console.log(systemPrompt)
   try {
     const response = await llm.invoke(systemPrompt);
     const content = response.content as string;
@@ -195,8 +192,6 @@ export function createIntentInferrerWorkflow() {
   // Initialize memory for state persistence
   const checkpointer = new MemorySaver();
   
-  
-      
   const workflow = new StateGraph(IntentInferrerState)
   .addNode("loadDocuments", loadDocuments)
   .addNode("processDocuments", processDocuments)
