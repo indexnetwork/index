@@ -43,3 +43,6 @@ next-env.d.ts
 
 drizzle/*
 uploads/*
+dist/
+# LangGraph API
+.langgraph_api

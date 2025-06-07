@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import db from './db';
+import { agents } from './schema';
+import { eq } from 'drizzle-orm';
 import { ChatOpenAI } from '@langchain/openai';
-
-const prisma = new PrismaClient();
 
 // Simple OpenAI client for agent decisions
 export const llm = new ChatOpenAI({
@@ -12,67 +12,29 @@ export const llm = new ChatOpenAI({
 
 // Helper to ensure agent exists in database
 export async function ensureAgent(name: string, avatar: string) {
-  let agent = await prisma.agent.findFirst({
-    where: { name }
-  });
-
-  if (!agent) {
-    agent = await prisma.agent.create({
-      data: {
-        name,
-        role: "SYSTEM",
-        avatar
-      }
-    });
+  const existingAgents = await db.select().from(agents).where(eq(agents.name, name)).limit(1);
+  
+  if (existingAgents.length > 0) {
+    return existingAgents[0];
   }
 
-  return agent;
+  const [newAgent] = await db.insert(agents).values({
+    name,
+    avatar
+  }).returning();
+
+  return newAgent;
 }
 
-// Helper to create backing decision
+// Helper to create backing decision - DISABLED (requires intentPair and backer tables)
 export async function createBacking(
   intentId1: string, 
   intentId2: string, 
   agentName: string, 
   confidence: number
 ) {
-  try {
-    // Create intent pair
-    const intentPair = await prisma.intentPair.create({
-      data: {
-        intents: {
-          connect: [
-            { id: intentId1 },
-            { id: intentId2 }
-          ]
-        }
-      }
-    });
-
-    // Get agent with appropriate avatar
-    let avatar = "🌐"; // default
-    if (agentName === "semantic_relevancy") {
-      avatar = "🧠";
-    } else if (agentName === "proof_layer") {
-      avatar = "🔍";
-    }
-    
-    const agent = await ensureAgent(agentName, avatar);
-
-    // Create backing record
-    await prisma.backer.create({
-      data: {
-        confidence,
-        agentId: agent.id,
-        intentPairId: intentPair.id
-      }
-    });
-
-    return true;
-  } catch (error) {
-    console.error("Error creating backing:", error);
-    return false;
-  }
+  console.warn("createBacking is disabled - requires intentPair and backer tables that don't exist in current schema");
+  return false;
 }
 
 // Parse OpenAI JSON response safely
@@ -88,4 +50,4 @@ export function parseAgentDecisions(content: string): Array<{intentId: string, c
   return [];
 }
 
-export default prisma; 
+export default db; 
