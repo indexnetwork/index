@@ -28,6 +28,7 @@ export {
 
 export {
   analyzeFolder as intentInferrerAnalyzeFolder,
+  analyzeSummaries as intentInferrerAnalyzeSummaries,
   getIntents as intentInferrerGetIntents,
   getAgentConfig as intentInferrerAgentConfig
 } from './intent_inferrer/integration';
