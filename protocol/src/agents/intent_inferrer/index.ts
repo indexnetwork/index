@@ -8,6 +8,7 @@
 // Export main functions
 export {
   analyzeFolder,
+  analyzeSummaries,
   getIntents,
   getTopIntentsByConfidence,
   validateFolderPath,

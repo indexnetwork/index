@@ -30,21 +30,14 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
   const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set());
   const [addedIntents, setAddedIntents] = useState<Set<string>>(new Set());
+  const [suggestedIntents, setSuggestedIntents] = useState<{ id: string; payload: string; confidence: number }[]>([]);
+  const [loadingIntents, setLoadingIntents] = useState(false);
   const indexesService = useIndexes();
 
   const fetchIndex = useCallback(async () => {
     try {
       const data = await indexesService.getIndex(resolvedParams.id);
       setIndex(data || null);
-      // Initialize addedIntents from the index data
-      if (data?.suggestedIntents) {
-        const added = new Set(
-          data.suggestedIntents
-            .filter((intent: any) => intent.isAdded)
-            .map((intent: any) => intent.id)
-        );
-        setAddedIntents(added);
-      }
     } catch (error) {
       console.error('Error fetching index:', error);
     } finally {
@@ -52,9 +45,36 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     }
   }, [resolvedParams.id, indexesService]);
 
+  const fetchSuggestedIntents = useCallback(async () => {
+    if (!index || !index.files || index.files.length === 0) {
+      setSuggestedIntents([]);
+      return;
+    }
+
+    setLoadingIntents(true);
+    try {
+      const intents = await indexesService.getSuggestedIntents(resolvedParams.id);
+      const intentsWithIds = intents.map((intent, index) => ({
+        id: `intent-${index}`,
+        payload: intent.payload,
+        confidence: intent.confidence
+      }));
+      setSuggestedIntents(intentsWithIds);
+    } catch (error) {
+      console.error('Error fetching suggested intents:', error);
+      setSuggestedIntents([]);
+    } finally {
+      setLoadingIntents(false);
+    }
+  }, [resolvedParams.id, indexesService, index]);
+
   useEffect(() => {
     fetchIndex();
   }, [fetchIndex]);
+
+  useEffect(() => {
+    fetchSuggestedIntents();
+  }, [fetchSuggestedIntents]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -114,15 +134,13 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   };
 
   const handleAddIntent = async (intentId: string) => {
-    if (index && index.suggestedIntents) {
-      const suggestedIntent = index.suggestedIntents.find(intent => intent.id === intentId);
-      if (suggestedIntent) {
-        setSelectedSuggestedIntent({
-          payload: suggestedIntent.payload,
-          id: intentId
-        });
-        setShowCreateIntentModal(true);
-      }
+    const suggestedIntent = suggestedIntents.find(intent => intent.id === intentId);
+    if (suggestedIntent) {
+      setSelectedSuggestedIntent({
+        payload: suggestedIntent.payload,
+        id: intentId
+      });
+      setShowCreateIntentModal(true);
     }
   };
 
@@ -318,26 +336,31 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             </div>
             
             <div className="space-y-4 flex-1">
-              {index.suggestedIntents?.map((intent) => (
-                <div key={intent.id} className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.payload.substring(0, 100)}...</h4>
+              {loadingIntents ? (
+                <div className="text-center py-4 text-gray-500">Loading suggested intents...</div>
+              ) : suggestedIntents.length > 0 ? (
+                suggestedIntents.map((intent) => (
+                  <div key={intent.id} className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.payload}</h4>
+                      </div>
                     </div>
+                    <Button
+                      variant={addedIntents.has(intent.id) ? "default" : "outline"}
+                      size="sm"
+                      className="ml-4"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleAddIntent(intent.id);
+                      }}
+                    >
+                      {addedIntents.has(intent.id) ? "View" : "Add"}
+                    </Button>
                   </div>
-                  <Button
-                    variant={addedIntents.has(intent.id) ? "default" : "outline"}
-                    size="sm"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleAddIntent(intent.id);
-                    }}
-                  >
-                    {addedIntents.has(intent.id) ? "View" : "Add"}
-                  </Button>
-                </div>
-              )) || (
+                ))
+              ) : (
                 <div className="text-center py-4 text-gray-500">No suggested intents available</div>
               )}
             </div>

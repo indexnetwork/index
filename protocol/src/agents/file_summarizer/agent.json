@@ -1,0 +1,29 @@
+{
+  "name": "file_summarizer",
+  "displayName": "File Summarizer Agent",
+  "description": "Simple file summarization using UnstructuredLoader to generate markdown summaries",
+  "version": "1.0.0",
+  "category": "analysis",
+  "workflow": {
+    "nodes": [
+      {
+        "name": "loadFile",
+        "description": "Load file using UnstructuredLoader"
+      },
+      {
+        "name": "generateSummary",
+        "description": "Generate markdown summary"
+      },
+      {
+        "name": "saveSummary",
+        "description": "Save summary as {file.id}.summary"
+      }
+    ]
+  },
+  "configuration": {
+    "environment_variables": {
+      "required": ["OPENAI_API_KEY"],
+      "optional": ["UNSTRUCTURED_API_KEY", "UNSTRUCTURED_SERVER_URL"]
+    }
+  }
+} 

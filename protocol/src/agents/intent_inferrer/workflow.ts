@@ -10,12 +10,18 @@ export interface InferredIntent {
   payload: string;
   confidence: number;
 }
+
+export interface DocumentIntents {
+  fileName: string;
+  intents: InferredIntent[];
+}
+
 // State annotation for the workflow
 const IntentInferrerState = Annotation.Root({
   folderPath: Annotation<string>,
   documents: Annotation<Document[]>,
-  processedContent: Annotation<string>,
-  intents: Annotation<InferredIntent[]>,
+  documentIntents: Annotation<DocumentIntents[]>,
+  finalIntents: Annotation<InferredIntent[]>,
   output: Annotation<string>
 });
 
@@ -81,68 +87,167 @@ async function loadDocuments(state: StateType): Promise<Partial<StateType>> {
   }
 }
 
-// Node 2: Process documents into structured content
-async function processDocuments(state: StateType): Promise<Partial<StateType>> {
+// Node 2: Generate 3 intents for each document in parallel
+async function generateDocumentIntents(state: StateType): Promise<Partial<StateType>> {
   const documents = state.documents || [];
   
   if (documents.length === 0) {
     return { 
-      processedContent: "",
-      output: "No documents to process."
+      documentIntents: [],
+      output: "No documents to process for intent generation."
     };
   }
 
-  console.log(`📝 Processing ${documents.length} documents into structured content`);
+  console.log(`📝 Generating 3 intents for each of ${documents.length} documents in parallel`);
   
   try {
-    // Simply concatenate all document content
-    const processedContent = documents
-      .map(doc => doc.pageContent?.trim())
-      .filter(content => content && content.length > 0)
-      .join('\n');
+    // Process each document in parallel to generate 3 intents per document
+    const documentIntentsPromises = documents.map(async (doc, index) => {
+      const fileName = doc.metadata.source || `document_${index}`;
+      const content = doc.pageContent?.trim() || '';
+      
+      if (!content || content.length < 50) {
+        return {
+          fileName,
+          intents: []
+        };
+      }
+
+      const systemPrompt = `
+You are an expert document analyst. Analyze the following document content and generate exactly 3 specific search intents that represent what users might be looking for or seeking to understand from this document.
+
+DOCUMENT: ${fileName}
+CONTENT:
+${content.substring(0, 4000)} ${content.length > 4000 ? '...[truncated]' : ''}
+
+Generate exactly 3 intents that represent:
+1. Information or knowledge users might be seeking from this document
+2. Questions users might have that this document could answer
+3. Topics or concepts users might be searching for
+
+Focus on what users are looking for rather than what they want to do.
+
+OUTPUT REQUIREMENTS:
+Return a JSON array of exactly 3 intent objects with this structure:
+[{
+  "payload": "Specific intent describing what information or knowledge the user is looking for",
+  "confidence": 0.85
+}]
+
+Ensure valid JSON format and confidence scores between 0.5 and 1.0.
+`;
+
+      try {
+        const response = await llm.invoke(systemPrompt);
+        const content = response.content as string;
+        
+        // Extract JSON from the response
+        let jsonStr = content;
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          jsonStr = jsonMatch[0];
+        }
+        
+        // Parse the JSON response
+        const rawIntents: any[] = JSON.parse(jsonStr);
+        
+        // Validate intents
+        const validIntents: InferredIntent[] = rawIntents
+          .filter(intent => 
+            intent.payload && 
+            typeof intent.confidence === 'number' &&
+            intent.confidence >= 0.5
+          )
+          .slice(0, 3) // Ensure max 3 intents
+          .map(intent => ({
+            payload: intent.payload,
+            confidence: Math.min(intent.confidence, 1.0)
+          }));
+
+        return {
+          fileName,
+          intents: validIntents
+        };
+      } catch (error) {
+        console.error(`❌ Error generating intents for ${fileName}:`, error);
+        return {
+          fileName,
+          intents: []
+        };
+      }
+    });
+
+    // Wait for all document intents to be generated
+    const documentIntents = await Promise.all(documentIntentsPromises);
     
-    console.log(`✅ Processed content successfully (${processedContent.length} characters)`);
+    const totalIntents = documentIntents.reduce((sum, doc) => sum + doc.intents.length, 0);
+    console.log(`✅ Generated ${totalIntents} intents across ${documentIntents.length} documents`);
     
-    return { processedContent };
+    return { documentIntents };
   } catch (error) {
-    console.error("❌ Error processing documents:", error);
+    console.error("❌ Error generating document intents:", error);
     return { 
-      processedContent: `Error processing documents: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      output: `Error processing documents: ${error instanceof Error ? error.message : 'Unknown error'}`
+      documentIntents: [],
+      output: `Error generating document intents: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 }
 
-// Node 3: Generate intents using advanced LLM analysis
-async function generateIntents(state: StateType): Promise<Partial<StateType>> {
-  const processedContent = state.processedContent;
-  const documents = state.documents || [];
+// Node 3: Consolidate all document intents into final intents using LLM
+async function consolidateIntents(state: StateType): Promise<Partial<StateType>> {
+  const documentIntents = state.documentIntents || [];
   
-  if (!processedContent || documents.length === 0) {
+  if (documentIntents.length === 0) {
     return { 
-      intents: [],
-      output: "No content available for intent generation."
+      finalIntents: [],
+      output: "No document intents available for consolidation."
     };
   }
 
-  const systemPrompt = `
-You are an expert document analyst and intent inference engine. Based on the comprehensive document analysis provided, generate high-quality, actionable intents that users might have when working with this document collection.
+  console.log(`🎯 Consolidating intents from ${documentIntents.length} documents`);
+  
+  try {
+    // Prepare all intents for consolidation
+    const allIntents = documentIntents.flatMap(doc => 
+      doc.intents.map(intent => ({
+        ...intent,
+        source: doc.fileName
+      }))
+    );
 
-DOCUMENT COLLECTION ANALYSIS:
-${processedContent}
+    const intentsText = documentIntents.map(doc => 
+      `Document: ${doc.fileName}
+Intents:
+${doc.intents.map(intent => `- ${intent.payload} (confidence: ${intent.confidence})`).join('\n')}
+`
+    ).join('\n');
 
-Generate actionable intents based on document analysis. Consider learning, analysis, implementation, troubleshooting, documentation, integration, optimization, and compliance use cases.
+    const systemPrompt = `
+You are an expert intent consolidation engine. You have been given search intents generated from individual documents in a codebase/project. Your task is to analyze these intents and create a consolidated set of 8-15 high-quality, diverse intents that best represent what users might be looking for or seeking to understand from this entire document collection.
+
+INDIVIDUAL DOCUMENT INTENTS:
+${intentsText}
+
+CONSOLIDATION REQUIREMENTS:
+1. Merge similar search intents while preserving unique information needs
+2. Eliminate redundancy and overlap
+3. Prioritize intents with higher confidence scores
+4. Create broader, more comprehensive search intents that span multiple documents
+5. Focus on information, knowledge, and understanding users might be seeking
+6. Include both high-level conceptual searches and specific technical queries
+7. Consider different user personas (developers, researchers, learners, analysts, etc.)
+8. Think about what questions users might ask or what they might search for
 
 OUTPUT REQUIREMENTS:
-Return a JSON array of 8-15 intent objects with this exact structure:
+Return a JSON array of 8-15 consolidated intent objects with this exact structure:
 [{
-  "payload": "Clear, specific intent describing what the user wants to accomplish, referencing actual document content and patterns found",
+  "payload": "Clear, comprehensive intent that represents what users are looking for across the document collection",
   "confidence": 0.85
 }]
 
-Generate evidence-based intents with valid JSON format. Reference actual content and use appropriate confidence scores.
+Generate evidence-based consolidated search intents with valid JSON format and appropriate confidence scores (0.6-1.0).
 `;
-  try {
+
     const response = await llm.invoke(systemPrompt);
     const content = response.content as string;
     
@@ -156,32 +261,33 @@ Generate evidence-based intents with valid JSON format. Reference actual content
     // Parse the JSON response
     const rawIntents: any[] = JSON.parse(jsonStr);
     
-    // Validate and enhance intents with document metadata
-    const validIntents: InferredIntent[] = rawIntents
+    // Validate and enhance consolidated intents
+    const finalIntents: InferredIntent[] = rawIntents
       .filter(intent => 
         intent.payload && 
         typeof intent.confidence === 'number' &&
-        intent.confidence >= 0.3
+        intent.confidence >= 0.6
       )
       .map(intent => ({
         payload: intent.payload,
         confidence: Math.min(intent.confidence, 1.0)
       }));
 
-    console.log(`🎯 Generated ${validIntents.length} high-quality intents`);
+    console.log(`🎯 Consolidated into ${finalIntents.length} final high-quality intents`);
 
-    return { intents: validIntents };
+    return { finalIntents };
   } catch (error) {
-    console.error("Intent generation failed:", error);
-  
+    console.error("❌ Error consolidating intents:", error);
+    
+    // Fallback: return all original intents if consolidation fails
+    const fallbackIntents = documentIntents.flatMap(doc => doc.intents);
+    
     return { 
-      intents: [],
-      output: `Intent generation partially failed, using intelligent fallback intents. Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      finalIntents: fallbackIntents,
+      output: `Intent consolidation failed, returning original intents. Error: ${error instanceof Error ? error.message : 'Unknown error'}`
     };
   }
 }
-
-
 
 // Create the enhanced workflow
 export function createIntentInferrerWorkflow() {
@@ -190,12 +296,12 @@ export function createIntentInferrerWorkflow() {
   
   const workflow = new StateGraph(IntentInferrerState)
   .addNode("loadDocuments", loadDocuments)
-  .addNode("processDocuments", processDocuments)
-  .addNode("generateIntents", generateIntents)
+  .addNode("generateDocumentIntents", generateDocumentIntents)
+  .addNode("consolidateIntents", consolidateIntents)
   .addEdge(START, "loadDocuments")
-  .addEdge("loadDocuments", "processDocuments")
-  .addEdge("processDocuments", "generateIntents")
-  .addEdge("generateIntents", END);
+  .addEdge("loadDocuments", "generateDocumentIntents")
+  .addEdge("generateDocumentIntents", "consolidateIntents")
+  .addEdge("consolidateIntents", END);
 
   return workflow.compile({ 
     checkpointer,
@@ -214,8 +320,8 @@ export async function processFolder(folderPath: string): Promise<{ intents: Infe
     );
     
     return {
-      intents: result.intents || [],
-      output: result.output || "No output generated",
+      intents: result.finalIntents || [],
+      output: result.output || "Intent inference completed successfully",
     };
   } catch (error) {
     console.error("Intent inferrer workflow error:", error);

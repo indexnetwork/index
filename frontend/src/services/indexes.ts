@@ -105,6 +105,12 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     await api.delete(`/indexes/${indexId}/members/${userId}`);
   },
 
+  // Get suggested intents for an index
+  getSuggestedIntents: async (indexId: string): Promise<{ payload: string; confidence: number }[]> => {
+    const response = await api.get<{ intents: { payload: string; confidence: number }[] }>(`/indexes/${indexId}/suggested_intents`);
+    return response.intents;
+  },
+
   // Legacy methods for backward compatibility (these would need intent service integration)
   addSuggestedIntent: async (indexId: string, intentId: string): Promise<boolean> => {
     try {

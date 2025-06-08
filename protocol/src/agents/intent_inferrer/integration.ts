@@ -1,5 +1,7 @@
 import { processFolder, InferredIntent } from './workflow';
 import * as fs from 'fs';
+import path from 'path';
+import { z } from "zod";
 
 /**
  * Intent Inferrer Agent Integration
@@ -18,7 +20,7 @@ export interface IntentInferenceResult {
     folderPath: string;
     processingTime: number;
     unstructuredEnabled: boolean;
-    parsingMethod: 'api' | 'local' | 'fallback';
+    parsingMethod: 'api' | 'local' | 'fallback' | 'summary';
   };
 }
 
@@ -146,8 +148,6 @@ export async function getIntents(folderPath: string): Promise<InferredIntent[]> 
   return result.intents;
 }
 
-
-
 /**
  * Get top intents by confidence score
  * @param intents - Array of inferred intents
@@ -162,7 +162,6 @@ export function getTopIntentsByConfidence(
     .sort((a, b) => b.confidence - a.confidence)
     .slice(0, limit);
 }
-
 
 /**
  * Validate folder path before processing
@@ -313,6 +312,121 @@ export async function testSetup(testFolderPath?: string): Promise<{
       message: "Agent test failed with error",
       details: {
         error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    };
+  }
+}
+
+/**
+ * Specialized function to analyze pre-summarized content files
+ * Super minimal: reads all summaries at once and generates intents directly
+ * @param summariesDir - Directory containing summary files
+ * @param options - Analysis options
+ * @returns Promise with analysis results and inferred intents
+ */
+export async function analyzeSummaries(
+  summariesDir: string,
+  options: {
+    timeoutMs?: number;
+  } = {}
+): Promise<IntentInferenceResult> {
+  const startTime = Date.now();
+  
+  try {
+    // Validate summaries directory
+    if (!summariesDir || !fs.existsSync(summariesDir)) {
+      return {
+        success: false,
+        intents: [],
+        output: "",
+        error: `Summaries directory "${summariesDir}" does not exist or is not accessible`,
+        metadata: {
+          folderPath: summariesDir,
+          processingTime: Date.now() - startTime,
+          unstructuredEnabled: false,
+          parsingMethod: 'summary'
+        }
+      };
+    }
+
+    // Read all summary files
+    const files = fs.readdirSync(summariesDir).filter(f => f.endsWith('.summary'));
+    
+    if (files.length === 0) {
+      return {
+        success: true,
+        intents: [],
+        output: "No summary files found",
+        metadata: {
+          folderPath: summariesDir,
+          processingTime: Date.now() - startTime,
+          unstructuredEnabled: false,
+          parsingMethod: 'summary'
+        }
+      };
+    }
+
+    // Combine all summaries
+    const combinedContent = files.map(file => {
+      const filePath = path.join(summariesDir, file);
+      const content = fs.readFileSync(filePath, 'utf8');
+      return `File: ${file}\n${content}\n---\n`;
+    }).join('\n');
+
+    // Define structured output schema
+    const IntentSchema = z.object({
+      intents: z.array(z.object({
+        payload: z.string().describe("Specific intent describing what information the user is looking for"),
+        confidence: z.number().min(0.6).max(1.0).describe("Confidence score between 0.6 and 1.0")
+      })).length(5).describe("Array of exactly 5 intent objects")
+    });
+
+    // Generate intents using structured output
+    const { llm } = require('../../lib/agents');
+    
+    const prompt = `Analyze these file summaries and generate 5 high-quality search intents that represent what users might be looking for or seeking to understand from this content collection.
+
+SUMMARIES:
+${combinedContent}
+
+Generate intents that represent:
+- Information or knowledge users might be seeking
+- Questions users might have that this content could answer  
+- Topics or concepts users might be searching for
+- Start using phrases like: Exploring, Seeking, Interested in, Curious about, Open to, Looking for
+
+Focus on what users are looking for rather than what they want to do.`;
+
+    // Use structured output instead of manual JSON parsing
+    const modelWithStructure = llm.withStructuredOutput(IntentSchema);
+    const response = await modelWithStructure.invoke(prompt);
+    
+    // Response is automatically typed and validated
+    const intents: InferredIntent[] = response.intents;
+
+    return {
+      success: true,
+      intents,
+      output: `Generated ${intents.length} intents from ${files.length} summary files`,
+      metadata: {
+        folderPath: summariesDir,
+        processingTime: Date.now() - startTime,
+        unstructuredEnabled: false,
+        parsingMethod: 'summary'
+      }
+    };
+
+  } catch (error) {
+    return {
+      success: false,
+      intents: [],
+      output: "",
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      metadata: {
+        folderPath: summariesDir,
+        processingTime: Date.now() - startTime,
+        unstructuredEnabled: false,
+        parsingMethod: 'summary'
       }
     };
   }
