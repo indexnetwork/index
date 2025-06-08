@@ -1,6 +1,6 @@
 import { Annotation, START, END, StateGraph } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph";
-import { UnstructuredDirectoryLoader } from "@langchain/community/document_loaders/fs/unstructured";
+import { UnstructuredDirectoryLoader, UnstructuredDirectoryLoaderOptions } from "@langchain/community/document_loaders/fs/unstructured";
 import { Document } from "@langchain/core/documents";
 import { llm } from "../../lib/agents";
 import * as fs from 'fs';
@@ -36,10 +36,9 @@ async function loadDocuments(state: StateType): Promise<Partial<StateType>> {
     console.log(`🔍 Loading documents from: ${folderPath}`);
     
     // Configure UnstructuredDirectoryLoader with options
-    const loaderOptions: any = {
-      // Skip common build/dependency directories
+    const loaderOptions: UnstructuredDirectoryLoaderOptions = {
       recursive: true,
-      unknownHandling: "ignore", // Skip unknown file types gracefully
+      strategy: "fast"
     };
 
     // Set up Unstructured API configuration if available
