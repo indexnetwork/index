@@ -1,10 +1,10 @@
-# Intent Inferrer Agent
+# Intent Suggester Agent
 
 This agent analyzes document collections using **LangChain's UnstructuredDirectoryLoader** and **LangGraph** workflows to generate intelligent intent suggestions based on the content found.
 
 ## Overview
 
-The Intent Inferrer Agent has been completely rewritten to leverage LangChain's powerful document processing ecosystem. It now uses the **UnstructuredDirectoryLoader** for sophisticated document parsing and **LangGraph** for workflow automation, providing superior document analysis and intent generation.
+The Intent Suggester Agent has been completely rewritten to leverage LangChain's powerful document processing ecosystem. It now uses the **UnstructuredDirectoryLoader** for sophisticated document parsing and **LangGraph** for workflow automation, providing superior document analysis and intent generation.
 
 ## Features
 

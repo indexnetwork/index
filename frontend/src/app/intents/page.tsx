@@ -43,15 +43,21 @@ export default function IntentsPage() {
     router.push(`/intents/${intentId}`);
   }, [router]);
 
-  const handleCreateIntent = useCallback(async (intent: { payload: string; indexIds: string[]; attachments: File[] }) => {
+  const handleCreateIntent = useCallback(async (intent: { payload: string; indexIds: string[]; attachments: File[]; isPublic: boolean }) => {
     try {
-      const newIntent = await intentsService.createIntent(intent);
+      const newIntent = await intentsService.createIntent({
+        payload: intent.payload,
+        indexIds: intent.indexIds,
+        isPublic: intent.isPublic
+      });
       setActiveIntents(prev => [...prev, newIntent]);
       setShowIntentModal(false);
+      // Redirect to the created intent
+      router.push(`/intents/${newIntent.id}`);
     } catch (error) {
       console.error('Error creating intent:', error);
     }
-  }, [intentsService]);
+  }, [intentsService, router]);
 
   return (
     <ClientLayout>

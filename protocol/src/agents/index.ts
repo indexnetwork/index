@@ -27,11 +27,15 @@ export {
 } from './network_manager/integration';
 
 export {
-  analyzeFolder as intentInferrerAnalyzeFolder,
-  analyzeSummaries as intentInferrerAnalyzeSummaries,
-  getIntents as intentInferrerGetIntents,
-  getAgentConfig as intentInferrerAgentConfig
-} from './intent_inferrer/integration';
+  analyzeFolder as intentSuggesterAnalyzeFolder,
+  getIntents as intentSuggesterGetIntents,
+  getTopIntentsByConfidence as intentSuggesterGetTopIntents
+} from './intent_suggester';
+
+export {
+  processIntent,
+  refineIntent
+} from './intent_processor';
 
 /**
  * Agent system configuration

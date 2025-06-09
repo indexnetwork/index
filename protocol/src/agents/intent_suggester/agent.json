@@ -1,7 +1,7 @@
 {
-  "name": "intent_inferrer",
-  "displayName": "Intent Inferrer Agent",
-  "description": "Advanced document analysis and intent inference using LangChain's UnstructuredDirectoryLoader and LangGraph workflow automation",
+  "name": "intent_suggester",
+  "displayName": "Intent Suggester Agent", 
+  "description": "Advanced document analysis and intent suggestion using LangChain's UnstructuredDirectoryLoader and LangGraph workflow automation",
   "version": "3.0.0",
   "category": "analysis",
   "workflow": {

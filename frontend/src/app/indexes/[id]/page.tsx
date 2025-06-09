@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft } from "lucide-react";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import { MCP } from '@lobehub/icons';
 import Link from "next/link";
-import { useIndexes } from "@/contexts/APIContext";
+import { useIndexes, useIntents } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
@@ -19,6 +20,7 @@ interface IndexDetailPageProps {
 }
 
 export default function IndexDetailPage({ params }: IndexDetailPageProps) {
+  const router = useRouter();
   const resolvedParams = use(params);
   const [isDragging, setIsDragging] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
@@ -33,6 +35,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [suggestedIntents, setSuggestedIntents] = useState<{ id: string; payload: string; confidence: number }[]>([]);
   const [loadingIntents, setLoadingIntents] = useState(false);
   const indexesService = useIndexes();
+  const intentsService = useIntents();
 
   const fetchIndex = useCallback(async () => {
     try {
@@ -135,7 +138,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
   const handleAddIntent = async (intentId: string) => {
     const suggestedIntent = suggestedIntents.find(intent => intent.id === intentId);
-    if (suggestedIntent) {
+    if (suggestedIntent && index) {
+      // Open modal immediately with initial payload
       setSelectedSuggestedIntent({
         payload: suggestedIntent.payload,
         id: intentId
@@ -144,9 +148,13 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     }
   };
 
-  const handleCreateIntent = async () => {
+  const handleCreateIntent = async (intent: { payload: string; indexIds: string[]; attachments: File[]; isPublic: boolean }) => {
     try {
-      // const newIntent = await intentsService.createIntent(intent);
+      const newIntent = await intentsService.createIntent({
+        payload: intent.payload,
+        indexIds: intent.indexIds,
+        isPublic: intent.isPublic
+      });
       // Update local state immediately
       setAddedIntents(prev => new Set([...prev, selectedSuggestedIntent?.id || '']));
       // Then refresh the index data
@@ -154,6 +162,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       setIndex(updatedIndex || null);
       setShowCreateIntentModal(false);
       setSelectedSuggestedIntent(null);
+      // Redirect to the created intent
+      router.push(`/intents/${newIntent.id}`);
     } catch (error) {
       console.error('Error creating intent:', error);
     }
@@ -381,6 +391,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         onOpenChange={setShowCreateIntentModal}
         onSubmit={handleCreateIntent}
         initialPayload={selectedSuggestedIntent?.payload || ''}
+        indexId={index?.id}
       />
       <ConfigureModal 
         open={showConfigDialog}

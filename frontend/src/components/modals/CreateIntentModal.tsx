@@ -22,9 +22,10 @@ interface VerifiableProof {
 interface CreateIntentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (intent: { payload: string; indexIds: string[]; attachments: File[] }) => void;
+  onSubmit: (intent: { payload: string; indexIds: string[]; attachments: File[]; isPublic: boolean }) => void;
   initialPayload?: string;
   initialIndexIds?: string[];
+  indexId?: string; // Add indexId prop for getIntentPreview call
 }
 
 export default function CreateIntentModal({ 
@@ -32,7 +33,8 @@ export default function CreateIntentModal({
   onOpenChange, 
   onSubmit,
   initialPayload = '',
-  initialIndexIds = []
+  initialIndexIds = [],
+  indexId
 }: CreateIntentModalProps) {
   const [payload, setPayload] = useState(initialPayload);
   const [selectedIndexes, setSelectedIndexes] = useState<string[]>(initialIndexIds);
@@ -44,37 +46,11 @@ export default function CreateIntentModal({
   // const [relevantContent, setRelevantContent] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [verifiableProofs, setVerifiableProofs] = useState<VerifiableProof[]>([
-    {
-      id: '1',
-      name: 'Safe_Agreement_Proof.pdf',
-      type: 'pdf',
-      size: 2048,
-      verified: true,
-      verificationDate: '2024-03-20',
-      content: 'Verified agreement between Index Network and Consensys for $500,000 investment with disclosed terms and signatures from both parties'
-    },
-    {
-      id: '2',
-      name: 'Identity_Protocol_Spec.md',
-      type: 'markdown',
-      size: 512,
-      verified: true,
-      verificationDate: '2024-03-19',
-      content: 'Technical specification for the identity protocol implementation'
-    },
-    {
-      id: '3',
-      name: 'Collaboration_History.json',
-      type: 'json',
-      size: 256,
-      verified: true,
-      verificationDate: '2024-03-18',
-      content: 'Previous collaboration records and achievements'
-    }
-  ]);
+  const [verifiableProofs, setVerifiableProofs] = useState<VerifiableProof[]>([]);
   const [expandedProofs, setExpandedProofs] = useState<Set<string>>(new Set());
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [isPublic, setIsPublic] = useState(false);
 
   // Fetch indexes when modal opens
   const fetchIndexes = useCallback(async () => {
@@ -100,24 +76,33 @@ export default function CreateIntentModal({
       // Set initial indexes
       setSelectedIndexes([...initialIndexIds]);
       
-      // Only enhance payload once when modal opens and has initialPayload
+      // Set initial payload immediately
       if (initialPayload) {
-        const relevantContent = [
-          "Found relevant content in 'research_paper.pdf': 'The implementation of zero-knowledge proofs enables privacy-preserving identity verification while maintaining security guarantees. Our approach combines zk-SNARKs with selective disclosure mechanisms.'",
-          "Found relevant content in 'project_notes.md': 'Key considerations for the identity protocol: 1) User privacy must be preserved 2) Verification should be efficient 3) Interoperability with existing systems 4) Compliance with regulations'",
-          "Found relevant content in 'meeting_summary.txt': 'Team discussed potential integration with existing identity providers. Consensus reached on using OAuth 2.0 for initial authentication, then transitioning to our custom ZK-based system.'"
-        ];
+        setPayload(initialPayload);
         
-        // Combine the initial payload with relevant content
-        const combinedContent = `${initialPayload}\n\nAdditional context from your files:\n${relevantContent.map(content => `• ${content}`).join('\n')}`;
-        setPayload(combinedContent);
+        // If we have indexId, fetch enhanced content
+        if (indexId) {
+          setIsLoadingPreview(true);
+          indexesService.getIntentPreview(indexId, initialPayload)
+            .then((processedPayload) => {
+              // Append the enhanced content to the initial payload
+              setPayload(processedPayload);
+            })
+            .catch((error) => {
+              console.error('Error processing intent:', error);
+              // Keep the original payload if enhancement fails
+            })
+            .finally(() => {
+              setIsLoadingPreview(false);
+            });
+        }
       } else {
         setPayload('');
       }
       
       setHasInitialized(true);
     }
-  }, [open, hasInitialized, initialIndexIds, initialPayload]);
+  }, [open, hasInitialized, initialIndexIds, initialPayload, indexId, indexesService]);
 
   // Reset when modal closes
   useEffect(() => {
@@ -128,6 +113,8 @@ export default function CreateIntentModal({
       setAttachments([]);
       setIsSuccess(false);
       setIsProcessing(false);
+      setIsLoadingPreview(false);
+      setIsPublic(false);
     }
   }, [open]);
 
@@ -136,10 +123,11 @@ export default function CreateIntentModal({
     setIsProcessing(true);
     
     try {
-      await onSubmit({ payload, indexIds: selectedIndexes, attachments });
+      await onSubmit({ payload, indexIds: selectedIndexes, attachments, isPublic });
       setPayload('');
       setSelectedIndexes([]);
       setAttachments([]);
+      setIsPublic(false);
       setIsSuccess(true);
       
       setTimeout(() => {
@@ -151,7 +139,7 @@ export default function CreateIntentModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [payload, selectedIndexes, attachments, onSubmit, onOpenChange]);
+  }, [payload, selectedIndexes, attachments, isPublic, onSubmit, onOpenChange]);
 
   const toggleIndex = useCallback((indexId: string) => {
     setSelectedIndexes(prev => 
@@ -233,154 +221,201 @@ export default function CreateIntentModal({
                       <div className="mb-2">What are you looking for?</div>
                     </label>
                     <div className="space-y-4">
-                      <Textarea
-                        id="payload"
-                        value={payload}
-                        onChange={(e) => setPayload(e.target.value)}
-                        className="min-h-[200px]"
-                        placeholder="Enter your intent here..."
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Verifiable Proofs Section */}
-                  <div>
-                    <label className="text-md font-medium font-ibm-plex-mono text-black">
-                      <div className="mb-2">Verifiable Proofs</div>
-                    </label>
-                    <div className="space-y-3">
-                      {verifiableProofs.map((proof) => (
-                        <div 
-                          key={proof.id}
-                          className="bg-gray-50 rounded-md border border-gray-200 overflow-hidden"
-                        >
-                          <div className="flex items-center justify-between p-3">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-10 h-10 flex items-center justify-center bg-blue-100 rounded">
-                                {proof.type === 'pdf' && '📄'}
-                                {proof.type === 'markdown' && '📝'}
-                                {proof.type === 'json' && '⚙️'}
-                                {proof.type === 'text' && '📄'}
-                              </div>
-                              <div>
-                                <div className="flex items-center space-x-2">
-                                  <p className="text-sm font-medium text-gray-900">{proof.name}</p>
-                                  {proof.verified && (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                      Verified
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-gray-500">
-                                  {(proof.size / 1024).toFixed(1)} KB - Verified on {proof.verificationDate}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handleProofSelect(proof)}
-                              >
-                                Add
-                              </Button>
-                              <button
-                                type="button"
-                                onClick={() => toggleProofExpansion(proof.id)}
-                                className="text-gray-400 hover:text-gray-600 p-1"
-                              >
-                                {expandedProofs.has(proof.id) ? (
-                                  <ChevronUp className="h-4 w-4" />
-                                ) : (
-                                  <ChevronDown className="h-4 w-4" />
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleProofRemove(proof.id)}
-                                className="text-gray-400 hover:text-gray-600"
-                              >
-                                ×
-                              </button>
-                            </div>
+                      <div className="relative">
+                        <Textarea
+                          id="payload"
+                          value={payload}
+                          onChange={(e) => setPayload(e.target.value)}
+                          className="min-h-[200px]"
+                          placeholder="Enter your intent here..."
+                          required
+                        />
+                        {isLoadingPreview && (
+                          <div className="absolute bottom-2 right-2 flex items-center gap-2 bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs">
+                            <div className="w-3 h-3 border border-blue-700 border-t-transparent rounded-full animate-spin" />
+                            Enhancing with context...
                           </div>
-                          
-                          {expandedProofs.has(proof.id) && (
-                            <div className="px-3 pb-3 pt-2 border-t border-gray-200">
-                              <div className="bg-white rounded-md p-3 text-sm text-gray-700">
-                                {proof.content}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* File Attachments Section */}
-                  <div>
-                    <label className="text-md font-medium font-ibm-plex-mono text-black">
-                      <div className="mb-2">Additional Attachments</div>
-                    </label>
-                    <div 
-                      className={`border-2 border-dashed rounded-md p-4 transition-colors ${
-                        isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
-                      }`}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setIsDragging(true);
-                      }}
-                      onDragLeave={(e) => {
-                        e.preventDefault();
-                        setIsDragging(false);
-                      }}
-                      onDrop={handleFileDrop}
-                    >
-                      <div className="text-center">
-                        <p className="text-sm text-gray-600 mb-2">
-                          Drag and drop additional files here
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          Supported formats: PDF, Markdown, JSON, Text
-                        </p>
+                        )}
                       </div>
                     </div>
+                  </div>
 
-                    {attachments.length > 0 && (
-                      <div className="mt-4 space-y-2">
-                        {attachments.map((file, index) => (
-                          <div 
-                            key={index}
-                            className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
-                          >
-                            <div className="flex items-center space-x-2">
-                              <div className="w-8 h-8 flex items-center justify-center bg-blue-100 rounded">
-                                {file.type === 'application/pdf' && '📄'}
-                                {file.type === 'text/markdown' && '📝'}
-                                {file.type === 'application/json' && '⚙️'}
-                                {file.type === 'text/plain' && '📄'}
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">{file.name}</p>
-                                <p className="text-xs text-gray-500">
-                                  {(file.size / 1024).toFixed(1)} KB
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleFileRemove(index)}
-                              className="text-gray-400 hover:text-gray-600"
+                  {/* Visibility Section */}
+                  <div>
+                    <label className="text-md font-medium font-ibm-plex-mono text-black">
+                      <div className="mb-2">Visibility</div>
+                    </label>
+                    <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="private"
+                          name="visibility"
+                          checked={!isPublic}
+                          onChange={() => setIsPublic(false)}
+                          className="text-blue-600"
+                        />
+                        <label htmlFor="private" className="text-sm text-gray-700 cursor-pointer">
+                          Private - Only visible to selected index members
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="public"
+                          name="visibility"
+                          checked={isPublic}
+                          onChange={() => setIsPublic(true)}
+                          className="text-blue-600"
+                        />
+                        <label htmlFor="public" className="text-sm text-gray-700 cursor-pointer">
+                          Public - Visible to everyone
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {false && (
+                    <>
+                      {/* Verifiable Proofs Section */}
+                      <div>
+                        <label className="text-md font-medium font-ibm-plex-mono text-black">
+                          <div className="mb-2">Verifiable Proofs</div>
+                        </label>
+                        <div className="space-y-3">
+                          {verifiableProofs.map((proof) => (
+                            <div 
+                              key={proof.id}
+                              className="bg-gray-50 rounded-md border border-gray-200 overflow-hidden"
                             >
-                              ×
-                            </button>
-                          </div>
-                        ))}
+                              <div className="flex items-center justify-between p-3">
+                                <div className="flex items-center space-x-3">
+                                  <div className="w-10 h-10 flex items-center justify-center bg-blue-100 rounded">
+                                    {proof.type === 'pdf' && '📄'}
+                                    {proof.type === 'markdown' && '📝'}
+                                    {proof.type === 'json' && '⚙️'}
+                                    {proof.type === 'text' && '📄'}
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center space-x-2">
+                                      <p className="text-sm font-medium text-gray-900">{proof.name}</p>
+                                      {proof.verified && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                                          Verified
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-gray-500">
+                                      {(proof.size / 1024).toFixed(1)} KB - Verified on {proof.verificationDate}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleProofSelect(proof)}
+                                  >
+                                    Add
+                                  </Button>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleProofExpansion(proof.id)}
+                                    className="text-gray-400 hover:text-gray-600 p-1"
+                                  >
+                                    {expandedProofs.has(proof.id) ? (
+                                      <ChevronUp className="h-4 w-4" />
+                                    ) : (
+                                      <ChevronDown className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleProofRemove(proof.id)}
+                                    className="text-gray-400 hover:text-gray-600"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              </div>
+                              
+                              {expandedProofs.has(proof.id) && (
+                                <div className="px-3 pb-3 pt-2 border-t border-gray-200">
+                                  <div className="bg-white rounded-md p-3 text-sm text-gray-700">
+                                    {proof.content}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    )}
-                  </div>
+
+                      {/* File Attachments Section */}
+                      <div>
+                        <label className="text-md font-medium font-ibm-plex-mono text-black">
+                          <div className="mb-2">Additional Attachments</div>
+                        </label>
+                        <div 
+                          className={`border-2 border-dashed rounded-md p-4 transition-colors ${
+                            isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                          }`}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setIsDragging(true);
+                          }}
+                          onDragLeave={(e) => {
+                            e.preventDefault();
+                            setIsDragging(false);
+                          }}
+                          onDrop={handleFileDrop}
+                        >
+                          <div className="text-center">
+                            <p className="text-sm text-gray-600 mb-2">
+                              Drag and drop additional files here
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Supported formats: PDF, Markdown, JSON, Text
+                            </p>
+                          </div>
+                        </div>
+
+                        {attachments.length > 0 && (
+                          <div className="mt-4 space-y-2">
+                            {attachments.map((file, index) => (
+                              <div 
+                                key={index}
+                                className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
+                              >
+                                <div className="flex items-center space-x-2">
+                                  <div className="w-8 h-8 flex items-center justify-center bg-blue-100 rounded">
+                                    {file.type === 'application/pdf' && '📄'}
+                                    {file.type === 'text/markdown' && '📝'}
+                                    {file.type === 'application/json' && '⚙️'}
+                                    {file.type === 'text/plain' && '📄'}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900">{file.name}</p>
+                                    <p className="text-xs text-gray-500">
+                                      {(file.size / 1024).toFixed(1)} KB
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleFileRemove(index)}
+                                  className="text-gray-400 hover:text-gray-600"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
 
                   {/* Indexes Section */}
                   <div>

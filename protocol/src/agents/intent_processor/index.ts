@@ -1,7 +1,8 @@
 /**
- * File Summarizer Agent
+ * Intent Processor Agent
  * 
- * Minimal implementation that processes files using UnstructuredLoader and generates markdown summaries.
+ * Minimal implementation that processes intent payloads using contextual integrity.
+ * Reads raw files from an index and generates refined intent payloads.
  */
 
 import { UnstructuredLoader } from "@langchain/community/document_loaders/fs/unstructured";
@@ -10,14 +11,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 // Type definitions
-export interface FileSummary {
-  fileName: string;
-  summary: string;
-}
-
-export interface SummarizationResult {
+export interface IntentProcessingResult {
   success: boolean;
-  summary?: FileSummary;
+  payload?: string;
   error?: string;
 }
 
@@ -96,93 +92,88 @@ async function loadFileContent(filePath: string): Promise<{ content: string | nu
 }
 
 /**
- * Generate markdown summary from content
+ * Gather contextual information from index files
  */
-async function generateSummary(content: string, fileName: string): Promise<{ summary: string | null; error: string | null }> {
-  try {
-    const prompt = `Analyze this file and create a markdown summary:
-
-FILE: ${fileName}
-CONTENT:
-${content}
-
-Create a concise markdown summary with:
-- What the file is about
-- Key information or topics
-- Important details
-
-Keep it clear and useful.`;
-
-    const response = await llm.invoke(prompt);
-    const summaryContent = response.content as string;
-    
-    return { summary: summaryContent, error: null };
-  } catch (error) {
-    return { 
-      summary: null,
-      error: `Error generating summary: ${error instanceof Error ? error.message : 'Unknown error'}`
-    };
+async function gatherIndexContext(indexId: string): Promise<string> {
+  const baseUploadDir = path.join(__dirname, '../../../uploads', indexId);
+  
+  if (!fs.existsSync(baseUploadDir)) {
+    return '';
   }
+  
+  const contextParts: string[] = [];
+  
+  try {
+    const files = fs.readdirSync(baseUploadDir);
+    
+    for (const file of files) {
+      const filePath = path.join(baseUploadDir, file);
+      
+      if (!isFileSupported(filePath)) {
+        continue;
+      }
+      
+      const { content, error } = await loadFileContent(filePath);
+      if (content && !error) {
+        contextParts.push(`=== ${file} ===\n${content.substring(0, 2000)}`);
+      }
+    }
+  } catch (error) {
+    console.warn('Error reading index files:', error);
+  }
+  
+  return contextParts.join('\n\n');
 }
 
 /**
- * Main function to summarize a file and save the summary
+ * Process intent with contextual integrity
  */
-export async function summarizeAndSaveFile(
-  filePath: string,
-  fileId: string,
-  outputDirectory: string
-): Promise<SummarizationResult> {
+export async function processIntent(
+  intentPayload: string,
+  indexId: string
+): Promise<IntentProcessingResult> {
   try {
-    if (!filePath || !fileId || !outputDirectory) {
+    if (!intentPayload || !indexId) {
       return {
         success: false,
         error: "Missing required parameters"
       };
     }
 
-    if (!fs.existsSync(filePath)) {
+    // Gather contextual information
+    const contextContent = await gatherIndexContext(indexId);
+    
+    if (!contextContent) {
       return {
         success: false,
-        error: `File not found: ${filePath}`
+        error: "No contextual information available"
       };
     }
 
-    if (!fs.existsSync(outputDirectory)) {
-      fs.mkdirSync(outputDirectory, { recursive: true });
-    }
+    // Generate refined intent payload using contextual integrity
+    const prompt = `Extract only the information from the provided context that is appropriate to share within the context of this intent, respecting roles, norms, and boundaries relevant to the recipient and purpose.
 
-    // Load file content
-    const { content, error: loadError } = await loadFileContent(filePath);
-    if (loadError || !content) {
-      return {
-        success: false,
-        error: loadError || 'No content to summarize'
-      };
-    }
+INTENT: ${intentPayload}
 
-    // Generate summary
-    const fileName = path.basename(filePath);
-    const { summary, error: summaryError } = await generateSummary(content, fileName);
-    if (summaryError || !summary) {
-      return {
-        success: false,
-        error: summaryError || 'Failed to generate summary'
-      };
-    }
+CONTEXT:
+${contextContent.substring(0, 10000)}${contextContent.length > 10000 ? '\n...[content truncated]' : ''}
 
-    // Save summary
-    const summaryPath = path.join(outputDirectory, `${fileId}.summary`);
-    fs.writeFileSync(summaryPath, summary, 'utf8');
+INSTRUCTIONS:
+- Extract only information that is appropriate to share for this specific intent
+- Respect privacy boundaries and confidentiality norms
+- Consider the roles and relationships involved
+- Maintain contextual integrity by filtering out irrelevant or inappropriate information
+- Output only the refined intent payload string
+- Be minimal and focused
 
-    const fileSummary: FileSummary = {
-      fileName,
-      summary
-    };
+Output only the refined intent payload string:`;
+
+    const response = await llm.invoke(prompt);
+    const refinedPayload = response.content as string;
 
     return {
       success: true,
-      summary: fileSummary
+      payload: refinedPayload.trim()
     };
 
   } catch (error) {
@@ -193,29 +184,11 @@ export async function summarizeAndSaveFile(
   }
 }
 
-// Utility functions
-export async function processFile(
-  filePath: string, 
-  fileId: string, 
-  outputDirectory: string
-): Promise<SummarizationResult> {
-  return summarizeAndSaveFile(filePath, fileId, outputDirectory);
-}
-
-/**
- * Quick start example:
- * 
- * ```typescript
- * import { summarizeAndSaveFile } from '@/agents/file_summarizer';
- * 
- * const result = await summarizeAndSaveFile(
- *   '/path/to/document.pdf',
- *   'unique-file-id',
- *   '/path/to/summaries'
- * );
- * 
- * if (result.success) {
- *   console.log('Summary saved:', result.summary);
- * }
- * ```
- */
+// Utility function
+export async function refineIntent(
+  intentPayload: string,
+  indexId: string
+): Promise<string | null> {
+  const result = await processIntent(intentPayload, indexId);
+  return result.success ? result.payload || null : null;
+} 

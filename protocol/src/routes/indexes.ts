@@ -7,7 +7,8 @@ import db from '../lib/db';
 import { indexes, users, files, indexMembers, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, or, ilike, exists } from 'drizzle-orm';
-import { analyzeSummaries } from '../agents/intent_inferrer';
+import { analyzeFolder } from '../agents/intent_suggester';
+import { processIntent } from '../agents/intent_processor';
 
 const router = Router();
 
@@ -549,8 +550,8 @@ router.get('/:id/suggested_intents',
         return res.json({ intents: [] });
       }
 
-      // Use intent inferrer to analyze summaries
-      const result = await analyzeSummaries(baseUploadDir, { timeoutMs: 60000 });
+      // Use intent suggester to analyze summaries
+      const result = await analyzeFolder(baseUploadDir, { timeoutMs: 60000 });
 
       if (result.success) {
         return res.json({
@@ -560,13 +561,77 @@ router.get('/:id/suggested_intents',
           }))
         });
       } else {
-        console.error('Intent inference failed:', result.error);
+        console.error('Intent inference failed');
         return res.status(500).json({ error: 'Failed to generate intents' });
       }
 
     } catch (error) {
       console.error('Get suggested intents error:', error);
       return res.status(500).json({ error: 'Failed to generate suggested intents' });
+    }
+  }
+);
+
+// Get intent preview with contextual integrity processing
+router.get('/:id/intent_preview',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    query('payload').trim().isLength({ min: 1 })
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const { payload } = req.query;
+
+      // Check if index exists and user has access
+      const index = await db.select({
+        id: indexes.id,
+        userId: indexes.userId,
+        isPublic: indexes.isPublic
+      }).from(indexes)
+        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
+        .limit(1);
+
+      if (index.length === 0) {
+        return res.status(404).json({ error: 'Index not found' });
+      }
+
+      const indexData = index[0];
+      const hasAccess = indexData.isPublic || indexData.userId === req.user!.id;
+
+      if (!hasAccess) {
+        // Check if user is a member
+        const membership = await db.select({ userId: indexMembers.userId })
+          .from(indexMembers)
+          .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
+          .limit(1);
+
+        if (membership.length === 0) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+      }
+
+      // Process intent with contextual integrity
+      const result = await processIntent(payload as string, id);
+
+      if (result.success) {
+        return res.json({
+          payload: result.payload
+        });
+      } else {
+        console.error('Intent processing failed:', result.error);
+        return res.status(500).json({ error: 'Failed to process intent' });
+      }
+
+    } catch (error) {
+      console.error('Get intent preview error:', error);
+      return res.status(500).json({ error: 'Failed to process intent preview' });
     }
   }
 );

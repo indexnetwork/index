@@ -5,12 +5,12 @@ import * as fs from 'fs';
 import * as os from 'os';
 
 /**
- * Test suite for the Intent Inferrer Agent (v3.0.0)
+ * Test suite for the Intent Suggester Agent (v3.0.0)
  * Tests the UnstructuredDirectoryLoader integration
  */
 
 async function runTests() {
-  console.log('🧪 Starting Intent Inferrer Agent Test Suite (v3.0.0)');
+  console.log('🧪 Starting Intent Suggester Agent Test Suite (v3.0.0)');
   console.log('====================================================\n');
 
   const testResults: Array<{ name: string; passed: boolean; error?: string }> = [];
@@ -58,7 +58,7 @@ async function runTests() {
 
   // Test 3: Create Test Directory with Sample Files
   console.log('📁 Test 3: Create Test Documents');
-  const testDir = path.join(os.tmpdir(), 'intent_inferrer_test_' + Date.now());
+  const testDir = path.join(os.tmpdir(), 'intent_suggester_test_' + Date.now());
   try {
     fs.mkdirSync(testDir, { recursive: true });
 
@@ -66,7 +66,7 @@ async function runTests() {
     const testFiles = [
       {
         name: 'README.md',
-        content: '# Test Project\n\nThis is a test project for the Intent Inferrer Agent.\n\n## Features\n- Document analysis\n- Intent generation\n- Statistical analysis'
+        content: '# Test Project\n\nThis is a test project for the Intent Suggester Agent.\n\n## Features\n- Document analysis\n- Intent generation\n- Statistical analysis'
       },
       {
         name: 'package.json',
@@ -146,7 +146,7 @@ Analyze a document collection and generate intents.
         name: 'config.yaml',
         content: `# Configuration file
 app:
-  name: intent-inferrer-test
+  name: intent-suggester-test
   version: "1.0.0"
   
 processing:
@@ -322,7 +322,7 @@ integrations:
   });
 
   if (passedTests === totalTests) {
-    console.log('\n🎉 All tests passed! Intent Inferrer Agent is working correctly.');
+    console.log('\n🎉 All tests passed! Intent Suggester Agent is working correctly.');
   } else {
     console.log('\n⚠️  Some tests failed. Check the errors above for details.');
   }
@@ -331,8 +331,8 @@ integrations:
 }
 
 // Demo function
-async function demoIntentInferrer(folderPath?: string) {
-  console.log('🚀 Intent Inferrer Agent Demo (v3.0.0)');
+async function demoIntentSuggester(folderPath?: string) {
+  console.log('🚀 Intent Suggester Agent Demo (v3.0.0)');
   console.log('=======================================\n');
 
   // Use current directory if no path provided
@@ -389,7 +389,7 @@ async function demoIntentInferrer(folderPath?: string) {
 }
 
 // Export test functions
-export { runTests, demoIntentInferrer };
+export { runTests, demoIntentSuggester };
 
 // Run tests if this file is executed directly
 if (require.main === module) {

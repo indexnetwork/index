@@ -111,6 +111,12 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response.intents;
   },
 
+  // Get intent preview with contextual integrity processing
+  getIntentPreview: async (indexId: string, payload: string): Promise<string> => {
+    const response = await api.get<{ payload: string }>(`/indexes/${indexId}/intent_preview?payload=${encodeURIComponent(payload)}`);
+    return response.payload;
+  },
+
   // Legacy methods for backward compatibility (these would need intent service integration)
   addSuggestedIntent: async (indexId: string, intentId: string): Promise<boolean> => {
     try {
