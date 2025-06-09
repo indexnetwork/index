@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Button } from "@/components/ui/button";
 import { Share2, Plus, Lock } from "lucide-react";
 import CreateIndexModal from "@/components/modals/CreateIndexModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
-import { useIndexService } from "@/services/indexes";
+import { useIndexes } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
 import { MCP } from '@lobehub/icons';
 import ClientLayout from "@/components/ClientLayout";
@@ -16,25 +16,25 @@ export default function IndexesPage() {
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showIndexModal, setShowIndexModal] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState<Index | null>(null);
   const [indexes, setIndexes] = useState<Index[]>([]);
   const [loading, setLoading] = useState(true);
-  const indexesService = useIndexService();
+  const indexesService = useIndexes();
+
+  const fetchIndexes = useCallback(async () => {
+    try {
+      const response = await indexesService.getIndexes();
+      setIndexes(response.indexes || []);
+    } catch (error) {
+      console.error('Error fetching indexes:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [indexesService]);
 
   useEffect(() => {
-    const fetchIndexes = async () => {
-      try {
-        const response = await indexesService.getIndexes();
-        setIndexes(response.indexes || []);
-      } catch (error) {
-        console.error('Error fetching indexes:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchIndexes();
-  }, [indexesService]); // Now safe with memoized service
+  }, [fetchIndexes]);
 
   const handleCreateIndex = async (indexData: { name: string }) => {
     try {
@@ -113,11 +113,11 @@ export default function IndexesPage() {
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedIndex(index.title);
-                            setShowShareSettingsModal(true);
-                          }}
+                                                  onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedIndex(index);
+                          setShowShareSettingsModal(true);
+                        }}
                         >
                           <Share2 className="h-4 w-4 mr-2" />
                           Share
@@ -180,11 +180,17 @@ export default function IndexesPage() {
         onSubmit={handleCreateIndex}
       />
       <ConfigureModal open={showConfigDialog} onOpenChange={setShowConfigDialog} />
-      <ShareSettingsModal 
-        open={showShareSettingsModal} 
-        onOpenChange={setShowShareSettingsModal}
-        indexName={selectedIndex}
-      />
+      {selectedIndex && (
+        <ShareSettingsModal 
+          open={showShareSettingsModal} 
+          onOpenChange={setShowShareSettingsModal}
+          index={selectedIndex}
+          onIndexUpdate={(updatedIndex) => {
+            setIndexes(prev => prev.map(idx => idx.id === updatedIndex.id ? updatedIndex : idx));
+            setSelectedIndex(updatedIndex);
+          }}
+        />
+      )}
     </ClientLayout>
   );
 } 

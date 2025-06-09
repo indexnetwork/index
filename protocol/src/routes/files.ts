@@ -3,26 +3,51 @@ import { body, query, param, validationResult } from 'express-validator';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
 import db from '../lib/db';
 import { files, indexes, users } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, SQL } from 'drizzle-orm';
+import { summarizeAndSaveFile, isFileSupported } from '../agents/file_summarizer';
+
+// Extend the Request interface to include generatedFileId
+declare global {
+  namespace Express {
+    interface Request {
+      generatedFileId?: string;
+    }
+  }
+}
 
 const router = Router({ mergeParams: true });
 
 // Configure multer for file uploads
-const uploadDir = path.join(__dirname, '../../uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+const baseUploadDir = path.join(__dirname, '../../uploads');
+if (!fs.existsSync(baseUploadDir)) {
+  fs.mkdirSync(baseUploadDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadDir);
+    const indexId = req.params.indexId;
+    const indexUploadDir = path.join(baseUploadDir, indexId);
+    
+    // Ensure the index-specific directory exists
+    if (!fs.existsSync(indexUploadDir)) {
+      fs.mkdirSync(indexUploadDir, { recursive: true });
+    }
+    
+    cb(null, indexUploadDir);
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    // Generate UUID that will be used as file ID
+    const fileId = uuidv4();
+    const extension = path.extname(file.originalname);
+    
+    // Store the fileId in the request for later use
+    req.generatedFileId = fileId;
+    
+    cb(null, fileId + extension);
   }
 });
 
@@ -32,10 +57,18 @@ const upload = multer({
     fileSize: 100 * 1024 * 1024, // 100MB limit
   },
   fileFilter: function (req, file, cb) {
+    const allowedMimeTypes = {
+      'image': ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif', 'image/tiff', 'image/bmp', 'image/ico', 'image/cur', 'image/apng'],
+      'document': ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip', 'application/json', 'text/markdown', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/rtf', 'application/vnd.oasis.opendocument.text', 'application/vnd.oasis.opendocument.spreadsheet', 'application/vnd.oasis.opendocument.presentation', 'application/epub+zip', 'application/x-mobipocket-ebook', 'application/vnd.amazon.ebook'],
+      'media': ['video/mp4', 'audio/mpeg', 'audio/wav', 'video/x-msvideo', 'video/quicktime', 'video/webm', 'video/mpeg', 'video/3gpp', 'video/x-flv', 'application/x-shockwave-flash', 'video/x-ms-wmv', 'audio/midi', 'audio/x-midi', 'audio/x-ms-wma', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/x-m4a', 'audio/aiff', 'audio/basic', 'audio/snd'],
+      'image-raw': ['image/x-raw', 'image/x-canon-cr2', 'image/x-nikon-nef', 'image/x-sony-arw', 'image/x-panasonic-rw2', 'image/x-adobe-dng', 'image/tiff'],
+      'design': ['image/vnd.adobe.photoshop', 'application/postscript', 'image/svg+xml']
+    };
+    const mimetype = Object.values(allowedMimeTypes).flat().includes(file.mimetype);
+
     const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|txt|csv|xlsx|zip|json|md|mp4|mp3|wav|avi|mov|webm|pptx|ppt|xls|rtf|odt|ods|odp|epub|mobi|azw3|psd|ai|eps|svg|webp|heic|heif|tiff|bmp|ico|cur|apng|webp|mpg|mpeg|3gp|flv|swf|wmv|mid|midi|wma|aac|ogg|wav|flac|m4a|aiff|au|snd|wav|raw|cr2|nef|arw|rw2|dng|tif|tiff|psd|ai|eps|svg|webp|heic|heif|bmp|ico|cur|apng|webp|mpg|mpeg|3gp|flv|swf|wmv|mid|midi|wma|aac|ogg|wav|flac|m4a|aiff|au|snd|wav|raw|cr2|nef|arw|rw2|dng|tif|tiff/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-    
+
     if (mimetype && extname) {
       return cb(null, true);
     } else {
@@ -242,6 +275,7 @@ router.post('/',
       }
 
       const newFile = await db.insert(files).values({
+        id: req.generatedFileId,
         name: req.file.originalname,
         size: BigInt(req.file.size),
         type: req.file.mimetype,
@@ -253,6 +287,38 @@ router.post('/',
         type: files.type,
         createdAt: files.createdAt
       });
+
+      // Generate summary in background if file type is supported
+      const fileId = req.generatedFileId!;
+      const filePath = req.file.path;
+      
+      if (isFileSupported(filePath)) {
+        const summaryDir = path.dirname(filePath);
+        const startTime = Date.now();
+        
+        console.log(`🚀 Starting summarization for file ${fileId} (${req.file!.originalname}) at ${new Date().toISOString()}`);
+        
+        // Run summarization in background without blocking the response
+        summarizeAndSaveFile(filePath, fileId, summaryDir)
+          .then(result => {
+            const endTime = Date.now();
+            const duration = endTime - startTime;
+            
+            if (result.success) {
+              console.log(`📝 Summary generated for file ${fileId} (${req.file!.originalname}) at ${new Date().toISOString()} - Duration: ${duration}ms`);
+            } else {
+              console.warn(`⚠️ Summary generation failed for ${fileId} (${req.file!.originalname}) at ${new Date().toISOString()} - Duration: ${duration}ms:`, result.error);
+            }
+          })
+          .catch(error => {
+            const endTime = Date.now();
+            const duration = endTime - startTime;
+            console.error(`❌ Summary generation error for ${fileId} (${req.file!.originalname}) at ${new Date().toISOString()} - Duration: ${duration}ms:`, error);
+          });
+      } else {
+        const ext = path.extname(req.file!.originalname);
+        console.log(`⏭️ Skipping summary for ${fileId} (${req.file!.originalname}): ${ext} files not supported (videos/audio/binaries)`);
+      }
 
       return res.status(201).json({
         message: 'File uploaded successfully',
@@ -320,5 +386,6 @@ router.delete('/:fileId',
     }
   }
 );
+
 
 export default router; 

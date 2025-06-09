@@ -1,15 +1,18 @@
-import { PrismaClient } from '@prisma/client';
+import db from '../../lib/db';
+import { intents, users } from '../../lib/schema';
+import { eq, ne } from 'drizzle-orm';
 import { processVCFounderIntent } from './workflow';
-import { llm } from '../../lib/agents';
-
-const prisma = new PrismaClient();
 
 // Type definitions matching the database schema
 interface Intent {
   id: string;
   payload: string;
-  status: string;
   userId: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
   indexes?: Array<{
     id: string;
     name: string;
@@ -17,247 +20,168 @@ interface Intent {
 }
 
 /**
- * Check if an intent is VC or Founder related using LLM analysis
- */
-async function isVCFounderRelated(intent: Intent): Promise<boolean> {
-  const prompt = `
-You are an expert analyst specializing in venture capital and startup ecosystems. 
-
-Analyze the following intent and determine if it is related to venture capital, investment, or entrepreneurship/founding activities.
-
-INTENT TO ANALYZE:
-Description: ${intent.payload}
-
-EVALUATION CRITERIA:
-- Venture Capital: investment activities, funding rounds, due diligence, portfolio management, investor relations
-- Founder/Entrepreneur: startup creation, business development, product launch, team building, market validation
-- Startup Ecosystem: accelerators, incubators, pitch decks, fundraising, scaling businesses
-
-Respond with ONLY "true" if this intent is clearly related to VC, investment, entrepreneurship, or startup activities.
-Respond with ONLY "false" if it is not related to these areas.
-
-Response:`;
-
-  try {
-    const response = await llm.invoke(prompt);
-    const content = response.content as string;
-    const result = content.toLowerCase().trim();
-    
-    // Parse the response - should be "true" or "false"
-    return result === "true" || result.startsWith("true");
-  } catch (error) {
-    console.error("LLM analysis failed for intent classification:", error);
-    // Fallback to false to be conservative
-    return false;
-  }
-}
-
-/**
- * Trigger the ProofLayer Due Diligence Agent when a new intent is created
- * Only triggers for VC or Founder related intents
+ * Trigger the Due Diligence Agent when a new intent is created
+ * This function should be called from the intents route after successful intent creation
  */
 export async function onIntentCreated(intentId: string): Promise<void> {
   try {
-    console.log(`🔍 ProofLayer Due Diligence Agent evaluating new intent: ${intentId}`);
+    console.log(`🔍 Due Diligence Agent triggered for new intent: ${intentId}`);
     
-    // Fetch the new intent with related data
-    const newIntent = await prisma.intent.findUnique({
-      where: { id: intentId },
-      select: {
-        id: true,
-        title: true,
-        payload: true,
-        status: true,
-        userId: true,
+    // Fetch the new intent with user data
+    const newIntentResult = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        userId: intents.userId,
         user: {
-          select: {
-            id: true,
-          }
-        },
-        indexes: {
-          select: {
-            id: true,
-            name: true
-          }
+          id: users.id,
         }
-      }
-    });
+      })
+      .from(intents)
+      .leftJoin(users, eq(intents.userId, users.id))
+      .where(eq(intents.id, intentId))
+      .limit(1);
 
-    if (!newIntent) {
-      console.warn(`Intent ${intentId} not found for ProofLayer processing`);
+    if (newIntentResult.length === 0) {
+      console.warn(`Intent ${intentId} not found for due diligence processing`);
       return;
     }
 
-    // Check if this intent is VC or Founder related
-    if (!(await isVCFounderRelated(newIntent as Intent))) {
-      console.log(`⏭️  Skipping ProofLayer analysis for intent ${intentId} - not VC/Founder related`);
-      return;
-    }
+    const newIntent = newIntentResult[0];
 
-    console.log(`🚀 ProofLayer Due Diligence Agent triggered for VC/Founder intent: ${intentId}`);
-
-    // Fetch existing VC/Founder related intents for matching (excluding the new one)
-    const allIntents = await prisma.intent.findMany({
-      where: {
-        id: { not: intentId },
-        status: { in: ['active', 'published', 'pending'] }
-      },
-      select: {
-        id: true,
-        title: true,
-        payload: true,
-        status: true,
-        userId: true,
+    // Fetch all intents for due diligence analysis (excluding the new one)
+    const allIntentResults = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        userId: intents.userId,
         user: {
-          select: {
-            id: true,
-          }
-        },
-        indexes: {
-          select: {
-            id: true,
-            name: true
-          }
+          id: users.id,
         }
-      },
-      take: 50, // Focus on recent intents for due diligence
-      orderBy: { updatedAt: 'desc' }
-    });
+      })
+      .from(intents)
+      .leftJoin(users, eq(intents.userId, users.id))
+      .where(ne(intents.id, intentId))
+      .limit(200);
 
-    // Filter for VC/Founder related intents only
-    const vcFounderChecks = await Promise.all(
-      allIntents.map(async (intent: any) => ({
-        intent,
-        isVCFounder: await isVCFounderRelated(intent as Intent)
-      }))
-    );
-    const existingVCFounderIntents = vcFounderChecks
-      .filter(({ isVCFounder }) => isVCFounder)
-      .map(({ intent }) => intent);
+    const allIntents = allIntentResults.map(result => ({
+      id: result.id,
+      payload: result.payload,
+      userId: result.userId,
+      user: result.user ? {
+        id: result.user.id,
+        name: '',
+        email: ''
+      } : undefined,
+      indexes: []
+    }));
 
-    console.log(`📊 Found ${existingVCFounderIntents.length} existing VC/Founder intents for analysis`);
+    // Process the intent through the Due Diligence Agent
+    const intentForProcessing = {
+      id: newIntent.id,
+      payload: newIntent.payload,
+      userId: newIntent.userId,
+      user: newIntent.user ? {
+        id: newIntent.user.id,
+        name: '',
+        email: ''
+      } : undefined,
+      indexes: []
+    };
 
-    if (existingVCFounderIntents.length === 0) {
-      console.log(`⏭️  No existing VC/Founder intents found for matching`);
-      return;
-    }
-
-    // Process the intent through the ProofLayer Due Diligence Agent
-    const result = await processVCFounderIntent(newIntent as Intent, existingVCFounderIntents as Intent[]);
+    const result = await processVCFounderIntent(intentForProcessing as Intent, allIntents as Intent[]);
     
-    console.log(`✅ ProofLayer Due Diligence analysis complete for intent ${intentId}`);
-    console.log(`📈 Result: ${result.substring(0, 300)}...`);
+    console.log(`✅ Due Diligence Agent analysis complete for intent ${intentId}`);
+    console.log(`📊 Result: ${result.substring(0, 200)}...`);
+    
+    // TODO: Store the due diligence analysis result and any stake decisions in the database
 
   } catch (error) {
-    console.error(`❌ ProofLayer Due Diligence Agent failed for intent ${intentId}:`, error);
+    console.error(`❌ Due Diligence Agent failed for intent ${intentId}:`, error);
     // Don't throw - we don't want to break the intent creation flow
   }
 }
 
 /**
- * Trigger the ProofLayer Due Diligence Agent when an intent is updated
- * Only triggers for VC or Founder related intents
+ * Trigger the Due Diligence Agent when an intent is updated
+ * This function should be called from the intents route after successful intent update
  */
 export async function onIntentUpdated(intentId: string, previousStatus?: string): Promise<void> {
   try {
-    console.log(`🔄 ProofLayer Due Diligence Agent evaluating updated intent: ${intentId}`);
+    console.log(`🔄 Due Diligence Agent triggered for updated intent: ${intentId}`);
     
     // Fetch the updated intent
-    const updatedIntent = await prisma.intent.findUnique({
-      where: { id: intentId },
-      select: {
-        id: true,
-        title: true,
-        payload: true,
-        status: true,
-        userId: true,
+    const updatedIntentResult = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        userId: intents.userId,
         user: {
-          select: {
-            id: true,
-          }
-        },
-        indexes: {
-          select: {
-            id: true,
-            name: true
-          }
+          id: users.id,
         }
-      }
-    });
+      })
+      .from(intents)
+      .leftJoin(users, eq(intents.userId, users.id))
+      .where(eq(intents.id, intentId))
+      .limit(1);
 
-    if (!updatedIntent) {
-      console.warn(`Updated intent ${intentId} not found for ProofLayer processing`);
+    if (updatedIntentResult.length === 0) {
+      console.warn(`Updated intent ${intentId} not found for due diligence processing`);
       return;
     }
 
-    // Check if this intent is VC or Founder related
-    if (!(await isVCFounderRelated(updatedIntent as Intent))) {
-      console.log(`⏭️  Skipping ProofLayer analysis for updated intent ${intentId} - not VC/Founder related`);
-      return;
-    }
+    const updatedIntent = updatedIntentResult[0];
 
-    // Only re-analyze if the intent became active or if significant changes occurred
-    const shouldAnalyze = 
-      updatedIntent.status === 'active' || 
-      updatedIntent.status === 'published' ||
-      (previousStatus === 'draft' && updatedIntent.status !== 'draft');
+    // Note: Since we don't have status field in current schema, we'll analyze all intents
+    console.log(`⏭️  Analyzing intent ${intentId} (status checking disabled due to schema changes)`);
 
-    if (!shouldAnalyze) {
-      console.log(`⏭️  Skipping ProofLayer re-analysis for intent ${intentId} - status: ${updatedIntent.status}`);
-      return;
-    }
-
-    console.log(`🚀 ProofLayer Due Diligence Agent triggered for updated VC/Founder intent: ${intentId}`);
-
-    // Fetch other VC/Founder related intents for matching
-    const allIntents = await prisma.intent.findMany({
-      where: {
-        id: { not: intentId },
-        status: { in: ['active', 'published', 'pending'] }
-      },
-      select: {
-        id: true,
-        title: true,
-        payload: true,
-        status: true,
-        userId: true,
+    // Fetch all other intents for due diligence analysis
+    const allIntentResults = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        userId: intents.userId,
         user: {
-          select: {
-            id: true,
-          }
-        },
-        indexes: {
-          select: {
-            id: true,
-            name: true
-          }
+          id: users.id,
         }
-      },
-      take: 50,
-      orderBy: { updatedAt: 'desc' }
-    });
+      })
+      .from(intents)
+      .leftJoin(users, eq(intents.userId, users.id))
+      .where(ne(intents.id, intentId))
+      .limit(200);
 
-    // Filter for VC/Founder related intents only
-    const vcFounderChecks = await Promise.all(
-      allIntents.map(async (intent: any) => ({
-        intent,
-        isVCFounder: await isVCFounderRelated(intent as Intent)
-      }))
-    );
-    const otherVCFounderIntents = vcFounderChecks
-      .filter(({ isVCFounder }) => isVCFounder)
-      .map(({ intent }) => intent);
-
-    console.log(`📊 Found ${otherVCFounderIntents.length} other VC/Founder intents for re-analysis`);
+    const allIntents = allIntentResults.map(result => ({
+      id: result.id,
+      payload: result.payload,
+      userId: result.userId,
+      user: result.user ? {
+        id: result.user.id,
+        name: '',
+        email: ''
+      } : undefined,
+      indexes: []
+    }));
 
     // Process the updated intent through due diligence analysis
-    const result = await processVCFounderIntent(updatedIntent as Intent, otherVCFounderIntents as Intent[]);
+    const intentForProcessing = {
+      id: updatedIntent.id,
+      payload: updatedIntent.payload,
+      userId: updatedIntent.userId,
+      user: updatedIntent.user ? {
+        id: updatedIntent.user.id,
+        name: '',
+        email: ''
+      } : undefined,
+      indexes: []
+    };
+
+    const result = await processVCFounderIntent(intentForProcessing as Intent, allIntents as Intent[]);
     
-    console.log(`✅ ProofLayer Due Diligence re-analysis complete for updated intent ${intentId}`);
-    console.log(`📈 Result: ${result.substring(0, 300)}...`);
+    console.log(`✅ Due Diligence Agent re-analysis complete for updated intent ${intentId}`);
+    console.log(`📊 Result: ${result.substring(0, 200)}...`);
 
   } catch (error) {
-    console.error(`❌ ProofLayer Due Diligence Agent failed for updated intent ${intentId}:`, error);
+    console.error(`❌ Due Diligence Agent failed for updated intent ${intentId}:`, error);
   }
 }
 
@@ -266,20 +190,13 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
  */
 export function getAgentConfig() {
   return {
-    name: "proof_layer",
-    displayName: "ProofLayer Due Diligence",
+    name: "due_diligence",
+    displayName: "Due Diligence Investigator",
     triggers: ["intent_created", "intent_updated"],
-    filters: ["vc_founder_related"],
     thresholds: {
-      embedding_similarity: 0.7,
-      investment_confidence: 0.75,
-      max_daily_analysis: 25
-    },
-    capabilities: [
-      "semantic_embedding_comparison",
-      "web_research_tavily",
-      "due_diligence_analysis", 
-      "investment_recommendation"
-    ]
+      riskAssessment: 0.8,
+      confidence: 0.85,
+      maxDailyStakes: 50
+    }
   };
 } 

@@ -1,13 +1,12 @@
 import { Annotation, START, END, StateGraph } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import prisma from "../../lib/db";
+import db from "../../lib/db";
 import { llm, createBacking, parseAgentDecisions } from "../../lib/agents";
 
 // Type definitions matching the database schema
 interface Intent {
   id: string;
   payload: string;
-  status: string;
   userId: string;
   user?: {
     id: string;
@@ -47,7 +46,6 @@ You are the Semantic Relevancy Staker Agent. Analyze the semantic similarity bet
 NEW INTENT:
 - ID: ${newIntent.id}
 - Description: ${newIntent.payload}
-- Status: ${newIntent.status}
 - User: ${newIntent.user?.name || newIntent.userId}
 
 EXISTING INTENTS FOR COMPARISON:
@@ -200,7 +198,6 @@ export async function runSemanticRelevancy(input: string): Promise<string> {
   const mockIntent: Intent = {
     id: "mock-" + Date.now(),
     payload: input,
-    status: "active",
     userId: "test-user"
   };
   

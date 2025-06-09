@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, useCallback, use } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft } from "lucide-react";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import { MCP } from '@lobehub/icons';
 import Link from "next/link";
-import { useIndexService, Index } from "@/services/indexes";
+import { useIndexes, useIntents } from "@/contexts/APIContext";
+import { Index } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 
@@ -18,6 +20,7 @@ interface IndexDetailPageProps {
 }
 
 export default function IndexDetailPage({ params }: IndexDetailPageProps) {
+  const router = useRouter();
   const resolvedParams = use(params);
   const [isDragging, setIsDragging] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
@@ -29,31 +32,52 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
   const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set());
   const [addedIntents, setAddedIntents] = useState<Set<string>>(new Set());
-  const indexesService = useIndexService();
+  const [suggestedIntents, setSuggestedIntents] = useState<{ id: string; payload: string; confidence: number }[]>([]);
+  const [loadingIntents, setLoadingIntents] = useState(false);
+  const indexesService = useIndexes();
+  const intentsService = useIntents();
+
+  const fetchIndex = useCallback(async () => {
+    try {
+      const data = await indexesService.getIndex(resolvedParams.id);
+      setIndex(data || null);
+    } catch (error) {
+      console.error('Error fetching index:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [resolvedParams.id, indexesService]);
+
+  const fetchSuggestedIntents = useCallback(async () => {
+    if (!index || !index.files || index.files.length === 0) {
+      setSuggestedIntents([]);
+      return;
+    }
+
+    setLoadingIntents(true);
+    try {
+      const intents = await indexesService.getSuggestedIntents(resolvedParams.id);
+      const intentsWithIds = intents.map((intent, index) => ({
+        id: `intent-${index}`,
+        payload: intent.payload,
+        confidence: intent.confidence
+      }));
+      setSuggestedIntents(intentsWithIds);
+    } catch (error) {
+      console.error('Error fetching suggested intents:', error);
+      setSuggestedIntents([]);
+    } finally {
+      setLoadingIntents(false);
+    }
+  }, [resolvedParams.id, indexesService, index]);
 
   useEffect(() => {
-    const fetchIndex = async () => {
-      try {
-        const data = await indexesService.getIndex(resolvedParams.id);
-        setIndex(data || null);
-        // Initialize addedIntents from the index data
-        if (data?.suggestedIntents) {
-          const added = new Set(
-            data.suggestedIntents
-              .filter(intent => intent.isAdded)
-              .map(intent => intent.id)
-          );
-          setAddedIntents(added);
-        }
-      } catch (error) {
-        console.error('Error fetching index:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchIndex();
-  }, [resolvedParams.id, indexesService]);
+  }, [fetchIndex]);
+
+  useEffect(() => {
+    fetchSuggestedIntents();
+  }, [fetchSuggestedIntents]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -113,30 +137,33 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   };
 
   const handleAddIntent = async (intentId: string) => {
-    if (index && index.suggestedIntents) {
-      const suggestedIntent = index.suggestedIntents.find(intent => intent.id === intentId);
-      if (suggestedIntent) {
-        setSelectedSuggestedIntent({
-          payload: suggestedIntent.payload,
-          id: intentId
-        });
-        setShowCreateIntentModal(true);
-      }
+    const suggestedIntent = suggestedIntents.find(intent => intent.id === intentId);
+    if (suggestedIntent && index) {
+      // Open modal immediately with initial payload
+      setSelectedSuggestedIntent({
+        payload: suggestedIntent.payload,
+        id: intentId
+      });
+      setShowCreateIntentModal(true);
     }
   };
 
-  const handleCreateIntent = async () => {
+  const handleCreateIntent = async (intent: { payload: string; indexIds: string[]; attachments: File[]; isPublic: boolean }) => {
     try {
-      // const newIntent = await intentsService.createIntent(intent);
+      const newIntent = await intentsService.createIntent({
+        payload: intent.payload,
+        indexIds: intent.indexIds,
+        isPublic: intent.isPublic
+      });
       // Update local state immediately
       setAddedIntents(prev => new Set([...prev, selectedSuggestedIntent?.id || '']));
       // Then refresh the index data
       const updatedIndex = await indexesService.getIndex(resolvedParams.id);
-      if (updatedIndex) {
-        setIndex(updatedIndex);
-      }
+      setIndex(updatedIndex || null);
       setShowCreateIntentModal(false);
       setSelectedSuggestedIntent(null);
+      // Redirect to the created intent
+      router.push(`/intents/${newIntent.id}`);
     } catch (error) {
       console.error('Error creating intent:', error);
     }
@@ -206,75 +233,62 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             </div>
             
             <div className="space-y-2 flex-1">
-                {index.files?.map((file) => (
-                  <div
-                    key={file.id}
-                    className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          className="p-0"
-                          size="lg"
-                        >
-                          <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
-                          <ArrowUpRight className="ml-1 h-4 w-4" />
-                        </Button>
-                      </div>
-                      <p className="text-sm text-gray-500">
-                        {file.size} • {new Date(file.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-500 hover:text-red-700"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleFileDelete(file.id);
-                      }}
-                      disabled={deletingFiles.has(file.id)}
+                {/* Merge uploaded files and uploading files into a single list */}
+                {(() => {
+                  const uploadedFiles = (index.files || []).map(file => ({ ...file, isUploading: false }));
+                  const uploadingFilesList = Array.from(uploadingFiles).map(fileName => ({
+                    id: `uploading-${fileName}`,
+                    name: fileName,
+                    size: '',
+                    createdAt: new Date().toISOString(),
+                    isUploading: true
+                  }));
+                  
+                  // Combine and sort: uploading files first (newest first), then uploaded files
+                  const allFiles = [...uploadingFilesList, ...uploadedFiles];
+                  
+                  return allFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
                     >
-                      {deletingFiles.has(file.id) ? (
-                        <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                ))}
-                {uploadingFiles.size > 0 && Array.from(uploadingFiles).map((fileName) => (
-                  <div
-                  key={fileName}
-                  className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            className="p-0"
+                            size="lg"
+                          >
+                            <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
+                            <ArrowUpRight className="ml-1 h-4 w-4" />
+                          </Button>
+                        </div>
+                        <p className={`text-sm ${file.isUploading ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {file.isUploading ? 'Uploading...' : `${file.size} • ${new Date(file.createdAt).toLocaleDateString()}`}
+                        </p>
+                      </div>
                       <Button
                         variant="ghost"
-                        className="p-0"
-                        size="lg"
+                        size="sm"
+                        className={file.isUploading ? "text-gray-400" : "text-red-500 hover:text-red-700"}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!file.isUploading) {
+                            handleFileDelete(file.id);
+                          }
+                        }}
+                        disabled={file.isUploading || (deletingFiles.has(file.id))}
                       >
-                        <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{fileName}</h4>
-                        <ArrowUpRight className="ml-1 h-4 w-4" />
+                        {file.isUploading || deletingFiles.has(file.id) ? (
+                          <div className={`h-4 w-4 border-2 ${file.isUploading ? 'border-gray-400' : 'border-red-500'} border-t-transparent rounded-full animate-spin`} />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </Button>
                     </div>
-                    <p className="text-sm text-gray-400">Uploading...</p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-gray-400"
-                    disabled
-                  >
-                    <div className="h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                  </Button>
-                </div>
-                
-                
-                ))}
+                  ));
+                })()}
             </div>
 
             {/* Upload Section */}
@@ -332,26 +346,31 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             </div>
             
             <div className="space-y-4 flex-1">
-              {index.suggestedIntents?.map((intent) => (
-                <div key={intent.id} className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.payload.substring(0, 100)}...</h4>
+              {loadingIntents ? (
+                <div className="text-center py-4 text-gray-500">Loading suggested intents...</div>
+              ) : suggestedIntents.length > 0 ? (
+                suggestedIntents.map((intent) => (
+                  <div key={intent.id} className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.payload}</h4>
+                      </div>
                     </div>
+                    <Button
+                      variant={addedIntents.has(intent.id) ? "default" : "outline"}
+                      size="sm"
+                      className="ml-4"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleAddIntent(intent.id);
+                      }}
+                    >
+                      {addedIntents.has(intent.id) ? "View" : "Add"}
+                    </Button>
                   </div>
-                  <Button
-                    variant={addedIntents.has(intent.id) ? "default" : "outline"}
-                    size="sm"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleAddIntent(intent.id);
-                    }}
-                  >
-                    {addedIntents.has(intent.id) ? "View" : "Add"}
-                  </Button>
-                </div>
-              )) || (
+                ))
+              ) : (
                 <div className="text-center py-4 text-gray-500">No suggested intents available</div>
               )}
             </div>
@@ -364,13 +383,15 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       <ShareSettingsModal
         open={showShareSettingsModal}
         onOpenChange={setShowShareSettingsModal}
-        indexName={index?.title || ''}
+        index={index}
+        onIndexUpdate={(updatedIndex) => setIndex(updatedIndex)}
       />
       <CreateIntentModal 
         open={showCreateIntentModal}
         onOpenChange={setShowCreateIntentModal}
         onSubmit={handleCreateIntent}
         initialPayload={selectedSuggestedIntent?.payload || ''}
+        indexId={index?.id}
       />
       <ConfigureModal 
         open={showConfigDialog}

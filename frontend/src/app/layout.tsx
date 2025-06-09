@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { APIProvider } from "@/contexts/APIContext";
 
 export const metadata: Metadata = {
   title: "Index Network | Discovery Protocol",
@@ -44,7 +45,9 @@ export default function RootLayout({
           src="https://plausible.io/js/script.outbound-links.js"
         />
         <AuthProvider>
-          {children}
+          <APIProvider>
+            {children}
+          </APIProvider>
         </AuthProvider>
       </body>
     </html>

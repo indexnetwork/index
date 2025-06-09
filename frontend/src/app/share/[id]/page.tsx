@@ -3,7 +3,9 @@
 import { useState, useEffect, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, ArrowUpRight } from "lucide-react";
-import { useIndexService, Index } from "@/services/indexes";
+import { useIndexDetails } from "@/contexts/APIContext";
+import { useIndexService } from "@/services/indexes";
+import { Index } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
 
@@ -16,25 +18,13 @@ interface SharePageProps {
 export default function SharePage({ params }: SharePageProps) {
   const resolvedParams = use(params);
   const [isDragging, setIsDragging] = useState(false);
-  const [index, setIndex] = useState<Index | null>(null);
-  const [loading, setLoading] = useState(true);
   const [requestSent, setRequestSent] = useState(false);
+  const { index, loading, fetchIndex } = useIndexDetails(resolvedParams.id);
   const indexesService = useIndexService();
 
   useEffect(() => {
-    const fetchIndex = async () => {
-      try {
-        const data = await indexesService.getIndex(resolvedParams.id);
-        setIndex(data || null);
-      } catch (error) {
-        console.error('Error fetching index:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchIndex();
-  }, [resolvedParams.id, indexesService]);
+  }, [fetchIndex]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -57,8 +47,7 @@ export default function SharePage({ params }: SharePageProps) {
           await indexesService.uploadFile(index.id, file);
         }
         // Refresh index data
-        const updatedIndex = await indexesService.getIndex(resolvedParams.id);
-        setIndex(updatedIndex || null);
+        fetchIndex(true);
       } catch (error) {
         console.error('Error uploading files:', error);
       }
@@ -205,8 +194,7 @@ export default function SharePage({ params }: SharePageProps) {
                   const files = Array.from(e.target.files || []);
                   if (index && files.length > 0) {
                     Promise.all(files.map(file => indexesService.uploadFile(index.id, file)))
-                      .then(() => indexesService.getIndex(resolvedParams.id))
-                      .then(updatedIndex => setIndex(updatedIndex || null))
+                      .then(() => fetchIndex(true))
                       .catch(error => console.error('Error uploading files:', error));
                   }
                 }}

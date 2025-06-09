@@ -1,0 +1,9 @@
+{
+    "node_version": "20",
+    "graphs": {
+        "intent_suggester": "./intent_suggester/index.ts:createIntentSuggesterWorkflow"
+    },
+    "dependencies": ["."],
+    "image_distro": "wolfi"
+}
+  

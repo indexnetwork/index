@@ -153,6 +153,7 @@ export interface UpdateIndexRequest {
 export interface CreateIntentRequest {
   payload: string;
   indexIds: string[];
+  isPublic?: boolean;
 }
 
 export interface UpdateIntentRequest {

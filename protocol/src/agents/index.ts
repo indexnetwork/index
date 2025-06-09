@@ -26,6 +26,17 @@ export {
   getAgentConfig as networkAgentConfig
 } from './network_manager/integration';
 
+export {
+  analyzeFolder as intentSuggesterAnalyzeFolder,
+  getIntents as intentSuggesterGetIntents,
+  getTopIntentsByConfidence as intentSuggesterGetTopIntents
+} from './intent_suggester';
+
+export {
+  processIntent,
+  refineIntent
+} from './intent_processor';
+
 /**
  * Agent system configuration
  */

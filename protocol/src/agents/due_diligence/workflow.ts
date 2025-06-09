@@ -1,14 +1,13 @@
 import { Annotation, START, END, StateGraph } from "@langchain/langgraph";
 import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
-import prisma from "../../lib/db";
+import db from "../../lib/db";
 import { llm, createBacking, parseAgentDecisions } from "../../lib/agents";
 
 // Type definitions matching the database schema
 interface Intent {
   id: string;
   payload: string;
-  status: string;
   userId: string;
   user?: {
     id: string;
@@ -470,7 +469,6 @@ export async function runProofLayer(input: string): Promise<string> {
   const mockIntent: Intent = {
     id: "mock-" + Date.now(),
     payload: input,
-    status: "active",
     userId: "test-user"
   };
   

@@ -1,11 +1,12 @@
-import { processIntent } from './workflow';
-import prisma from '../../lib/db';
+import db from '../../lib/db';
+import { intents, users } from '../../lib/schema';
+import { eq, ne } from 'drizzle-orm';
+import { processNetworkMatch } from './workflow';
 
-// Intent type matching the database schema
+// Type definitions matching the database schema
 interface Intent {
   id: string;
   payload: string;
-  status: string;
   userId: string;
   user?: {
     id: string;
@@ -24,75 +25,79 @@ interface Intent {
  */
 export async function onIntentCreated(intentId: string): Promise<void> {
   try {
-    console.log(`🚀 Network Manager triggered for new intent: ${intentId}`);
+    console.log(`🌐 Network Manager Agent triggered for new intent: ${intentId}`);
     
-    // Fetch the new intent with related data
-    const newIntent = await prisma.intent.findUnique({
-      where: { id: intentId },
-      select: {
-        id: true,
-        title: true,
-        payload: true,
-        status: true,
-        userId: true,
+    // Fetch the new intent with user data
+    const newIntentResult = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        userId: intents.userId,
         user: {
-          select: {
-            id: true,
-          }
-        },
-        indexes: {
-          select: {
-            id: true,
-            name: true
-          }
+          id: users.id,
         }
-      }
-    });
+      })
+      .from(intents)
+      .leftJoin(users, eq(intents.userId, users.id))
+      .where(eq(intents.id, intentId))
+      .limit(1);
 
-    if (!newIntent) {
-      console.warn(`Intent ${intentId} not found for agent processing`);
+    if (newIntentResult.length === 0) {
+      console.warn(`Intent ${intentId} not found for network management processing`);
       return;
     }
 
-    // Fetch existing active intents for comparison (excluding the new one)
-    const existingIntents = await prisma.intent.findMany({
-      where: {
-        id: { not: intentId },
-        status: { in: ['active', 'published', 'pending'] } // Adjust statuses as needed
-      },
-      select: {
-        id: true,
-        title: true,
-        payload: true,
-        status: true,
-        userId: true,
+    const newIntent = newIntentResult[0];
+
+    // Fetch existing intents for network matching (excluding the new one)
+    const existingIntentResults = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        userId: intents.userId,
         user: {
-          select: {
-            id: true,
-          }
-        },
-        indexes: {
-          select: {
-            id: true,
-            name: true
-          }
+          id: users.id,
         }
-      },
-      take: 50, // Limit to recent/relevant intents
-      orderBy: { updatedAt: 'desc' }
-    });
+      })
+      .from(intents)
+      .leftJoin(users, eq(intents.userId, users.id))
+      .where(ne(intents.id, intentId))
+      .limit(100);
+
+    const existingIntents = existingIntentResults.map(result => ({
+      id: result.id,
+      payload: result.payload,
+      userId: result.userId,
+      user: result.user ? {
+        id: result.user.id,
+        name: '',
+        email: ''
+      } : undefined,
+      indexes: []
+    }));
 
     // Process the intent through the Network Manager Agent
-    const result = await processIntent(newIntent as Intent, existingIntents as Intent[]);
+    const intentForProcessing = {
+      id: newIntent.id,
+      payload: newIntent.payload,
+      userId: newIntent.userId,
+      user: newIntent.user ? {
+        id: newIntent.user.id,
+        name: '',
+        email: ''
+      } : undefined,
+      indexes: []
+    };
+
+    const result = await processNetworkMatch(intentForProcessing as Intent, existingIntents as Intent[]);
     
-    console.log(`✅ Network Manager analysis complete for intent ${intentId}`);
+    console.log(`✅ Network Manager Agent analysis complete for intent ${intentId}`);
     console.log(`📊 Result: ${result.substring(0, 200)}...`);
     
-    // TODO: Store the analysis result and any stake decisions in the database
-    // This could be stored in a new table like AgentAnalysis or IntentAnalysis
-    
+    // TODO: Store the network analysis result and any stake decisions in the database
+
   } catch (error) {
-    console.error(`❌ Network Manager failed for intent ${intentId}:`, error);
+    console.error(`❌ Network Manager Agent failed for intent ${intentId}:`, error);
     // Don't throw - we don't want to break the intent creation flow
   }
 }
@@ -103,83 +108,80 @@ export async function onIntentCreated(intentId: string): Promise<void> {
  */
 export async function onIntentUpdated(intentId: string, previousStatus?: string): Promise<void> {
   try {
-    console.log(`🔄 Network Manager triggered for updated intent: ${intentId}`);
+    console.log(`🔄 Network Manager Agent triggered for updated intent: ${intentId}`);
     
     // Fetch the updated intent
-    const updatedIntent = await prisma.intent.findUnique({
-      where: { id: intentId },
-      select: {
-        id: true,
-        title: true,
-        payload: true,
-        status: true,
-        userId: true,
+    const updatedIntentResult = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        userId: intents.userId,
         user: {
-          select: {
-            id: true,
-          }
-        },
-        indexes: {
-          select: {
-            id: true,
-            name: true
-          }
+          id: users.id,
         }
-      }
-    });
+      })
+      .from(intents)
+      .leftJoin(users, eq(intents.userId, users.id))
+      .where(eq(intents.id, intentId))
+      .limit(1);
 
-    if (!updatedIntent) {
-      console.warn(`Updated intent ${intentId} not found for agent processing`);
+    if (updatedIntentResult.length === 0) {
+      console.warn(`Updated intent ${intentId} not found for network management processing`);
       return;
     }
 
-    // Only re-analyze if the intent became active or if significant changes occurred
-    const shouldAnalyze = 
-      updatedIntent.status === 'active' || 
-      updatedIntent.status === 'published' ||
-      (previousStatus === 'draft' && updatedIntent.status !== 'draft');
+    const updatedIntent = updatedIntentResult[0];
 
-    if (!shouldAnalyze) {
-      console.log(`⏭️  Skipping analysis for intent ${intentId} - status: ${updatedIntent.status}`);
-      return;
-    }
+    // Note: Since we don't have status field in current schema, we'll analyze all intents
+    console.log(`⏭️  Analyzing intent ${intentId} (status checking disabled due to schema changes)`);
 
-    // Fetch other active intents
-    const otherIntents = await prisma.intent.findMany({
-      where: {
-        id: { not: intentId },
-        status: { in: ['active', 'published', 'pending'] }
-      },
-      select: {
-        id: true,
-        title: true,
-        payload: true,
-        status: true,
-        userId: true,
+    // Fetch other intents for network matching
+    const otherIntentResults = await db
+      .select({
+        id: intents.id,
+        payload: intents.payload,
+        userId: intents.userId,
         user: {
-          select: {
-            id: true,
-          }
-        },
-        indexes: {
-          select: {
-            id: true,
-            name: true
-          }
+          id: users.id,
         }
-      },
-      take: 50,
-      orderBy: { updatedAt: 'desc' }
-    });
+      })
+      .from(intents)
+      .leftJoin(users, eq(intents.userId, users.id))
+      .where(ne(intents.id, intentId))
+      .limit(100);
 
-    // Process the updated intent
-    const result = await processIntent(updatedIntent as Intent, otherIntents as Intent[]);
+    const otherIntents = otherIntentResults.map(result => ({
+      id: result.id,
+      payload: result.payload,
+      userId: result.userId,
+      user: result.user ? {
+        id: result.user.id,
+        name: '',
+        email: ''
+      } : undefined,
+      indexes: []
+    }));
+
+    // Process the updated intent through network analysis
+    const intentForProcessing = {
+      id: updatedIntent.id,
+      payload: updatedIntent.payload,
+      userId: updatedIntent.userId,
+      user: updatedIntent.user ? {
+        id: updatedIntent.user.id,
+        name: '',
+        email: ''
+      } : undefined,
+      indexes: []
+    };
+
+    const result = await processNetworkMatch(intentForProcessing as Intent, otherIntents as Intent[]);
     
-    console.log(`✅ Network Manager re-analysis complete for updated intent ${intentId}`);
+    console.log(`✅ Network Manager Agent re-analysis complete for updated intent ${intentId}`);
     console.log(`📊 Result: ${result.substring(0, 200)}...`);
 
   } catch (error) {
-    console.error(`❌ Network Manager failed for updated intent ${intentId}:`, error);
+    console.error(`❌ Network Manager Agent failed for updated intent ${intentId}:`, error);
   }
 }
 
@@ -189,12 +191,12 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
 export function getAgentConfig() {
   return {
     name: "network_manager",
-    displayName: "ConsensysVibeStaker Network Manager",
+    displayName: "Network Connection Manager",
     triggers: ["intent_created", "intent_updated"],
     thresholds: {
-      synergy: 0.7,
-      conviction: 0.8,
-      maxDailyStakes: 50
+      networkStrength: 0.75,
+      confidence: 0.8,
+      maxDailyConnections: 150
     }
   };
 } 

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, useCallback, use } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Play, Archive, Pause } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { agents, createIntentsService } from "@/services/intents";
+import { agents } from "@/services/intents";
+import { useIntents } from "@/contexts/APIContext";
 import { Intent, IntentConnection } from "@/lib/types";
-import { useAuthenticatedAPI } from "@/lib/api";
 import ClientLayout from "@/components/ClientLayout";
 
 interface IntentDetailPageProps {
@@ -22,30 +22,30 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const [connections, setConnections] = useState<IntentConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
-  const api = useAuthenticatedAPI();
+  const intentsService = useIntents();
+  
   // TODO: Add agent animation state when implementing animation feature
   // const [activeAgentIndex, setActiveAgentIndex] = useState<number>(-1);
   // const [isThinking, setIsThinking] = useState(false);
 
-  useEffect(() => {
-    const fetchIntentData = async () => {
-      try {
-        const intentsService = createIntentsService(api);
-        const [intentData, connectionsData] = await Promise.all([
-          intentsService.getIntent(resolvedParams.id),
-          intentsService.getIntentConnections()
-        ]);
-        setIntent(intentData || null);
-        setConnections(connectionsData);
-      } catch (error) {
-        console.error('Error fetching intent data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchIntentData = useCallback(async () => {
+    try {
+      const [intentData, connectionsData] = await Promise.all([
+        intentsService.getIntent(resolvedParams.id),
+        intentsService.getIntentConnections()
+      ]);
+      setIntent(intentData || null);
+      setConnections(connectionsData);
+    } catch (error) {
+      console.error('Error fetching intent data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [resolvedParams.id, intentsService]);
 
+  useEffect(() => {
     fetchIntentData();
-  }, [resolvedParams.id, api]);
+  }, [fetchIntentData]);
 
   // TODO: Add agent animation functionality
   // const startAgentAnimation = (connection: IntentConnection) => {

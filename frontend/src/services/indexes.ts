@@ -72,7 +72,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // Update index
   updateIndex: async (id: string, data: UpdateIndexRequest): Promise<Index> => {
-    const response = await api.patch<APIResponse<Index>>(`/indexes/${id}`, data);
+    const response = await api.put<APIResponse<Index>>(`/indexes/${id}`, data);
     if (!response.index) {
       throw new Error('Failed to update index');
     }
@@ -103,6 +103,18 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   // Remove index member
   removeMember: async (indexId: string, userId: string): Promise<void> => {
     await api.delete(`/indexes/${indexId}/members/${userId}`);
+  },
+
+  // Get suggested intents for an index
+  getSuggestedIntents: async (indexId: string): Promise<{ payload: string; confidence: number }[]> => {
+    const response = await api.get<{ intents: { payload: string; confidence: number }[] }>(`/indexes/${indexId}/suggested_intents`);
+    return response.intents;
+  },
+
+  // Get intent preview with contextual integrity processing
+  getIntentPreview: async (indexId: string, payload: string): Promise<string> => {
+    const response = await api.get<{ payload: string }>(`/indexes/${indexId}/intent_preview?payload=${encodeURIComponent(payload)}`);
+    return response.payload;
   },
 
   // Legacy methods for backward compatibility (these would need intent service integration)
