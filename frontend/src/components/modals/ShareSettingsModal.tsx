@@ -1,16 +1,10 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
-import { Trash2, Copy, Plus, Globe, Lock } from "lucide-react";
+import { Copy, Globe, Lock, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Input } from "../ui/input";
 import { useIndexes } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
-
-interface ShareLink {
-  id: string;
-  url: string;
-  createdAt: string;
-}
 
 interface ShareSettingsModalProps {
   open: boolean;
@@ -54,13 +48,6 @@ const DialogTitle = ({ className, children, ...props }: DialogProps) => (
 );
 
 export default function ShareSettingsModal({ open, onOpenChange, index, onIndexUpdate }: ShareSettingsModalProps) {
-  const [shareLinks, setShareLinks] = useState<ShareLink[]>([
-    { 
-      id: '1', 
-      url: 'http://localhost:3000/share/1',
-      createdAt: new Date().toISOString()
-    }
-  ]);
   const [isUpdating, setIsUpdating] = useState(false);
   const indexesService = useIndexes();
 
@@ -86,18 +73,8 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     }
   };
 
-  const generateNewLink = () => {
-    const newLink: ShareLink = {
-      id: Math.random().toString(36).substring(7),
-      url: `https://index.network/share/${Math.random().toString(36).substring(7)}`,
-      createdAt: new Date().toISOString()
-    };
-    setShareLinks([...shareLinks, newLink]);
-  };
-
-  const removeLink = (id: string) => {
-    setShareLinks(shareLinks.filter(link => link.id !== id));
-  };
+  // Generate a share link when public
+  const shareUrl = `http://localhost:3000/share/${index.id}`;
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -154,55 +131,28 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                 </button>
               </div>
             </div>
-          </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-md font-medium font-ibm-plex-mono text-black">Share link</h3>
-              <Button
-                variant="outline"
-                size="lg"
-                className="h-9 px-3"
-                onClick={generateNewLink}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Link
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {shareLinks.map((link) => (
-                <div 
-                  key={link.id}
-                  className="flex items-center gap-2"
-                >
-                  
+            {index.isPublic && (
+              <div className="mt-4">
+                <h4 className="text-sm font-medium font-ibm-plex-mono text-black mb-2">Share link</h4>
+                <div className="flex items-center gap-2">
                   <Input
                     readOnly
-                    id="name"
-                    value={link.url}
-                    className=" px-4 py-3"
-                    placeholder="Enter index name..."
-                    required
+                    value={shareUrl}
+                    className="px-4 py-3"
+                    placeholder="Share link will appear here..."
                   />
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-10 px-4"
-                    onClick={() => handleCopyLink(link.url)}
+                    onClick={() => handleCopyLink(shareUrl)}
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-10 px-4 text-red-500 hover:text-red-600"
-                    onClick={() => removeLink(link.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
 
           <div>
