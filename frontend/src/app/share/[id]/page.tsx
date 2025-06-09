@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, ArrowUpRight } from "lucide-react";
-import { useIndexDetails } from "@/contexts/APIContext";
-import { useIndexService } from "@/services/indexes";
+import { useIndexes } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
@@ -19,8 +18,22 @@ export default function SharePage({ params }: SharePageProps) {
   const resolvedParams = use(params);
   const [isDragging, setIsDragging] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
-  const { index, loading, fetchIndex } = useIndexDetails(resolvedParams.id);
-  const indexesService = useIndexService();
+  const [index, setIndex] = useState<Index | null>(null);
+  const [loading, setLoading] = useState(true);
+  const indexesService = useIndexes();
+
+  const fetchIndex = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await indexesService.getIndex(resolvedParams.id);
+      setIndex(response);
+    } catch (error) {
+      console.error('Error fetching index:', error);
+      setIndex(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [indexesService, resolvedParams.id]);
 
   useEffect(() => {
     fetchIndex();
@@ -47,7 +60,7 @@ export default function SharePage({ params }: SharePageProps) {
           await indexesService.uploadFile(index.id, file);
         }
         // Refresh index data
-        fetchIndex(true);
+        fetchIndex();
       } catch (error) {
         console.error('Error uploading files:', error);
       }
@@ -103,9 +116,9 @@ export default function SharePage({ params }: SharePageProps) {
               <h2 className="text-xl mt-2 font-semibold text-gray-900">Files</h2>
             </div>
             <div className="space-y-2 flex-1">
-              {index.files?.map((file, index) => (
+              {index.files?.map((file, fileIndex) => (
                 <div
-                  key={index}
+                  key={fileIndex}
                   className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
                 >
                   <div className="flex-1">
@@ -194,7 +207,7 @@ export default function SharePage({ params }: SharePageProps) {
                   const files = Array.from(e.target.files || []);
                   if (index && files.length > 0) {
                     Promise.all(files.map(file => indexesService.uploadFile(index.id, file)))
-                      .then(() => fetchIndex(true))
+                      .then(() => fetchIndex())
                       .catch(error => console.error('Error uploading files:', error));
                   }
                 }}
