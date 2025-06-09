@@ -3,15 +3,17 @@
 import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft } from "lucide-react";
+import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical } from "lucide-react";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
+import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 import { MCP } from '@lobehub/icons';
 import Link from "next/link";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
+import { Input } from "@/components/ui/input";
 
 interface IndexDetailPageProps {
   params: Promise<{
@@ -34,6 +36,17 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [addedIntents, setAddedIntents] = useState<Set<string>>(new Set());
   const [suggestedIntents, setSuggestedIntents] = useState<{ id: string; payload: string; confidence: number }[]>([]);
   const [loadingIntents, setLoadingIntents] = useState(false);
+  
+  // New state for title editing
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState("");
+  const [isUpdatingTitle, setIsUpdatingTitle] = useState(false);
+  
+  // New state for delete confirmation and options menu
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  
   const indexesService = useIndexes();
   const intentsService = useIntents();
 
@@ -169,6 +182,55 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     }
   };
 
+  // New handler for title editing
+  const handleStartTitleEdit = () => {
+    if (index) {
+      setEditedTitle(index.title);
+      setIsEditingTitle(true);
+    }
+  };
+
+  const handleCancelTitleEdit = () => {
+    setIsEditingTitle(false);
+    setEditedTitle("");
+  };
+
+  const handleSaveTitleEdit = async () => {
+    if (!index || !editedTitle.trim()) return;
+    
+    setIsUpdatingTitle(true);
+    try {
+      await indexesService.updateIndex(index.id, {
+        title: editedTitle.trim()
+      });
+      // Refetch the complete index data to ensure we have all files
+      const updatedIndex = await indexesService.getIndex(resolvedParams.id);
+      setIndex(updatedIndex || null);
+      setIsEditingTitle(false);
+      setEditedTitle("");
+    } catch (error) {
+      console.error('Error updating index title:', error);
+    } finally {
+      setIsUpdatingTitle(false);
+    }
+  };
+
+  // New handler for delete index
+  const handleDeleteIndex = async () => {
+    if (!index) return;
+    
+    setIsDeleting(true);
+    try {
+      await indexesService.deleteIndex(index.id);
+      router.push('/indexes');
+    } catch (error) {
+      console.error('Error deleting index:', error);
+      setIsDeleting(false);
+    }
+  };
+
+
+
   if (loading) {
     return (
       <ClientLayout>
@@ -200,9 +262,35 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           </Link>
         </div>
         <div className="flex flex-col sm:flex-row py-4 px-2 sm:px-4 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-2">{index.title}</h1>
-            <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {new Date(index.createdAt).toLocaleDateString()}</p>
+          <div className="flex-1 group">
+            <div className="flex items-center gap-2 mb-2">
+              {isEditingTitle ? (
+                <Input
+                  value={editedTitle}
+                  onChange={(e) => setEditedTitle(e.target.value)}
+                  className="text-2xl font-bold text-gray-900 font-ibm-plex-mono border-none shadow-none pl-0 pr-1 py-0.5 h-auto bg-transparent focus:ring-0 focus:border-none rounded"
+                  placeholder="Index title"
+                  disabled={isUpdatingTitle}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSaveTitleEdit();
+                    } else if (e.key === 'Escape') {
+                      handleCancelTitleEdit();
+                    }
+                  }}
+                  onBlur={handleSaveTitleEdit}
+                  autoFocus
+                />
+              ) : (
+                <h1 
+                  className="text-2xl font-bold text-gray-900 font-ibm-plex-mono cursor-pointer hover:bg-gray-50 pl-0 pr-1 py-0.5 rounded"
+                  onClick={handleStartTitleEdit}
+                >
+                  {index?.title}
+                </h1>
+              )}
+            </div>
+            <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {index ? new Date(index.createdAt).toLocaleDateString() : ''}</p>
           </div>
           <div className="flex gap-2 mt-4 sm:mt-0 flex-wrap sm:flex-nowrap">
             <Button
@@ -223,6 +311,30 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
               <MCP className="h-4 w-4" />
               <span className="hidden sm:inline">Configure MCP</span>
             </Button>
+            {/* Simple options menu */}
+            <div className="relative">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+              {showOptionsMenu && (
+                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                  <button
+                    onClick={() => {
+                      setShowOptionsMenu(false);
+                      setShowDeleteDialog(true);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-gray-50 flex items-center"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete Index
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -379,6 +491,14 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
       </div>
 
+      {/* Click outside to close options menu */}
+      {showOptionsMenu && (
+        <div
+          className="fixed inset-0 z-5"
+          onClick={() => setShowOptionsMenu(false)}
+        />
+      )}
+
       {/* Modals */}
       <ShareSettingsModal
         open={showShareSettingsModal}
@@ -396,6 +516,15 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       <ConfigureModal 
         open={showConfigDialog}
         onOpenChange={setShowConfigDialog}
+      />
+      
+      {/* Delete Confirmation Modal */}
+      <DeleteIndexModal
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        index={index}
+        onDeleteIndex={handleDeleteIndex}
+        isDeleting={isDeleting}
       />
     </ClientLayout>
   );

@@ -67,7 +67,9 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   const handleToggleVisibility = async (isPublic: boolean) => {
     try {
       setIsUpdating(true);
-      const updatedIndex = await indexesService.updateIndex(index.id, { isPublic });
+      await indexesService.updateIndex(index.id, { isPublic });
+      // Refetch the complete index data to ensure we have all files
+      const updatedIndex = await indexesService.getIndex(index.id);
       onIndexUpdate?.(updatedIndex);
     } catch (error) {
       console.error('Error updating index visibility:', error);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Button } from "@/components/ui/button";
 import { Share2, Plus, Lock } from "lucide-react";
@@ -13,6 +14,7 @@ import { MCP } from '@lobehub/icons';
 import ClientLayout from "@/components/ClientLayout";
 
 export default function IndexesPage() {
+  const router = useRouter();
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showIndexModal, setShowIndexModal] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
@@ -46,6 +48,9 @@ export default function IndexesPage() {
       const newIndex = await indexesService.createIndex(createRequest);
       setIndexes(prev => [...prev, newIndex]);
       setShowIndexModal(false);
+      
+      // Redirect to the newly created index detail page
+      router.push(`/indexes/${newIndex.id}`);
     } catch (error) {
       console.error('Error creating index:', error);
     }
@@ -102,7 +107,7 @@ export default function IndexesPage() {
                       key={index.id}
                       className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                       onClick={() => {
-                        window.location.href = `/indexes/${index.id}`;
+                        router.push(`/indexes/${index.id}`);
                       }}
                     >
                       <div className="w-full sm:w-auto mb-2 sm:mb-0">
