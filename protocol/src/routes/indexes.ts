@@ -1,14 +1,12 @@
 import { Router, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
 import db from '../lib/db';
 import { indexes, users, files, indexMembers, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, or, ilike, exists } from 'drizzle-orm';
-import { analyzeFolder } from '../agents/intent_suggester';
-import { processIntent } from '../agents/intent_processor';
+import { checkIndexAccess, checkIndexOwnership } from '../lib/index-access';
+
+
 
 const router = Router();
 
@@ -132,6 +130,11 @@ router.get('/:id',
 
       const { id } = req.params;
 
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
       const index = await db.select({
         id: indexes.id,
         title: indexes.title,
@@ -146,26 +149,6 @@ router.get('/:id',
         .innerJoin(users, eq(indexes.userId, users.id))
         .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
         .limit(1);
-
-      if (index.length === 0) {
-        return res.status(404).json({ error: 'Index not found' });
-      }
-
-      // Check access permissions
-      const indexData = index[0];
-      const hasAccess = indexData.isPublic || indexData.userId === req.user!.id;
-
-      if (!hasAccess) {
-        // Check if user is a member
-        const membership = await db.select({ userId: indexMembers.userId })
-          .from(indexMembers)
-          .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
-          .limit(1);
-
-        if (membership.length === 0) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
-      }
 
       // Get related data
       const [indexFiles, indexMembersData, intentCount] = await Promise.all([
@@ -195,6 +178,7 @@ router.get('/:id',
           .where(eq(intentIndexes.indexId, id))
       ]);
 
+      const indexData = index[0];
       const result = {
         id: indexData.id,
         title: indexData.title,
@@ -290,18 +274,9 @@ router.put('/:id',
       const { id } = req.params;
       const { title, isPublic } = req.body;
 
-      // Check if index exists and user owns it
-      const index = await db.select({ id: indexes.id, userId: indexes.userId })
-        .from(indexes)
-        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
-        .limit(1);
-
-      if (index.length === 0) {
-        return res.status(404).json({ error: 'Index not found' });
-      }
-
-      if (index[0].userId !== req.user!.id) {
-        return res.status(403).json({ error: 'Access denied' });
+      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
       }
 
       const updateData: any = { updatedAt: new Date() };
@@ -344,18 +319,9 @@ router.delete('/:id',
 
       const { id } = req.params;
 
-      // Check if index exists and user owns it
-      const index = await db.select({ id: indexes.id, userId: indexes.userId })
-        .from(indexes)
-        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
-        .limit(1);
-
-      if (index.length === 0) {
-        return res.status(404).json({ error: 'Index not found' });
-      }
-
-      if (index[0].userId !== req.user!.id) {
-        return res.status(403).json({ error: 'Access denied' });
+      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
       }
 
       await db.update(indexes)
@@ -390,18 +356,9 @@ router.post('/:id/members',
       const { id } = req.params;
       const { userId } = req.body;
 
-      // Check if index exists and user owns it
-      const index = await db.select({ id: indexes.id, userId: indexes.userId })
-        .from(indexes)
-        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
-        .limit(1);
-
-      if (index.length === 0) {
-        return res.status(404).json({ error: 'Index not found' });
-      }
-
-      if (index[0].userId !== req.user!.id) {
-        return res.status(403).json({ error: 'Access denied' });
+      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
       }
 
       // Check if user exists
@@ -487,157 +444,5 @@ router.delete('/:id/members/:userId',
   }
 );
 
-// Get suggested intents for an index based on file summaries
-router.get('/:id/suggested_intents',
-  authenticatePrivy,
-  [param('id').isUUID()],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { id } = req.params;
-
-      // Check if index exists and user has access
-      const index = await db.select({
-        id: indexes.id,
-        userId: indexes.userId,
-        isPublic: indexes.isPublic
-      }).from(indexes)
-        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
-        .limit(1);
-
-      if (index.length === 0) {
-        return res.status(404).json({ error: 'Index not found' });
-      }
-
-      const indexData = index[0];
-      const hasAccess = indexData.isPublic || indexData.userId === req.user!.id;
-
-      if (!hasAccess) {
-        // Check if user is a member
-        const membership = await db.select({ userId: indexMembers.userId })
-          .from(indexMembers)
-          .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
-          .limit(1);
-
-        if (membership.length === 0) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
-      }
-
-      // Get files in the index
-      const indexFiles = await db.select({
-        id: files.id,
-        name: files.name
-      }).from(files)
-        .where(and(eq(files.indexId, id), isNull(files.deletedAt)));
-
-      if (indexFiles.length === 0) {
-        return res.json({ intents: [] });
-      }
-
-      const baseUploadDir = path.join(__dirname, '../../uploads', id);
-
-      // Count .summary files in the upload directory
-      let summariesFound = 0;
-      for (const file of indexFiles) {
-        const summaryPath = path.join(baseUploadDir, `${file.id}.summary`);
-        if (fs.existsSync(summaryPath)) {
-          summariesFound++;
-        }
-      }
-
-      if (summariesFound === 0) {
-        return res.json({ intents: [] });
-      }
-
-      // Use intent suggester to analyze summaries
-      const result = await analyzeFolder(baseUploadDir, { timeoutMs: 60000 });
-
-      if (result.success) {
-        return res.json({
-          intents: result.intents.map((intent: any) => ({
-            payload: intent.payload,
-            confidence: intent.confidence
-          }))
-        });
-      } else {
-        console.error('Intent inference failed');
-        return res.status(500).json({ error: 'Failed to generate intents' });
-      }
-
-    } catch (error) {
-      console.error('Get suggested intents error:', error);
-      return res.status(500).json({ error: 'Failed to generate suggested intents' });
-    }
-  }
-);
-
-// Get intent preview with contextual integrity processing
-router.get('/:id/intent_preview',
-  authenticatePrivy,
-  [
-    param('id').isUUID(),
-    query('payload').trim().isLength({ min: 1 })
-  ],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const { id } = req.params;
-      const { payload } = req.query;
-
-      // Check if index exists and user has access
-      const index = await db.select({
-        id: indexes.id,
-        userId: indexes.userId,
-        isPublic: indexes.isPublic
-      }).from(indexes)
-        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
-        .limit(1);
-
-      if (index.length === 0) {
-        return res.status(404).json({ error: 'Index not found' });
-      }
-
-      const indexData = index[0];
-      const hasAccess = indexData.isPublic || indexData.userId === req.user!.id;
-
-      if (!hasAccess) {
-        // Check if user is a member
-        const membership = await db.select({ userId: indexMembers.userId })
-          .from(indexMembers)
-          .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
-          .limit(1);
-
-        if (membership.length === 0) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
-      }
-
-      // Process intent with contextual integrity
-      const result = await processIntent(payload as string, id);
-
-      if (result.success) {
-        return res.json({
-          payload: result.payload
-        });
-      } else {
-        console.error('Intent processing failed:', result.error);
-        return res.status(500).json({ error: 'Failed to process intent' });
-      }
-
-    } catch (error) {
-      console.error('Get intent preview error:', error);
-      return res.status(500).json({ error: 'Failed to process intent preview' });
-    }
-  }
-);
 
 export default router; 

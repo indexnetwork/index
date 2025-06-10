@@ -111,9 +111,21 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Get suggested intents for an index
-  getSuggestedIntents: async (indexId: string): Promise<{ payload: string; confidence: number }[]> => {
-    const response = await api.get<{ intents: { payload: string; confidence: number }[] }>(`/indexes/${indexId}/suggested_intents`);
-    return response.intents;
+  getSuggestedIntents: async (indexId: string): Promise<{
+    intents: { payload: string; confidence: number }[];
+    fromCache?: boolean;
+    processingTime?: number;
+  }> => {
+    const response = await api.get<{
+      intents: { payload: string; confidence: number }[];
+      fromCache: boolean;
+      processingTime?: number;
+    }>(`/indexes/${indexId}/suggested_intents`);
+    return {
+      intents: response.intents,
+      fromCache: response.fromCache,
+      processingTime: response.processingTime
+    };
   },
 
   // Get intent preview with contextual integrity processing

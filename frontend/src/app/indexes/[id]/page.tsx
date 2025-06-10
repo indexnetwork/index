@@ -69,13 +69,20 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
     setLoadingIntents(true);
     try {
-      const intents = await indexesService.getSuggestedIntents(resolvedParams.id);
-      const intentsWithIds = intents.map((intent, index) => ({
+      const response = await indexesService.getSuggestedIntents(resolvedParams.id);
+      const intentsWithIds = response.intents.map((intent, index) => ({
         id: `intent-${index}`,
         payload: intent.payload,
         confidence: intent.confidence
       }));
       setSuggestedIntents(intentsWithIds);
+      
+      // Log cache status for debugging
+      if (response.fromCache) {
+        console.log(`⚡ Loaded ${response.intents.length} cached suggestions`);
+      } else {
+        console.log(`🔄 Generated ${response.intents.length} suggestions in ${response.processingTime}ms`);
+      }
     } catch (error) {
       console.error('Error fetching suggested intents:', error);
       setSuggestedIntents([]);

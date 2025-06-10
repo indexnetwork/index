@@ -6,7 +6,7 @@ import 'dotenv/config';
 
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
-//import agentRoutes from './routes/agents';
+import suggestionRoutes from './routes/suggestions';
 import intentRoutes from './routes/intents';
 import fileRoutes from './routes/files';
 import indexRoutes from './routes/indexes';
@@ -32,6 +32,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 //app.use('/api/agents', agentRoutes);
 app.use('/api/intents', intentRoutes);
+
+app.use('/api/indexes/:indexId/suggested_intents/', suggestionRoutes);
 app.use('/api/indexes/:indexId/files', fileRoutes);
 app.use('/api/indexes', indexRoutes);
 
