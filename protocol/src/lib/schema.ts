@@ -20,7 +20,7 @@ export const intents = pgTable('intents', {
   isPublic: boolean('is_public').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-  deletedAt: timestamp('deleted_at'),
+  archivedAt: timestamp('archived_at'),
   userId: uuid('user_id').notNull().references(() => users.id),
 });
 

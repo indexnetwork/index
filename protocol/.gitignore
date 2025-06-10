@@ -41,7 +41,7 @@ yarn-error.log*
 next-env.d.ts
 
 
-drizzle/*
+drizzle/meta/*
 uploads/*
 dist/
 # LangGraph API
