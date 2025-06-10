@@ -453,7 +453,7 @@ router.delete('/:id/members/:userId',
 
       const { id, userId } = req.params;
 
-      // Check if index exists and user owns it
+      // Check if index exists
       const index = await db.select({ id: indexes.id, userId: indexes.userId })
         .from(indexes)
         .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
@@ -463,7 +463,11 @@ router.delete('/:id/members/:userId',
         return res.status(404).json({ error: 'Index not found' });
       }
 
-      if (index[0].userId !== req.user!.id) {
+      // Allow either the index owner to remove any member, or users to remove themselves
+      const isOwner = index[0].userId === req.user!.id;
+      const isSelfRemoval = userId === req.user!.id;
+
+      if (!isOwner && !isSelfRemoval) {
         return res.status(403).json({ error: 'Access denied' });
       }
 

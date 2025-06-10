@@ -105,6 +105,11 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     await api.delete(`/indexes/${indexId}/members/${userId}`);
   },
 
+  // Leave index (remove current user as member)
+  leaveIndex: async (indexId: string, userId: string): Promise<void> => {
+    await api.delete(`/indexes/${indexId}/members/${userId}`);
+  },
+
   // Get suggested intents for an index
   getSuggestedIntents: async (indexId: string): Promise<{ payload: string; confidence: number }[]> => {
     const response = await api.get<{ intents: { payload: string; confidence: number }[] }>(`/indexes/${indexId}/suggested_intents`);
