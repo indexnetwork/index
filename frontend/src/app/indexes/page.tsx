@@ -101,11 +101,15 @@ export default function IndexesPage() {
 
   const renderIndexList = (indexList: Index[], isSharedIndexes: boolean = false) => {
     if (indexList.length === 0) {
-      return (
-        <div className="py-8 text-center text-gray-500">
-          No indexes found
-        </div>
-      );
+      if (isSharedIndexes) {
+        return (
+          <div className="py-8 text-center text-gray-500">
+            No indexes found
+          </div>
+        );
+      } else {
+        return null;
+      }
     }
 
     return indexList.map((index) => (
