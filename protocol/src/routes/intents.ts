@@ -3,7 +3,7 @@ import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
 import { intents, users, indexes, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { eq, isNull, and, count, desc, or, ilike } from 'drizzle-orm';
+import { eq, isNull, isNotNull, and, count, desc, or, ilike } from 'drizzle-orm';
 
 const router = Router();
 
@@ -13,6 +13,7 @@ router.get('/',
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    query('archived').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -24,9 +25,10 @@ router.get('/',
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
       const skip = (page - 1) * limit;
+      const showArchived = req.query.archived === 'true';
 
       const whereCondition = and(
-        isNull(intents.deletedAt),
+        showArchived ? isNotNull(intents.archivedAt) : isNull(intents.archivedAt),
         eq(intents.userId, req.user!.id)
       );
 
@@ -37,6 +39,7 @@ router.get('/',
           isPublic: intents.isPublic,
           createdAt: intents.createdAt,
           updatedAt: intents.updatedAt,
+          archivedAt: intents.archivedAt,
           userId: intents.userId,
           userName: users.name,
           userEmail: users.email,
@@ -57,6 +60,10 @@ router.get('/',
       // Get index counts for each intent
       const intentsWithCounts = await Promise.all(
         intentsResult.map(async (intent) => {
+          // Get count of indexes for this intent
+          const indexCount = await db.select({ count: count() })
+            .from(intentIndexes)
+            .where(eq(intentIndexes.intentId, intent.id));
 
           return {
             id: intent.id,
@@ -64,12 +71,16 @@ router.get('/',
             isPublic: intent.isPublic,
             createdAt: intent.createdAt,
             updatedAt: intent.updatedAt,
+            archivedAt: intent.archivedAt,
             user: {
               id: intent.userId,
               name: intent.userName,
               email: intent.userEmail,
               avatar: intent.userAvatar
             },
+            _count: {
+              indexes: indexCount[0]?.count || 0
+            }
           };
         })
       );
@@ -109,13 +120,14 @@ router.get('/:id',
         isPublic: intents.isPublic,
         createdAt: intents.createdAt,
         updatedAt: intents.updatedAt,
+        archivedAt: intents.archivedAt,
         userId: intents.userId,
         userName: users.name,
         userEmail: users.email,
         userAvatar: users.avatar
       }).from(intents)
         .innerJoin(users, eq(intents.userId, users.id))
-        .where(and(eq(intents.id, id), isNull(intents.deletedAt)))
+        .where(eq(intents.id, id))
         .limit(1);
 
       if (intent.length === 0) {
@@ -137,12 +149,16 @@ router.get('/:id',
         isPublic: intentData.isPublic,
         createdAt: intentData.createdAt,
         updatedAt: intentData.updatedAt,
+        archivedAt: intentData.archivedAt,
         user: {
           id: intentData.userId,
           name: intentData.userName,
           email: intentData.userEmail,
           avatar: intentData.userAvatar
         },
+        _count: {
+          indexes: 0 // TODO: Add actual count query
+        }
       };
 
       return res.json({ intent: result });
@@ -246,7 +262,7 @@ router.put('/:id',
       // Check if intent exists and user owns it
       const intent = await db.select({ id: intents.id, userId: intents.userId })
         .from(intents)
-        .where(and(eq(intents.id, id), isNull(intents.deletedAt)))
+        .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
         .limit(1);
 
       if (intent.length === 0) {
@@ -284,8 +300,8 @@ router.put('/:id',
   }
 );
 
-// Delete intent (soft delete)
-router.delete('/:id',
+// Archive intent
+router.patch('/:id/archive',
   authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
@@ -300,7 +316,7 @@ router.delete('/:id',
       // Check if intent exists and user owns it
       const intent = await db.select({ id: intents.id, userId: intents.userId })
         .from(intents)
-        .where(and(eq(intents.id, id), isNull(intents.deletedAt)))
+        .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
         .limit(1);
 
       if (intent.length === 0) {
@@ -313,15 +329,57 @@ router.delete('/:id',
 
       await db.update(intents)
         .set({ 
-          deletedAt: new Date(),
+          archivedAt: new Date(),
           updatedAt: new Date()
         })
         .where(eq(intents.id, id));
 
-      return res.json({ message: 'Intent deleted successfully' });
+      return res.json({ message: 'Intent archived successfully' });
     } catch (error) {
-      console.error('Delete intent error:', error);
-      return res.status(500).json({ error: 'Failed to delete intent' });
+      console.error('Archive intent error:', error);
+      return res.status(500).json({ error: 'Failed to archive intent' });
+    }
+  }
+);
+
+// Unarchive intent
+router.patch('/:id/unarchive',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      // Check if intent exists and user owns it
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(and(eq(intents.id, id), isNotNull(intents.archivedAt)))
+        .limit(1);
+
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Archived intent not found' });
+      }
+
+      if (intent[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      await db.update(intents)
+        .set({ 
+          archivedAt: null,
+          updatedAt: new Date()
+        })
+        .where(eq(intents.id, id));
+
+      return res.json({ message: 'Intent unarchived successfully' });
+    } catch (error) {
+      console.error('Unarchive intent error:', error);
+      return res.status(500).json({ error: 'Failed to unarchive intent' });
     }
   }
 );

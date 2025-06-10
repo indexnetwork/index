@@ -58,6 +58,7 @@ export interface Intent {
   payload: string;
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string | null;
   user: {
     id: string;
     name: string;

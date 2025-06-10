@@ -21,13 +21,14 @@ export default function IntentsPage() {
 
   const fetchIntents = useCallback(async () => {
     try {
-      const response = await intentsService.getIntents();
-      const intents = response.intents || [];
-      // For now, we'll use the same data for all tabs
-      // In real implementation, you'd filter by status
-      setActiveIntents(intents);
-      setArchivedIntents(intents);
-      setSuggestedIntents(intents);
+      const [activeResponse, archivedResponse] = await Promise.all([
+        intentsService.getIntents(1, 50, false), // Active intents
+        intentsService.getIntents(1, 50, true)   // Archived intents
+      ]);
+      
+      setActiveIntents(activeResponse.intents || []);
+      setArchivedIntents(archivedResponse.intents || []);
+      setSuggestedIntents(activeResponse.intents || []); // Use active for suggestions for now
     } catch (error) {
       console.error('Error fetching intents:', error);
     } finally {
@@ -58,6 +59,34 @@ export default function IntentsPage() {
       console.error('Error creating intent:', error);
     }
   }, [intentsService, router]);
+
+  const handleArchiveIntent = useCallback(async (intentId: string) => {
+    try {
+      await intentsService.archiveIntent(intentId);
+      // Move intent from active to archived
+      const intentToArchive = activeIntents.find(intent => intent.id === intentId);
+      if (intentToArchive) {
+        setActiveIntents(prev => prev.filter(intent => intent.id !== intentId));
+        setArchivedIntents(prev => [...prev, intentToArchive]);
+      }
+    } catch (error) {
+      console.error('Error archiving intent:', error);
+    }
+  }, [intentsService, activeIntents]);
+
+  const handleUnarchiveIntent = useCallback(async (intentId: string) => {
+    try {
+      await intentsService.unarchiveIntent(intentId);
+      // Move intent from archived to active
+      const intentToUnarchive = archivedIntents.find(intent => intent.id === intentId);
+      if (intentToUnarchive) {
+        setArchivedIntents(prev => prev.filter(intent => intent.id !== intentId));
+        setActiveIntents(prev => [...prev, intentToUnarchive]);
+      }
+    } catch (error) {
+      console.error('Error unarchiving intent:', error);
+    }
+  }, [intentsService, archivedIntents]);
 
   return (
     <ClientLayout>
@@ -115,10 +144,10 @@ export default function IntentsPage() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Add manage functionality here
+                        handleArchiveIntent(intent.id);
                       }}
                     >
-                      Manage
+                      Archive
                     </Button>
                   </div>
                 ))
@@ -147,10 +176,10 @@ export default function IntentsPage() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Add manage functionality here
+                        handleUnarchiveIntent(intent.id);
                       }}
                     >
-                      Manage
+                      Unarchive
                     </Button>
                   </div>
                 ))

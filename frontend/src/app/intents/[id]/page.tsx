@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Play, Archive, Pause } from "lucide-react";
+import { ArrowLeft, Play, Archive, Pause, ArchiveRestore } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { agents } from "@/services/intents";
@@ -22,6 +22,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const [connections, setConnections] = useState<IntentConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const [isArchived, setIsArchived] = useState(false);
   const intentsService = useIntents();
   
   // TODO: Add agent animation state when implementing animation feature
@@ -36,12 +37,35 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
       ]);
       setIntent(intentData || null);
       setConnections(connectionsData);
+      setIsArchived(!!(intentData?.archivedAt));
     } catch (error) {
       console.error('Error fetching intent data:', error);
     } finally {
       setLoading(false);
     }
   }, [resolvedParams.id, intentsService]);
+
+  const handleArchiveIntent = useCallback(async () => {
+    if (!intent) return;
+    try {
+      await intentsService.archiveIntent(intent.id);
+      setIsArchived(true);
+      setIntent(prev => prev ? { ...prev, archivedAt: new Date().toISOString() } : null);
+    } catch (error) {
+      console.error('Error archiving intent:', error);
+    }
+  }, [intentsService, intent]);
+
+  const handleUnarchiveIntent = useCallback(async () => {
+    if (!intent) return;
+    try {
+      await intentsService.unarchiveIntent(intent.id);
+      setIsArchived(false);
+      setIntent(prev => prev ? { ...prev, archivedAt: null } : null);
+    } catch (error) {
+      console.error('Error unarchiving intent:', error);
+    }
+  }, [intentsService, intent]);
 
   useEffect(() => {
     fetchIntentData();
@@ -110,17 +134,27 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
               <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">Updated {intent.updatedAt} • {connections.length} connections</p>
             </div>
             <div className="flex gap-2 min-w-[90px] sm:min-w-[90px] sm:justify-end">
-              {isPaused ? (
+              {isArchived ? (
+                <Button 
+                  variant="bordered" 
+                  size="sm"
+                  onClick={handleUnarchiveIntent}
+                >
+                  <div className="flex items-center gap-2">
+                    <ArchiveRestore className="h-4 w-4" />
+                    <span className="hidden sm:inline">Unarchive</span>
+                  </div>
+                </Button>
+              ) : isPaused ? (
                 <>
                   <Button 
                     variant="bordered" 
                     size="sm"
-                    onClick={() => {
-                      // Add archive functionality here
-                    }}
+                    onClick={handleArchiveIntent}
                   >
                     <div className="flex items-center gap-2">
                       <Archive className="h-4 w-4" />
+                      <span className="hidden sm:inline">Archive</span>
                     </div>
                   </Button>                
                   <Button 
@@ -136,24 +170,36 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
                 </>
               ) : (
-                <Button 
-                variant="bordered" 
-                  size="sm"
-                  onClick={() => setIsPaused(true)}
-                  className="relative group hover:bg-red-50 hover:text-red-700"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="relative w-4 h-4">
-                      <div className="relative w-4 h-4 flex mt-0.5 ml-0.5 ">
-                        <div className="absolute inset-0 w-3 h-3 rounded-full bg-[#2EFF0A] group-hover:hidden" />
-                        <div className="absolute inset-0 w-3 h-3 rounded-full bg-[#2EFF0A] animate-ping opacity-100 group-hover:hidden" />
-                      </div>
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Pause className="h-4 w-4" />
+                <>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={handleArchiveIntent}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Archive className="h-4 w-4" />
+                      <span className="hidden sm:inline">Archive</span>
+                    </div>
+                  </Button>
+                  <Button 
+                  variant="bordered" 
+                    size="sm"
+                    onClick={() => setIsPaused(true)}
+                    className="relative group hover:bg-red-50 hover:text-red-700"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="relative w-4 h-4">
+                        <div className="relative w-4 h-4 flex mt-0.5 ml-0.5 ">
+                          <div className="absolute inset-0 w-3 h-3 rounded-full bg-[#2EFF0A] group-hover:hidden" />
+                          <div className="absolute inset-0 w-3 h-3 rounded-full bg-[#2EFF0A] animate-ping opacity-100 group-hover:hidden" />
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Pause className="h-4 w-4" />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Button>
+                  </Button>
+                </>
               )}
             </div>
           </div>

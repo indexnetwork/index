@@ -93,8 +93,8 @@ const mockConnections: IntentConnection[] = [
 // Service functions factory that takes an authenticated API instance
 export const createIntentsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get all intents with pagination
-  getIntents: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Intent>> => {
-    const response = await api.get<PaginatedResponse<Intent>>(`/intents?page=${page}&limit=${limit}`);
+  getIntents: async (page: number = 1, limit: number = 10, archived: boolean = false): Promise<PaginatedResponse<Intent>> => {
+    const response = await api.get<PaginatedResponse<Intent>>(`/intents?page=${page}&limit=${limit}&archived=${archived}`);
     return response;
   },
 
@@ -149,6 +149,16 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     // Using query params approach:
     const queryParams = indexIds.map(id => `indexIds[]=${id}`).join('&');
     await api.delete(`/intents/${intentId}/indexes?${queryParams}`);
+  },
+
+  // Archive intent
+  archiveIntent: async (id: string): Promise<void> => {
+    await api.patch(`/intents/${id}/archive`);
+  },
+
+  // Unarchive intent
+  unarchiveIntent: async (id: string): Promise<void> => {
+    await api.patch(`/intents/${id}/unarchive`);
   }
 });
 
