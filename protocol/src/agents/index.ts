@@ -18,30 +18,30 @@ export {
   onIntentCreated as semanticOnIntentCreated, 
   onIntentUpdated as semanticOnIntentUpdated,
   getAgentConfig as semanticAgentConfig
-} from './semantic_relevancy/integration';
+} from './context_brokers/semantic_relevancy/integration';
 
 export { 
   onIntentCreated as networkOnIntentCreated, 
   onIntentUpdated as networkOnIntentUpdated,
   getAgentConfig as networkAgentConfig
-} from './network_manager/integration';
+} from './context_brokers/network_manager/integration';
 
 export {
   analyzeFolder as intentSuggesterAnalyzeFolder,
   getIntents as intentSuggesterGetIntents,
   getTopIntentsByConfidence as intentSuggesterGetTopIntents
-} from './intent_suggester';
+} from './core/intent_suggester';
 
 export {
   summarizeText,
   summarizeIntent,
   summarizeMultiple
-} from './intent_summarizer';
+} from './core/intent_summarizer';
 
 export {
   processIntent,
   refineIntent
-} from './intent_processor';
+} from './core/intent_processor';
 
 /**
  * Agent system configuration

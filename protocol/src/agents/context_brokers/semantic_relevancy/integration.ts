@@ -1,5 +1,5 @@
-import db from '../../lib/db';
-import { intents, users, indexes, intentIndexes } from '../../lib/schema';
+import db from '../../../lib/db';
+import { intents, users, indexes, intentIndexes } from '../../../lib/schema';
 import { eq, ne, inArray } from 'drizzle-orm';
 import { processIntent } from './workflow';
 
@@ -64,7 +64,7 @@ export async function onIntentCreated(intentId: string): Promise<void> {
       .where(ne(intents.id, intentId))
       .limit(100);
 
-    const existingIntents = existingIntentResults.map(result => ({
+    const existingIntents = existingIntentResults.map((result: any) => ({
       id: result.id,
       payload: result.payload,
       userId: result.userId,
@@ -150,7 +150,7 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
       .where(ne(intents.id, intentId))
       .limit(100);
 
-    const otherIntents = otherIntentResults.map(result => ({
+    const otherIntents = otherIntentResults.map((result: any) => ({
       id: result.id,
       payload: result.payload,
       userId: result.userId,

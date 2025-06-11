@@ -1,7 +1,7 @@
 import { Annotation, START, END, StateGraph } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import db from "../../lib/db";
-import { llm, createBacking, parseAgentDecisions } from "../../lib/agents";
+import db from "../../../lib/db";
+import { llm, createBacking, parseAgentDecisions } from "../../../lib/agents";
 
 // Type definitions matching the database schema
 interface Intent {

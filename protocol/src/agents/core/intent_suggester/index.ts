@@ -4,7 +4,7 @@
  * Minimal implementation that reads .summary files from a folder and generates intents.
  */
 
-import { llm } from "../../lib/agents";
+import { llm } from "../../../lib/agents";
 import * as fs from 'fs';
 import path from 'path';
 import { z } from "zod";

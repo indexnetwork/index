@@ -1,6 +1,7 @@
-import db from '../../lib/db';
-import { intents, users } from '../../lib/schema';
+import db from '../../../lib/db';
+import { intents, users } from '../../../lib/schema';
 import { eq, ne } from 'drizzle-orm';
+import { processVCFounderIntent } from './workflow';
 
 // Type definitions matching the database schema
 interface Intent {
@@ -19,12 +20,12 @@ interface Intent {
 }
 
 /**
- * Trigger the Network Manager Agent when a new intent is created
+ * Trigger the Due Diligence Agent when a new intent is created
  * This function should be called from the intents route after successful intent creation
  */
 export async function onIntentCreated(intentId: string): Promise<void> {
   try {
-    console.log(`🌐 Network Manager Agent triggered for new intent: ${intentId}`);
+    console.log(`🔍 Due Diligence Agent triggered for new intent: ${intentId}`);
     
     // Fetch the new intent with user data
     const newIntentResult = await db
@@ -42,14 +43,14 @@ export async function onIntentCreated(intentId: string): Promise<void> {
       .limit(1);
 
     if (newIntentResult.length === 0) {
-      console.warn(`Intent ${intentId} not found for network management processing`);
+      console.warn(`Intent ${intentId} not found for due diligence processing`);
       return;
     }
 
     const newIntent = newIntentResult[0];
 
-    // Fetch existing intents for network matching (excluding the new one)
-    const existingIntentResults = await db
+    // Fetch all intents for due diligence analysis (excluding the new one)
+    const allIntentResults = await db
       .select({
         id: intents.id,
         payload: intents.payload,
@@ -61,9 +62,9 @@ export async function onIntentCreated(intentId: string): Promise<void> {
       .from(intents)
       .leftJoin(users, eq(intents.userId, users.id))
       .where(ne(intents.id, intentId))
-      .limit(100);
+      .limit(200);
 
-    const existingIntents = existingIntentResults.map(result => ({
+    const allIntents = allIntentResults.map(result => ({
       id: result.id,
       payload: result.payload,
       userId: result.userId,
@@ -75,7 +76,7 @@ export async function onIntentCreated(intentId: string): Promise<void> {
       indexes: []
     }));
 
-    // Process the intent through the Network Manager Agent
+    // Process the intent through the Due Diligence Agent
     const intentForProcessing = {
       id: newIntent.id,
       payload: newIntent.payload,
@@ -88,23 +89,26 @@ export async function onIntentCreated(intentId: string): Promise<void> {
       indexes: []
     };
 
+    const result = await processVCFounderIntent(intentForProcessing as Intent, allIntents as Intent[]);
     
+    console.log(`✅ Due Diligence Agent analysis complete for intent ${intentId}`);
+    console.log(`📊 Result: ${result.substring(0, 200)}...`);
     
-    // TODO: Store the network analysis result and any stake decisions in the database
+    // TODO: Store the due diligence analysis result and any stake decisions in the database
 
   } catch (error) {
-    console.error(`❌ Network Manager Agent failed for intent ${intentId}:`, error);
+    console.error(`❌ Due Diligence Agent failed for intent ${intentId}:`, error);
     // Don't throw - we don't want to break the intent creation flow
   }
 }
 
 /**
- * Trigger the Network Manager Agent when an intent is updated
+ * Trigger the Due Diligence Agent when an intent is updated
  * This function should be called from the intents route after successful intent update
  */
 export async function onIntentUpdated(intentId: string, previousStatus?: string): Promise<void> {
   try {
-    console.log(`🔄 Network Manager Agent triggered for updated intent: ${intentId}`);
+    console.log(`🔄 Due Diligence Agent triggered for updated intent: ${intentId}`);
     
     // Fetch the updated intent
     const updatedIntentResult = await db
@@ -122,7 +126,7 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
       .limit(1);
 
     if (updatedIntentResult.length === 0) {
-      console.warn(`Updated intent ${intentId} not found for network management processing`);
+      console.warn(`Updated intent ${intentId} not found for due diligence processing`);
       return;
     }
 
@@ -131,8 +135,8 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
     // Note: Since we don't have status field in current schema, we'll analyze all intents
     console.log(`⏭️  Analyzing intent ${intentId} (status checking disabled due to schema changes)`);
 
-    // Fetch other intents for network matching
-    const otherIntentResults = await db
+    // Fetch all other intents for due diligence analysis
+    const allIntentResults = await db
       .select({
         id: intents.id,
         payload: intents.payload,
@@ -144,9 +148,9 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
       .from(intents)
       .leftJoin(users, eq(intents.userId, users.id))
       .where(ne(intents.id, intentId))
-      .limit(100);
+      .limit(200);
 
-    const otherIntents = otherIntentResults.map(result => ({
+    const allIntents = allIntentResults.map(result => ({
       id: result.id,
       payload: result.payload,
       userId: result.userId,
@@ -158,7 +162,7 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
       indexes: []
     }));
 
-    // Process the updated intent through network analysis
+    // Process the updated intent through due diligence analysis
     const intentForProcessing = {
       id: updatedIntent.id,
       payload: updatedIntent.payload,
@@ -171,11 +175,13 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
       indexes: []
     };
 
-
+    const result = await processVCFounderIntent(intentForProcessing as Intent, allIntents as Intent[]);
     
+    console.log(`✅ Due Diligence Agent re-analysis complete for updated intent ${intentId}`);
+    console.log(`📊 Result: ${result.substring(0, 200)}...`);
 
   } catch (error) {
-    console.error(`❌ Network Manager Agent failed for updated intent ${intentId}:`, error);
+    console.error(`❌ Due Diligence Agent failed for updated intent ${intentId}:`, error);
   }
 }
 
@@ -184,13 +190,13 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
  */
 export function getAgentConfig() {
   return {
-    name: "network_manager",
-    displayName: "Network Connection Manager",
+    name: "due_diligence",
+    displayName: "Due Diligence Investigator",
     triggers: ["intent_created", "intent_updated"],
     thresholds: {
-      networkStrength: 0.75,
-      confidence: 0.8,
-      maxDailyConnections: 150
+      riskAssessment: 0.8,
+      confidence: 0.85,
+      maxDailyStakes: 50
     }
   };
 } 

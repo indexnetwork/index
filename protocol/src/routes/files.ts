@@ -8,7 +8,7 @@ import db from '../lib/db';
 import { files, indexes, users } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, SQL } from 'drizzle-orm';
-import { summarizeAndSaveFile, isFileSupported } from '../agents/file_summarizer';
+import { summarizeAndSaveFile, isFileSupported } from '../agents/core/file_summarizer';
 import { invalidateIndexCache } from './suggestions';
 import { checkIndexAccess } from '../lib/index-access';
 

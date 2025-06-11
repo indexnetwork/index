@@ -5,7 +5,7 @@
  * Similar to file_summarizer but for generic text input.
  */
 
-import { llm } from "../../lib/agents";
+import { llm } from "../../../lib/agents";
 
 // Type definitions
 export interface SummaryResult {

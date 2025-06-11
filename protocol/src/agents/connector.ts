@@ -5,8 +5,8 @@
  * It automatically discovers and registers agents, then triggers them based on intent events.
  */
 
-import { onIntentCreated as semanticOnIntentCreated, onIntentUpdated as semanticOnIntentUpdated } from './semantic_relevancy/integration';
-import { onIntentCreated as networkOnIntentCreated, onIntentUpdated as networkOnIntentUpdated } from './network_manager/integration';
+import { onIntentCreated as semanticOnIntentCreated, onIntentUpdated as semanticOnIntentUpdated } from './context_brokers/semantic_relevancy/integration';
+import { onIntentCreated as networkOnIntentCreated, onIntentUpdated as networkOnIntentUpdated } from './context_brokers/network_manager/integration';
 
 // Agent interface for type safety
 interface Agent {

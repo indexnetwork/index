@@ -6,8 +6,8 @@ import db from '../lib/db';
 import { files } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count } from 'drizzle-orm';
-import { analyzeFolder } from '../agents/intent_suggester';
-import { processIntent } from '../agents/intent_processor';
+import { analyzeFolder } from '../agents/core/intent_suggester';
+import { processIntent } from '../agents/core/intent_processor';
 import { checkIndexAccess } from '../lib/index-access';
 
 // Simple L1 cache for suggestions

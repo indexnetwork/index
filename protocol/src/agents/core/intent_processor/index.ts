@@ -6,7 +6,7 @@
  */
 
 import { UnstructuredLoader } from "@langchain/community/document_loaders/fs/unstructured";
-import { llm } from "../../lib/agents";
+import { llm } from "../../../lib/agents";
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -95,7 +95,7 @@ async function loadFileContent(filePath: string): Promise<{ content: string | nu
  * Gather contextual information from index files
  */
 async function gatherIndexContext(indexId: string): Promise<string> {
-  const baseUploadDir = path.join(__dirname, '../../../uploads', indexId);
+  const baseUploadDir = path.join(__dirname, '../../../../uploads', indexId);
   
   if (!fs.existsSync(baseUploadDir)) {
     return '';

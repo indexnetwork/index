@@ -5,7 +5,7 @@
  */
 
 import { UnstructuredLoader } from "@langchain/community/document_loaders/fs/unstructured";
-import { llm } from "../../lib/agents";
+import { llm } from "../../../lib/agents";
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -206,7 +206,7 @@ export async function processFile(
  * Quick start example:
  * 
  * ```typescript
- * import { summarizeAndSaveFile } from '@/agents/file_summarizer';
+ * import { summarizeAndSaveFile } from '@/agents/core/file_summarizer';
  * 
  * const result = await summarizeAndSaveFile(
  *   '/path/to/document.pdf',

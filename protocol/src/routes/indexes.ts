@@ -245,9 +245,36 @@ router.post('/',
         userId: indexes.userId
       });
 
+      // Get user information
+      const userData = await db.select({
+        name: users.name,
+        email: users.email,
+        avatar: users.avatar
+      }).from(users)
+        .where(eq(users.id, req.user!.id))
+        .limit(1);
+
+      const result = {
+        id: newIndex[0].id,
+        title: newIndex[0].title,
+        isPublic: newIndex[0].isPublic,
+        createdAt: newIndex[0].createdAt,
+        updatedAt: newIndex[0].updatedAt,
+        user: {
+          id: newIndex[0].userId,
+          name: userData[0].name,
+          email: userData[0].email,
+          avatar: userData[0].avatar
+        },
+        _count: {
+          files: 0,
+          members: 0
+        }
+      };
+
       return res.status(201).json({
         message: 'Index created successfully',
-        index: newIndex[0]
+        index: result
       });
     } catch (error) {
       console.error('Create index error:', error);
