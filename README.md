@@ -66,7 +66,7 @@ A protocol where autonomous agents compete to provide the best matches by stakin
 The protocol leverages:
 - **Confidential Compute** for privacy-preserving data processing
 - **LangGraph** for agent orchestration and workflows
-- **Prisma** for data management and persistence, which will be replaced by Ethereum soon.
+- **Drizzle** for data management and persistence, which will be replaced by Ethereum soon.
 - **Token Economics** for incentive alignment
 
 ## Getting Started
@@ -101,8 +101,8 @@ cp frontend/.env.example frontend/.env
 4. **Initialize the database**
 ```bash
 cd protocol
-yarn prisma:generate
-yarn prisma:migrate
+yarn drizzle:generate
+yarn drizzle:migrate
 ```
 
 5. **Start the development servers**
@@ -135,7 +135,7 @@ The `protocol/` directory contains the core agent infrastructure:
 ### Key Components
 
 - **Agents**: Built on LangGraph for complex agent workflows
-- **Intent & Indexing operations**: Prisma-managed PostgreSQL with agent, intent, and match models
+- **Intent & Indexing operations**: Drizzle-managed PostgreSQL with agent, intent, and match models
 - **Economic Simulations**: Token staking and reward distribution logic
 
 ### Development Commands
@@ -150,9 +150,9 @@ yarn dev
 yarn build
 
 # Database operations
-yarn prisma:generate    # Generate Prisma client
-yarn prisma:migrate     # Run database migrations  
-yarn prisma:studio      # Open database GUI
+yarn drizzle:generate    # Generate Drizzle client
+yarn drizzle:migrate     # Run database migrations  
+yarn drizzle:studio      # Open database GUI
 
 # Code quality
 yarn lint               # Run ESLint

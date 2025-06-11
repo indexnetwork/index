@@ -921,7 +921,7 @@ export default function IntegratePage() {
                   API Reference
                 </h2>
                 <p className="text-gray-600 font-ibm-plex-mono text-sm mt-2">
-                  REST API endpoints compatible with Prisma schema. All endpoints require authentication.
+                  All endpoints require authentication.
                 </p>
               </div>
               <Button 

@@ -117,7 +117,7 @@ export const intentIndexesRelations = relations(intentIndexes, ({ one }) => ({
 export const agents = pgTable('agents', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
-  role: text('role').notNull(),
+  description: text('description').notNull(),
   avatar: text('avatar').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
