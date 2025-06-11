@@ -130,7 +130,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // Get intent preview with contextual integrity processing
   getIntentPreview: async (indexId: string, payload: string): Promise<string> => {
-    const response = await api.get<{ payload: string }>(`/indexes/${indexId}/intent_preview?payload=${encodeURIComponent(payload)}`);
+    const response = await api.get<{ payload: string }>(`/indexes/${indexId}/suggested_intents/preview?payload=${encodeURIComponent(payload)}`);
     return response.payload;
   },
 
