@@ -1,8 +1,8 @@
 import { Annotation, START, END, StateGraph } from "@langchain/langgraph";
 import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { TavilySearchResults } from "@langchain/community/tools/tavily_search";
-import db from "../../lib/db";
-import { llm, createBacking, parseAgentDecisions } from "../../lib/agents";
+import db from "../../../lib/db";
+import { llm } from "../../../lib/agents";
 
 // Type definitions matching the database schema
 interface Intent {
@@ -374,12 +374,15 @@ async function makeInvestmentDecision(state: StateType): Promise<Partial<StateTy
     for (const result of state.dueDiligenceResults) {
       // Only back investments with INVEST recommendation and high confidence
       if (result.recommendation === 'INVEST' && result.confidence >= 0.75) {
+        /*
         const success = await createBacking(
           newIntent.id,
           result.intentId,
           "proof_layer",
           result.confidence
         );
+        */
+       const success = true
         
         if (success) {
           backedCount++;

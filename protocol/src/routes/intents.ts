@@ -4,7 +4,12 @@ import db from '../lib/db';
 import { intents, users, indexes, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike } from 'drizzle-orm';
-import { summarizeIntent } from '../agents';
+import { summarizeIntent } from '../agents/core/intent_summarizer';
+import { 
+  triggerBrokersOnIntentCreated, 
+  triggerBrokersOnIntentUpdated, 
+  triggerBrokersOnIntentArchived 
+} from '../agents/context_brokers/connector';
 
 const router = Router();
 
@@ -213,10 +218,8 @@ router.post('/',
         }
       }
 
-
       const summary = await summarizeIntent(payload);
       
-
       const newIntent = await db.insert(intents).values({
         payload,
         summary,
@@ -241,6 +244,9 @@ router.post('/',
           }))
         );
       }
+
+      // Trigger context brokers for new intent
+      await triggerBrokersOnIntentCreated(newIntent[0].id);
 
       return res.status(201).json({
         message: 'Intent created successfully',
@@ -308,6 +314,9 @@ router.put('/:id',
           userId: intents.userId
         });
 
+      // Trigger context brokers for updated intent
+      await triggerBrokersOnIntentUpdated(updatedIntent[0].id);
+
       return res.json({
         message: 'Intent updated successfully',
         intent: updatedIntent[0]
@@ -352,6 +361,9 @@ router.patch('/:id/archive',
           updatedAt: new Date()
         })
         .where(eq(intents.id, id));
+
+      // Trigger context brokers for archived intent
+      await triggerBrokersOnIntentArchived(id);
 
       return res.json({ message: 'Intent archived successfully' });
     } catch (error) {

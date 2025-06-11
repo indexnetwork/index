@@ -1,33 +1,11 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
-import prisma from '../lib/db';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import fs from 'fs';
-import path from 'path';
+import { agents } from '../lib/schema';
+import db from '../lib/db';
+import { eq, isNull, desc, count, and } from 'drizzle-orm';
 
 const router = Router();
-
-// Load agent specs
-const loadAgentSpecs = () => {
-  const agentsDir = path.join(__dirname, '../agents');
-  const agentSpecs: any[] = [];
-  
-  if (fs.existsSync(agentsDir)) {
-    const files = fs.readdirSync(agentsDir);
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        try {
-          const spec = JSON.parse(fs.readFileSync(path.join(agentsDir, file), 'utf8'));
-          agentSpecs.push(spec);
-        } catch (error) {
-          console.error(`Error loading agent spec ${file}:`, error);
-        }
-      }
-    }
-  }
-  
-  return agentSpecs;
-};
 
 // Get all agents with pagination
 router.get('/', 
@@ -35,7 +13,6 @@ router.get('/',
   [
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('role').optional().isIn(['USER', 'SYSTEM']),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -46,51 +23,27 @@ router.get('/',
 
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
-      const role = req.query.role as string;
       const skip = (page - 1) * limit;
 
-      const where = {
-        deletedAt: null,
-        ...(role && { role })
-      };
-
-      const [agents, total] = await Promise.all([
-        prisma.agent.findMany({
-          where,
-          select: {
-            id: true,
-            name: true,
-            role: true,
-            avatar: true,
-            createdAt: true,
-            updatedAt: true,
-            _count: {
-              select: {
-                backers: true
-              }
-            }
-          },
-          skip,
-          take: limit,
-          orderBy: { createdAt: 'desc' }
-        }),
-        prisma.agent.count({ where })
+      const [agentsResult, totalResult] = await Promise.all([
+        db.select()
+          .from(agents)
+          .where(isNull(agents.deletedAt))
+          .orderBy(desc(agents.createdAt))
+          .offset(skip)
+          .limit(limit),
+        db.select({ count: count() })
+          .from(agents)
+          .where(isNull(agents.deletedAt))
       ]);
 
-      // Add agent specs info
-      const agentSpecs = loadAgentSpecs();
-      const agentsWithSpecs = agents.map((agent: any) => ({
-        ...agent,
-        hasSpec: agentSpecs.some(spec => spec.name === agent.name)
-      }));
-
       res.json({
-        agents: agentsWithSpecs,
+        agents: agentsResult,
         pagination: {
           current: page,
-          total: Math.ceil(total / limit),
-          count: agents.length,
-          totalCount: total
+          total: Math.ceil(totalResult[0].count / limit),
+          count: agentsResult.length,
+          totalCount: totalResult[0].count
         }
       });
     } catch (error) {
@@ -113,48 +66,16 @@ router.get('/:id',
 
       const { id } = req.params;
 
-      const agent = await prisma.agent.findUnique({
-        where: { id, deletedAt: null },
-        select: {
-          id: true,
-          name: true,
-          role: true,
-          avatar: true,
-          createdAt: true,
-          updatedAt: true,
-          backers: {
-            select: {
-              id: true,
-              confidence: true,
-              intentPair: {
-                select: {
-                  id: true,
-                  lastEvent: true,
-                  lastEventTimestamp: true
-                }
-              },
-              createdAt: true
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 10
-          }
-        }
-      });
+      const agent = await db.select()
+        .from(agents)
+        .where(and(eq(agents.id, id), isNull(agents.deletedAt)))
+        .limit(1);
 
-      if (!agent) {
+      if (!agent.length) {
         return res.status(404).json({ error: 'Agent not found' });
       }
 
-      // Try to load agent spec
-      const agentSpecs = loadAgentSpecs();
-      const agentSpec = agentSpecs.find(spec => spec.name === agent.name);
-
-      res.json({ 
-        agent: {
-          ...agent,
-          spec: agentSpec || null
-        }
-      });
+      res.json({ agent: agent[0] });
     } catch (error) {
       console.error('Get agent error:', error);
       res.status(500).json({ error: 'Failed to fetch agent' });
@@ -162,12 +83,12 @@ router.get('/:id',
   }
 );
 
-// Create new agent (now open to all authenticated users)
+// Create new agent
 router.post('/',
   authenticatePrivy,
   [
     body('name').trim().isLength({ min: 2, max: 100 }),
-    body('role').isIn(['USER', 'SYSTEM']),
+    body('description').trim().isLength({ min: 2 }),
     body('avatar').isURL(),
   ],
   async (req: AuthRequest, res: Response) => {
@@ -177,30 +98,22 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { name, role, avatar } = req.body;
+      const { name, description, avatar } = req.body;
 
-      const agent = await prisma.agent.create({
-        data: {
+      const newAgent = await db.insert(agents)
+        .values({
           name,
-          role,
+          description,
           avatar
-        },
-        select: {
-          id: true,
-          name: true,
-          role: true,
-          avatar: true,
-          createdAt: true,
-          updatedAt: true
-        }
-      });
+        })
+        .returning();
 
       res.status(201).json({
         message: 'Agent created successfully',
-        agent
+        agent: newAgent[0]
       });
     } catch (error: any) {
-      if (error.code === 'P2002') {
+      if (error.code === '23505') { // Unique violation
         return res.status(400).json({ error: 'Agent with this name already exists' });
       }
       console.error('Create agent error:', error);
@@ -209,13 +122,13 @@ router.post('/',
   }
 );
 
-// Update agent (now open to all authenticated users)
+// Update agent
 router.put('/:id',
   authenticatePrivy,
   [
     param('id').isUUID(),
     body('name').optional().trim().isLength({ min: 2, max: 100 }),
-    body('role').optional().isIn(['USER', 'SYSTEM']),
+    body('description').optional().trim().isLength({ min: 2 }),
     body('avatar').optional().isURL(),
   ],
   async (req: AuthRequest, res: Response) => {
@@ -226,33 +139,29 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { name, role, avatar } = req.body;
+      const { name, description, avatar } = req.body;
 
-      const updateData: any = {};
+      const updateData: any = { updatedAt: new Date() };
       if (name !== undefined) updateData.name = name;
-      if (role !== undefined) updateData.role = role;
+      if (description !== undefined) updateData.description = description;
       if (avatar !== undefined) updateData.avatar = avatar;
 
-      const agent = await prisma.agent.update({
-        where: { id, deletedAt: null },
-        data: updateData,
-        select: {
-          id: true,
-          name: true,
-          role: true,
-          avatar: true,
-          createdAt: true,
-          updatedAt: true
-        }
-      });
+      const updatedAgent = await db.update(agents)
+        .set(updateData)
+        .where(and(eq(agents.id, id), isNull(agents.deletedAt)))
+        .returning();
+
+      if (!updatedAgent.length) {
+        return res.status(404).json({ error: 'Agent not found' });
+      }
 
       res.json({
         message: 'Agent updated successfully',
-        agent
+        agent: updatedAgent[0]
       });
     } catch (error: any) {
-      if (error.code === 'P2025') {
-        return res.status(404).json({ error: 'Agent not found' });
+      if (error.code === '23505') { // Unique violation
+        return res.status(400).json({ error: 'Agent with this name already exists' });
       }
       console.error('Update agent error:', error);
       res.status(500).json({ error: 'Failed to update agent' });
@@ -260,7 +169,7 @@ router.put('/:id',
   }
 );
 
-// Soft delete agent (now open to all authenticated users)
+// Soft delete agent
 router.delete('/:id',
   authenticatePrivy,
   [param('id').isUUID()],
@@ -273,32 +182,22 @@ router.delete('/:id',
 
       const { id } = req.params;
 
-      await prisma.agent.update({
-        where: { id, deletedAt: null },
-        data: { deletedAt: new Date() }
-      });
+      const result = await db.update(agents)
+        .set({ 
+          deletedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(and(eq(agents.id, id), isNull(agents.deletedAt)))
+        .returning();
 
-      res.json({ message: 'Agent deleted successfully' });
-    } catch (error: any) {
-      if (error.code === 'P2025') {
+      if (!result.length) {
         return res.status(404).json({ error: 'Agent not found' });
       }
+
+      res.json({ message: 'Agent deleted successfully' });
+    } catch (error) {
       console.error('Delete agent error:', error);
       res.status(500).json({ error: 'Failed to delete agent' });
-    }
-  }
-);
-
-// Get agent specs (metadata about available agents)
-router.get('/specs/list', 
-  authenticatePrivy,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const agentSpecs = loadAgentSpecs();
-      res.json({ specs: agentSpecs });
-    } catch (error) {
-      console.error('Get agent specs error:', error);
-      res.status(500).json({ error: 'Failed to load agent specs' });
     }
   }
 );

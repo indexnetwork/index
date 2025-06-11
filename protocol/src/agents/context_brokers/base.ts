@@ -1,26 +1,14 @@
 import db from '../../lib/db';
-import { intents, users, intentStakes, type IntentStake } from '../../lib/schema';
-import { eq, and, or, desc, like, sql } from 'drizzle-orm';
-import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-
-export interface Intent {
-  id: string;
-  payload: string;
-  userId: string;
-  user?: {
-    id: string;
-    name: string;
-    email: string | null;
-  };
-}
+import { intents, intentStakes, type IntentStake} from '../../lib/schema';
+import { eq, or, desc, like } from 'drizzle-orm';
 
 export abstract class BaseContextBroker {
-  public name: string;
   protected db: typeof db;
+  public readonly agentId: string;
 
-  constructor(name: string) {
-    this.name = name;
+  constructor(agentId: string) {
     this.db = db;
+    this.agentId = agentId;
   }
 
   /**

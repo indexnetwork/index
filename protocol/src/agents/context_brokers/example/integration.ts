@@ -2,9 +2,10 @@ import { BaseContextBroker } from '../base';
 import { intents, users, intentStakes, indexes, intentIndexes, agents } from '../../../lib/schema';
 import { eq, and, or, desc, like, sql, ne } from 'drizzle-orm';
 import { llm } from "../../../lib/agents";
+
 export class ExampleContextBroker extends BaseContextBroker {
-  constructor() {
-    super('example');
+  constructor(agentId: string) {
+    super(agentId);
   }
 
   async onIntentCreated(intentId: string): Promise<void> {
@@ -42,28 +43,32 @@ export class ExampleContextBroker extends BaseContextBroker {
     .where(eq(intentIndexes.intentId, intentId));
 
     // Example: Find similar intents in the same indexes
-    const similarIntents = await this.db.select({
-      id: intents.id,
-      payload: intents.payload
-    })
-    .from(intents)
-    .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-    .where(
-      and(
-        eq(intentIndexes.indexId, intentIndexRelations[0]?.indexId),
-        ne(intents.id, intentId)
-      )
-    );
+    let similarIntents: { id: string; payload: string }[] = [];
+    if (intentIndexRelations.length > 0) {
+      similarIntents = await this.db.select({
+        id: intents.id,
+        payload: intents.payload
+      })
+      .from(intents)
+      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+      .where(
+        and(
+          eq(intentIndexes.indexId, intentIndexRelations[0].indexId),
+          ne(intents.id, intentId)
+        )
+      );
+    }
 
     // Example: Create stakes for similar intents
     if (similarIntents.length > 0) {
       // Get or create our agent
       const agent = await this.db.select()
         .from(agents)
-        .where(eq(agents.name, this.name))
+        .where(eq(agents.id, this.agentId))
         .then(rows => rows[0]) || await this.db.insert(agents)
         .values({
-          name: this.name,
+          id: this.agentId,
+          name: 'Example Broker',
           description: 'Example context broker for demonstrating stake operations',
           avatar: '🤖'
         })
