@@ -15,7 +15,6 @@ export default function IntentsPage() {
   const [showIntentModal, setShowIntentModal] = useState(false);
   const [activeIntents, setActiveIntents] = useState<Intent[]>([]);
   const [archivedIntents, setArchivedIntents] = useState<Intent[]>([]);
-  const [suggestedIntents, setSuggestedIntents] = useState<Intent[]>([]);
   const [loading, setLoading] = useState(true);
   const intentsService = useIntents();
 
@@ -28,7 +27,6 @@ export default function IntentsPage() {
       
       setActiveIntents(activeResponse.intents || []);
       setArchivedIntents(archivedResponse.intents || []);
-      setSuggestedIntents(activeResponse.intents || []); // Use active for suggestions for now
     } catch (error) {
       console.error('Error fetching intents:', error);
     } finally {
@@ -102,11 +100,8 @@ export default function IntentsPage() {
                 <Tabs.Trigger value="my-intents"  className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   Active
                 </Tabs.Trigger>
-                <Tabs.Trigger value="archived"  className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
+                <Tabs.Trigger value="archived"  className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   Archived
-                </Tabs.Trigger>
-                <Tabs.Trigger value="suggested"  className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                  Suggested
                 </Tabs.Trigger>
               </Tabs.List>
               
@@ -191,36 +186,6 @@ export default function IntentsPage() {
             </Tabs.Content>
 
             {/* Suggested Content */}
-            <Tabs.Content value="suggested" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
-              {loading ? (
-                <div className="py-8 text-center text-gray-500">Loading...</div>
-              ) : suggestedIntents.length === 0 ? (
-                <div className="py-8 text-center text-gray-500">No suggested intents</div>
-              ) : (
-                suggestedIntents.map((intent) => (
-                  <div 
-                    key={intent.id}
-                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
-                  >
-                    <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">
-                        {intent.summary || intent.payload.substring(0, 100) + '...'}
-                      </h3>
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Add functionality here
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                ))
-              )}
-            </Tabs.Content>
           </Tabs.Root>
         </div>
       </div>
