@@ -246,7 +246,7 @@ router.post('/',
       }
 
       // Trigger context brokers for new intent
-      await triggerBrokersOnIntentCreated(newIntent[0].id);
+      triggerBrokersOnIntentCreated(newIntent[0].id);
 
       return res.status(201).json({
         message: 'Intent created successfully',
@@ -315,7 +315,7 @@ router.put('/:id',
         });
 
       // Trigger context brokers for updated intent
-      await triggerBrokersOnIntentUpdated(updatedIntent[0].id);
+      triggerBrokersOnIntentUpdated(updatedIntent[0].id);
 
       return res.json({
         message: 'Intent updated successfully',
@@ -363,7 +363,7 @@ router.patch('/:id/archive',
         .where(eq(intents.id, id));
 
       // Trigger context brokers for archived intent
-      await triggerBrokersOnIntentArchived(id);
+      triggerBrokersOnIntentArchived(id);
 
       return res.json({ message: 'Intent archived successfully' });
     } catch (error) {
