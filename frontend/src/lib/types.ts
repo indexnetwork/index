@@ -56,6 +56,7 @@ export interface SuggestedIntent {
 export interface Intent {
   id: string;
   payload: string;
+  summary?: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;

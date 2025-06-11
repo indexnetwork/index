@@ -33,6 +33,12 @@ export {
 } from './intent_suggester';
 
 export {
+  summarizeText,
+  summarizeIntent,
+  summarizeMultiple
+} from './intent_summarizer';
+
+export {
   processIntent,
   refineIntent
 } from './intent_processor';

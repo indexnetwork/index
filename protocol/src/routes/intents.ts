@@ -4,6 +4,7 @@ import db from '../lib/db';
 import { intents, users, indexes, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike } from 'drizzle-orm';
+import { summarizeIntent } from '../agents';
 
 const router = Router();
 
@@ -36,6 +37,7 @@ router.get('/',
         db.select({
           id: intents.id,
           payload: intents.payload,
+          summary: intents.summary,
           isPublic: intents.isPublic,
           createdAt: intents.createdAt,
           updatedAt: intents.updatedAt,
@@ -57,7 +59,7 @@ router.get('/',
           .where(whereCondition)
       ]);
 
-      // Get index counts for each intent
+      // Get index counts and ensure summaries for each intent
       const intentsWithCounts = await Promise.all(
         intentsResult.map(async (intent) => {
           // Get count of indexes for this intent
@@ -68,6 +70,7 @@ router.get('/',
           return {
             id: intent.id,
             payload: intent.payload,
+            summary: intent.summary,
             isPublic: intent.isPublic,
             createdAt: intent.createdAt,
             updatedAt: intent.updatedAt,
@@ -117,6 +120,7 @@ router.get('/:id',
       const intent = await db.select({
         id: intents.id,
         payload: intents.payload,
+        summary: intents.summary,
         isPublic: intents.isPublic,
         createdAt: intents.createdAt,
         updatedAt: intents.updatedAt,
@@ -143,9 +147,11 @@ router.get('/:id',
       }
 
 
+
       const result = {
         id: intentData.id,
         payload: intentData.payload,
+        summary: intentData.summary,
         isPublic: intentData.isPublic,
         createdAt: intentData.createdAt,
         updatedAt: intentData.updatedAt,
@@ -207,13 +213,19 @@ router.post('/',
         }
       }
 
+
+      const summary = await summarizeIntent(payload);
+      
+
       const newIntent = await db.insert(intents).values({
         payload,
+        summary,
         isPublic,
         userId: req.user!.id,
       }).returning({
         id: intents.id,
         payload: intents.payload,
+        summary: intents.summary,
         isPublic: intents.isPublic,
         createdAt: intents.createdAt,
         updatedAt: intents.updatedAt,
@@ -274,7 +286,13 @@ router.put('/:id',
       }
 
       const updateData: any = { updatedAt: new Date() };
-      if (payload !== undefined) updateData.payload = payload;
+      if (payload !== undefined) {
+        updateData.payload = payload;
+        const newSummary = await summarizeIntent(payload);
+        if (newSummary) {
+          updateData.summary = newSummary;
+        }
+      }
       if (isPublic !== undefined) updateData.isPublic = isPublic;
 
       const updatedIntent = await db.update(intents)
@@ -283,6 +301,7 @@ router.put('/:id',
         .returning({
           id: intents.id,
           payload: intents.payload,
+          summary: intents.summary,
           isPublic: intents.isPublic,
           createdAt: intents.createdAt,
           updatedAt: intents.updatedAt,

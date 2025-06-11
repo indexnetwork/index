@@ -1,7 +1,6 @@
 import db from '../../lib/db';
 import { intents, users } from '../../lib/schema';
 import { eq, ne } from 'drizzle-orm';
-import { processNetworkMatch } from './workflow';
 
 // Type definitions matching the database schema
 interface Intent {
@@ -89,10 +88,7 @@ export async function onIntentCreated(intentId: string): Promise<void> {
       indexes: []
     };
 
-    const result = await processNetworkMatch(intentForProcessing as Intent, existingIntents as Intent[]);
     
-    console.log(`✅ Network Manager Agent analysis complete for intent ${intentId}`);
-    console.log(`📊 Result: ${result.substring(0, 200)}...`);
     
     // TODO: Store the network analysis result and any stake decisions in the database
 
@@ -175,10 +171,8 @@ export async function onIntentUpdated(intentId: string, previousStatus?: string)
       indexes: []
     };
 
-    const result = await processNetworkMatch(intentForProcessing as Intent, otherIntents as Intent[]);
+
     
-    console.log(`✅ Network Manager Agent re-analysis complete for updated intent ${intentId}`);
-    console.log(`📊 Result: ${result.substring(0, 200)}...`);
 
   } catch (error) {
     console.error(`❌ Network Manager Agent failed for updated intent ${intentId}:`, error);

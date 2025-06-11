@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Play, Archive, Pause, ArchiveRestore } from "lucide-react";
+import { ArrowLeft, Play, Archive, Pause, ArchiveRestore, Edit } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { agents } from "@/services/intents";
 import { useIntents } from "@/contexts/APIContext";
 import { Intent, IntentConnection } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
+import EditIntentModal from "@/components/modals/EditIntentModal";
 
 interface IntentDetailPageProps {
   params: Promise<{
@@ -23,6 +24,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const intentsService = useIntents();
   
   // TODO: Add agent animation state when implementing animation feature
@@ -66,6 +68,32 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
       console.error('Error unarchiving intent:', error);
     }
   }, [intentsService, intent]);
+
+  const handleEditIntent = useCallback(async (editData: { id: string; payload: string; indexIds: string[] }) => {
+    try {
+      // Update the intent payload
+      await intentsService.updateIntent(editData.id, { payload: editData.payload });
+      
+      // Handle index changes if needed
+      if (intent?.indexes) {
+        const currentIndexIds = intent.indexes.map(idx => idx.indexId);
+        const indexesToAdd = editData.indexIds.filter(id => !currentIndexIds.includes(id));
+        const indexesToRemove = currentIndexIds.filter(id => !editData.indexIds.includes(id));
+        
+        if (indexesToAdd.length > 0) {
+          await intentsService.addIndexesToIntent(editData.id, indexesToAdd);
+        }
+        if (indexesToRemove.length > 0) {
+          await intentsService.removeIndexesFromIntent(editData.id, indexesToRemove);
+        }
+      }
+      
+      // Refresh the intent data
+      await fetchIntentData();
+    } catch (error) {
+      console.error('Error updating intent:', error);
+    }
+  }, [intentsService, intent, fetchIntentData]);
 
   useEffect(() => {
     fetchIntentData();
@@ -128,25 +156,55 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
           {/* Intent Title and Info */}
           <div className="flex flex-wrap sm:flex-nowrap justify-between items-center">
             <div className="w-full sm:w-auto mb-2 sm:mb-0">
-              <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900">
-                {intent.payload}
-              </h1>
-              <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">Updated {intent.updatedAt} • {connections.length} connections</p>
+              {intent.summary && (
+                <div className="mb-2">
+                  <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900">
+                    {intent.summary}
+                  </h1>
+                </div>
+              )}
+              <div className={intent.summary ? "border-t border-gray-200 pt-2" : ""}>
+                <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">
+                  Updated {intent.updatedAt} • {connections.length} connections
+                </p>
+              </div>
             </div>
             <div className="flex gap-2 min-w-[90px] sm:min-w-[90px] sm:justify-end">
               {isArchived ? (
-                <Button 
-                  variant="bordered" 
-                  size="sm"
-                  onClick={handleUnarchiveIntent}
-                >
-                  <div className="flex items-center gap-2">
-                    <ArchiveRestore className="h-4 w-4" />
-                    <span className="hidden sm:inline">Unarchive</span>
-                  </div>
-                </Button>
+                <>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={() => setIsEditModalOpen(true)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Edit className="h-4 w-4" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </div>
+                  </Button>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={handleUnarchiveIntent}
+                  >
+                    <div className="flex items-center gap-2">
+                      <ArchiveRestore className="h-4 w-4" />
+                      <span className="hidden sm:inline">Unarchive</span>
+                    </div>
+                  </Button>
+                </>
               ) : isPaused ? (
                 <>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={() => setIsEditModalOpen(true)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Edit className="h-4 w-4" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </div>
+                  </Button>
                   <Button 
                     variant="bordered" 
                     size="sm"
@@ -171,6 +229,16 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                 </>
               ) : (
                 <>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={() => setIsEditModalOpen(true)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Edit className="h-4 w-4" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </div>
+                  </Button>
                   <Button 
                     variant="bordered" 
                     size="sm"
@@ -286,6 +354,14 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
           ))}
         </div>
       </div>
+
+      {/* Edit Intent Modal */}
+      <EditIntentModal
+        open={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
+        onSubmit={handleEditIntent}
+        intent={intent}
+      />
     </ClientLayout>
   );
 } 

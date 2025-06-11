@@ -17,6 +17,8 @@ export const users = pgTable('users', {
 export const intents = pgTable('intents', {
   id: uuid('id').primaryKey().defaultRandom(),
   payload: text('payload').notNull(),
+  // summary field will be removed from protocol
+  summary: text('summary'),
   isPublic: boolean('is_public').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

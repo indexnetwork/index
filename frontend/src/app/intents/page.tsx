@@ -136,7 +136,9 @@ export default function IntentsPage() {
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.payload.substring(0, 100)}...</h3>
+                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">
+                        {intent.summary || intent.payload.substring(0, 100) + '...'}
+                      </h3>
                       <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {new Date(intent.updatedAt).toLocaleDateString()} • {intent._count?.indexes} indexes</p>
                     </div>
                     <Button 
@@ -168,7 +170,9 @@ export default function IntentsPage() {
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.payload.substring(0, 100)}...</h3>
+                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">
+                        {intent.summary || intent.payload.substring(0, 100) + '...'}
+                      </h3>
                       <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {new Date(intent.updatedAt).toLocaleDateString()} • {intent._count?.indexes || 0} indexes</p>
                     </div>
                     <Button 
@@ -199,7 +203,9 @@ export default function IntentsPage() {
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.payload.substring(0, 100)}...</h3>
+                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">
+                        {intent.summary || intent.payload.substring(0, 100) + '...'}
+                      </h3>
                     </div>
                     <Button 
                       variant="outline" 
