@@ -132,7 +132,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
                 </svg>
               </div>
               <span className={`text-sm font-ibm-plex-mono ${pathname?.startsWith("/stake") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
-                Stake
+                Brokers
               </span>
             </div>
           </Link>
