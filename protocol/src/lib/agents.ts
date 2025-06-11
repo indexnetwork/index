@@ -13,17 +13,6 @@ export const llm = new ChatOpenAI({
 // Helper to ensure agent exists in database
 export async function ensureAgent(name: string, avatar: string) {
   const existingAgents = await db.select().from(agents).where(eq(agents.name, name)).limit(1);
-  
-  if (existingAgents.length > 0) {
-    return existingAgents[0];
-  }
-
-  const [newAgent] = await db.insert(agents).values({
-    name,
-    avatar
-  }).returning();
-
-  return newAgent;
 }
 
 // Helper to create backing decision - DISABLED (requires intentPair and backer tables)
