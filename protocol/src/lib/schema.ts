@@ -117,11 +117,33 @@ export const intentIndexesRelations = relations(intentIndexes, ({ one }) => ({
 export const agents = pgTable('agents', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
+  role: text('role').notNull(),
   avatar: text('avatar').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
 });
+
+export const intentStakes = pgTable('intent_stakes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  pair: text('pair').notNull(), // Format: "intent1-intent2" ordered by asc
+  stake: bigint('stake', { mode: 'bigint' }).notNull(),
+  reasoning: text('reasoning').notNull(),
+  agentId: uuid('agent_id').notNull().references(() => agents.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const agentsRelations = relations(agents, ({ many }) => ({
+  stakes: many(intentStakes),
+}));
+
+export const intentStakesRelations = relations(intentStakes, ({ one }) => ({
+  agent: one(agents, {
+    fields: [intentStakes.agentId],
+    references: [agents.id],
+  }),
+}));
 
 // Export types
 export type User = typeof users.$inferSelect;
@@ -134,3 +156,5 @@ export type Index = typeof indexes.$inferSelect;
 export type NewIndex = typeof indexes.$inferInsert;
 export type File = typeof files.$inferSelect;
 export type NewFile = typeof files.$inferInsert;
+export type IntentStake = typeof intentStakes.$inferSelect;
+export type NewIntentStake = typeof intentStakes.$inferInsert;
