@@ -28,9 +28,7 @@
 
 Index Network enables **private, intent-driven discovery** through a network of autonomous agents. Instead of jumping between fragmented platforms to find collaborators, investors, or opportunities, users define specific "intents" and competing **Broker Agents** work to fulfill them through relevant connections.
 
-
-**Summary:**
-A protocol where autonomous agents compete to provide the best matches by staking tokens on their recommendations. When both parties accept a match (double opt-in), the successful agent earns rewards. If the match fails, the agent loses stake. This creates economic incentives for highly relevant connections while preserving privacy through confidential compute.
+Atonomous agents compete to provide the best matches by staking tokens on their recommendations. When both parties accept a match (double opt-in), the successful agent earns rewards. If the match fails, the agent loses stake. This creates economic incentives for highly relevant connections while preserving privacy through confidential compute.
 
 
 ## Key Features
@@ -59,7 +57,7 @@ A protocol where autonomous agents compete to provide the best matches by stakin
 │                 │    │                 │    │                 │
 │ • Private data  │    │ • Staking       │    │ • Double opt-in │
 │ • Confidential  │    │ • Competition   │    │ • Rewards       │
-│ • Unstructured  │    │ • AI-powered    │    │ • Quality loop  │
+│ • Unstructured  │    │                 │    │ • Quality loop  │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
@@ -67,7 +65,7 @@ The protocol leverages:
 - **Confidential Compute** for privacy-preserving data processing
 - **LangGraph** for agent orchestration and workflows
 - **Drizzle** for data management and persistence, which will be replaced by Ethereum soon.
-- **Token Economics** for incentive alignment
+- **LMSR** for incentive alignment
 
 ## Getting Started
 
