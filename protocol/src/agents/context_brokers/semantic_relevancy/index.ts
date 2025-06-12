@@ -18,15 +18,17 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     // Get all other intents
     const allIntents = await this.db.select()
       .from(intents)
-      .where(ne(intents.id, currentIntent.id));
-    
+      .where(and(
+        ne(intents.id, currentIntent.id),
+        ne(intents.userId, currentIntent.userId)
+      ));
     console.log('Found other intents:', allIntents.length);
 
     const relatedIntents = [];
     
     // Use LLM to determine semantic relevance
     for (const otherIntent of allIntents) {
-      const prompt = `Compare these two intents and determine if they are semantically related. 
+      const prompt = `Compare these two intents and determine if there's mutual intent.
       Return only a number between 0 and 1, where 1 means highly related and 0 means not related at all.
       
       Intent 1: ${JSON.stringify(currentIntent.payload)}
@@ -74,35 +76,20 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       const pair = this.createOrderedPair(intentId, relatedIntent.id);
       console.log('Created pair:', pair);
       
-      // Check if stake already exists
-      const existingStake = await this.db.select()
-        .from(intentStakes)
-        .where(eq(intentStakes.pair, pair))
-        .then(rows => rows[0]);
+      // Create new stake with reasoning from LLM
+      const reasoningPrompt = `Explain why these two intents are related in one sentence:
+      Intent 1: ${JSON.stringify(currentIntent.payload)}
+      Intent 2: ${JSON.stringify(relatedIntent.payload)}`;
 
-      if (!existingStake) {
-        // Create new stake with reasoning from LLM
-        const reasoningPrompt = `Explain why these two intents are related in one sentence:
-        Intent 1: ${JSON.stringify(currentIntent.payload)}
-        Intent 2: ${JSON.stringify(relatedIntent.payload)}`;
-
-        const response = await llm.invoke(reasoningPrompt);
-        const reasoning = response.content.toString();
-        console.log('Creating new stake:', {
-          pair,
-          stake: BigInt(100),
-          reasoning,
-          agentId: this.agentId
-        });
-        
-        await this.db.insert(intentStakes)
-          .values({
-            pair,
-            stake: BigInt(100),
-            reasoning,
-            agentId: this.agentId
-          });
-      }
+      const response = await llm.invoke(reasoningPrompt);
+      const reasoning = response.content.toString();
+      
+      await this.stakeManager.createStake({
+        pair,
+        stake: BigInt(100),
+        reasoning,
+        agentId: this.agentId
+      });
     }
   }
 

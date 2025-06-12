@@ -1,15 +1,16 @@
 import { Router, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { intents, users, indexes, intentIndexes } from '../lib/schema';
+import { intents, users, indexes, intentIndexes, intentStakes, agents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { eq, isNull, isNotNull, and, count, desc, or, ilike } from 'drizzle-orm';
+import { eq, isNull, isNotNull, and, count, desc, or, ilike, sql } from 'drizzle-orm';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { 
   triggerBrokersOnIntentCreated, 
   triggerBrokersOnIntentUpdated, 
   triggerBrokersOnIntentArchived 
 } from '../agents/context_brokers/connector';
+import { BaseContextBroker } from '../agents/context_brokers/base';
 
 const router = Router();
 
@@ -145,7 +146,7 @@ router.get('/:id',
 
       // Check access permissions
       const intentData = intent[0];
-      const hasAccess = intentData.isPublic || intentData.userId === req.user!.id;
+      const hasAccess = intentData.userId === req.user!.id;
 
       if (!hasAccess) {
         return res.status(403).json({ error: 'Access denied' });
@@ -415,5 +416,148 @@ router.patch('/:id/unarchive',
   }
 );
 
+// Create a debug broker class
+class DebugBroker extends BaseContextBroker {
+  async onIntentCreated() {}
+  async onIntentUpdated() {}
+  async onIntentArchived() {}
+
+  async createDebugStake(params: {
+    pair: string;
+    stake: bigint;
+    reasoning: string;
+  }): Promise<void> {
+    await this.stakeManager.createStake({
+      ...params,
+      agentId: this.agentId
+    });
+  }
+}
+
+// Debug endpoint to create stake between two intents
+router.get('/:id/debug/stake',
+  [
+    param('id').isUUID(),
+    query('otherIntentId').isUUID(),
+    query('stake').isInt({ min: 0, max: 100 }).toInt(),
+    query('reasoning').optional().isString(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const otherIntentId = req.query.otherIntentId as string;
+      const stake = parseInt(req.query.stake as string, 10);
+      const reasoning = (req.query.reasoning as string) || 'Debug stake';
+
+      // Verify both intents exist
+      const [intent1, intent2] = await Promise.all([
+        db.select().from(intents).where(eq(intents.id, id)).limit(1),
+        db.select().from(intents).where(eq(intents.id, otherIntentId)).limit(1)
+      ]);
+
+      if (!intent1.length || !intent2.length) {
+        return res.status(404).json({ error: 'One or both intents not found' });
+      }
+
+      // Create ordered pair for the stake
+      const pair = [id, otherIntentId].sort().join('-');
+
+      // Create the stake using the debug broker
+      const broker = new DebugBroker('028ef80e-9b1c-434b-9296-bb6130509482');
+      await broker.createDebugStake({
+        pair,
+        stake: BigInt(stake),
+        reasoning
+      });
+
+      return res.json({ 
+        message: 'Stake created successfully',
+        pair,
+        stake,
+        reasoning
+      });
+    } catch (error) {
+      console.error('Create debug stake error:', error);
+      return res.status(500).json({ error: 'Failed to create stake' });
+    }
+  }
+);
+
+// Get stakes for a specific intent
+router.get('/:id/stakes',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      // Check if intent exists and user has access
+      const intent = await db.select({ id: intents.id, userId: intents.userId, isPublic: intents.isPublic })
+        .from(intents)
+        .where(eq(intents.id, id))
+        .limit(1);
+
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Intent not found' });
+      }
+
+      const hasAccess = intent[0].userId === req.user!.id;
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Fetch stakes
+      const stakes = await db.select({
+        id: intentStakes.id,
+        pair: intentStakes.pair,
+        stake: intentStakes.stake,
+        reasoning: intentStakes.reasoning,
+        createdAt: intentStakes.createdAt,
+        agent: {
+          id: agents.id,
+          name: agents.name,
+          description: agents.description,
+          avatar: agents.avatar
+        }
+      })
+      .from(intentStakes)
+      .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+      .where(
+        and(
+          sql`${intentStakes.pair} LIKE ${id + '-%'}`,
+          isNull(agents.deletedAt)
+        )
+      )
+      .orderBy(desc(intentStakes.createdAt));
+
+      const formattedStakes = stakes.map(stake => ({
+        id: stake.id,
+        stakingSummary: stake.reasoning,
+        stakers: [{
+          agentId: stake.agent.id,
+          name: stake.agent.name,
+          description: stake.agent.description,
+          avatar: stake.agent.avatar,
+          confidence: Number(stake.stake) / 100 // Assuming stake is stored as percentage * 100
+        }]
+      }));
+
+      return res.json({ stakes: formattedStakes });
+    } catch (error) {
+      console.error('Get intent stakes error:', error);
+      return res.status(500).json({ error: 'Failed to fetch intent stakes' });
+    }
+  }
+);
 
 export default router; 

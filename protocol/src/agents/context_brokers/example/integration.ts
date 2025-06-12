@@ -79,24 +79,12 @@ export class ExampleContextBroker extends BaseContextBroker {
       for (const similarIntent of similarIntents) {
         const pair = this.createOrderedPair(intentId, similarIntent.id);
         
-        // Check if stake already exists
-        const existingStake = await this.db.select()
-          .from(intentStakes)
-          .where(eq(intentStakes.pair, pair))
-          .then(rows => rows[0]);
-
-        if (!existingStake) {
-          // Create new stake
-          await this.db.insert(intentStakes)
-            .values({
-              pair,
-              stake: BigInt(100), // Example stake amount
-              reasoning: `Automatically created stake between intents ${intentId} and ${similarIntent.id}`,
-              agentId: agent.id
-            });
-          
-          console.log(`Created new stake between intents ${intentId} and ${similarIntent.id}`);
-        }
+        await this.stakeManager.createStake({
+          pair,
+          stake: BigInt(100), // Example stake amount
+          reasoning: `Automatically created stake between intents ${intentId} and ${similarIntent.id}`,
+          agentId: agent.id
+        });
       }
     }
 

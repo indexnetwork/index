@@ -6,7 +6,7 @@ import { SemanticRelevancyBroker } from './semantic_relevancy';
 
 // Context broker interface
 interface ContextBroker {
-  agentId: string;
+  readonly agentId: string;
   onIntentCreated: (intentId: string) => Promise<void>;
   onIntentUpdated: (intentId: string, previousStatus?: string) => Promise<void>;
   onIntentArchived: (intentId: string) => Promise<void>;

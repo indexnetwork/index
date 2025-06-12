@@ -115,6 +115,15 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     });
   },
 
+  // Get stakes for an intent
+  getIntentStakes: async (intentId: string): Promise<IntentConnection[]> => {
+    const response = await api.get<APIResponse<IntentConnection[]>>(`/intents/${intentId}/stakes`);
+    if (!response.stakes) {
+      throw new Error('Failed to fetch stakes');
+    }
+    return response.stakes;
+  },
+
   // Create new intent
   createIntent: async (data: CreateIntentRequest): Promise<Intent> => {
     const response = await api.post<APIResponse<Intent>>('/intents', data);

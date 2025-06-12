@@ -1,15 +1,11 @@
 import db from '../../lib/db';
-import { intents, intentStakes, type IntentStake} from '../../lib/schema';
+import { intents, intentStakes, type IntentStake, agents } from '../../lib/schema';
 import { eq, or, desc, like } from 'drizzle-orm';
 
 export abstract class BaseContextBroker {
-  protected db: typeof db;
-  public readonly agentId: string;
+  protected db = db;
 
-  constructor(agentId: string) {
-    this.db = db;
-    this.agentId = agentId;
-  }
+  constructor(public readonly agentId: string) {}
 
   /**
    * Create a properly ordered pair string for staking
@@ -41,8 +37,7 @@ export abstract class BaseContextBroker {
     const pair = this.createOrderedPair(intentId1, intentId2);
     return this.db.select()
       .from(intentStakes)
-      .where(eq(intentStakes.pair, pair))
-      .orderBy(desc(intentStakes.createdAt));
+      .where(eq(intentStakes.pair, pair));
   }
 
   /**
@@ -56,8 +51,7 @@ export abstract class BaseContextBroker {
           like(intentStakes.pair, `${intentId}-%`),
           like(intentStakes.pair, `%-${intentId}`)
         )
-      )
-      .orderBy(desc(intentStakes.createdAt));
+      );
   }
 
   /**
@@ -65,9 +59,10 @@ export abstract class BaseContextBroker {
    */
   protected async getRelatedIntents(intentId: string): Promise<{ id: string; payload: string }[]> {
     const stakes = await this.getStakesForIntent(intentId);
-    const relatedIntentIds = this.getOtherIntentIdsFromStakes(stakes, intentId);
-
-    if (relatedIntentIds.length === 0) return [];
+    const relatedIntentIds = stakes.map(stake => {
+      const [id1, id2] = stake.pair.split('-');
+      return id1 === intentId ? id2 : id1;
+    });
 
     return this.db.select({
       id: intents.id,
@@ -78,6 +73,34 @@ export abstract class BaseContextBroker {
       or(...relatedIntentIds.map(id => eq(intents.id, id)))
     );
   }
+
+  protected readonly stakeManager = new (class {
+    constructor(private broker: BaseContextBroker) {}
+
+    async createStake(params: {
+      pair: string;
+      stake: bigint;
+      reasoning: string;
+      agentId: string;
+    }): Promise<void> {
+      // Check if stake already exists
+      const existingStake = await this.broker.db.select()
+        .from(intentStakes)
+        .where(eq(intentStakes.pair, params.pair))
+        .then(rows => rows[0]);
+
+      if (!existingStake) {
+        // Create new stake
+        await this.broker.db.insert(intentStakes)
+          .values({
+            pair: params.pair,
+            stake: params.stake,
+            reasoning: params.reasoning,
+            agentId: params.agentId
+          });
+      }
+    }
+  })(this);
 
   /**
    * Abstract methods that must be implemented by concrete brokers

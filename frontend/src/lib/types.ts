@@ -80,12 +80,12 @@ export interface IntentIndex {
 
 export interface IntentConnection {
   id: string;
-  name: string;
-  role: string;
-  avatar: string;
-  connectionRationale: string;
-  backers: {
+  stakingSummary: string;
+  stakers: {
     agentId: string;
+    name: string;
+    description: string;
+    avatar: string;
     confidence: number;
   }[];
 }
@@ -137,6 +137,7 @@ export interface APIResponse<T> {
   user?: T; // For auth endpoints
   index?: T; // For single index
   intent?: T; // For single intent
+  stakes?: T; // For intent stakes
   message?: string;
   error?: string;
 }

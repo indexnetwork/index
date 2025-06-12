@@ -20,32 +20,50 @@ interface IntentDetailPageProps {
 export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const resolvedParams = use(params);
   const [intent, setIntent] = useState<Intent | null>(null);
-  const [connections, setConnections] = useState<IntentConnection[]>([]);
+  const [stakes, setStakes] = useState<IntentConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const intentsService = useIntents();
-  
-  // TODO: Add agent animation state when implementing animation feature
-  // const [activeAgentIndex, setActiveAgentIndex] = useState<number>(-1);
-  // const [isThinking, setIsThinking] = useState(false);
 
   const fetchIntentData = useCallback(async () => {
     try {
-      const [intentData, connectionsData] = await Promise.all([
-        intentsService.getIntent(resolvedParams.id),
-        intentsService.getIntentConnections()
-      ]);
+      const intentData = await intentsService.getIntent(resolvedParams.id);
       setIntent(intentData || null);
-      setConnections(connectionsData);
       setIsArchived(!!(intentData?.archivedAt));
     } catch (error) {
       console.error('Error fetching intent data:', error);
     } finally {
       setLoading(false);
     }
-  }, [resolvedParams.id, intentsService]);
+  }, [intentsService, resolvedParams.id]);
+
+  const fetchStakes = useCallback(async () => {
+    try {
+      const stakesData = await intentsService.getIntentStakes(resolvedParams.id);
+      setStakes(stakesData);
+    } catch (error) {
+      console.error('Error fetching stakes:', error);
+    }
+  }, [intentsService, resolvedParams.id]);
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchIntentData();
+    fetchStakes();
+  }, [fetchIntentData, fetchStakes]);
+
+  // Poll stakes every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isPaused) {
+        fetchStakes();
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [fetchStakes, isPaused]);
 
   const handleArchiveIntent = useCallback(async () => {
     if (!intent) return;
@@ -95,31 +113,6 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
     }
   }, [intentsService, intent, fetchIntentData]);
 
-  useEffect(() => {
-    fetchIntentData();
-  }, [fetchIntentData]);
-
-  // TODO: Add agent animation functionality
-  // const startAgentAnimation = (connection: IntentConnection) => {
-  //   setActiveAgentIndex(-1);
-  //   setIsThinking(true);
-  //   
-  //   // Simulate agents speaking one by one
-  //   connection.backers.forEach((_, index) => {
-  //     setTimeout(() => {
-  //       setIsThinking(false);
-  //       setActiveAgentIndex(index);
-  //       setIsThinking(true);
-  //     }, index * 2000); // Each agent takes 2 seconds to "speak"
-  //   });
-  //
-  //   // Reset after all agents have spoken
-  //   setTimeout(() => {
-  //     setIsThinking(false);
-  //     setActiveAgentIndex(-1);
-  //   }, connection.backers.length * 2000);
-  // };
-
   if (loading) {
     return (
       <ClientLayout>
@@ -165,7 +158,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
               )}
               <div className={intent.summary ? "border-t border-gray-200 pt-2" : ""}>
                 <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">
-                  Updated {intent.updatedAt} • {connections.length} connections
+                  Updated {intent.updatedAt} • {stakes.length} connections
                 </p>
               </div>
             </div>
@@ -189,7 +182,6 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                   >
                     <div className="flex items-center gap-2">
                       <ArchiveRestore className="h-4 w-4" />
-                      <span className="hidden sm:inline">Unarchive</span>
                     </div>
                   </Button>
                 </>
@@ -212,7 +204,6 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                   >
                     <div className="flex items-center gap-2">
                       <Archive className="h-4 w-4" />
-                      <span className="hidden sm:inline">Archive</span>
                     </div>
                   </Button>                
                   <Button 
@@ -246,7 +237,6 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                   >
                     <div className="flex items-center gap-2">
                       <Archive className="h-4 w-4" />
-                      <span className="hidden sm:inline">Archive</span>
                     </div>
                   </Button>
                   <Button 
@@ -275,79 +265,49 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
         {/* Connection Cards Grid */}
         <div className="grid grid-cols-1 gap-6">
-          {connections.map((connection) => (
-            <div key={connection.id} className="bg-white border border-black border-b-0 border-b-2 p-6">
+          {stakes.map((stake) => (
+            <div key={stake.id} className="bg-white border border-black border-b-0 border-b-2 p-6">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-4">
                   <Image
-                    src={connection.avatar}
-                    alt={connection.name}
+                    src={stake.stakers[0].avatar}
+                    alt={stake.stakers[0].name}
                     width={48}
                     height={48}
                     className="rounded-full"
                   />
                   <div>
-                    <h2 className="text-lg font-medium text-gray-900">{connection.name}</h2>
-                    <p className="text-sm text-gray-600">{connection.role}</p>
+                    <h2 className="text-lg font-medium text-gray-900">{stake.stakers[0].name}</h2>
+                    <p className="text-sm text-gray-600">{stake.stakers[0].description}</p>
                   </div>
-                </div>
-                <div className="flex gap-3">
-                  <Button>
-                    Accept Connection
-                  </Button>
-                  <Button variant="outline">
-                    Decline
-                  </Button>
                 </div>
               </div>
 
-              {/* Why this connection matters */}
-              <div className="mb-6 border-b border-gray-200 pb-6">
+              <div className="mb-6">
                 <h3 className="font-medium text-gray-700 mb-3">Why this connection matters</h3>
                 <div className="relative min-h-[100px]">
                   <p className="text-gray-700">
-                    {connection.connectionRationale}
+                    {stake.stakingSummary}
                   </p>
-                  {/* TODO: Add thinking animation when implementing agent animation feature */}
-                  {/* {isThinking && (
-                    <div className="absolute bottom-0 right-0 flex items-center gap-2 text-gray-500">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">Thinking...</span>
-                    </div>
-                  )} */}
                 </div>
               </div>
 
               <div>
                 <h3 className="font-medium text-gray-700 mb-4">Who's backing this connection</h3>
                 <div className="flex flex-wrap gap-2">
-                  {connection.backers.map((backer, index) => {
-                    const agent = agents.find(a => a.id === backer.agentId);
-                    if (!agent) return null;
-                    
-                    // TODO: Add agent animation state when implementing animation feature
-                    const isActive = false; // index === activeAgentIndex;
-                    const hasSpoken = false; // index < activeAgentIndex;
-                    
-                    return (
-                      <div 
-                        key={index} 
-                        className={`flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full transition-all duration-300 ${
-                          isActive ? 'border-blue-500 shadow-md scale-105' : 
-                          hasSpoken ? 'opacity-100' : 'opacity-50'
-                        }`}
-                      >
-                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors duration-300 ${
-                          isActive ? 'bg-blue-100' : 'bg-gray-100'
-                        }`}>
-                          <Image src={agent.avatar} alt={agent.name} width={16} height={16} />
-                        </div>
-                        <span className="font-medium text-gray-900">{agent.name}</span>
-                        <span className="text-gray-500 text-sm">{agent.role}</span>
-                        <span className="text-gray-400 text-xs">({Math.round(backer.confidence * 100)}%)</span>
+                  {stake.stakers.map((staker, index) => (
+                    <div 
+                      key={index} 
+                      className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full"
+                    >
+                      <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gray-100">
+                        <Image src={staker.avatar} alt={staker.name} width={16} height={16} />
                       </div>
-                    );
-                  })}
+                      <span className="font-medium text-gray-900">{staker.name}</span>
+                      <span className="text-gray-500 text-sm">{staker.description}</span>
+                      <span className="text-gray-400 text-xs">({Math.round(staker.confidence * 100)}%)</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
