@@ -5,9 +5,8 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Play, Archive, Pause, ArchiveRestore, Edit } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { agents } from "@/services/intents";
 import { useIntents } from "@/contexts/APIContext";
-import { Intent, IntentConnection, IntentStakesByUserResponse } from "@/lib/types";
+import { Intent, IntentStakesByUserResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import EditIntentModal from "@/components/modals/EditIntentModal";
 

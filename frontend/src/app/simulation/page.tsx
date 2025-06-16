@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Users, FileText, Shield, UserCheck } from 'lucide-react';
 import { 
   initializeMarketsForResults, 
@@ -211,7 +211,8 @@ const IndexNetworkSimulation = () => {
         }
       });
     });
-  }, [initialResults]); // Only run once when component mounts
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount to avoid infinite loops
 
   return (
     <div className="flex  bg-gray-50">

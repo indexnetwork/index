@@ -860,7 +860,7 @@ export default function IntegratePage() {
   const [expandedApiSections, setExpandedApiSections] = useState<Record<string, boolean>>({});
   const [expandedEndpoints, setExpandedEndpoints] = useState<Record<string, boolean>>({});
   const [activeEndpointTabs, setActiveEndpointTabs] = useState<Record<string, 'params' | 'example'>>({});
-  const [activeSessionTab, setActiveSessionTab] = useState<'privy' | 'siwe'>('privy');
+
   const [showConfigDialog, setShowConfigDialog] = useState(false);
 
   const setActiveExample = (componentId: string, exampleIndex: number | 'overview') => {

@@ -102,7 +102,7 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    handleSubmit(e as any);
+                    handleSubmit(e);
                   }
                 }}
                 className=" px-4 py-3"

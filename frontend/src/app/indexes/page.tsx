@@ -56,7 +56,8 @@ export default function IndexesPage() {
   useEffect(() => {
     fetchCurrentUser();
     fetchIndexes();
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array - only run once on mount
 
   const handleCreateIndex = async (indexData: { name: string }) => {
     try {
@@ -214,7 +215,7 @@ export default function IndexesPage() {
                   <div 
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                     onClick={() => {
-                      console.log("clicked");
+                      router.push('/indexes/private')
                     }}
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
