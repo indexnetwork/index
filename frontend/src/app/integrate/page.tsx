@@ -49,7 +49,7 @@ interface ConversationalConfig {
 const conversationalIntegrations: ConversationalConfig[] = [
   {
     id: "matchmakeragent",
-    name: "Matchmaker Agent",
+    name: "Matchmaker",
     description: "AI-powered matchmaking agent that provides intelligent match suggestions and facilitates connections.",
     previewImage: "/integrate/agent.gif",
     caseStudies: [
@@ -995,7 +995,7 @@ export default function IntegratePage() {
               
               <div className="pt-2">
                 <div className="text-xs font-semibold text-gray-500 font-ibm-plex-mono mb-2 px-2">
-                  COMPONENTS
+                  UI COMPONENTS
                 </div>
                 <button
                   onClick={() => scrollToSection('installation')}
@@ -1458,7 +1458,7 @@ export default function IntegratePage() {
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-2">
-                Conversational Integrations
+                Conversational Agents
               </h1>
               <p className="text-gray-600 font-ibm-plex-mono text-md">
                 Deploy Index Network across chat platforms and conversational interfaces

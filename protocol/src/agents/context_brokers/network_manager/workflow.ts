@@ -1,6 +1,8 @@
 import { StateGraph, START, END, Annotation } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
-import prisma from "../../lib/db";
+import db from "../../../lib/db";
+import { agents, intentStakes } from "../../../lib/schema";
+import { eq } from "drizzle-orm";
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -105,40 +107,25 @@ Focus on potential collaborations, complementary skills, or ecosystem benefits.
     for (const decision of decisions) {
       if (decision.shouldBack && decision.confidence >= 0.7) {
         try {
-          // Create intent pair
-          const intentPair = await prisma.intentPair.create({
-            data: {
-              intents: {
-                connect: [
-                  { id: newIntent.id },
-                  { id: decision.intentId }
-                ]
-              }
-            }
-          });
-
           // Get network manager agent
-          let agent = await prisma.agent.findFirst({
-            where: { name: "network_manager" }
-          });
+          let agent = await db.select().from(agents).where(eq(agents.name, "network_manager")).limit(1);
 
-          if (!agent) {
-            agent = await prisma.agent.create({
-              data: {
-                name: "network_manager",
-                role: "SYSTEM",
-                avatar: "🌐"
-              }
-            });
+          if (!agent.length) {
+            const newAgent = await db.insert(agents).values({
+              name: "network_manager",
+              description: "Network synergy manager",
+              avatar: "🌐"
+            }).returning();
+            agent = newAgent;
           }
 
-          // Create backing record
-          await prisma.backer.create({
-            data: {
-              confidence: decision.confidence,
-              agentId: agent.id,
-              intentPairId: intentPair.id
-            }
+          // Create intent stake record with pair
+          const pairKey = [newIntent.id, decision.intentId].sort().join('-');
+          await db.insert(intentStakes).values({
+            pair: pairKey,
+            stake: BigInt(Math.round(decision.confidence * 100)), // Convert confidence to integer stake
+            reasoning: `Network synergy backing with confidence ${decision.confidence}`,
+            agentId: agent[0].id
           });
 
           backedCount++;
