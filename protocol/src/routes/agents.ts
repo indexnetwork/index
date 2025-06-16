@@ -37,7 +37,7 @@ router.get('/',
           .where(isNull(agents.deletedAt))
       ]);
 
-      res.json({
+      return res.json({
         agents: agentsResult,
         pagination: {
           current: page,
@@ -48,7 +48,7 @@ router.get('/',
       });
     } catch (error) {
       console.error('Get agents error:', error);
-      res.status(500).json({ error: 'Failed to fetch agents' });
+      return res.status(500).json({ error: 'Failed to fetch agents' });
     }
   }
 );
@@ -75,10 +75,10 @@ router.get('/:id',
         return res.status(404).json({ error: 'Agent not found' });
       }
 
-      res.json({ agent: agent[0] });
+      return res.json({ agent: agent[0] });
     } catch (error) {
       console.error('Get agent error:', error);
-      res.status(500).json({ error: 'Failed to fetch agent' });
+      return res.status(500).json({ error: 'Failed to fetch agent' });
     }
   }
 );
@@ -108,7 +108,7 @@ router.post('/',
         })
         .returning();
 
-      res.status(201).json({
+      return res.status(201).json({
         message: 'Agent created successfully',
         agent: newAgent[0]
       });
@@ -117,7 +117,7 @@ router.post('/',
         return res.status(400).json({ error: 'Agent with this name already exists' });
       }
       console.error('Create agent error:', error);
-      res.status(500).json({ error: 'Failed to create agent' });
+      return res.status(500).json({ error: 'Failed to create agent' });
     }
   }
 );
@@ -155,7 +155,7 @@ router.put('/:id',
         return res.status(404).json({ error: 'Agent not found' });
       }
 
-      res.json({
+      return res.json({
         message: 'Agent updated successfully',
         agent: updatedAgent[0]
       });
@@ -164,7 +164,7 @@ router.put('/:id',
         return res.status(400).json({ error: 'Agent with this name already exists' });
       }
       console.error('Update agent error:', error);
-      res.status(500).json({ error: 'Failed to update agent' });
+      return res.status(500).json({ error: 'Failed to update agent' });
     }
   }
 );
@@ -194,10 +194,10 @@ router.delete('/:id',
         return res.status(404).json({ error: 'Agent not found' });
       }
 
-      res.json({ message: 'Agent deleted successfully' });
+      return res.json({ message: 'Agent deleted successfully' });
     } catch (error) {
       console.error('Delete agent error:', error);
-      res.status(500).json({ error: 'Failed to delete agent' });
+      return res.status(500).json({ error: 'Failed to delete agent' });
     }
   }
 );
