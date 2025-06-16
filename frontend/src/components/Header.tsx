@@ -4,12 +4,27 @@ import Link from "next/link";
 import Image from "next/image";
 import { UserPlus, LogIn } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
+import { useEffect, useState } from 'react';
 
 export default function Header({ showNavigation = true }: { showNavigation?: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { login, logout,authenticated } = usePrivy();
-  const isAlpha = searchParams.get('alpha') === 'true';
+  const [isAlpha, setIsAlpha] = useState(false);
+
+  useEffect(() => {
+    // Check if alpha parameter is in searchParams
+    const alphaParam = searchParams.get('alpha');
+    if (alphaParam !== null) {
+      // Store in localStorage
+      localStorage.setItem('alpha', alphaParam);
+      setIsAlpha(alphaParam === 'true');
+    } else {
+      // Get from localStorage
+      const storedAlpha = localStorage.getItem('alpha');
+      setIsAlpha(storedAlpha === 'true');
+    }
+  }, [searchParams]);
   return (
     <div>
       <header className="w-full py-4 flex justify-between items-center">
@@ -117,7 +132,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
                 </svg>
               </div>
               <span className={`text-sm font-ibm-plex-mono ${pathname?.startsWith("/stake") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
-                Stake
+                Brokers
               </span>
             </div>
           </Link>

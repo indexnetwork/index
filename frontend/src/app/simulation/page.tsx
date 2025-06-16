@@ -1,41 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Search, Users, FileText, Shield, UserCheck } from 'lucide-react';
-import { initializeMarket, calculateStake, updateMarketState, calculateReward, calculatePenalty, type MarketState } from '@/services/lmsr';
-
-interface SearchResult {
-  id: string;
-  name: string;
-  title: string;
-  location: string;
-  avatar: string;
-  mutual: string;
-  yesAgents?: Agent[];
-  noAgents?: Agent[];
-  yesStaked?: number;
-  noStaked?: number;
-  totalStaked?: number;
-  netAmount?: number;
-}
-
-interface Agent {
-  id: string;
-  name: string;
-  description: string;
-  icon: React.ReactNode;
-  color: string;
-  target: string[];
-  budget: number;
-  stakedAmount?: number;
-  position?: 'YES' | 'NO';
-  stakedIn?: string;
-  triggers?: {
-    type: string;
-    condition: (result: SearchResult) => boolean;
-  }[];
-  audience?: string[];
-}
+import { 
+  initializeMarketsForResults, 
+  calculateStake, 
+  processAgentDrop, 
+  processAutoStaking, 
+  processMarketResolution, 
+  type MarketState, 
+  type Agent, 
+  type SearchResult 
+} from '@/services/lmsr';
 
 const IndexNetworkSimulation = () => {
   // Initial search results
@@ -120,47 +96,17 @@ const IndexNetworkSimulation = () => {
   const [draggedAgent, setDraggedAgent] = useState<Agent | null>(null);
   const [availableAgents, setAvailableAgents] = useState<Agent[]>(initialAgents);
   const [searchQuery, setSearchQuery] = useState('investor');
-
   const [personMarkets, setPersonMarkets] = useState<Record<string, MarketState>>({});
-
   const [resolvedPeople, setResolvedPeople] = useState<Record<string, boolean>>({});
+  const [processedAutoStakes, setProcessedAutoStakes] = useState<Set<string>>(new Set());
 
   // Initialize market for each person
   useEffect(() => {
-    const markets: Record<string, MarketState> = {};
-    initialResults.forEach(result => {
-      markets[result.id] = initializeMarket(result.id);
-    });
+    const markets = initializeMarketsForResults(initialResults);
     setPersonMarkets(markets);
   }, [initialResults]);
 
-  // TODO: Add functionality to dynamically add/remove agents
-  // const addAgent = (agent: Agent) => {
-  //   // Only add if not already in active agents and have enough budget
-  //   if (!availableAgents.some(a => a.id === agent.id) && agent.budget >= 20) {
-  //     setAvailableAgents([...availableAgents, agent]);
-  //   }
-  // };
-
-  // const removeAgent = (agentId: string) => {
-  //   // Return the agent's stake to their budget when removed
-  //   const agent = availableAgents.find(a => a.id === agentId);
-  //   if (agent) {
-  //     const updatedAgent = {
-  //       ...agent,
-  //       budget: agent.budget + 20 // Return the stake amount
-  //     };
-  //     setAvailableAgents(availableAgents.filter(a => a.id !== agentId));
-  //     // Update the agent in availableAgents
-  //     const agentIndex = availableAgents.findIndex(a => a.id === agentId);
-  //     if (agentIndex !== -1) {
-  //       availableAgents[agentIndex] = updatedAgent;
-  //     }
-  //   }
-  // };
-
-  // Remove IDX coin and update market info to show YES/NO prices and shares per person
-  // Add function to render market info for a person
+  // Render market info for a person
   const renderPersonMarketInfo = (personId: string) => {
     const market = personMarkets[personId];
     if (!market) return null;
@@ -190,19 +136,6 @@ const IndexNetworkSimulation = () => {
     );
   };
 
-  // TODO: Add function to toggle agent prediction
-  // const toggleAgentPrediction = (agentId: string) => {
-  //   setAvailableAgents(prev => prev.map(agent => {
-  //     if (agent.id === agentId) {
-  //       return {
-  //         ...agent,
-  //         position: agent.position === 'YES' ? 'NO' : 'YES'
-  //       };
-  //     }
-  //     return agent;
-  //   }));
-  // };
-
   const handleDragStart = (agent: Agent) => {
     setDraggedAgent(agent);
   };
@@ -211,182 +144,75 @@ const IndexNetworkSimulation = () => {
     setDraggedAgent(null);
   };
 
-  // Update handleDrop to update the LMSR market for the person
+  // Handle agent drop using service function
   const handleDrop = (resultId: string, outcome: 'YES' | 'NO') => {
     if (!draggedAgent) return;
-    const agent = availableAgents.find(a => a.id === draggedAgent.id);
-    if (!agent) return;
-    // Calculate stake based on agent's confidence
-    const stake = calculateStake(0.8);
-    // Only proceed if agent has enough budget
-    if (agent.budget < stake) return;
-    // Update agent's state
-    const updatedAgent = {
-      ...agent,
-      budget: agent.budget - stake,
-      stakedAmount: stake,
-      position: outcome,
-      stakedIn: resultId
-    };
-    // Update available agents
-    setAvailableAgents(prev => prev.map(a => 
-      a.id === agent.id ? updatedAgent : a
-    ));
-    // Update the LMSR market for this person
-    setPersonMarkets(prev => {
-      const currentMarket = prev[resultId];
-      if (!currentMarket) return prev;
-      // Simulate a market action
-      const action = {
-        type: 'BUY' as const,
-        amount: stake,
-        agentId: agent.id,
-        confidence: 0.8,
-        outcome
-      };
-      const newMarket = updateMarketState(currentMarket, action);
-      return { ...prev, [resultId]: newMarket };
-    });
-    // Update search results (for agent display)
-    setSearchResults(prev => {
-      const newResults = prev.map(result => {
-        if (result.id === resultId) {
-          const yesAgents = outcome === 'YES' 
-            ? [...(result.yesAgents || []), updatedAgent]
-            : (result.yesAgents || []);
-          const noAgents = outcome === 'NO'
-            ? [...(result.noAgents || []), updatedAgent]
-            : (result.noAgents || []);
-          const yesStaked = yesAgents.reduce((sum, a) => sum + (a.stakedAmount || 0), 0);
-          const noStaked = noAgents.reduce((sum, a) => sum + (a.stakedAmount || 0), 0);
-          const totalStaked = yesStaked + noStaked;
-          const netAmount = yesStaked - noStaked;
-          return {
-            ...result,
-            yesAgents,
-            noAgents,
-            yesStaked,
-            noStaked,
-            totalStaked,
-            netAmount
-          };
-        }
-        return result;
-      });
-      // Sort by net amount (YES - NO)
-      return newResults.sort((a, b) => (b.netAmount || 0) - (a.netAmount || 0));
-    });
+    
+    const dropResult = processAgentDrop(
+      draggedAgent,
+      resultId,
+      outcome,
+      availableAgents,
+      personMarkets,
+      searchResults
+    );
+    
+    if (dropResult) {
+      setAvailableAgents(dropResult.updatedAgents);
+      setPersonMarkets(dropResult.updatedMarkets);
+      setSearchResults(dropResult.updatedResults);
+    }
   };
 
-  // Handle connect (resolution)
+  // Handle connect using service function
   const handleConnect = (personId: string) => {
-    const market = personMarkets[personId];
-    if (!market) return;
-    setAvailableAgents(prevAgents => {
-      // Find YES and NO agents for this person
-      const result = searchResults.find(r => r.id === personId);
-      if (!result) return prevAgents;
-      const yesAgents = result.yesAgents || [];
-      const noAgents = result.noAgents || [];
-      // Reward YES agents, penalize NO agents
-      return prevAgents.map(agent => {
-        // YES
-        const yesAgent = yesAgents.find(a => a.id === agent.id);
-        if (yesAgent && yesAgent.stakedAmount) {
-          const reward = calculateReward(market, yesAgent.stakedAmount, 'YES');
-          return { ...agent, budget: agent.budget + reward };
-        }
-        // NO
-        const noAgent = noAgents.find(a => a.id === agent.id);
-        if (noAgent && noAgent.stakedAmount) {
-          const penalty = calculatePenalty(market, noAgent.stakedAmount, 'NO');
-          return { ...agent, budget: agent.budget - penalty };
-        }
-        return agent;
-      });
-    });
-    setResolvedPeople(prev => ({ ...prev, [personId]: true }));
+    const resolutionResult = processMarketResolution(
+      personId,
+      personMarkets,
+      searchResults,
+      availableAgents
+    );
+    
+    if (resolutionResult) {
+      setAvailableAgents(resolutionResult.updatedAgents);
+      setResolvedPeople(prev => ({ ...prev, [personId]: true }));
+    }
   };
 
-  // Add auto-staking functionality
-  const autoStakeBasedOnTriggers = useCallback((result: SearchResult) => {
-    availableAgents.forEach(agent => {
-      if (!agent.triggers) return;
-      
-      // Check if any trigger conditions are met
-      const triggered = agent.triggers.some(trigger => trigger.condition(result));
-      
-      if (triggered) {
-        // Calculate stake based on agent's confidence
-        const stake = calculateStake(0.8);
-        
-        // Only proceed if agent has enough budget
-        if (agent.budget >= stake) {
-          // Update agent's state
-          const updatedAgent: Agent = {
-            ...agent,
-            budget: agent.budget - stake,
-            stakedAmount: stake,
-            position: 'YES' as const,
-            stakedIn: result.id
-          };
-          
-          // Update available agents
-          setAvailableAgents(prev => prev.map(a => 
-            a.id === agent.id ? updatedAgent : a
-          ));
-          
-          // Update the LMSR market for this person
-          setPersonMarkets(prev => {
-            const currentMarket = prev[result.id];
-            if (!currentMarket) return prev;
-            
-            const action = {
-              type: 'BUY' as const,
-              amount: stake,
-              agentId: agent.id,
-              confidence: 0.8,
-              outcome: 'YES' as const
-            };
-            
-            const newMarket = updateMarketState(currentMarket, action);
-            return { ...prev, [result.id]: newMarket };
-          });
-          
-          // Update search results
-          setSearchResults(prev => {
-            const newResults = prev.map(r => {
-              if (r.id === result.id) {
-                const yesAgents = [...(r.yesAgents || []), updatedAgent];
-                const yesStaked = yesAgents.reduce((sum, a) => sum + (a.stakedAmount || 0), 0);
-                const noStaked = (r.noStaked || 0);
-                const totalStaked = yesStaked + noStaked;
-                const netAmount = yesStaked - noStaked;
-                
-                return {
-                  ...r,
-                  yesAgents,
-                  yesStaked,
-                  totalStaked,
-                  netAmount
-                };
-              }
-              return r;
-            });
-            
-            return newResults.sort((a, b) => (b.netAmount || 0) - (a.netAmount || 0));
-          });
-        }
-      }
-    });
-  }, [availableAgents, setAvailableAgents, setSearchResults, setPersonMarkets]);
-
-  // Add useEffect to trigger auto-staking when search results change
+  // Auto-staking using service function - run only once per result
   useEffect(() => {
     searchResults.forEach(result => {
-      autoStakeBasedOnTriggers(result);
+      // Create unique key for each agent-result combination that could be auto-staked
+      availableAgents.forEach(agent => {
+        const autoStakeKey = `${agent.id}-${result.id}`;
+        
+        // Skip if already processed this combination
+        if (processedAutoStakes.has(autoStakeKey)) return;
+        
+        // Check if agent has triggers and meets conditions
+        if (!agent.triggers) return;
+        const triggered = agent.triggers.some(trigger => trigger.condition(result));
+        
+        if (triggered && agent.budget >= calculateStake(0.8) && agent.stakedIn !== result.id) {
+          // Mark this combination as processed
+          setProcessedAutoStakes(prev => new Set(prev).add(autoStakeKey));
+          
+          // Process the auto-staking
+          const autoStakingResult = processAutoStaking(
+            result,
+            availableAgents,
+            personMarkets,
+            searchResults
+          );
+          
+          setAvailableAgents(autoStakingResult.updatedAgents);
+          setPersonMarkets(autoStakingResult.updatedMarkets);
+          setSearchResults(autoStakingResult.updatedResults);
+        }
+      });
     });
-  }, [searchResults, autoStakeBasedOnTriggers]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only once on mount to avoid infinite loops
 
   return (
     <div className="flex  bg-gray-50">

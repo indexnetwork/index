@@ -1,25 +1,46 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import * as Tabs from "@radix-ui/react-tabs";
 import { Button } from "@/components/ui/button";
-import { Share2, Plus, Lock } from "lucide-react";
+import { Share2, Plus, Lock, LogOut } from "lucide-react";
 import CreateIndexModal from "@/components/modals/CreateIndexModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
+import LeaveIndexModal from "@/components/modals/LeaveIndexModal";
 import { useIndexes } from "@/contexts/APIContext";
-import { Index } from "@/lib/types";
+import { useAuthService } from "@/services/auth";
+import { Index, User } from "@/lib/types";
 import { MCP } from '@lobehub/icons';
 import ClientLayout from "@/components/ClientLayout";
 
 export default function IndexesPage() {
+  const router = useRouter();
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showIndexModal, setShowIndexModal] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<Index | null>(null);
+  const [isLeaving, setIsLeaving] = useState(false);
   const [indexes, setIndexes] = useState<Index[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const indexesService = useIndexes();
+  const authService = useAuthService();
+
+  // Separate indexes into owned and shared
+  const myIndexes = indexes.filter(index => index.user.id === currentUser?.id);
+  const sharedIndexes = indexes.filter(index => index.user.id !== currentUser?.id);
+
+  const fetchCurrentUser = useCallback(async () => {
+    try {
+      const user = await authService.getCurrentUser();
+      setCurrentUser(user);
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+    }
+  }, [authService]);
 
   const fetchIndexes = useCallback(async () => {
     try {
@@ -33,8 +54,10 @@ export default function IndexesPage() {
   }, [indexesService]);
 
   useEffect(() => {
+    fetchCurrentUser();
     fetchIndexes();
-  }, [fetchIndexes]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array - only run once on mount
 
   const handleCreateIndex = async (indexData: { name: string }) => {
     try {
@@ -46,9 +69,98 @@ export default function IndexesPage() {
       const newIndex = await indexesService.createIndex(createRequest);
       setIndexes(prev => [...prev, newIndex]);
       setShowIndexModal(false);
+      
+      // Redirect to the newly created index detail page
+      router.push(`/indexes/${newIndex.id}`);
     } catch (error) {
       console.error('Error creating index:', error);
     }
+  };
+
+  const confirmLeaveIndex = (index: Index) => {
+    setSelectedIndex(index);
+    setShowLeaveModal(true);
+  };
+
+  const handleLeaveIndex = async () => {
+    if (!selectedIndex || !currentUser) return;
+    
+    try {
+      setIsLeaving(true);
+      await indexesService.leaveIndex(selectedIndex.id, currentUser.id);
+      
+      // Remove the index from the local state
+      setIndexes(prev => prev.filter(idx => idx.id !== selectedIndex.id));
+      setShowLeaveModal(false);
+      setSelectedIndex(null);
+    } catch (error) {
+      console.error('Error leaving index:', error);
+    } finally {
+      setIsLeaving(false);
+    }
+  };
+
+  const renderIndexList = (indexList: Index[], isSharedIndexes: boolean = false) => {
+    if (indexList.length === 0) {
+      if (isSharedIndexes) {
+        return (
+          <div className="py-8 text-center text-gray-500">
+            No indexes found
+          </div>
+        );
+      } else {
+        return null;
+      }
+    }
+
+    return indexList.map((index) => (
+      <div 
+        key={index.id}
+        className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
+        onClick={() => {
+          router.push(`/indexes/${index.id}`);
+        }}
+      >
+        <div className="w-full sm:w-auto mb-2 sm:mb-0">
+          <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{index.title}</h3>
+          <p className="text-gray-500 text-sm font-ibm-plex-mono">
+            Updated {new Date(index.createdAt).toLocaleDateString()} • {index._count?.members || 0} members
+            {index.user.id !== currentUser?.id && (
+              <span className="ml-2 text-gray-400">by {index.user.name}</span>
+            )}
+          </p>
+        </div>
+        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+          {index.user.id === currentUser?.id && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedIndex(index);
+                setShowShareSettingsModal(true);
+              }}
+            >
+              <Share2 className="h-4 w-4 mr-2" />
+              Share
+            </Button>
+          )}
+          {isSharedIndexes && index.user.id !== currentUser?.id && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                confirmLeaveIndex(index);
+              }}
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Leave
+            </Button>
+          )}
+        </div>
+      </div>
+    ));
   };
 
   return (
@@ -63,10 +175,10 @@ export default function IndexesPage() {
           <Tabs.Root defaultValue="my-indexes" className="flex-grow">
             <div className="flex  flex-row items-end justify-between">
             <Tabs.List className="bg-white overflow-x-auto flex text-sm text-black">
-                <Tabs.Trigger value="my-indexes" className="font-ibm-plex-mono cursor-pointer border border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
+                <Tabs.Trigger value="my-indexes" className="font-ibm-plex-mono cursor-pointer border  border-b-0  border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   My indexes
                 </Tabs.Trigger>
-                <Tabs.Trigger value="shared-with-me" className="font-ibm-plex-mono cursor-pointer border border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
+                <Tabs.Trigger value="shared-with-me" className="font-ibm-plex-mono cursor-pointer border  border-b-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   Shared with me
                 </Tabs.Trigger>
               </Tabs.List>
@@ -91,46 +203,19 @@ export default function IndexesPage() {
             </div>
           
             {/* My Indexes Content */}
-            <Tabs.Content value="my-indexes" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
+            <Tabs.Content value="my-indexes" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
               {loading ? (
                 <div className="py-8 text-center text-gray-500">Loading...</div>
               ) : (
                 <>
-                  {/* Other Indexes */}
-                  {indexes.map((index) => (
-                    <div 
-                      key={index.id}
-                      className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
-                      onClick={() => {
-                        window.location.href = `/indexes/${index.id}`;
-                      }}
-                    >
-                      <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                        <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{index.title}</h3>
-                        <p className="text-gray-500 text-sm font-ibm-plex-mono">Updated {new Date(index.createdAt).toLocaleDateString()} • {index._count?.members || 0} members</p>
-                      </div>
-                      <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                                                  onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedIndex(index);
-                          setShowShareSettingsModal(true);
-                        }}
-                        >
-                          <Share2 className="h-4 w-4 mr-2" />
-                          Share
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                  {/* My Indexes */}
+                  {renderIndexList(myIndexes, false)}
 
                   {/* Private Index */}
                   <div 
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-3 sm:px-6 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                     onClick={() => {
-                      console.log("clicked");
+                      router.push('/indexes/private')
                     }}
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
@@ -159,10 +244,12 @@ export default function IndexesPage() {
             </Tabs.Content>
             
             {/* Shared With Me Content */}
-            <Tabs.Content value="shared-with-me" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
-              <div className="py-8 text-center text-gray-500">
-                No indexes shared with you yet
-              </div>
+            <Tabs.Content value="shared-with-me" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
+              {loading ? (
+                <div className="py-8 text-center text-gray-500">Loading...</div>
+              ) : (
+                renderIndexList(sharedIndexes, true)
+              )}
             </Tabs.Content>
           </Tabs.Root>
         </div>
@@ -191,6 +278,13 @@ export default function IndexesPage() {
           }}
         />
       )}
+      <LeaveIndexModal
+        open={showLeaveModal}
+        onOpenChange={setShowLeaveModal}
+        index={selectedIndex}
+        onLeaveIndex={handleLeaveIndex}
+        isLeaving={isLeaving}
+      />
     </ClientLayout>
   );
 } 

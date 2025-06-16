@@ -14,6 +14,7 @@ export interface Index {
   id: string;
   title: string;
   isPublic: boolean;
+  isDiscoverable: boolean;
   createdAt: string;
   updatedAt: string;
   user: {
@@ -56,8 +57,10 @@ export interface SuggestedIntent {
 export interface Intent {
   id: string;
   payload: string;
+  summary?: string | null;
   createdAt: string;
   updatedAt: string;
+  archivedAt?: string | null;
   user: {
     id: string;
     name: string;
@@ -76,16 +79,20 @@ export interface IntentIndex {
   indexIsPublic: boolean;
 }
 
-export interface IntentConnection {
-  id: string;
-  name: string;
-  role: string;
-  avatar: string;
-  connectionRationale: string;
-  backers: {
-    agentId: string;
-    confidence: number;
-  }[];
+export interface IntentStakesByUserResponse {
+  user: {
+    name: string;
+    avatar: string;
+  };
+  totalStake: string;
+  aggregatedSummary: string;
+  agents: Array<{
+    agent: {
+      name: string;
+      avatar: string;
+    };
+    stake: string;
+  }>;
 }
 
 // Agent types
@@ -135,6 +142,9 @@ export interface APIResponse<T> {
   user?: T; // For auth endpoints
   index?: T; // For single index
   intent?: T; // For single intent
+  stakes?: T[]; // For intent stakes
+  stakesByUser?: T;
+  aggregated_reasoning?: string; // For aggregated stake reasonings
   message?: string;
   error?: string;
 }
@@ -148,6 +158,7 @@ export interface CreateIndexRequest {
 export interface UpdateIndexRequest {
   title?: string;
   isPublic?: boolean;
+  isDiscoverable?: boolean;
 }
 
 export interface CreateIntentRequest {

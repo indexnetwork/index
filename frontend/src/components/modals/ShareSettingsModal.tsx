@@ -1,15 +1,17 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
-import { Trash2, Copy, Plus, Globe, Lock } from "lucide-react";
-import { useState } from "react";
+import { Copy, Globe, Lock, Trash2, Search, Plus, Check } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
 import { Input } from "../ui/input";
 import { useIndexes } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
 
-interface ShareLink {
+interface Member {
   id: string;
-  url: string;
-  createdAt: string;
+  name: string;
+  email: string;
+  role: 'Editor' | 'Viewer';
+  avatar?: string;
 }
 
 interface ShareSettingsModalProps {
@@ -54,25 +56,71 @@ const DialogTitle = ({ className, children, ...props }: DialogProps) => (
 );
 
 export default function ShareSettingsModal({ open, onOpenChange, index, onIndexUpdate }: ShareSettingsModalProps) {
-  const [shareLinks, setShareLinks] = useState<ShareLink[]>([
-    { 
-      id: '1', 
-      url: 'http://localhost:3000/share/1',
-      createdAt: new Date().toISOString()
-    }
+  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
+  const [isUpdatingDiscovery, setIsUpdatingDiscovery] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [members, setMembers] = useState<Member[]>([
+    { id: '1', name: 'Alice Smith', email: 'alice@example.com', role: 'Editor' },
+    { id: '2', name: 'Bob Johnson', email: 'bob@example.com', role: 'Viewer' },
   ]);
-  const [isUpdating, setIsUpdating] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
   const indexesService = useIndexes();
+
+  // Mock suggested users - in real app, this would come from an API
+  const suggestedUsers: Member[] = [
+    { id: '3', name: 'Charlie Brown', email: 'charlie@example.com', role: 'Viewer' },
+    { id: '4', name: 'Diana Prince', email: 'diana@example.com', role: 'Viewer' },
+    { id: '5', name: 'Edward Norton', email: 'edward@example.com', role: 'Viewer' },
+    { id: '6', name: 'Fiona Green', email: 'fiona@example.com', role: 'Viewer' },
+  ];
+
+  // Filter suggestions based on search query and exclude existing members
+  const filteredSuggestions = suggestedUsers.filter(user =>
+    !members.find(member => member.id === user.id) &&
+    (user.name.toLowerCase().includes(memberSearchQuery.toLowerCase()) ||
+     user.email.toLowerCase().includes(memberSearchQuery.toLowerCase()))
+  );
+
+  // Handle clicking outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node) &&
+          searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleToggleVisibility = async (isPublic: boolean) => {
     try {
-      setIsUpdating(true);
-      const updatedIndex = await indexesService.updateIndex(index.id, { isPublic });
+      setIsUpdatingVisibility(true);
+      await indexesService.updateIndex(index.id, { isPublic });
+      // Refetch the complete index data to ensure we have all files
+      const updatedIndex = await indexesService.getIndex(index.id);
       onIndexUpdate?.(updatedIndex);
     } catch (error) {
       console.error('Error updating index visibility:', error);
     } finally {
-      setIsUpdating(false);
+      setIsUpdatingVisibility(false);
+    }
+  };
+
+  const handleToggleDiscovery = async (isDiscoverable: boolean) => {
+    try {
+      setIsUpdatingDiscovery(true);
+      await indexesService.updateIndex(index.id, { isDiscoverable });
+      // Refetch the complete index data to ensure we have all files
+      const updatedIndex = await indexesService.getIndex(index.id);
+      onIndexUpdate?.(updatedIndex);
+    } catch (error) {
+      console.error('Error updating index discovery settings:', error);
+    } finally {
+      setIsUpdatingDiscovery(false);
     }
   };
 
@@ -84,18 +132,29 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     }
   };
 
-  const generateNewLink = () => {
-    const newLink: ShareLink = {
-      id: Math.random().toString(36).substring(7),
-      url: `https://index.network/share/${Math.random().toString(36).substring(7)}`,
-      createdAt: new Date().toISOString()
-    };
-    setShareLinks([...shareLinks, newLink]);
+  const handleAddMember = (user: Member) => {
+    setMembers(prev => [...prev, user]);
+    setMemberSearchQuery('');
+    setShowSuggestions(false);
   };
 
-  const removeLink = (id: string) => {
-    setShareLinks(shareLinks.filter(link => link.id !== id));
+  const handleRemoveMember = (memberId: string) => {
+    setMembers(prev => prev.filter(member => member.id !== memberId));
   };
+
+  const handleMemberRoleChange = (memberId: string, newRole: 'Editor' | 'Viewer') => {
+    setMembers(prev => prev.map(member => 
+      member.id === memberId ? { ...member, role: newRole } : member
+    ));
+  };
+
+  const handleSearchInputChange = (value: string) => {
+    setMemberSearchQuery(value);
+    setShowSuggestions(value.length > 0);
+  };
+
+  // Generate a share link when public
+  const shareUrl = `http://localhost:3000/share/${index.id}`;
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -111,17 +170,57 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Visibility</h3>
+                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Discovery</h3>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
-                    {index.isPublic ? (
+                    {index.isDiscoverable ? (
                       <>
-                        <Globe className="h-4 w-4" />
-                        <span>Public</span>
+                        <Search className="h-4 w-4" />
                       </>
                     ) : (
                       <>
                         <Lock className="h-4 w-4" />
-                        <span>Private</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Allow relevant users to use this index for intent matching
+                </p>
+              </div>
+              <div className="flex items-center gap-3 ml-4">
+                {isUpdatingDiscovery && (
+                  <div className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
+                )}
+                <button
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    index.isDiscoverable ? 'bg-blue-600' : 'bg-gray-300'
+                  } ${isUpdatingDiscovery ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  onClick={() => !isUpdatingDiscovery && handleToggleDiscovery(!index.isDiscoverable)}
+                  disabled={isUpdatingDiscovery}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      index.isDiscoverable ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mt-2 mb-2">
+                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Public Link</h3>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    {index.isPublic ? (
+                      <>
+                        <Globe className="h-4 w-4" />
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="h-4 w-4" />
                       </>
                     )}
                   </div>
@@ -134,15 +233,15 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                 </p>
               </div>
               <div className="flex items-center gap-3 ml-4">
-                {isUpdating && (
+                {isUpdatingVisibility && (
                   <div className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
                 )}
                 <button
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                     index.isPublic ? 'bg-blue-600' : 'bg-gray-300'
-                  } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                  onClick={() => !isUpdating && handleToggleVisibility(!index.isPublic)}
-                  disabled={isUpdating}
+                  } ${isUpdatingVisibility ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  onClick={() => !isUpdatingVisibility && handleToggleVisibility(!index.isPublic)}
+                  disabled={isUpdatingVisibility}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -152,79 +251,117 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                 </button>
               </div>
             </div>
-          </div>
 
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-md font-medium font-ibm-plex-mono text-black">Share link</h3>
-              <Button
-                variant="outline"
-                size="lg"
-                className="h-9 px-3"
-                onClick={generateNewLink}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Create Link
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {shareLinks.map((link) => (
-                <div 
-                  key={link.id}
-                  className="flex items-center gap-2"
-                >
-                  
+            {index.isPublic && (
+              <div className="mt-4">
+                <div className="flex items-center gap-2">
                   <Input
                     readOnly
-                    id="name"
-                    value={link.url}
-                    className=" px-4 py-3"
-                    placeholder="Enter index name..."
-                    required
+                    value={shareUrl}
+                    className="px-4 py-3"
+                    placeholder="Share link will appear here..."
                   />
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-10 px-4"
-                    onClick={() => handleCopyLink(link.url)}
+                    onClick={() => handleCopyLink(shareUrl)}
                   >
                     <Copy className="h-4 w-4" />
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-10 px-4 text-red-500 hover:text-red-600"
-                    onClick={() => removeLink(link.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
 
           <div>
-            <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-3">People with access</h3>
-            <div className="space-y-3">
-              {[
-                { name: "Alice Smith", email: "alice@example.com", role: "Editor" },
-                { name: "Bob Johnson", email: "bob@example.com", role: "Viewer" },
-              ].map((viewer, index) => (
+            <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-3">Members</h3>
+            
+            {/* Member picker input */}
+            <div className="relative mb-4">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Plus className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    ref={searchInputRef}
+                    placeholder="Search people by name or email..."
+                    value={memberSearchQuery}
+                    onChange={(e) => handleSearchInputChange(e.target.value)}
+                    onFocus={() => memberSearchQuery && setShowSuggestions(true)}
+                    className="pl-10 pr-4 py-3"
+                  />
+                </div>
+              </div>
+              
+              {/* Suggestions dropdown */}
+              {showSuggestions && filteredSuggestions.length > 0 && (
                 <div
-                  key={index}
-                  className="flex items-center justify-between p-4 bg-gray-50 "
+                  ref={suggestionsRef}
+                  className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
                 >
-                  <div>
-                    <p className="text-xl text-black">{viewer.name}</p>
-                    <p className="text-gray-600">{viewer.email}</p>
+                  {filteredSuggestions.map((user) => (
+                    <button
+                      key={user.id}
+                      onClick={() => handleAddMember(user)}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 text-left"
+                    >
+                      <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
+                        {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{user.name}</p>
+                        <p className="text-xs text-gray-500">{user.email}</p>
+                      </div>
+                      <Check className="h-4 w-4 text-green-600" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              {/* No results message */}
+              {showSuggestions && memberSearchQuery && filteredSuggestions.length === 0 && (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4"
+                >
+                  <p className="text-sm text-gray-500 text-center">No users found matching "{memberSearchQuery}"</p>
+                </div>
+              )}
+            </div>
+            
+            {/* Members list */}
+            <div className="space-y-3">
+              {members.map((member) => (
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
+                      {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-md text-black font-medium">{member.name}</p>
+                      <p className="text-sm text-gray-600">{member.email}</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    {/* Role selector */}
+                    <select
+                      value={member.role}
+                      onChange={(e) => handleMemberRoleChange(member.id, e.target.value as 'Editor' | 'Viewer')}
+                      className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="Viewer">Viewer</option>
+                      <option value="Editor">Editor</option>
+                    </select>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-red-500 hover:text-red-700"
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => handleRemoveMember(member.id)}
                     >
-                      <Trash2 className="h-5 w-5" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>

@@ -105,15 +105,32 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     await api.delete(`/indexes/${indexId}/members/${userId}`);
   },
 
+  // Leave index (remove current user as member)
+  leaveIndex: async (indexId: string, userId: string): Promise<void> => {
+    await api.delete(`/indexes/${indexId}/members/${userId}`);
+  },
+
   // Get suggested intents for an index
-  getSuggestedIntents: async (indexId: string): Promise<{ payload: string; confidence: number }[]> => {
-    const response = await api.get<{ intents: { payload: string; confidence: number }[] }>(`/indexes/${indexId}/suggested_intents`);
-    return response.intents;
+  getSuggestedIntents: async (indexId: string): Promise<{
+    intents: { payload: string; confidence: number }[];
+    fromCache?: boolean;
+    processingTime?: number;
+  }> => {
+    const response = await api.get<{
+      intents: { payload: string; confidence: number }[];
+      fromCache: boolean;
+      processingTime?: number;
+    }>(`/indexes/${indexId}/suggested_intents`);
+    return {
+      intents: response.intents,
+      fromCache: response.fromCache,
+      processingTime: response.processingTime
+    };
   },
 
   // Get intent preview with contextual integrity processing
   getIntentPreview: async (indexId: string, payload: string): Promise<string> => {
-    const response = await api.get<{ payload: string }>(`/indexes/${indexId}/intent_preview?payload=${encodeURIComponent(payload)}`);
+    const response = await api.get<{ payload: string }>(`/indexes/${indexId}/suggested_intents/preview?payload=${encodeURIComponent(payload)}`);
     return response.payload;
   },
 

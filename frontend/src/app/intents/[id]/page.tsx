@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback, use } from "react";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Play, Archive, Pause } from "lucide-react";
+import { ArrowLeft, Play, Archive, Pause, ArchiveRestore, Edit } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { agents } from "@/services/intents";
 import { useIntents } from "@/contexts/APIContext";
-import { Intent, IntentConnection } from "@/lib/types";
+import { Intent, IntentStakesByUserResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
+import EditIntentModal from "@/components/modals/EditIntentModal";
 
 interface IntentDetailPageProps {
   params: Promise<{
@@ -19,54 +19,98 @@ interface IntentDetailPageProps {
 export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const resolvedParams = use(params);
   const [intent, setIntent] = useState<Intent | null>(null);
-  const [connections, setConnections] = useState<IntentConnection[]>([]);
+  const [stakesByUser, setStakesByUser] = useState<IntentStakesByUserResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const [isArchived, setIsArchived] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const intentsService = useIntents();
-  
-  // TODO: Add agent animation state when implementing animation feature
-  // const [activeAgentIndex, setActiveAgentIndex] = useState<number>(-1);
-  // const [isThinking, setIsThinking] = useState(false);
 
   const fetchIntentData = useCallback(async () => {
     try {
-      const [intentData, connectionsData] = await Promise.all([
-        intentsService.getIntent(resolvedParams.id),
-        intentsService.getIntentConnections()
-      ]);
+      const intentData = await intentsService.getIntent(resolvedParams.id);
       setIntent(intentData || null);
-      setConnections(connectionsData);
+      setIsArchived(!!(intentData?.archivedAt));
     } catch (error) {
       console.error('Error fetching intent data:', error);
     } finally {
       setLoading(false);
     }
-  }, [resolvedParams.id, intentsService]);
+  }, [intentsService, resolvedParams.id]);
 
+  const fetchStakes = useCallback(async () => {
+    try {
+      const stakesData = await intentsService.getIntentStakesByUser(resolvedParams.id);
+      setStakesByUser(stakesData);
+    } catch (error) {
+      console.error('Error fetching stakes:', error);
+    }
+  }, [intentsService, resolvedParams.id]);
+
+  // Initial data fetch
   useEffect(() => {
     fetchIntentData();
-  }, [fetchIntentData]);
+    fetchStakes();
+  }, [fetchIntentData, fetchStakes]);
 
-  // TODO: Add agent animation functionality
-  // const startAgentAnimation = (connection: IntentConnection) => {
-  //   setActiveAgentIndex(-1);
-  //   setIsThinking(true);
-  //   
-  //   // Simulate agents speaking one by one
-  //   connection.backers.forEach((_, index) => {
-  //     setTimeout(() => {
-  //       setIsThinking(false);
-  //       setActiveAgentIndex(index);
-  //       setIsThinking(true);
-  //     }, index * 2000); // Each agent takes 2 seconds to "speak"
-  //   });
-  //
-  //   // Reset after all agents have spoken
-  //   setTimeout(() => {
-  //     setIsThinking(false);
-  //     setActiveAgentIndex(-1);
-  //   }, connection.backers.length * 2000);
-  // };
+  // Poll stakes every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isPaused) {
+        fetchStakes();
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [fetchStakes, isPaused]);
+
+  const handleArchiveIntent = useCallback(async () => {
+    if (!intent) return;
+    try {
+      await intentsService.archiveIntent(intent.id);
+      setIsArchived(true);
+      setIntent(prev => prev ? { ...prev, archivedAt: new Date().toISOString() } : null);
+    } catch (error) {
+      console.error('Error archiving intent:', error);
+    }
+  }, [intentsService, intent]);
+
+  const handleUnarchiveIntent = useCallback(async () => {
+    if (!intent) return;
+    try {
+      await intentsService.unarchiveIntent(intent.id);
+      setIsArchived(false);
+      setIntent(prev => prev ? { ...prev, archivedAt: null } : null);
+    } catch (error) {
+      console.error('Error unarchiving intent:', error);
+    }
+  }, [intentsService, intent]);
+
+  const handleEditIntent = useCallback(async (editData: { id: string; payload: string; indexIds: string[] }) => {
+    try {
+      // Update the intent payload
+      await intentsService.updateIntent(editData.id, { payload: editData.payload });
+      
+      // Handle index changes if needed
+      if (intent?.indexes) {
+        const currentIndexIds = intent.indexes.map(idx => idx.indexId);
+        const indexesToAdd = editData.indexIds.filter(id => !currentIndexIds.includes(id));
+        const indexesToRemove = currentIndexIds.filter(id => !editData.indexIds.includes(id));
+        
+        if (indexesToAdd.length > 0) {
+          await intentsService.addIndexesToIntent(editData.id, indexesToAdd);
+        }
+        if (indexesToRemove.length > 0) {
+          await intentsService.removeIndexesFromIntent(editData.id, indexesToRemove);
+        }
+      }
+      
+      // Refresh the intent data
+      await fetchIntentData();
+    } catch (error) {
+      console.error('Error updating intent:', error);
+    }
+  }, [intentsService, intent, fetchIntentData]);
 
   if (loading) {
     return (
@@ -104,20 +148,58 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
           {/* Intent Title and Info */}
           <div className="flex flex-wrap sm:flex-nowrap justify-between items-center">
             <div className="w-full sm:w-auto mb-2 sm:mb-0">
-              <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900">
-                {intent.payload}
-              </h1>
-              <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">Updated {intent.updatedAt} • {connections.length} connections</p>
+              {intent.summary && (
+                <div className="mb-2">
+                  <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900">
+                    {intent.summary}
+                  </h1>
+                </div>
+              )}
+              <div className={intent.summary ? "border-t border-gray-200 pt-2" : ""}>
+                <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">
+                  Updated {intent.updatedAt} • {stakesByUser.length} connections
+                </p>
+              </div>
             </div>
             <div className="flex gap-2 min-w-[90px] sm:min-w-[90px] sm:justify-end">
-              {isPaused ? (
+              {isArchived ? (
                 <>
                   <Button 
                     variant="bordered" 
                     size="sm"
-                    onClick={() => {
-                      // Add archive functionality here
-                    }}
+                    onClick={() => setIsEditModalOpen(true)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Edit className="h-4 w-4" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </div>
+                  </Button>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={handleUnarchiveIntent}
+                  >
+                    <div className="flex items-center gap-2">
+                      <ArchiveRestore className="h-4 w-4" />
+                    </div>
+                  </Button>
+                </>
+              ) : isPaused ? (
+                <>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={() => setIsEditModalOpen(true)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Edit className="h-4 w-4" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </div>
+                  </Button>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={handleArchiveIntent}
                   >
                     <div className="flex items-center gap-2">
                       <Archive className="h-4 w-4" />
@@ -136,24 +218,45 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
                 </>
               ) : (
-                <Button 
-                variant="bordered" 
-                  size="sm"
-                  onClick={() => setIsPaused(true)}
-                  className="relative group hover:bg-red-50 hover:text-red-700"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="relative w-4 h-4">
-                      <div className="relative w-4 h-4 flex mt-0.5 ml-0.5 ">
-                        <div className="absolute inset-0 w-3 h-3 rounded-full bg-[#2EFF0A] group-hover:hidden" />
-                        <div className="absolute inset-0 w-3 h-3 rounded-full bg-[#2EFF0A] animate-ping opacity-100 group-hover:hidden" />
-                      </div>
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Pause className="h-4 w-4" />
+                <>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={() => setIsEditModalOpen(true)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Edit className="h-4 w-4" />
+                      <span className="hidden sm:inline">Edit</span>
+                    </div>
+                  </Button>
+                  <Button 
+                    variant="bordered" 
+                    size="sm"
+                    onClick={handleArchiveIntent}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Archive className="h-4 w-4" />
+                    </div>
+                  </Button>
+                  <Button 
+                  variant="bordered" 
+                    size="sm"
+                    onClick={() => setIsPaused(true)}
+                    className="relative group hover:bg-red-50 hover:text-red-700"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="relative w-4 h-4">
+                        <div className="relative w-4 h-4 flex mt-0.5 ml-0.5 ">
+                          <div className="absolute inset-0 w-3 h-3 rounded-full bg-[#2EFF0A] group-hover:hidden" />
+                          <div className="absolute inset-0 w-3 h-3 rounded-full bg-[#2EFF0A] animate-ping opacity-100 group-hover:hidden" />
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Pause className="h-4 w-4" />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Button>
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -161,85 +264,58 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
         {/* Connection Cards Grid */}
         <div className="grid grid-cols-1 gap-6">
-          {connections.map((connection) => (
-            <div key={connection.id} className="bg-white border border-black border-b-0 border-b-2 p-6">
+          {stakesByUser.map((userStakes) => (
+            <div key={userStakes.user.name} className="bg-white border border-black border-b-0 border-b-2 p-6">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-4">
                   <Image
-                    src={connection.avatar}
-                    alt={connection.name}
+                    src={userStakes.user.avatar}
+                    alt={userStakes.user.name}
                     width={48}
                     height={48}
                     className="rounded-full"
                   />
                   <div>
-                    <h2 className="text-lg font-medium text-gray-900">{connection.name}</h2>
-                    <p className="text-sm text-gray-600">{connection.role}</p>
+                    <h2 className="text-lg font-medium text-gray-900">{userStakes.user.name}</h2>
                   </div>
-                </div>
-                <div className="flex gap-3">
-                  <Button>
-                    Accept Connection
-                  </Button>
-                  <Button variant="outline">
-                    Decline
-                  </Button>
                 </div>
               </div>
 
-              {/* Why this connection matters */}
-              <div className="mb-6 border-b border-gray-200 pb-6">
-                <h3 className="font-medium text-gray-700 mb-3">Why this connection matters</h3>
+              <div className="mb-6">
+                <h3 className="font-medium text-gray-700 mb-3">Why this match matters?</h3>
                 <div className="relative min-h-[100px]">
                   <p className="text-gray-700">
-                    {connection.connectionRationale}
+                    {userStakes.aggregatedSummary}
                   </p>
-                  {/* TODO: Add thinking animation when implementing agent animation feature */}
-                  {/* {isThinking && (
-                    <div className="absolute bottom-0 right-0 flex items-center gap-2 text-gray-500">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">Thinking...</span>
-                    </div>
-                  )} */}
                 </div>
               </div>
 
               <div>
-                <h3 className="font-medium text-gray-700 mb-4">Who's backing this connection</h3>
+                <h3 className="font-medium text-gray-700 mb-4">Who's backing this match</h3>
                 <div className="flex flex-wrap gap-2">
-                  {connection.backers.map((backer, index) => {
-                    const agent = agents.find(a => a.id === backer.agentId);
-                    if (!agent) return null;
-                    
-                    // TODO: Add agent animation state when implementing animation feature
-                    const isActive = false; // index === activeAgentIndex;
-                    const hasSpoken = false; // index < activeAgentIndex;
-                    
-                    return (
-                      <div 
-                        key={index} 
-                        className={`flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full transition-all duration-300 ${
-                          isActive ? 'border-blue-500 shadow-md scale-105' : 
-                          hasSpoken ? 'opacity-100' : 'opacity-50'
-                        }`}
-                      >
-                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors duration-300 ${
-                          isActive ? 'bg-blue-100' : 'bg-gray-100'
-                        }`}>
-                          <Image src={agent.avatar} alt={agent.name} width={16} height={16} />
-                        </div>
-                        <span className="font-medium text-gray-900">{agent.name}</span>
-                        <span className="text-gray-500 text-sm">{agent.role}</span>
-                        <span className="text-gray-400 text-xs">({Math.round(backer.confidence * 100)}%)</span>
+                  {userStakes.agents.map((agent) => (
+                    <div key={agent.agent.name} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
+                      <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gray-100">
+                        <Image src={agent.agent.avatar} alt={agent.agent.name} width={16} height={16} />
                       </div>
-                    );
-                  })}
+                      <span className="font-medium text-gray-900">{agent.agent.name}</span>
+                      <span className="text-gray-400 text-xs">({agent.stake})</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Edit Intent Modal */}
+      <EditIntentModal
+        open={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
+        onSubmit={handleEditIntent}
+        intent={intent}
+      />
     </ClientLayout>
   );
 } 

@@ -20,6 +20,39 @@ export interface MarketAction {
   outcome: 'YES' | 'NO'; // Which outcome to buy/sell
 }
 
+export interface Agent {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ReactNode;
+  color: string;
+  target: string[];
+  budget: number;
+  stakedAmount?: number;
+  position?: 'YES' | 'NO';
+  stakedIn?: string;
+  triggers?: {
+    type: string;
+    condition: (result: SearchResult) => boolean;
+  }[];
+  audience?: string[];
+}
+
+export interface SearchResult {
+  id: string;
+  name: string;
+  title: string;
+  location: string;
+  avatar: string;
+  mutual: string;
+  yesAgents?: Agent[];
+  noAgents?: Agent[];
+  yesStaked?: number;
+  noStaked?: number;
+  totalStaked?: number;
+  netAmount?: number;
+}
+
 // Calculate the cost function for LMSR
 function costFunction(q: number): number {
   return B * Math.log(Math.exp(q / B));
@@ -76,14 +109,56 @@ export function calculateStake(confidence: number, baseStake: number = 20): numb
   return Math.floor(baseStake * confidence);
 }
 
-// Calculate the reward for a successful match
+// Calculate payouts for market resolution (zero-sum)
+export function calculateMarketPayouts(
+  marketState: MarketState, 
+  yesStakes: { agentId: string; stake: number }[],
+  noStakes: { agentId: string; stake: number }[],
+  outcome: 'YES' | 'NO'
+): { agentId: string; payout: number }[] {
+  const totalYesStake = yesStakes.reduce((sum, s) => sum + s.stake, 0);
+  const totalNoStake = noStakes.reduce((sum, s) => sum + s.stake, 0);
+  const totalStake = totalYesStake + totalNoStake;
+  
+  if (totalStake === 0) return [];
+  
+  const payouts: { agentId: string; payout: number }[] = [];
+  
+  if (outcome === 'YES') {
+    // YES holders split all the money proportionally to their stakes
+    yesStakes.forEach(yesStake => {
+      const proportion = yesStake.stake / totalYesStake;
+      const payout = totalStake * proportion;
+      payouts.push({ agentId: yesStake.agentId, payout });
+    });
+    // NO holders get nothing (they lose their stakes)
+    noStakes.forEach(noStake => {
+      payouts.push({ agentId: noStake.agentId, payout: 0 });
+    });
+  } else {
+    // NO holders split all the money proportionally to their stakes
+    noStakes.forEach(noStake => {
+      const proportion = noStake.stake / totalNoStake;
+      const payout = totalStake * proportion;
+      payouts.push({ agentId: noStake.agentId, payout });
+    });
+    // YES holders get nothing (they lose their stakes)
+    yesStakes.forEach(yesStake => {
+      payouts.push({ agentId: yesStake.agentId, payout: 0 });
+    });
+  }
+  
+  return payouts;
+}
+
+// Calculate the reward for a successful match (DEPRECATED - use calculateMarketPayouts instead)
 export function calculateReward(marketState: MarketState, stake: number, outcome: 'YES' | 'NO'): number {
   const successMultiplier = 1.5; // Reward multiplier for successful matches
   const price = outcome === 'YES' ? marketState.price : 1 - marketState.price;
   return stake * successMultiplier * (1 + price);
 }
 
-// Calculate the penalty for an unsuccessful match
+// Calculate the penalty for an unsuccessful match (DEPRECATED - use calculateMarketPayouts instead)
 export function calculatePenalty(marketState: MarketState, stake: number, outcome: 'YES' | 'NO'): number {
   const penaltyMultiplier = 0.5; // Penalty multiplier for unsuccessful matches
   const price = outcome === 'YES' ? marketState.price : 1 - marketState.price;
@@ -101,4 +176,242 @@ export function initializeMarket(intentPairId: string): MarketState {
     yesShares: 0,
     noShares: 0
   };
+}
+
+// New business logic functions
+
+export interface AgentDropResult {
+  updatedAgents: Agent[];
+  updatedMarkets: Record<string, MarketState>;
+  updatedResults: SearchResult[];
+}
+
+export function processAgentDrop(
+  draggedAgent: Agent,
+  resultId: string,
+  outcome: 'YES' | 'NO',
+  availableAgents: Agent[],
+  personMarkets: Record<string, MarketState>,
+  searchResults: SearchResult[]
+): AgentDropResult | null {
+  const agent = availableAgents.find(a => a.id === draggedAgent.id);
+  if (!agent) return null;
+  
+  // Calculate stake based on agent's confidence
+  const stake = calculateStake(0.8);
+  
+  // Only proceed if agent has enough budget
+  if (agent.budget < stake) return null;
+  
+  // Update agent's state
+  const updatedAgent = {
+    ...agent,
+    budget: agent.budget - stake,
+    stakedAmount: stake,
+    position: outcome,
+    stakedIn: resultId
+  };
+  
+  // Update available agents
+  const updatedAgents = availableAgents.map(a => 
+    a.id === agent.id ? updatedAgent : a
+  );
+  
+  // Update the LMSR market for this person
+  const currentMarket = personMarkets[resultId];
+  if (!currentMarket) return null;
+  
+  const action = {
+    type: 'BUY' as const,
+    amount: stake,
+    agentId: agent.id,
+    confidence: 0.8,
+    outcome
+  };
+  
+  const newMarket = updateMarketState(currentMarket, action);
+  const updatedMarkets = { ...personMarkets, [resultId]: newMarket };
+  
+  // Update search results
+  const newResults = searchResults.map(result => {
+    if (result.id === resultId) {
+      const yesAgents = outcome === 'YES' 
+        ? [...(result.yesAgents || []), updatedAgent]
+        : (result.yesAgents || []);
+      const noAgents = outcome === 'NO'
+        ? [...(result.noAgents || []), updatedAgent]
+        : (result.noAgents || []);
+      const yesStaked = yesAgents.reduce((sum, a) => sum + (a.stakedAmount || 0), 0);
+      const noStaked = noAgents.reduce((sum, a) => sum + (a.stakedAmount || 0), 0);
+      const totalStaked = yesStaked + noStaked;
+      const netAmount = yesStaked - noStaked;
+      
+      return {
+        ...result,
+        yesAgents,
+        noAgents,
+        yesStaked,
+        noStaked,
+        totalStaked,
+        netAmount
+      };
+    }
+    return result;
+  });
+  
+  // Sort by net amount (YES - NO)
+  const updatedResults = sortSearchResults(newResults);
+  
+  return {
+    updatedAgents,
+    updatedMarkets,
+    updatedResults
+  };
+}
+
+export interface AutoStakingResult {
+  updatedAgents: Agent[];
+  updatedMarkets: Record<string, MarketState>;
+  updatedResults: SearchResult[];
+}
+
+export function processAutoStaking(
+  result: SearchResult,
+  availableAgents: Agent[],
+  personMarkets: Record<string, MarketState>,
+  searchResults: SearchResult[]
+): AutoStakingResult {
+  let updatedAgents = [...availableAgents];
+  let updatedMarkets = { ...personMarkets };
+  let updatedResults = [...searchResults];
+  
+  availableAgents.forEach(agent => {
+    if (!agent.triggers) return;
+    
+    // Check if any trigger conditions are met
+    const triggered = agent.triggers.some(trigger => trigger.condition(result));
+    
+    if (triggered) {
+      // Calculate stake based on agent's confidence
+      const stake = calculateStake(0.8);
+      
+      // Only proceed if agent has enough budget and not already staked in this result
+      if (agent.budget >= stake && agent.stakedIn !== result.id) {
+        // Update agent's state
+        const updatedAgent: Agent = {
+          ...agent,
+          budget: agent.budget - stake,
+          stakedAmount: stake,
+          position: 'YES' as const,
+          stakedIn: result.id
+        };
+        
+        // Update available agents
+        updatedAgents = updatedAgents.map(a => 
+          a.id === agent.id ? updatedAgent : a
+        );
+        
+        // Update the LMSR market for this person
+        const currentMarket = updatedMarkets[result.id];
+        if (currentMarket) {
+          const action = {
+            type: 'BUY' as const,
+            amount: stake,
+            agentId: agent.id,
+            confidence: 0.8,
+            outcome: 'YES' as const
+          };
+          
+          const newMarket = updateMarketState(currentMarket, action);
+          updatedMarkets = { ...updatedMarkets, [result.id]: newMarket };
+        }
+        
+        // Update search results
+        updatedResults = updatedResults.map(r => {
+          if (r.id === result.id) {
+            const yesAgents = [...(r.yesAgents || []), updatedAgent];
+            const yesStaked = yesAgents.reduce((sum, a) => sum + (a.stakedAmount || 0), 0);
+            const noStaked = (r.noStaked || 0);
+            const totalStaked = yesStaked + noStaked;
+            const netAmount = yesStaked - noStaked;
+            
+            return {
+              ...r,
+              yesAgents,
+              yesStaked,
+              totalStaked,
+              netAmount
+            };
+          }
+          return r;
+        });
+      }
+    }
+  });
+  
+  // Sort results after auto-staking
+  updatedResults = sortSearchResults(updatedResults);
+  
+  return {
+    updatedAgents,
+    updatedMarkets,
+    updatedResults
+  };
+}
+
+export interface MarketResolutionResult {
+  updatedAgents: Agent[];
+}
+
+export function processMarketResolution(
+  personId: string,
+  personMarkets: Record<string, MarketState>,
+  searchResults: SearchResult[],
+  availableAgents: Agent[]
+): MarketResolutionResult | null {
+  const market = personMarkets[personId];
+  if (!market) return null;
+  
+  // Get current stakes from search results
+  const result = searchResults.find(r => r.id === personId);
+  if (!result) return null;
+  
+  const yesStakes = (result.yesAgents || []).map(agent => ({
+    agentId: agent.id,
+    stake: agent.stakedAmount || 0
+  }));
+  
+  const noStakes = (result.noAgents || []).map(agent => ({
+    agentId: agent.id,
+    stake: agent.stakedAmount || 0
+  }));
+  
+  // Calculate zero-sum payouts (assuming connection = YES outcome)
+  const payouts = calculateMarketPayouts(market, yesStakes, noStakes, 'YES');
+  
+  // Update agent budgets based on payouts
+  const updatedAgents = availableAgents.map(agent => {
+    const payout = payouts.find(p => p.agentId === agent.id);
+    if (payout) {
+      // Agent gets their payout (which could be 0 if they lost)
+      return { ...agent, budget: agent.budget + payout.payout };
+    }
+    return agent;
+  });
+  
+  return {
+    updatedAgents
+  };
+}
+
+export function sortSearchResults(results: SearchResult[]): SearchResult[] {
+  return results.sort((a, b) => (b.netAmount || 0) - (a.netAmount || 0));
+}
+
+export function initializeMarketsForResults(results: SearchResult[]): Record<string, MarketState> {
+  const markets: Record<string, MarketState> = {};
+  results.forEach(result => {
+    markets[result.id] = initializeMarket(result.id);
+  });
+  return markets;
 } 

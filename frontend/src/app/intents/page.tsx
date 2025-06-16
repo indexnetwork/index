@@ -15,19 +15,18 @@ export default function IntentsPage() {
   const [showIntentModal, setShowIntentModal] = useState(false);
   const [activeIntents, setActiveIntents] = useState<Intent[]>([]);
   const [archivedIntents, setArchivedIntents] = useState<Intent[]>([]);
-  const [suggestedIntents, setSuggestedIntents] = useState<Intent[]>([]);
   const [loading, setLoading] = useState(true);
   const intentsService = useIntents();
 
   const fetchIntents = useCallback(async () => {
     try {
-      const response = await intentsService.getIntents();
-      const intents = response.intents || [];
-      // For now, we'll use the same data for all tabs
-      // In real implementation, you'd filter by status
-      setActiveIntents(intents);
-      setArchivedIntents(intents);
-      setSuggestedIntents(intents);
+      const [activeResponse, archivedResponse] = await Promise.all([
+        intentsService.getIntents(1, 50, false), // Active intents
+        intentsService.getIntents(1, 50, true)   // Archived intents
+      ]);
+      
+      setActiveIntents(activeResponse.intents || []);
+      setArchivedIntents(archivedResponse.intents || []);
     } catch (error) {
       console.error('Error fetching intents:', error);
     } finally {
@@ -59,6 +58,34 @@ export default function IntentsPage() {
     }
   }, [intentsService, router]);
 
+  const handleArchiveIntent = useCallback(async (intentId: string) => {
+    try {
+      await intentsService.archiveIntent(intentId);
+      // Move intent from active to archived
+      const intentToArchive = activeIntents.find(intent => intent.id === intentId);
+      if (intentToArchive) {
+        setActiveIntents(prev => prev.filter(intent => intent.id !== intentId));
+        setArchivedIntents(prev => [...prev, intentToArchive]);
+      }
+    } catch (error) {
+      console.error('Error archiving intent:', error);
+    }
+  }, [intentsService, activeIntents]);
+
+  const handleUnarchiveIntent = useCallback(async (intentId: string) => {
+    try {
+      await intentsService.unarchiveIntent(intentId);
+      // Move intent from archived to active
+      const intentToUnarchive = archivedIntents.find(intent => intent.id === intentId);
+      if (intentToUnarchive) {
+        setArchivedIntents(prev => prev.filter(intent => intent.id !== intentId));
+        setActiveIntents(prev => [...prev, intentToUnarchive]);
+      }
+    } catch (error) {
+      console.error('Error unarchiving intent:', error);
+    }
+  }, [intentsService, archivedIntents]);
+
   return (
     <ClientLayout>
       <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
@@ -70,14 +97,11 @@ export default function IntentsPage() {
           <Tabs.Root defaultValue="my-intents" className="flex-grow">
             <div className="flex flex-row items-end justify-between">
               <Tabs.List className="bg-white overflow-x-auto flex text-sm text-black">
-                <Tabs.Trigger value="my-intents"  className="font-ibm-plex-mono cursor-pointer border border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
+                <Tabs.Trigger value="my-intents"  className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   Active
                 </Tabs.Trigger>
-                <Tabs.Trigger value="archived"  className="font-ibm-plex-mono cursor-pointer border border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
+                <Tabs.Trigger value="archived"  className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
                   Archived
-                </Tabs.Trigger>
-                <Tabs.Trigger value="suggested"  className="font-ibm-plex-mono cursor-pointer border border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                  Suggested
                 </Tabs.Trigger>
               </Tabs.List>
               
@@ -94,7 +118,7 @@ export default function IntentsPage() {
             </div>
 
             {/* My Intents Content */}
-            <Tabs.Content value="my-intents" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
+            <Tabs.Content value="my-intents" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
               {loading ? (
                 <div className="py-8 text-center text-gray-500">Loading...</div>
               ) : activeIntents.length === 0 ? (
@@ -107,7 +131,9 @@ export default function IntentsPage() {
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.payload.substring(0, 100)}...</h3>
+                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">
+                        {intent.summary || intent.payload.substring(0, 100) + '...'}
+                      </h3>
                       <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {new Date(intent.updatedAt).toLocaleDateString()} • {intent._count?.indexes} indexes</p>
                     </div>
                     <Button 
@@ -115,10 +141,10 @@ export default function IntentsPage() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Add manage functionality here
+                        handleArchiveIntent(intent.id);
                       }}
                     >
-                      Manage
+                      Archive
                     </Button>
                   </div>
                 ))
@@ -126,7 +152,7 @@ export default function IntentsPage() {
             </Tabs.Content>
             
             {/* Archived Content */}
-            <Tabs.Content value="archived" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
+            <Tabs.Content value="archived" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
               {loading ? (
                 <div className="py-8 text-center text-gray-500">Loading...</div>
               ) : archivedIntents.length === 0 ? (
@@ -139,7 +165,9 @@ export default function IntentsPage() {
                     className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
                   >
                     <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.payload.substring(0, 100)}...</h3>
+                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">
+                        {intent.summary || intent.payload.substring(0, 100) + '...'}
+                      </h3>
                       <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {new Date(intent.updatedAt).toLocaleDateString()} • {intent._count?.indexes || 0} indexes</p>
                     </div>
                     <Button 
@@ -147,10 +175,10 @@ export default function IntentsPage() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Add manage functionality here
+                        handleUnarchiveIntent(intent.id);
                       }}
                     >
-                      Manage
+                      Unarchive
                     </Button>
                   </div>
                 ))
@@ -158,34 +186,6 @@ export default function IntentsPage() {
             </Tabs.Content>
 
             {/* Suggested Content */}
-            <Tabs.Content value="suggested" className="p-0 mt-0 bg-white border-b-2 border-gray-800">
-              {loading ? (
-                <div className="py-8 text-center text-gray-500">Loading...</div>
-              ) : suggestedIntents.length === 0 ? (
-                <div className="py-8 text-center text-gray-500">No suggested intents</div>
-              ) : (
-                suggestedIntents.map((intent) => (
-                  <div 
-                    key={intent.id}
-                    className="flex flex-wrap sm:flex-nowrap justify-between items-center py-4 px-2 sm:px-4 cursor-pointer hover:bg-gray-50 transition-colors border-t border-gray-200 first:border-t-0"
-                  >
-                    <div className="w-full sm:w-auto mb-2 sm:mb-0">
-                      <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{intent.payload.substring(0, 100)}...</h3>
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        // Add functionality here
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                ))
-              )}
-            </Tabs.Content>
           </Tabs.Root>
         </div>
       </div>

@@ -8,7 +8,9 @@ import db from '../lib/db';
 import { files, indexes, users } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, SQL } from 'drizzle-orm';
-import { summarizeAndSaveFile, isFileSupported } from '../agents/file_summarizer';
+import { summarizeAndSaveFile, isFileSupported } from '../agents/core/file_summarizer';
+import { invalidateIndexCache } from './suggestions';
+import { checkIndexAccess } from '../lib/index-access';
 
 // Extend the Request interface to include generatedFileId
 declare global {
@@ -260,18 +262,9 @@ router.post('/',
 
       const { indexId } = req.params;
 
-      // Check if index exists and user has access
-      const index = await db.select({ id: indexes.id, userId: indexes.userId })
-        .from(indexes)
-        .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
-        .limit(1);
-
-      if (index.length === 0) {
-        return res.status(404).json({ error: 'Index not found' });
-      }
-
-      if (index[0].userId !== req.user!.id) {
-        return res.status(403).json({ error: 'Access denied' });
+      const ownershipCheck = await checkIndexAccess(indexId, req.user!.id);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
       }
 
       const newFile = await db.insert(files).values({
@@ -287,6 +280,9 @@ router.post('/',
         type: files.type,
         createdAt: files.createdAt
       });
+
+      // Invalidate suggestions cache since file count changed
+      invalidateIndexCache(indexId);
 
       // Generate summary in background if file type is supported
       const fileId = req.generatedFileId!;
@@ -334,7 +330,7 @@ router.post('/',
   }
 );
 
-// Delete file (soft delete) within an index
+// Delete file (soft delete + physical file deletion) within an index
 router.delete('/:fileId',
   authenticatePrivy,
   [
@@ -353,6 +349,7 @@ router.delete('/:fileId',
       // Check if file exists and user has access
       const file = await db.select({
         id: files.id,
+        name: files.name,
         userId: indexes.userId
       }).from(files)
         .innerJoin(indexes, eq(files.indexId, indexes.id))
@@ -372,12 +369,43 @@ router.delete('/:fileId',
         return res.status(403).json({ error: 'Access denied' });
       }
 
+      // Soft delete in database first
       await db.update(files)
         .set({ 
           deletedAt: new Date(),
           updatedAt: new Date()
         })
         .where(eq(files.id, fileId));
+
+      // Delete physical files from filesystem
+      const indexUploadDir = path.join(baseUploadDir, indexId);
+      
+      try {
+        // Find and delete the actual file (we need to find it by fileId since we don't know the extension)
+        const filesInDir = fs.existsSync(indexUploadDir) ? fs.readdirSync(indexUploadDir) : [];
+        const fileToDelete = filesInDir.find(filename => filename.startsWith(fileId + '.'));
+        
+        if (fileToDelete) {
+          const filePath = path.join(indexUploadDir, fileToDelete);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+            console.log(`🗑️ Deleted file: ${filePath}`);
+          }
+        }
+
+        // Delete the summary file if it exists
+        const summaryPath = path.join(indexUploadDir, `${fileId}.summary`);
+        if (fs.existsSync(summaryPath)) {
+          fs.unlinkSync(summaryPath);
+          console.log(`🗑️ Deleted summary: ${summaryPath}`);
+        }
+      } catch (fsError) {
+        console.error(`⚠️ Failed to delete physical files for ${fileId}:`, fsError);
+        // Don't fail the request if file system deletion fails - the soft delete already succeeded
+      }
+
+      // Invalidate suggestions cache since file count changed
+      invalidateIndexCache(indexId);
 
       return res.json({ message: 'File deleted successfully' });
     } catch (error) {
