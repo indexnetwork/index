@@ -540,14 +540,13 @@ router.get('/:id/stakes/by-user',
               avatar: stake.userAvatar
             },
             totalStake: BigInt(0),
-            aggregatedSummary: [],
+            aggregatedSummary: new Set(),
             agents: {}
           };
         }
-
         acc[userName].totalStake += stake.stake;
         if (stake.reasoning) {
-          acc[userName].aggregatedSummary.push(stake.reasoning);
+          acc[userName].aggregatedSummary.add(stake.reasoning);
         }
 
         const agentName = stake.agentName;
@@ -570,7 +569,7 @@ router.get('/:id/stakes/by-user',
         .map(user => ({
           user: user.user,
           totalStake: user.totalStake.toString(),
-          aggregatedSummary: user.aggregatedSummary.join(' '),
+          aggregatedSummary: Array.from(user.aggregatedSummary).join(' '),
           agents: Object.values(user.agents).map((agent: any) => ({
             agent: agent.agent,
             stake: agent.stake.toString()

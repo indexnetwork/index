@@ -278,13 +278,12 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                   />
                   <div>
                     <h2 className="text-lg font-medium text-gray-900">{userStakes.user.name}</h2>
-                    <p className="text-sm text-gray-600">Total Stake: {userStakes.totalStake}%</p>
                   </div>
                 </div>
               </div>
 
               <div className="mb-6">
-                <h3 className="font-medium text-gray-700 mb-3">Summary</h3>
+                <h3 className="font-medium text-gray-700 mb-3">Why this match matters?</h3>
                 <div className="relative min-h-[100px]">
                   <p className="text-gray-700">
                     {userStakes.aggregatedSummary}
@@ -293,7 +292,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
               </div>
 
               <div>
-                <h3 className="font-medium text-gray-700 mb-4">Agent Stakes</h3>
+                <h3 className="font-medium text-gray-700 mb-4">Who's backing this match</h3>
                 <div className="flex flex-wrap gap-2">
                   {userStakes.agents.map((agent) => (
                     <div key={agent.agent.name} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
@@ -301,7 +300,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                         <Image src={agent.agent.avatar} alt={agent.agent.name} width={16} height={16} />
                       </div>
                       <span className="font-medium text-gray-900">{agent.agent.name}</span>
-                      <span className="text-gray-400 text-xs">({agent.stake}%)</span>
+                      <span className="text-gray-400 text-xs">({agent.stake})</span>
                     </div>
                   ))}
                 </div>
