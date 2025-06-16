@@ -1589,7 +1589,7 @@ export default function IntegratePage() {
       </div>
 
       {/* Bottom spacing for sidebar navigation */}
-      <div className="h-48"></div>
+      <div className="h-64"></div>
       
       {/* Configure MCP Modal */}
       <ConfigureModal 
