@@ -28,6 +28,219 @@ interface ComponentConfig {
   }[];
 }
 
+interface ConversationalConfig {
+  id: string;
+  name: string;
+  description: string;
+  previewImage: string;
+  caseStudies: {
+    title: string;
+    description: string;
+    link: string;
+  }[];
+  examples: {
+    title: string;
+    description: string;
+    code: string;
+    preview?: React.ReactNode;
+  }[];
+}
+
+const conversationalIntegrations: ConversationalConfig[] = [
+  {
+    id: "matchmakeragent",
+    name: "Matchmaker Agent",
+    description: "AI-powered matchmaking agent that provides intelligent match suggestions and facilitates connections.",
+    previewImage: "/integrate/agent.gif",
+    caseStudies: [
+      {
+        title: "Professional Network",
+        description: "LinkedIn's AI matchmaker for business partnerships",
+        link: "#case-study-linkedin"
+      },
+      {
+        title: "Event Networking",
+        description: "Conference platforms using MatchmakerAgent for attendee connections",
+        link: "#case-study-events"
+      }
+    ],
+    examples: [
+      {
+        title: "Intent Inferring",
+        description: "Automatically infer intents from Slack conversations in the background",
+        code: `import { IndexSDK } from '@index/sdk';
+import { WebClient } from '@slack/web-api';
+
+// Initialize Slack client and Index SDK
+const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
+const index = new IndexSDK({
+  apiKey: process.env.INDEX_API_KEY
+});
+
+// Background job to monitor channels for collaboration intents
+async function monitorSlackForIntents() {
+  const channels = ['#general', '#collaboration', '#projects'];
+  
+  for (const channel of channels) {
+    const result = await slack.conversations.history({
+      channel: channel,
+      limit: 50
+    });
+    
+    for (const message of result.messages) {
+      // Use AI to detect collaboration intents
+      const hasIntent = await detectCollaborationIntent(message.text);
+      
+      if (hasIntent) {
+        await index.intents.create({
+          payload: message.text,
+          userId: message.user,
+          status: 'active',
+          source: 'slack',
+          channel: channel
+        });
+      }
+    }
+  }
+}
+
+async function detectCollaborationIntent(text) {
+  // Keywords that suggest collaboration intent
+  const intentKeywords = [
+    'looking for', 'need help', 'seeking', 'collaborate',
+    'partner', 'work together', 'join forces', 'team up'
+  ];
+  
+  return intentKeywords.some(keyword => 
+    text.toLowerCase().includes(keyword)
+  );
+}
+
+// Run every 15 minutes
+setInterval(monitorSlackForIntents, 15 * 60 * 1000);`
+      },
+      {
+        title: "Offering Connections",
+        description: "Proactively suggest matches and facilitate connections between users",
+        code: `import { IndexSDK } from '@index/sdk';
+import { WebClient } from '@slack/web-api';
+
+const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
+const index = new IndexSDK({
+  apiKey: process.env.INDEX_API_KEY
+});
+
+// Find and offer connections based on matching intents
+async function offerConnections() {
+  // Get all active intents
+  const intents = await index.intents.list({
+    status: 'active',
+    limit: 100
+  });
+  
+  // Find potential matches
+  for (const intent of intents) {
+    const matches = await index.intents.findMatches(intent.id, {
+      limit: 3,
+      confidence: 0.7
+    });
+    
+    if (matches.length > 0) {
+      await sendConnectionOffer(intent, matches);
+    }
+  }
+}
+
+async function sendConnectionOffer(intent, matches) {
+  const user = await index.users.get(intent.userId);
+  
+  // Create connection offer message
+  const matchText = matches.map((match, i) => 
+    \`\${i + 1}. <@\${match.userId}> - "\${match.payload.substring(0, 100)}..."\`
+  ).join('\\n');
+  
+  const message = \`🤝 **Connection Opportunity**
+  
+Hey <@\${user.id}>! I found some potential collaborators for your intent:
+"\${intent.payload.substring(0, 100)}..."
+
+**Suggested Matches:**
+\${matchText}
+
+Would you like me to facilitate an introduction? React with ✅ to connect!\`;
+
+  // Send DM to user
+  const dmChannel = await slack.conversations.open({
+    users: user.slackId
+  });
+  
+  await slack.chat.postMessage({
+    channel: dmChannel.channel.id,
+    text: message,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: message
+        }
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: {
+              type: 'plain_text',
+              text: '✅ Connect Me'
+            },
+            action_id: 'connect_users',
+            value: JSON.stringify({
+              intentId: intent.id,
+              matchIds: matches.map(m => m.id)
+            })
+          },
+          {
+            type: 'button',
+            text: {
+              type: 'plain_text',
+              text: '❌ Not Now'
+            },
+            action_id: 'skip_connection'
+          }
+        ]
+      }
+    ]
+  });
+}
+
+// Handle button interactions
+slack.action('connect_users', async ({ ack, body, client }) => {
+  await ack();
+  
+  const { intentId, matchIds } = JSON.parse(body.actions[0].value);
+  
+  // Create intent pairs for connections
+  for (const matchId of matchIds) {
+    await index.intentPairs.create({
+      intentIds: [intentId, matchId],
+      event: 'REQUEST'
+    });
+  }
+  
+  await client.chat.postMessage({
+    channel: body.channel.id,
+    text: '🎉 Great! I\'ve initiated the connections. The other users will be notified!'
+  });
+});
+
+// Run connection matching every hour
+setInterval(offerConnections, 60 * 60 * 1000);`
+      }
+    ]
+  }
+];
+
 const components: ComponentConfig[] = [
   {
     id: "intentform",
@@ -48,41 +261,14 @@ const components: ComponentConfig[] = [
     ],
     examples: [
       {
-        title: "Basic Intent Form",
-        description: "Simple form for creating intents",
+        title: "Usage",
+        description: "Basic IntentForm component with core attributes",
         code: `import { IntentForm } from '@index/react';
 
 <IntentForm 
-  userId="user-123"
-  onSubmit={(intent) => console.log('Intent created:', intent)}
-/>`
-      },
-      {
-        title: "Form with Index Association",
-        description: "Associate intent with a specific index",
-        code: `import { IntentForm } from '@index/react';
-
-<IntentForm 
-  userId="user-123"
+  session={session}
   indexId="index-abc"
   onSubmit={(intent) => handleIntentSubmit(intent)}
-  onCancel={() => setShowForm(false)}
-/>`
-      },
-      {
-        title: "Advanced Configuration",
-        description: "Form with advanced options and custom theme",
-        code: `import { IntentForm } from '@index/react';
-
-<IntentForm 
-  userId="user-123"
-  onSubmit={(intent) => handleIntentSubmit(intent)}
-  showAdvanced={true}
-  theme="dark"
-  initialValues={{
-    title: "AI Research Collaboration",
-    category: "research"
-  }}
 />`
       }
     ]
@@ -106,40 +292,14 @@ const components: ComponentConfig[] = [
     ],
     examples: [
       {
-        title: "User-to-User Vibe Check",
-        description: "Check compatibility between two users",
+        title: "Usage",
+        description: "Basic VibeCheck component with core attributes",
         code: `import { VibeCheck } from '@index/react';
 
 <VibeCheck 
-  sourceId="user-123"
-  targetId="user-456"
-  type="user-user"
-/>`
-      },
-      {
-        title: "User-to-Intent Compatibility",
-        description: "Check if a user matches an intent",
-        code: `import { VibeCheck } from '@index/react';
-
-<VibeCheck 
-  sourceId="user-123"
-  targetId="intent-ai-research"
-  type="user-intent"
-  onVibeResult={(result) => console.log('Compatibility:', result)}
-/>`
-      },
-      {
-        title: "Full Configuration",
-        description: "Complete example with all available options",
-        code: `import { VibeCheck } from '@index/react';
-
-<VibeCheck 
-  sourceId="user-123"
-  targetId="intent-ai-research"
-  type="user-intent"
-  showDetails={true}
-  animated={true}
-  onVibeResult={(result) => handleVibeResult(result)}
+  session={session}
+  indexId="index-abc"
+  onResult={(result) => console.log('Vibe result:', result)}
 />`
       }
     ]
@@ -163,162 +323,46 @@ const components: ComponentConfig[] = [
     ],
     examples: [
       {
-        title: "Basic Usage",
-        description: "Simple match list for a specific viewer",
-        code: `import { MatchList } from '@index/react';
-
-<MatchList viewer="user-123" />`
-      },
-      {
-        title: "Filter by Index",
-        description: "Show matches only within specific indexes",
+        title: "Usage",
+        description: "Basic MatchList component with core attributes",
         code: `import { MatchList } from '@index/react';
 
 <MatchList 
-  viewer="user-123"
-  indexes={["index-abc", "index-def"]}
+  session={session}
+  indexId="index-abc"
   limit={10}
-/>`
-      },
-      {
-        title: "With Match Handlers",
-        description: "Handle match acceptance and decline events",
-        code: `import { MatchList } from '@index/react';
-
-<MatchList 
-  viewer="user-123"
-  users={["user-456", "user-789"]}
-  intents={["intent-ai", "intent-blockchain"]}
-  sort="stake"
-  onMatchAccept={(match) => handleAccept(match)}
-  onMatchDecline={(match) => handleDecline(match)}
-/>`
-      },
-      {
-        title: "Full Configuration",
-        description: "Complete example with all available options",
-        code: `import { MatchList } from '@index/react';
-
-<MatchList 
-  viewer="user-123"
-  users={["user-456", "user-789"]}
-  intents={["intent-ai", "intent-blockchain"]}
-  indexes={["index-abc", "index-def"]}
-  limit={15}
   sort="recency"
-  onMatchAccept={(match) => handleAccept(match)}
-  onMatchDecline={(match) => handleDecline(match)}
 />`
       }
     ]
   },
-  {
-    id: "matchmakeragent",
-    name: "MatchmakerAgent",
-    description: "AI-powered matchmaking agent that provides intelligent match suggestions and facilitates connections.",
-    previewImage: "/integrate/agent.gif",
-    caseStudies: [
-      {
-        title: "Professional Network",
-        description: "LinkedIn's AI matchmaker for business partnerships",
-        link: "#case-study-linkedin"
-      },
-      {
-        title: "Event Networking",
-        description: "Conference platforms using MatchmakerAgent for attendee connections",
-        link: "#case-study-events"
-      }
-    ],
-    examples: [
-      {
-        title: "Basic Matchmaker",
-        description: "Simple AI matchmaker for a user",
-        code: `import { MatchmakerAgent } from '@index/react';
 
-<MatchmakerAgent 
-  userId="user-123"
-/>`
-      },
-      {
-        title: "Full Configuration",
-        description: "Complete agent setup with all options",
-        code: `import { MatchmakerAgent } from '@index/react';
-
-<MatchmakerAgent 
-  userId="user-123"
-  agentPersonality="enthusiastic"
-  maxSuggestions={10}
-  autoRefresh={true}
-  focusAreas={["technology", "startups", "research"]}
-  onMatchSuggestion={(suggestion) => handleSuggestion(suggestion)}
-  onConversationStart={(matchId) => openChat(matchId)}
-  showReasoningProcess={false}
-/>`
-      }
-    ]
-  },
   {
     id: "radar",
     name: "Radar",
-    description: "Privacy-aware input component with configurable anonymization levels and data protection settings.",
+    description: "Interactive radar component for exploring connections and patterns within an index network.",
     previewImage: "/integrate/radar.gif",
     caseStudies: [
       {
-        title: "Healthcare Platform",
-        description: "Medical research platform using PrivacyInput for patient data collection",
-        link: "#case-study-healthcare"
+        title: "Research Network Visualization",
+        description: "Academic network using Radar for collaboration discovery",
+        link: "#case-study-research"
       },
       {
-        title: "Financial Services",
-        description: "Banking app implementing PrivacyInput for sensitive information handling",
-        link: "#case-study-finance"
+        title: "Startup Ecosystem Mapping",
+        description: "Venture capital firm implementing Radar for portfolio insights",
+        link: "#case-study-ventures"
       }
     ],
     examples: [
       {
-        title: "Basic Privacy Input",
-        description: "Simple privacy-aware input field",
-        code: `import { PrivacyInput } from '@index/react';
+        title: "Usage",
+        description: "Basic Radar component with core attributes",
+        code: `import { Radar } from '@index/react';
 
-<PrivacyInput 
-  placeholder="Enter sensitive information"
-  privacyLevel="medium"
-  onValueChange={(value, metadata) => console.log('Value:', value)}
-/>`
-      },
-      {
-        title: "Medical Data Input",
-        description: "Input for healthcare data with HIPAA compliance",
-        code: `import { PrivacyInput } from '@index/react';
-
-<PrivacyInput 
-  type="medical"
-  placeholder="Patient information"
-  privacyLevel="high"
-  anonymization={true}
-  encryption={true}
-  onValueChange={(value, metadata) => handleMedicalData(value, metadata)}
-  complianceStandards={["HIPAA", "GDPR"]}
-/>`
-      },
-      {
-        title: "Full Configuration",
-        description: "Complete privacy input with all available options",
-        code: `import { PrivacyInput } from '@index/react';
-
-<PrivacyInput 
-  type="personal"
-  placeholder="Enter personal details"
-  privacyLevel="maximum"
-  anonymization={true}
-  encryption={true}
-  dataRetention="30days"
-  auditTrail={true}
-  onValueChange={(value, metadata) => handlePrivateData(value, metadata)}
-  onPrivacyLevelChange={(level) => updatePrivacySettings(level)}
-  complianceStandards={["GDPR", "CCPA", "SOX"]}
-  showPrivacyIndicator={true}
-  allowUserControl={true}
+<Radar 
+  session={session}
+  indexId="index-abc"
 />`
       }
     ]
@@ -737,19 +781,32 @@ export default function IntegratePage() {
     intentform: 'overview',
     vibecheck: 'overview',
     matchlist: 'overview',
-    matchmakeragent: 'overview',
     radar: 'overview'
+  });
+  const [activeConversationalExamples, setActiveConversationalExamples] = useState<Record<string, number | 'overview'>>({
+    matchmakeragent: 'overview',
+    slack: 'overview',
+    discord: 'overview',
+    telegram: 'overview'
   });
   const [activeSection, setActiveSection] = useState<string>('installation');
   const [expandedApiSections, setExpandedApiSections] = useState<Record<string, boolean>>({});
   const [expandedEndpoints, setExpandedEndpoints] = useState<Record<string, boolean>>({});
   const [activeEndpointTabs, setActiveEndpointTabs] = useState<Record<string, 'params' | 'example'>>({});
+  const [activeSessionTab, setActiveSessionTab] = useState<'privy' | 'siwe'>('privy');
   const [showConfigDialog, setShowConfigDialog] = useState(false);
 
   const setActiveExample = (componentId: string, exampleIndex: number | 'overview') => {
     setActiveExamples(prev => ({
       ...prev,
       [componentId]: exampleIndex
+    }));
+  };
+
+  const setActiveConversationalExample = (integrationId: string, exampleIndex: number | 'overview') => {
+    setActiveConversationalExamples(prev => ({
+      ...prev,
+      [integrationId]: exampleIndex
     }));
   };
 
@@ -806,8 +863,26 @@ export default function IntegratePage() {
 
   // Track active section on scroll
   useEffect(() => {
+    const sections = ['api', 'installation', ...components.map(c => `component-${c.id}`), 'conversational', ...conversationalIntegrations.map(c => `conversational-${c.id}`)];
+    const scrollPosition = window.scrollY + 100;
+
+    for (const sectionId of sections) {
+      const element = document.getElementById(sectionId);
+      if (element) {
+        const elementTop = element.offsetTop;
+        const elementBottom = elementTop + element.offsetHeight;
+        
+        if (scrollPosition >= elementTop && scrollPosition < elementBottom) {
+          setActiveSection(sectionId);
+          break;
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     const handleScroll = () => {
-      const sections = ['api', 'installation', ...components.map(c => `component-${c.id}`)];
+      const sections = ['api', 'installation', ...components.map(c => `component-${c.id}`), 'conversational', ...conversationalIntegrations.map(c => `conversational-${c.id}`)];
       const scrollPosition = window.scrollY + 100;
 
       for (const sectionId of sections) {
@@ -880,6 +955,25 @@ export default function IntegratePage() {
                 ))}
               </div>
               
+              <div className="pt-4">
+                <div className="text-xs font-semibold text-gray-500 font-ibm-plex-mono mb-2 px-2">
+                  CONVERSATIONAL
+                </div>
+                {conversationalIntegrations.map((integration) => (
+                  <button
+                    key={integration.id}
+                    onClick={() => scrollToSection(`conversational-${integration.id}`)}
+                    className={`block w-full text-left px-2 py-1 text-sm font-ibm-plex-mono rounded transition-colors ${
+                      activeSection === `conversational-${integration.id}`
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    {integration.name}
+                  </button>
+                ))}
+              </div>
+              
             </nav>
           </div>
         </div>
@@ -899,7 +993,7 @@ export default function IntegratePage() {
                   Integration Guide
                 </h1>
                 <p className="text-gray-600 font-ibm-plex-mono text-md">
-                  Embed Index Protocol components in your application
+                  Embed Index Network components in your application
                 </p>
               </div>
               <Button 
@@ -1145,6 +1239,7 @@ export default function IntegratePage() {
                 {copiedCode === 'install' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
+
           </div>
 
           {/* Components */}
@@ -1269,6 +1364,151 @@ export default function IntegratePage() {
 
         </div>        
       </div>
+
+      {/* Conversational Integrations Section */}
+      <div className="w-full border border-gray-200 rounded-md mt-4 px-4 py-8" style={{
+        backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
+        backgroundColor: 'white',
+        backgroundSize: '888px'
+      }}>
+
+        {/* Conversational Header */}
+        <div className="bg-white border border-black border-b-2 px-4 py-6 mb-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-2">
+                Conversational Integrations
+              </h1>
+              <p className="text-gray-600 font-ibm-plex-mono text-md">
+                Deploy Index Network across chat platforms and conversational interfaces
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Conversational Integrations */}
+        {conversationalIntegrations.map((integration) => {
+          return (
+          <div key={integration.id} id={`conversational-${integration.id}`} className="bg-white border border-black border-b-2 p-6 mb-6">
+            <h2 className="text-2xl font-semibold text-gray-900 font-ibm-plex-mono mb-2">
+              {integration.name}
+            </h2>
+            <p className="text-gray-900 mb-5 font-ibm-plex-mono text-sm">
+              {integration.description}
+            </p>
+            
+            {/* Tabs */}
+            <div className="flex gap-4 mb-6 border-b border-gray-200 overflow-x-auto">
+              <button
+                onClick={() => setActiveConversationalExample(integration.id, 'overview')}
+                className={`pb-2 px-1 font-ibm-plex-mono text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  activeConversationalExamples[integration.id] === 'overview'
+                    ? 'border-amber-500 text-amber-600' 
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Overview
+              </button>
+              {integration.examples.map((example, index) => (
+                <button
+                  key={index}
+                  onClick={() => setActiveConversationalExample(integration.id, index)}
+                  className={`pb-2 px-1 font-ibm-plex-mono text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeConversationalExamples[integration.id] === index
+                      ? 'border-amber-500 text-amber-600' 
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {example.title}
+                </button>
+              ))}
+            </div>
+
+            {/* Overview Tab Content */}
+            {activeConversationalExamples[integration.id] === 'overview' && (
+              <div className="">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Left Column: Image */}
+                  <div>
+                    <Image 
+                      src={integration.previewImage} 
+                      alt={`${integration.name} preview`}
+                      width={500}
+                      height={300}
+                      className="w-full shadow-lg"
+                    />
+                  </div>
+                  
+                  {/* Right Column: Case Studies */}
+                  <div className="">
+                    <h4 className="text-md font-semibold text-gray-900 font-ibm-plex-mono -mt-1.5 mb-2">
+                      Examples
+                    </h4>
+                    <div className="space-y-2">
+                      {integration.caseStudies.map((caseStudy, index) => (
+                        <a
+                          key={index}
+                          href={caseStudy.link}
+                          className="text-sm block text-amber-600 hover:text-amber-700 hover:underline font-ibm-plex-mono"
+                        >
+                          {caseStudy.title} →
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Example Tab Content */}
+            {typeof activeConversationalExamples[integration.id] === 'number' && integration.examples[activeConversationalExamples[integration.id] as number] && (
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                  <div>
+                    <h4 className="font-medium text-gray-900 font-ibm-plex-mono">
+                      {integration.examples[activeConversationalExamples[integration.id] as number].title}
+                    </h4>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {integration.examples[activeConversationalExamples[integration.id] as number].description}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(
+                      integration.examples[activeConversationalExamples[integration.id] as number].code, 
+                      `${integration.id}-${activeConversationalExamples[integration.id]}`
+                    )}
+                  >
+                    {copiedCode === `${integration.id}-${activeConversationalExamples[integration.id]}` ? 
+                      <Check className="h-4 w-4" /> : 
+                      <Copy className="h-4 w-4" />
+                    }
+                  </Button>
+                </div>
+                <SyntaxHighlighter
+                  language="javascript"
+                  style={tomorrow}
+                  customStyle={{
+                    margin: 0,
+                    padding: '1.5rem',
+                    fontSize: '14px',
+                    lineHeight: '1.5',
+                  }}
+                  showLineNumbers={false}
+                >
+                  {integration.examples[activeConversationalExamples[integration.id] as number].code}
+                </SyntaxHighlighter>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      </div>
+
+      {/* Bottom spacing for sidebar navigation */}
+      <div className="h-48"></div>
       
       {/* Configure MCP Modal */}
       <ConfigureModal 
