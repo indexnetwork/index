@@ -20,7 +20,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       .from(intents)
       .where(and(
         ne(intents.id, currentIntent.id),
-        ne(intents.userId, currentIntent.userId)
+        //ne(intents.userId, currentIntent.userId)
       ));
     console.log('Found other intents:', allIntents.length);
 

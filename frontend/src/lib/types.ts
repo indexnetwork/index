@@ -14,6 +14,7 @@ export interface Index {
   id: string;
   title: string;
   isPublic: boolean;
+  isDiscoverable: boolean;
   createdAt: string;
   updatedAt: string;
   user: {
@@ -78,16 +79,20 @@ export interface IntentIndex {
   indexIsPublic: boolean;
 }
 
-export interface IntentConnection {
-  id: string;
-  stakingSummary: string;
-  stakers: {
-    agentId: string;
+export interface IntentStakesByUserResponse {
+  user: {
     name: string;
-    description: string;
     avatar: string;
-    confidence: number;
-  }[];
+  };
+  totalStake: string;
+  aggregatedSummary: string;
+  agents: Array<{
+    agent: {
+      name: string;
+      avatar: string;
+    };
+    stake: string;
+  }>;
 }
 
 // Agent types
@@ -137,7 +142,9 @@ export interface APIResponse<T> {
   user?: T; // For auth endpoints
   index?: T; // For single index
   intent?: T; // For single intent
-  stakes?: T; // For intent stakes
+  stakes?: T[]; // For intent stakes
+  stakesByUser?: T;
+  aggregated_reasoning?: string; // For aggregated stake reasonings
   message?: string;
   error?: string;
 }
@@ -151,6 +158,7 @@ export interface CreateIndexRequest {
 export interface UpdateIndexRequest {
   title?: string;
   isPublic?: boolean;
+  isDiscoverable?: boolean;
 }
 
 export interface CreateIntentRequest {

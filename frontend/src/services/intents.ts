@@ -5,7 +5,8 @@ import {
   PaginatedResponse, 
   APIResponse, 
   CreateIntentRequest, 
-  UpdateIntentRequest 
+  UpdateIntentRequest,
+  IntentStakesByUserResponse
 } from '../lib/types';
 
 // Transform config agents to match Agent interface
@@ -115,13 +116,10 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     });
   },
 
-  // Get stakes for an intent
-  getIntentStakes: async (intentId: string): Promise<IntentConnection[]> => {
-    const response = await api.get<APIResponse<IntentConnection[]>>(`/intents/${intentId}/stakes`);
-    if (!response.stakes) {
-      throw new Error('Failed to fetch stakes');
-    }
-    return response.stakes;
+  // Get stakes by user for an intent
+  getIntentStakesByUser: async (intentId: string): Promise<IntentStakesByUserResponse[]> => {
+    const response = await api.get<IntentStakesByUserResponse[]>(`/intents/${intentId}/stakes/by-user`);
+    return response;
   },
 
   // Create new intent

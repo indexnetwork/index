@@ -7,7 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { agents } from "@/services/intents";
 import { useIntents } from "@/contexts/APIContext";
-import { Intent, IntentConnection } from "@/lib/types";
+import { Intent, IntentConnection, IntentStakesByUserResponse } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import EditIntentModal from "@/components/modals/EditIntentModal";
 
@@ -20,7 +20,7 @@ interface IntentDetailPageProps {
 export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const resolvedParams = use(params);
   const [intent, setIntent] = useState<Intent | null>(null);
-  const [stakes, setStakes] = useState<IntentConnection[]>([]);
+  const [stakesByUser, setStakesByUser] = useState<IntentStakesByUserResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
@@ -41,8 +41,8 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
   const fetchStakes = useCallback(async () => {
     try {
-      const stakesData = await intentsService.getIntentStakes(resolvedParams.id);
-      setStakes(stakesData);
+      const stakesData = await intentsService.getIntentStakesByUser(resolvedParams.id);
+      setStakesByUser(stakesData);
     } catch (error) {
       console.error('Error fetching stakes:', error);
     }
@@ -158,7 +158,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
               )}
               <div className={intent.summary ? "border-t border-gray-200 pt-2" : ""}>
                 <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">
-                  Updated {intent.updatedAt} • {stakes.length} connections
+                  Updated {intent.updatedAt} • {stakesByUser.length} connections
                 </p>
               </div>
             </div>
@@ -265,47 +265,43 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
         {/* Connection Cards Grid */}
         <div className="grid grid-cols-1 gap-6">
-          {stakes.map((stake) => (
-            <div key={stake.id} className="bg-white border border-black border-b-0 border-b-2 p-6">
+          {stakesByUser.map((userStakes) => (
+            <div key={userStakes.user.name} className="bg-white border border-black border-b-0 border-b-2 p-6">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-4">
                   <Image
-                    src={stake.stakers[0].avatar}
-                    alt={stake.stakers[0].name}
+                    src={userStakes.user.avatar}
+                    alt={userStakes.user.name}
                     width={48}
                     height={48}
                     className="rounded-full"
                   />
                   <div>
-                    <h2 className="text-lg font-medium text-gray-900">{stake.stakers[0].name}</h2>
-                    <p className="text-sm text-gray-600">{stake.stakers[0].description}</p>
+                    <h2 className="text-lg font-medium text-gray-900">{userStakes.user.name}</h2>
+                    <p className="text-sm text-gray-600">Total Stake: {userStakes.totalStake}%</p>
                   </div>
                 </div>
               </div>
 
               <div className="mb-6">
-                <h3 className="font-medium text-gray-700 mb-3">Why this connection matters</h3>
+                <h3 className="font-medium text-gray-700 mb-3">Summary</h3>
                 <div className="relative min-h-[100px]">
                   <p className="text-gray-700">
-                    {stake.stakingSummary}
+                    {userStakes.aggregatedSummary}
                   </p>
                 </div>
               </div>
 
               <div>
-                <h3 className="font-medium text-gray-700 mb-4">Who's backing this connection</h3>
+                <h3 className="font-medium text-gray-700 mb-4">Agent Stakes</h3>
                 <div className="flex flex-wrap gap-2">
-                  {stake.stakers.map((staker, index) => (
-                    <div 
-                      key={index} 
-                      className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full"
-                    >
+                  {userStakes.agents.map((agent) => (
+                    <div key={agent.agent.name} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
                       <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gray-100">
-                        <Image src={staker.avatar} alt={staker.name} width={16} height={16} />
+                        <Image src={agent.agent.avatar} alt={agent.agent.name} width={16} height={16} />
                       </div>
-                      <span className="font-medium text-gray-900">{staker.name}</span>
-                      <span className="text-gray-500 text-sm">{staker.description}</span>
-                      <span className="text-gray-400 text-xs">({Math.round(staker.confidence * 100)}%)</span>
+                      <span className="font-medium text-gray-900">{agent.agent.name}</span>
+                      <span className="text-gray-400 text-xs">({agent.stake}%)</span>
                     </div>
                   ))}
                 </div>

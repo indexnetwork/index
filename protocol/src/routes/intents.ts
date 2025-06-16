@@ -488,8 +488,8 @@ router.get('/:id/debug/stake',
   }
 );
 
-// Get stakes for a specific intent
-router.get('/:id/stakes',
+// Get stakes grouped by user
+router.get('/:id/stakes/by-user',
   authenticatePrivy,
   [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
@@ -502,7 +502,7 @@ router.get('/:id/stakes',
       const { id } = req.params;
 
       // Check if intent exists and user has access
-      const intent = await db.select({ id: intents.id, userId: intents.userId, isPublic: intents.isPublic })
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
         .from(intents)
         .where(eq(intents.id, id))
         .limit(1);
@@ -511,48 +511,74 @@ router.get('/:id/stakes',
         return res.status(404).json({ error: 'Intent not found' });
       }
 
-      const hasAccess = intent[0].userId === req.user!.id;
-      if (!hasAccess) {
+      if (intent[0].userId !== req.user!.id) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Fetch stakes
+      // Get stakes with user and agent info
       const stakes = await db.select({
-        id: intentStakes.id,
-        pair: intentStakes.pair,
         stake: intentStakes.stake,
         reasoning: intentStakes.reasoning,
-        createdAt: intentStakes.createdAt,
-        agent: {
-          id: agents.id,
-          name: agents.name,
-          description: agents.description,
-          avatar: agents.avatar
-        }
+        userName: users.name,
+        userAvatar: users.avatar,
+        agentName: agents.name,
+        agentAvatar: agents.avatar
       })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
-      .where(
-        and(
-          sql`${intentStakes.pair} LIKE ${id + '-%'}`,
-          isNull(agents.deletedAt)
-        )
-      )
-      .orderBy(desc(intentStakes.createdAt));
+      .innerJoin(intents, sql`${intentStakes.pair} LIKE ${'%' + id + '%'}`)
+      .innerJoin(users, eq(intents.userId, users.id))
+      .where(isNull(agents.deletedAt));
 
-      const formattedStakes = stakes.map(stake => ({
-        id: stake.id,
-        stakingSummary: stake.reasoning,
-        stakers: [{
-          agentId: stake.agent.id,
-          name: stake.agent.name,
-          description: stake.agent.description,
-          avatar: stake.agent.avatar,
-          confidence: Number(stake.stake) / 100 // Assuming stake is stored as percentage * 100
-        }]
-      }));
+      // Group by user
+      const userStakes = stakes.reduce((acc, stake) => {
+        const userName = stake.userName;
+        if (!acc[userName]) {
+          acc[userName] = {
+            user: {
+              name: stake.userName,
+              avatar: stake.userAvatar
+            },
+            totalStake: BigInt(0),
+            aggregatedSummary: [],
+            agents: {}
+          };
+        }
 
-      return res.json({ stakes: formattedStakes });
+        acc[userName].totalStake += stake.stake;
+        if (stake.reasoning) {
+          acc[userName].aggregatedSummary.push(stake.reasoning);
+        }
+
+        const agentName = stake.agentName;
+        if (!acc[userName].agents[agentName]) {
+          acc[userName].agents[agentName] = {
+            agent: {
+              name: stake.agentName,
+              avatar: stake.agentAvatar
+            },
+            stake: BigInt(0)
+          };
+        }
+        acc[userName].agents[agentName].stake += stake.stake;
+
+        return acc;
+      }, {} as Record<string, any>);
+
+      // Format results
+      const result = Object.values(userStakes)
+        .map(user => ({
+          user: user.user,
+          totalStake: user.totalStake.toString(),
+          aggregatedSummary: user.aggregatedSummary.join(' '),
+          agents: Object.values(user.agents).map((agent: any) => ({
+            agent: agent.agent,
+            stake: agent.stake.toString()
+          }))
+        }))
+        .sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
+
+      return res.json(result);
     } catch (error) {
       console.error('Get intent stakes error:', error);
       return res.status(500).json({ error: 'Failed to fetch intent stakes' });
