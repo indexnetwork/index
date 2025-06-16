@@ -49,16 +49,10 @@ async function loadFileContent(filePath: string): Promise<{ content: string | nu
   try {
     const loaderOptions: any = {
       recursive: true,
-      strategy: "fast"
+      strategy: "fast",
+      apiUrl: process.env.UNSTRUCTURED_API_URL
     };
-    
-    // Configure with available environment variables
-    if (process.env.UNSTRUCTURED_API_KEY) {
-      loaderOptions.apiKey = process.env.UNSTRUCTURED_API_KEY;
-      loaderOptions.apiUrl = process.env.UNSTRUCTURED_API_URL || "https://api.unstructured.io";
-    } else if (process.env.UNSTRUCTURED_SERVER_URL) {
-      loaderOptions.apiUrl = process.env.UNSTRUCTURED_SERVER_URL;
-    }
+
 
     const loader = new UnstructuredLoader(filePath, loaderOptions);
     const documents = await loader.load();
@@ -85,7 +79,7 @@ async function loadFileContent(filePath: string): Promise<{ content: string | nu
     
     return {
       content: null,
-      error: `Cannot process ${ext} files without Unstructured API. Please set UNSTRUCTURED_API_KEY or UNSTRUCTURED_SERVER_URL for document support.`
+      error: `Cannot process ${ext} files without Unstructured API. Please set UNSTRUCTURED_API_URL for document support.`
     };
   } catch (error) {
     return { 
