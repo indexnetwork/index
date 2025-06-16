@@ -1,10 +1,18 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
-import { Copy, Globe, Lock, Trash2, Search } from "lucide-react";
-import { useState } from "react";
+import { Copy, Globe, Lock, Trash2, Search, Plus, X, Check } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
 import { Input } from "../ui/input";
 import { useIndexes } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
+
+interface Member {
+  id: string;
+  name: string;
+  email: string;
+  role: 'Editor' | 'Viewer';
+  avatar?: string;
+}
 
 interface ShareSettingsModalProps {
   open: boolean;
@@ -50,7 +58,43 @@ const DialogTitle = ({ className, children, ...props }: DialogProps) => (
 export default function ShareSettingsModal({ open, onOpenChange, index, onIndexUpdate }: ShareSettingsModalProps) {
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
   const [isUpdatingDiscovery, setIsUpdatingDiscovery] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [members, setMembers] = useState<Member[]>([
+    { id: '1', name: 'Alice Smith', email: 'alice@example.com', role: 'Editor' },
+    { id: '2', name: 'Bob Johnson', email: 'bob@example.com', role: 'Viewer' },
+  ]);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
   const indexesService = useIndexes();
+
+  // Mock suggested users - in real app, this would come from an API
+  const suggestedUsers: Member[] = [
+    { id: '3', name: 'Charlie Brown', email: 'charlie@example.com', role: 'Viewer' },
+    { id: '4', name: 'Diana Prince', email: 'diana@example.com', role: 'Viewer' },
+    { id: '5', name: 'Edward Norton', email: 'edward@example.com', role: 'Viewer' },
+    { id: '6', name: 'Fiona Green', email: 'fiona@example.com', role: 'Viewer' },
+  ];
+
+  // Filter suggestions based on search query and exclude existing members
+  const filteredSuggestions = suggestedUsers.filter(user =>
+    !members.find(member => member.id === user.id) &&
+    (user.name.toLowerCase().includes(memberSearchQuery.toLowerCase()) ||
+     user.email.toLowerCase().includes(memberSearchQuery.toLowerCase()))
+  );
+
+  // Handle clicking outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node) &&
+          searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleToggleVisibility = async (isPublic: boolean) => {
     try {
@@ -88,6 +132,27 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     }
   };
 
+  const handleAddMember = (user: Member) => {
+    setMembers(prev => [...prev, user]);
+    setMemberSearchQuery('');
+    setShowSuggestions(false);
+  };
+
+  const handleRemoveMember = (memberId: string) => {
+    setMembers(prev => prev.filter(member => member.id !== memberId));
+  };
+
+  const handleMemberRoleChange = (memberId: string, newRole: 'Editor' | 'Viewer') => {
+    setMembers(prev => prev.map(member => 
+      member.id === memberId ? { ...member, role: newRole } : member
+    ));
+  };
+
+  const handleSearchInputChange = (value: string) => {
+    setMemberSearchQuery(value);
+    setShowSuggestions(value.length > 0);
+  };
+
   // Generate a share link when public
   const shareUrl = `http://localhost:3000/share/${index.id}`;
 
@@ -119,7 +184,7 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                   </div>
                 </div>
                 <p className="text-sm text-gray-600">
-                  Allow relevant users to find this index through intent matching
+                  Allow relevant users to use this index for intent matching
                 </p>
               </div>
               <div className="flex items-center gap-3 ml-4">
@@ -212,24 +277,89 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
           <div>
             <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-3">Members</h3>
             
-            <div className="space-y-3">
-              {[
-                { name: "Alice Smith", email: "alice@example.com", role: "Editor" },
-                { name: "Bob Johnson", email: "bob@example.com", role: "Viewer" },
-              ].map((viewer, index) => (
+            {/* Member picker input */}
+            <div className="relative mb-4">
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Plus className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    ref={searchInputRef}
+                    placeholder="Search people by name or email..."
+                    value={memberSearchQuery}
+                    onChange={(e) => handleSearchInputChange(e.target.value)}
+                    onFocus={() => memberSearchQuery && setShowSuggestions(true)}
+                    className="pl-10 pr-4 py-3"
+                  />
+                </div>
+              </div>
+              
+              {/* Suggestions dropdown */}
+              {showSuggestions && filteredSuggestions.length > 0 && (
                 <div
-                  key={index}
-                  className="flex items-center justify-between p-4 bg-gray-50 "
+                  ref={suggestionsRef}
+                  className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
                 >
-                  <div>
-                    <p className="text-md text-black">{viewer.name}</p>
-                    <p className="text-sm text-gray-600">{viewer.email}</p>
+                  {filteredSuggestions.map((user) => (
+                    <button
+                      key={user.id}
+                      onClick={() => handleAddMember(user)}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 text-left"
+                    >
+                      <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
+                        {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{user.name}</p>
+                        <p className="text-xs text-gray-500">{user.email}</p>
+                      </div>
+                      <Check className="h-4 w-4 text-green-600" />
+                    </button>
+                  ))}
+                </div>
+              )}
+              
+              {/* No results message */}
+              {showSuggestions && memberSearchQuery && filteredSuggestions.length === 0 && (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4"
+                >
+                  <p className="text-sm text-gray-500 text-center">No users found matching "{memberSearchQuery}"</p>
+                </div>
+              )}
+            </div>
+            
+            {/* Members list */}
+            <div className="space-y-3">
+              {members.map((member) => (
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
+                      {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-md text-black font-medium">{member.name}</p>
+                      <p className="text-sm text-gray-600">{member.email}</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Role selector */}
+                    <select
+                      value={member.role}
+                      onChange={(e) => handleMemberRoleChange(member.id, e.target.value as 'Editor' | 'Viewer')}
+                      className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="Viewer">Viewer</option>
+                      <option value="Editor">Editor</option>
+                    </select>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-red-500 hover:text-red-700"
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => handleRemoveMember(member.id)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

@@ -370,7 +370,7 @@ const components: ComponentConfig[] = [
 ];
 
 interface ApiEndpoint {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   path: string;
   description: string;
   example: string;
@@ -391,23 +391,54 @@ interface ApiSection {
 
 const apiSections: ApiSection[] = [
   {
-    title: "Users",
-    description: "Manage user accounts and profiles",
+    title: "Authentication",
+    description: "Manage user authentication and profiles",
     endpoints: [
       {
         method: "GET",
-        path: "/api/users",
-        description: "Get all users with optional filtering",
-        params: [
-          { name: "limit", type: "number", required: false, description: "Maximum number of users to return (default: 20)" },
-          { name: "offset", type: "number", required: false, description: "Number of users to skip for pagination" },
-          { name: "email", type: "string", required: false, description: "Filter by email address" },
-          { name: "name", type: "string", required: false, description: "Filter by user name (partial match)" }
-        ],
-        example: `fetch('/api/users?limit=10&offset=0', {
+        path: "/api/auth/me",
+        description: "Get current authenticated user information",
+        params: [],
+        example: `fetch('/api/auth/me', {
   headers: { 'Authorization': 'Bearer \${token}' }
 })`
       },
+      {
+        method: "PATCH",
+        path: "/api/auth/profile",
+        description: "Update current user's profile",
+        params: [
+          { name: "name", type: "string", required: false, description: "Updated display name" },
+          { name: "avatar", type: "string", required: false, description: "Updated avatar URL" }
+        ],
+        example: `fetch('/api/auth/profile', {
+  method: 'PATCH',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer \${token}'
+  },
+  body: JSON.stringify({
+    name: 'John Smith',
+    avatar: 'https://example.com/avatar.jpg'
+  })
+})`
+      },
+      {
+        method: "DELETE",
+        path: "/api/auth/account",
+        description: "Delete current user's account",
+        params: [],
+        example: `fetch('/api/auth/account', {
+  method: 'DELETE',
+  headers: { 'Authorization': 'Bearer \${token}' }
+})`
+      }
+    ]
+  },
+  {
+    title: "Users",
+    description: "Manage user accounts and profiles",
+    endpoints: [
       {
         method: "GET",
         path: "/api/users/{id}",
@@ -420,34 +451,12 @@ const apiSections: ApiSection[] = [
 })`
       },
       {
-        method: "POST",
-        path: "/api/users",
-        description: "Create a new user",
-        params: [
-          { name: "email", type: "string", required: true, description: "User's email address (must be unique)" },
-          { name: "name", type: "string", required: true, description: "User's display name" },
-          { name: "avatar", type: "string", required: false, description: "URL to user's avatar image" }
-        ],
-        example: `fetch('/api/users', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer \${token}'
-  },
-  body: JSON.stringify({
-    email: 'user@example.com',
-    name: 'John Doe',
-    avatar: 'https://example.com/avatar.jpg'
-  })
-})`
-      },
-      {
         method: "PUT",
         path: "/api/users/{id}",
-        description: "Update an existing user",
+        description: "Update a user (only your own account)",
         params: [
           { name: "id", type: "string", required: true, description: "Unique user identifier (UUID)" },
-          { name: "name", type: "string", required: false, description: "Updated display name" },
+          { name: "name", type: "string", required: false, description: "Updated display name (2-100 chars)" },
           { name: "avatar", type: "string", required: false, description: "Updated avatar URL" }
         ],
         example: `fetch('/api/users/user-123', {
@@ -461,6 +470,18 @@ const apiSections: ApiSection[] = [
     avatar: 'https://example.com/new-avatar.jpg'
   })
 })`
+      },
+      {
+        method: "DELETE",
+        path: "/api/users/{id}",
+        description: "Delete a user account (only your own)",
+        params: [
+          { name: "id", type: "string", required: true, description: "User ID to delete" }
+        ],
+        example: `fetch('/api/users/user-123', {
+  method: 'DELETE',
+  headers: { 'Authorization': 'Bearer \${token}' }
+})`
       }
     ]
   },
@@ -473,12 +494,22 @@ const apiSections: ApiSection[] = [
         path: "/api/intents",
         description: "Get intents with filtering and pagination",
         params: [
-          { name: "userId", type: "string", required: false, description: "Filter by user ID" },
-          { name: "status", type: "string", required: false, description: "Filter by intent status (active, fulfilled, cancelled)" },
-          { name: "limit", type: "number", required: false, description: "Maximum number of intents to return" },
-          { name: "offset", type: "number", required: false, description: "Number of intents to skip for pagination" }
+          { name: "page", type: "number", required: false, description: "Page number (default: 1)" },
+          { name: "limit", type: "number", required: false, description: "Items per page (1-100, default: 10)" },
+          { name: "archived", type: "boolean", required: false, description: "Show archived intents (default: false)" }
         ],
-        example: `fetch('/api/intents?userId=user-123&status=active&limit=20', {
+        example: `fetch('/api/intents?page=1&limit=20&archived=false', {
+  headers: { 'Authorization': 'Bearer \${token}' }
+})`
+      },
+      {
+        method: "GET",
+        path: "/api/intents/{id}",
+        description: "Get a specific intent by ID",
+        params: [
+          { name: "id", type: "string", required: true, description: "Unique intent identifier (UUID)" }
+        ],
+        example: `fetch('/api/intents/intent-123', {
   headers: { 'Authorization': 'Bearer \${token}' }
 })`
       },
@@ -488,9 +519,8 @@ const apiSections: ApiSection[] = [
         description: "Create a new intent",
         params: [
           { name: "payload", type: "string", required: true, description: "Detailed description of the intent" },
-          { name: "userId", type: "string", required: true, description: "ID of the user creating the intent" },
-          { name: "status", type: "string", required: false, description: "Initial status (default: active)" },
-          { name: "indexes", type: "string[]", required: false, description: "Array of index IDs to associate with" }
+          { name: "isPublic", type: "boolean", required: false, description: "Whether intent is public (default: false)" },
+          { name: "indexIds", type: "string[]", required: false, description: "Array of index IDs to associate with" }
         ],
         example: `fetch('/api/intents', {
   method: 'POST',
@@ -499,10 +529,9 @@ const apiSections: ApiSection[] = [
     'Authorization': 'Bearer \${token}'
   },
   body: JSON.stringify({
-    payload: 'Looking for ML researchers to collaborate on AI research collaboration...',
-    userId: 'user-123',
-    status: 'active',
-    indexes: ['index-ai-research']
+    payload: 'Looking for ML researchers to collaborate on AI research...',
+    isPublic: false,
+    indexIds: ['index-ai-research']
   })
 })`
       },
@@ -512,9 +541,8 @@ const apiSections: ApiSection[] = [
         description: "Update an intent",
         params: [
           { name: "id", type: "string", required: true, description: "Unique intent identifier" },
-          { name: "title", type: "string", required: false, description: "Updated intent title" },
           { name: "payload", type: "string", required: false, description: "Updated intent description" },
-          { name: "status", type: "string", required: false, description: "Updated status" }
+          { name: "isPublic", type: "boolean", required: false, description: "Updated public status" }
         ],
         example: `fetch('/api/intents/intent-456', {
   method: 'PUT',
@@ -523,20 +551,32 @@ const apiSections: ApiSection[] = [
     'Authorization': 'Bearer \${token}'
   },
   body: JSON.stringify({
-    title: 'Updated Intent Title',
-    status: 'fulfilled'
+    payload: 'Updated intent description',
+    isPublic: true
   })
 })`
       },
       {
-        method: "DELETE",
-        path: "/api/intents/{id}",
-        description: "Soft delete an intent",
+        method: "PATCH",
+        path: "/api/intents/{id}/archive",
+        description: "Archive an intent",
         params: [
-          { name: "id", type: "string", required: true, description: "Unique intent identifier to delete" }
+          { name: "id", type: "string", required: true, description: "Intent ID to archive" }
         ],
-        example: `fetch('/api/intents/intent-456', {
-  method: 'DELETE',
+        example: `fetch('/api/intents/intent-456/archive', {
+  method: 'PATCH',
+  headers: { 'Authorization': 'Bearer \${token}' }
+})`
+      },
+      {
+        method: "PATCH",
+        path: "/api/intents/{id}/unarchive",
+        description: "Unarchive an intent",
+        params: [
+          { name: "id", type: "string", required: true, description: "Intent ID to unarchive" }
+        ],
+        example: `fetch('/api/intents/intent-456/unarchive', {
+  method: 'PATCH',
   headers: { 'Authorization': 'Bearer \${token}' }
 })`
       }
@@ -549,13 +589,23 @@ const apiSections: ApiSection[] = [
       {
         method: "GET",
         path: "/api/indexes",
-        description: "Get indexes with optional user filtering",
+        description: "Get indexes you own or are a member of",
         params: [
-          { name: "userId", type: "string", required: false, description: "Filter by index owner" },
-          { name: "memberId", type: "string", required: false, description: "Filter by member user ID" },
-          { name: "limit", type: "number", required: false, description: "Maximum number of indexes to return" }
+          { name: "page", type: "number", required: false, description: "Page number (default: 1)" },
+          { name: "limit", type: "number", required: false, description: "Items per page (1-100, default: 10)" }
         ],
-        example: `fetch('/api/indexes?userId=user-123', {
+        example: `fetch('/api/indexes?page=1&limit=10', {
+  headers: { 'Authorization': 'Bearer \${token}' }
+})`
+      },
+      {
+        method: "GET",
+        path: "/api/indexes/{id}",
+        description: "Get a specific index by ID",
+        params: [
+          { name: "id", type: "string", required: true, description: "Unique index identifier (UUID)" }
+        ],
+        example: `fetch('/api/indexes/index-123', {
   headers: { 'Authorization': 'Bearer \${token}' }
 })`
       },
@@ -564,8 +614,9 @@ const apiSections: ApiSection[] = [
         path: "/api/indexes",
         description: "Create a new index",
         params: [
-          { name: "name", type: "string", required: true, description: "Name of the index" },
-          { name: "userId", type: "string", required: true, description: "ID of the user creating the index" }
+          { name: "title", type: "string", required: true, description: "Title of the index (1-255 chars)" },
+          { name: "isPublic", type: "boolean", required: false, description: "Whether index is public (default: false)" },
+          { name: "isDiscoverable", type: "boolean", required: false, description: "Whether index is discoverable (default: false)" }
         ],
         example: `fetch('/api/indexes', {
   method: 'POST',
@@ -574,18 +625,53 @@ const apiSections: ApiSection[] = [
     'Authorization': 'Bearer \${token}'
   },
   body: JSON.stringify({
-    name: 'AI Research Network',
-    userId: 'user-123'
+    title: 'AI Research Network',
+    isPublic: false,
+    isDiscoverable: true
   })
+})`
+      },
+      {
+        method: "PUT",
+        path: "/api/indexes/{id}",
+        description: "Update an index (owner only)",
+        params: [
+          { name: "id", type: "string", required: true, description: "Index ID to update" },
+          { name: "title", type: "string", required: false, description: "Updated title (1-255 chars)" },
+          { name: "isPublic", type: "boolean", required: false, description: "Updated public status" },
+          { name: "isDiscoverable", type: "boolean", required: false, description: "Updated discoverable status" }
+        ],
+        example: `fetch('/api/indexes/index-123', {
+  method: 'PUT',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer \${token}'
+  },
+  body: JSON.stringify({
+    title: 'Updated Index Title',
+    isPublic: true
+  })
+})`
+      },
+      {
+        method: "DELETE",
+        path: "/api/indexes/{id}",
+        description: "Delete an index (owner only)",
+        params: [
+          { name: "id", type: "string", required: true, description: "Index ID to delete" }
+        ],
+        example: `fetch('/api/indexes/index-123', {
+  method: 'DELETE',
+  headers: { 'Authorization': 'Bearer \${token}' }
 })`
       },
       {
         method: "POST",
         path: "/api/indexes/{id}/members",
-        description: "Add members to an index",
+        description: "Add a member to an index (owner only)",
         params: [
-          { name: "id", type: "string", required: true, description: "Index ID to add members to" },
-          { name: "userIds", type: "string[]", required: true, description: "Array of user IDs to add as members" }
+          { name: "id", type: "string", required: true, description: "Index ID to add member to" },
+          { name: "userId", type: "string", required: true, description: "User ID to add as member" }
         ],
         example: `fetch('/api/indexes/index-123/members', {
   method: 'POST',
@@ -594,7 +680,7 @@ const apiSections: ApiSection[] = [
     'Authorization': 'Bearer \${token}'
   },
   body: JSON.stringify({
-    userIds: ['user-456', 'user-789']
+    userId: 'user-456'
   })
 })`
       },
@@ -614,146 +700,46 @@ const apiSections: ApiSection[] = [
     ]
   },
   {
-    title: "Intent Pairs & Matching",
-    description: "Manage intent matching and pair interactions",
-    endpoints: [
-      {
-        method: "GET",
-        path: "/api/intent-pairs",
-        description: "Get intent pairs with filtering",
-        params: [
-          { name: "userId", type: "string", required: false, description: "Filter by user involved in intent pair" },
-          { name: "lastEvent", type: "string", required: false, description: "Filter by last event type (REQUEST, ACCEPT, etc.)" },
-          { name: "limit", type: "number", required: false, description: "Maximum number of pairs to return" }
-        ],
-        example: `fetch('/api/intent-pairs?userId=user-123&lastEvent=REQUEST', {
-  headers: { 'Authorization': 'Bearer \${token}' }
-})`
-      },
-      {
-        method: "POST",
-        path: "/api/intent-pairs",
-        description: "Create or update an intent pair interaction",
-        params: [
-          { name: "intentIds", type: "string[]", required: true, description: "Array of two intent IDs to pair" },
-          { name: "event", type: "string", required: true, description: "Event type: REQUEST, SKIP, CANCEL, ACCEPT, DECLINE, REMOVE" }
-        ],
-        example: `fetch('/api/intent-pairs', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer \${token}'
-  },
-  body: JSON.stringify({
-    intentIds: ['intent-123', 'intent-456'],
-    event: 'REQUEST'
-  })
-})`
-      },
-      {
-        method: "PUT",
-        path: "/api/intent-pairs/{id}/event",
-        description: "Update intent pair event status",
-        params: [
-          { name: "id", type: "string", required: true, description: "Intent pair ID" },
-          { name: "event", type: "string", required: true, description: "New event type: REQUEST, SKIP, CANCEL, ACCEPT, DECLINE, REMOVE" }
-        ],
-        example: `fetch('/api/intent-pairs/pair-123/event', {
-  method: 'PUT',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer \${token}'
-  },
-  body: JSON.stringify({
-    event: 'ACCEPT'
-  })
-})`
-      }
-    ]
-  },
-  {
-    title: "Agents & Backers",
-    description: "Manage AI agents and their backing confidence scores",
-    endpoints: [
-      {
-        method: "GET",
-        path: "/api/agents",
-        description: "Get available agents",
-        params: [
-          { name: "role", type: "string", required: false, description: "Filter by agent role (USER or SYSTEM)" },
-          { name: "limit", type: "number", required: false, description: "Maximum number of agents to return" }
-        ],
-        example: `fetch('/api/agents?role=SYSTEM', {
-  headers: { 'Authorization': 'Bearer \${token}' }
-})`
-      },
-      {
-        method: "GET",
-        path: "/api/backers",
-        description: "Get agent backing data for intent pairs",
-        params: [
-          { name: "intentPairId", type: "string", required: false, description: "Filter by specific intent pair" },
-          { name: "agentId", type: "string", required: false, description: "Filter by specific agent" },
-          { name: "confidence", type: "number", required: false, description: "Minimum confidence threshold (0.0-1.0)" }
-        ],
-        example: `fetch('/api/backers?intentPairId=pair-123&confidence=0.8', {
-  headers: { 'Authorization': 'Bearer \${token}' }
-})`
-      },
-      {
-        method: "POST",
-        path: "/api/backers",
-        description: "Create agent backing for intent pair",
-        params: [
-          { name: "agentId", type: "string", required: true, description: "ID of the agent providing backing" },
-          { name: "intentPairId", type: "string", required: true, description: "ID of the intent pair being backed" },
-          { name: "confidence", type: "number", required: true, description: "Confidence score (0.0-1.0)" }
-        ],
-        example: `fetch('/api/backers', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer \${token}'
-  },
-  body: JSON.stringify({
-    agentId: 'agent-123',
-    intentPairId: 'pair-456',
-    confidence: 0.92
-  })
-})`
-      }
-    ]
-  },
-  {
     title: "Files",
     description: "Manage files within indexes",
     endpoints: [
       {
         method: "GET",
-        path: "/api/files",
-        description: "Get files with index filtering",
+        path: "/api/indexes/{indexId}/files",
+        description: "Get files for a specific index",
         params: [
-          { name: "indexId", type: "string", required: false, description: "Filter by specific index" },
-          { name: "limit", type: "number", required: false, description: "Maximum number of files to return" },
-          { name: "name", type: "string", required: false, description: "Filter by file name (partial match)" }
+          { name: "indexId", type: "string", required: true, description: "Index ID to get files from" },
+          { name: "page", type: "number", required: false, description: "Page number (default: 1)" },
+          { name: "limit", type: "number", required: false, description: "Items per page (1-100, default: 10)" }
         ],
-        example: `fetch('/api/files?indexId=index-123&limit=50', {
+        example: `fetch('/api/indexes/index-123/files?page=1&limit=20', {
+  headers: { 'Authorization': 'Bearer \${token}' }
+})`
+      },
+      {
+        method: "GET",
+        path: "/api/indexes/{indexId}/files/{fileId}",
+        description: "Get a specific file by ID within an index",
+        params: [
+          { name: "indexId", type: "string", required: true, description: "Index ID containing the file" },
+          { name: "fileId", type: "string", required: true, description: "File ID to retrieve" }
+        ],
+        example: `fetch('/api/indexes/index-123/files/file-456', {
   headers: { 'Authorization': 'Bearer \${token}' }
 })`
       },
       {
         method: "POST",
-        path: "/api/files",
-        description: "Upload a file to an index",
+        path: "/api/indexes/{indexId}/files",
+        description: "Upload a file to an index (max 100MB)",
         params: [
-          { name: "file", type: "File", required: true, description: "File object to upload" },
-          { name: "indexId", type: "string", required: true, description: "Index ID to associate file with" }
+          { name: "indexId", type: "string", required: true, description: "Index ID to upload file to" },
+          { name: "file", type: "File", required: true, description: "File object to upload" }
         ],
         example: `const formData = new FormData();
 formData.append('file', fileBlob);
-formData.append('indexId', 'index-123');
 
-fetch('/api/files', {
+fetch('/api/indexes/index-123/files', {
   method: 'POST',
   headers: { 'Authorization': 'Bearer \${token}' },
   body: formData
@@ -761,14 +747,95 @@ fetch('/api/files', {
       },
       {
         method: "DELETE",
-        path: "/api/files/{id}",
-        description: "Delete a file",
+        path: "/api/indexes/{indexId}/files/{fileId}",
+        description: "Delete a file from an index",
         params: [
-          { name: "id", type: "string", required: true, description: "File ID to delete" }
+          { name: "indexId", type: "string", required: true, description: "Index ID containing the file" },
+          { name: "fileId", type: "string", required: true, description: "File ID to delete" }
         ],
-        example: `fetch('/api/files/file-123', {
+        example: `fetch('/api/indexes/index-123/files/file-456', {
   method: 'DELETE',
   headers: { 'Authorization': 'Bearer \${token}' }
+})`
+      }
+    ]
+  },
+  {
+    title: "Suggested Intents",
+    description: "Get AI-generated intent suggestions based on index content",
+    endpoints: [
+      {
+        method: "GET",
+        path: "/api/indexes/{indexId}/suggested_intents",
+        description: "Get suggested intents for an index based on file summaries",
+        params: [
+          { name: "indexId", type: "string", required: true, description: "Index ID to generate suggestions for" }
+        ],
+        example: `fetch('/api/indexes/index-123/suggested_intents', {
+  headers: { 'Authorization': 'Bearer \${token}' }
+})`
+      },
+      {
+        method: "GET",
+        path: "/api/indexes/{indexId}/suggested_intents/preview",
+        description: "Get intent preview with contextual integrity processing",
+        params: [
+          { name: "indexId", type: "string", required: true, description: "Index ID for context" },
+          { name: "payload", type: "string", required: true, description: "Intent payload to process" }
+        ],
+        example: `fetch('/api/indexes/index-123/suggested_intents/preview?payload=Looking%20for%20collaborators', {
+  headers: { 'Authorization': 'Bearer \${token}' }
+})`
+      }
+    ]
+  },
+  {
+    title: "Agents",
+    description: "Manage AI agents",
+    endpoints: [
+      {
+        method: "GET",
+        path: "/api/agents",
+        description: "Get available agents with pagination",
+        params: [
+          { name: "page", type: "number", required: false, description: "Page number (default: 1)" },
+          { name: "limit", type: "number", required: false, description: "Items per page (1-100, default: 10)" }
+        ],
+        example: `fetch('/api/agents?page=1&limit=10', {
+  headers: { 'Authorization': 'Bearer \${token}' }
+})`
+      },
+      {
+        method: "GET",
+        path: "/api/agents/{id}",
+        description: "Get a specific agent by ID",
+        params: [
+          { name: "id", type: "string", required: true, description: "Unique agent identifier (UUID)" }
+        ],
+        example: `fetch('/api/agents/agent-123', {
+  headers: { 'Authorization': 'Bearer \${token}' }
+})`
+      },
+      {
+        method: "POST",
+        path: "/api/agents",
+        description: "Create a new agent",
+        params: [
+          { name: "name", type: "string", required: true, description: "Agent name (2-100 chars)" },
+          { name: "description", type: "string", required: true, description: "Agent description (min 2 chars)" },
+          { name: "avatar", type: "string", required: true, description: "Agent avatar URL" }
+        ],
+        example: `fetch('/api/agents', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer \${token}'
+  },
+  body: JSON.stringify({
+    name: 'Research Assistant',
+    description: 'AI agent for academic research collaboration',
+    avatar: 'https://example.com/agent-avatar.jpg'
+  })
 })`
       }
     ]
@@ -1222,6 +1289,20 @@ export default function IntegratePage() {
           backgroundColor: 'white',
           backgroundSize: '888px'
         }}>
+
+          {/* Components Header */}
+          <div className="bg-white border border-black border-b-2 px-4 py-6 mb-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-2">
+                  Embedded Discovery
+                </h1>
+                <p className="text-gray-600 font-ibm-plex-mono text-md">
+                  UI components for building collaborative discovery experiences
+                </p>
+              </div>
+            </div>
+          </div>
 
           {/* Installation */}
           <div id="installation" className="bg-white border border-black border-b-2 px-4 py-6 mb-6">
