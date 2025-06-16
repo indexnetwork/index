@@ -1,0 +1,1 @@
+ALTER TABLE "indexes" ADD COLUMN "is_discoverable" boolean DEFAULT false NOT NULL; 

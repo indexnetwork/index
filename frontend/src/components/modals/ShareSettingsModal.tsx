@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
-import { Copy, Globe, Lock, Trash2 } from "lucide-react";
+import { Copy, Globe, Lock, Trash2, Search } from "lucide-react";
 import { useState } from "react";
 import { Input } from "../ui/input";
 import { useIndexes } from "@/contexts/APIContext";
@@ -48,12 +48,13 @@ const DialogTitle = ({ className, children, ...props }: DialogProps) => (
 );
 
 export default function ShareSettingsModal({ open, onOpenChange, index, onIndexUpdate }: ShareSettingsModalProps) {
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
+  const [isUpdatingDiscovery, setIsUpdatingDiscovery] = useState(false);
   const indexesService = useIndexes();
 
   const handleToggleVisibility = async (isPublic: boolean) => {
     try {
-      setIsUpdating(true);
+      setIsUpdatingVisibility(true);
       await indexesService.updateIndex(index.id, { isPublic });
       // Refetch the complete index data to ensure we have all files
       const updatedIndex = await indexesService.getIndex(index.id);
@@ -61,7 +62,21 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     } catch (error) {
       console.error('Error updating index visibility:', error);
     } finally {
-      setIsUpdating(false);
+      setIsUpdatingVisibility(false);
+    }
+  };
+
+  const handleToggleDiscovery = async (isDiscoverable: boolean) => {
+    try {
+      setIsUpdatingDiscovery(true);
+      await indexesService.updateIndex(index.id, { isDiscoverable });
+      // Refetch the complete index data to ensure we have all files
+      const updatedIndex = await indexesService.getIndex(index.id);
+      onIndexUpdate?.(updatedIndex);
+    } catch (error) {
+      console.error('Error updating index discovery settings:', error);
+    } finally {
+      setIsUpdatingDiscovery(false);
     }
   };
 
@@ -90,17 +105,57 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Visibility</h3>
+                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Discovery</h3>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
-                    {index.isPublic ? (
+                    {index.isDiscoverable ? (
                       <>
-                        <Globe className="h-4 w-4" />
-                        <span>Public</span>
+                        <Search className="h-4 w-4" />
                       </>
                     ) : (
                       <>
                         <Lock className="h-4 w-4" />
-                        <span>Private</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Allow relevant users to find this index through intent matching
+                </p>
+              </div>
+              <div className="flex items-center gap-3 ml-4">
+                {isUpdatingDiscovery && (
+                  <div className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
+                )}
+                <button
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                    index.isDiscoverable ? 'bg-blue-600' : 'bg-gray-300'
+                  } ${isUpdatingDiscovery ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  onClick={() => !isUpdatingDiscovery && handleToggleDiscovery(!index.isDiscoverable)}
+                  disabled={isUpdatingDiscovery}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      index.isDiscoverable ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mt-2 mb-2">
+                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Public Link</h3>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    {index.isPublic ? (
+                      <>
+                        <Globe className="h-4 w-4" />
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="h-4 w-4" />
                       </>
                     )}
                   </div>
@@ -113,15 +168,15 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                 </p>
               </div>
               <div className="flex items-center gap-3 ml-4">
-                {isUpdating && (
+                {isUpdatingVisibility && (
                   <div className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
                 )}
                 <button
                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
                     index.isPublic ? 'bg-blue-600' : 'bg-gray-300'
-                  } ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                  onClick={() => !isUpdating && handleToggleVisibility(!index.isPublic)}
-                  disabled={isUpdating}
+                  } ${isUpdatingVisibility ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  onClick={() => !isUpdatingVisibility && handleToggleVisibility(!index.isPublic)}
+                  disabled={isUpdatingVisibility}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -134,7 +189,6 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
 
             {index.isPublic && (
               <div className="mt-4">
-                <h4 className="text-sm font-medium font-ibm-plex-mono text-black mb-2">Share link</h4>
                 <div className="flex items-center gap-2">
                   <Input
                     readOnly
@@ -156,7 +210,8 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
           </div>
 
           <div>
-            <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-3">People with access</h3>
+            <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-3">Members</h3>
+            
             <div className="space-y-3">
               {[
                 { name: "Alice Smith", email: "alice@example.com", role: "Editor" },
@@ -167,16 +222,16 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                   className="flex items-center justify-between p-4 bg-gray-50 "
                 >
                   <div>
-                    <p className="text-xl text-black">{viewer.name}</p>
-                    <p className="text-gray-600">{viewer.email}</p>
+                    <p className="text-md text-black">{viewer.name}</p>
+                    <p className="text-sm text-gray-600">{viewer.email}</p>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="ghost"
                       size="sm"
                       className="text-red-500 hover:text-red-700"
                     >
-                      <Trash2 className="h-5 w-5" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>

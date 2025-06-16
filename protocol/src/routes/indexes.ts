@@ -50,6 +50,7 @@ router.get('/',
           id: indexes.id,
           title: indexes.title,
           isPublic: indexes.isPublic,
+          isDiscoverable: indexes.isDiscoverable,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
           userId: indexes.userId,
@@ -85,6 +86,7 @@ router.get('/',
             id: index.id,
             title: index.title,
             isPublic: index.isPublic,
+            isDiscoverable: index.isDiscoverable,
             createdAt: index.createdAt,
             updatedAt: index.updatedAt,
             user: {
@@ -139,6 +141,7 @@ router.get('/:id',
         id: indexes.id,
         title: indexes.title,
         isPublic: indexes.isPublic,
+        isDiscoverable: indexes.isDiscoverable,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
         userId: indexes.userId,
@@ -183,6 +186,7 @@ router.get('/:id',
         id: indexData.id,
         title: indexData.title,
         isPublic: indexData.isPublic,
+        isDiscoverable: indexData.isDiscoverable,
         createdAt: indexData.createdAt,
         updatedAt: indexData.updatedAt,
         user: {
@@ -222,6 +226,7 @@ router.post('/',
   [
     body('title').trim().isLength({ min: 1, max: 255 }),
     body('isPublic').optional().isBoolean(),
+    body('isDiscoverable').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -230,16 +235,18 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { title, isPublic = false } = req.body;
+      const { title, isPublic = false, isDiscoverable = false } = req.body;
 
       const newIndex = await db.insert(indexes).values({
         title,
         isPublic,
+        isDiscoverable,
         userId: req.user!.id,
       }).returning({
         id: indexes.id,
         title: indexes.title,
         isPublic: indexes.isPublic,
+        isDiscoverable: indexes.isDiscoverable,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
         userId: indexes.userId
@@ -258,6 +265,7 @@ router.post('/',
         id: newIndex[0].id,
         title: newIndex[0].title,
         isPublic: newIndex[0].isPublic,
+        isDiscoverable: newIndex[0].isDiscoverable,
         createdAt: newIndex[0].createdAt,
         updatedAt: newIndex[0].updatedAt,
         user: {
@@ -290,6 +298,7 @@ router.put('/:id',
     param('id').isUUID(),
     body('title').optional().trim().isLength({ min: 1, max: 255 }),
     body('isPublic').optional().isBoolean(),
+    body('isDiscoverable').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -299,7 +308,7 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { title, isPublic } = req.body;
+      const { title, isPublic, isDiscoverable } = req.body;
 
       const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
       if (!ownershipCheck.hasAccess) {
@@ -309,6 +318,7 @@ router.put('/:id',
       const updateData: any = { updatedAt: new Date() };
       if (title !== undefined) updateData.title = title;
       if (isPublic !== undefined) updateData.isPublic = isPublic;
+      if (isDiscoverable !== undefined) updateData.isDiscoverable = isDiscoverable;
 
       const updatedIndex = await db.update(indexes)
         .set(updateData)
@@ -317,6 +327,7 @@ router.put('/:id',
           id: indexes.id,
           title: indexes.title,
           isPublic: indexes.isPublic,
+          isDiscoverable: indexes.isDiscoverable,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
           userId: indexes.userId

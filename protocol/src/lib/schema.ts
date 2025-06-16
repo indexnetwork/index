@@ -30,6 +30,7 @@ export const indexes = pgTable('indexes', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
   isPublic: boolean('is_public').notNull().default(false),
+  isDiscoverable: boolean('is_discoverable').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
