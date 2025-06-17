@@ -254,11 +254,6 @@ export default function IndexesPage() {
         </div>
       </div>
 
-      {/* Footer Info */}
-      <div className="mt-4 text-center text-sm text-gray-500 p-4">
-        Indexes are privately secured and only shared with explicit permission after approval
-      </div>
-
       {/* Modals */}
       <CreateIndexModal 
         open={showIndexModal} 
