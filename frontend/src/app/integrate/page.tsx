@@ -1044,7 +1044,7 @@ export default function IntegratePage() {
 
         {/* Main Content - centered as original */}
         <div className="w-full border border-gray-200 rounded-md px-4 py-8" style={{
-          backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
+          backgroundImage: 'url(/grid.png)',
           backgroundColor: 'white',
           backgroundSize: '888px'
         }}>
@@ -1282,7 +1282,7 @@ export default function IntegratePage() {
 
         {/* Components Section - separate container */}
         <div className="w-full border border-gray-200 rounded-md mt-4 px-4 py-8" style={{
-          backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
+          backgroundImage: 'url(/grid.png)',
           backgroundColor: 'white',
           backgroundSize: '888px'
         }}>
@@ -1445,7 +1445,7 @@ export default function IntegratePage() {
 
       {/* Conversational Integrations Section */}
       <div className="w-full border border-gray-200 rounded-md mt-4 px-4 py-8" style={{
-        backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
+        backgroundImage: 'url(/grid.png)',
         backgroundColor: 'white',
         backgroundSize: '888px'
       }}>
