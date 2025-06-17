@@ -70,7 +70,7 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   const [showMemberDropdowns, setShowMemberDropdowns] = useState<Record<string, boolean>>({});
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>(() => {
     // Initialize based on current index.linkPermissions
-    return index.linkPermissions || [];
+    return index.linkPermissions?.permissions || [];
   });
   const [members, setMembers] = useState<Member[]>([]);
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
@@ -285,8 +285,8 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   };
 
   // Generate a share link when public
-  const shareUrl = selectedPermissions.length > 0 
-    ? `${window.location.origin}/share/${index.id}`
+  const shareUrl = selectedPermissions.length > 0 && index.linkPermissions?.code
+    ? `${window.location.origin}/share/${index.linkPermissions.code}`
     : '';
 
   return (

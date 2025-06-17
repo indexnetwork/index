@@ -72,6 +72,15 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response.index;
   },
 
+  // Get index by share code (public access)
+  getIndexByShareCode: async (code: string): Promise<Index> => {
+    const response = await api.get<APIResponse<Index>>(`/indexes/share/${code}`);
+    if (!response.index) {
+      throw new Error('Index not found');
+    }
+    return response.index;
+  },
+
   // Create new index
   createIndex: async (data: CreateIndexRequest): Promise<Index> => {
     const response = await api.post<APIResponse<Index>>('/indexes', data);
@@ -143,9 +152,9 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   // Public Permissions Management
   // Update link permissions for direct link sharing
-  updateLinkPermissions: async (indexId: string, linkPermissions: string[]): Promise<Index> => {
+  updateLinkPermissions: async (indexId: string, permissions: string[]): Promise<Index> => {
     const response = await api.patch<APIResponse<Index>>(`/indexes/${indexId}/link-permissions`, { 
-      linkPermissions 
+      permissions 
     });
     if (!response.index) {
       throw new Error('Failed to update link permissions');

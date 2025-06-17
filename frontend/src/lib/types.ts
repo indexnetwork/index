@@ -14,7 +14,10 @@ export interface Index {
   id: string;
   title: string;
   isDiscoverable: boolean;
-  linkPermissions?: string[];
+  linkPermissions?: {
+    permissions: string[];
+    code: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
   user: {
@@ -158,7 +161,10 @@ export interface CreateIndexRequest {
 export interface UpdateIndexRequest {
   title?: string;
   isDiscoverable?: boolean;
-  linkPermissions?: string[];
+  linkPermissions?: {
+    permissions: string[];
+    code: string;
+  } | null;
 }
 
 export interface CreateIntentRequest {
