@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { Copy, Globe, Lock, Trash2, Search, Plus, Check, ChevronDown } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Input } from "../ui/input";
 import { useIndexes } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
@@ -69,13 +69,11 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   const [showPermissionsDropdown, setShowPermissionsDropdown] = useState(false);
   const [showMemberDropdowns, setShowMemberDropdowns] = useState<Record<string, boolean>>({});
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>(() => {
-    // Initialize based on current index.isPublic state
-    return index.isPublic ? ['can-view-files'] : [];
+    // Initialize based on current index.linkPermissions
+    return index.linkPermissions || [];
   });
-  const [members, setMembers] = useState<Member[]>([
-    { id: '1', name: 'Alice Smith', email: 'alice@example.com', permissions: ['can-write', 'can-view-files'] },
-    { id: '2', name: 'Bob Johnson', email: 'bob@example.com', permissions: ['can-view-files'] },
-  ]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const permissionsDropdownRef = useRef<HTMLDivElement>(null);
@@ -96,19 +94,59 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     }
   ];
 
-  // Mock suggested users - in real app, this would come from an API
-  const suggestedUsers: Member[] = [
-    { id: '3', name: 'Charlie Brown', email: 'charlie@example.com', permissions: ['can-view-files'] },
-    { id: '4', name: 'Diana Prince', email: 'diana@example.com', permissions: ['can-view-files'] },
-    { id: '5', name: 'Edward Norton', email: 'edward@example.com', permissions: ['can-view-files'] },
-    { id: '6', name: 'Fiona Green', email: 'fiona@example.com', permissions: ['can-view-files'] },
-  ];
+  // Load members when modal opens
+  const loadMembers = useCallback(async () => {
+    try {
+      const membersList = await indexesService.getMembers(index.id);
+      setMembers(membersList);
+    } catch (error) {
+      console.error('Error loading members:', error);
+    }
+  }, [indexesService, index.id]);
 
-  // Filter suggestions based on search query and exclude existing members
+  useEffect(() => {
+    if (open) {
+      loadMembers();
+    }
+  }, [open, loadMembers]);
+
+  const searchUsers = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSuggestedUsers([]);
+      return;
+    }
+
+    try {
+      const users = await indexesService.searchUsers(query, index.id);
+      setSuggestedUsers(users.map(user => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        permissions: ['can-view-files'] // Default permissions for new users
+      })));
+    } catch (error) {
+      console.error('Error searching users:', error);
+      setSuggestedUsers([]);
+    }
+  }, [indexesService, index.id]);
+
+  // Debounced user search
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (memberSearchQuery) {
+        searchUsers(memberSearchQuery);
+      } else {
+        setSuggestedUsers([]);
+      }
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  }, [memberSearchQuery, searchUsers]);
+
+  // Filter suggestions to exclude existing members
   const filteredSuggestions = suggestedUsers.filter(user =>
-    !members.find(member => member.id === user.id) &&
-    (user.name.toLowerCase().includes(memberSearchQuery.toLowerCase()) ||
-     user.email.toLowerCase().includes(memberSearchQuery.toLowerCase()))
+    !members.find(member => member.id === user.id)
   );
 
   // Handle clicking outside to close suggestions and permissions dropdown
@@ -138,12 +176,7 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   const handleUpdatePermissions = async (permissions: string[]) => {
     try {
       setIsUpdatingVisibility(true);
-      // Convert permissions to API format
-      const isPublic = permissions.length > 0;
-      
-      await indexesService.updateIndex(index.id, { 
-        isPublic
-      });
+      await indexesService.updateLinkPermissions(index.id, permissions);
       // Refetch the complete index data to ensure we have all files
       const updatedIndex = await indexesService.getIndex(index.id);
       onIndexUpdate?.(updatedIndex);
@@ -185,32 +218,43 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     handleUpdatePermissions(updatedPermissions);
   };
 
-  const handleAddMember = (user: Member) => {
-    setMembers(prev => [...prev, user]);
-    setMemberSearchQuery('');
-    setShowSuggestions(false);
+  const handleAddMember = async (user: Member) => {
+    try {
+      const newMember = await indexesService.addMember(index.id, user.id, user.permissions);
+      setMembers(prev => [...prev, newMember]);
+      setMemberSearchQuery('');
+      setShowSuggestions(false);
+    } catch (error) {
+      console.error('Error adding member:', error);
+    }
   };
 
-  const handleRemoveMember = (memberId: string) => {
-    setMembers(prev => prev.filter(member => member.id !== memberId));
+  const handleRemoveMember = async (memberId: string) => {
+    try {
+      await indexesService.removeMember(index.id, memberId);
+      setMembers(prev => prev.filter(member => member.id !== memberId));
+    } catch (error) {
+      console.error('Error removing member:', error);
+    }
   };
 
-  const handleMemberPermissionToggle = (memberId: string, permission: string) => {
-    setMembers(prev => prev.map(member => {
-      if (member.id === memberId) {
-        const hasPermission = member.permissions.includes(permission);
-        let newPermissions;
-        
-        if (hasPermission) {
-          newPermissions = member.permissions.filter(p => p !== permission);
-        } else {
-          newPermissions = [...member.permissions, permission];
-        }
-        
-        return { ...member, permissions: newPermissions };
-      }
-      return member;
-    }));
+  const handleMemberPermissionToggle = async (memberId: string, permission: string) => {
+    const member = members.find(m => m.id === memberId);
+    if (!member) return;
+
+    const hasPermission = member.permissions.includes(permission);
+    const newPermissions = hasPermission
+      ? member.permissions.filter(p => p !== permission)
+      : [...member.permissions, permission];
+
+    try {
+      const updatedMember = await indexesService.updateMemberPermissions(index.id, memberId, newPermissions);
+      setMembers(prev => prev.map(member => 
+        member.id === memberId ? updatedMember : member
+      ));
+    } catch (error) {
+      console.error('Error updating member permissions:', error);
+    }
   };
 
   // Available member permissions
@@ -238,19 +282,6 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     return permissions.length === 1 
       ? '1 permission' 
       : `${permissions.length} permissions`;
-  };
-
-  // Generate description based on selected permissions
-  const getPermissionsDescription = () => {
-    if (selectedPermissions.length === 0) {
-      return "Only you and invited members can access this index";
-    }
-    
-    const selectedLabels = availablePermissions
-      .filter(p => selectedPermissions.includes(p.id))
-      .map(p => p.label.toLowerCase());
-    
-    return `Anyone can ${selectedLabels.join(' and ')}`;
   };
 
   // Generate a share link when public
@@ -447,7 +478,7 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                         <p className="text-sm font-medium text-gray-900">{user.name}</p>
                         <p className="text-xs text-gray-500">{user.email}</p>
                       </div>
-                      <Check className="h-4 w-4 text-green-600" />
+                      <Plus className="h-4 w-4 text-gray-400" />
                     </button>
                   ))}
                 </div>
@@ -466,75 +497,81 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
             
             {/* Members list */}
             <div className="space-y-3">
-              {members.map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
-                      {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="text-md text-black font-medium">{member.name}</p>
-                      <p className="text-sm text-gray-600">{member.email}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {/* Member permissions dropdown */}
-                    <div className="relative">
-                      <button
-                        onClick={() => toggleMemberDropdown(member.id)}
-                        className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                      >
-                        <span className="text-gray-700">
-                          {getMemberPermissionsText(member.permissions)}
-                        </span>
-                        <ChevronDown className="h-4 w-4 text-gray-400" />
-                      </button>
-                      
-                      {showMemberDropdowns[member.id] && (
-                        <div
-                          ref={(el) => { memberDropdownRefs.current[member.id] = el; }}
-                          className="absolute top-full right-0 z-50 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg"
-                        >
-                          <div className="p-2">
-                            {memberPermissions.map((permission) => (
-                              <label
-                                key={permission.id}
-                                className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-md cursor-pointer"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={member.permissions.includes(permission.id)}
-                                  onChange={() => handleMemberPermissionToggle(member.id, permission.id)}
-                                  className="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                />
-                                <div className="flex-1">
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {permission.label}
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    {permission.description}
-                                  </div>
-                                </div>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => handleRemoveMember(member.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+              {members.length === 0 ? (
+                <div className="p-4 text-center">
+                  <p className="text-sm text-gray-500">No members added yet</p>
                 </div>
-              ))}
+              ) : (
+                members.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
+                        {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-md text-black font-medium">{member.name}</p>
+                        <p className="text-sm text-gray-600">{member.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {/* Member permissions dropdown */}
+                      <div className="relative">
+                        <button
+                          onClick={() => toggleMemberDropdown(member.id)}
+                          className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                        >
+                          <span className="text-gray-700">
+                            {getMemberPermissionsText(member.permissions)}
+                          </span>
+                          <ChevronDown className="h-4 w-4 text-gray-400" />
+                        </button>
+                        
+                        {showMemberDropdowns[member.id] && (
+                          <div
+                            ref={(el) => { memberDropdownRefs.current[member.id] = el; }}
+                            className="absolute top-full right-0 z-50 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg"
+                          >
+                            <div className="p-2">
+                              {memberPermissions.map((permission) => (
+                                <label
+                                  key={permission.id}
+                                  className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-md cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={member.permissions.includes(permission.id)}
+                                    onChange={() => handleMemberPermissionToggle(member.id, permission.id)}
+                                    className="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                  />
+                                  <div className="flex-1">
+                                    <div className="text-sm font-medium text-gray-900">
+                                      {permission.label}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {permission.description}
+                                    </div>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleRemoveMember(member.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

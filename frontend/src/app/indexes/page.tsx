@@ -62,8 +62,7 @@ export default function IndexesPage() {
   const handleCreateIndex = async (indexData: { name: string }) => {
     try {
       const createRequest = {
-        title: indexData.name,
-        isPublic: false
+        title: indexData.name
       };
       
       const newIndex = await indexesService.createIndex(createRequest);

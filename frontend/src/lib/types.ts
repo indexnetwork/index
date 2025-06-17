@@ -13,8 +13,8 @@ export interface User {
 export interface Index {
   id: string;
   title: string;
-  isPublic: boolean;
   isDiscoverable: boolean;
+  linkPermissions?: string[];
   createdAt: string;
   updatedAt: string;
   user: {
@@ -45,6 +45,8 @@ export interface IndexMember {
   userName: string;
   userEmail: string | null;
   userAvatar: string | null;
+  permissions?: string[];
+  createdAt?: string;
 }
 
 export interface SuggestedIntent {
@@ -76,7 +78,6 @@ export interface Intent {
 export interface IntentIndex {
   indexId: string;
   indexTitle: string;
-  indexIsPublic: boolean;
 }
 
 export interface IntentStakesByUserResponse {
@@ -152,13 +153,12 @@ export interface APIResponse<T> {
 // Request types
 export interface CreateIndexRequest {
   title: string;
-  isPublic: boolean;
 }
 
 export interface UpdateIndexRequest {
   title?: string;
-  isPublic?: boolean;
   isDiscoverable?: boolean;
+  linkPermissions?: string[];
 }
 
 export interface CreateIntentRequest {
@@ -194,4 +194,4 @@ export interface ErrorResponse {
     field: string;
     message: string;
   }>;
-} 
+}
