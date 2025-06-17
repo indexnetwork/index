@@ -29,8 +29,8 @@ export const intents = pgTable('intents', {
 export const indexes = pgTable('indexes', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
-  isPublic: boolean('is_public').notNull().default(false),
   isDiscoverable: boolean('is_discoverable').notNull().default(false),
+  linkPermissions: text('link_permissions').array().notNull().default([]),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
@@ -40,7 +40,12 @@ export const indexes = pgTable('indexes', {
 export const indexMembers = pgTable('index_members', {
   indexId: uuid('index_id').notNull().references(() => indexes.id),
   userId: uuid('user_id').notNull().references(() => users.id),
-});
+  permissions: text('permissions').array().notNull().default([]),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+}, (table) => ({
+  pk: { name: 'index_members_pkey', columns: [table.indexId, table.userId] }
+}));
 
 export const files = pgTable('files', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -155,6 +160,8 @@ export type Intent = typeof intents.$inferSelect;
 export type NewIntent = typeof intents.$inferInsert;
 export type Index = typeof indexes.$inferSelect;
 export type NewIndex = typeof indexes.$inferInsert;
+export type IndexMember = typeof indexMembers.$inferSelect;
+export type NewIndexMember = typeof indexMembers.$inferInsert;
 export type File = typeof files.$inferSelect;
 export type NewFile = typeof files.$inferInsert;
 export type IntentStake = typeof intentStakes.$inferSelect;

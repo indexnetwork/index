@@ -13,6 +13,17 @@ import {
 // Re-export types for convenience
 export type { Index, IndexFile };
 
+// Member interface for API responses
+interface Member {
+  id: string;
+  name: string;
+  email: string;
+  avatar?: string;
+  permissions: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // Legacy interface for backward compatibility
 export interface SuggestedIntent {
   id: string;
@@ -95,14 +106,62 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     await api.delete(`/indexes/${indexId}/files/${fileId}`);
   },
 
-  // Add index member
-  addMember: async (indexId: string, userId: string): Promise<void> => {
-    await api.post(`/indexes/${indexId}/members`, { userId });
+  // Member Management
+  // Add member to index with specific permissions
+  addMember: async (indexId: string, userId: string, permissions: string[]): Promise<Member> => {
+    const response = await api.post<{ member: Member; message: string }>(`/indexes/${indexId}/members`, { 
+      userId, 
+      permissions 
+    });
+    if (!response.member) {
+      throw new Error('Failed to add member');
+    }
+    return response.member;
   },
 
-  // Remove index member
+  // Remove member from index
   removeMember: async (indexId: string, userId: string): Promise<void> => {
     await api.delete(`/indexes/${indexId}/members/${userId}`);
+  },
+
+  // Update member permissions
+  updateMemberPermissions: async (indexId: string, userId: string, permissions: string[]): Promise<Member> => {
+    const response = await api.patch<{ member: Member; message: string }>(`/indexes/${indexId}/members/${userId}`, { 
+      permissions 
+    });
+    if (!response.member) {
+      throw new Error('Failed to update member permissions');
+    }
+    return response.member;
+  },
+
+  // Get members of an index
+  getMembers: async (indexId: string): Promise<Member[]> => {
+    const response = await api.get<{ members: Member[] }>(`/indexes/${indexId}/members`);
+    return response.members || [];
+  },
+
+  // Public Permissions Management
+  // Update link permissions for direct link sharing
+  updateLinkPermissions: async (indexId: string, linkPermissions: string[]): Promise<Index> => {
+    const response = await api.patch<APIResponse<Index>>(`/indexes/${indexId}/link-permissions`, { 
+      linkPermissions 
+    });
+    if (!response.index) {
+      throw new Error('Failed to update link permissions');
+    }
+    return response.index;
+  },
+
+  // User Search
+  // Search users for adding as members
+  searchUsers: async (query: string, indexId?: string): Promise<{ id: string; name: string; email: string; avatar?: string }[]> => {
+    const params = new URLSearchParams({ q: query });
+    if (indexId) {
+      params.append('indexId', indexId);
+    }
+    const response = await api.get<{ users: { id: string; name: string; email: string; avatar?: string }[] }>(`/indexes/search-users?${params.toString()}`);
+    return response.users || [];
   },
 
   // Leave index (remove current user as member)

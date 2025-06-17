@@ -49,8 +49,8 @@ router.get('/',
         db.select({
           id: indexes.id,
           title: indexes.title,
-          isPublic: indexes.isPublic,
           isDiscoverable: indexes.isDiscoverable,
+          linkPermissions: indexes.linkPermissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
           userId: indexes.userId,
@@ -85,8 +85,8 @@ router.get('/',
           return {
             id: index.id,
             title: index.title,
-            isPublic: index.isPublic,
             isDiscoverable: index.isDiscoverable,
+            linkPermissions: index.linkPermissions,
             createdAt: index.createdAt,
             updatedAt: index.updatedAt,
             user: {
@@ -119,6 +119,59 @@ router.get('/',
   }
 );
 
+// Search users for adding as members
+router.get('/search-users',
+  authenticatePrivy,
+  [
+    query('q').trim().isLength({ min: 1 }),
+    query('indexId').optional().isUUID(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { q, indexId } = req.query;
+      const searchQuery = `%${q}%`;
+
+      let whereCondition = and(
+        isNull(users.deletedAt),
+        or(
+          ilike(users.name, searchQuery),
+          ilike(users.email, searchQuery)
+        )
+      );
+
+      const searchResults = await db.select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        avatar: users.avatar
+      }).from(users)
+        .where(whereCondition)
+        .limit(10);
+
+      // If indexId is provided, filter out existing members
+      let filteredResults = searchResults;
+      if (indexId) {
+        const existingMembers = await db.select({ userId: indexMembers.userId })
+          .from(indexMembers)
+          .where(eq(indexMembers.indexId, indexId as string));
+        
+        const existingMemberIds = existingMembers.map(m => m.userId);
+        filteredResults = searchResults.filter(user => !existingMemberIds.includes(user.id));
+      }
+
+      return res.json({ users: filteredResults });
+    } catch (error) {
+      console.error('Search users error:', error);
+      return res.status(500).json({ error: 'Failed to search users' });
+    }
+  }
+);
+
 // Get single index by ID
 router.get('/:id',
   authenticatePrivy,
@@ -140,8 +193,8 @@ router.get('/:id',
       const index = await db.select({
         id: indexes.id,
         title: indexes.title,
-        isPublic: indexes.isPublic,
         isDiscoverable: indexes.isDiscoverable,
+        linkPermissions: indexes.linkPermissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
         userId: indexes.userId,
@@ -170,7 +223,9 @@ router.get('/:id',
           userId: indexMembers.userId,
           userName: users.name,
           userEmail: users.email,
-          userAvatar: users.avatar
+          userAvatar: users.avatar,
+          permissions: indexMembers.permissions,
+          memberCreatedAt: indexMembers.createdAt
         }).from(indexMembers)
           .innerJoin(users, eq(indexMembers.userId, users.id))
           .where(eq(indexMembers.indexId, id))
@@ -182,11 +237,12 @@ router.get('/:id',
       ]);
 
       const indexData = index[0];
+      
       const result = {
         id: indexData.id,
         title: indexData.title,
-        isPublic: indexData.isPublic,
         isDiscoverable: indexData.isDiscoverable,
+        linkPermissions: indexData.linkPermissions,
         createdAt: indexData.createdAt,
         updatedAt: indexData.updatedAt,
         user: {
@@ -203,7 +259,9 @@ router.get('/:id',
           id: member.userId,
           name: member.userName,
           email: member.userEmail,
-          avatar: member.userAvatar
+          avatar: member.userAvatar,
+          permissions: member.permissions,
+          createdAt: member.memberCreatedAt
         })),
         _count: {
           files: indexFiles.length,
@@ -225,7 +283,6 @@ router.post('/',
   authenticatePrivy,
   [
     body('title').trim().isLength({ min: 1, max: 255 }),
-    body('isPublic').optional().isBoolean(),
     body('isDiscoverable').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
@@ -235,18 +292,17 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { title, isPublic = false, isDiscoverable = false } = req.body;
+      const { title, isDiscoverable = false } = req.body;
 
       const newIndex = await db.insert(indexes).values({
         title,
-        isPublic,
         isDiscoverable,
         userId: req.user!.id,
       }).returning({
         id: indexes.id,
         title: indexes.title,
-        isPublic: indexes.isPublic,
         isDiscoverable: indexes.isDiscoverable,
+        linkPermissions: indexes.linkPermissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
         userId: indexes.userId
@@ -264,8 +320,8 @@ router.post('/',
       const result = {
         id: newIndex[0].id,
         title: newIndex[0].title,
-        isPublic: newIndex[0].isPublic,
         isDiscoverable: newIndex[0].isDiscoverable,
+        linkPermissions: newIndex[0].linkPermissions,
         createdAt: newIndex[0].createdAt,
         updatedAt: newIndex[0].updatedAt,
         user: {
@@ -297,8 +353,9 @@ router.put('/:id',
   [
     param('id').isUUID(),
     body('title').optional().trim().isLength({ min: 1, max: 255 }),
-    body('isPublic').optional().isBoolean(),
     body('isDiscoverable').optional().isBoolean(),
+    body('linkPermissions').optional().isArray(),
+    body('linkPermissions.*').optional().isString(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -308,17 +365,29 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { title, isPublic, isDiscoverable } = req.body;
+      const { title, isDiscoverable, linkPermissions } = req.body;
 
       const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
       if (!ownershipCheck.hasAccess) {
         return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
       }
 
+      // Validate link permissions if provided
+      if (linkPermissions) {
+        const validLinkPermissions = ['can-match', 'can-view-files'];
+        const invalidPermissions = linkPermissions.filter((p: string) => !validLinkPermissions.includes(p));
+        if (invalidPermissions.length > 0) {
+          return res.status(400).json({ 
+            error: 'Invalid link permissions',
+            invalidPermissions 
+          });
+        }
+      }
+
       const updateData: any = { updatedAt: new Date() };
       if (title !== undefined) updateData.title = title;
-      if (isPublic !== undefined) updateData.isPublic = isPublic;
       if (isDiscoverable !== undefined) updateData.isDiscoverable = isDiscoverable;
+      if (linkPermissions !== undefined) updateData.linkPermissions = linkPermissions;
 
       const updatedIndex = await db.update(indexes)
         .set(updateData)
@@ -326,16 +395,18 @@ router.put('/:id',
         .returning({
           id: indexes.id,
           title: indexes.title,
-          isPublic: indexes.isPublic,
           isDiscoverable: indexes.isDiscoverable,
+          linkPermissions: indexes.linkPermissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
           userId: indexes.userId
         });
 
+      const result = updatedIndex[0];
+
       return res.json({
         message: 'Index updated successfully',
-        index: updatedIndex[0]
+        index: result
       });
     } catch (error) {
       console.error('Update index error:', error);
@@ -383,6 +454,8 @@ router.post('/:id/members',
   [
     param('id').isUUID(),
     body('userId').isUUID(),
+    body('permissions').isArray(),
+    body('permissions.*').isString(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -392,24 +465,34 @@ router.post('/:id/members',
       }
 
       const { id } = req.params;
-      const { userId } = req.body;
+      const { userId, permissions } = req.body;
 
       const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
       if (!ownershipCheck.hasAccess) {
         return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
       }
 
-      // Check if user exists
-      const user = await db.select({ id: users.id })
+      // Validate user exists
+      const userExists = await db.select({ id: users.id })
         .from(users)
-        .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+        .where(eq(users.id, userId))
         .limit(1);
 
-      if (user.length === 0) {
+      if (userExists.length === 0) {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // Check if membership already exists
+      // Validate permissions
+      const validPermissions = ['can-write', 'can-view-files', 'can-match'];
+      const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
+      if (invalidPermissions.length > 0) {
+        return res.status(400).json({ 
+          error: 'Invalid permissions',
+          invalidPermissions 
+        });
+      }
+
+      // Check if member already exists
       const existingMember = await db.select({ userId: indexMembers.userId })
         .from(indexMembers)
         .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)))
@@ -419,12 +502,30 @@ router.post('/:id/members',
         return res.status(400).json({ error: 'User is already a member of this index' });
       }
 
+      // Add member
       await db.insert(indexMembers).values({
         indexId: id,
-        userId: userId,
+        userId,
+        permissions,
       });
 
-      return res.status(201).json({ message: 'Member added successfully' });
+      // Get member details
+      const memberData = await db.select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        avatar: users.avatar,
+        permissions: indexMembers.permissions,
+        createdAt: indexMembers.createdAt
+      }).from(indexMembers)
+        .innerJoin(users, eq(indexMembers.userId, users.id))
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)))
+        .limit(1);
+
+      return res.status(201).json({
+        message: 'Member added successfully',
+        member: memberData[0]
+      });
     } catch (error) {
       console.error('Add member error:', error);
       return res.status(500).json({ error: 'Failed to add member' });
@@ -448,31 +549,24 @@ router.delete('/:id/members/:userId',
 
       const { id, userId } = req.params;
 
-      // Check if index exists
-      const index = await db.select({ id: indexes.id, userId: indexes.userId })
-        .from(indexes)
-        .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
+      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      }
+
+      // Check if member exists
+      const existingMember = await db.select({ userId: indexMembers.userId })
+        .from(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)))
         .limit(1);
 
-      if (index.length === 0) {
-        return res.status(404).json({ error: 'Index not found' });
-      }
-
-      // Allow either the index owner to remove any member, or users to remove themselves
-      const isOwner = index[0].userId === req.user!.id;
-      const isSelfRemoval = userId === req.user!.id;
-
-      if (!isOwner && !isSelfRemoval) {
-        return res.status(403).json({ error: 'Access denied' });
-      }
-
-      const result = await db.delete(indexMembers)
-        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)))
-        .returning({ userId: indexMembers.userId });
-
-      if (result.length === 0) {
+      if (existingMember.length === 0) {
         return res.status(404).json({ error: 'Member not found' });
       }
+
+      // Remove member
+      await db.delete(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)));
 
       return res.json({ message: 'Member removed successfully' });
     } catch (error) {
@@ -482,5 +576,181 @@ router.delete('/:id/members/:userId',
   }
 );
 
+// Update member permissions
+router.patch('/:id/members/:userId',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    param('userId').isUUID(),
+    body('permissions').isArray(),
+    body('permissions.*').isString(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id, userId } = req.params;
+      const { permissions } = req.body;
+
+      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      }
+
+      // Validate permissions
+      const validPermissions = ['can-write', 'can-view-files', 'can-match'];
+      const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
+      if (invalidPermissions.length > 0) {
+        return res.status(400).json({ 
+          error: 'Invalid permissions',
+          invalidPermissions 
+        });
+      }
+
+      // Check if member exists
+      const existingMember = await db.select({ userId: indexMembers.userId })
+        .from(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)))
+        .limit(1);
+
+      if (existingMember.length === 0) {
+        return res.status(404).json({ error: 'Member not found' });
+      }
+
+      // Update member permissions
+      await db.update(indexMembers)
+        .set({ 
+          permissions,
+          updatedAt: new Date()
+        })
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)));
+
+      // Get updated member details
+      const memberData = await db.select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        avatar: users.avatar,
+        permissions: indexMembers.permissions,
+        updatedAt: indexMembers.updatedAt
+      }).from(indexMembers)
+        .innerJoin(users, eq(indexMembers.userId, users.id))
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)))
+        .limit(1);
+
+      return res.json({
+        message: 'Member permissions updated successfully',
+        member: memberData[0]
+      });
+    } catch (error) {
+      console.error('Update member permissions error:', error);
+      return res.status(500).json({ error: 'Failed to update member permissions' });
+    }
+  }
+);
+
+// Update public permissions for direct link sharing
+router.patch('/:id/link-permissions',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    body('linkPermissions').isArray(),
+    body('linkPermissions.*').isString(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const { linkPermissions } = req.body;
+
+      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      }
+
+      // Validate link permissions
+      const validLinkPermissions = ['can-match', 'can-view-files'];
+      const invalidPermissions = linkPermissions.filter((p: string) => !validLinkPermissions.includes(p));
+      if (invalidPermissions.length > 0) {
+        return res.status(400).json({ 
+          error: 'Invalid link permissions',
+          invalidPermissions 
+        });
+      }
+
+      const updatedIndex = await db.update(indexes)
+        .set({ 
+          linkPermissions,
+          updatedAt: new Date()
+        })
+        .where(eq(indexes.id, id))
+        .returning({
+          id: indexes.id,
+          title: indexes.title,
+          isDiscoverable: indexes.isDiscoverable,
+          linkPermissions: indexes.linkPermissions,
+          createdAt: indexes.createdAt,
+          updatedAt: indexes.updatedAt,
+          userId: indexes.userId
+        });
+
+      const result = updatedIndex[0];
+
+      return res.json({
+        message: 'Link permissions updated successfully',
+        index: result
+      });
+    } catch (error) {
+      console.error('Update link permissions error:', error);
+      return res.status(500).json({ error: 'Failed to update link permissions' });
+    }
+  }
+);
+
+// Get members of an index
+router.get('/:id/members',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const members = await db.select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        avatar: users.avatar,
+        permissions: indexMembers.permissions,
+        createdAt: indexMembers.createdAt,
+        updatedAt: indexMembers.updatedAt
+      }).from(indexMembers)
+        .innerJoin(users, eq(indexMembers.userId, users.id))
+        .where(eq(indexMembers.indexId, id))
+        .orderBy(indexMembers.createdAt);
+
+      return res.json({ members });
+    } catch (error) {
+      console.error('Get members error:', error);
+      return res.status(500).json({ error: 'Failed to get members' });
+    }
+  }
+);
 
 export default router; 

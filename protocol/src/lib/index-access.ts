@@ -9,15 +9,16 @@ export interface IndexAccessResult {
   indexData?: {
     id: string;
     userId: string;
-    isPublic: boolean;
+    linkPermissions?: string[];
   };
+  memberPermissions?: string[];
 }
 
 export const checkIndexAccess = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
   const index = await db.select({
     id: indexes.id,
     userId: indexes.userId,
-    isPublic: indexes.isPublic
+    linkPermissions: indexes.linkPermissions
   }).from(indexes)
     .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
     .limit(1);
@@ -27,26 +28,42 @@ export const checkIndexAccess = async (indexId: string, userId: string): Promise
   }
 
   const indexData = index[0];
-  const hasAccess = indexData.isPublic || indexData.userId === userId;
-
-  if (!hasAccess) {
-    // Check if user is a member
-    const membership = await db.select({ userId: indexMembers.userId })
-      .from(indexMembers)
-      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
-      .limit(1);
-
-    if (membership.length === 0) {
-      return { hasAccess: false, error: 'Access denied', status: 403 };
-    }
+  
+  // Owner always has access
+  if (indexData.userId === userId) {
+    return { hasAccess: true, indexData, memberPermissions: ['can-write', 'can-view-files', 'can-match'] };
   }
 
-  return { hasAccess: true, indexData };
+  // Public access via link permissions
+  if (indexData.linkPermissions.length > 0) {
+    return { hasAccess: true, indexData, memberPermissions: indexData.linkPermissions };
+  }
+
+  // Check if user is a member
+  const membership = await db.select({ 
+    userId: indexMembers.userId,
+    permissions: indexMembers.permissions 
+  }).from(indexMembers)
+    .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
+    .limit(1);
+
+  if (membership.length === 0) {
+    return { hasAccess: false, error: 'Access denied', status: 403 };
+  }
+
+  return { 
+    hasAccess: true, 
+    indexData, 
+    memberPermissions: membership[0].permissions 
+  };
 };
 
 export const checkIndexOwnership = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
-  const index = await db.select({ id: indexes.id, userId: indexes.userId })
-    .from(indexes)
+  const index = await db.select({ 
+    id: indexes.id, 
+    userId: indexes.userId,
+    linkPermissions: indexes.linkPermissions
+  }).from(indexes)
     .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
     .limit(1);
 
@@ -58,5 +75,35 @@ export const checkIndexOwnership = async (indexId: string, userId: string): Prom
     return { hasAccess: false, error: 'Access denied', status: 403 };
   }
 
-  return { hasAccess: true, indexData: { ...index[0], isPublic: false } };
+  return { 
+    hasAccess: true, 
+    indexData: { 
+      ...index[0], 
+      linkPermissions: index[0].linkPermissions
+    } 
+  };
+};
+
+export const checkIndexPermission = async (
+  indexId: string, 
+  userId: string, 
+  requiredPermission: string
+): Promise<IndexAccessResult> => {
+  const accessResult = await checkIndexAccess(indexId, userId);
+  
+  if (!accessResult.hasAccess) {
+    return accessResult;
+  }
+
+  const hasPermission = accessResult.memberPermissions?.includes(requiredPermission) || false;
+  
+  if (!hasPermission) {
+    return { 
+      hasAccess: false, 
+      error: `Permission denied: ${requiredPermission} required`, 
+      status: 403 
+    };
+  }
+
+  return accessResult;
 }; 
