@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
-import { Copy, Globe, Lock, Trash2, Search, Plus, Check, ChevronDown } from "lucide-react";
+import { Copy, Globe, Lock, Trash2, Search, Plus, ChevronDown } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Input } from "../ui/input";
 import { useIndexes } from "@/contexts/APIContext";
