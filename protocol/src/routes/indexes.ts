@@ -807,11 +807,6 @@ router.get('/share/:code',
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
 
-      // Check if user has can-view-files permission - this endpoint is only for viewing files
-      const canViewFiles = accessCheck.memberPermissions?.includes('can-view-files') || false;
-      if (!canViewFiles) {
-        return res.status(401).json({ error: 'Unauthorized - view files permission required' });
-      }
 
       const indexData = accessCheck.indexData!;
 
@@ -860,6 +855,7 @@ router.get('/share/:code',
           ...file,
           size: file.size.toString()
         })),
+        linkPermissions: indexResult.linkPermissions,
         _count: {
           files: indexFiles.length,
         }
