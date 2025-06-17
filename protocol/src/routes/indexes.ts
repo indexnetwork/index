@@ -825,9 +825,15 @@ router.get('/share/:code',
         .innerJoin(users, eq(indexes.userId, users.id))
         .where(and(eq(indexes.id, indexData.id), isNull(indexes.deletedAt)))
         .limit(1);
+
+      const indexResult = index[0];
       
-      const [indexFiles] = await Promise.all([
-        db.select({
+      // Check if can-view-files permission exists
+      const canViewFiles = indexResult.linkPermissions?.permissions?.includes('can-view-files');
+      
+      let indexFiles: any[] = [];
+      if (canViewFiles) {
+        indexFiles = await db.select({
           id: files.id,
           name: files.name,
           type: files.type,
@@ -836,10 +842,8 @@ router.get('/share/:code',
         }).from(files)
           .where(and(eq(files.indexId, indexData.id), isNull(files.deletedAt)))
           .orderBy(desc(files.createdAt))
-          .limit(10)
-      ]);
-
-      const indexResult = index[0];
+          .limit(10);
+      }
       
       const result = {
         id: indexResult.id,
@@ -851,10 +855,12 @@ router.get('/share/:code',
           name: indexResult.userName,
           avatar: indexResult.userAvatar
         },
-        files: indexFiles.map(file => ({
-          ...file,
-          size: file.size.toString()
-        })),
+        ...(canViewFiles && {
+          files: indexFiles.map(file => ({
+            ...file,
+            size: file.size.toString()
+          }))
+        }),
         linkPermissions: indexResult.linkPermissions,
         _count: {
           files: indexFiles.length,
