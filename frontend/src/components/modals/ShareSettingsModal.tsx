@@ -285,7 +285,9 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   };
 
   // Generate a share link when public
-  const shareUrl = selectedPermissions.length > 0 ? `http://localhost:3000/share/${index.id}` : '';
+  const shareUrl = selectedPermissions.length > 0 
+    ? `${window.location.origin}/share/${index.id}`
+    : '';
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
