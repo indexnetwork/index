@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 
@@ -30,7 +30,10 @@ export const indexes = pgTable('indexes', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
   isDiscoverable: boolean('is_discoverable').notNull().default(false),
-  linkPermissions: text('link_permissions').array().notNull().default([]),
+  linkPermissions: json('link_permissions').$type<{
+    permissions: string[];
+    code: string;
+  } | null>().default(null),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),

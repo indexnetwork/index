@@ -1,10 +1,11 @@
-import { Router, Response } from 'express';
+import { Router, Response, Request } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
 import { indexes, users, files, indexMembers, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, or, ilike, exists } from 'drizzle-orm';
-import { checkIndexAccess, checkIndexOwnership } from '../lib/index-access';
+import { checkIndexAccess, checkIndexOwnership, checkIndexAccessByCode } from '../lib/index-access';
+import crypto from 'crypto';
 
 
 
@@ -354,8 +355,10 @@ router.put('/:id',
     param('id').isUUID(),
     body('title').optional().trim().isLength({ min: 1, max: 255 }),
     body('isDiscoverable').optional().isBoolean(),
-    body('linkPermissions').optional().isArray(),
-    body('linkPermissions.*').optional().isString(),
+    body('linkPermissions').optional().isObject(),
+    body('linkPermissions.permissions').optional().isArray(),
+    body('linkPermissions.permissions.*').optional().isString(),
+    body('linkPermissions.code').optional().isString(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -374,13 +377,32 @@ router.put('/:id',
 
       // Validate link permissions if provided
       if (linkPermissions) {
+        if (!linkPermissions.permissions || !Array.isArray(linkPermissions.permissions)) {
+          return res.status(400).json({ 
+            error: 'linkPermissions must have a permissions array' 
+          });
+        }
+        
         const validLinkPermissions = ['can-match', 'can-view-files'];
-        const invalidPermissions = linkPermissions.filter((p: string) => !validLinkPermissions.includes(p));
+        const invalidPermissions = linkPermissions.permissions.filter((p: string) => !validLinkPermissions.includes(p));
         if (invalidPermissions.length > 0) {
           return res.status(400).json({ 
             error: 'Invalid link permissions',
             invalidPermissions 
           });
+        }
+
+        // Generate code only if not provided (preserve existing codes)
+        if (!linkPermissions.code) {
+          // Check for existing code
+          const existingIndex = await db.select({
+            linkPermissions: indexes.linkPermissions
+          }).from(indexes)
+            .where(eq(indexes.id, id))
+            .limit(1);
+          
+          const existingCode = existingIndex[0]?.linkPermissions?.code;
+          linkPermissions.code = existingCode || crypto.randomUUID();
         }
       }
 
@@ -657,8 +679,8 @@ router.patch('/:id/link-permissions',
   authenticatePrivy,
   [
     param('id').isUUID(),
-    body('linkPermissions').isArray(),
-    body('linkPermissions.*').isString(),
+    body('permissions').isArray(),
+    body('permissions.*').isString(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -668,7 +690,7 @@ router.patch('/:id/link-permissions',
       }
 
       const { id } = req.params;
-      const { linkPermissions } = req.body;
+      const { permissions } = req.body;
 
       const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
       if (!ownershipCheck.hasAccess) {
@@ -677,13 +699,26 @@ router.patch('/:id/link-permissions',
 
       // Validate link permissions
       const validLinkPermissions = ['can-match', 'can-view-files'];
-      const invalidPermissions = linkPermissions.filter((p: string) => !validLinkPermissions.includes(p));
+      const invalidPermissions = permissions.filter((p: string) => !validLinkPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
           error: 'Invalid link permissions',
           invalidPermissions 
         });
       }
+
+      // Get existing index to preserve existing code
+      const existingIndex = await db.select({
+        linkPermissions: indexes.linkPermissions
+      }).from(indexes)
+        .where(eq(indexes.id, id))
+        .limit(1);
+
+      // Create link permissions object preserving existing code or generating new one
+      const existingCode = existingIndex[0]?.linkPermissions?.code;
+      const linkPermissions = permissions.length > 0 
+        ? { permissions, code: existingCode || crypto.randomUUID() }
+        : null;
 
       const updatedIndex = await db.update(indexes)
         .set({ 
@@ -749,6 +784,91 @@ router.get('/:id/members',
     } catch (error) {
       console.error('Get members error:', error);
       return res.status(500).json({ error: 'Failed to get members' });
+    }
+  }
+);
+
+// Access index by share code (public endpoint)
+router.get('/share/:code',
+  [
+    param('code').isUUID(),
+  ],
+  async (req: Request, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { code } = req.params;
+
+      const accessCheck = await checkIndexAccessByCode(code);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      // Check if user has can-view-files permission - this endpoint is only for viewing files
+      const canViewFiles = accessCheck.memberPermissions?.includes('can-view-files') || false;
+      if (!canViewFiles) {
+        return res.status(401).json({ error: 'Unauthorized - view files permission required' });
+      }
+
+      const indexData = accessCheck.indexData!;
+
+      const index = await db.select({
+        id: indexes.id,
+        title: indexes.title,
+        isDiscoverable: indexes.isDiscoverable,
+        linkPermissions: indexes.linkPermissions,
+        createdAt: indexes.createdAt,
+        updatedAt: indexes.updatedAt,
+        userId: indexes.userId,
+        userName: users.name,
+        userEmail: users.email,
+        userAvatar: users.avatar
+      }).from(indexes)
+        .innerJoin(users, eq(indexes.userId, users.id))
+        .where(and(eq(indexes.id, indexData.id), isNull(indexes.deletedAt)))
+        .limit(1);
+      
+      const [indexFiles] = await Promise.all([
+        db.select({
+          id: files.id,
+          name: files.name,
+          type: files.type,
+          size: files.size,
+          createdAt: files.createdAt
+        }).from(files)
+          .where(and(eq(files.indexId, indexData.id), isNull(files.deletedAt)))
+          .orderBy(desc(files.createdAt))
+          .limit(10)
+      ]);
+
+      const indexResult = index[0];
+      
+      const result = {
+        id: indexResult.id,
+        title: indexResult.title,
+        createdAt: indexResult.createdAt,
+        updatedAt: indexResult.updatedAt,
+        user: {
+          id: indexResult.userId,
+          name: indexResult.userName,
+          avatar: indexResult.userAvatar
+        },
+        files: indexFiles.map(file => ({
+          ...file,
+          size: file.size.toString()
+        })),
+        _count: {
+          files: indexFiles.length,
+        }
+      };
+
+      return res.json({ index: result });
+    } catch (error) {
+      console.error('Get index by share code error:', error);
+      return res.status(500).json({ error: 'Failed to fetch index' });
     }
   }
 );

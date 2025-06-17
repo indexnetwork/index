@@ -1,6 +1,6 @@
 import db from './db';
 import { indexes, indexMembers } from './schema';
-import { eq, isNull, and } from 'drizzle-orm';
+import { eq, isNull, and, sql } from 'drizzle-orm';
 
 export interface IndexAccessResult {
   hasAccess: boolean;
@@ -9,7 +9,10 @@ export interface IndexAccessResult {
   indexData?: {
     id: string;
     userId: string;
-    linkPermissions?: string[];
+    linkPermissions?: {
+      permissions: string[];
+      code: string;
+    } | null;
   };
   memberPermissions?: string[];
 }
@@ -35,8 +38,8 @@ export const checkIndexAccess = async (indexId: string, userId: string): Promise
   }
 
   // Public access via link permissions
-  if (indexData.linkPermissions.length > 0) {
-    return { hasAccess: true, indexData, memberPermissions: indexData.linkPermissions };
+  if (indexData.linkPermissions && indexData.linkPermissions.permissions.length > 0) {
+    return { hasAccess: true, indexData, memberPermissions: indexData.linkPermissions.permissions };
   }
 
   // Check if user is a member
@@ -106,4 +109,34 @@ export const checkIndexPermission = async (
   }
 
   return accessResult;
+};
+
+export const checkIndexAccessByCode = async (code: string): Promise<IndexAccessResult> => {
+  // Use SQL JSON operator to find index by code efficiently
+  const index = await db.select({
+    id: indexes.id,
+    userId: indexes.userId,
+    linkPermissions: indexes.linkPermissions
+  }).from(indexes)
+    .where(and(
+      isNull(indexes.deletedAt),
+      sql`${indexes.linkPermissions}->>'code' = ${code}`
+    ))
+    .limit(1);
+
+  if (index.length === 0) {
+    return { hasAccess: false, error: 'Invalid share code', status: 404 };
+  }
+
+  const indexData = index[0];
+
+  if (!indexData.linkPermissions || indexData.linkPermissions.permissions.length === 0) {
+    return { hasAccess: false, error: 'Share link has no permissions', status: 403 };
+  }
+
+  return { 
+    hasAccess: true, 
+    indexData, 
+    memberPermissions: indexData.linkPermissions.permissions 
+  };
 }; 
