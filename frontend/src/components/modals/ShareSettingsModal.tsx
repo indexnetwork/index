@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
-import { Copy, Globe, Lock, Trash2, Search, Plus, Check } from "lucide-react";
+import { Copy, Globe, Lock, Trash2, Search, Plus, Check, ChevronDown } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Input } from "../ui/input";
 import { useIndexes } from "@/contexts/APIContext";
@@ -10,8 +10,14 @@ interface Member {
   id: string;
   name: string;
   email: string;
-  role: 'Editor' | 'Viewer';
+  permissions: string[];
   avatar?: string;
+}
+
+interface PublicPermission {
+  id: string;
+  label: string;
+  description: string;
 }
 
 interface ShareSettingsModalProps {
@@ -60,20 +66,42 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   const [isUpdatingDiscovery, setIsUpdatingDiscovery] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showPermissionsDropdown, setShowPermissionsDropdown] = useState(false);
+  const [showMemberDropdowns, setShowMemberDropdowns] = useState<Record<string, boolean>>({});
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>(() => {
+    // Initialize based on current index.isPublic state
+    return index.isPublic ? ['can-view-files'] : [];
+  });
   const [members, setMembers] = useState<Member[]>([
-    { id: '1', name: 'Alice Smith', email: 'alice@example.com', role: 'Editor' },
-    { id: '2', name: 'Bob Johnson', email: 'bob@example.com', role: 'Viewer' },
+    { id: '1', name: 'Alice Smith', email: 'alice@example.com', permissions: ['can-write', 'can-view-files'] },
+    { id: '2', name: 'Bob Johnson', email: 'bob@example.com', permissions: ['can-view-files'] },
   ]);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const permissionsDropdownRef = useRef<HTMLDivElement>(null);
+  const memberDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const indexesService = useIndexes();
+
+  // Available public permissions
+  const availablePermissions: PublicPermission[] = [
+    {
+      id: 'can-match',
+      label: 'Match intents',
+      description: 'Use this index for intent matching'
+    },
+    {
+      id: 'can-view-files',
+      label: 'View files',
+      description: 'View and download files'
+    }
+  ];
 
   // Mock suggested users - in real app, this would come from an API
   const suggestedUsers: Member[] = [
-    { id: '3', name: 'Charlie Brown', email: 'charlie@example.com', role: 'Viewer' },
-    { id: '4', name: 'Diana Prince', email: 'diana@example.com', role: 'Viewer' },
-    { id: '5', name: 'Edward Norton', email: 'edward@example.com', role: 'Viewer' },
-    { id: '6', name: 'Fiona Green', email: 'fiona@example.com', role: 'Viewer' },
+    { id: '3', name: 'Charlie Brown', email: 'charlie@example.com', permissions: ['can-view-files'] },
+    { id: '4', name: 'Diana Prince', email: 'diana@example.com', permissions: ['can-view-files'] },
+    { id: '5', name: 'Edward Norton', email: 'edward@example.com', permissions: ['can-view-files'] },
+    { id: '6', name: 'Fiona Green', email: 'fiona@example.com', permissions: ['can-view-files'] },
   ];
 
   // Filter suggestions based on search query and exclude existing members
@@ -83,28 +111,44 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
      user.email.toLowerCase().includes(memberSearchQuery.toLowerCase()))
   );
 
-  // Handle clicking outside to close suggestions
+  // Handle clicking outside to close suggestions and permissions dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node) &&
           searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
         setShowSuggestions(false);
       }
+      if (permissionsDropdownRef.current && !permissionsDropdownRef.current.contains(event.target as Node)) {
+        setShowPermissionsDropdown(false);
+      }
+      
+      // Close member dropdowns when clicking outside
+      Object.keys(showMemberDropdowns).forEach(memberId => {
+        const dropdownRef = memberDropdownRefs.current[memberId];
+        if (dropdownRef && !dropdownRef.contains(event.target as Node)) {
+          setShowMemberDropdowns(prev => ({ ...prev, [memberId]: false }));
+        }
+      });
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [showMemberDropdowns]);
 
-  const handleToggleVisibility = async (isPublic: boolean) => {
+  const handleUpdatePermissions = async (permissions: string[]) => {
     try {
       setIsUpdatingVisibility(true);
-      await indexesService.updateIndex(index.id, { isPublic });
+      // Convert permissions to API format
+      const isPublic = permissions.length > 0;
+      
+      await indexesService.updateIndex(index.id, { 
+        isPublic
+      });
       // Refetch the complete index data to ensure we have all files
       const updatedIndex = await indexesService.getIndex(index.id);
       onIndexUpdate?.(updatedIndex);
     } catch (error) {
-      console.error('Error updating index visibility:', error);
+      console.error('Error updating index permissions:', error);
     } finally {
       setIsUpdatingVisibility(false);
     }
@@ -132,6 +176,15 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     }
   };
 
+  const handlePermissionToggle = (permissionId: string) => {
+    const updatedPermissions = selectedPermissions.includes(permissionId)
+      ? selectedPermissions.filter(id => id !== permissionId)
+      : [...selectedPermissions, permissionId];
+    
+    setSelectedPermissions(updatedPermissions);
+    handleUpdatePermissions(updatedPermissions);
+  };
+
   const handleAddMember = (user: Member) => {
     setMembers(prev => [...prev, user]);
     setMemberSearchQuery('');
@@ -142,19 +195,66 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     setMembers(prev => prev.filter(member => member.id !== memberId));
   };
 
-  const handleMemberRoleChange = (memberId: string, newRole: 'Editor' | 'Viewer') => {
-    setMembers(prev => prev.map(member => 
-      member.id === memberId ? { ...member, role: newRole } : member
-    ));
+  const handleMemberPermissionToggle = (memberId: string, permission: string) => {
+    setMembers(prev => prev.map(member => {
+      if (member.id === memberId) {
+        const hasPermission = member.permissions.includes(permission);
+        let newPermissions;
+        
+        if (hasPermission) {
+          newPermissions = member.permissions.filter(p => p !== permission);
+        } else {
+          newPermissions = [...member.permissions, permission];
+        }
+        
+        return { ...member, permissions: newPermissions };
+      }
+      return member;
+    }));
   };
+
+  // Available member permissions
+  const memberPermissions = [
+    { id: 'can-write', label: 'Edit files', description: 'Add, edit, and delete files' },
+    { id: 'can-view-files', label: 'View files', description: 'View and download files' }
+  ];
 
   const handleSearchInputChange = (value: string) => {
     setMemberSearchQuery(value);
     setShowSuggestions(value.length > 0);
   };
 
+  const toggleMemberDropdown = (memberId: string) => {
+    setShowMemberDropdowns(prev => ({
+      ...prev,
+      [memberId]: !prev[memberId]
+    }));
+  };
+
+  const getMemberPermissionsText = (permissions: string[]) => {
+    if (permissions.length === 0) {
+      return 'No access';
+    }
+    return permissions.length === 1 
+      ? '1 permission' 
+      : `${permissions.length} permissions`;
+  };
+
+  // Generate description based on selected permissions
+  const getPermissionsDescription = () => {
+    if (selectedPermissions.length === 0) {
+      return "Only you and invited members can access this index";
+    }
+    
+    const selectedLabels = availablePermissions
+      .filter(p => selectedPermissions.includes(p.id))
+      .map(p => p.label.toLowerCase());
+    
+    return `Anyone can ${selectedLabels.join(' and ')}`;
+  };
+
   // Generate a share link when public
-  const shareUrl = `http://localhost:3000/share/${index.id}`;
+  const shareUrl = selectedPermissions.length > 0 ? `http://localhost:3000/share/${index.id}` : '';
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -184,7 +284,7 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                   </div>
                 </div>
                 <p className="text-sm text-gray-600">
-                  Allow relevant users to use this index for intent matching
+                  Allow intents in this index to be matched by relevant users across the Index Network
                 </p>
               </div>
               <div className="flex items-center gap-3 ml-4">
@@ -212,9 +312,9 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mt-2 mb-2">
-                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Public Link</h3>
+                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Direct Link</h3>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
-                    {index.isPublic ? (
+                    {selectedPermissions.length > 0 ? (
                       <>
                         <Globe className="h-4 w-4" />
                       </>
@@ -226,33 +326,67 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                   </div>
                 </div>
                 <p className="text-sm text-gray-600">
-                  {index.isPublic 
-                    ? "Anyone can view this index" 
-                    : "Only you and invited members can view"
-                  }
+                  Grant access to anyone with the link
                 </p>
               </div>
               <div className="flex items-center gap-3 ml-4">
                 {isUpdatingVisibility && (
                   <div className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
                 )}
-                <button
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                    index.isPublic ? 'bg-blue-600' : 'bg-gray-300'
-                  } ${isUpdatingVisibility ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                  onClick={() => !isUpdatingVisibility && handleToggleVisibility(!index.isPublic)}
-                  disabled={isUpdatingVisibility}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      index.isPublic ? 'translate-x-6' : 'translate-x-1'
+                <div className="relative">
+                  <button
+                    onClick={() => !isUpdatingVisibility && setShowPermissionsDropdown(!showPermissionsDropdown)}
+                    disabled={isUpdatingVisibility}
+                    className={`flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      isUpdatingVisibility ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                     }`}
-                  />
-                </button>
+                  >
+                    <span className="text-gray-700">
+                      {selectedPermissions.length === 0 
+                        ? 'No access' 
+                        : selectedPermissions.length === 1 
+                          ? '1 permission' 
+                          : `${selectedPermissions.length} permissions`
+                      }
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                  </button>
+                  
+                  {showPermissionsDropdown && (
+                    <div
+                      ref={permissionsDropdownRef}
+                      className="absolute top-full right-0 z-50 mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg"
+                    >
+                      <div className="p-2">
+                        {availablePermissions.map((permission) => (
+                          <label
+                            key={permission.id}
+                            className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-md cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedPermissions.includes(permission.id)}
+                              onChange={() => handlePermissionToggle(permission.id)}
+                              className="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-gray-900">
+                                {permission.label}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {permission.description}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            {index.isPublic && (
+            {selectedPermissions.length > 0 && (
               <div className="mt-4">
                 <div className="flex items-center gap-2">
                   <Input
@@ -275,7 +409,8 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
           </div>
 
           <div>
-            <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-3">Members</h3>
+            <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-2">Members</h3>
+            <p className="text-sm text-gray-600 mb-3">Assign specific access to individuals or groups</p>
             
             {/* Member picker input */}
             <div className="relative mb-4">
@@ -346,15 +481,49 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/* Role selector */}
-                    <select
-                      value={member.role}
-                      onChange={(e) => handleMemberRoleChange(member.id, e.target.value as 'Editor' | 'Viewer')}
-                      className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="Viewer">Viewer</option>
-                      <option value="Editor">Editor</option>
-                    </select>
+                    {/* Member permissions dropdown */}
+                    <div className="relative">
+                      <button
+                        onClick={() => toggleMemberDropdown(member.id)}
+                        className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                      >
+                        <span className="text-gray-700">
+                          {getMemberPermissionsText(member.permissions)}
+                        </span>
+                        <ChevronDown className="h-4 w-4 text-gray-400" />
+                      </button>
+                      
+                      {showMemberDropdowns[member.id] && (
+                        <div
+                          ref={(el) => { memberDropdownRefs.current[member.id] = el; }}
+                          className="absolute top-full right-0 z-50 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg"
+                        >
+                          <div className="p-2">
+                            {memberPermissions.map((permission) => (
+                              <label
+                                key={permission.id}
+                                className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-md cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={member.permissions.includes(permission.id)}
+                                  onChange={() => handleMemberPermissionToggle(member.id, permission.id)}
+                                  className="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <div className="flex-1">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {permission.label}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {permission.description}
+                                  </div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"
