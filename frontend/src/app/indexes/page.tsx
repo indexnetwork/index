@@ -166,7 +166,7 @@ export default function IndexesPage() {
     <ClientLayout>
       {/* Main Content */}
       <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
-          backgroundImage: 'url(https://www.trychroma.com/pricing/grid.png)',
+          backgroundImage: 'url(/grid.png)',
           backgroundColor: 'white',
           backgroundSize: '888px'
         }}>

@@ -18,7 +18,7 @@ export default function ClientLayout({ children, showNavigation = true }: Client
           top: 0;
           bottom: 0;
           right: 0;
-          background: url(https://www.trychroma.com/img/noise.jpg);
+          background: url(/noise.jpg);
           opacity: .12;
           pointer-events: none;
           z-index: -1;

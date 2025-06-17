@@ -12,12 +12,6 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'www.trychroma.com',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
         hostname: 'avatar.vercel.sh',
         port: '',
         pathname: '/**',
