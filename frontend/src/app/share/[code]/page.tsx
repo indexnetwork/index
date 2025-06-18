@@ -2,10 +2,11 @@
 
 import { useState, useEffect, use, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, ArrowUpRight } from "lucide-react";
+import { Upload, ArrowUpRight, ArrowLeft } from "lucide-react";
 import { Index, APIResponse } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
+import Link from "next/link";
 
 interface SharePageProps {
   params: Promise<{
@@ -92,7 +93,7 @@ export default function SharePage({ params }: SharePageProps) {
 
   if (loading) {
     return (
-      <ClientLayout showNavigation={false}>
+      <ClientLayout>
         <div className="py-8 text-center text-gray-500">Loading...</div>
       </ClientLayout>
     );
@@ -100,7 +101,7 @@ export default function SharePage({ params }: SharePageProps) {
 
   if (error) {
     return (
-      <ClientLayout showNavigation={false}>
+      <ClientLayout>
         <div className="py-8 text-center text-gray-500">
           <h2 className="text-xl font-bold mb-2">Access Denied</h2>
           <p>{error}</p>
@@ -111,7 +112,7 @@ export default function SharePage({ params }: SharePageProps) {
 
   if (!index) {
     return (
-      <ClientLayout showNavigation={false}>
+      <ClientLayout>
         <div className="py-8 text-center text-gray-500">Index not found</div>
       </ClientLayout>
     );
@@ -122,23 +123,30 @@ export default function SharePage({ params }: SharePageProps) {
   const canMatch = index.linkPermissions?.permissions.includes('can-match') || false;
 
   return (
-    <ClientLayout showNavigation={false}>
-      <div className="w-full h-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
+    <ClientLayout>
+      {/* Main Content */}
+      <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
         backgroundImage: 'url(/grid.png)',
         backgroundColor: 'white',
         backgroundSize: '888px'
       }}>
-        <div className="border border-black border-b-0 border-b-2 bg-white  py-4 px-3 sm:px-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-1">{index.title}</h1>
-              <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {new Date(index.createdAt).toLocaleDateString()}</p>
+        <div className="bg-white px-4 pt-1.5 pb-1 border border-black border border-b-0 inline-block">
+          <Link href="/" className="inline-flex items-center text-gray-600 hover:text-gray-900">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            <span className="font-ibm-plex-mono text-[14px] text-black font-medium">Back to home</span>
+          </Link>
+        </div>
+        <div className="flex flex-col sm:flex-row py-4 px-2 sm:px-4 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-2">
+              <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono">{index.title}</h1>
             </div>
+            <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {new Date(index.createdAt).toLocaleDateString()}</p>
           </div>
         </div>
 
         {canViewFiles && (
-          <div className="flex flex-col sm:flex-col flex-1 mt-4 py-6 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
+          <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="space-y-3 w-full">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl mt-2 font-semibold text-gray-900">Files</h2>
@@ -172,7 +180,7 @@ export default function SharePage({ params }: SharePageProps) {
         )}
 
         {canMatch && (
-          <div className="flex flex-col sm:flex-col flex-1 mt-4 py-6 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
+          <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="w-full">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Drop your files to see how we vibe together.</h3>
               <div className="mt-4 p-4 bg-white border border-gray-200 rounded-lg">
@@ -255,7 +263,7 @@ export default function SharePage({ params }: SharePageProps) {
         )}
 
         {!canViewFiles && !canMatch && (
-          <div className="flex flex-col sm:flex-col flex-1 mt-4 py-6 px-3 sm:px-6 justify-center items-center border border-black border-b-0 border-b-2 bg-white">
+          <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-center items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="text-center">
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Limited Access</h3>
               <p className="text-gray-600">You have limited access to this index.</p>
