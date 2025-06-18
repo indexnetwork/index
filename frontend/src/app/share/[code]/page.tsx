@@ -6,6 +6,7 @@ import { Upload, ArrowUpRight } from "lucide-react";
 import { Index, APIResponse } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
+import { getIndexFileUrl } from "@/lib/file-utils";
 
 interface SharePageProps {
   params: Promise<{
@@ -157,6 +158,10 @@ export default function SharePage({ params }: SharePageProps) {
                           variant="ghost"
                           className="p-0"
                           size="lg"
+                          onClick={() => {
+                            const fileUrl = getIndexFileUrl(file);
+                            window.open(fileUrl, '_blank');
+                          }}
                         >
                           <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
                           <ArrowUpRight className="ml-1 h-4 w-4" />

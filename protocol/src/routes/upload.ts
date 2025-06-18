@@ -49,12 +49,10 @@ router.post('/avatar',
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      // Return the full URL that can be used to access the image
-      const avatarUrl = `${process.env.API_BASE_URL || 'http://localhost:3001'}/uploads/avatars/${req.file.filename}`;
-      
+      // Return just the filename - frontend will construct the full URL
       return res.json({ 
         message: 'Avatar uploaded successfully',
-        avatarUrl
+        avatarFilename: req.file.filename
       });
     } catch (error) {
       console.error('Avatar upload error:', error);

@@ -14,6 +14,7 @@ import { Index } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 import { Input } from "@/components/ui/input";
+import { getIndexFileUrl } from "@/lib/file-utils";
 
 interface IndexDetailPageProps {
   params: Promise<{
@@ -360,7 +361,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                     name: fileName,
                     size: '',
                     createdAt: new Date().toISOString(),
-                    isUploading: true
+                    isUploading: true,
+                    indexId: index.id
                   }));
                   
                   // Combine and sort: uploading files first (newest first), then uploaded files
@@ -377,6 +379,13 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                             variant="ghost"
                             className="p-0"
                             size="lg"
+                            onClick={() => {
+                              if (!file.isUploading) {
+                                const fileUrl = getIndexFileUrl(file);
+                                window.open(fileUrl, '_blank');
+                              }
+                            }}
+                            disabled={file.isUploading}
                           >
                             <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
                             <ArrowUpRight className="ml-1 h-4 w-4" />

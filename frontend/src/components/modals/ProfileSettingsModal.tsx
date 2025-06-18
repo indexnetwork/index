@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { X, Upload, Camera } from "lucide-react";
 import { User, AvatarUploadResponse, APIResponse, UpdateProfileRequest } from "@/lib/types";
 import { useAuthenticatedAPI } from "@/lib/api";
+import { getAvatarUrl } from "@/lib/file-utils";
 import Image from "next/image";
 
 interface ProfileSettingsModalProps {
@@ -93,7 +94,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   const uploadAvatar = async (file: File): Promise<string> => {
     // Use the uploadFile method with 'avatar' as the field name
     const result = await api.uploadFile<AvatarUploadResponse>('/upload/avatar', file, undefined, 'avatar');
-    return result.avatarUrl;
+    return result.avatarFilename;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -102,17 +103,17 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
     
     setIsLoading(true);
     try {
-      let avatarUrl = user.avatar;
+      let avatarFilename = user.avatar;
       
       // Upload avatar if a new one was selected
       if (avatarFile) {
-        avatarUrl = await uploadAvatar(avatarFile);
+        avatarFilename = await uploadAvatar(avatarFile);
       }
       
       const response = await api.patch<APIResponse<User>>('/auth/profile', {
         name: name || undefined,
         intro: intro || undefined,
-        avatar: avatarUrl || undefined,
+        avatar: avatarFilename || undefined,
       });
       
       if (!response.user) {
@@ -159,7 +160,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                    <Image src={avatarPreview} alt="Avatar preview" width={96} height={96} className="w-full h-full object-cover" />
                  ) : user?.avatar ? (
                    <Image 
-                     src={user.avatar.startsWith('http') ? user.avatar : `http://localhost:3001${user.avatar}`} 
+                     src={getAvatarUrl(user.avatar)} 
                      alt="Current avatar" 
                      width={96} 
                      height={96} 

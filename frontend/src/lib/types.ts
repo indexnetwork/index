@@ -42,6 +42,7 @@ export interface IndexFile {
   type: string;
   size: number;
   createdAt: string;
+  indexId: string;
 }
 
 export interface IndexMember {
@@ -198,7 +199,7 @@ export interface FileUploadResponse {
 // Avatar upload response
 export interface AvatarUploadResponse {
   message: string;
-  avatarUrl: string;
+  avatarFilename: string;
 }
 
 // Error response
