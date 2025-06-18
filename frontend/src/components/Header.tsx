@@ -4,9 +4,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { UserPlus, LogIn, Settings } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { User, APIResponse } from '@/lib/types';
+import { getAvatarUrl } from '@/lib/file-utils';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 
 export default function Header({ showNavigation = true }: { showNavigation?: boolean }) {
@@ -16,7 +17,9 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
   const [isAlpha, setIsAlpha] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const api = useAuthenticatedAPI();
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // Check if alpha parameter is in searchParams
@@ -49,6 +52,20 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authenticated, isAlpha]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
   return (
     <div>
       <header className="w-full py-4 flex justify-between items-center">
@@ -67,23 +84,67 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
         </div>
         {isAlpha ? (
           authenticated ? (
-            <div className="flex items-center space-x-3">
-              <Button 
-                variant="outline" 
-                className="flex items-center px-3 py-5"
-                onClick={() => setProfileModalOpen(true)}
+            <div className="relative" ref={dropdownRef}>
+              <div 
+                className="flex items-center px-4 py-2 border border-[#9f9f9f] border-1 rounded-sm cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setDropdownOpen(!dropdownOpen)}
               >
-                <Settings className="h-5 w-5" />
-                <span className="hidden sm:inline mx-2">Profile</span>
-              </Button>
-              <Button 
-                variant="outline" 
-                className="flex items-center px-3 py-5"
-                onClick={logout}
-              >
-                <LogIn className="h-5 w-5" />
-                <span className="hidden sm:inline mx-2">Logout</span>
-              </Button>
+                <div className="w-8 h-8 rounded-full overflow-hidden mr-3">
+                  {user?.avatar ? (
+                    <Image
+                      src={getAvatarUrl(user.avatar)}
+                      alt={user.name || 'User'}
+                      width={32}
+                      height={32}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                      <span className="text-white text-sm font-medium">
+                        {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <span className="text-gray-900 font-medium mr-2">
+                  {user?.name || 'User'}
+                </span>
+                <svg 
+                  className={`w-4 h-4 text-gray-500 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+
+              {dropdownOpen && (
+                <div className="absolute right-0 mt-2 w-48 bg-white border rounded-lg shadow-lg z-50">
+                  <div className="py-1">
+                    <button
+                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
+                      onClick={() => {
+                        setProfileModalOpen(true);
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Profile Settings
+                    </button>
+                    <button
+                      className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors"
+                      onClick={() => {
+                        logout();
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <LogIn className="h-4 w-4 mr-2" />
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <Button 
