@@ -5,7 +5,6 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { X } from "lucide-react";
-// import { FolderOpen, Upload } from "lucide-react";
 
 interface CreateIndexModalProps {
   open: boolean;
