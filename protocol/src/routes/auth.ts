@@ -15,6 +15,7 @@ router.get('/me', authenticatePrivy, async (req: AuthRequest, res: Response) => 
       privyId: users.privyId,
       email: users.email,
       name: users.name,
+      intro: users.intro,
       avatar: users.avatar,
       createdAt: users.createdAt,
       updatedAt: users.updatedAt
@@ -36,11 +37,12 @@ router.get('/me', authenticatePrivy, async (req: AuthRequest, res: Response) => 
 // Update user profile
 router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, avatar } = req.body;
+    const { name, intro, avatar } = req.body;
     
     const updatedUser = await db.update(users)
       .set({
         ...(name && { name }),
+        ...(intro !== undefined && { intro }),
         ...(avatar && { avatar }),
         updatedAt: new Date()
       })
@@ -50,6 +52,7 @@ router.patch('/profile', authenticatePrivy, async (req: AuthRequest, res: Respon
         privyId: users.privyId,
         email: users.email,
         name: users.name,
+        intro: users.intro,
         avatar: users.avatar,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt

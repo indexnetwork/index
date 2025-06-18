@@ -2,15 +2,21 @@ import { Button } from "@/components/ui/button";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserPlus, LogIn } from "lucide-react";
+import { UserPlus, LogIn, Settings } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState } from 'react';
+import { useAuthenticatedAPI } from '@/lib/api';
+import { User, APIResponse } from '@/lib/types';
+import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 
 export default function Header({ showNavigation = true }: { showNavigation?: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { login, logout,authenticated } = usePrivy();
+  const { login, logout, authenticated } = usePrivy();
   const [isAlpha, setIsAlpha] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const api = useAuthenticatedAPI();
 
   useEffect(() => {
     // Check if alpha parameter is in searchParams
@@ -25,6 +31,24 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
       setIsAlpha(storedAlpha === 'true');
     }
   }, [searchParams]);
+
+  // Fetch user data when authenticated
+  useEffect(() => {
+    if (authenticated && isAlpha) {
+      const fetchUser = async () => {
+        try {
+          const response = await api.get<APIResponse<User>>('/auth/me');
+          if (response.user) {
+            setUser(response.user);
+          }
+        } catch (error) {
+          console.error('Failed to fetch user:', error);
+        }
+      };
+      fetchUser();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authenticated, isAlpha]);
   return (
     <div>
       <header className="w-full py-4 flex justify-between items-center">
@@ -43,14 +67,24 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
         </div>
         {isAlpha ? (
           authenticated ? (
-            <Button 
-              variant="outline" 
-              className="flex items-center px-3 py-5"
-              onClick={logout}
-            >
-              <LogIn className="h-5 w-5" />
-              <span className="hidden sm:inline mx-2">Logout</span>
-            </Button>
+            <div className="flex items-center space-x-3">
+              <Button 
+                variant="outline" 
+                className="flex items-center px-3 py-5"
+                onClick={() => setProfileModalOpen(true)}
+              >
+                <Settings className="h-5 w-5" />
+                <span className="hidden sm:inline mx-2">Profile</span>
+              </Button>
+              <Button 
+                variant="outline" 
+                className="flex items-center px-3 py-5"
+                onClick={logout}
+              >
+                <LogIn className="h-5 w-5" />
+                <span className="hidden sm:inline mx-2">Logout</span>
+              </Button>
+            </div>
           ) : (
             <Button 
               variant="outline" 
@@ -164,6 +198,14 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
         </div>
       </div>
       }
+
+      {/* Profile Settings Modal */}
+      <ProfileSettingsModal
+        open={profileModalOpen}
+        onOpenChange={setProfileModalOpen}
+        user={user}
+        onUserUpdate={setUser}
+      />
     </div>
   );
 } 

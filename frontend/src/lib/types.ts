@@ -4,6 +4,7 @@ export interface User {
   privyId: string;
   email: string | null;
   name: string;
+  intro: string | null;
   avatar: string | null;
   createdAt: string;
   updatedAt: string;
@@ -179,6 +180,7 @@ export interface UpdateIntentRequest {
 
 export interface UpdateProfileRequest {
   name?: string;
+  intro?: string;
   avatar?: string;
 }
 
@@ -191,6 +193,12 @@ export interface CreateMarketPositionRequest {
 export interface FileUploadResponse {
   file: IndexFile;
   message: string;
+}
+
+// Avatar upload response
+export interface AvatarUploadResponse {
+  message: string;
+  avatarUrl: string;
 }
 
 // Error response

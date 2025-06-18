@@ -2,11 +2,10 @@
 
 import { useState, useEffect, use, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, ArrowUpRight, ArrowLeft } from "lucide-react";
+import { Upload, ArrowUpRight } from "lucide-react";
 import { Index, APIResponse } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
-import Link from "next/link";
 
 interface SharePageProps {
   params: Promise<{

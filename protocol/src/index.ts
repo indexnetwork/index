@@ -11,6 +11,7 @@ import suggestionRoutes from './routes/suggestions';
 import intentRoutes from './routes/intents';
 import fileRoutes from './routes/files';
 import indexRoutes from './routes/indexes';
+import uploadRoutes from './routes/upload';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -23,6 +24,9 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Serve static files from uploads directory
+app.use('/uploads', express.static('uploads'));
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
@@ -31,6 +35,7 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/upload', uploadRoutes);
 //app.use('/api/agents', agentRoutes);
 app.use('/api/intents', intentRoutes);
 

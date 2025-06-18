@@ -43,10 +43,31 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
 
     if (user.length === 0) {
       // Create new user if not exists
+      // Get email from linked accounts - prioritize verified email
+      let userEmail = null;
+      let userName = `User ${claims.userId.slice(-8)}`;
+      
+      if (privyUser.email?.address) {
+        userEmail = privyUser.email.address;
+        userName = privyUser.email.address;
+      }
+      
+      // If we have linked accounts, try to find an email there
+      if (!userEmail && privyUser.linkedAccounts) {
+        for (const account of privyUser.linkedAccounts) {
+          if (account.type === 'email' && account.address) {
+            userEmail = account.address;
+            userName = account.address;
+            break;
+          }
+        }
+      }
+
       const newUser = await db.insert(users).values({
         privyId: claims.userId,
-        email: privyUser.email?.address || null,
-        name: privyUser.email?.address || privyUser.wallet?.address || `User ${claims.userId.slice(-8)}`,
+        email: userEmail,
+        name: userName,
+        intro: null,
         avatar: null
       }).returning({
         id: users.id,
@@ -57,6 +78,24 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
       });
       
       user = newUser;
+    } else {
+      // Update existing user's email if it has changed
+      const existingUser = user[0];
+      let updatedEmail = existingUser.email;
+      
+      if (privyUser.email?.address && privyUser.email.address !== existingUser.email) {
+        updatedEmail = privyUser.email.address;
+        
+        await db.update(users)
+          .set({ 
+            email: updatedEmail,
+            updatedAt: new Date()
+          })
+          .where(eq(users.id, existingUser.id));
+          
+        // Update the user object for the response
+        user[0].email = updatedEmail;
+      }
     }
 
     const userData = user[0];

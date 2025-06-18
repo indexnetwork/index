@@ -144,10 +144,11 @@ class APIClient {
     endpoint: string,
     file: File,
     accessToken?: string,
-    additionalData?: Record<string, string>
+    additionalData?: Record<string, string>,
+    fieldName: string = 'file'
   ): Promise<T> {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append(fieldName, file);
     
     // Add any additional form data
     if (additionalData) {
@@ -225,9 +226,9 @@ export function useAuthenticatedAPI() {
     delete: <T>(endpoint: string) =>
       makeAuthenticatedRequest<T>((token) => apiClient.delete<T>(endpoint, token)),
     
-    uploadFile: <T>(endpoint: string, file: File, additionalData?: Record<string, string>) =>
+    uploadFile: <T>(endpoint: string, file: File, additionalData?: Record<string, string>, fieldName?: string) =>
       makeAuthenticatedRequest<T>((token) => 
-        apiClient.uploadFile<T>(endpoint, file, token, additionalData)
+        apiClient.uploadFile<T>(endpoint, file, token, additionalData, fieldName)
       ),
   }), [makeAuthenticatedRequest]);
 }
