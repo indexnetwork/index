@@ -24,6 +24,7 @@ router.get('/:id',
         id: users.id,
         email: users.email,
         name: users.name,
+        intro: users.intro,
         avatar: users.avatar,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
@@ -49,6 +50,7 @@ router.put('/:id',
   [
     param('id').isUUID(),
     body('name').optional().trim().isLength({ min: 2, max: 100 }),
+    body('intro').optional().trim().isLength({ max: 500 }),
     body('avatar').optional().isURL(),
   ],
   async (req: AuthRequest, res: Response) => {
@@ -59,7 +61,7 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { name, avatar } = req.body;
+      const { name, intro, avatar } = req.body;
 
       if (req.user!.id !== id) {
         return res.status(403).json({ error: 'Access denied' });
@@ -67,6 +69,7 @@ router.put('/:id',
 
       const updateData: any = { updatedAt: new Date() };
       if (name !== undefined) updateData.name = name;
+      if (intro !== undefined) updateData.intro = intro;
       if (avatar !== undefined) updateData.avatar = avatar;
 
       const updatedUser = await db.update(users)
@@ -76,6 +79,7 @@ router.put('/:id',
           id: users.id,
           email: users.email,
           name: users.name,
+          intro: users.intro,
           avatar: users.avatar,
           createdAt: users.createdAt,
           updatedAt: users.updatedAt

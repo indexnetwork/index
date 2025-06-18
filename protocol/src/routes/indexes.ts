@@ -214,7 +214,8 @@ router.get('/:id',
           name: files.name,
           type: files.type,
           size: files.size,
-          createdAt: files.createdAt
+          createdAt: files.createdAt,
+          indexId: files.indexId
         }).from(files)
           .where(and(eq(files.indexId, id), isNull(files.deletedAt)))
           .orderBy(desc(files.createdAt))
@@ -838,7 +839,8 @@ router.get('/share/:code',
           name: files.name,
           type: files.type,
           size: files.size,
-          createdAt: files.createdAt
+          createdAt: files.createdAt,
+          indexId: files.indexId
         }).from(files)
           .where(and(eq(files.indexId, indexData.id), isNull(files.deletedAt)))
           .orderBy(desc(files.createdAt))

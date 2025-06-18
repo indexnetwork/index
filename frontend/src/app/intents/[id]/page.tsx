@@ -7,6 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useIntents } from "@/contexts/APIContext";
 import { Intent, IntentStakesByUserResponse } from "@/lib/types";
+import { getAvatarUrl } from "@/lib/file-utils";
 import ClientLayout from "@/components/ClientLayout";
 import EditIntentModal from "@/components/modals/EditIntentModal";
 
@@ -269,7 +270,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-4">
                   <Image
-                    src={userStakes.user.avatar}
+                    src={getAvatarUrl(userStakes.user.avatar)}
                     alt={userStakes.user.name}
                     width={48}
                     height={48}
@@ -296,7 +297,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                   {userStakes.agents.map((agent) => (
                     <div key={agent.agent.name} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
                       <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gray-100">
-                        <Image src={agent.agent.avatar} alt={agent.agent.name} width={16} height={16} />
+                        <Image src={getAvatarUrl(agent.agent.avatar)} alt={agent.agent.name} width={16} height={16} />
                       </div>
                       <span className="font-medium text-gray-900">{agent.agent.name}</span>
                       <span className="text-gray-400 text-xs">({agent.stake})</span>

@@ -927,7 +927,7 @@ export default function IntegratePage() {
 
   // Track active section on scroll
   useEffect(() => {
-    const sections = ['api', 'installation', ...components.map(c => `component-${c.id}`), 'conversational', ...conversationalIntegrations.map(c => `conversational-${c.id}`)];
+    const sections = ['api', ...conversationalIntegrations.map(c => `conversational-${c.id}`), 'installation', ...components.map(c => `component-${c.id}`)];
     const scrollPosition = window.scrollY + 100;
 
     for (const sectionId of sections) {
@@ -946,7 +946,7 @@ export default function IntegratePage() {
 
   useEffect(() => {
     const handleScroll = () => {
-      const sections = ['api', 'installation', ...components.map(c => `component-${c.id}`), 'conversational', ...conversationalIntegrations.map(c => `conversational-${c.id}`)];
+      const sections = ['api', ...conversationalIntegrations.map(c => `conversational-${c.id}`), 'installation', ...components.map(c => `component-${c.id}`)];
       const scrollPosition = window.scrollY + 100;
 
       for (const sectionId of sections) {
@@ -992,7 +992,26 @@ export default function IntegratePage() {
               
               <div className="pt-2">
                 <div className="text-xs font-semibold text-gray-500 font-ibm-plex-mono mb-2 px-2">
-                  UI COMPONENTS
+                  CONVERSATIONAL
+                </div>
+                {conversationalIntegrations.map((integration) => (
+                  <button
+                    key={integration.id}
+                    onClick={() => scrollToSection(`conversational-${integration.id}`)}
+                    className={`block w-full text-left px-2 py-1 text-sm font-ibm-plex-mono rounded transition-colors ${
+                      activeSection === `conversational-${integration.id}`
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    }`}
+                  >
+                    {integration.name}
+                  </button>
+                ))}
+              </div>
+              
+              <div className="pt-4">
+                <div className="text-xs font-semibold text-gray-500 font-ibm-plex-mono mb-2 px-2">
+                  EMBEDDED
                 </div>
                 <button
                   onClick={() => scrollToSection('installation')}
@@ -1015,25 +1034,6 @@ export default function IntegratePage() {
                     }`}
                   >
                     &lt;{component.name}/&gt;
-                  </button>
-                ))}
-              </div>
-              
-              <div className="pt-4">
-                <div className="text-xs font-semibold text-gray-500 font-ibm-plex-mono mb-2 px-2">
-                  CONVERSATIONAL
-                </div>
-                {conversationalIntegrations.map((integration) => (
-                  <button
-                    key={integration.id}
-                    onClick={() => scrollToSection(`conversational-${integration.id}`)}
-                    className={`block w-full text-left px-2 py-1 text-sm font-ibm-plex-mono rounded transition-colors ${
-                      activeSection === `conversational-${integration.id}`
-                        ? 'bg-amber-100 text-amber-700'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    {integration.name}
                   </button>
                 ))}
               </div>
@@ -1280,6 +1280,148 @@ export default function IntegratePage() {
 
         </div>
 
+        {/* Conversational Integrations Section */}
+        <div className="w-full border border-gray-200 rounded-md mt-4 px-4 py-8" style={{
+          backgroundImage: 'url(/grid.png)',
+          backgroundColor: 'white',
+          backgroundSize: '888px'
+        }}>
+
+          {/* Conversational Header */}
+          <div className="bg-white border border-black border-b-2 px-4 py-6 mb-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-2">
+                  Conversational Agents
+                </h1>
+                <p className="text-gray-600 font-ibm-plex-mono text-md">
+                  Deploy Index Network across chat platforms and conversational interfaces
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Conversational Integrations */}
+          {conversationalIntegrations.map((integration) => {
+            return (
+            <div key={integration.id} id={`conversational-${integration.id}`} className="bg-white border border-black border-b-2 p-6 mb-6">
+              <h2 className="text-2xl font-semibold text-gray-900 font-ibm-plex-mono mb-2">
+                {integration.name}
+              </h2>
+              <p className="text-gray-900 mb-5 font-ibm-plex-mono text-sm">
+                {integration.description}
+              </p>
+              
+              {/* Tabs */}
+              <div className="flex gap-4 mb-6 border-b border-gray-200 overflow-x-auto">
+                <button
+                  onClick={() => setActiveConversationalExample(integration.id, 'overview')}
+                  className={`pb-2 px-1 font-ibm-plex-mono text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                    activeConversationalExamples[integration.id] === 'overview'
+                      ? 'border-amber-500 text-amber-600' 
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Overview
+                </button>
+                {integration.examples.map((example, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setActiveConversationalExample(integration.id, index)}
+                    className={`pb-2 px-1 font-ibm-plex-mono text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                      activeConversationalExamples[integration.id] === index
+                        ? 'border-amber-500 text-amber-600' 
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {example.title}
+                  </button>
+                ))}
+              </div>
+
+              {/* Overview Tab Content */}
+              {activeConversationalExamples[integration.id] === 'overview' && (
+                <div className="">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Left Column: Image */}
+                    <div>
+                      <Image 
+                        src={integration.previewImage} 
+                        alt={`${integration.name} preview`}
+                        width={500}
+                        height={300}
+                        className="w-full shadow-lg"
+                      />
+                    </div>
+                    
+                    {/* Right Column: Case Studies */}
+                    <div className="">
+                      <h4 className="text-md font-semibold text-gray-900 font-ibm-plex-mono -mt-1.5 mb-2">
+                        Examples
+                      </h4>
+                      <div className="space-y-2">
+                        {integration.caseStudies.map((caseStudy, index) => (
+                          <a
+                            key={index}
+                            href={caseStudy.link}
+                            className="text-sm block text-amber-600 hover:text-amber-700 hover:underline font-ibm-plex-mono"
+                          >
+                            {caseStudy.title} →
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Example Tab Content */}
+              {typeof activeConversationalExamples[integration.id] === 'number' && integration.examples[activeConversationalExamples[integration.id] as number] && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
+                    <div>
+                      <h4 className="font-medium text-gray-900 font-ibm-plex-mono">
+                        {integration.examples[activeConversationalExamples[integration.id] as number].title}
+                      </h4>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {integration.examples[activeConversationalExamples[integration.id] as number].description}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(
+                        integration.examples[activeConversationalExamples[integration.id] as number].code, 
+                        `${integration.id}-${activeConversationalExamples[integration.id]}`
+                      )}
+                    >
+                      {copiedCode === `${integration.id}-${activeConversationalExamples[integration.id]}` ? 
+                        <Check className="h-4 w-4" /> : 
+                        <Copy className="h-4 w-4" />
+                      }
+                    </Button>
+                  </div>
+                  <SyntaxHighlighter
+                    language="javascript"
+                    style={tomorrow}
+                    customStyle={{
+                      margin: 0,
+                      padding: '1.5rem',
+                      fontSize: '14px',
+                      lineHeight: '1.5',
+                    }}
+                    showLineNumbers={false}
+                  >
+                    {integration.examples[activeConversationalExamples[integration.id] as number].code}
+                  </SyntaxHighlighter>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        </div>
+
         {/* Components Section - separate container */}
         <div className="w-full border border-gray-200 rounded-md mt-4 px-4 py-8" style={{
           backgroundImage: 'url(/grid.png)',
@@ -1441,148 +1583,6 @@ export default function IntegratePage() {
         })}
 
         </div>        
-      </div>
-
-      {/* Conversational Integrations Section */}
-      <div className="w-full border border-gray-200 rounded-md mt-4 px-4 py-8" style={{
-        backgroundImage: 'url(/grid.png)',
-        backgroundColor: 'white',
-        backgroundSize: '888px'
-      }}>
-
-        {/* Conversational Header */}
-        <div className="bg-white border border-black border-b-2 px-4 py-6 mb-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono mb-2">
-                Conversational Agents
-              </h1>
-              <p className="text-gray-600 font-ibm-plex-mono text-md">
-                Deploy Index Network across chat platforms and conversational interfaces
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Conversational Integrations */}
-        {conversationalIntegrations.map((integration) => {
-          return (
-          <div key={integration.id} id={`conversational-${integration.id}`} className="bg-white border border-black border-b-2 p-6 mb-6">
-            <h2 className="text-2xl font-semibold text-gray-900 font-ibm-plex-mono mb-2">
-              {integration.name}
-            </h2>
-            <p className="text-gray-900 mb-5 font-ibm-plex-mono text-sm">
-              {integration.description}
-            </p>
-            
-            {/* Tabs */}
-            <div className="flex gap-4 mb-6 border-b border-gray-200 overflow-x-auto">
-              <button
-                onClick={() => setActiveConversationalExample(integration.id, 'overview')}
-                className={`pb-2 px-1 font-ibm-plex-mono text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  activeConversationalExamples[integration.id] === 'overview'
-                    ? 'border-amber-500 text-amber-600' 
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Overview
-              </button>
-              {integration.examples.map((example, index) => (
-                <button
-                  key={index}
-                  onClick={() => setActiveConversationalExample(integration.id, index)}
-                  className={`pb-2 px-1 font-ibm-plex-mono text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                    activeConversationalExamples[integration.id] === index
-                      ? 'border-amber-500 text-amber-600' 
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {example.title}
-                </button>
-              ))}
-            </div>
-
-            {/* Overview Tab Content */}
-            {activeConversationalExamples[integration.id] === 'overview' && (
-              <div className="">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Left Column: Image */}
-                  <div>
-                    <Image 
-                      src={integration.previewImage} 
-                      alt={`${integration.name} preview`}
-                      width={500}
-                      height={300}
-                      className="w-full shadow-lg"
-                    />
-                  </div>
-                  
-                  {/* Right Column: Case Studies */}
-                  <div className="">
-                    <h4 className="text-md font-semibold text-gray-900 font-ibm-plex-mono -mt-1.5 mb-2">
-                      Examples
-                    </h4>
-                    <div className="space-y-2">
-                      {integration.caseStudies.map((caseStudy, index) => (
-                        <a
-                          key={index}
-                          href={caseStudy.link}
-                          className="text-sm block text-amber-600 hover:text-amber-700 hover:underline font-ibm-plex-mono"
-                        >
-                          {caseStudy.title} →
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Example Tab Content */}
-            {typeof activeConversationalExamples[integration.id] === 'number' && integration.examples[activeConversationalExamples[integration.id] as number] && (
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex justify-between items-center">
-                  <div>
-                    <h4 className="font-medium text-gray-900 font-ibm-plex-mono">
-                      {integration.examples[activeConversationalExamples[integration.id] as number].title}
-                    </h4>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {integration.examples[activeConversationalExamples[integration.id] as number].description}
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(
-                      integration.examples[activeConversationalExamples[integration.id] as number].code, 
-                      `${integration.id}-${activeConversationalExamples[integration.id]}`
-                    )}
-                  >
-                    {copiedCode === `${integration.id}-${activeConversationalExamples[integration.id]}` ? 
-                      <Check className="h-4 w-4" /> : 
-                      <Copy className="h-4 w-4" />
-                    }
-                  </Button>
-                </div>
-                <SyntaxHighlighter
-                  language="javascript"
-                  style={tomorrow}
-                  customStyle={{
-                    margin: 0,
-                    padding: '1.5rem',
-                    fontSize: '14px',
-                    lineHeight: '1.5',
-                  }}
-                  showLineNumbers={false}
-                >
-                  {integration.examples[activeConversationalExamples[integration.id] as number].code}
-                </SyntaxHighlighter>
-              </div>
-            )}
-          </div>
-        );
-      })}
-
       </div>
 
       {/* Bottom spacing for sidebar navigation */}

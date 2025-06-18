@@ -278,7 +278,8 @@ router.post('/',
         name: files.name,
         size: files.size,
         type: files.type,
-        createdAt: files.createdAt
+        createdAt: files.createdAt,
+        indexId: files.indexId
       });
 
       // Invalidate suggestions cache since file count changed
