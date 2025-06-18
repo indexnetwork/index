@@ -2,7 +2,6 @@
  * Intent Summarizer Agent
  * 
  * Minimal implementation that takes input text and generates summaries to desired length.
- * Similar to file_summarizer but for generic text input.
  */
 
 import { llm } from "../../../lib/agents";

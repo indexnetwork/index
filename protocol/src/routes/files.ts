@@ -8,7 +8,6 @@ import db from '../lib/db';
 import { files, indexes, users } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc, SQL } from 'drizzle-orm';
-import { summarizeAndSaveFile, isFileSupported } from '../agents/core/file_summarizer';
 import { invalidateIndexCache } from './suggestions';
 import { checkIndexAccess } from '../lib/index-access';
 
@@ -285,37 +284,7 @@ router.post('/',
       // Invalidate suggestions cache since file count changed
       invalidateIndexCache(indexId);
 
-      // Generate summary in background if file type is supported
-      const fileId = req.generatedFileId!;
-      const filePath = req.file.path;
-      
-      if (isFileSupported(filePath)) {
-        const summaryDir = path.dirname(filePath);
-        const startTime = Date.now();
-        
-        console.log(`🚀 Starting summarization for file ${fileId} (${req.file!.originalname}) at ${new Date().toISOString()}`);
-        
-        // Run summarization in background without blocking the response
-        summarizeAndSaveFile(filePath, fileId, summaryDir)
-          .then(result => {
-            const endTime = Date.now();
-            const duration = endTime - startTime;
-            
-            if (result.success) {
-              console.log(`📝 Summary generated for file ${fileId} (${req.file!.originalname}) at ${new Date().toISOString()} - Duration: ${duration}ms`);
-            } else {
-              console.warn(`⚠️ Summary generation failed for ${fileId} (${req.file!.originalname}) at ${new Date().toISOString()} - Duration: ${duration}ms:`, result.error);
-            }
-          })
-          .catch(error => {
-            const endTime = Date.now();
-            const duration = endTime - startTime;
-            console.error(`❌ Summary generation error for ${fileId} (${req.file!.originalname}) at ${new Date().toISOString()} - Duration: ${duration}ms:`, error);
-          });
-      } else {
-        const ext = path.extname(req.file!.originalname);
-        console.log(`⏭️ Skipping summary for ${fileId} (${req.file!.originalname}): ${ext} files not supported (videos/audio/binaries)`);
-      }
+      console.log(`✅ File uploaded successfully: ${req.generatedFileId!} (${req.file!.originalname})`);
 
       return res.status(201).json({
         message: 'File uploaded successfully',
@@ -393,15 +362,8 @@ router.delete('/:fileId',
             console.log(`🗑️ Deleted file: ${filePath}`);
           }
         }
-
-        // Delete the summary file if it exists
-        const summaryPath = path.join(indexUploadDir, `${fileId}.summary`);
-        if (fs.existsSync(summaryPath)) {
-          fs.unlinkSync(summaryPath);
-          console.log(`🗑️ Deleted summary: ${summaryPath}`);
-        }
       } catch (fsError) {
-        console.error(`⚠️ Failed to delete physical files for ${fileId}:`, fsError);
+        console.error(`⚠️ Failed to delete physical file for ${fileId}:`, fsError);
         // Don't fail the request if file system deletion fails - the soft delete already succeeded
       }
 
