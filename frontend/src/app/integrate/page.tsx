@@ -1011,7 +1011,7 @@ export default function IntegratePage() {
               
               <div className="pt-4">
                 <div className="text-xs font-semibold text-gray-500 font-ibm-plex-mono mb-2 px-2">
-                  UI COMPONENTS
+                  EMBEDDED
                 </div>
                 <button
                   onClick={() => scrollToSection('installation')}
