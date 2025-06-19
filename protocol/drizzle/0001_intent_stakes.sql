@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS "intent_stakes" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"pair" text NOT NULL,
+	"intents" text[],
 	"stake" bigint NOT NULL,
 	"reasoning" text NOT NULL,
 	"agent_id" uuid NOT NULL,
@@ -13,5 +13,3 @@ DO $$ BEGIN
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$; 
-
-

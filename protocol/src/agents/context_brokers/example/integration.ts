@@ -77,10 +77,9 @@ export class ExampleContextBroker extends BaseContextBroker {
 
       // Create stakes for each similar intent
       for (const similarIntent of similarIntents) {
-        const pair = this.createOrderedPair(intentId, similarIntent.id);
-        
+
         await this.stakeManager.createStake({
-          pair,
+          intents: [intentId, similarIntent.id],
           stake: BigInt(100), // Example stake amount
           reasoning: `Automatically created stake between intents ${intentId} and ${similarIntent.id}`,
           agentId: agent.id
@@ -100,7 +99,7 @@ export class ExampleContextBroker extends BaseContextBroker {
 
     // Example: Get stakes for each related intent
     for (const relatedIntent of relatedIntents) {
-      const stakes = await this.getStakesForPair(intentId, relatedIntent.id);
+      const stakes = await this.getStakesForIntents([intentId, relatedIntent.id]);
       console.log(`Found ${stakes.length} stakes between intent ${intentId} and ${relatedIntent.id}`);
     }
 
