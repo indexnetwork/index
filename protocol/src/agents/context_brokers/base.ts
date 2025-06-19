@@ -7,8 +7,6 @@ export abstract class BaseContextBroker {
 
   constructor(public readonly agentId: string) {}
 
-
-
   /**
    * Get all other intent IDs from an array of stakes
    */
@@ -78,34 +76,48 @@ export abstract class BaseContextBroker {
       agentId: string;
     }): Promise<void> {
       
+      // Sort intents to ensure consistent ordering
+      const sortedIntents = [...params.intents].sort();
+      
+      // Validate that intents have different owners (at least 2 different users)
+      const intentOwners = await this.broker.db.select({
+        id: intents.id,
+        userId: intents.userId
+      })
+      .from(intents)
+      .where(
+        or(...sortedIntents.map(id => eq(intents.id, id)))
+      );
+
+      // Check if all intents exist
+      if (intentOwners.length !== sortedIntents.length) {
+        throw new Error('Some intents do not exist');
+      }
+
+      // Get unique user IDs
+      const uniqueUserIds = new Set(intentOwners.map(intent => intent.userId));
+      
+      // Validate that there are at least 2 different users
+      if (uniqueUserIds.size < 2) {
+        throw new Error('Stakes must involve intents from at least 2 different users');
+      }
+      
       // Check if stake already exists for this exact set of intents
       const existingStake = await this.broker.db.select()
         .from(intentStakes)
-        .where(sql`${intentStakes.intents} = ARRAY[${params.intents.map(id => `'${id}'`).join(',')}]`)
+        .where(sql`${intentStakes.intents} = ARRAY[${sortedIntents.map(id => `'${id}'`).join(',')}]`)
         .then(rows => rows[0]);
 
       if (!existingStake) {
         // Create new stake
         await this.broker.db.insert(intentStakes)
-          .values(params);
+          .values({
+            ...params,
+            intents: sortedIntents
+          });
       }
     }
 
-    // Convenience method for creating stakes between two intents (backward compatibility)
-    async createPairStake(params: {
-      intentId1: string;
-      intentId2: string;
-      stake: bigint;
-      reasoning: string;
-      agentId: string;
-    }): Promise<void> {
-      await this.createStake({
-        intents: [params.intentId1, params.intentId2],
-        stake: params.stake,
-        reasoning: params.reasoning,
-        agentId: params.agentId
-      });
-    }
   })(this);
 
   /**

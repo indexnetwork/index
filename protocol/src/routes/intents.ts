@@ -515,7 +515,7 @@ router.get('/:id/stakes/by-user',
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Get stakes with user info in a single query
+      // Get stakes with user info in a single query, excluding the intent owner
       const stakes = await db.select({
         stake: intentStakes.stake,
         reasoning: intentStakes.reasoning,
@@ -531,7 +531,8 @@ router.get('/:id/stakes/by-user',
       .innerJoin(users, eq(intents.userId, users.id))
       .where(and(
         sql`${intentStakes.intents} @> ARRAY[${id}]::text[]`,
-        isNull(agents.deletedAt)
+        isNull(agents.deletedAt),
+        sql`${users.id} != ${req.user!.id}`
       ));
 
       // Group by user
