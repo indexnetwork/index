@@ -94,6 +94,11 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     }
   ];
 
+  const memberPermissions = [
+    { id: 'can-write', label: 'Edit files', description: 'Add, edit, and delete files' },
+    { id: 'can-view-files', label: 'View files', description: 'View and download files' }
+  ];
+
   // Load members when modal opens
   const loadMembers = useCallback(async () => {
     try {
@@ -258,10 +263,6 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   };
 
   // Available member permissions
-  const memberPermissions = [
-    { id: 'can-write', label: 'Edit files', description: 'Add, edit, and delete files' },
-    { id: 'can-view-files', label: 'View files', description: 'View and download files' }
-  ];
 
   const handleSearchInputChange = (value: string) => {
     setMemberSearchQuery(value);

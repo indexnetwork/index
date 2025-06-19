@@ -1,6 +1,6 @@
 import db from '../../lib/db';
 import { intents, intentStakes, type IntentStake, agents } from '../../lib/schema';
-import { eq, or, desc, like } from 'drizzle-orm';
+import { eq, or, desc, like, sql, and } from 'drizzle-orm';
 
 export abstract class BaseContextBroker {
   protected db = db;
@@ -8,36 +8,32 @@ export abstract class BaseContextBroker {
   constructor(public readonly agentId: string) {}
 
   /**
-   * Create a properly ordered pair string for staking
-   * Ensures consistent ordering of intent pairs
-   */
-  protected createOrderedPair(intentId1: string, intentId2: string): string {
-    return [intentId1, intentId2].sort().join('-');
-  }
-
-  /**
-   * Get the other intent ID from a stake pair
-   */
-  protected getOtherIntentFromPair(pair: string, currentIntentId: string): string {
-    const [id1, id2] = pair.split('-');
-    return id1 === currentIntentId ? id2 : id1;
-  }
-
-  /**
    * Get all other intent IDs from an array of stakes
    */
   protected getOtherIntentIdsFromStakes(stakes: IntentStake[], currentIntentId: string): string[] {
-    return stakes.map(stake => this.getOtherIntentFromPair(stake.pair, currentIntentId));
+    const otherIds = new Set<string>();
+    stakes.forEach(stake => {
+      stake.intents.forEach(id => {
+        if (id !== currentIntentId) {
+          otherIds.add(id);
+        }
+      });
+    });
+    return Array.from(otherIds);
   }
 
   /**
-   * Get stakes for a specific intent pair
+   * Get stakes that include the specified intent IDs
    */
-  protected async getStakesForPair(intentId1: string, intentId2: string): Promise<IntentStake[]> {
-    const pair = this.createOrderedPair(intentId1, intentId2);
+  protected async getStakesForIntents(intentIds: string[]): Promise<IntentStake[]> {
+    if (intentIds.length === 0) return [];
+    
+    // For PostgreSQL array operations, we need to check if the array contains all the intent IDs
+    const conditions = intentIds.map(id => sql`${intentStakes.intents} @> ARRAY[${id}]`);
+    
     return this.db.select()
       .from(intentStakes)
-      .where(eq(intentStakes.pair, pair));
+      .where(and(...conditions));
   }
 
   /**
@@ -46,12 +42,7 @@ export abstract class BaseContextBroker {
   protected async getStakesForIntent(intentId: string): Promise<IntentStake[]> {
     return this.db.select()
       .from(intentStakes)
-      .where(
-        or(
-          like(intentStakes.pair, `${intentId}-%`),
-          like(intentStakes.pair, `%-${intentId}`)
-        )
-      );
+      .where(sql`${intentStakes.intents} @> ARRAY[${intentId}]`);
   }
 
   /**
@@ -59,10 +50,11 @@ export abstract class BaseContextBroker {
    */
   protected async getRelatedIntents(intentId: string): Promise<{ id: string; payload: string }[]> {
     const stakes = await this.getStakesForIntent(intentId);
-    const relatedIntentIds = stakes.map(stake => {
-      const [id1, id2] = stake.pair.split('-');
-      return id1 === intentId ? id2 : id1;
-    });
+    const relatedIntentIds = this.getOtherIntentIdsFromStakes(stakes, intentId);
+
+    if (relatedIntentIds.length === 0) {
+      return [];
+    }
 
     return this.db.select({
       id: intents.id,
@@ -78,28 +70,54 @@ export abstract class BaseContextBroker {
     constructor(private broker: BaseContextBroker) {}
 
     async createStake(params: {
-      pair: string;
+      intents: string[];
       stake: bigint;
       reasoning: string;
       agentId: string;
     }): Promise<void> {
-      // Check if stake already exists
+      
+      // Sort intents to ensure consistent ordering
+      const sortedIntents = [...params.intents].sort();
+      
+      // Validate that intents have different owners (at least 2 different users)
+      const intentOwners = await this.broker.db.select({
+        id: intents.id,
+        userId: intents.userId
+      })
+      .from(intents)
+      .where(
+        or(...sortedIntents.map(id => eq(intents.id, id)))
+      );
+
+      // Check if all intents exist
+      if (intentOwners.length !== sortedIntents.length) {
+        throw new Error('Some intents do not exist');
+      }
+
+      // Get unique user IDs
+      const uniqueUserIds = new Set(intentOwners.map(intent => intent.userId));
+      
+      // Validate that there are at least 2 different users
+      if (uniqueUserIds.size < 2) {
+        throw new Error('Stakes must involve intents from at least 2 different users');
+      }
+      
+      // Check if stake already exists for this exact set of intents
       const existingStake = await this.broker.db.select()
         .from(intentStakes)
-        .where(eq(intentStakes.pair, params.pair))
+        .where(sql`${intentStakes.intents} = ARRAY[${sortedIntents.map(id => `'${id}'`).join(',')}]`)
         .then(rows => rows[0]);
 
       if (!existingStake) {
         // Create new stake
         await this.broker.db.insert(intentStakes)
           .values({
-            pair: params.pair,
-            stake: params.stake,
-            reasoning: params.reasoning,
-            agentId: params.agentId
+            ...params,
+            intents: sortedIntents
           });
       }
     }
+
   })(this);
 
   /**

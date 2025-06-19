@@ -423,7 +423,7 @@ class DebugBroker extends BaseContextBroker {
   async onIntentArchived() {}
 
   async createDebugStake(params: {
-    pair: string;
+    intents: string[];
     stake: bigint;
     reasoning: string;
   }): Promise<void> {
@@ -464,20 +464,20 @@ router.get('/:id/debug/stake',
         return res.status(404).json({ error: 'One or both intents not found' });
       }
 
-      // Create ordered pair for the stake
-      const pair = [id, otherIntentId].sort().join('-');
+      // Create ordered intent array for the stake
+      const intentIds = [id, otherIntentId].sort();
 
       // Create the stake using the debug broker
       const broker = new DebugBroker('028ef80e-9b1c-434b-9296-bb6130509482');
       await broker.createDebugStake({
-        pair,
+        intents: intentIds,
         stake: BigInt(stake),
         reasoning
       });
 
       return res.json({ 
         message: 'Stake created successfully',
-        pair,
+        intents: intentIds,
         stake,
         reasoning
       });
@@ -515,20 +515,25 @@ router.get('/:id/stakes/by-user',
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Get stakes with user and agent info
+      // Get stakes with user info in a single query, excluding the intent owner
       const stakes = await db.select({
         stake: intentStakes.stake,
         reasoning: intentStakes.reasoning,
-        userName: users.name,
-        userAvatar: users.avatar,
+        stakeIntents: intentStakes.intents,
         agentName: agents.name,
-        agentAvatar: agents.avatar
+        agentAvatar: agents.avatar,
+        userName: users.name,
+        userAvatar: users.avatar
       })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
-      .innerJoin(intents, sql`${intentStakes.pair} LIKE ${'%' + id + '%'}`)
+      .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
       .innerJoin(users, eq(intents.userId, users.id))
-      .where(isNull(agents.deletedAt));
+      .where(and(
+        sql`${intentStakes.intents} @> ARRAY[${id}]::text[]`,
+        isNull(agents.deletedAt),
+        sql`${users.id} != ${req.user!.id}`
+      ));
 
       // Group by user
       const userStakes = stakes.reduce((acc, stake) => {

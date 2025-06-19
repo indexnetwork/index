@@ -1,6 +1,6 @@
 import { BaseContextBroker } from '../base';
 import { intents, intentStakes, agents } from '../../../lib/schema';
-import { eq, and, ne } from 'drizzle-orm';
+import { eq, and, ne, sql } from 'drizzle-orm';
 import { llm } from "../../../lib/agents";
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
@@ -73,8 +73,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
 
     // Create stakes for related intents
     for (const relatedIntent of relatedIntents) {
-      const pair = this.createOrderedPair(intentId, relatedIntent.id);
-      console.log('Created pair:', pair);
+      console.log('Created intent array:', [intentId, relatedIntent.id]);
       
       // Create new stake with reasoning from LLM
       const reasoningPrompt = `Explain why these two intents are related in one sentence:
@@ -85,7 +84,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       const reasoning = response.content.toString();
       
       await this.stakeManager.createStake({
-        pair,
+        intents: [intentId, relatedIntent.id],
         stake: BigInt(100),
         reasoning,
         agentId: this.agentId
@@ -94,12 +93,8 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   }
 
   async onIntentArchived(intentId: string): Promise<void> {
-    // Remove all stakes for this intent
+    // Remove all stakes that include this intent
     await this.db.delete(intentStakes)
-      .where(
-        and(
-          eq(intentStakes.pair, intentId)
-        )
-      );
+      .where(sql`${intentStakes.intents} @> ARRAY[${intentId}]`);
   }
 } 

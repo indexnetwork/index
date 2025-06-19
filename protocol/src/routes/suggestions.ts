@@ -6,8 +6,8 @@ import db from '../lib/db';
 import { files } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count } from 'drizzle-orm';
-import { analyzeFolder } from '../agents/core/intent_suggester';
-import { processIntent } from '../agents/core/intent_processor';
+import { analyzeFolder } from '../agents/core/intent_inferrer';
+import { processIntent } from '../agents/core/intent_enhancer';
 import { checkIndexAccess } from '../lib/index-access';
 
 // Simple L1 cache for suggestions
@@ -60,7 +60,7 @@ export const invalidateIndexCache = (indexId: string) => {
 
 const router = Router({ mergeParams: true });
 
-// Get suggested intents for an index based on file summaries
+// Get suggested intents for an index based on files
 router.get('/',
   authenticatePrivy,
   [param('indexId').isUUID()],
@@ -115,31 +115,19 @@ router.get('/',
           suggestions = [];
         } else {
           const baseUploadDir = path.join(__dirname, '../../uploads', indexId);
+          const fileIds = indexFiles.map(file => file.id);
 
-          // Count .summary files in the upload directory
-          let summariesFound = 0;
-          for (const file of indexFiles) {
-            const summaryPath = path.join(baseUploadDir, `${file.id}.summary`);
-            if (fs.existsSync(summaryPath)) {
-              summariesFound++;
-            }
-          }
+          // Use intent suggester to analyze files directly
+          const result = await analyzeFolder(baseUploadDir, fileIds, { timeoutMs: 60000 });
 
-          if (summariesFound === 0) {
-            suggestions = [];
+          if (result.success) {
+            suggestions = result.intents.map((intent: any) => ({
+              payload: intent.payload,
+              confidence: intent.confidence
+            }));
           } else {
-            // Use intent suggester to analyze summaries
-            const result = await analyzeFolder(baseUploadDir, { timeoutMs: 60000 });
-
-            if (result.success) {
-              suggestions = result.intents.map((intent: any) => ({
-                payload: intent.payload,
-                confidence: intent.confidence
-              }));
-            } else {
-              console.error('Intent inference failed');
-              return res.status(500).json({ error: 'Failed to generate intents' });
-            }
+            console.error('Intent inference failed');
+            return res.status(500).json({ error: 'Failed to generate intents' });
           }
         }
 
