@@ -3,7 +3,7 @@ import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
 import { intents, users, indexes, intentIndexes, intentStakes, agents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { eq, isNull, isNotNull, and, count, desc, or, ilike, sql } from 'drizzle-orm';
+import { eq, isNull, isNotNull, and, count, desc, or, ilike, sql, inArray } from 'drizzle-orm';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { 
   triggerBrokersOnIntentCreated, 
@@ -21,6 +21,7 @@ router.get('/',
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
     query('archived').optional().isBoolean(),
+    query('indexId').optional().isUUID(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -33,63 +34,71 @@ router.get('/',
       const limit = Number(req.query.limit) || 10;
       const skip = (page - 1) * limit;
       const showArchived = req.query.archived === 'true';
+      const indexId = req.query.indexId as string;
 
-      const whereCondition = and(
+      // Build base conditions
+      const baseCondition = and(
         showArchived ? isNotNull(intents.archivedAt) : isNull(intents.archivedAt),
         eq(intents.userId, req.user!.id)
       );
 
-      const [intentsResult, totalResult] = await Promise.all([
-        db.select({
-          id: intents.id,
-          payload: intents.payload,
-          summary: intents.summary,
-          isPublic: intents.isPublic,
-          createdAt: intents.createdAt,
-          updatedAt: intents.updatedAt,
-          archivedAt: intents.archivedAt,
-          userId: intents.userId,
-          userName: users.name,
-          userEmail: users.email,
-          userAvatar: users.avatar
-        }).from(intents)
-          .innerJoin(users, eq(intents.userId, users.id))
-          .where(whereCondition)
-          .orderBy(desc(intents.createdAt))
-          .offset(skip)
-          .limit(limit),
+      const selectFields = {
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        isPublic: intents.isPublic,
+        createdAt: intents.createdAt,
+        updatedAt: intents.updatedAt,
+        archivedAt: intents.archivedAt,
+        userId: intents.userId,
+        userName: users.name,
+        userEmail: users.email,
+        userAvatar: users.avatar
+      };
 
-        db.select({ count: count() })
-          .from(intents)
-          .innerJoin(users, eq(intents.userId, users.id))
-          .where(whereCondition)
+      // Build queries conditionally
+      const [intentsResult, totalResult] = await Promise.all([
+        indexId 
+          ? db.select(selectFields).from(intents)
+              .innerJoin(users, eq(intents.userId, users.id))
+              .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+              .where(and(baseCondition, eq(intentIndexes.indexId, indexId)))
+              .orderBy(desc(intents.createdAt))
+              .offset(skip)
+              .limit(limit)
+          : db.select(selectFields).from(intents)
+              .innerJoin(users, eq(intents.userId, users.id))
+              .where(baseCondition)
+              .orderBy(desc(intents.createdAt))
+              .offset(skip)
+              .limit(limit),
+        
+        indexId
+          ? db.select({ count: count() }).from(intents)
+              .innerJoin(users, eq(intents.userId, users.id))
+              .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+              .where(and(baseCondition, eq(intentIndexes.indexId, indexId)))
+          : db.select({ count: count() }).from(intents)
+              .innerJoin(users, eq(intents.userId, users.id))
+              .where(baseCondition)
       ]);
 
-      // Get index counts and ensure summaries for each intent
+      // Add index counts
       const intentsWithCounts = await Promise.all(
         intentsResult.map(async (intent) => {
-          // Get count of indexes for this intent
           const indexCount = await db.select({ count: count() })
             .from(intentIndexes)
             .where(eq(intentIndexes.intentId, intent.id));
 
           return {
-            id: intent.id,
-            payload: intent.payload,
-            summary: intent.summary,
-            isPublic: intent.isPublic,
-            createdAt: intent.createdAt,
-            updatedAt: intent.updatedAt,
-            archivedAt: intent.archivedAt,
+            ...intent,
             user: {
               id: intent.userId,
               name: intent.userName,
               email: intent.userEmail,
               avatar: intent.userAvatar
             },
-            _count: {
-              indexes: indexCount[0]?.count || 0
-            }
+            _count: { indexes: indexCount[0]?.count || 0 }
           };
         })
       );
@@ -412,6 +421,152 @@ router.patch('/:id/unarchive',
     } catch (error) {
       console.error('Unarchive intent error:', error);
       return res.status(500).json({ error: 'Failed to unarchive intent' });
+    }
+  }
+);
+
+// Add indexes to intent
+router.post('/:id/indexes',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    body('indexIds').isArray(),
+    body('indexIds.*').isUUID(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const { indexIds } = req.body;
+
+      // Check if intent exists and user owns it
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
+        .limit(1);
+
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Intent not found' });
+      }
+
+      if (intent[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Verify index IDs exist and user has access to them
+      const validIndexes = await db.select({ id: indexes.id })
+        .from(indexes)
+        .where(and(
+          isNull(indexes.deletedAt),
+          eq(indexes.userId, req.user!.id)
+        ));
+
+      const validIndexIds = validIndexes.map(idx => idx.id);
+      const invalidIds = indexIds.filter((indexId: string) => !validIndexIds.includes(indexId));
+
+      if (invalidIds.length > 0) {
+        return res.status(400).json({ 
+          error: 'Some index IDs are invalid or you don\'t have access to them',
+          invalidIds 
+        });
+      }
+
+      // Check for existing relationships to avoid duplicates
+      const existingRelations = await db.select({ indexId: intentIndexes.indexId })
+        .from(intentIndexes)
+        .where(eq(intentIndexes.intentId, id));
+
+      const existingIndexIds = existingRelations.map(rel => rel.indexId);
+      const newIndexIds = indexIds.filter((indexId: string) => !existingIndexIds.includes(indexId));
+
+      // Insert new relationships
+      if (newIndexIds.length > 0) {
+        await db.insert(intentIndexes).values(
+          newIndexIds.map((indexId: string) => ({
+            intentId: id,
+            indexId: indexId
+          }))
+        );
+      }
+
+      return res.json({
+        message: 'Indexes added to intent successfully',
+        addedCount: newIndexIds.length,
+        skippedCount: indexIds.length - newIndexIds.length
+      });
+    } catch (error) {
+      console.error('Add indexes to intent error:', error);
+      return res.status(500).json({ error: 'Failed to add indexes to intent' });
+    }
+  }
+);
+
+// Remove indexes from intent
+router.delete('/:id/indexes',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    query('indexIds').custom((value) => {
+      // Handle both single string and array of strings
+      if (typeof value === 'string') {
+        return true; // Single indexId
+      }
+      if (Array.isArray(value)) {
+        return value.every(id => typeof id === 'string');
+      }
+      return false;
+    }),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      let indexIds = req.query.indexIds;
+
+      // Normalize indexIds to array
+      if (typeof indexIds === 'string') {
+        indexIds = [indexIds];
+      }
+      if (!Array.isArray(indexIds)) {
+        return res.status(400).json({ error: 'indexIds must be provided as query parameter' });
+      }
+
+      // Check if intent exists and user owns it
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(and(eq(intents.id, id), isNull(intents.archivedAt)))
+        .limit(1);
+
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Intent not found' });
+      }
+
+      if (intent[0].userId !== req.user!.id) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Remove the relationships
+      const deleteResult = await db.delete(intentIndexes)
+        .where(and(
+          eq(intentIndexes.intentId, id),
+          inArray(intentIndexes.indexId, indexIds as string[])
+        ));
+
+      return res.json({
+        message: 'Indexes removed from intent successfully',
+        removedCount: indexIds.length
+      });
+    } catch (error) {
+      console.error('Remove indexes from intent error:', error);
+      return res.status(500).json({ error: 'Failed to remove indexes from intent' });
     }
   }
 );

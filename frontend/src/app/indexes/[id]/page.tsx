@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical } from "lucide-react";
+import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical, Minus, X, Unlink, SquareMinus } from "lucide-react";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
@@ -37,6 +37,9 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [addedIntents, setAddedIntents] = useState<Set<string>>(new Set());
   const [suggestedIntents, setSuggestedIntents] = useState<{ id: string; payload: string; confidence: number }[]>([]);
   const [loadingIntents, setLoadingIntents] = useState(false);
+  const [intents, setIntents] = useState<any[]>([]);
+  const [loadingIndexIntents, setLoadingIndexIntents] = useState(false);
+  const [removingIntents, setRemovingIntents] = useState<Set<string>>(new Set());
   
   // New state for title editing
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -61,6 +64,19 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       setLoading(false);
     }
   }, [resolvedParams.id, indexesService]);
+
+  const fetchIndexIntents = useCallback(async () => {
+    setLoadingIndexIntents(true);
+    try {
+      const response = await intentsService.getIntents(1, 100, false, resolvedParams.id);
+      setIntents(response.intents || []);
+    } catch (error) {
+      console.error('Error fetching index intents:', error);
+      setIntents([]);
+    } finally {
+      setLoadingIndexIntents(false);
+    }
+  }, [resolvedParams.id, intentsService]);
 
   const fetchSuggestedIntents = useCallback(async () => {
     if (!index || !index.files || index.files.length === 0) {
@@ -95,6 +111,10 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   useEffect(() => {
     fetchIndex();
   }, [fetchIndex]);
+
+  useEffect(() => {
+    fetchIndexIntents();
+  }, [fetchIndexIntents]);
 
   useEffect(() => {
     fetchSuggestedIntents();
@@ -178,9 +198,10 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       });
       // Update local state immediately
       setAddedIntents(prev => new Set([...prev, selectedSuggestedIntent?.id || '']));
-      // Then refresh the index data
+      // Refresh the index data and intents
       const updatedIndex = await indexesService.getIndex(resolvedParams.id);
       setIndex(updatedIndex || null);
+      fetchIndexIntents(); // Refresh intents list
       setShowCreateIntentModal(false);
       setSelectedSuggestedIntent(null);
       // Redirect to the created intent
@@ -234,6 +255,26 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     } catch (error) {
       console.error('Error deleting index:', error);
       setIsDeleting(false);
+    }
+  };
+
+  // Handler for removing intent from index
+  const handleRemoveIntent = async (intentId: string) => {
+    if (!index) return;
+    
+    setRemovingIntents(prev => new Set([...prev, intentId]));
+    try {
+      await intentsService.removeIndexesFromIntent(intentId, [index.id]);
+      // Refresh the intents list
+      fetchIndexIntents();
+    } catch (error) {
+      console.error('Error removing intent from index:', error);
+    } finally {
+      setRemovingIntents(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(intentId);
+        return newSet;
+      });
     }
   };
 
@@ -466,6 +507,61 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           </div>
         </div>
 
+        {/* Intents Section */}
+        <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
+          <div className="space-y-3 w-full">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl mt-2 font-semibold text-gray-900">Intents</h2>
+            </div>
+            
+            <div className="space-y-2 flex-1">
+              {loadingIndexIntents ? (
+                <div className="text-center py-4 text-gray-500">Loading intents...</div>
+              ) : intents.length > 0 ? (
+                intents.map((intent) => (
+                  <div
+                    key={intent.id}
+                    className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/intents/${intent.id}`}
+                          className="flex items-center gap-2"
+                        >
+                          <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.summary}</h4>
+                          <ArrowUpRight className="ml-1 h-4 w-4" />
+                        </Link>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      //className="text-red-500 hover:text-red-700"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleRemoveIntent(intent.id);
+                      }}
+                      disabled={removingIntents.has(intent.id)}
+                    >
+                      {removingIntents.has(intent.id) ? (
+                        <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <SquareMinus className="text-black h-4 w-4" />
+                        </div>
+                      )}
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4 text-gray-600">No intents found for this index</div>
+              )}
+            </div>
+          </div>
+        </div>
+
         { index.files && index.files.length > 0 && 
         <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
           <div className="space-y-6 w-full">
@@ -527,6 +623,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         onOpenChange={setShowCreateIntentModal}
         onSubmit={handleCreateIntent}
         initialPayload={selectedSuggestedIntent?.payload || ''}
+        initialIndexIds={index?.id ? [index.id] : []}
         indexId={index?.id}
       />
       <ConfigureModal 
