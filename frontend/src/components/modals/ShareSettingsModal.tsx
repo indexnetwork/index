@@ -95,8 +95,8 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   ];
 
   const memberPermissions = [
-    { id: 'can-write', label: 'Edit files', description: 'Add, edit, and delete files' },
-    { id: 'can-view-files', label: 'View files', description: 'View and download files' }
+    { id: 'can-write', label: 'Edit files & intents', description: 'Add, edit, and delete files and intents' },
+    { id: 'can-read', label: 'View files & intents', description: 'View and download files and intents' }
   ];
 
   // Load members when modal opens
@@ -128,7 +128,7 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
         name: user.name,
         email: user.email,
         avatar: user.avatar,
-        permissions: ['can-view-files'] // Default permissions for new users
+        permissions: ['can-write'] // Default permissions for new users
       })));
     } catch (error) {
       console.error('Error searching users:', error);

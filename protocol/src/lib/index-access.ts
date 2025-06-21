@@ -34,7 +34,7 @@ export const checkIndexAccess = async (indexId: string, userId: string): Promise
   
   // Owner always has access
   if (indexData.userId === userId) {
-    return { hasAccess: true, indexData, memberPermissions: ['can-write', 'can-view-files', 'can-match'] };
+    return { hasAccess: true, indexData, memberPermissions: ['can-write', 'can-read', 'can-view-files', 'can-match'] };
   }
 
   // Public access via link permissions

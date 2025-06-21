@@ -506,7 +506,7 @@ router.post('/:id/members',
       }
 
       // Validate permissions
-      const validPermissions = ['can-write', 'can-view-files', 'can-match'];
+      const validPermissions = ['can-write', 'can-read', 'can-view-files', 'can-match'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -624,7 +624,7 @@ router.patch('/:id/members/:userId',
       }
 
       // Validate permissions
-      const validPermissions = ['can-write', 'can-view-files', 'can-match'];
+      const validPermissions = ['can-write', 'can-read', 'can-view-files', 'can-match'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
