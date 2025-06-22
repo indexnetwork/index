@@ -163,8 +163,8 @@ export default function EditIntentModal({
                         </div>
                         <p className="text-sm text-gray-600">
                           {isPublic 
-                            ? "Anyone can discover and view this intent"
-                            : "Only members of selected indexes can view this intent"
+                            ? "This intent will be disclosed to people you're relevant to"
+                            : "This intent remains private even when you match with others"
                           }
                         </p>
                       </div>
