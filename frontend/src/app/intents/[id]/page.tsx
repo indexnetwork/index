@@ -87,10 +87,13 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
     }
   }, [intentsService, intent]);
 
-  const handleEditIntent = useCallback(async (editData: { id: string; payload: string; indexIds: string[] }) => {
+  const handleEditIntent = useCallback(async (editData: { id: string; payload: string; indexIds: string[]; isPublic: boolean }) => {
     try {
-      // Update the intent payload
-      await intentsService.updateIntent(editData.id, { payload: editData.payload });
+      // Update the intent payload and visibility
+      await intentsService.updateIntent(editData.id, { 
+        payload: editData.payload,
+        isPublic: editData.isPublic 
+      });
       
       // Handle index changes if needed
       if (intent?.indexes) {

@@ -7,7 +7,7 @@ import * as Checkbox from "@radix-ui/react-checkbox";
 import { useIndexes } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
 import { Textarea } from "../ui/textarea";
-import { ChevronDown, ChevronUp, Check } from "lucide-react";
+import { ChevronDown, ChevronUp, Check, Lock, Globe } from "lucide-react";
 
 interface VerifiableProof {
   id: string;
@@ -242,35 +242,43 @@ export default function CreateIntentModal({
 
                   {/* Visibility Section */}
                   <div>
-                    <label className="text-md font-medium font-ibm-plex-mono text-black">
-                      <div className="mb-2">Visibility</div>
-                    </label>
-                    <div className="flex items-center space-x-4">
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          id="private"
-                          name="visibility"
-                          checked={!isPublic}
-                          onChange={() => setIsPublic(false)}
-                          className="text-blue-600"
-                        />
-                        <label htmlFor="private" className="text-sm text-gray-700 cursor-pointer">
-                          Private - Only visible to selected index members
-                        </label>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-md font-medium font-ibm-plex-mono text-black">Visibility</h3>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            {isPublic ? (
+                              <>
+                                <Globe className="h-4 w-4" />
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="h-4 w-4" />
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          {isPublic 
+                            ? "Anyone can discover and view this intent"
+                            : "Only members of selected indexes can view this intent"
+                          }
+                        </p>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          id="public"
-                          name="visibility"
-                          checked={isPublic}
-                          onChange={() => setIsPublic(true)}
-                          className="text-blue-600"
-                        />
-                        <label htmlFor="public" className="text-sm text-gray-700 cursor-pointer">
-                          Public - Visible to everyone
-                        </label>
+                      <div className="flex items-center gap-3 ml-4">
+                        <button
+                          type="button"
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer ${
+                            isPublic ? 'bg-blue-600' : 'bg-gray-300'
+                          }`}
+                          onClick={() => setIsPublic(!isPublic)}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              isPublic ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -417,41 +425,7 @@ export default function CreateIntentModal({
                     </>
                   )}
 
-                  {/* Indexes Section */}
-                  <div>
-                    <label className="text-md font-medium font-ibm-plex-mono text-black">
-                      <div className="mb-2">Share when this intent is matched</div>
-                    </label>
-                    <div className="space-y-2">
-                      {loading ? (
-                        <div className="text-center py-4 text-gray-500">Loading indexes...</div>
-                      ) : availableIndexes.length === 0 ? (
-                        <div className="text-center py-4 text-gray-500">No indexes available</div>
-                      ) : (
-                        availableIndexes.map((index) => (
-                          <div key={index.id} className="flex items-center space-x-2 p-2 hover:bg-gray-50 rounded-md">
-                            <Checkbox.Root
-                              id={`index-${index.id}`}
-                              checked={selectedIndexes.includes(index.id)}
-                              onCheckedChange={() => toggleIndex(index.id)}
-                              className="flex h-4 w-4 items-center justify-center rounded border border-gray-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                            >
-                              <Checkbox.Indicator className="text-white">
-                                <Check className="h-3 w-3" />
-                              </Checkbox.Indicator>
-                            </Checkbox.Root>
-                            <label
-                              htmlFor={`index-${index.id}`}
-                              className="text-sm text-gray-800 font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                            >
-                              {index.title}
-                              <span className="text-gray-500 text-xs ml-2">({index._count?.members || 0} members)</span>
-                            </label>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
+
 
                   {/* Examples Section */}
                   <div className="bg-yellow-50 p-4 border border-gray-200">

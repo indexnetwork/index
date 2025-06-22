@@ -84,7 +84,7 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
 
   // Update intent
   updateIntent: async (id: string, data: UpdateIntentRequest): Promise<Intent> => {
-    const response = await api.patch<APIResponse<Intent>>(`/intents/${id}`, data);
+    const response = await api.put<APIResponse<Intent>>(`/intents/${id}`, data);
     if (!response.intent) {
       throw new Error('Failed to update intent');
     }

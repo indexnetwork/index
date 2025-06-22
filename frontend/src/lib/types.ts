@@ -65,6 +65,7 @@ export interface Intent {
   id: string;
   payload: string;
   summary?: string | null;
+  isPublic?: boolean;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;
@@ -177,6 +178,7 @@ export interface CreateIntentRequest {
 
 export interface UpdateIntentRequest {
   payload?: string;
+  isPublic?: boolean;
 }
 
 export interface UpdateProfileRequest {
