@@ -87,7 +87,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
     }
   }, [intentsService, intent]);
 
-  const handleEditIntent = useCallback(async (editData: { id: string; payload: string; indexIds: string[]; isIncognito: boolean }) => {
+  const handleEditIntent = useCallback(async (editData: { id: string; payload: string; isIncognito: boolean }) => {
     try {
       // Update the intent payload and visibility
       await intentsService.updateIntent(editData.id, { 
@@ -95,26 +95,12 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
         isIncognito: editData.isIncognito 
       });
       
-      // Handle index changes if needed
-      if (intent?.indexes) {
-        const currentIndexIds = intent.indexes.map(idx => idx.indexId);
-        const indexesToAdd = editData.indexIds.filter(id => !currentIndexIds.includes(id));
-        const indexesToRemove = currentIndexIds.filter(id => !editData.indexIds.includes(id));
-        
-        if (indexesToAdd.length > 0) {
-          await intentsService.addIndexesToIntent(editData.id, indexesToAdd);
-        }
-        if (indexesToRemove.length > 0) {
-          await intentsService.removeIndexesFromIntent(editData.id, indexesToRemove);
-        }
-      }
-      
       // Refresh the intent data
       await fetchIntentData();
     } catch (error) {
       console.error('Error updating intent:', error);
     }
-  }, [intentsService, intent, fetchIntentData]);
+  }, [intentsService, fetchIntentData]);
 
   if (loading) {
     return (

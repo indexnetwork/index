@@ -10,7 +10,7 @@ import { EyeOff, Globe } from "lucide-react";
 interface EditIntentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (intent: { id: string; payload: string; isIncognito: boolean }) => void;
+  onSubmit: (intent: { id: string; payload: string; isIncognito: boolean }) => Promise<void>;
   intent: Intent | null;
 }
 

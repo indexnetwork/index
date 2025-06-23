@@ -189,11 +189,11 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     }
   };
 
-  const handleCreateIntent = async (intent: { payload: string; indexIds: string[]; attachments: File[]; isIncognito: boolean }) => {
+  const handleCreateIntent = async (intent: { payload: string; attachments: File[]; isIncognito: boolean }) => {
     try {
       const newIntent = await intentsService.createIntent({
         payload: intent.payload,
-        indexIds: intent.indexIds,
+        indexIds: index?.id ? [index.id] : [],
         isIncognito: intent.isIncognito
       });
       // Update local state immediately
@@ -623,7 +623,6 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         onOpenChange={setShowCreateIntentModal}
         onSubmit={handleCreateIntent}
         initialPayload={selectedSuggestedIntent?.payload || ''}
-        initialIndexIds={index?.id ? [index.id] : []}
         indexId={index?.id}
       />
       <ConfigureModal 

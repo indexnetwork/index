@@ -42,11 +42,11 @@ export default function IntentsPage() {
     router.push(`/intents/${intentId}`);
   }, [router]);
 
-  const handleCreateIntent = useCallback(async (intent: { payload: string; indexIds: string[]; attachments: File[]; isIncognito: boolean }) => {
+  const handleCreateIntent = useCallback(async (intent: { payload: string; attachments: File[]; isIncognito: boolean }) => {
     try {
       const newIntent = await intentsService.createIntent({
         payload: intent.payload,
-        indexIds: intent.indexIds,
+        indexIds: [], // No specific index selected from main intents page
         isIncognito: intent.isIncognito
       });
       setActiveIntents(prev => [...prev, newIntent]);

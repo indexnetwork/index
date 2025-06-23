@@ -20,7 +20,7 @@ interface VerifiableProof {
 interface CreateIntentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (intent: { payload: string; attachments: File[]; isIncognito: boolean }) => void;
+  onSubmit: (intent: { payload: string; attachments: File[]; isIncognito: boolean }) => Promise<void>;
   initialPayload?: string;
   indexId?: string; // Add indexId prop for getIntentPreview call
 }
