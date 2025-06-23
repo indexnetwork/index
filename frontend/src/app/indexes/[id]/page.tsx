@@ -189,12 +189,12 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     }
   };
 
-  const handleCreateIntent = async (intent: { payload: string; indexIds: string[]; attachments: File[]; isPublic: boolean }) => {
+  const handleCreateIntent = async (intent: { payload: string; indexIds: string[]; attachments: File[]; isIncognito: boolean }) => {
     try {
       const newIntent = await intentsService.createIntent({
         payload: intent.payload,
         indexIds: intent.indexIds,
-        isPublic: intent.isPublic
+        isIncognito: intent.isIncognito
       });
       // Update local state immediately
       setAddedIntents(prev => new Set([...prev, selectedSuggestedIntent?.id || '']));

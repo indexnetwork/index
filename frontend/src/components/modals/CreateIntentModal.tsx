@@ -7,7 +7,7 @@ import * as Checkbox from "@radix-ui/react-checkbox";
 import { useIndexes } from "@/contexts/APIContext";
 import { Index } from "@/lib/types";
 import { Textarea } from "../ui/textarea";
-import { ChevronDown, ChevronUp, Check, Lock, Globe } from "lucide-react";
+import { ChevronDown, ChevronUp, Check, EyeOff, Globe } from "lucide-react";
 
 interface VerifiableProof {
   id: string;
@@ -22,7 +22,7 @@ interface VerifiableProof {
 interface CreateIntentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (intent: { payload: string; indexIds: string[]; attachments: File[]; isPublic: boolean }) => void;
+  onSubmit: (intent: { payload: string; indexIds: string[]; attachments: File[]; isIncognito: boolean }) => void;
   initialPayload?: string;
   initialIndexIds?: string[];
   indexId?: string; // Add indexId prop for getIntentPreview call
@@ -50,7 +50,7 @@ export default function CreateIntentModal({
   const [expandedProofs, setExpandedProofs] = useState<Set<string>>(new Set());
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const [isPublic, setIsPublic] = useState(false);
+  const [isIncognito, setIsIncognito] = useState(false);
 
   // Fetch indexes when modal opens
   const fetchIndexes = useCallback(async () => {
@@ -114,7 +114,7 @@ export default function CreateIntentModal({
       setIsSuccess(false);
       setIsProcessing(false);
       setIsLoadingPreview(false);
-      setIsPublic(false);
+      setIsIncognito(false);
     }
   }, [open]);
 
@@ -123,11 +123,11 @@ export default function CreateIntentModal({
     setIsProcessing(true);
     
     try {
-      await onSubmit({ payload, indexIds: selectedIndexes, attachments, isPublic });
+      await onSubmit({ payload, indexIds: selectedIndexes, attachments, isIncognito });
       setPayload('');
       setSelectedIndexes([]);
       setAttachments([]);
-      setIsPublic(false);
+      setIsIncognito(false);
       setIsSuccess(true);
       
       setTimeout(() => {
@@ -139,7 +139,7 @@ export default function CreateIntentModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [payload, selectedIndexes, attachments, isPublic, onSubmit, onOpenChange]);
+  }, [payload, selectedIndexes, attachments, isIncognito, onSubmit, onOpenChange]);
 
   const toggleIndex = useCallback((indexId: string) => {
     setSelectedIndexes(prev => 
@@ -245,23 +245,23 @@ export default function CreateIntentModal({
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-md font-medium font-ibm-plex-mono text-black">Visibility</h3>
+                          <h3 className="text-md font-medium font-ibm-plex-mono text-black">Incognito Mode</h3>
                           <div className="flex items-center gap-2 text-sm text-gray-600">
-                            {isPublic ? (
+                            {!isIncognito ? (
                               <>
                                 <Globe className="h-4 w-4" />
                               </>
                             ) : (
                               <>
-                                <Lock className="h-4 w-4" />
+                                <EyeOff className="h-4 w-4" />
                               </>
                             )}
                           </div>
                         </div>
                         <p className="text-sm text-gray-600">
-                          {isPublic 
-                            ? "This intent will be disclosed to people you're relevant to"
-                            : "This intent remains private even when you match with others"
+                          {!isIncognito 
+                            ? "Your intent is visible to relevant people"
+                            : "Your intent stays hidden - no one can see you"
                           }
                         </p>
                       </div>
@@ -269,13 +269,13 @@ export default function CreateIntentModal({
                         <button
                           type="button"
                           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer ${
-                            isPublic ? 'bg-blue-600' : 'bg-gray-300'
+                            isIncognito ? 'bg-blue-600' : 'bg-gray-300'
                           }`}
-                          onClick={() => setIsPublic(!isPublic)}
+                          onClick={() => setIsIncognito(!isIncognito)}
                         >
                           <span
                             className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              isPublic ? 'translate-x-6' : 'translate-x-1'
+                              isIncognito ? 'translate-x-6' : 'translate-x-1'
                             }`}
                           />
                         </button>

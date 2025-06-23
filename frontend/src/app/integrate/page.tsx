@@ -519,7 +519,7 @@ const apiSections: ApiSection[] = [
         description: "Create a new intent",
         params: [
           { name: "payload", type: "string", required: true, description: "Detailed description of the intent" },
-          { name: "isPublic", type: "boolean", required: false, description: "Whether intent is public (default: false)" },
+          { name: "isIncognito", type: "boolean", required: false, description: "Whether intent is public (default: false)" },
           { name: "indexIds", type: "string[]", required: false, description: "Array of index IDs to associate with" }
         ],
         example: `fetch('/api/intents', {
@@ -530,7 +530,7 @@ const apiSections: ApiSection[] = [
   },
   body: JSON.stringify({
     payload: 'Looking for ML researchers to collaborate on AI research...',
-    isPublic: false,
+    isIncognito: false,
     indexIds: ['index-ai-research']
   })
 })`
@@ -542,7 +542,7 @@ const apiSections: ApiSection[] = [
         params: [
           { name: "id", type: "string", required: true, description: "Unique intent identifier" },
           { name: "payload", type: "string", required: false, description: "Updated intent description" },
-          { name: "isPublic", type: "boolean", required: false, description: "Updated public status" }
+          { name: "isIncognito", type: "boolean", required: false, description: "Updated public status" }
         ],
         example: `fetch('/api/intents/intent-456', {
   method: 'PUT',
@@ -552,7 +552,7 @@ const apiSections: ApiSection[] = [
   },
   body: JSON.stringify({
     payload: 'Updated intent description',
-    isPublic: true
+    isIncognito: true
   })
 })`
       },

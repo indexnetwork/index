@@ -20,7 +20,7 @@ export const intents = pgTable('intents', {
   payload: text('payload').notNull(),
   // summary field will be removed from protocol
   summary: text('summary'),
-  isPublic: boolean('is_public').notNull().default(false),
+  isIncognito: boolean('is_incognito').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
