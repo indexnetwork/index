@@ -3,14 +3,14 @@
 import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical, Minus, X, Unlink, SquareMinus } from "lucide-react";
+import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical, SquareMinus } from "lucide-react";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 import { MCP } from '@lobehub/icons';
 import Link from "next/link";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
-import { Index } from "@/lib/types";
+import { Index, Intent } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 import { Input } from "@/components/ui/input";
@@ -37,7 +37,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [addedIntents, setAddedIntents] = useState<Set<string>>(new Set());
   const [suggestedIntents, setSuggestedIntents] = useState<{ id: string; payload: string; confidence: number }[]>([]);
   const [loadingIntents, setLoadingIntents] = useState(false);
-  const [intents, setIntents] = useState<any[]>([]);
+  const [intents, setIntents] = useState<Intent[]>([]);
   const [loadingIndexIntents, setLoadingIndexIntents] = useState(false);
   const [removingIntents, setRemovingIntents] = useState<Set<string>>(new Set());
   

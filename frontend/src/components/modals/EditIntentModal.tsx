@@ -3,16 +3,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
-import * as Checkbox from "@radix-ui/react-checkbox";
-import { useIndexes } from "@/contexts/APIContext";
-import { Index, Intent } from "@/lib/types";
+import { Intent } from "@/lib/types";
 import { Textarea } from "../ui/textarea";
-import { Check, EyeOff, Globe } from "lucide-react";
+import { EyeOff, Globe } from "lucide-react";
 
 interface EditIntentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (intent: { id: string; payload: string; indexIds: string[]; isIncognito: boolean }) => void;
+  onSubmit: (intent: { id: string; payload: string; isIncognito: boolean }) => void;
   intent: Intent | null;
 }
 
@@ -23,38 +21,16 @@ export default function EditIntentModal({
   intent
 }: EditIntentModalProps) {
   const [payload, setPayload] = useState('');
-  const [selectedIndexes, setSelectedIndexes] = useState<string[]>([]);
-  const [availableIndexes, setAvailableIndexes] = useState<Index[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const indexesService = useIndexes();
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isIncognito, setIsIncognito] = useState(false);
 
-  // Fetch indexes when modal opens
-  const fetchIndexes = useCallback(async () => {
-    try {
-      const response = await indexesService.getIndexes();
-      setAvailableIndexes(response.indexes || []);
-    } catch (error) {
-      console.error('Error fetching indexes:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [indexesService]);
-
-  useEffect(() => {
-    if (open) {
-      fetchIndexes();
-    }
-  }, [open, fetchIndexes]);
 
   // Initialize form data when modal opens
   useEffect(() => {
     if (open && intent && !hasInitialized) {
       setPayload(intent.payload || '');
-      setSelectedIndexes(intent.indexes?.map(idx => idx.indexId) || []);
       setIsIncognito(intent.isIncognito);
       setHasInitialized(true);
     }
@@ -65,7 +41,6 @@ export default function EditIntentModal({
     if (!open) {
       setHasInitialized(false);
       setPayload('');
-      setSelectedIndexes([]);
       setIsSuccess(false);
       setIsProcessing(false);
       setIsIncognito(false);
@@ -82,7 +57,6 @@ export default function EditIntentModal({
       await onSubmit({ 
         id: intent.id,
         payload, 
-        indexIds: selectedIndexes,
         isIncognito: isIncognito
       });
       setIsSuccess(true);
@@ -96,15 +70,7 @@ export default function EditIntentModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [intent, payload, selectedIndexes, isIncognito, onSubmit, onOpenChange]);
-
-  const toggleIndex = useCallback((indexId: string) => {
-    setSelectedIndexes(prev => 
-      prev.includes(indexId) 
-        ? prev.filter(id => id !== indexId)
-        : [...prev, indexId]
-    );
-  }, []);
+  }, [intent, payload, isIncognito, onSubmit, onOpenChange]);
 
   if (!intent) return null;
 

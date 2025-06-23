@@ -3,11 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
-import * as Checkbox from "@radix-ui/react-checkbox";
 import { useIndexes } from "@/contexts/APIContext";
-import { Index } from "@/lib/types";
 import { Textarea } from "../ui/textarea";
-import { ChevronDown, ChevronUp, Check, EyeOff, Globe } from "lucide-react";
+import { ChevronDown, ChevronUp, EyeOff, Globe } from "lucide-react";
 
 interface VerifiableProof {
   id: string;
@@ -22,9 +20,8 @@ interface VerifiableProof {
 interface CreateIntentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (intent: { payload: string; indexIds: string[]; attachments: File[]; isIncognito: boolean }) => void;
+  onSubmit: (intent: { payload: string; attachments: File[]; isIncognito: boolean }) => void;
   initialPayload?: string;
-  initialIndexIds?: string[];
   indexId?: string; // Add indexId prop for getIntentPreview call
 }
 
@@ -33,15 +30,11 @@ export default function CreateIntentModal({
   onOpenChange, 
   onSubmit,
   initialPayload = '',
-  initialIndexIds = [],
   indexId
 }: CreateIntentModalProps) {
   const [payload, setPayload] = useState(initialPayload);
-  const [selectedIndexes, setSelectedIndexes] = useState<string[]>(initialIndexIds);
-  const [availableIndexes, setAvailableIndexes] = useState<Index[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [loading, setLoading] = useState(true);
   const indexesService = useIndexes();
   // const [relevantContent, setRelevantContent] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -52,29 +45,9 @@ export default function CreateIntentModal({
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isIncognito, setIsIncognito] = useState(false);
 
-  // Fetch indexes when modal opens
-  const fetchIndexes = useCallback(async () => {
-    try {
-      const response = await indexesService.getIndexes();
-      setAvailableIndexes(response.indexes || []);
-    } catch (error) {
-      console.error('Error fetching indexes:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [indexesService]);
-
-  useEffect(() => {
-    if (open) {
-      fetchIndexes();
-    }
-  }, [open, fetchIndexes]);
-
   // Initialize form data when modal opens
   useEffect(() => {
     if (open && !hasInitialized) {
-      // Set initial indexes
-      setSelectedIndexes([...initialIndexIds]);
       
       // Set initial payload immediately
       if (initialPayload) {
@@ -102,14 +75,13 @@ export default function CreateIntentModal({
       
       setHasInitialized(true);
     }
-  }, [open, hasInitialized, initialIndexIds, initialPayload, indexId, indexesService]);
+  }, [open, hasInitialized, initialPayload, indexId, indexesService]);
 
   // Reset when modal closes
   useEffect(() => {
     if (!open) {
       setHasInitialized(false);
       setPayload('');
-      setSelectedIndexes([]);
       setAttachments([]);
       setIsSuccess(false);
       setIsProcessing(false);
@@ -123,9 +95,8 @@ export default function CreateIntentModal({
     setIsProcessing(true);
     
     try {
-      await onSubmit({ payload, indexIds: selectedIndexes, attachments, isIncognito });
+      await onSubmit({ payload, attachments, isIncognito });
       setPayload('');
-      setSelectedIndexes([]);
       setAttachments([]);
       setIsIncognito(false);
       setIsSuccess(true);
@@ -139,15 +110,7 @@ export default function CreateIntentModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [payload, selectedIndexes, attachments, isIncognito, onSubmit, onOpenChange]);
-
-  const toggleIndex = useCallback((indexId: string) => {
-    setSelectedIndexes(prev => 
-      prev.includes(indexId) 
-        ? prev.filter(id => id !== indexId)
-        : [...prev, indexId]
-    );
-  }, []);
+  }, [payload, attachments, isIncognito, onSubmit, onOpenChange]);
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -458,13 +421,9 @@ export default function CreateIntentModal({
                 <div className="text-center py-8 space-y-6">
                   <h2 className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Intent Successfully Created!</h2>
                   <p className="text-gray-600">
-                    Your intent has been broadcasted across {selectedIndexes.length} selected {selectedIndexes.length === 1 ? 'index' : 'indexes'}.
+                    Your intent has been registered.
                   </p>
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="border border-gray-200 p-4 rounded-md bg-white">
-                      <p className="text-2xl font-bold text-gray-900">{selectedIndexes.length}</p>
-                      <p className="text-sm text-gray-600">Indexes Searched</p>
-                    </div>
                     <div className="border border-gray-200 p-4 rounded-md bg-white">
                       <p className="text-2xl font-bold text-gray-900">~24h</p>
                       <p className="text-sm text-gray-600">Estimated Time</p>
