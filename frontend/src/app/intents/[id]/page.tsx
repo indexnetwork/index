@@ -136,22 +136,22 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
         <div className="bg-white px-4 pt-4 pb-4 mb-4 border border-black border-b-0 border-b-2">
           {/* Intent Title and Info */}
-          <div className="flex flex-wrap sm:flex-nowrap justify-between items-center">
-            <div className="w-full sm:w-auto mb-2 sm:mb-0">
+          <div className="flex flex-wrap sm:flex-nowrap justify-between items-start gap-4">
+            <div className="w-full sm:flex-1 sm:min-w-0 mb-0 sm:mb-0">
               {intent.summary && (
                 <div className="mb-2">
-                  <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900">
+                  <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900 break-words">
                     {intent.summary}
                   </h1>
                 </div>
               )}
-              <div className={intent.summary ? "border-t border-gray-200 pt-2" : ""}>
+              <div className={intent.summary ? "pt-0" : ""}>
                 <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">
                   Updated {intent.updatedAt} • {stakesByUser.length} connections
                 </p>
               </div>
             </div>
-            <div className="flex gap-2 min-w-[90px] sm:min-w-[90px] sm:justify-end">
+            <div className="flex gap-2 flex-shrink-0 sm:self-center">
               {isArchived ? (
                 <>
                   <Button 

@@ -191,13 +191,7 @@ export default function IndexesPage() {
                   <Plus className="h-4 w-4" />
                   <span className="hidden sm:inline">Create New Index</span>
                 </Button>
-                <Button 
-                  className="flex items-center gap-2"
-                  onClick={() => setShowConfigDialog(true)}
-                >
-                  <MCP className="h-4 w-4" />
-                  <span className="hidden sm:inline">Configure MCP</span>
-                </Button>
+               
               </div>
             </div>
           
@@ -222,21 +216,9 @@ export default function IndexesPage() {
                         <Lock className="h-4 w-4 text-gray-900" />
                         <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">Personal Index</h3>
                       </div>
-                      <p className="text-gray-500 text-sm font-normal">Your personal knowledge base</p>
+                      <p className="text-gray-500 text-sm font-normal">Connect your external data sources</p>
                     </div>
-                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log("clicked");
-                        }}
-                      >
-                        <Lock className="h-4 w-4 mr-2" />
-                        Manage
-                      </Button>
-                    </div>
+                    
                   </div>
                 </>
               )}

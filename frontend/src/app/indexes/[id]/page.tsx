@@ -351,15 +351,6 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
               <Share2 className="h-4 w-4" />
               Share
             </Button>
-            <Button 
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-2"
-              onClick={() => setShowConfigDialog(true)}
-            >
-              <MCP className="h-4 w-4" />
-              <span className="hidden sm:inline">Configure MCP</span>
-            </Button>
             {/* Simple options menu */}
             <div className="relative">
               <Button 
@@ -535,7 +526,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                       </div>
                     </div>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
                       //className="text-red-500 hover:text-red-700"
                       onClick={(e) => {
@@ -545,11 +536,12 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                       }}
                       disabled={removingIntents.has(intent.id)}
                     >
+                      
                       {removingIntents.has(intent.id) ? (
                         <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
                       ) : (
-                        <div className="flex items-center gap-1">
-                          <SquareMinus className="text-black h-4 w-4" />
+                        <div>
+                          Remove
                         </div>
                       )}
                     </Button>
