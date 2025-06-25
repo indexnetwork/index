@@ -209,6 +209,28 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
             </div>
           </Link>
 
+          {/* Inbox Menu Item */}
+          <Link href="/inbox" className="cursor-pointer">
+            <div className="flex flex-col items-center cursor-pointer">
+              <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
+                <svg 
+                  width={44}
+                  height={44}
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="object-contain p-1"
+                >
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke={pathname?.startsWith("/inbox") ? "#f59e0b" : "#6b7280"} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                  <polyline points="22,6 12,13 2,6" stroke={pathname?.startsWith("/inbox") ? "#f59e0b" : "#6b7280"} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+              <span className={`text-sm font-ibm-plex-mono ${pathname?.startsWith("/inbox") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
+                Inbox
+              </span>
+            </div>
+          </Link>
+
           {/* Stake Menu Item */}
           <Link href="/stake" className="cursor-pointer">
             <div className="flex flex-col items-center cursor-pointer">

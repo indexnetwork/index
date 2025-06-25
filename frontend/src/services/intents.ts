@@ -5,7 +5,8 @@ import {
   APIResponse, 
   CreateIntentRequest, 
   UpdateIntentRequest,
-  IntentStakesByUserResponse
+  IntentStakesByUserResponse,
+  StakesByUserResponse
 } from '../lib/types';
 
 // Transform config agents to match Agent interface
@@ -69,7 +70,13 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
 
   // Get stakes by user for an intent
   getIntentStakesByUser: async (intentId: string): Promise<IntentStakesByUserResponse[]> => {
-    const response = await api.get<IntentStakesByUserResponse[]>(`/intents/${intentId}/stakes/by-user`);
+    const response = await api.get<IntentStakesByUserResponse[]>(`/stakes/intent/${intentId}/by-user`);
+    return response;
+  },
+
+  // Get all stakes for the user
+  getAllStakes: async (): Promise<StakesByUserResponse[]> => {
+    const response = await api.get<StakesByUserResponse[]>(`/stakes/by-user`);
     return response;
   },
 

@@ -88,6 +88,7 @@ export interface IntentIndex {
 
 export interface IntentStakesByUserResponse {
   user: {
+    id: string;
     name: string;
     avatar: string;
   };
@@ -99,6 +100,31 @@ export interface IntentStakesByUserResponse {
       avatar: string;
     };
     stake: string;
+  }>;
+}
+
+export interface StakesByUserResponse {
+  user: {
+    id: string;
+    name: string;
+    avatar: string;
+  };
+  intents: Array<{
+    intent: {
+      id: string;
+      summary?: string;
+      payload: string;
+      updatedAt: string;
+    };
+    totalStake: string;
+    aggregatedSummary: string;
+    agents: Array<{
+      agent: {
+        name: string;
+        avatar: string;
+      };
+      stake: string;
+    }>;
   }>;
 }
 
