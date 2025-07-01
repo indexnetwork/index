@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback, use } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical, SquareMinus } from "lucide-react";
+import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical } from "lucide-react";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
-import { MCP } from '@lobehub/icons';
+
 import Link from "next/link";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
 import { Index, Intent } from "@/lib/types";

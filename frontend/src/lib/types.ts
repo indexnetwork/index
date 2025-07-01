@@ -238,3 +238,58 @@ export interface ErrorResponse {
     message: string;
   }>;
 }
+
+// Connection types
+export interface ConnectionEvent {
+  id: string;
+  initiatorUserId: string;
+  receiverUserId: string;
+  eventType: 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
+  createdAt: string;
+  initiatorUser?: {
+    id: string;
+    name: string;
+    avatar: string | null;
+  };
+  receiverUser?: {
+    id: string;
+    name: string;
+    avatar: string | null;
+  };
+}
+
+export interface ConnectionStatus {
+  status: 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE' | null;
+  isInitiator: boolean;
+  event: ConnectionEvent | null;
+}
+
+export interface ConnectionEventsResponse {
+  events: ConnectionEvent[];
+  pagination: {
+    current: number;
+    total: number;
+    count: number;
+    totalCount: number;
+  };
+}
+
+export interface CreateConnectionActionRequest {
+  targetUserId: string;
+  action: 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
+}
+
+export interface UserConnection {
+  user: {
+    id: string;
+    name: string;
+    avatar: string | null;
+  };
+  status: 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
+  isInitiator: boolean;
+  lastUpdated: string;
+}
+
+export interface ConnectionsByUserResponse {
+  connections: UserConnection[];
+}

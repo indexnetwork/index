@@ -1,9 +1,9 @@
 import { Router, Response } from 'express';
-import { param, validationResult } from 'express-validator';
+import { param, query, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { intents, users, intentStakes, agents } from '../lib/schema';
+import { intents, users, intentStakes, agents, userConnectionEvents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { eq, isNull, and, sql } from 'drizzle-orm';
+import { eq, isNull, and, sql, or, notInArray } from 'drizzle-orm';
 
 const router = Router();
 
@@ -114,8 +114,17 @@ router.get('/intent/:id/by-user',
 // Get all stakes related to user's intents
 router.get('/by-user',
   authenticatePrivy,
+  [
+    query('includeDiscovered').optional().isBoolean()
+  ],
   async (req: AuthRequest, res: Response) => {
     try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const includeDiscovered = req.query.includeDiscovered === 'true';
       // First get all intents of the user
       const userIntents = await db.select({
         id: intents.id,
@@ -130,6 +139,26 @@ router.get('/by-user',
 
       if (userIntentIds.length === 0) {
         return res.json([]);
+      }
+
+      // Get users with existing connections (discovered users) if filtering is enabled
+      let discoveredUserIds: string[] = [];
+      if (!includeDiscovered) {
+        const connectionEvents = await db.select({
+          initiatorUserId: userConnectionEvents.initiatorUserId,
+          receiverUserId: userConnectionEvents.receiverUserId,
+        })
+        .from(userConnectionEvents)
+        .where(
+          or(
+            eq(userConnectionEvents.initiatorUserId, req.user!.id),
+            eq(userConnectionEvents.receiverUserId, req.user!.id)
+          )
+        );
+
+        discoveredUserIds = connectionEvents.map(event => 
+          event.initiatorUserId === req.user!.id ? event.receiverUserId : event.initiatorUserId
+        );
       }
 
       // Then get stakes of those intents
@@ -153,7 +182,8 @@ router.get('/by-user',
           SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
           WHERE intent_id IN (${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)})
         )`,
-        sql`${users.id} != ${req.user!.id}`
+        sql`${users.id} != ${req.user!.id}`,
+        ...(discoveredUserIds.length > 0 ? [notInArray(users.id, discoveredUserIds)] : [])
       ));
 
       // Group by intents array variation

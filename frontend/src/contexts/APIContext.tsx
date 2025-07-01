@@ -4,10 +4,12 @@ import { createContext, useContext, useRef, ReactNode } from 'react';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { createIndexesService } from '@/services/indexes';
 import { createIntentsService } from '@/services/intents';
+import { createConnectionsService } from '@/services/connections';
 
 interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
   intentsService: ReturnType<typeof createIntentsService>;
+  connectionsService: ReturnType<typeof createConnectionsService>;
 }
 
 const APIContext = createContext<APIContextType | undefined>(undefined);
@@ -21,7 +23,8 @@ export function APIProvider({ children }: { children: ReactNode }) {
   if (!servicesRef.current) {
     servicesRef.current = {
       indexesService: createIndexesService(api),
-      intentsService: createIntentsService(api)
+      intentsService: createIntentsService(api),
+      connectionsService: createConnectionsService(api)
     };
   }
 
@@ -49,4 +52,9 @@ export function useIndexes() {
 export function useIntents() {
   const { intentsService } = useAPI();
   return intentsService;
+}
+
+export function useConnections() {
+  const { connectionsService } = useAPI();
+  return connectionsService;
 } 

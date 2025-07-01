@@ -4,92 +4,94 @@ import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import * as Tabs from "@radix-ui/react-tabs";
-import { useIntents } from "@/contexts/APIContext";
-import { StakesByUserResponse } from "@/lib/types";
+import { useIntents, useConnections } from "@/contexts/APIContext";
+import { StakesByUserResponse, UserConnection } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
 import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 
 export default function InboxPage() {
-  const [inboxStakes, setInboxStakes] = useState<StakesByUserResponse[]>([]);
-  const [waitingStakes, setWaitingStakes] = useState<StakesByUserResponse[]>([]);
-  const [doneStakes, setDoneStakes] = useState<StakesByUserResponse[]>([]);
+  const [discoverStakes, setDiscoverStakes] = useState<StakesByUserResponse[]>([]);
+  const [inboxConnections, setInboxConnections] = useState<UserConnection[]>([]);
+  const [pendingConnections, setPendingConnections] = useState<UserConnection[]>([]);
+  const [doneConnections, setDoneConnections] = useState<UserConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const intentsService = useIntents();
+  const connectionsService = useConnections();
 
-  const fetchStakes = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      // For now, we'll use the existing getAllStakes and simulate different types
-      // In a real implementation, you'd have separate endpoints for each type
-      const stakesData = await intentsService.getAllStakes();
-      
-      // Simulate different stake states for demo
-      // Inbox: Items awaiting your response (pending_received, none, declined, skipped)
-      setInboxStakes(stakesData.slice(0, Math.ceil(stakesData.length / 3)));
-      
-      // Waiting: You acted, awaiting them (pending_sent)
-      setWaitingStakes(stakesData.slice(Math.ceil(stakesData.length / 3), Math.ceil(2 * stakesData.length / 3)));
-      
-      // Done: Resolved or removed (connected, declined, cancelled, removed)
-      setDoneStakes(stakesData.slice(Math.ceil(2 * stakesData.length / 3)));
+      // Fetch connections and stakes
+      const [inboxData, pendingData, doneData, stakesData] = await Promise.all([
+        connectionsService.getConnectionsByUser('inbox'),
+        connectionsService.getConnectionsByUser('pending'),
+        connectionsService.getConnectionsByUser('done'),
+        intentsService.getAllStakes()
+      ]);
+
+      // Set data for each tab
+      setDiscoverStakes(stakesData);
+      setInboxConnections(inboxData.connections);
+      setPendingConnections(pendingData.connections);
+      setDoneConnections(doneData.connections);
     } catch (error) {
-      console.error('Error fetching stakes:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
-  }, [intentsService]);
+  }, [intentsService, connectionsService]);
 
   useEffect(() => {
-    fetchStakes();
-  }, [fetchStakes]);
+    fetchData();
+  }, [fetchData]);
 
   const handleConnectionAction = async (action: ConnectionAction, userId: string) => {
-    console.log(`Connection action: ${action} for user: ${userId}`);
-    // TODO: Implement API calls for connection actions
-    // This would call your backend to update connection status
-    // await intentsService.updateConnectionStatus(userId, action);
-    
-    // For now, just log the action
-    // In real implementation, you'd update the local state and move items between tabs
-    
-    // Example logic for moving items between tabs:
-    switch (action) {
-      case 'REQUEST':
-        // Move from inbox to waiting
-        // Find the connection and move it
-        break;
-      case 'SKIP':
-        // Move from inbox to done
-        break;
-      case 'ACCEPT':
-        // Move from inbox to done (final accept)
-        break;
-      case 'DECLINE':
-        // Move from inbox to done
-        break;
-      case 'CANCEL':
-        // Move from waiting to done
-        break;
-      case 'REMOVE':
-        // Move from any tab to done
-        break;
+    try {
+      console.log(`Connection action: ${action} for user: ${userId}`);
+      
+      // Call the appropriate connection service method
+      switch (action) {
+        case 'REQUEST':
+          await connectionsService.requestConnection(userId);
+          break;
+        case 'SKIP':
+          await connectionsService.skipConnection(userId);
+          break;
+        case 'ACCEPT':
+          await connectionsService.acceptConnection(userId);
+          break;
+        case 'DECLINE':
+          await connectionsService.declineConnection(userId);
+          break;
+        case 'CANCEL':
+          await connectionsService.cancelConnection(userId);
+          break;
+      }
+
+      // Refresh the data to reflect the changes
+      await fetchData();
+    } catch (error) {
+      console.error('Error handling connection action:', error);
+      // You might want to show a toast or error message to the user
     }
   };
 
-  const getConnectionStatus = (tabType: 'inbox' | 'waiting' | 'done') => {
+  const getConnectionStatus = (tabType: 'discover' | 'inbox' | 'pending' | 'done'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
     switch (tabType) {
+      case 'discover':
+        return 'none'; // suggestions for new connections
       case 'inbox':
-        return 'none'; // or 'pending_received' for items awaiting your response
-      case 'waiting':
+        return 'pending_received'; // items awaiting your response
+      case 'pending':
         return 'pending_sent'; // you acted, awaiting them
       case 'done':
-        return 'connected'; // or other resolved states
+        return 'connected'; // resolved states
       default:
         return 'none';
     }
   };
 
-  const renderStakeCard = (userStake: StakesByUserResponse, tabType: 'inbox' | 'waiting' | 'done') => {
+  const renderStakeCard = (userStake: StakesByUserResponse, tabType: 'discover' | 'inbox' | 'pending' | 'done') => {
     // Get all unique agents across all intents for this user
     const allAgents = userStake.intents.flatMap(intent => intent.agents);
     const uniqueAgents = allAgents.reduce((acc, current) => {
@@ -128,9 +130,9 @@ export default function InboxPage() {
           {/* Connection Actions */}
           <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
             <ConnectionActions
-              userId={userStake.user.name} // In real app, this would be user ID
+              userId={userStake.user.id}
               userName={userStake.user.name}
-              connectionStatus={getConnectionStatus(tabType) as 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped'}
+              connectionStatus={getConnectionStatus(tabType)}
               onAction={handleConnectionAction}
               size="sm"
             />
@@ -187,6 +189,41 @@ export default function InboxPage() {
     );
   };
 
+  const renderConnectionCard = (connection: UserConnection, tabType: 'inbox' | 'pending' | 'done') => {
+    return (
+      <div key={connection.user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
+        <div className="py-4 px-2 sm:px-4 hover:bg-gray-50 transition-colors">
+          <div className="flex flex-wrap sm:flex-nowrap justify-between items-start mb-4">
+            <div className="flex items-center gap-4 w-full sm:w-auto mb-2 sm:mb-0">
+              <Image
+                src={getAvatarUrl(connection.user.avatar || '')}
+                alt={connection.user.name}
+                width={48}
+                height={48}
+                className="rounded-full"
+              />
+              <div>
+                <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{connection.user.name}</h2>
+                <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
+                  <span>{connection.status.toLowerCase()} • {new Date(connection.lastUpdated).toLocaleDateString()}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+              <ConnectionActions
+                userId={connection.user.id}
+                userName={connection.user.name}
+                connectionStatus={getConnectionStatus(tabType)}
+                onAction={handleConnectionAction}
+                size="sm"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return (
       <ClientLayout>
@@ -204,35 +241,46 @@ export default function InboxPage() {
         }}>
 
         <div className="flex flex-col justify-between mb-4">
-          <Tabs.Root defaultValue="inbox" className="flex-grow">
+          <Tabs.Root defaultValue="discover" className="flex-grow">
             <div className="flex flex-row items-end justify-between">
               <Tabs.List className="bg-white overflow-x-auto flex text-sm text-black">
-                <Tabs.Trigger value="inbox" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                  Inbox ({inboxStakes.length})
+                <Tabs.Trigger value="discover" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
+                  Discover ({discoverStakes.length})
                 </Tabs.Trigger>
-                <Tabs.Trigger value="waiting" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                  Waiting ({waitingStakes.length})
+                <Tabs.Trigger value="inbox" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
+                  Inbox ({inboxConnections.length})
+                </Tabs.Trigger>
+                <Tabs.Trigger value="pending" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
+                  Pending ({pendingConnections.length})
                 </Tabs.Trigger>
                 <Tabs.Trigger value="done" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                  Done ({doneStakes.length})
+                  Done ({doneConnections.length})
                 </Tabs.Trigger>
               </Tabs.List>
             </div>
 
             {/* Section Descriptions */}
             <div>
-              <Tabs.Content value="inbox" className="m-0 p-0">
+              <Tabs.Content value="discover" className="m-0 p-0">
                 <div className="bg-white border border-b-2 border-gray-800 p-3">
                   <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                    Connection opportunities awaiting your response. Review potential matches and decide whether to connect, skip, or decline.
+                    Discover new people based on contextual relevance. You're deciding whether to initiate a connection.
                   </p>
                 </div>
               </Tabs.Content>
               
-              <Tabs.Content value="waiting" className="m-0 p-0">
+              <Tabs.Content value="inbox" className="m-0 p-0">
                 <div className="bg-white border border-b-2 border-gray-800 p-3">
                   <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                    Connection requests you've sent that are pending responses from other users. You can cancel these requests if needed.
+                    Incoming connection requests from real users. Use this tab to respond to others who want to connect with you.
+                  </p>
+                </div>
+              </Tabs.Content>
+              
+              <Tabs.Content value="pending" className="m-0 p-0">
+                <div className="bg-white border border-b-2 border-gray-800 p-3">
+                  <p className="text-sm text-gray-700 font-ibm-plex-mono">
+                    Requests you've sent to others and are still awaiting a response. Cancel if no longer relevant.
                   </p>
                 </div>
               </Tabs.Content>
@@ -240,42 +288,53 @@ export default function InboxPage() {
               <Tabs.Content value="done" className="m-0 p-0">
                 <div className="bg-white border border-b-2 border-gray-800 p-3">
                   <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                     Completed connections, declined requests, and removed items. This is your connection history.
+                    Resolved connections — accepted, declined, skipped, or canceled. A passive log of what's already been handled.
                   </p>
                 </div>
               </Tabs.Content>
             </div>
 
-            {/* Inbox Tab Content - Awaiting your response */}
-            <Tabs.Content value="inbox" className="mt-4">
-              {inboxStakes.length === 0 ? (
+            {/* Discover Tab Content - Connection suggestions */}
+            <Tabs.Content value="discover" className="mt-4">
+              {discoverStakes.length === 0 ? (
                 <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                  No items in your inbox. All caught up!
+                  No connection suggestions available right now.
                 </div>
               ) : (
-                inboxStakes.map((userStake) => renderStakeCard(userStake, 'inbox'))
+                discoverStakes.map((userStake) => renderStakeCard(userStake, 'discover'))
               )}
             </Tabs.Content>
 
-            {/* Waiting Tab Content - You acted, awaiting them */}
-            <Tabs.Content value="waiting" className="mt-4">
-              {waitingStakes.length === 0 ? (
+            {/* Inbox Tab Content - Incoming requests */}
+            <Tabs.Content value="inbox" className="mt-4">
+              {inboxConnections.length === 0 ? (
+                <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
+                  No incoming connection requests. All caught up!
+                </div>
+              ) : (
+                inboxConnections.map((connection) => renderConnectionCard(connection, 'inbox'))
+              )}
+            </Tabs.Content>
+
+            {/* Pending Tab Content - Outgoing requests */}
+            <Tabs.Content value="pending" className="mt-4">
+              {pendingConnections.length === 0 ? (
                 <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
                   No pending requests. You haven't sent any connection requests recently.
                 </div>
               ) : (
-                waitingStakes.map((userStake) => renderStakeCard(userStake, 'waiting'))
+                pendingConnections.map((connection) => renderConnectionCard(connection, 'pending'))
               )}
             </Tabs.Content>
 
-            {/* Done Tab Content - Resolved or removed */}
+            {/* Done Tab Content - Resolved connections */}
             <Tabs.Content value="done" className="mt-4">
-              {doneStakes.length === 0 ? (
+              {doneConnections.length === 0 ? (
                 <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
                   No completed connections yet.
                 </div>
               ) : (
-                doneStakes.map((userStake) => renderStakeCard(userStake, 'done'))
+                doneConnections.map((connection) => renderConnectionCard(connection, 'done'))
               )}
             </Tabs.Content>
           </Tabs.Root>

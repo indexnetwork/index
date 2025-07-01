@@ -12,7 +12,7 @@ import LeaveIndexModal from "@/components/modals/LeaveIndexModal";
 import { useIndexes } from "@/contexts/APIContext";
 import { useAuthService } from "@/services/auth";
 import { Index, User } from "@/lib/types";
-import { MCP } from '@lobehub/icons';
+
 import ClientLayout from "@/components/ClientLayout";
 
 export default function IndexesPage() {

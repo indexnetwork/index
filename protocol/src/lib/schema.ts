@@ -1,6 +1,10 @@
 import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
+// Enums
+export const connectionAction = pgEnum('connection_action', [
+  'REQUEST', 'SKIP', 'CANCEL', 'ACCEPT', 'DECLINE'
+]);
 
 // Tables
 export const users = pgTable('users', {
@@ -68,11 +72,24 @@ export const intentIndexes = pgTable('intent_indexes', {
   indexId: uuid('index_id').notNull().references(() => indexes.id),
 });
 
+export const userConnectionEvents = pgTable('user_connection_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+
+  initiatorUserId: uuid('initiator_user_id').notNull().references(() => users.id),
+  receiverUserId: uuid('receiver_user_id').notNull().references(() => users.id),
+
+  eventType: connectionAction('connection_action').notNull(),
+
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   intents: many(intents),
   indexes: many(indexes),
   memberOf: many(indexMembers),
+  initiatedConnections: many(userConnectionEvents, { relationName: 'initiatedConnections' }),
+  receivedConnections: many(userConnectionEvents, { relationName: 'receivedConnections' }),
 }));
 
 
@@ -155,6 +172,19 @@ export const intentStakesRelations = relations(intentStakes, ({ one }) => ({
   }),
 }));
 
+export const userConnectionEventsRelations = relations(userConnectionEvents, ({ one }) => ({
+  initiatorUser: one(users, {
+    fields: [userConnectionEvents.initiatorUserId],
+    references: [users.id],
+    relationName: 'initiatedConnections',
+  }),
+  receiverUser: one(users, {
+    fields: [userConnectionEvents.receiverUserId],
+    references: [users.id],
+    relationName: 'receivedConnections',
+  }),
+}));
+
 // Export types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -170,3 +200,5 @@ export type File = typeof files.$inferSelect;
 export type NewFile = typeof files.$inferInsert;
 export type IntentStake = typeof intentStakes.$inferSelect;
 export type NewIntentStake = typeof intentStakes.$inferInsert;
+export type UserConnectionEvent = typeof userConnectionEvents.$inferSelect;
+export type NewUserConnectionEvent = typeof userConnectionEvents.$inferInsert;

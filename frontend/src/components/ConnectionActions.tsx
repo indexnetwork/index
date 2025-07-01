@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { UserPlus, UserMinus, X, Check, RotateCcw } from "lucide-react";
+import { UserPlus, X, Check, RotateCcw } from "lucide-react";
 
-export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE' | 'REMOVE';
+export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
 
 export interface ConnectionActionsProps {
   userId: string;
@@ -53,7 +53,7 @@ export default function ConnectionActions({
               className="flex items-center gap-2"
             >
               <UserPlus className="h-4 w-4" />
-              Connect
+              Request
             </Button>
             <Button
               variant="outline"
@@ -109,16 +109,9 @@ export default function ConnectionActions({
 
       case 'connected':
         return (
-          <Button
-            variant="outline"
-            size={size}
-            onClick={() => handleAction('REMOVE')}
-            disabled={disabled || isLoading}
-            className="flex items-center gap-2 text-red-600 hover:text-red-700"
-          >
-            <UserMinus className="h-4 w-4" />
-            Remove
-          </Button>
+          <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600">
+            Connected
+          </div>
         );
 
       default:
