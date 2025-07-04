@@ -93,7 +93,7 @@ export interface IntentStakesByUserResponse {
     avatar: string;
   };
   totalStake: string;
-  aggregatedSummary: string;
+  synthesis: string;
   agents: Array<{
     agent: {
       name: string;
@@ -109,6 +109,7 @@ export interface StakesByUserResponse {
     name: string;
     avatar: string;
   };
+  synthesis: string;
   intents: Array<{
     intent: {
       id: string;
@@ -117,7 +118,6 @@ export interface StakesByUserResponse {
       updatedAt: string;
     };
     totalStake: string;
-    aggregatedSummary: string;
     agents: Array<{
       agent: {
         name: string;

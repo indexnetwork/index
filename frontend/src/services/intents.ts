@@ -6,7 +6,7 @@ import {
   CreateIntentRequest, 
   UpdateIntentRequest,
   IntentStakesByUserResponse,
-  StakesByUserResponse
+  StakesByUserResponse,
 } from '../lib/types';
 
 // Transform config agents to match Agent interface
@@ -79,6 +79,7 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     const response = await api.get<StakesByUserResponse[]>(`/stakes/by-user`);
     return response;
   },
+
 
   // Create new intent
   createIntent: async (data: CreateIntentRequest): Promise<Intent> => {

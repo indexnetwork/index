@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Play, Archive, Pause, ArchiveRestore, Edit } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
 import { useIntents } from "@/contexts/APIContext";
 import { Intent, IntentStakesByUserResponse } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
@@ -87,7 +88,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
     }
   }, [intentsService, intent]);
 
-  const handleEditIntent = useCallback(async (editData: { id: string; payload: string; isIncognito: boolean }) => {
+  const handleEditIntent = useCallback(async (editData: { id: string; payload: string; isIncognito: boolean; indexIds: string[] }) => {
     try {
       // Update the intent payload and visibility
       await intentsService.updateIntent(editData.id, { 
@@ -95,12 +96,32 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
         isIncognito: editData.isIncognito 
       });
       
+      // Handle index changes if intent exists
+      if (intent && intent.indexes) {
+        const currentIndexIds = intent.indexes.map(idx => idx.indexId);
+        const newIndexIds = editData.indexIds;
+        
+        // Find indexes to add and remove
+        const indexesToAdd = newIndexIds.filter(id => !currentIndexIds.includes(id));
+        const indexesToRemove = currentIndexIds.filter(id => !newIndexIds.includes(id));
+        
+        // Add new indexes
+        if (indexesToAdd.length > 0) {
+          await intentsService.addIndexesToIntent(editData.id, indexesToAdd);
+        }
+        
+        // Remove old indexes
+        if (indexesToRemove.length > 0) {
+          await intentsService.removeIndexesFromIntent(editData.id, indexesToRemove);
+        }
+      }
+      
       // Refresh the intent data
       await fetchIntentData();
     } catch (error) {
       console.error('Error updating intent:', error);
     }
-  }, [intentsService, fetchIntentData]);
+  }, [intentsService, fetchIntentData, intent]);
 
   if (loading) {
     return (
@@ -272,11 +293,13 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
               </div>
 
               <div className="mb-6">
-                <h3 className="font-medium text-gray-700 mb-3">Why this match matters?</h3>
+                <h3 className="font-medium text-gray-700 mb-3">What could happen here</h3>
                 <div className="relative min-h-[100px]">
-                  <p className="text-gray-700">
-                    {userStakes.aggregatedSummary}
-                  </p>
+                  <div className="text-gray-700 prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                    <ReactMarkdown>
+                      {userStakes.synthesis}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               </div>
 

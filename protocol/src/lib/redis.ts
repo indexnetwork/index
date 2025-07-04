@@ -92,6 +92,35 @@ export class CacheClient {
       return false;
     }
   }
+
+  async hget(key: string, field: string): Promise<string | null> {
+    try {
+      return await this.redis.hget(key, field);
+    } catch (error) {
+      console.error('Cache hget error:', error);
+      return null;
+    }
+  }
+
+  async hset(key: string, field: string, value: string): Promise<boolean> {
+    try {
+      await this.redis.hset(key, field, value);
+      return true;
+    } catch (error) {
+      console.error('Cache hset error:', error);
+      return false;
+    }
+  }
+
+  async expire(key: string, ttl: number): Promise<boolean> {
+    try {
+      await this.redis.expire(key, ttl);
+      return true;
+    } catch (error) {
+      console.error('Cache expire error:', error);
+      return false;
+    }
+  }
 }
 
 // Global cache instance

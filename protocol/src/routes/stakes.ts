@@ -5,8 +5,34 @@ import { intents, users, intentStakes, agents, userConnectionEvents, indexes, in
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, sql, or, notInArray } from 'drizzle-orm';
 import { checkIndexAccessByCode } from '../lib/index-access';
+import { safe_synthesise } from '../lib/synthesis';
 
 const router = Router();
+
+// Helper function to convert stakes data to synthesis format
+function convertToSynthesisFormat(userStake: any): any {
+
+  
+  const synthesisUser = {
+    id: userStake.user.id,
+    name: userStake.user.name,
+    intro: userStake.user.intro,
+    intents: userStake.intents.map((intentData: any) => ({
+      id: intentData.intent.id,
+      payload: intentData.intent.payload,
+      reasons: intentData.agents.map((agentData: any) => {
+        console.log('agentData:', agentData);
+        return {
+          agent_name: agentData.agent.name,
+          agent_id: agentData.agent.name, // Using name as ID for now
+          reasoning: Array.from(agentData.reasoning).join(''),
+        };
+      })
+    }))
+  };
+
+  return { users: [synthesisUser] };
+}
 
 // Get stakes for a specific intent grouped by user
 router.get('/intent/:id/by-user',
@@ -67,14 +93,10 @@ router.get('/intent/:id/by-user',
               avatar: stake.userAvatar
             },
             totalStake: BigInt(0),
-            aggregatedSummary: new Set(),
             agents: {}
           };
         }
         acc[userName].totalStake += stake.stake;
-        if (stake.reasoning) {
-          acc[userName].aggregatedSummary.add(stake.reasoning);
-        }
 
         const agentName = stake.agentName;
         if (!acc[userName].agents[agentName]) {
@@ -95,19 +117,51 @@ router.get('/intent/:id/by-user',
         return acc;
       }, {} as Record<string, any>);
 
-      // Format results
-      const result = Object.values(userStakes)
-        .map(user => ({
-          user: user.user,
-          totalStake: user.totalStake.toString(),
-          aggregatedSummary: Array.from(user.aggregatedSummary).join(' '),
-          agents: Object.values(user.agents).map((agent: any) => ({
-            agent: agent.agent,
-            stake: agent.stake.toString(),
-            reasoning: Array.from(agent.reasoning).join(' ')
-          }))
-        }))
-        .sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
+      // Get the intent data for synthesis
+      const intentData = await db.select({
+        summary: intents.summary,
+        payload: intents.payload
+      })
+      .from(intents)
+      .where(eq(intents.id, id))
+      .limit(1);
+
+      // Format results with synthesis summaries
+      const result = (await Promise.all(Object.values(userStakes)
+        .map(async user => {
+          const userResult = {
+            user: user.user,
+            totalStake: user.totalStake.toString(),
+            agents: Object.values(user.agents).map((agent: any) => ({
+              agent: agent.agent,
+              stake: agent.stake.toString(),
+              reasoning: Array.from(agent.reasoning).join(' ')
+            })),
+            synthesis: ""
+          };
+
+          // Generate synthesis summary for this user (intent detail context)
+          try {
+            const synthesisData = convertToSynthesisFormat({
+              user: user.user,
+              intents: [{
+                intent: { 
+                  id: id, 
+                  summary: intentData[0]?.summary || "", 
+                  payload: intentData[0]?.payload || "" 
+                },
+                agents: Object.values(user.agents)
+              }]
+            });
+            userResult.synthesis = await safe_synthesise(synthesisData);
+          } catch (error) {
+            console.error('Synthesis error:', error);
+            userResult.synthesis = `${user.user.name} brings valuable expertise that could complement your work on this goal.`;
+          }
+
+          return userResult;
+        })
+      )).sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
       return res.json(result);
     } catch (error) {
@@ -221,17 +275,12 @@ router.get('/by-user',
           stakesByUser[userId].intentGroups[intentGroupKey] = {
             intentIds: sortedIntents,
             totalStake: BigInt(0),
-            aggregatedSummary: new Set(),
             agents: {}
           };
         }
 
         stakesByUser[userId].totalStake += stake.stake;
         stakesByUser[userId].intentGroups[intentGroupKey].totalStake += stake.stake;
-        
-        if (stake.reasoning) {
-          stakesByUser[userId].intentGroups[intentGroupKey].aggregatedSummary.add(stake.reasoning);
-        }
 
         // Track agents for this intent group
         const agentName = stake.agentName;
@@ -264,9 +313,9 @@ router.get('/by-user',
       }
 
       // Convert to result format and order by total stake desc
-      const result = Object.values(stakesByUser)
+      const result = await Promise.all(Object.values(stakesByUser)
         .sort((a: any, b: any) => Number(b.totalStake - a.totalStake))
-        .map((userStakes: any) => {
+        .map(async (userStakes: any) => {
           const intents = Object.values(userStakes.intentGroups).map((group: any) => {
             // Find the user's intent(s) in this group
             const userIntentsInGroup = userIntents.filter(intent => 
@@ -277,7 +326,6 @@ router.get('/by-user',
             return userIntentsInGroup.map(userIntent => ({
               intent: userIntent,
               totalStake: group.totalStake.toString(),
-              aggregatedSummary: Array.from(group.aggregatedSummary).join(' '),
               agents: Object.values(group.agents).map((agent: any) => ({
                 agent: agent.agent,
                 stake: agent.stake.toString(),
@@ -286,14 +334,29 @@ router.get('/by-user',
             }));
           }).flat().sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
+          // Generate synthesis summary for this user
+          let synthesis = "";
+          try {
+            const synthesisData = convertToSynthesisFormat({
+              user: userStakes.user,
+              intents: intents
+            });
+            synthesis = await safe_synthesise(synthesisData);
+          } catch (error) {
+            console.error('Synthesis error:', error);
+            synthesis = `${userStakes.user.name} brings valuable expertise that could complement your work across multiple areas.`;
+          }
+
           return {
             user: userStakes.user,
-            intents: intents
+            intents: intents,
+            synthesis: synthesis
           };
-        })
-        .filter(stake => stake.intents.length > 0);
+        }));
 
-      return res.json(result);
+      const filteredResult = result.filter(stake => stake.intents.length > 0);
+
+      return res.json(filteredResult);
     } catch (error) {
       console.error('Get all stakes error:', error);
       return res.status(500).json({ error: 'Failed to fetch stakes' });
@@ -427,17 +490,12 @@ router.get('/index/:code/by-user',
           stakesByUser[userId].intentGroups[intentGroupKey] = {
             intentIds: sortedIntents,
             totalStake: BigInt(0),
-            aggregatedSummary: new Set(),
             agents: {}
           };
         }
 
         stakesByUser[userId].totalStake += stake.stake;
         stakesByUser[userId].intentGroups[intentGroupKey].totalStake += stake.stake;
-        
-        if (stake.reasoning) {
-          stakesByUser[userId].intentGroups[intentGroupKey].aggregatedSummary.add(stake.reasoning);
-        }
 
         // Track agents for this intent group
         const agentName = stake.agentName;
@@ -468,9 +526,9 @@ router.get('/index/:code/by-user',
       }
 
       // Format results grouped by user
-      const result = Object.values(stakesByUser)
+      const result = (await Promise.all(Object.values(stakesByUser)
         .sort((a: any, b: any) => Number(b.totalStake - a.totalStake))
-        .map((userStakes: any) => {
+        .map(async (userStakes: any) => {
           const intents = Object.values(userStakes.intentGroups).map((group: any) => {
             const intentsInGroup = Array.from(userStakes.allIntents.values()).filter((intent: any) =>
               group.intentIds.includes(intent.id)
@@ -479,7 +537,6 @@ router.get('/index/:code/by-user',
             return intentsInGroup.map((intent: any) => ({
               intent: intent,
               totalStake: group.totalStake.toString(),
-              aggregatedSummary: Array.from(group.aggregatedSummary).join(' '),
               agents: Object.values(group.agents).map((agent: any) => ({
                 agent: agent.agent,
                 stake: agent.stake.toString(),
@@ -488,12 +545,26 @@ router.get('/index/:code/by-user',
             }));
           }).flat().sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
+          // Generate synthesis summary for this user
+          let synthesis = "";
+          try {
+            const synthesisData = convertToSynthesisFormat({
+              user: userStakes.user,
+              intents: intents
+            });
+            synthesis = await safe_synthesise(synthesisData);
+          } catch (error) {
+            console.error('Synthesis error:', error);
+            synthesis = `${userStakes.user.name} brings valuable expertise that could complement your work in this shared context.`;
+          }
+
           return {
             user: userStakes.user,
-            intents: intents
+            intents: intents,
+            synthesis: synthesis
           };
         })
-        .filter(stake => stake.intents.length > 0);
+      )).filter(stake => stake.intents.length > 0);
 
       return res.json(result);
     } catch (error) {
