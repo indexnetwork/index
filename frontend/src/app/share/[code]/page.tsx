@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useEffect, use, useCallback } from "react";
+import { useState, useEffect, use, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, ArrowUpRight } from "lucide-react";
-import { Index, APIResponse } from "@/lib/types";
+import { Index, APIResponse, Intent } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
 import { getIndexFileUrl } from "@/lib/file-utils";
+import { usePrivy } from '@privy-io/react-auth';
+import { useIndexes, useIntents, useConnections } from '@/contexts/APIContext';
+import ReactMarkdown from "react-markdown";
 
 interface SharePageProps {
   params: Promise<{
@@ -21,26 +24,29 @@ export default function SharePage({ params }: SharePageProps) {
   const [index, setIndex] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // New state for vibecheck flow
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState('');
+  const [vibeCheckResults, setVibeCheckResults] = useState<{ aiSynthesis?: string; score?: number }[]>([]);
+  const [showVibeCheck, setShowVibeCheck] = useState(false);
+
+  const { login, authenticated, ready } = usePrivy();
+  const indexesService = useIndexes();
+  const intentsService = useIntents();
+  const connectionsService = useConnections();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchIndex = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Make unauthenticated request to the share endpoint
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'}/indexes/share/${resolvedParams.code}`);
+      // Use the indexes service to get the index by share code
+      const { indexesService } = await import('@/services/indexes');
+      const index = await indexesService.getIndexByShareCode(resolvedParams.code);
       
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data: APIResponse<Index> = await response.json();
-      
-      if (!data.index) {
-        throw new Error('Index not found');
-      }
-      
-      setIndex(data.index);
+      setIndex(index);
     } catch (error: unknown) {
       console.error('Error fetching index:', error);
       setError(error instanceof Error ? error.message : 'Index not found or access denied');
@@ -64,36 +70,118 @@ export default function SharePage({ params }: SharePageProps) {
     setIsDragging(false);
   };
 
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    const droppedFiles = Array.from(e.dataTransfer.files);
-    if (index && droppedFiles.length > 0) {
-      try {
-        // For now, disable file uploads on share pages
-        // In the future, this could upload files based on share permissions
-        console.log('File upload not available on share pages yet');
-      } catch (error) {
-        console.error('Error uploading files:', error);
-      }
-    }
-  };
+  const processFiles = async (files: File[]) => {
+    if (!index || files.length === 0) return;
 
-  const handleRequestConnection = async () => {
-    if (index) {
-      try {
-        // Call service in the future.
-        setRequestSent(true);
-      } catch (error) {
-        console.error('Error requesting connection:', error);
-      }
+    // Check if user is authenticated, if not, trigger login
+    if (ready && !authenticated) {
+      login();
+      return;
     }
-  };
+
+    if (!authenticated) {
+      console.log('Authentication not ready yet');
+      return;
+    }
+
+    setIsProcessing(true);
+    setShowVibeCheck(false);
+
+         try {
+       // Step 0: Read file contents for vibecheck
+       setProcessingStep('Reading your files...');
+       
+       // Step 1: Create "My Files" index
+       setProcessingStep('Creating your index...');
+       const newIndex = await indexesService.createIndex({
+         title: 'My Files'
+       });
+
+       // Step 2: Upload files to the index
+       setProcessingStep('Uploading your files...');
+       for (const file of files) {
+         await indexesService.uploadFile(newIndex.id, file);
+       }
+
+       // Step 3: Get suggested intents for the new index
+       setProcessingStep('Analyzing your content...');
+       const suggestions = await indexesService.getSuggestedIntents(newIndex.id);
+
+       const maxIntents = Math.min(5, suggestions.intents.length);
+       
+       // Concat all suggestions into one payload
+       const combinedPayload = suggestions.intents
+         .slice(0, maxIntents)
+         .map(suggestion => suggestion.payload)
+         .join('\n\n');
+       
+       // Get processed intent preview of combined payload
+       const processedPayload = await indexesService.getIntentPreview(newIndex.id, combinedPayload);
+
+
+       // Step 4.5: Call vibecheck endpoint with file content and processed payload
+       setProcessingStep('Running Vibecheck...');
+       
+       let vibeCheckSynthesis = '';
+       let vibeCheckScore = 0;
+       try {
+         const vibeCheckData = await intentsService.runVibeCheck(resolvedParams.code, processedPayload);
+         vibeCheckSynthesis = vibeCheckData.synthesis || '';
+         vibeCheckScore = vibeCheckData.score || 0;
+       } catch (error) {
+         console.warn('Vibecheck failed, continuing with regular analysis:', error);
+       }
+
+       // Set the vibecheck results with synthesis and score
+       setVibeCheckResults([{ aiSynthesis: vibeCheckSynthesis, score: vibeCheckScore }] as any);
+      setShowVibeCheck(true);
+      
+    } catch (error) {
+      console.error('Error processing files:', error);
+      setError(error instanceof Error ? error.message : 'Failed to process files');
+    } finally {
+      setIsProcessing(false);
+      setProcessingStep('');
+         }
+   };
+
+   const handleDrop = async (e: React.DragEvent) => {
+     e.preventDefault();
+     setIsDragging(false);
+     
+     const droppedFiles = Array.from(e.dataTransfer.files);
+     await processFiles(droppedFiles);
+   };
+
+   const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+     const selectedFiles = Array.from(e.target.files || []);
+     await processFiles(selectedFiles);
+     // Reset the input so the same file can be selected again
+     if (fileInputRef.current) {
+       fileInputRef.current.value = '';
+     }
+   };
+
+   const handleBrowseClick = () => {
+     fileInputRef.current?.click();
+   };
+
+      const handleRequestConnection = async () => {
+     if (index?.user?.id) {
+       try {
+         await connectionsService.requestConnection(index.user.id);
+         setRequestSent(true);
+       } catch (error) {
+         console.error('Error requesting connection:', error);
+       }
+     }
+   };
+
+
 
   if (loading) {
     return (
-      <ClientLayout>
+      <ClientLayout showNavigation={false}>
         <div className="py-8 text-center text-gray-500">Loading...</div>
       </ClientLayout>
     );
@@ -181,72 +269,150 @@ export default function SharePage({ params }: SharePageProps) {
         {canMatch && (
           <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="w-full">
-              <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">Drop your files to see how we vibe together.</h3>
-              <div className="mt-4 p-4 bg-white border border-gray-200 rounded-lg">
-                <div className="flex items-start space-x-4">
-                  <div className="flex-1">
-                    <h3 className="font-medium text-gray-700 mb-2">Your content will be evaluated by</h3>
-                    <p className="text-sm text-gray-500 mb-4">
-                      Each agent will analyze your content from their specialized perspective. Once uploaded, you&apos;ll receive a detailed breakdown of how your content aligns with our network&apos;s goals and potential collaboration opportunities.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                        <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <Image src="/avatars/agents/privado.svg" alt="ProofLayer" width={16} height={16} />
-                        </div>
-                        <span className="font-medium text-gray-900">ProofLayer</span>
-                        <span className="text-gray-500 text-sm">Due Diligence Agent</span>
-                      </div>
+              {!showVibeCheck && !isProcessing && (
+                <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">Curious how your work fits in?</h3>
+              )}
+              
+              {isProcessing && (
+                <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">Analyzing your content...</h3>
+              )}
+              
+              {showVibeCheck && !isProcessing && (
+                <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">Here's how we vibing</h3>
+              )}
+              
+              {!showVibeCheck && !isProcessing && (
+                <>
+                  <div className="mt-4 p-4 bg-white border border-gray-200 rounded-lg">
+                    <div className="flex items-start space-x-4">
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-700 mb-2">Upload your files and get instant feedback</h3>
+                        <p className="text-sm text-gray-500">
+                          Once uploaded, you'll receive a detailed breakdown of how youyour content aligns with our mutual goals and potential collaboration opportunities.
+                        </p>
+                        { false && 
+                        <div className="flex flex-wrap gap-2">
+                          <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
+                            <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                              <Image src="/avatars/agents/privado.svg" alt="ProofLayer" width={16} height={16} />
+                            </div>
+                            <span className="font-medium text-gray-900">ProofLayer</span>
+                            <span className="text-gray-500 text-sm">Due Diligence Agent</span>
+                          </div>
 
-                      <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                        <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center">
-                          <Image src="/avatars/agents/reputex.svg" alt="Threshold" width={16} height={16} />
-                        </div>
-                        <span className="font-medium text-gray-900">Threshold</span>
-                        <span className="text-gray-500 text-sm">Network Manager Agent</span>
-                      </div>
+                          <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
+                            <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center">
+                              <Image src="/avatars/agents/reputex.svg" alt="Threshold" width={16} height={16} />
+                            </div>
+                            <span className="font-medium text-gray-900">Threshold</span>
+                            <span className="text-gray-500 text-sm">Network Manager Agent</span>
+                          </div>
 
-                      <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                        <div className="w-6 h-6 bg-indigo-100 rounded-lg flex items-center justify-center">
-                          <Image src="/avatars/agents/hapi.svg" alt="Aspecta" width={16} height={16} />
-                        </div>
-                        <span className="font-medium text-gray-900">Aspecta</span>
-                        <span className="text-gray-500 text-sm">Reputation Agent</span>
-                      </div>
+                          <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
+                            <div className="w-6 h-6 bg-indigo-100 rounded-lg flex items-center justify-center">
+                              <Image src="/avatars/agents/hapi.svg" alt="Aspecta" width={16} height={16} />
+                            </div>
+                            <span className="font-medium text-gray-900">Aspecta</span>
+                            <span className="text-gray-500 text-sm">Reputation Agent</span>
+                          </div>
 
-                      <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                        <div className="w-6 h-6 bg-teal-100 rounded-lg flex items-center justify-center">
-                          <Image src="/avatars/agents/trusta.svg" alt="Semantic Relevancy" width={16} height={16} />
+                          <div className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
+                            <div className="w-6 h-6 bg-teal-100 rounded-lg flex items-center justify-center">
+                              <Image src="/avatars/agents/trusta.svg" alt="Semantic Relevancy" width={16} height={16} />
+                            </div>
+                            <span className="font-medium text-gray-900">Semantic Relevancy</span>
+                            <span className="text-gray-500 text-sm">Relevancy Agent</span>
+                          </div>
                         </div>
-                        <span className="font-medium text-gray-900">Semantic Relevancy</span>
-                        <span className="text-gray-500 text-sm">Relevancy Agent</span>
+                        }
                       </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              <div 
-                className={`mt-4 border-2 border-dashed p-6 flex flex-col items-center justify-center transition-colors cursor-pointer ${
-                  isDragging 
-                    ? "border-gray-400 bg-gray-100" 
-                    : "border-gray-200 bg-gray-50 hover:bg-gray-100"
-                }`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-              >
-                <Upload className="h-8 w-8 text-gray-400 mb-2" />
-                <p className="text-sm text-gray-600 text-center">
-                  Drag & drop your files here, or click to browse
-                </p>
-              </div>
+                  <div>
+                     <input
+                       ref={fileInputRef}
+                       type="file"
+                       multiple
+                       onChange={handleFileInputChange}
+                       className="hidden"
+                       accept=".pdf,.doc,.docx,.txt,.md,.json,.csv,.xlsx,.xls,.ppt,.pptx"
+                     />
+                     <div 
+                       className={`mt-4 border-2 border-dashed p-6 flex flex-col items-center justify-center transition-colors cursor-pointer ${
+                         isDragging 
+                           ? "border-gray-400 bg-gray-100" 
+                           : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                       }`}
+                       onDragOver={handleDragOver}
+                       onDragLeave={handleDragLeave}
+                       onDrop={handleDrop}
+                       onClick={handleBrowseClick}
+                     >
+                       <Upload className="h-8 w-8 text-gray-400 mb-2" />
+                       <p className="text-sm text-gray-600 text-center">
+                         Drag & drop your files here, or click to browse
+                       </p>
+                     </div>
+                   </div>
+                </>
+              )}
+
+              {isProcessing && (
+                <div className="mt-4 p-6 bg-blue-50 border border-blue-200 rounded-lg text-center">
+                  <div className="flex items-center justify-center mb-3">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  </div>
+                  <p className="text-blue-700 font-medium">{processingStep}</p>
+                  <p className="text-blue-600 text-sm mt-1">This may take a moment...</p>
+                </div>
+              )}
+
+              {showVibeCheck && !isProcessing && (
+                <div className="mt-4 space-y-4">
+                  {vibeCheckResults.length > 0 && vibeCheckResults[0].aiSynthesis && (
+                    <div className="mb-4">
+                      <div className="space-y-2">
+                        <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                          <ReactMarkdown>
+                            {vibeCheckResults[0].aiSynthesis}
+                          </ReactMarkdown>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {vibeCheckResults.length > 0 && !vibeCheckResults[0].aiSynthesis && (
+                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-yellow-800">
+                        Vibecheck completed but no detailed analysis was generated. Please try again or contact support.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="mt-6">
+                {showVibeCheck && vibeCheckResults.length > 0 && (vibeCheckResults[0].score || 0) <= 0.5 && (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center mb-4">
+                    <p className="text-yellow-800 font-medium">Collaboration potential is moderate</p>
+                    <p className="text-yellow-700 text-sm mt-1">
+                      Based on the analysis, there may be limited synergy for collaboration at this time.
+                    </p>
+                  </div>
+                )}
                 {!requestSent ? (
                   <Button
                     onClick={handleRequestConnection}
-                    className="w-full py-3 text-white bg-blue-600 hover:bg-blue-700 border border-blue-600"
+                    disabled={!showVibeCheck && !isProcessing}
+                    className={`w-full py-3 text-white border disabled:opacity-50 ${
+                      showVibeCheck && vibeCheckResults.length > 0 && (vibeCheckResults[0].score || 0) > 0.5
+                        ? 'bg-blue-600 hover:bg-blue-700 border-blue-600'
+                        : 'bg-gray-400 border-gray-400 cursor-not-allowed'
+                    }`}
+                    style={{ 
+                      display: showVibeCheck && vibeCheckResults.length > 0 && (vibeCheckResults[0].score || 0) > 0.5 ? 'block' : 'none' 
+                    }}
                   >
                     Request Connection
                   </Button>
