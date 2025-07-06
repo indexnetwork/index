@@ -48,8 +48,6 @@ export async function vibeCheck(
 
     const { timeout = 30000 } = options;
 
-    console.log(JSON.stringify(userData.intents, null, 2));
-
     const prompt = `Generate a "What Could Happen Here" collaboration synthesis markdown text.
 
 USER: ${userData.name}
@@ -72,7 +70,6 @@ GUIDELINES:
 - Keep it concise and actionable
 - Dont add  "What Could Happen Here" title.
 
-
 ------
 Example: 
 
@@ -87,7 +84,6 @@ This isn’t just adjacent thinking — it’s a chance to push the boundaries o
 
 `;
 
-    console.log(prompt);
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Vibe check timeout')), timeout);
@@ -114,15 +110,4 @@ This isn’t just adjacent thinking — it’s a chance to push the boundaries o
       error: error instanceof Error ? error.message : 'Unknown error' 
     };
   }
-}
-
-/**
- * Batch process multiple users
- */
-export async function checkMultipleVibes(
-  users: UserData[],
-  options: VibeCheckOptions = {}
-): Promise<VibeCheckResult[]> {
-  const promises = users.map(user => vibeCheck(user, options));
-  return Promise.all(promises);
 }

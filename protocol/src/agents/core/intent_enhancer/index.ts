@@ -1,8 +1,8 @@
 /**
- * Intent Processor Agent
+ * Intent Enhancer Agent
  * 
- * Minimal implementation that processes intent payloads using contextual integrity.
- * Reads raw files from an index and generates refined intent payloads.
+ * Enhances and expands initial intents using contextual information from index files.
+ * Filters appropriate content to create enriched, context-aware intent payloads.
  */
 
 import { UnstructuredClient } from "unstructured-client";
@@ -68,7 +68,7 @@ async function loadFileContent(filePath: string): Promise<{ content: string | nu
       
       // Handle response - it can be either string (for CSV) or array of elements (for JSON)
       if (Array.isArray(response) && response.length > 0) {
-        const content = response.map((element: any) => element.text || '').filter((text: string) => text.trim()).join('\n\n');
+        const content = response.map((element: any) => element.text || '').filter((text: string) => text.trim()).join('\n');
         return { content, error: null };
       } else if (typeof response === 'string' && response.trim()) {
         return { content: response, error: null };
@@ -147,7 +147,7 @@ async function gatherIndexContext(indexId: string): Promise<string> {
       }
     }
     
-    return contextParts.join('\n\n');
+    return contextParts.join('');
   } catch (error) {
     console.warn('Error reading index files:', error);
     return '';
@@ -155,7 +155,7 @@ async function gatherIndexContext(indexId: string): Promise<string> {
 }
 
 /**
- * Process intent with contextual integrity
+ * Enhance and expand intent using contextual information
  */
 export async function processIntent(
   intentPayload: string,
@@ -179,30 +179,34 @@ export async function processIntent(
       };
     }
 
-    // Generate refined intent payload using contextual integrity
-    const prompt = `Extract only the information from the provided context that is appropriate to share within the context of this intent, respecting roles, norms, and boundaries relevant to the recipient and purpose.
+    // Enhance and expand the initial intent using contextual information
+    const prompt = `You are an intent enhancer that takes an initial intent and expands it using relevant contextual information.
 
-INTENT: ${intentPayload}
+INITIAL INTENT: ${intentPayload}
 
-CONTEXT:
+AVAILABLE CONTEXT:
 ${contextContent.substring(0, 10000)}${contextContent.length > 10000 ? '\n...[content truncated]' : ''}
 
 INSTRUCTIONS:
-- Extract only information that is appropriate to share for this specific intent
-- Respect privacy boundaries and confidentiality norms
-- Consider the roles and relationships involved
-- Maintain contextual integrity by filtering out irrelevant or inappropriate information
-- Output only the refined intent payload string
-- Be minimal and focused
+- Take the initial intent as the foundation
+- Use the contextual information to enhance and expand the intent with relevant details
+- Add specific examples, data points, or insights from the context that strengthen the intent
+- Include relevant content, or resources mentioned in the context
+- You must filter out any inappropriate, confidential, or irrelevant information
+- Maintain the original intent's purpose while making it more comprehensive and compelling
+- Keep the enhanced intent professional and focused
+- Format the output as a clear, expanded intent statement
+- Dont add title to the output.
 
-Output only the refined intent payload string:`;
+Enhanced Intent:`;
 
+    console.log(prompt);  
     const response = await llm.invoke(prompt);
-    const refinedPayload = response.content as string;
+    const enhancedPayload = response.content as string;
 
     return {
       success: true,
-      payload: refinedPayload.trim()
+      payload: enhancedPayload.trim()
     };
 
   } catch (error) {

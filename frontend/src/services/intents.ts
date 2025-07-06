@@ -80,6 +80,19 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     return response;
   },
 
+  // Get stakes by index code for a shared index
+  getStakesByIndexCode: async (code: string): Promise<StakesByUserResponse[]> => {
+    const response = await api.get<StakesByUserResponse[]>(`/stakes/index/${code}/by-user`);
+    return response;
+  },
+
+  // Run vibecheck analysis for an index
+  runVibeCheck: async (code: string, intentPayload: string): Promise<{ synthesis: string; score: number }> => {
+    const response = await api.post<{ synthesis: string; score: number }>(`/stakes/index/${code}/vibecheck`, {
+      intent_payload: intentPayload
+    });
+    return response;
+  },
 
   // Create new intent
   createIntent: async (data: CreateIntentRequest): Promise<Intent> => {
