@@ -232,7 +232,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
 
           
 
-          {/* Stake Menu Item */}
+          { false && 
           <Link href="/stake" className="cursor-pointer">
             <div className="flex flex-col items-center cursor-pointer">
               <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
@@ -253,7 +253,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
                 Brokers
               </span>
             </div>
-          </Link>
+          </Link>}
 
           {/* Integrate Menu Item */}
           <Link href="/integrate" className="cursor-pointer">

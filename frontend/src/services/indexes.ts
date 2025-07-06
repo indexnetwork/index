@@ -31,29 +31,6 @@ export interface SuggestedIntent {
   isAdded?: boolean;
 }
 
-// Helper function to format file size (currently unused)
-// function formatFileSize(sizeInBytes: number): string {
-//   const units = ['B', 'KB', 'MB', 'GB'];
-//   let size = sizeInBytes;
-//   let unitIndex = 0;
-//   
-//   while (size >= 1024 && unitIndex < units.length - 1) {
-//     size /= 1024;
-//     unitIndex++;
-//   }
-//   
-//   return `${size.toFixed(1)} ${units[unitIndex]}`;
-// }
-
-// Helper function to format date (currently unused)
-// function formatDate(dateString: string): string {
-//   return new Date(dateString).toLocaleDateString('en-US', {
-//     year: 'numeric',
-//     month: 'short',
-//     day: 'numeric'
-//   });
-// }
-
 // Service functions that accept API instance as parameter
 export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Get all indexes with pagination

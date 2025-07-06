@@ -6,7 +6,6 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, sql, or, notInArray } from 'drizzle-orm';
 import { checkIndexAccessByCode } from '../lib/index-access';
 import { safe_synthesise } from '../lib/synthesis';
-import { vibeCheck } from '../agents/external/vibe_checker_text';
 
 const router = Router();
 
@@ -575,103 +574,6 @@ router.get('/index/:code/by-user',
   }
 );
 
-// Vibe check endpoint for shared index
-router.post('/index/:code/vibecheck',
-  [
-    param('code').isUUID()
-  ],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
 
-      const { code } = req.params;
-      const { intent_payload } = req.body;
-
-
-      if (!intent_payload?.trim()) {
-        return res.status(400).json({ error: 'Intent payload is required in request body' });
-      }
-
-      // Check access to the shared index
-      const accessCheck = await checkIndexAccessByCode(code);
-      if (!accessCheck.hasAccess) {
-        return res.status(accessCheck.status!).json({ error: accessCheck.error });
-      }
-
-      const sharedIndexData = accessCheck.indexData!;
-
-      // Check if the shared index has can-match permission
-      if (!accessCheck.memberPermissions?.includes('can-match')) {
-        return res.status(403).json({ error: 'Shared index does not allow matching' });
-      }
-
-      // Get intents from the shared index
-      const sharedIndexIntents = await db.select({
-        intentId: intentIndexes.intentId,
-        intent: {
-          id: intents.id,
-          payload: intents.payload,
-          userId: intents.userId
-        },
-        user: {
-          id: users.id,
-          name: users.name,
-          intro: users.intro
-        }
-      })
-      .from(intentIndexes)
-      .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
-      .innerJoin(users, eq(intents.userId, users.id))
-      .where(eq(intentIndexes.indexId, sharedIndexData.id));
-
-      if (sharedIndexIntents.length === 0) {
-        return res.status(404).json({ error: 'No intents found in shared index' });
-      }
-
-      // Find the user whose intent matches the intent_payload
-      const matchingIntent = sharedIndexIntents[0]
-
-      if (!matchingIntent) {
-        return res.status(404).json({ error: 'Intent not found in shared index' });
-      }
-
-      // Get all intents for this user
-      const userIntents = sharedIndexIntents
-        .filter(item => item.user.id === matchingIntent.user.id)
-        .map(item => ({ payload: item.intent.payload }));
-
-      // Prepare other user data for vibe check
-      const otherUserData = {
-        user: {
-          id: matchingIntent.user.id,
-          name: matchingIntent.user.name,
-          intro: matchingIntent.user.intro || ''
-        },
-        intents: userIntents
-      };
-
-      // Call the vibe check agent
-      const vibeResult = await vibeCheck(intent_payload, otherUserData, { timeout: 30000 });
-
-      if (!vibeResult.success) {
-        return res.status(500).json({ error: vibeResult.error || 'Vibe check failed' });
-      }
-
-      return res.json({
-        success: true,
-        synthesis: vibeResult.synthesis,
-        score: vibeResult.score,
-        targetUser: otherUserData.user
-      });
-
-    } catch (error) {
-      console.error('Vibe check error:', error);
-      return res.status(500).json({ error: 'Failed to perform vibe check' });
-    }
-  }
-);
 
 export default router;
