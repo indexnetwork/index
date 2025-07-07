@@ -5,6 +5,8 @@ import { users, userConnectionEvents, connectionAction } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, or, desc, sql, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { sendEmail } from '../lib/email';
+import { connectionRequestTemplate, connectionAcceptedTemplate, connectionDeclinedTemplate } from '../lib/email-templates';
 
 const router = Router();
 
@@ -206,6 +208,46 @@ router.post('/actions',
           eventType: action as any,
         })
         .returning();
+
+      // Send appropriate emails
+      try {
+        if (action === 'REQUEST') {
+          // Get initiator and receiver details
+          const [initiator, receiver] = await Promise.all([
+            db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1),
+            db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, targetUserId)).limit(1)
+          ]);
+          
+          if (receiver[0]?.email && initiator[0]?.name) {
+            const template = connectionRequestTemplate(initiator[0].name);
+            await sendEmail({
+              to: receiver[0].email,
+              subject: template.subject,
+              html: template.html,
+              text: template.text
+            });
+          }
+        } else if (action === 'ACCEPT') {
+          // Get accepter and initiator details
+          const [accepter, initiator] = await Promise.all([
+            db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1),
+            db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, targetUserId)).limit(1)
+          ]);
+          
+          if (initiator[0]?.email && accepter[0]?.name) {
+            const template = connectionAcceptedTemplate(accepter[0].name);
+            await sendEmail({
+              to: initiator[0].email,
+              subject: template.subject,
+              html: template.html,
+              text: template.text
+            });
+          }
+        }
+      } catch (emailError) {
+        console.error('Failed to send connection email:', emailError);
+        // Don't fail the request if email fails
+      }
 
       return res.json({
         message: `Connection ${action.toLowerCase()} successful`,
