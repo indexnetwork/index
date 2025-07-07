@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, ArrowUpRight, X } from "lucide-react";
+import { Upload, ArrowUpRight } from "lucide-react";
 import { Index } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
@@ -236,11 +236,10 @@ export default function SharePage({ params }: SharePageProps) {
       
       // Handle specific error cases
       if (error && typeof error === 'object' && 'response' in error && 
-          (error as any).response?.error === "Cannot request in current state: REQUEST") {
+          (error as { response?: { error?: string } }).response?.error === "Cannot request in current state: REQUEST") {
         setRequestSent(true);
         return;
       }
-      
       setError(error instanceof Error ? error.message : 'Failed to process connection request');
     } finally {
       setIsCreatingConnection(false);
