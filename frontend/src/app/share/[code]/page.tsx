@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, ArrowUpRight } from "lucide-react";
+import { Upload, ArrowUpRight, X } from "lucide-react";
 import { Index } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
@@ -12,6 +12,7 @@ import { useConnections } from '@/contexts/APIContext';
 import { indexesService } from '@/services/indexes';
 import { vibecheckService } from '@/services/vibecheck';
 import ReactMarkdown from "react-markdown";
+import * as Dialog from "@radix-ui/react-dialog";
 
 interface SharePageProps {
   params: Promise<{
@@ -29,7 +30,6 @@ export default function SharePage({ params }: SharePageProps) {
   
   // New state for vibecheck flow
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStep, setProcessingStep] = useState('');
   const [vibeCheckResults, setVibeCheckResults] = useState<{ aiSynthesis?: string; score?: number }[]>([]);
   const [showVibeCheck, setShowVibeCheck] = useState(false);
   const [autoRequestConnection, setAutoRequestConnection] = useState(false);
@@ -135,11 +135,6 @@ export default function SharePage({ params }: SharePageProps) {
     setShowVibeCheck(false);
 
     try {
-      // Step 1: Process files and run vibecheck
-      setProcessingStep('Processing your files...');
-      
-      // Step 2: Run vibecheck with uploaded files
-      setProcessingStep('Running Vibecheck...');
       
       const vibeCheckResult = await vibecheckService.runVibeCheckWithFiles(resolvedParams.code, files);
       
@@ -159,7 +154,6 @@ export default function SharePage({ params }: SharePageProps) {
       setError(error instanceof Error ? error.message : 'Failed to process files');
     } finally {
       setIsProcessing(false);
-      setProcessingStep('');
     }
   };
 
@@ -218,6 +212,10 @@ export default function SharePage({ params }: SharePageProps) {
            console.warn('Failed to clear vibecheck results from localStorage:', error);
          }
        } catch (error) {
+        if (error && typeof error === 'object' && 'response' in error && error.response?.error === "Cannot request in current state: REQUEST") {
+          setRequestSent(true);
+          return;
+        }
          console.error('Error requesting connection:', error);
        }
      }
@@ -230,7 +228,6 @@ export default function SharePage({ params }: SharePageProps) {
      setRequestSent(false);
      setAutoRequestConnection(false);
      setIsProcessing(false);
-     setProcessingStep('');
      
      // Clear localStorage
      try {
@@ -337,21 +334,11 @@ export default function SharePage({ params }: SharePageProps) {
               )}
               
               {isProcessing && (
-                <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">Analyzing your content...</h3>
+                <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">Running vibecheck...</h3>
               )}
               
               {showVibeCheck && !isProcessing && (
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl mt-2 font-semibold text-gray-900">Here's how we vibing</h3>
-                  <Button
-                    onClick={handleStartOver}
-                    variant="outline"
-                    size="sm"
-                    className="text-gray-600 hover:text-gray-800 border-gray-300 hover:border-gray-400"
-                  >
-                    Start over
-                  </Button>
-                </div>
+                <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">What could happen here</h3>
               )}
               
               {!showVibeCheck && !isProcessing && (
@@ -359,9 +346,9 @@ export default function SharePage({ params }: SharePageProps) {
                   <div className="mt-4 p-4 bg-white border border-gray-200 rounded-lg">
                     <div className="flex items-start space-x-4">
                       <div className="flex-1">
-                        <h3 className="font-medium text-gray-700 mb-2">Upload your files and get instant feedback</h3>
+                        <h3 className="font-medium text-gray-700 mb-2">Drop your files and get instant vibe check.</h3>
                         <p className="text-sm text-gray-500">
-                          Once uploaded, you'll receive a detailed breakdown of how your content aligns with our mutual goals and potential collaboration opportunities. No account required for analysis.
+                          Once uploaded, you'll receive a detailed breakdown of how your content aligns with our mutual goals and potential collaboration opportunities. 
                         </p>
                         { false && 
                         <div className="flex flex-wrap gap-2">
@@ -432,34 +419,77 @@ export default function SharePage({ params }: SharePageProps) {
               )}
 
               {isProcessing && (
-                <div className="mt-4 p-6 bg-blue-50 border border-blue-200 rounded-lg text-center">
+                <div className="mt-2 text-center">
                   <div className="flex items-center justify-center mb-3">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <Image 
+                    className="h-auto"
+                    src={'/loading2.gif'} 
+                    alt="Hero Illustration" 
+                    width={300} 
+                    height={200} 
+                    style={{
+                      imageRendering: 'auto',
+                    }}
+                  />
                   </div>
-                  <p className="text-blue-700 font-medium">{processingStep}</p>
                   <p className="text-blue-600 text-sm mt-1">This may take a moment...</p>
                 </div>
               )}
 
               {showVibeCheck && !isProcessing && (
                 <div className="mt-4 space-y-4">
-                  {vibeCheckResults.length > 0 && vibeCheckResults[0].aiSynthesis && (
+                  {vibeCheckResults.length > 0 && (
                     <div className="mb-4">
-                      <div className="space-y-2">
-                        <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
-                          <ReactMarkdown>
-                            {vibeCheckResults[0].aiSynthesis}
-                          </ReactMarkdown>
+                      {/* Score and Avatars Display */}
+                      <div className="bg-white py-3">
+                        <div className="flex items-center justify-between mb-6">
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+                              <span className="text-lg font-bold text-gray-600">You</span>
+                            </div>
+                            <div>
+                              <div className="font-semibold text-gray-900">You</div>
+                            </div>
+                          </div>
+                          
+                          <div className="text-center">
+                            <div className="text-3xl font-bold text-green-600 mb-1">
+                              {Math.round((vibeCheckResults[0].score || 0) * 100)}%
+                            </div>
+                            <div className="text-sm text-gray-500">Pulse</div>
+                          </div>
+                          
+                          <div className="flex items-center gap-4">
+                            <div>
+                              <div className="font-semibold text-gray-900 text-right">{index?.user?.name || 'User'}</div>
+                              <div className="text-sm text-gray-500 text-right">Index Owner</div>
+                            </div>
+                            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                              <span className="text-lg font-bold text-blue-600">{(index?.user?.name || 'U').charAt(0)}</span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  )}
 
-                  {vibeCheckResults.length > 0 && !vibeCheckResults[0].aiSynthesis && (
-                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <p className="text-yellow-800">
-                        Vibecheck completed but no detailed analysis was generated. Please try again or contact support.
-                      </p>
+                      </div>
+
+                      {/* Synthesis Text */}
+                      {vibeCheckResults[0].aiSynthesis && (
+                        <div className="space-y-2">
+                          <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                            <ReactMarkdown>
+                              {vibeCheckResults[0].aiSynthesis}
+                            </ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
+
+                      {!vibeCheckResults[0].aiSynthesis && (
+                        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-yellow-800">
+                            Vibecheck completed but no detailed analysis was generated. Please try again or contact support.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -485,24 +515,28 @@ export default function SharePage({ params }: SharePageProps) {
                   </div>
                 )}
                 
-                {!requestSent && !autoRequestConnection ? (
-                  <Button
-                    onClick={handleRequestConnection}
-                    disabled={!showVibeCheck || !vibeCheckResults.length || (vibeCheckResults[0].score || 0) <= 0.5}
-                    className={`w-full py-3 text-white border ${
-                      showVibeCheck && vibeCheckResults.length > 0 && (vibeCheckResults[0].score || 0) > 0.5
-                        ? 'bg-blue-600 hover:bg-blue-700 border-blue-600'
-                        : 'bg-gray-400 border-gray-400 cursor-not-allowed disabled:opacity-50'
-                    }`}
-                  >
-                    {authenticated ? 'Request Connection' : 'Login to Request Connection'}
-                  </Button>
-                ) : requestSent ? (
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
-                    <p className="text-green-700 font-medium">Connection request sent!</p>
-                    <p className="text-green-600 text-sm mt-1">We'll be in touch soon to discuss collaboration opportunities.</p>
+                {showVibeCheck && vibeCheckResults.length > 0 && (
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={handleStartOver}
+                      variant="bordered"
+                      className="flex-1"
+                    >
+                      Start over
+                    </Button>
+                    
+                    {!requestSent && !autoRequestConnection && (vibeCheckResults[0].score || 0) >= 0.5 && (
+                      <Button
+                        onClick={handleRequestConnection}
+                        variant="bordered"
+                        className="flex-1 text-white border-black border-b-2"
+                        style={{ background: '#3f6ed9' }}
+                      >
+                        {authenticated ? 'Request Connection' : 'Login to Request Connection'}
+                      </Button>
+                    )}
                   </div>
-                ) : null}
+                )}
               </div>
             </div>
           </div>
@@ -517,6 +551,50 @@ export default function SharePage({ params }: SharePageProps) {
           </div>
         )}
       </div>
+
+      {/* Request Sent Modal */}
+      <Dialog.Root open={requestSent}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
+          <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg max-w-md w-full mx-4 p-6 z-50">
+            <div className="flex justify-between items-center mb-4">
+              <Dialog.Title className="text-xl font-bold text-gray-900">Request sent</Dialog.Title>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <p className="text-gray-700 mb-2">
+                  Your request sent to <strong>{index?.user?.name || 'the user'}</strong>.
+                </p>
+                <p className="text-gray-700 mb-4">
+                  You'll be connected through your preferred channel if they accept.
+                </p>
+                <p className="text-gray-600 text-sm">
+                  You can cancel the request anytime from the <strong>Pending</strong> tab.
+                </p>
+              </div>
+
+              <div className="border-t pt-4">
+                <div className="flex justify-between gap-3">
+                  <Button
+                    variant="bordered"
+                    className="flex-1"
+                    onClick={() => setRequestSent(true)}
+                  >
+                    Done
+                  </Button>
+                  <Button
+                    className="flex-1 bg-black text-white hover:bg-gray-800"
+                    onClick={() => setRequestSent(true)}
+                  >
+                    Go to Inbox
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </ClientLayout>
   );
 } 

@@ -67,10 +67,9 @@ ${otherUserData.intents.map(intent => `- ${intent.payload}`).join('\n')}
 
 GUIDELINES:
 - Always output as markdown.
-- Use "You" vs "${otherUserData.user.name}" context
+- Use "You" vs "${otherUserData.user.name}" context, and always talk to file content as "you". Intent owner is the other user.
 - Contextualize user's intents as they wants, thinks, seeks, etc. Dont treat them as a pure database object.
 - Focus on concrete collaboration possibilities
-- Write in second person addressing the current user
 - Keep it concise and actionable
 - Dont add  "What Could Happen Here" title.
 - Also provide a collaboration score between 0 and 1, where:
