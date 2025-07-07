@@ -23,6 +23,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const [intent, setIntent] = useState<Intent | null>(null);
   const [stakesByUser, setStakesByUser] = useState<IntentStakesByUserResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stakesLoading, setStakesLoading] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -40,12 +41,20 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
     }
   }, [intentsService, resolvedParams.id]);
 
-  const fetchStakes = useCallback(async () => {
+  const fetchStakes = useCallback(async (showLoading = true) => {
     try {
+      if (showLoading) {
+        setStakesLoading(true);
+      }
       const stakesData = await intentsService.getIntentStakesByUser(resolvedParams.id);
       setStakesByUser(stakesData);
     } catch (error) {
       console.error('Error fetching stakes:', error);
+    } finally {
+      if (showLoading) {
+        
+        setStakesLoading(false);
+      }
     }
   }, [intentsService, resolvedParams.id]);
 
@@ -59,7 +68,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isPaused) {
-        fetchStakes();
+        fetchStakes(false); // Don't show loading for background refreshes
       }
     }, 5000);
 
@@ -256,50 +265,84 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
         {/* Connection Cards Grid */}
         <div className="grid grid-cols-1 gap-6">
-          {stakesByUser.map((userStakes) => (
-            <div key={userStakes.user.name} className="bg-white border border-black border-b-0 border-b-2 p-6">
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <Image
-                    src={getAvatarUrl(userStakes.user.avatar)}
-                    alt={userStakes.user.name}
-                    width={48}
-                    height={48}
-                    className="rounded-full"
-                  />
-                  <div>
-                    <h2 className="text-lg font-medium text-gray-900">{userStakes.user.name}</h2>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <h3 className="font-medium text-gray-700 mb-3">What could happen here</h3>
-                <div className="relative min-h-[100px]">
-                  <div className="text-gray-700 prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
-                    <ReactMarkdown>
-                      {userStakes.synthesis}
-                    </ReactMarkdown>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-medium text-gray-700 mb-4">Who's backing this match</h3>
-                <div className="flex flex-wrap gap-2">
-                  {userStakes.agents.map((agent) => (
-                    <div key={agent.agent.name} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                      <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gray-100">
-                        <Image src={getAvatarUrl(agent.agent.avatar)} alt={agent.agent.name} width={16} height={16} />
-                      </div>
-                      <span className="font-medium text-gray-900">{agent.agent.name}</span>
-                      <span className="text-gray-400 text-xs">({agent.stake})</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {stakesLoading ? (
+            <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
+              <Image 
+                className="h-auto"
+                src={'/loading2.gif'} 
+                alt="Loading..." 
+                width={300} 
+                height={200} 
+                style={{
+                  imageRendering: 'auto',
+                }}
+              />
+              <p className="text-gray-900 font-500 font-ibm-plex-mono text-md mt-4 text-center">
+                Loading connections...
+              </p>
             </div>
-          ))}
+          ) : stakesByUser.length === 0 ? (
+            <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
+              <Image 
+                className="h-auto"
+                src={'/generic.png'} 
+                alt="Hero Illustration" 
+                width={300} 
+                height={200} 
+                style={{
+                  imageRendering: 'auto',
+                }}
+              />
+              <p className="text-gray-900 font-500 font-ibm-plex-mono text-md mt-4 text-center">
+                No mutual intents for now, it's not you, the world's just being shy.
+              </p>
+            </div>
+          ) : (
+            stakesByUser.map((userStakes) => (
+              <div key={userStakes.user.name} className="bg-white border border-black border-b-0 border-b-2 p-6">
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <Image
+                      src={getAvatarUrl(userStakes.user.avatar)}
+                      alt={userStakes.user.name}
+                      width={48}
+                      height={48}
+                      className="rounded-full"
+                    />
+                    <div>
+                      <h2 className="text-lg font-medium text-gray-900">{userStakes.user.name}</h2>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <h3 className="font-medium text-gray-700 mb-3">What could happen here</h3>
+                  <div className="relative min-h-[100px]">
+                    <div className="text-gray-700 prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                      <ReactMarkdown>
+                        {userStakes.synthesis}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-medium text-gray-700 mb-4">Who's backing this match</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {userStakes.agents.map((agent) => (
+                      <div key={agent.agent.name} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
+                        <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gray-100">
+                          <Image src={getAvatarUrl(agent.agent.avatar)} alt={agent.agent.name} width={16} height={16} />
+                        </div>
+                        <span className="font-medium text-gray-900">{agent.agent.name}</span>
+                        <span className="text-gray-400 text-xs">({agent.stake})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
