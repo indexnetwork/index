@@ -20,7 +20,7 @@ interface VerifiableProof {
 interface CreateIntentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (intent: { payload: string; attachments: File[]; isIncognito: boolean }) => Promise<void>;
+  onSubmit: (intent: { payload: string; attachments: File[]; isIncognito: boolean; indexIds: string[] }) => Promise<void>;
   initialPayload?: string;
   indexId?: string; // Add indexId prop for getIntentPreview call
 }
@@ -44,6 +44,9 @@ export default function CreateIntentModal({
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [isIncognito, setIsIncognito] = useState(false);
+  const [availableIndexes, setAvailableIndexes] = useState<Array<{ id: string; title: string }>>([]);
+  const [selectedIndexIds, setSelectedIndexIds] = useState<string[]>([]);
+  const [isLoadingIndexes, setIsLoadingIndexes] = useState(false);
 
   // Initialize form data when modal opens
   useEffect(() => {
@@ -55,6 +58,7 @@ export default function CreateIntentModal({
         
         // If we have indexId, fetch enhanced content
         if (indexId) {
+          
           setIsLoadingPreview(true);
           indexesService.getIntentPreview(indexId, initialPayload)
             .then((processedPayload) => {
@@ -72,6 +76,24 @@ export default function CreateIntentModal({
       } else {
         setPayload('');
       }
+
+      // Fetch available indexes
+      setIsLoadingIndexes(true);
+      indexesService.getIndexes()
+        .then((response) => {
+          
+          setAvailableIndexes(response.indexes || []);
+          // Pre-select the current index if provided
+          if (indexId) {
+            setSelectedIndexIds([indexId]);
+          }
+        })
+        .catch((error) => {
+          console.error('Error fetching indexes:', error);
+        })
+        .finally(() => {
+          setIsLoadingIndexes(false);
+        });
       
       setHasInitialized(true);
     }
@@ -87,6 +109,9 @@ export default function CreateIntentModal({
       setIsProcessing(false);
       setIsLoadingPreview(false);
       setIsIncognito(false);
+      setAvailableIndexes([]);
+      setSelectedIndexIds([]);
+      setIsLoadingIndexes(false);
     }
   }, [open]);
 
@@ -95,10 +120,11 @@ export default function CreateIntentModal({
     setIsProcessing(true);
     
     try {
-      await onSubmit({ payload, attachments, isIncognito });
+      await onSubmit({ payload, attachments, isIncognito, indexIds: selectedIndexIds });
       setPayload('');
       setAttachments([]);
       setIsIncognito(false);
+      setSelectedIndexIds([]);
       setIsSuccess(true);
       
       setTimeout(() => {
@@ -110,7 +136,7 @@ export default function CreateIntentModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [payload, attachments, isIncognito, onSubmit, onOpenChange]);
+  }, [payload, attachments, isIncognito, selectedIndexIds, onSubmit, onOpenChange]);
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -244,6 +270,55 @@ export default function CreateIntentModal({
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Index Selection Section */}
+                  <div>
+                    <div className="mb-2">
+                      <h3 className="text-md font-medium font-ibm-plex-mono text-black">Index this intent</h3>
+                      <p className="text-sm text-gray-600">
+                        Select which indexes your intent should be accessible in
+                      </p>
+                    </div>
+                    
+                    {isLoadingIndexes ? (
+                      <div className="flex items-center gap-2 p-3 border border-gray-200 rounded-md">
+                        <div className="w-4 h-4 border border-gray-500 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm text-gray-600">Loading indexes...</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded-md p-2">
+                        {availableIndexes.length === 0 ? (
+                          <div className="text-sm text-gray-500 p-2 text-center">
+                            No indexes available
+                          </div>
+                        ) : (
+                          availableIndexes.map((index) => (
+                            <label
+                              key={index.id}
+                              className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedIndexIds.includes(index.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedIndexIds(prev => [...prev, index.id]);
+                                  } else {
+                                    setSelectedIndexIds(prev => prev.filter(id => id !== index.id));
+                                  }
+                                }}
+                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <span className="text-sm font-medium text-gray-900">
+                                {index.title}
+                              </span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    )}
+
                   </div>
 
                   {false && (
@@ -454,12 +529,13 @@ export default function CreateIntentModal({
                   Cancel
                 </Button>
               </Dialog.Close>
-              <Button
+                                <Button
                 type="submit"
                 onClick={(e) => {
                   e.preventDefault();
                   handleSubmit(e);
                 }}
+                disabled={selectedIndexIds.length === 0}
               >
                 Broadcast Intent
               </Button>

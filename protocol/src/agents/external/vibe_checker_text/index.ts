@@ -64,7 +64,6 @@ INTRO: ${otherUserData.user.intro}
 INTENTS:
 ${otherUserData.intents.map(intent => `- ${intent.payload}`).join('\n')}
 
-
 GUIDELINES:
 - Always output as markdown.
 - Use "You" vs "${otherUserData.user.name}" context, and always talk to file content as "you". Intent owner is the other user.

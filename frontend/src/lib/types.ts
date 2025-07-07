@@ -205,6 +205,7 @@ export interface CreateIntentRequest {
 export interface UpdateIntentRequest {
   payload?: string;
   isIncognito?: boolean;
+  indexIds?: string[];
 }
 
 export interface UpdateProfileRequest {

@@ -8,8 +8,8 @@ import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
 import { getIndexFileUrl } from "@/lib/file-utils";
 import { usePrivy } from '@privy-io/react-auth';
-import { useConnections } from '@/contexts/APIContext';
-import { indexesService } from '@/services/indexes';
+import { useConnections, useIndexes, useIntents } from '@/contexts/APIContext';
+import { indexesService as publicIndexesService } from '@/services/indexes';
 import { vibecheckService } from '@/services/vibecheck';
 import ReactMarkdown from "react-markdown";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -33,9 +33,15 @@ export default function SharePage({ params }: SharePageProps) {
   const [vibeCheckResults, setVibeCheckResults] = useState<{ aiSynthesis?: string; score?: number }[]>([]);
   const [showVibeCheck, setShowVibeCheck] = useState(false);
   const [autoRequestConnection, setAutoRequestConnection] = useState(false);
+  
+  // New state for tracking uploaded files and multi-step process
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [isCreatingConnection, setIsCreatingConnection] = useState(false);
 
   const { login, authenticated, ready } = usePrivy();
   const connectionsService = useConnections();
+  const indexesService = useIndexes();
+  const intentsService = useIntents();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchIndex = useCallback(async () => {
@@ -44,7 +50,7 @@ export default function SharePage({ params }: SharePageProps) {
       setError(null);
       
       // Use the public indexes service to get the index by share code
-      const index = await indexesService.getIndexByShareCode(resolvedParams.code);
+      const index = await publicIndexesService.getIndexByShareCode(resolvedParams.code);
       
       setIndex(index);
     } catch (error: unknown) {
@@ -70,6 +76,10 @@ export default function SharePage({ params }: SharePageProps) {
           setVibeCheckResults(parsed.results);
           setShowVibeCheck(true);
           setAutoRequestConnection(parsed.autoRequest);
+          
+          // Note: We cannot restore actual File objects from localStorage,
+          // but the vibecheck service already has the files on the server side
+          // so the multi-step process will work with the existing uploaded files
           console.log('Restored vibecheck results from localStorage');
         } catch (error) {
           console.error('Failed to parse stored vibecheck results:', error);
@@ -81,42 +91,7 @@ export default function SharePage({ params }: SharePageProps) {
     }
   }, [resolvedParams.code]);
 
-  // Auto-trigger connection request after authentication
-  useEffect(() => {
-    let isMounted = true;
-    
-    if (authenticated && autoRequestConnection && showVibeCheck && vibeCheckResults.length > 0 && index?.user?.id) {
-      const score = vibeCheckResults[0]?.score || 0;
-      if (score > 0.5) {
-        console.log('Auto-triggering connection request after login');
-        // Directly call the connection service
-        connectionsService.requestConnection(index.user.id)
-          .then(() => {
-            if (isMounted) {
-              setRequestSent(true);
-              setAutoRequestConnection(false);
-              // Clear stored vibecheck results
-              try {
-                localStorage.removeItem(`vibecheck_${resolvedParams.code}`);
-              } catch (error) {
-                console.warn('Failed to clear vibecheck results from localStorage:', error);
-              }
-              console.log('Auto-connection request successful');
-            }
-          })
-          .catch((error) => {
-            if (isMounted) {
-              console.error('Auto-connection request failed:', error);
-              setAutoRequestConnection(false);
-            }
-          });
-      }
-    }
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [authenticated, autoRequestConnection, showVibeCheck, vibeCheckResults, index?.user?.id, connectionsService, resolvedParams.code]);
+
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -135,6 +110,8 @@ export default function SharePage({ params }: SharePageProps) {
     setShowVibeCheck(false);
 
     try {
+      // Store files for later use in index creation
+      setUploadedFiles(files);
       
       const vibeCheckResult = await vibecheckService.runVibeCheckWithFiles(resolvedParams.code, files);
       
@@ -142,11 +119,11 @@ export default function SharePage({ params }: SharePageProps) {
         throw new Error(vibeCheckResult.error || 'Vibecheck failed');
       }
 
-            // Set the vibecheck results with synthesis and score
-       setVibeCheckResults([{ 
-         aiSynthesis: vibeCheckResult.synthesis || '', 
-         score: vibeCheckResult.score || 0 
-       }]);
+      // Set the vibecheck results with synthesis and score
+      setVibeCheckResults([{ 
+        aiSynthesis: vibeCheckResult.synthesis || '', 
+        score: vibeCheckResult.score || 0 
+      }]);
       setShowVibeCheck(true);
       
     } catch (error) {
@@ -178,64 +155,146 @@ export default function SharePage({ params }: SharePageProps) {
      fileInputRef.current?.click();
    };
 
-      const handleRequestConnection = async () => {
-     // Check if user is authenticated, if not, store vibecheck results and trigger login
-     if (ready && !authenticated) {
-       // Store vibecheck results in localStorage before login redirect
-       try {
-         const vibeCheckData = {
-           results: vibeCheckResults,
-           autoRequest: true
-         };
-         localStorage.setItem(`vibecheck_${resolvedParams.code}`, JSON.stringify(vibeCheckData));
-         console.log('Stored vibecheck results in localStorage before login');
-       } catch (error) {
-         console.warn('Failed to store vibecheck results in localStorage:', error);
-       }
-       login();
-       return;
-     }
+  const handleRequestConnection = useCallback(async () => {
+    // Check if user is authenticated, if not, store vibecheck results and trigger login
+    if (ready && !authenticated) {
+      // Store vibecheck results in localStorage before login redirect
+      try {
+        const vibeCheckData = {
+          results: vibeCheckResults,
+          autoRequest: true,
+          uploadedFiles: uploadedFiles.map(f => ({ name: f.name, size: f.size, type: f.type })) // Store file metadata
+        };
+        localStorage.setItem(`vibecheck_${resolvedParams.code}`, JSON.stringify(vibeCheckData));
+        console.log('Stored vibecheck results in localStorage before login');
+      } catch (error) {
+        console.warn('Failed to store vibecheck results in localStorage:', error);
+      }
+      login();
+      return;
+    }
 
-     if (!authenticated) {
-       console.log('Authentication not ready yet');
-       return;
-     }
+    if (!authenticated) {
+      console.log('Authentication not ready yet');
+      return;
+    }
 
-     if (index?.user?.id) {
-       try {
-         await connectionsService.requestConnection(index.user.id);
-         setRequestSent(true);
-         // Clear stored vibecheck results after successful connection request
-         try {
-           localStorage.removeItem(`vibecheck_${resolvedParams.code}`);
-         } catch (error) {
-           console.warn('Failed to clear vibecheck results from localStorage:', error);
-         }
-       } catch (error) {
-        if (error && typeof error === 'object' && 'response' in error && error.response?.error === "Cannot request in current state: REQUEST") {
-          setRequestSent(true);
-          return;
+    if (!index?.user?.id) {
+      console.error('No target user found');
+      return;
+    }
+
+    try {
+      setIsCreatingConnection(true);
+
+      // Step 1: Create new index
+      const newIndex = await indexesService.createIndex({
+        title: `Collaboration with ${index.user.name}`
+      });
+
+      // Step 2: Upload files to the new index (skip if no files available, e.g., after login redirect)
+      if (uploadedFiles.length > 0) {
+        for (const file of uploadedFiles) {
+          await indexesService.uploadFile(newIndex.id, file);
         }
-         console.error('Error requesting connection:', error);
-       }
-     }
-   };
+      } else {
+        console.log('No files to upload - skipping file upload step (likely after login redirect)');
+      }
 
-   const handleStartOver = () => {
-     // Clear all vibecheck-related state
-     setVibeCheckResults([]);
-     setShowVibeCheck(false);
-     setRequestSent(false);
-     setAutoRequestConnection(false);
-     setIsProcessing(false);
-     
-     // Clear localStorage
-     try {
-       localStorage.removeItem(`vibecheck_${resolvedParams.code}`);
-     } catch (error) {
-       console.warn('Failed to clear vibecheck results from localStorage:', error);
-     }
-   };
+      // Step 3: Get suggested intents for the new index
+      const suggestedIntentsResponse = await indexesService.getSuggestedIntents(newIndex.id);
+      const suggestedIntents = suggestedIntentsResponse.intents || [];
+
+      // Step 4: Add suggested intents (up to 5)
+      const intentsToAdd = suggestedIntents.slice(0, 2);
+      
+      for (const suggestedIntent of intentsToAdd) {
+        await intentsService.createIntent({
+          payload: suggestedIntent.payload,
+          indexIds: [newIndex.id],
+          isIncognito: false
+        });
+      }
+
+      // Step 5: Request connection
+      await connectionsService.requestConnection(index.user.id);
+
+      setRequestSent(true);
+      setAutoRequestConnection(false);
+
+      // Clear stored vibecheck results after successful connection request
+      try {
+        localStorage.removeItem(`vibecheck_${resolvedParams.code}`);
+      } catch (error) {
+        console.warn('Failed to clear vibecheck results from localStorage:', error);
+      }
+
+      console.log('Multi-step connection request completed successfully');
+
+    } catch (error) {
+      console.error('Error in multi-step connection request:', error);
+      
+      // Handle specific error cases
+      if (error && typeof error === 'object' && 'response' in error && 
+          (error as any).response?.error === "Cannot request in current state: REQUEST") {
+        setRequestSent(true);
+        return;
+      }
+      
+      setError(error instanceof Error ? error.message : 'Failed to process connection request');
+    } finally {
+      setIsCreatingConnection(false);
+    }
+    }, [ready, authenticated, vibeCheckResults, uploadedFiles, index, login, indexesService, intentsService, connectionsService, resolvedParams.code]);
+
+  // Auto-trigger connection request after authentication
+  useEffect(() => {
+    let isMounted = true;
+    
+    if (authenticated && autoRequestConnection && showVibeCheck && vibeCheckResults.length > 0 && index?.user?.id) {
+      const score = vibeCheckResults[0]?.score || 0;
+      if (score > 0.5) {
+        console.log('Auto-triggering connection request after login');
+        // Use the same multi-step process
+        handleRequestConnection()
+          .then(() => {
+            if (isMounted) {
+              console.log('Auto-connection request successful');
+            }
+          })
+          .catch((error) => {
+            if (isMounted) {
+              console.error('Auto-connection request failed:', error);
+              setAutoRequestConnection(false);
+            }
+          });
+      }
+    }
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [authenticated, autoRequestConnection, showVibeCheck, vibeCheckResults, index?.user?.id, handleRequestConnection, resolvedParams.code]);
+
+    const handleStartOver = () => {
+    // Clear all vibecheck-related state
+    setVibeCheckResults([]);
+    setShowVibeCheck(false);
+    setRequestSent(false);
+    setAutoRequestConnection(false);
+    setIsProcessing(false);
+    
+    // Clear new multi-step process state
+    setUploadedFiles([]);
+    setIsCreatingConnection(false);
+    
+    // Clear localStorage
+    try {
+      localStorage.removeItem(`vibecheck_${resolvedParams.code}`);
+    } catch (error) {
+      console.warn('Failed to clear vibecheck results from localStorage:', error);
+    }
+  };
 
 
 
@@ -505,7 +564,9 @@ export default function SharePage({ params }: SharePageProps) {
                   </div>
                 )}
                 
-                {autoRequestConnection && authenticated && (
+
+
+                {autoRequestConnection && authenticated && !isCreatingConnection && (
                   <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center mb-4">
                     <div className="flex items-center justify-center mb-2">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
@@ -531,8 +592,14 @@ export default function SharePage({ params }: SharePageProps) {
                         variant="bordered"
                         className="flex-1 text-white border-black border-b-2"
                         style={{ background: '#3f6ed9' }}
+                        disabled={isCreatingConnection}
                       >
-                        {authenticated ? 'Request Connection' : 'Login to Request Connection'}
+                        {isCreatingConnection 
+                          ? 'Creating Connection...' 
+                          : authenticated 
+                            ? 'Request Connection' 
+                            : 'Login to Request Connection'
+                        }
                       </Button>
                     )}
                   </div>
@@ -552,46 +619,67 @@ export default function SharePage({ params }: SharePageProps) {
         )}
       </div>
 
-      {/* Request Sent Modal */}
-      <Dialog.Root open={requestSent}>
+      {/* Request Processing/Sent Modal */}
+      <Dialog.Root open={isCreatingConnection || requestSent}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
           <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg max-w-md w-full mx-4 p-6 z-50">
-            <div className="flex justify-between items-center mb-4">
-              <Dialog.Title className="text-xl font-bold text-gray-900">Request sent</Dialog.Title>
-            </div>
-            
-            <div className="space-y-4">
-              <div>
-                <p className="text-gray-700 mb-2">
-                  Your request sent to <strong>{index?.user?.name || 'the user'}</strong>.
-                </p>
-                <p className="text-gray-700 mb-4">
-                  You'll be connected through your preferred channel if they accept.
-                </p>
-                <p className="text-gray-600 text-sm">
-                  You can cancel the request anytime from the <strong>Pending</strong> tab.
-                </p>
-              </div>
-
-              <div className="border-t pt-4">
-                <div className="flex justify-between gap-3">
-                  <Button
-                    variant="bordered"
-                    className="flex-1"
-                    onClick={() => setRequestSent(true)}
-                  >
-                    Done
-                  </Button>
-                  <Button
-                    className="flex-1 bg-black text-white hover:bg-gray-800"
-                    onClick={() => setRequestSent(true)}
-                  >
-                    Go to Inbox
-                  </Button>
+            {isCreatingConnection && !requestSent ? (
+              // Creating connection state
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <Dialog.Title className="text-xl font-bold text-gray-900">Creating connection</Dialog.Title>
                 </div>
-              </div>
-            </div>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center py-6">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-3"></div>
+                  </div>
+                  <p className="text-gray-600 text-sm text-center">
+                    Please wait while we create your index and intents.
+                  </p>
+                </div>
+              </>
+            ) : (
+              // Request sent state
+              <>
+                <div className="flex justify-between items-center mb-4">
+                  <Dialog.Title className="text-xl font-bold text-gray-900">Request sent</Dialog.Title>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-gray-700 mb-2">
+                      Your request sent to <strong>{index?.user?.name || 'the user'}</strong>.
+                    </p>
+                    <p className="text-gray-700 mb-4">
+                      You'll be connected through your preferred channel if they accept.
+                    </p>
+                    <p className="text-gray-600 text-sm">
+                      You can cancel the request anytime from the <strong>Pending</strong> tab.
+                    </p>
+                  </div>
+
+                  <div className="border-t pt-4">
+                    <div className="flex justify-between gap-3">
+                      <Button
+                        variant="bordered"
+                        className="flex-1"
+                        onClick={() => setRequestSent(true)}
+                      >
+                        Done
+                      </Button>
+                      <Button
+                        className="flex-1 bg-black text-white hover:bg-gray-800"
+                        onClick={() => setRequestSent(true)}
+                      >
+                        Go to Inbox
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>

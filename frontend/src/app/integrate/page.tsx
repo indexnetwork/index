@@ -53,16 +53,7 @@ const conversationalIntegrations: ConversationalConfig[] = [
     description: "AI-powered matchmaking agent that provides intelligent match suggestions and facilitates connections.",
     previewImage: "/integrate/agent.gif",
     caseStudies: [
-      {
-        title: "Professional Network",
-        description: "LinkedIn's AI matchmaker for business partnerships",
-        link: "#case-study-linkedin"
-      },
-      {
-        title: "Event Networking",
-        description: "Conference platforms using MatchmakerAgent for attendee connections",
-        link: "#case-study-events"
-      }
+      
     ],
     examples: [
       {
@@ -248,16 +239,7 @@ const components: ComponentConfig[] = [
     description: "A form component for creating and submitting new intents with customizable fields and validation.",
     previewImage: "/integrate/intent.gif",
     caseStudies: [
-      {
-        title: "YC Startup Directory",
-        description: "How Y Combinator uses IntentForm for founder collaboration requests",
-        link: "#case-study-yc"
-      },
-      {
-        title: "Research Network Platform",
-        description: "Academic researchers using IntentForm to find co-authors",
-        link: "#case-study-research"
-      }
+      
     ],
     examples: [
       {
@@ -280,14 +262,9 @@ const components: ComponentConfig[] = [
     previewImage: "/integrate/vibecheck.gif",
     caseStudies: [
       {
-        title: "Dating App Integration",
+        title: "VC Thesis Demo",
         description: "How Bumble enhanced matching with VibeCheck compatibility scores",
-        link: "#case-study-dating"
-      },
-      {
-        title: "Team Formation Tool",
-        description: "Startups using VibeCheck to build balanced co-founder teams",
-        link: "#case-study-teams"
+        link: "http://index.network/share/607e6bce-d292-41b3-9fa2-167a5fed1bd2"
       }
     ],
     examples: [
@@ -310,16 +287,7 @@ const components: ComponentConfig[] = [
     description: "Display and manage intent matches with customizable filtering and sorting options.",
     previewImage: "/integrate/matchlist.png",
     caseStudies: [
-      {
-        title: "Freelancer Marketplace",
-        description: "Upwork's implementation of MatchList for project-talent matching",
-        link: "#case-study-freelance"
-      },
-      {
-        title: "Investment Platform",
-        description: "AngelList using MatchList to connect startups with investors",
-        link: "#case-study-investment"
-      }
+      
     ],
     examples: [
       {
@@ -344,14 +312,14 @@ const components: ComponentConfig[] = [
     previewImage: "/integrate/radar.gif",
     caseStudies: [
       {
-        title: "Research Network Visualization",
+        title: "Privacy Input Demo",
         description: "Academic network using Radar for collaboration discovery",
-        link: "#case-study-research"
+        link: "https://x.com/indexnetwork_/status/1828847341001924833"
       },
       {
-        title: "Startup Ecosystem Mapping",
-        description: "Venture capital firm implementing Radar for portfolio insights",
-        link: "#case-study-ventures"
+        title: "Google Docs Plugin",
+        description: "Mention agent to summon relevant collaborators. Be discoverable even if you're not put a title on your doc.",
+        link: "#soon"
       }
     ],
     examples: [
@@ -1356,9 +1324,11 @@ export default function IntegratePage() {
                     
                     {/* Right Column: Case Studies */}
                     <div className="">
-                      <h4 className="text-md font-semibold text-gray-900 font-ibm-plex-mono -mt-1.5 mb-2">
-                        Examples
-                      </h4>
+                      {integration.caseStudies.length > 0 && (
+                        <h4 className="text-md font-semibold text-gray-900 font-ibm-plex-mono -mt-1.5 mb-2">
+                          Examples
+                        </h4>
+                      )}
                       <div className="space-y-2">
                         {integration.caseStudies.map((caseStudy, index) => (
                           <a
@@ -1518,9 +1488,11 @@ export default function IntegratePage() {
                     
                     {/* Right Column: Case Studies & Example Links */}
                     <div className="">
-                      <h4 className="text-md font-semibold text-gray-900 font-ibm-plex-mono -mt-1.5 mb-2">
-                        Examples
-                      </h4>
+                      {component.caseStudies.length > 0 && (
+                        <h4 className="text-md font-semibold text-gray-900 font-ibm-plex-mono -mt-1.5 mb-2">
+                          Examples
+                        </h4>
+                      )}
                       <div className="space-y-2">
                         {component.caseStudies.map((caseStudy, index) => (
                           <a

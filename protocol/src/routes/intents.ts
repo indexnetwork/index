@@ -161,7 +161,13 @@ router.get('/:id',
         return res.status(403).json({ error: 'Access denied' });
       }
 
-
+      // Get intent's associated indexes
+      const associatedIndexes = await db.select({
+        indexId: intentIndexes.indexId,
+        indexTitle: indexes.title
+      }).from(intentIndexes)
+        .innerJoin(indexes, eq(intentIndexes.indexId, indexes.id))
+        .where(eq(intentIndexes.intentId, id));
 
       const result = {
         id: intentData.id,
@@ -177,8 +183,9 @@ router.get('/:id',
           email: intentData.userEmail,
           avatar: intentData.userAvatar
         },
+        indexes: associatedIndexes,
         _count: {
-          indexes: 0 // TODO: Add actual count query
+          indexes: associatedIndexes.length
         }
       };
 
@@ -276,6 +283,8 @@ router.put('/:id',
     param('id').isUUID(),
     body('payload').optional().trim().isLength({ min: 1 }),
     body('isIncognito').optional().isBoolean(),
+    body('indexIds').optional().isArray(),
+    body('indexIds.*').optional().isUUID(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -285,7 +294,7 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { payload, isIncognito } = req.body;
+      const { payload, isIncognito, indexIds } = req.body;
 
       // Check if intent exists and user owns it
       const intent = await db.select({ id: intents.id, userId: intents.userId })
@@ -299,6 +308,26 @@ router.put('/:id',
 
       if (intent[0].userId !== req.user!.id) {
         return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Verify index IDs exist and user has access to them if indexIds is provided
+      if (indexIds !== undefined && indexIds.length > 0) {
+        const validIndexes = await db.select({ id: indexes.id })
+          .from(indexes)
+          .where(and(
+            isNull(indexes.deletedAt),
+            eq(indexes.userId, req.user!.id)
+          ));
+
+        const validIndexIds = validIndexes.map(idx => idx.id);
+        const invalidIds = indexIds.filter((indexId: string) => !validIndexIds.includes(indexId));
+
+        if (invalidIds.length > 0) {
+          return res.status(400).json({ 
+            error: 'Some index IDs are invalid or you don\'t have access to them',
+            invalidIds 
+          });
+        }
       }
 
       const updateData: any = { updatedAt: new Date() };
@@ -323,6 +352,23 @@ router.put('/:id',
           updatedAt: intents.updatedAt,
           userId: intents.userId
         });
+
+      // Update intent-index associations if indexIds is provided
+      if (indexIds !== undefined) {
+        // Delete existing associations
+        await db.delete(intentIndexes)
+          .where(eq(intentIndexes.intentId, id));
+
+        // Insert new associations if any provided
+        if (indexIds.length > 0) {
+          await db.insert(intentIndexes).values(
+            indexIds.map((indexId: string) => ({
+              intentId: id,
+              indexId: indexId
+            }))
+          );
+        }
+      }
 
       // Trigger context brokers for updated intent
       triggerBrokersOnIntentUpdated(updatedIntent[0].id);

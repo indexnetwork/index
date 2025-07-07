@@ -6,11 +6,12 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { Intent } from "@/lib/types";
 import { Textarea } from "../ui/textarea";
 import { EyeOff, Globe } from "lucide-react";
+import { useIndexes } from "@/contexts/APIContext";
 
 interface EditIntentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (intent: { id: string; payload: string; isIncognito: boolean }) => Promise<void>;
+  onSubmit: (intent: { id: string; payload: string; isIncognito: boolean; indexIds: string[] }) => Promise<void>;
   intent: Intent | null;
 }
 
@@ -25,16 +26,37 @@ export default function EditIntentModal({
   const [isSuccess, setIsSuccess] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isIncognito, setIsIncognito] = useState(false);
-
+  const [availableIndexes, setAvailableIndexes] = useState<Array<{ id: string; title: string }>>([]);
+  const [selectedIndexIds, setSelectedIndexIds] = useState<string[]>([]);
+  const [isLoadingIndexes, setIsLoadingIndexes] = useState(false);
+  const indexesService = useIndexes();
 
   // Initialize form data when modal opens
   useEffect(() => {
     if (open && intent && !hasInitialized) {
       setPayload(intent.payload || '');
       setIsIncognito(intent.isIncognito);
+      
+      // Set current intent's indexes
+      const currentIndexIds = intent.indexes?.map(idx => idx.indexId) || [];
+      setSelectedIndexIds(currentIndexIds);
+      
+      // Fetch available indexes
+      setIsLoadingIndexes(true);
+      indexesService.getIndexes()
+        .then((response) => {
+          setAvailableIndexes(response.indexes || []);
+        })
+        .catch((error) => {
+          console.error('Error fetching indexes:', error);
+        })
+        .finally(() => {
+          setIsLoadingIndexes(false);
+        });
+      
       setHasInitialized(true);
     }
-  }, [open, intent, hasInitialized]);
+  }, [open, intent, hasInitialized, indexesService]);
 
   // Reset when modal closes
   useEffect(() => {
@@ -44,6 +66,9 @@ export default function EditIntentModal({
       setIsSuccess(false);
       setIsProcessing(false);
       setIsIncognito(false);
+      setAvailableIndexes([]);
+      setSelectedIndexIds([]);
+      setIsLoadingIndexes(false);
     }
   }, [open]);
 
@@ -57,7 +82,8 @@ export default function EditIntentModal({
       await onSubmit({ 
         id: intent.id,
         payload, 
-        isIncognito: isIncognito
+        isIncognito: isIncognito,
+        indexIds: selectedIndexIds
       });
       setIsSuccess(true);
       
@@ -70,7 +96,7 @@ export default function EditIntentModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [intent, payload, isIncognito, onSubmit, onOpenChange]);
+  }, [intent, payload, isIncognito, selectedIndexIds, onSubmit, onOpenChange]);
 
   if (!intent) return null;
 
@@ -152,6 +178,55 @@ export default function EditIntentModal({
                     </div>
                   </div>
 
+                  {/* Index Selection Section */}
+                  <div>
+                    <div className="mb-2">
+                      <h3 className="text-md font-medium font-ibm-plex-mono text-black">Index this intent</h3>
+                      <p className="text-sm text-gray-600">
+                        Select which indexes your intent should be accessible in
+                      </p>
+                    </div>
+                    
+                    {isLoadingIndexes ? (
+                      <div className="flex items-center gap-2 p-3 border border-gray-200 rounded-md">
+                        <div className="w-4 h-4 border border-gray-500 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm text-gray-600">Loading indexes...</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded-md p-2">
+                        {availableIndexes.length === 0 ? (
+                          <div className="text-sm text-gray-500 p-2 text-center">
+                            No indexes available
+                          </div>
+                        ) : (
+                          availableIndexes.map((index) => (
+                            <label
+                              key={index.id}
+                              className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedIndexIds.includes(index.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedIndexIds(prev => [...prev, index.id]);
+                                  } else {
+                                    setSelectedIndexIds(prev => prev.filter(id => id !== index.id));
+                                  }
+                                }}
+                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <span className="text-sm font-medium text-gray-900">
+                                {index.title}
+                              </span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                  </div>
+
                 </form>
               ) : isProcessing ? (
                 <div className="text-center py-8 space-y-6">
@@ -203,6 +278,7 @@ export default function EditIntentModal({
                   e.preventDefault();
                   handleSubmit(e);
                 }}
+                disabled={selectedIndexIds.length === 0}
               >
                 Update Intent
               </Button>

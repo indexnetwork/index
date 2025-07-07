@@ -90,38 +90,19 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
   const handleEditIntent = useCallback(async (editData: { id: string; payload: string; isIncognito: boolean; indexIds: string[] }) => {
     try {
-      // Update the intent payload and visibility
+      // Update the intent payload, visibility, and index associations
       await intentsService.updateIntent(editData.id, { 
         payload: editData.payload,
-        isIncognito: editData.isIncognito 
+        isIncognito: editData.isIncognito,
+        indexIds: editData.indexIds
       });
-      
-      // Handle index changes if intent exists
-      if (intent && intent.indexes) {
-        const currentIndexIds = intent.indexes.map(idx => idx.indexId);
-        const newIndexIds = editData.indexIds;
-        
-        // Find indexes to add and remove
-        const indexesToAdd = newIndexIds.filter(id => !currentIndexIds.includes(id));
-        const indexesToRemove = currentIndexIds.filter(id => !newIndexIds.includes(id));
-        
-        // Add new indexes
-        if (indexesToAdd.length > 0) {
-          await intentsService.addIndexesToIntent(editData.id, indexesToAdd);
-        }
-        
-        // Remove old indexes
-        if (indexesToRemove.length > 0) {
-          await intentsService.removeIndexesFromIntent(editData.id, indexesToRemove);
-        }
-      }
       
       // Refresh the intent data
       await fetchIntentData();
     } catch (error) {
       console.error('Error updating intent:', error);
     }
-  }, [intentsService, fetchIntentData, intent]);
+  }, [intentsService, fetchIntentData]);
 
   if (loading) {
     return (
