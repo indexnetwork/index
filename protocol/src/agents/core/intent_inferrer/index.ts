@@ -191,28 +191,30 @@ export async function analyzeFolder(
       })).min(5).max(5).describe("Array of 5 high-quality intent objects")
     });
 
-    const prompt = `You are analyzing a collection of ${processedFiles} files. Generate 8-12 high-quality search intents that represent what different personas might this content creator might want to reach.
+    const prompt = `You are analyzing a collection of ${processedFiles} files and generating intents.
+REQUIREMENTS:
+- Analyze the content to identify the primary target audience and their needs.
+- Prioritize generating many intents for the most likely target audience, but also add few for secondary target audiences.
+- Start with most important intents.
+
+For example:
+If I uploaded a pitch deck, I would most likely want to generate intents for VCs, angel investors, and other investors.  so 3 investor intent, 1 partnership, 1 early customer.
+If I uploaded a research paper, I would want to generate intents to find other researchers, and other people looking for research.
+If I uploaded a job posting, I would want to find candidates, and other people looking for jobs.
+
+
+
+Examples intents:
+- "Looking for early-stage investors interested in AI and machine learning startups with strong technical backgrounds and experience in scaling deep tech companies"
+- "Seeking venture capital firms focused on technology and innovation investments, particularly those with a track record of backing Series A and B rounds in emerging markets"
+- "Connecting with angel investors who support emerging tech companies and have expertise in product-market fit validation and go-to-market strategy development"
+- "Targeting partnerships with developers and technical teams for platform integration, specifically those working on enterprise SaaS solutions and API-first architectures"
+- "Reaching out to community managers and network leaders for collaboration opportunities, particularly those building developer communities and technical talent networks in emerging tech hubs"
 
 CONTENT:
 ${concatenatedContent.substring(0, 15000)}${concatenatedContent.length > 15000 ? '\n...[content truncated for processing]' : ''}
 
-REQUIREMENTS:
-- Analyze the content to identify the primary target audience and their needs
-- Generate intents that reflect different stakeholder perspectives
-- Consider the context and purpose of the content to determine relevant personas
-
-Generate intents that represent:
-- Primary stakeholders that the content creator might be looking to connect
-- Different roles and responsibilities that would interact with this information
-
-Examples:
-- Looking for investors aligned with privacy-preserving AI
-- Exploring founding roles in decentralized agent ecosystems
-- Raising pre-seed for an intent-based coordination protocol
-- Searching for launch partners in confidential compute
-- Evaluating integrations with graph-native data platforms
-
-Focus on identifying who would use this content and why they would be interested in it.`;
+`;
 
     // Set up timeout
     const timeoutMs = options.timeoutMs || 60000;

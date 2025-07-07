@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
 import { param, query, validationResult } from 'express-validator';
-import fs from 'fs';
 import path from 'path';
 import db from '../lib/db';
 import { files } from '../lib/schema';

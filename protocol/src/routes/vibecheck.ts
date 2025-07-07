@@ -14,7 +14,7 @@ import { processUploadedFiles } from '../lib/file-processing';
 const router = Router();
 
 // Configure multer for temporary file uploads
-const tempUploadDir = path.join(__dirname, '../../temp-uploads');
+const tempUploadDir = path.join(__dirname, '../../uploads/temp');
 if (!fs.existsSync(tempUploadDir)) {
   fs.mkdirSync(tempUploadDir, { recursive: true });
 }
