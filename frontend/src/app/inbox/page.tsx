@@ -206,7 +206,15 @@ export default function InboxPage() {
               <div>
                 <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{connection.user.name}</h2>
                 <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
-                  <span>{connection.status.toLowerCase()} • {new Date(connection.lastUpdated).toLocaleDateString()}</span>
+                  <span>
+                    {new Date(connection.lastUpdated).toLocaleString(undefined, {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
                 </div>
               </div>
             </div>

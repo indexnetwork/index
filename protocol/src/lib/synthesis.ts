@@ -90,7 +90,7 @@ export async function generateUserSynthesis(
   }
 }
 
-function createCacheHash(userData: UserData): string {
+function createCacheHash(userData: UserData, options?: VibeCheckOptions): string {
   // Create a stable hash of the input data for caching
   const sortedUserData = {
     ...userData,
@@ -98,7 +98,13 @@ function createCacheHash(userData: UserData): string {
     intents: [...userData.intents].sort((a, b) => a.id.localeCompare(b.id))
   };
   
-  const dataString = JSON.stringify(sortedUserData);
+  // Include options in the hash to ensure different configurations get different cache keys
+  const hashData = {
+    userData: sortedUserData,
+    options: options || {}
+  };
+  
+  const dataString = JSON.stringify(hashData);
   return crypto.createHash('sha256').update(dataString).digest('hex');
 }
 
@@ -126,7 +132,7 @@ export async function safe_synthesise(data: SynthesisInput, options?: VibeCheckO
 
     // Check cache first using Redis hash
     const hashKey = 'synthesis';
-    const fieldKey = createCacheHash(userData);
+    const fieldKey = createCacheHash(userData, options);
     const cachedResult = await cache.hget(hashKey, fieldKey);
     
     if (cachedResult) {
