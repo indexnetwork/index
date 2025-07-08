@@ -1,12 +1,13 @@
 import { Router, Response } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { users, userConnectionEvents, connectionAction } from '../lib/schema';
+import { users, userConnectionEvents, connectionAction, intents, intentStakes, agents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, or, desc, sql, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { sendEmail } from '../lib/email';
 import { connectionRequestTemplate, connectionAcceptedTemplate, connectionDeclinedTemplate } from '../lib/email-templates';
+import { generateUserSynthesis, type SynthesisUserContext } from '../lib/synthesis';
 
 const router = Router();
 
@@ -16,7 +17,8 @@ router.get('/by-user',
   [
     query('type').optional().isIn(['inbox', 'pending', 'done']),
     query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 50 }).toInt()
+    query('limit').optional().isInt({ min: 1, max: 50 }).toInt(),
+    query('includeSynthesis').optional().isBoolean()
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -27,6 +29,7 @@ router.get('/by-user',
 
       const userId = req.user!.id;
       const { type = 'inbox' } = req.query;
+      const includeSynthesis = req.query.includeSynthesis === 'true';
 
       // Get all connection events involving this user
       const allEvents = await db.select({
@@ -88,17 +91,100 @@ router.get('/by-user',
       .from(users)
       .where(inArray(users.id, otherUserIds));
 
-      const connections = filteredConnections.map(conn => {
-        const user = otherUsers.find(u => u.id === conn.otherUserId);
-        return {
-          user,
-          status: conn.currentStatus,
-          isInitiator: conn.isInitiator,
-          lastUpdated: conn.lastUpdated
-        };
-      }).filter(conn => conn.user);
+      // Generate connections array with optional synthesis
+      const connections = await Promise.all(
+        filteredConnections.map(async (conn) => {
+          const user = otherUsers.find(u => u.id === conn.otherUserId);
+          if (!user) return null;
 
-      return res.json({ connections });
+          let synthesis = "";
+          
+          if (includeSynthesis) {
+            // Get user intents and agent stakes for synthesis
+            const userIntents = await db.select({
+              id: intents.id,
+              summary: intents.summary,
+              payload: intents.payload
+            })
+            .from(intents)
+            .where(eq(intents.userId, conn.otherUserId));
+
+            if (userIntents.length > 0) {
+              const intentIds = userIntents.map(intent => intent.id);
+              
+              // Get stakes for these intents
+              const stakes = await db.select({
+                stake: intentStakes.stake,
+                reasoning: intentStakes.reasoning,
+                stakeIntents: intentStakes.intents,
+                agentName: agents.name,
+                agentAvatar: agents.avatar
+              })
+              .from(intentStakes)
+              .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+              .where(and(
+                isNull(agents.deletedAt),
+                sql`EXISTS(
+                  SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
+                  WHERE intent_id IN (${sql.join(intentIds.map(id => sql`${id}`), sql`, `)})
+                )`
+              ));
+
+              // Group stakes by intent
+              const intentStakeMap: Record<string, any[]> = {};
+              stakes.forEach(stake => {
+                stake.stakeIntents.forEach(intentId => {
+                  if (intentIds.includes(intentId)) {
+                    if (!intentStakeMap[intentId]) {
+                      intentStakeMap[intentId] = [];
+                    }
+                    intentStakeMap[intentId].push({
+                      agent: {
+                        name: stake.agentName,
+                        avatar: stake.agentAvatar
+                      },
+                      reasoning: stake.reasoning
+                    });
+                  }
+                });
+              });
+
+              // Build synthesis context
+              const synthesisContext: SynthesisUserContext = {
+                user: {
+                  id: user.id,
+                  name: user.name
+                },
+                intents: userIntents.map(intent => ({
+                  intent: {
+                    id: intent.id,
+                    summary: intent.summary,
+                    payload: intent.payload
+                  },
+                  agents: intentStakeMap[intent.id] || []
+                }))
+              };
+
+              synthesis = await generateUserSynthesis(
+                synthesisContext,
+                `${user.name} brings valuable expertise that could complement your work.`
+              );
+            }
+          }
+
+          return {
+            user,
+            status: conn.currentStatus,
+            isInitiator: conn.isInitiator,
+            lastUpdated: conn.lastUpdated,
+            ...(includeSynthesis && { synthesis })
+          };
+        })
+      );
+
+      const validConnections = connections.filter(conn => conn !== null);
+
+      return res.json({ connections: validConnections });
     } catch (error) {
       console.error('Get connections by user error:', error);
       return res.status(500).json({ error: 'Failed to fetch connections' });

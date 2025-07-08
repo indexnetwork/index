@@ -289,6 +289,7 @@ export interface UserConnection {
   status: 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
   isInitiator: boolean;
   lastUpdated: string;
+  synthesis?: string;
 }
 
 export interface ConnectionsByUserResponse {

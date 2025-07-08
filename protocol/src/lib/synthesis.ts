@@ -25,6 +25,66 @@ interface SynthesisInput {
   users: User[];
 }
 
+// Helper types for generating user synthesis
+export interface SynthesisUserData {
+  id: string;
+  name: string;
+  intro?: string;
+}
+
+export interface SynthesisIntentData {
+  id: string;
+  summary?: string | null;
+  payload?: string;
+}
+
+export interface SynthesisAgentData {
+  agent: {
+    name: string;
+    avatar?: string;
+  };
+  reasoning?: string;
+}
+
+export interface SynthesisUserContext {
+  user: SynthesisUserData;
+  intents: {
+    intent: SynthesisIntentData;
+    agents: SynthesisAgentData[];
+  }[];
+}
+
+// Helper function to convert user context data to synthesis format
+export function convertToSynthesisFormat(userContext: SynthesisUserContext): SynthesisInput {
+  const synthesisUser = {
+    id: userContext.user.id,
+    name: userContext.user.name,
+    intro: userContext.user.intro || "",
+    intents: userContext.intents.map((intentData) => ({
+      id: intentData.intent.id,
+      payload: intentData.intent.payload || intentData.intent.summary || "",
+      reasons: intentData.agents.map((agentData) => ({
+        agent_name: agentData.agent.name,
+        agent_id: agentData.agent.name, // Using name as ID for now
+        reasoning: agentData.reasoning || "",
+      }))
+    }))
+  };
+
+  return { users: [synthesisUser] };
+}
+
+// Helper function to generate synthesis for a single user
+export async function generateUserSynthesis(userContext: SynthesisUserContext, fallbackMessage?: string): Promise<string> {
+  try {
+    const synthesisData = convertToSynthesisFormat(userContext);
+    return await safe_synthesise(synthesisData);
+  } catch (error) {
+    console.error('Synthesis error:', error);
+    return fallbackMessage || `${userContext.user.name} brings valuable expertise that could complement your work.`;
+  }
+}
+
 function createCacheHash(userData: UserData): string {
   // Create a stable hash of the input data for caching
   const sortedUserData = {
@@ -41,7 +101,6 @@ export async function safe_synthesise(data: SynthesisInput): Promise<string> {
   if (!data.users || data.users.length === 0) {
     return "No collaboration opportunities identified at this time.";
   }
-
 
   const results: string[] = [];
 

@@ -5,34 +5,11 @@ import { intents, users, intentStakes, agents, userConnectionEvents, indexes, in
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, sql, or, notInArray } from 'drizzle-orm';
 import { checkIndexAccessByCode } from '../lib/index-access';
-import { safe_synthesise } from '../lib/synthesis';
+import { generateUserSynthesis, type SynthesisUserContext } from '../lib/synthesis';
 
 const router = Router();
 
-// Helper function to convert stakes data to synthesis format
-function convertToSynthesisFormat(userStake: any): any {
 
-  
-  const synthesisUser = {
-    id: userStake.user.id,
-    name: userStake.user.name,
-    intro: userStake.user.intro,
-    intents: userStake.intents.map((intentData: any) => ({
-      id: intentData.intent.id,
-      payload: intentData.intent.payload,
-      reasons: intentData.agents.map((agentData: any) => {
-        console.log('agentData:', agentData);
-        return {
-          agent_name: agentData.agent.name,
-          agent_id: agentData.agent.name, // Using name as ID for now
-          reasoning: Array.from(agentData.reasoning).join(''),
-        };
-      })
-    }))
-  };
-
-  return { users: [synthesisUser] };
-}
 
 // Get stakes for a specific intent grouped by user
 router.get('/intent/:id/by-user',
@@ -141,23 +118,21 @@ router.get('/intent/:id/by-user',
           };
 
           // Generate synthesis summary for this user (intent detail context)
-          try {
-            const synthesisData = convertToSynthesisFormat({
-              user: user.user,
-              intents: [{
-                intent: { 
-                  id: id, 
-                  summary: intentData[0]?.summary || "", 
-                  payload: intentData[0]?.payload || "" 
-                },
-                agents: Object.values(user.agents)
-              }]
-            });
-            userResult.synthesis = await safe_synthesise(synthesisData);
-          } catch (error) {
-            console.error('Synthesis error:', error);
-            userResult.synthesis = `${user.user.name} brings valuable expertise that could complement your work on this goal.`;
-          }
+          const synthesisContext: SynthesisUserContext = {
+            user: user.user,
+            intents: [{
+              intent: { 
+                id: id, 
+                summary: intentData[0]?.summary || "", 
+                payload: intentData[0]?.payload || "" 
+              },
+              agents: Object.values(user.agents)
+            }]
+          };
+          userResult.synthesis = await generateUserSynthesis(
+            synthesisContext,
+            `${user.user.name} brings valuable expertise that could complement your work on this goal.`
+          );
 
           return userResult;
         })
@@ -335,17 +310,14 @@ router.get('/by-user',
           }).flat().sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
           // Generate synthesis summary for this user
-          let synthesis = "";
-          try {
-            const synthesisData = convertToSynthesisFormat({
-              user: userStakes.user,
-              intents: intents
-            });
-            synthesis = await safe_synthesise(synthesisData);
-          } catch (error) {
-            console.error('Synthesis error:', error);
-            synthesis = `${userStakes.user.name} brings valuable expertise that could complement your work across multiple areas.`;
-          }
+          const synthesisContext: SynthesisUserContext = {
+            user: userStakes.user,
+            intents: intents
+          };
+          const synthesis = await generateUserSynthesis(
+            synthesisContext,
+            `${userStakes.user.name} brings valuable expertise that could complement your work across multiple areas.`
+          );
 
           return {
             user: userStakes.user,
@@ -546,17 +518,14 @@ router.get('/index/:code/by-user',
           }).flat().sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
           // Generate synthesis summary for this user
-          let synthesis = "";
-          try {
-            const synthesisData = convertToSynthesisFormat({
-              user: userStakes.user,
-              intents: intents
-            });
-            synthesis = await safe_synthesise(synthesisData);
-          } catch (error) {
-            console.error('Synthesis error:', error);
-            synthesis = `${userStakes.user.name} brings valuable expertise that could complement your work in this shared context.`;
-          }
+          const synthesisContext: SynthesisUserContext = {
+            user: userStakes.user,
+            intents: intents
+          };
+          const synthesis = await generateUserSynthesis(
+            synthesisContext,
+            `${userStakes.user.name} brings valuable expertise that could complement your work in this shared context.`
+          );
 
           return {
             user: userStakes.user,
