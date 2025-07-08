@@ -582,8 +582,7 @@ const apiSections: ApiSection[] = [
         path: "/api/indexes",
         description: "Create a new index",
         params: [
-          { name: "title", type: "string", required: true, description: "Title of the index (1-255 chars)" },
-          { name: "isDiscoverable", type: "boolean", required: false, description: "Whether index is discoverable (default: false)" }
+          { name: "title", type: "string", required: true, description: "Title of the index (1-255 chars)" }
         ],
         example: `fetch('/api/indexes', {
   method: 'POST',
@@ -592,8 +591,7 @@ const apiSections: ApiSection[] = [
     'Authorization': 'Bearer \${token}'
   },
   body: JSON.stringify({
-    title: 'AI Research Network',
-    isDiscoverable: true
+    title: 'AI Research Network'
   })
 })`
       },
@@ -603,8 +601,7 @@ const apiSections: ApiSection[] = [
         description: "Update an index",
         params: [
           { name: "id", type: "string", required: true, description: "Unique index identifier (UUID)" },
-          { name: "title", type: "string", required: false, description: "Updated title (1-255 chars)" },
-          { name: "isDiscoverable", type: "boolean", required: false, description: "Updated discovery status" }
+          { name: "title", type: "string", required: false, description: "Updated title (1-255 chars)" }
         ],
         example: `fetch('/api/indexes/index-123', {
   method: 'PUT',
@@ -613,8 +610,7 @@ const apiSections: ApiSection[] = [
     'Authorization': 'Bearer \${token}'
   },
   body: JSON.stringify({
-    title: 'Updated AI Research Network',
-    isDiscoverable: true
+    title: 'Updated AI Research Network'
   })
 })`
       },

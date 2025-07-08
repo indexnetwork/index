@@ -34,7 +34,6 @@ export const intents = pgTable('intents', {
 export const indexes = pgTable('indexes', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
-  isDiscoverable: boolean('is_discoverable').notNull().default(false),
   linkPermissions: json('link_permissions').$type<{
     permissions: string[];
     code: string;

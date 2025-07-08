@@ -50,7 +50,6 @@ router.get('/',
         db.select({
           id: indexes.id,
           title: indexes.title,
-          isDiscoverable: indexes.isDiscoverable,
           linkPermissions: indexes.linkPermissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
@@ -86,7 +85,6 @@ router.get('/',
           return {
             id: index.id,
             title: index.title,
-            isDiscoverable: index.isDiscoverable,
             linkPermissions: index.linkPermissions,
             createdAt: index.createdAt,
             updatedAt: index.updatedAt,
@@ -194,7 +192,6 @@ router.get('/:id',
       const index = await db.select({
         id: indexes.id,
         title: indexes.title,
-        isDiscoverable: indexes.isDiscoverable,
         linkPermissions: indexes.linkPermissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
@@ -243,7 +240,6 @@ router.get('/:id',
       const result = {
         id: indexData.id,
         title: indexData.title,
-        isDiscoverable: indexData.isDiscoverable,
         linkPermissions: indexData.linkPermissions,
         createdAt: indexData.createdAt,
         updatedAt: indexData.updatedAt,
@@ -285,7 +281,6 @@ router.post('/',
   authenticatePrivy,
   [
     body('title').trim().isLength({ min: 1, max: 255 }),
-    body('isDiscoverable').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -294,16 +289,14 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { title, isDiscoverable = false } = req.body;
+      const { title } = req.body;
 
       const newIndex = await db.insert(indexes).values({
         title,
-        isDiscoverable,
         userId: req.user!.id,
       }).returning({
         id: indexes.id,
         title: indexes.title,
-        isDiscoverable: indexes.isDiscoverable,
         linkPermissions: indexes.linkPermissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
@@ -322,7 +315,6 @@ router.post('/',
       const result = {
         id: newIndex[0].id,
         title: newIndex[0].title,
-        isDiscoverable: newIndex[0].isDiscoverable,
         linkPermissions: newIndex[0].linkPermissions,
         createdAt: newIndex[0].createdAt,
         updatedAt: newIndex[0].updatedAt,
@@ -355,7 +347,6 @@ router.put('/:id',
   [
     param('id').isUUID(),
     body('title').optional().trim().isLength({ min: 1, max: 255 }),
-    body('isDiscoverable').optional().isBoolean(),
     body('linkPermissions').optional().isObject(),
     body('linkPermissions.permissions').optional().isArray(),
     body('linkPermissions.permissions.*').optional().isString(),
@@ -369,7 +360,7 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { title, isDiscoverable, linkPermissions } = req.body;
+      const { title, linkPermissions } = req.body;
 
       const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
       if (!ownershipCheck.hasAccess) {
@@ -409,7 +400,6 @@ router.put('/:id',
 
       const updateData: any = { updatedAt: new Date() };
       if (title !== undefined) updateData.title = title;
-      if (isDiscoverable !== undefined) updateData.isDiscoverable = isDiscoverable;
       if (linkPermissions !== undefined) updateData.linkPermissions = linkPermissions;
 
       const updatedIndex = await db.update(indexes)
@@ -418,7 +408,6 @@ router.put('/:id',
         .returning({
           id: indexes.id,
           title: indexes.title,
-          isDiscoverable: indexes.isDiscoverable,
           linkPermissions: indexes.linkPermissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
@@ -730,7 +719,6 @@ router.patch('/:id/link-permissions',
         .returning({
           id: indexes.id,
           title: indexes.title,
-          isDiscoverable: indexes.isDiscoverable,
           linkPermissions: indexes.linkPermissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
@@ -814,7 +802,6 @@ router.get('/share/:code',
       const index = await db.select({
         id: indexes.id,
         title: indexes.title,
-        isDiscoverable: indexes.isDiscoverable,
         linkPermissions: indexes.linkPermissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,

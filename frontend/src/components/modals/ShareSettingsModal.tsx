@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
-import { Copy, Globe, Lock, Trash2, Search, Plus, ChevronDown } from "lucide-react";
+import { Copy, Globe, Lock, Trash2, Plus, ChevronDown } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Input } from "../ui/input";
 import { useIndexes } from "@/contexts/APIContext";
@@ -63,7 +63,6 @@ const DialogTitle = ({ className, children, ...props }: DialogProps) => (
 
 export default function ShareSettingsModal({ open, onOpenChange, index, onIndexUpdate }: ShareSettingsModalProps) {
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
-  const [isUpdatingDiscovery, setIsUpdatingDiscovery] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showPermissionsDropdown, setShowPermissionsDropdown] = useState(false);
@@ -192,19 +191,7 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     }
   };
 
-  const handleToggleDiscovery = async (isDiscoverable: boolean) => {
-    try {
-      setIsUpdatingDiscovery(true);
-      await indexesService.updateIndex(index.id, { isDiscoverable });
-      // Refetch the complete index data to ensure we have all files
-      const updatedIndex = await indexesService.getIndex(index.id);
-      onIndexUpdate?.(updatedIndex);
-    } catch (error) {
-      console.error('Error updating index discovery settings:', error);
-    } finally {
-      setIsUpdatingDiscovery(false);
-    }
-  };
+
 
   const handleCopyLink = async (url: string) => {
     try {
@@ -300,48 +287,6 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
         </DialogHeader>
 
         <div className="space-y-8 mt-6">
-          <div>
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Discovery</h3>
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    {index.isDiscoverable ? (
-                      <>
-                        <Search className="h-4 w-4" />
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="h-4 w-4" />
-                      </>
-                    )}
-                  </div>
-                </div>
-                <p className="text-sm text-gray-600">
-                  Allow intents in this index to be matched by relevant users across the Index Network
-                </p>
-              </div>
-              <div className="flex items-center gap-3 ml-4">
-                {isUpdatingDiscovery && (
-                  <div className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
-                )}
-                <button
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                    index.isDiscoverable ? 'bg-blue-600' : 'bg-gray-300'
-                  } ${isUpdatingDiscovery ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                  onClick={() => !isUpdatingDiscovery && handleToggleDiscovery(!index.isDiscoverable)}
-                  disabled={isUpdatingDiscovery}
-                >
-                  <span
-                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                      index.isDiscoverable ? 'translate-x-6' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-          </div>
-
           <div>
             <div className="flex items-start justify-between">
               <div className="flex-1">
