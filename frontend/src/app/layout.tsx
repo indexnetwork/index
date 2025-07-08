@@ -3,6 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { APIProvider } from "@/contexts/APIContext";
+import ClientWrapper from "@/components/ClientWrapper";
 
 export const metadata: Metadata = {
   title: "Index Network | Discovery Protocol",
@@ -46,7 +47,9 @@ export default function RootLayout({
         />
         <AuthProvider>
           <APIProvider>
-            {children}
+            <ClientWrapper>
+              {children}
+            </ClientWrapper>
           </APIProvider>
         </AuthProvider>
       </body>

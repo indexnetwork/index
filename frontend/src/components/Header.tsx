@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { UserPlus, LogIn, Settings } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { User, APIResponse } from '@/lib/types';
 import { getAvatarUrl } from '@/lib/file-utils';
@@ -13,45 +13,54 @@ import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 export default function Header({ showNavigation = true }: { showNavigation?: boolean }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { login, logout, authenticated } = usePrivy();
+  const { login, logout, authenticated, ready } = usePrivy();
   const [isAlpha, setIsAlpha] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [userLoading, setUserLoading] = useState(false);
   const api = useAuthenticatedAPI();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Memoize alpha parameter check to prevent unnecessary re-runs
+  const alphaParam = searchParams.get('alpha');
+  
   useEffect(() => {
     // Check if alpha parameter is in searchParams
-    const alphaParam = searchParams.get('alpha');
     if (alphaParam !== null) {
       // Store in localStorage
       localStorage.setItem('alpha', alphaParam);
       setIsAlpha(alphaParam === 'true');
     } else {
-      // Get from localStorage
+      // Get from localStorage only once on mount
       const storedAlpha = localStorage.getItem('alpha');
       setIsAlpha(storedAlpha === 'true');
     }
-  }, [searchParams]);
+  }, [alphaParam]);
 
-  // Fetch user data when authenticated
+  // Memoize user fetch function to prevent recreation on every render
+  const fetchUser = useCallback(async () => {
+    if (!authenticated || !isAlpha || userLoading) return;
+    
+    setUserLoading(true);
+    try {
+      const response = await api.get<APIResponse<User>>('/auth/me');
+      if (response.user) {
+        setUser(response.user);
+      }
+    } catch (error) {
+      console.error('Failed to fetch user:', error);
+    } finally {
+      setUserLoading(false);
+    }
+  }, [authenticated, isAlpha, api, userLoading]);
+
+  // Fetch user data when authenticated and ready
   useEffect(() => {
-    if (authenticated && isAlpha) {
-      const fetchUser = async () => {
-        try {
-          const response = await api.get<APIResponse<User>>('/auth/me');
-          if (response.user) {
-            setUser(response.user);
-          }
-        } catch (error) {
-          console.error('Failed to fetch user:', error);
-        }
-      };
+    if (ready && authenticated && isAlpha && !user && !userLoading) {
       fetchUser();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, isAlpha]);
+  }, [ready, authenticated, isAlpha, user, userLoading, fetchUser]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -66,11 +75,103 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  // Memoize the navigation logic to avoid recalculating on every render
+  const navigationItems = useMemo(() => [
+    {
+      href: "/inbox",
+      icon: (color: string) => (
+        <svg 
+          width={44}
+          height={44}
+          viewBox="0 0 24 24" 
+          fill="none" 
+          xmlns="http://www.w3.org/2000/svg"
+          className="object-contain p-1"
+        >
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          <polyline points="22,6 12,13 2,6" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
+      label: "Inbox"
+    },
+    {
+      href: "/indexes",
+      icon: (color: string) => (
+        <Image 
+          src="/icon-folder.svg" 
+          width={48} 
+          height={48}
+          className="object-contain p-1"
+          alt="Indexes icon"
+          style={{filter: color === "#f59e0b" ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
+        />
+      ),
+      label: "Indexes"
+    },
+    {
+      href: "/intents",
+      icon: (color: string) => (
+        <Image 
+          src="/icon-intent.svg" 
+          width={44} 
+          height={44}
+          className="object-contain p-1"
+          alt="Intents icon"
+          style={{filter: color === "#f59e0b" ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
+        />
+      ),
+      label: "Intents"
+    },
+    {
+      href: "/integrate",
+      icon: (color: string) => (
+        <svg 
+          width={44}
+          height={44}
+          viewBox="0 0 24 24" 
+          fill="none" 
+          xmlns="http://www.w3.org/2000/svg"
+          className="object-contain p-1"
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M14 2v6h6" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M16 13H8" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M16 17H8" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M10 9H8" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      ),
+      label: "Integrate"
+    }
+  ], []);
+
+  // Show loading state while Privy is initializing
+  if (!ready) {
+    return (
+      <header className="w-full py-4 flex justify-between items-center">
+        <div className="flex items-center">
+          <Link href="/">
+            <div className="relative mr-2 cursor-pointer">
+              <Image 
+                src="/logo-black.svg" 
+                alt="Index Protocol" 
+                width={200} 
+                height={48}
+                className="object-contain"
+              />
+            </div>
+          </Link>
+        </div>
+        <div className="animate-pulse bg-gray-200 h-10 w-20 rounded"></div>
+      </header>
+    );
+  }
+
   return (
     <div>
       <header className="w-full py-4 flex justify-between items-center">
         <div className="flex items-center">
-          <Link href={false ? "/indexes" : "/"}>
+          <Link href={authenticated ? "/indexes" : "/"}>
             <div className="relative mr-2 cursor-pointer">
               <Image 
                 src="/logo-black.svg" 
@@ -171,66 +272,23 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
       { showNavigation && 
       <div className="w-full flex justify-center my-6">
         <div className="flex gap-8">
-          {/* Inbox Menu Item */}
-          <Link href="/inbox" className="cursor-pointer">
-            <div className="flex flex-col items-center cursor-pointer">
-              <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
-                <svg 
-                  width={44}
-                  height={44}
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="object-contain p-1"
-                >
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" stroke={pathname?.startsWith("/inbox") ? "#f59e0b" : "#6b7280"} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  <polyline points="22,6 12,13 2,6" stroke={pathname?.startsWith("/inbox") ? "#f59e0b" : "#6b7280"} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-              <span className={`text-sm font-ibm-plex-mono ${pathname?.startsWith("/inbox") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
-                Inbox
-              </span>
-            </div>
-          </Link>
-          {/* Indexes Menu Item */}
-          <Link href="/indexes" className="cursor-pointer">
-            <div className="flex flex-col items-center cursor-pointer">
-              <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
-                <Image 
-                  src="/icon-folder.svg" 
-                  width={48} 
-                  height={48}
-                  className="object-contain p-1"
-                  alt="Indexes icon"
-                  style={{filter: pathname?.startsWith("/indexes") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
-                />
-              </div>
-              <span className={`text-sm font-ibm-plex-mono ${pathname?.startsWith("/indexes") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
-                Indexes
-              </span>
-            </div>
-          </Link>
-          
-          {/* Intents Menu Item */}
-          <Link href="/intents" className="cursor-pointer">
-            <div className="flex flex-col items-center cursor-pointer">
-              <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
-                <Image 
-                  src="/icon-intent.svg" 
-                  width={44} 
-                  height={44}
-                  className="object-contain p-1"
-                  alt="Intents icon"
-                  style={{filter: pathname?.startsWith("/intents") ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
-                />
-              </div>
-              <span className={`text-sm font-ibm-plex-mono ${pathname?.startsWith("/intents")  ? "text-amber-500 font-medium" : "text-gray-500"}`}>
-                Intents
-              </span>
-            </div>
-          </Link>
-
-          
+          {navigationItems.map((item) => {
+            const isActive = pathname?.startsWith(item.href);
+            const color = isActive ? "#f59e0b" : "#6b7280";
+            
+            return (
+              <Link key={item.href} href={item.href} className="cursor-pointer">
+                <div className="flex flex-col items-center cursor-pointer">
+                  <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
+                    {item.icon(color)}
+                  </div>
+                  <span className={`text-sm font-ibm-plex-mono ${isActive ? "text-amber-500 font-medium" : "text-gray-500"}`}>
+                    {item.label}
+                  </span>
+                </div>
+              </Link>
+            );
+          })}
 
           { false && 
           <Link href="/stake" className="cursor-pointer">
@@ -254,31 +312,6 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
               </span>
             </div>
           </Link>}
-
-          {/* Integrate Menu Item */}
-          <Link href="/integrate" className="cursor-pointer">
-            <div className="flex flex-col items-center cursor-pointer">
-              <div className="w-18 h-18 flex items-center justify-center cursor-pointer">
-                <svg 
-                  width={44}
-                  height={44}
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="object-contain p-1"
-                >
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke={pathname?.startsWith("/integrate") ? "#f59e0b" : "#6b7280"} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M14 2v6h6" stroke={pathname?.startsWith("/integrate") ? "#f59e0b" : "#6b7280"} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M16 13H8" stroke={pathname?.startsWith("/integrate") ? "#f59e0b" : "#6b7280"} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M16 17H8" stroke={pathname?.startsWith("/integrate") ? "#f59e0b" : "#6b7280"} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M10 9H8" stroke={pathname?.startsWith("/integrate") ? "#f59e0b" : "#6b7280"} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-              <span className={`text-sm font-ibm-plex-mono ${pathname?.startsWith("/integrate") ? "text-amber-500 font-medium" : "text-gray-500"}`}>
-                Integrate
-              </span>
-            </div>
-          </Link>
         </div>
       </div>
       }
