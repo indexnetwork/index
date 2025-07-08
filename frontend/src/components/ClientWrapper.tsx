@@ -4,9 +4,7 @@ import { PropsWithChildren } from 'react';
 import { usePathname } from 'next/navigation';
 import Header from "@/components/Header";
 
-interface ClientWrapperProps extends PropsWithChildren {}
-
-export default function ClientWrapper({ children }: ClientWrapperProps) {
+export default function ClientWrapper({ children }: PropsWithChildren) {
   const pathname = usePathname();
   
   // Determine if navigation should be shown based on current path
