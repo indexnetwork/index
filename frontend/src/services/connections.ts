@@ -9,7 +9,7 @@ import {
 export const createConnectionsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get connections by user (aggregated)
   getConnectionsByUser: async (
-    type: 'inbox' | 'pending' | 'done' = 'inbox',
+    type: 'inbox' | 'pending' | 'history' = 'inbox',
     includeSynthesis: boolean = false
   ): Promise<ConnectionsByUserResponse> => {
     const params = new URLSearchParams({ 

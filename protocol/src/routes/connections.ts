@@ -14,7 +14,7 @@ const router = Router();
 router.get('/by-user',
   authenticatePrivy,
   [
-    query('type').optional().isIn(['inbox', 'pending', 'done']),
+    query('type').optional().isIn(['inbox', 'pending', 'history']),
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 50 }).toInt(),
     query('includeSynthesis').optional().isBoolean()
@@ -69,7 +69,7 @@ router.get('/by-user',
             return conn.currentStatus === 'REQUEST' && !conn.isInitiator;
           case 'pending':
             return conn.currentStatus === 'REQUEST' && conn.isInitiator;
-          case 'done':
+          case 'history':
             return ['ACCEPT', 'DECLINE', 'SKIP', 'CANCEL'].includes(conn.currentStatus);
           default:
             return true;
