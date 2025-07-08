@@ -15,6 +15,8 @@ export interface VibeCheckResult {
 
 export interface VibeCheckOptions {
   timeout?: number;
+  outputFormat?: 'markdown' | 'html';
+  characterLimit?: number;
 }
 
 export interface UserIntent {
@@ -46,9 +48,40 @@ export async function vibeCheck(
       return { success: false, error: 'No user data or intents provided' };
     }
 
-    const { timeout = 30000 } = options;
+    const { timeout = 30000, outputFormat = 'markdown', characterLimit } = options;
 
-    const prompt = `Generate a "What Could Happen Here" collaboration synthesis markdown text.
+    const formatInstructions = outputFormat === 'html' 
+      ? `- Always output as HTML.
+- Use HTML links for intents: <a href="https://index.network/intents/:id">intent text</a>
+- Use HTML formatting: <strong>, <em>, <p>, <ul>, <li> as appropriate`
+      : `- Always output as markdown.
+- You must add inline markdown links for intents when referring to them: https://index.network/intents/:id`;
+
+    const lengthInstructions = characterLimit 
+      ? `- Keep the response under ${characterLimit} characters.`
+      : '- Keep it concise and actionable';
+
+    const exampleOutput = outputFormat === 'html'
+      ? `Since you're looking for <a href="https://index.network/intents/12345">coordination without platforms</a> and <a href="https://index.network/intents/67890">trust-preserving discovery</a>. Seren is designing agent-led systems to negotiate access based on context, while the other is exploring intent schemas that don't rely on reputation scores or central visibility.
+
+<p>Together, you could co-develop a context-aware coordination primitive:</p>
+<ul>
+<li>Agents that interpret and match intents without revealing identity</li>
+<li>A shared layer for discovery across personal data stores</li>
+<li>A working prototype that shows how agents from different graphs collaborate securely</li>
+</ul>
+
+<p>This isn't just adjacent thinking — it's a chance to push the boundaries of what intent-based coordination can look like when it's real, composable, and private by default.</p>`
+      : `Since you're looking for [coordination without platforms](https://index.network/intents/12345) and [trust-preserving discovery](https://index.network/intents/67890). Seren is designing agent-led systems to negotiate access based on context, while the other is exploring intent schemas that don't rely on reputation scores or central visibility.
+
+Together, you could co-develop a context-aware coordination primitive:
+– Agents that interpret and match intents without revealing identity
+– A shared layer for discovery across personal data stores
+– A working prototype that shows how agents from different graphs collaborate securely
+
+This isn't just adjacent thinking — it's a chance to push the boundaries of what intent-based coordination can look like when it's real, composable, and private by default.`;
+
+    const prompt = `Generate a "What Could Happen Here" collaboration synthesis text.
 
 USER: ${userData.name}
 INTRO: ${userData.intro}
@@ -61,26 +94,18 @@ ${userData.intents.map(intent => `
 `).join('\n')}
 
 GUIDELINES:
-- Always output as markdown.
+${formatInstructions}
 - Use "You" vs "${userData.name}" context
-- You must ad inline markdown links for intents when referring to them: /intents/:id
 - Contextualize user's intents as they wants, thinks, seeks, etc. Dont treat them as a pure database object.
 - Focus on concrete collaboration possibilities
 - Write in second person addressing the current user
-- Keep it concise and actionable
-- Dont add  "What Could Happen Here" title.
+${lengthInstructions}
+- Dont add "What Could Happen Here" title.
 
 ------
 Example: 
 
-Since you’re looking for [coordination without platforms](/intents/12345) and [trust-preserving discovery](/intents/67890). Seren is designing agent-led systems to negotiate access based on context, while the other is exploring intent schemas that don’t rely on reputation scores or central visibility.
-
-Together, you could co-develop a context-aware coordination primitive:
-– Agents that interpret and match intents without revealing identity
-– A shared layer for discovery across personal data stores
-– A working prototype that shows how agents from different graphs collaborate securely
-
-This isn’t just adjacent thinking — it’s a chance to push the boundaries of what intent-based coordination can look like when it’s real, composable, and private by default.
+${exampleOutput}
 
 `;
 

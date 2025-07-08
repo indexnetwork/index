@@ -1,56 +1,95 @@
-export const connectionRequestTemplate = (fromUserName: string) => ({
-  subject: `${fromUserName} wants to connect on Index`,
+export const connectionRequestTemplate = (fromUserName: string, toUserName: string, synthesis?: string) => ({
+  subject: `✨ ${fromUserName} wants to connect`,
   html: `
     <div style="font-family: Arial, sans-serif;">
-      <h2>New Connection Request</h2>
-      <p><strong>${fromUserName}</strong> wants to connect with you on Index.</p>
-      <p>Log in to your Index account to accept or decline this request.</p>
-      <a href="https://index.network/connections" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Request</a>
+      <p>Hey ${toUserName},</p>
+      <p>You've got a connection request on Index — ${fromUserName} asked to be introduced.</p>
+      <p>👉 <a href="https://index.network/inbox" style="color: #007bff; text-decoration: none;">View the connection on Index</a></p>
+      
+      ${synthesis ? `
+        <p><strong>Here's the vibe:</strong></p>
+        <p>${synthesis}</p>
+      ` : ''}
+      
+      <p>If you're curious, I'll make the intro — no pressure, no awkwardness.</p>
+      <p>—Your quietly enthusiastic discovery agent 🤓</p>
+      
+      <div style="margin-top: 30px;">
+        <a href="https://index.network/inbox" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Go to Index</a>
+      </div>
     </div>
   `,
-  text: `New Connection Request
+  text: `Hey ${toUserName},
 
-${fromUserName} wants to connect with you on Index.
+You've got a connection request on Index — ${fromUserName} asked to be introduced.
 
-Log in to your Index account to accept or decline this request.
+👉 Jump to Index to see why this connection makes sense: https://index.network/inbox
 
-View Request: https://index.network/connections`
+${synthesis ? `Here's the vibe:
+${synthesis}
+
+` : ''}If you're curious, I'll make the intro — no pressure, no awkwardness.
+
+—Your quietly enthusiastic discovery agent 🤓
+
+Go to Index: https://index.network/inbox`
 });
 
-export const connectionAcceptedTemplate = (toUserName: string) => ({
-  subject: `${toUserName} accepted your connection request`,
+export const connectionAcceptedTemplate = (senderName: string, recipientName: string, synthesis?: string) => ({
+  subject: `You're connected! ${senderName} ↔ ${recipientName}`,
   html: `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2>Connection Accepted!</h2>
-      <p><strong>${toUserName}</strong> has accepted your connection request.</p>
-      <p>You can now collaborate and share insights on Index.</p>
-      <a href="https://index.network/connections" style="background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Connections</a>
+    <div style="font-family: Arial, sans-serif;">
+      <p>Hey ${senderName} and ${recipientName},</p>
+      <p>You both said yes — love when that happens.</p>
+      
+      ${synthesis ? `
+        <div>
+          ${synthesis}
+        </div>
+      ` : ''}
+      
+      <p>No formal intros needed — just reply here and take it from wherever feels right.</p>
+      <p>—Your discovery agent, quietly cheering from the background</p>
     </div>
   `,
-  text: `Connection Accepted!
+  text: `Hey ${senderName} and ${recipientName},
 
-${toUserName} has accepted your connection request.
+You both said yes — love when that happens.
 
-You can now collaborate and share insights on Index.
+${synthesis ? `${synthesis}
 
-View Connections: https://index.network/connections`
+` : ''}No formal intros needed — just reply here and take it from wherever feels right.
+
+—Your discovery agent, quietly cheering from the background`
 });
 
-export const connectionDeclinedTemplate = (toUserName: string) => ({
-  subject: `Connection request declined`,
+export const connectionDeclinedTemplate = (senderName: string) => ({
+  subject: `No connection this time — and that's totally fine`,
   html: `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2>Connection Request Update</h2>
-      <p>Your connection request was declined.</p>
-      <p>Continue exploring and connecting with others on Index.</p>
-      <a href="https://index.network" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Explore Index</a>
+    <div style="font-family: Arial, sans-serif;">
+      <p>Hey ${senderName},</p>
+      <p>Just a quick note — your connection request isn't looking to connect right now.</p>
+      <p>No worries at all. Timing, focus, or energy — lots of reasons a connection might not land. But your intent is still active, and we'll keep an eye out for others who truly align with what you're exploring.</p>
+      <p>Want to tweak your signal or shift your focus? You can always update it on Index.</p>
+      <p>Thanks for putting yourself out there — the right ones do find their way.</p>
+      <p>—Your discovery agent, always listening</p>
+      
+      <div style="margin-top: 30px;">
+        <a href="https://index.network" style="background-color: #007bff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">Update on Index</a>
+      </div>
     </div>
   `,
-  text: `Connection Request Update
+  text: `Hey ${senderName},
 
-Your connection request was declined.
+Just a quick note — your connection request isn't looking to connect right now.
 
-Continue exploring and connecting with others on Index.
+No worries at all. Timing, focus, or energy — lots of reasons a connection might not land. But your intent is still active, and we'll keep an eye out for others who truly align with what you're exploring.
 
-Explore Index: https://index.network`
+Want to tweak your signal or shift your focus? You can always update it on Index.
+
+Thanks for putting yourself out there — the right ones do find their way.
+
+—Your discovery agent, always listening
+
+Update on Index: https://index.network`
 }); 

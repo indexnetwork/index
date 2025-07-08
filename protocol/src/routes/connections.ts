@@ -7,7 +7,7 @@ import { eq, isNull, and, or, desc, sql, inArray } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { sendEmail } from '../lib/email';
 import { connectionRequestTemplate, connectionAcceptedTemplate, connectionDeclinedTemplate } from '../lib/email-templates';
-import { generateUserSynthesis, type SynthesisUserContext } from '../lib/synthesis';
+import { generateUserSynthesis, generateIntroSynthesis, type SynthesisUserContext } from '../lib/synthesis';
 
 const router = Router();
 
@@ -304,8 +304,80 @@ router.post('/actions',
             db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, targetUserId)).limit(1)
           ]);
           
-          if (receiver[0]?.email && initiator[0]?.name) {
-            const template = connectionRequestTemplate(initiator[0].name);
+          if (receiver[0]?.email && initiator[0]?.name && receiver[0]?.name) {
+            // Get receiver's intents and agent stakes for vibeCheck synthesis
+            const receiverIntents = await db.select({
+              id: intents.id,
+              summary: intents.summary,
+              payload: intents.payload
+            })
+            .from(intents)
+            .where(eq(intents.userId, targetUserId));
+
+            let synthesis = "";
+            if (receiverIntents.length > 0) {
+              const intentIds = receiverIntents.map(intent => intent.id);
+              
+              // Get stakes for these intents
+              const stakes = await db.select({
+                reasoning: intentStakes.reasoning,
+                stakeIntents: intentStakes.intents,
+                agentName: agents.name,
+                agentAvatar: agents.avatar
+              })
+              .from(intentStakes)
+              .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+              .where(and(
+                isNull(agents.deletedAt),
+                sql`EXISTS(
+                  SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
+                  WHERE intent_id IN (${sql.join(intentIds.map(id => sql`${id}`), sql`, `)})
+                )`
+              ));
+
+              // Group stakes by intent
+              const intentStakeMap: Record<string, any[]> = {};
+              stakes.forEach(stake => {
+                stake.stakeIntents.forEach(intentId => {
+                  if (intentIds.includes(intentId)) {
+                    if (!intentStakeMap[intentId]) {
+                      intentStakeMap[intentId] = [];
+                    }
+                    intentStakeMap[intentId].push({
+                      agent: {
+                        name: stake.agentName,
+                        avatar: stake.agentAvatar
+                      },
+                      reasoning: stake.reasoning
+                    });
+                  }
+                });
+              });
+
+              // Build synthesis context for vibeCheck
+              const synthesisContext: SynthesisUserContext = {
+                user: {
+                  id: targetUserId,
+                  name: receiver[0].name
+                },
+                intents: receiverIntents.map(intent => ({
+                  intent: {
+                    id: intent.id,
+                    summary: intent.summary,
+                    payload: intent.payload
+                  },
+                  agents: intentStakeMap[intent.id] || []
+                }))
+              };
+
+              synthesis = await generateUserSynthesis(
+                synthesisContext,
+                `${receiver[0].name} brings valuable expertise that could complement your work.`,
+                { outputFormat: 'html', characterLimit: 500 }
+              );
+            }
+
+            const template = connectionRequestTemplate(initiator[0].name, receiver[0].name, synthesis);
             await sendEmail({
               to: receiver[0].email,
               subject: template.subject,
@@ -314,14 +386,49 @@ router.post('/actions',
             });
           }
         } else if (action === 'ACCEPT') {
-          // Get accepter and initiator details
+          // Get accepter and initiator details including both email addresses
           const [accepter, initiator] = await Promise.all([
-            db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1),
+            db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, userId)).limit(1),
             db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, targetUserId)).limit(1)
           ]);
           
-          if (initiator[0]?.email && accepter[0]?.name) {
-            const template = connectionAcceptedTemplate(accepter[0].name);
+          if (initiator[0]?.email && accepter[0]?.email && accepter[0]?.name && initiator[0]?.name) {
+            // Get reasonings for both users to generate intro synthesis
+            const [accepterReasonings, initiatorReasonings] = await Promise.all([
+              db.select({ reasoning: intentStakes.reasoning })
+                .from(intentStakes)
+                .innerJoin(intents, sql`${intentStakes.intents}::UUID[] @> ARRAY[${intents.id}]::UUID[]`)
+                .where(eq(intents.userId, userId)),
+              db.select({ reasoning: intentStakes.reasoning })
+                .from(intentStakes)
+                .innerJoin(intents, sql`${intentStakes.intents}::UUID[] @> ARRAY[${intents.id}]::UUID[]`)
+                .where(eq(intents.userId, targetUserId))
+            ]);
+
+            const synthesis = await generateIntroSynthesis(
+              accepter[0].name,
+              accepterReasonings.map(r => r.reasoning),
+              initiator[0].name,
+              initiatorReasonings.map(r => r.reasoning)
+            );
+
+            const template = connectionAcceptedTemplate(initiator[0].name, accepter[0].name, synthesis);
+            await sendEmail({
+              to: [initiator[0].email, accepter[0].email],
+              subject: template.subject,
+              html: template.html,
+              text: template.text
+            });
+          }
+        } else if (action === 'DECLINE') {
+          // Get initiator details for decline notification
+          const initiator = await db.select({ name: users.name, email: users.email })
+            .from(users)
+            .where(eq(users.id, targetUserId))
+            .limit(1);
+          
+          if (initiator[0]?.email && initiator[0]?.name) {
+            const template = connectionDeclinedTemplate(initiator[0].name);
             await sendEmail({
               to: initiator[0].email,
               subject: template.subject,
