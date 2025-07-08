@@ -326,7 +326,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                   </div>
                 </div>
 
-                <div>
+                { false && <div>
                   <h3 className="font-medium text-gray-700 mb-4">Who's backing this match</h3>
                   <div className="flex flex-wrap gap-2">
                     {userStakes.agents.map((agent) => (
@@ -339,7 +339,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                       </div>
                     ))}
                   </div>
-                </div>
+                </div>}
               </div>
             ))
           )}
