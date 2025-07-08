@@ -78,14 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID || ""}
       clientId={process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID || ""}
       config={{
-        // Only allow email login
-        loginMethods: ['email', 'google'],
-        // Disable wallet features
-        embeddedWallets: {
-          ethereum: {
-            createOnLogin: 'users-without-wallets'
-          }
-        }
+        loginMethods: ['email', 'google']
       }}
     >
       <AuthProviderInner>{children}</AuthProviderInner>
