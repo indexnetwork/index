@@ -98,7 +98,7 @@ ${formatInstructions}
 - Use "You" vs "${userData.name}" context
 - Contextualize user's intents as they wants, thinks, seeks, etc. Dont treat them as a pure database object.
 - Focus on concrete collaboration possibilities
-- When referring to intents, eplicitly use the actual intent text as the link text, not the agent reasoning
+- When referring to intents, be consistent with the actual intent text as the link text
 - You should add exactly one link per intent.
 - Always add inline markdown links for intents when referring to them, but do not hallucinate links or link texts, only use intent links provided..
 - Write in second person addressing the current user
