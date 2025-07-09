@@ -11,6 +11,7 @@ import { Intent, IntentStakesByUserResponse } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
 import ClientLayout from "@/components/ClientLayout";
 import EditIntentModal from "@/components/modals/EditIntentModal";
+import { formatDate } from "@/lib/utils";
 
 interface IntentDetailPageProps {
   params: Promise<{
@@ -158,7 +159,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
               )}
               <div className={intent.summary ? "pt-0" : ""}>
                 <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">
-                  Updated {intent.updatedAt} • {stakesByUser.length} connections
+                  Updated {formatDate(intent.updatedAt)} • {stakesByUser.length} connections
                 </p>
               </div>
             </div>

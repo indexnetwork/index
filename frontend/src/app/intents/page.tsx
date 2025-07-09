@@ -8,6 +8,7 @@ import { Plus } from "lucide-react";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 import { useIntents } from "@/contexts/APIContext";
 import { Intent } from "@/lib/types";
+import { formatDate } from "@/lib/utils";
 import ClientLayout from "@/components/ClientLayout";
 
 export default function IntentsPage() {
@@ -134,7 +135,7 @@ export default function IntentsPage() {
                       <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">
                         {intent.summary || intent.payload.substring(0, 100) + '...'}
                       </h3>
-                      <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {new Date(intent.updatedAt).toLocaleDateString()} • {intent._count?.indexes} indexes</p>
+                      <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {formatDate(intent.updatedAt)} • {intent._count?.indexes} indexes</p>
                     </div>
                     <Button 
                       variant="outline" 
@@ -168,7 +169,7 @@ export default function IntentsPage() {
                       <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">
                         {intent.summary || intent.payload.substring(0, 100) + '...'}
                       </h3>
-                      <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {new Date(intent.updatedAt).toLocaleDateString()} • {intent._count?.indexes || 0} indexes</p>
+                      <p className="text-gray-500 font-ibm-plex-mono text-sm">Updated {formatDate(intent.updatedAt)} • {intent._count?.indexes || 0} indexes</p>
                     </div>
                     <Button 
                       variant="outline" 

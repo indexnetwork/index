@@ -15,6 +15,7 @@ import ClientLayout from "@/components/ClientLayout";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 import { Input } from "@/components/ui/input";
 import { getIndexFileUrl } from "@/lib/file-utils";
+import { formatDate } from "@/lib/utils";
 
 interface IndexDetailPageProps {
   params: Promise<{
@@ -339,7 +340,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 </h1>
               )}
             </div>
-            <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {index ? new Date(index.createdAt).toLocaleDateString() : ''}</p>
+            <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {index ? formatDate(index.createdAt) : ''}</p>
           </div>
           <div className="flex gap-2 mt-4 sm:mt-0 flex-wrap sm:flex-nowrap">
             <Button
@@ -424,7 +425,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                           </Button>
                         </div>
                         <p className={`text-sm ${file.isUploading ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {file.isUploading ? 'Uploading...' : `${file.size} • ${new Date(file.createdAt).toLocaleDateString()}`}
+                          {file.isUploading ? 'Uploading...' : `${file.size} • ${formatDate(file.createdAt)}`}
                         </p>
                       </div>
                       <Button

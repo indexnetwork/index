@@ -12,6 +12,7 @@ import { useConnections, useIndexes, useIntents } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import { vibecheckService } from '@/services/vibecheck';
 import ReactMarkdown from "react-markdown";
+import { formatDate } from "@/lib/utils";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from 'next/navigation';
 
@@ -344,7 +345,7 @@ export default function SharePage({ params }: SharePageProps) {
             <div className="flex items-center gap-2 mb-2">
               <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono">{index.title}</h1>
             </div>
-            <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {new Date(index.createdAt).toLocaleDateString()}</p>
+            <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {formatDate(index.createdAt)}</p>
           </div>
         </div>
 
@@ -376,7 +377,7 @@ export default function SharePage({ params }: SharePageProps) {
                         </Button>
                       </div>
                       <p className="text-sm text-gray-500">
-                        {file.size} bytes • {new Date(file.createdAt).toLocaleDateString()}
+                        {file.size} bytes • {formatDate(file.createdAt)}
                       </p>
                     </div>
                   </div>

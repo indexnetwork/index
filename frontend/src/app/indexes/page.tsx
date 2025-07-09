@@ -12,6 +12,7 @@ import LeaveIndexModal from "@/components/modals/LeaveIndexModal";
 import { useIndexes } from "@/contexts/APIContext";
 import { useAuthService } from "@/services/auth";
 import { Index, User } from "@/lib/types";
+import { formatDate } from "@/lib/utils";
 
 import ClientLayout from "@/components/ClientLayout";
 
@@ -123,7 +124,7 @@ export default function IndexesPage() {
         <div className="w-full sm:w-auto mb-2 sm:mb-0">
           <h3 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{index.title}</h3>
           <p className="text-gray-500 text-sm font-ibm-plex-mono">
-            Updated {new Date(index.createdAt).toLocaleDateString()} • {index._count?.members || 0} members
+            Updated {formatDate(index.createdAt)}{(index._count?.members || 0) > 0 && ` • ${index._count?.members || 0} members`}
             {index.user.id !== currentUser?.id && (
               <span className="ml-2 text-gray-400">by {index.user.name}</span>
             )}

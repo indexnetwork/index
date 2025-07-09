@@ -9,6 +9,7 @@ import { History, SendHorizontal, Inbox } from "lucide-react";
 import { useIntents, useConnections } from "@/contexts/APIContext";
 import { StakesByUserResponse, UserConnection } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
+import { formatDate } from "@/lib/utils";
 import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 
@@ -207,13 +208,7 @@ export default function InboxPage() {
                 <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{connection.user.name}</h2>
                 <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
                   <span>
-                    {new Date(connection.lastUpdated).toLocaleString(undefined, {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
+                    {formatDate(connection.lastUpdated)}
                   </span>
                 </div>
               </div>
