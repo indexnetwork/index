@@ -299,7 +299,7 @@ export default function SharePage({ params }: SharePageProps) {
 
   if (loading) {
     return (
-      <ClientLayout showNavigation={false}>
+      <ClientLayout>
         <div className="py-8 text-center text-gray-500">Loading...</div>
       </ClientLayout>
     );
@@ -318,7 +318,7 @@ export default function SharePage({ params }: SharePageProps) {
 
   if (!index) {
     return (
-      <ClientLayout showNavigation={false}>
+      <ClientLayout>
         <div className="py-8 text-center text-gray-500">Index not found</div>
       </ClientLayout>
     );
@@ -329,7 +329,7 @@ export default function SharePage({ params }: SharePageProps) {
   const canMatch = index.linkPermissions?.permissions.includes('can-match') || false;
 
   return (
-    <ClientLayout showNavigation={false}>
+    <ClientLayout>
       {/* Main Content */}
       <div className="max-w-4xl mx-auto mt-10 mb-30 w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
         backgroundImage: 'url(/grid.png)',
