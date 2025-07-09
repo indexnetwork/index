@@ -39,6 +39,7 @@ export default function SharePage({ params }: SharePageProps) {
   // New state for tracking uploaded files and multi-step process
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isCreatingConnection, setIsCreatingConnection] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   const { login, authenticated, ready } = usePrivy();
   const connectionsService = useConnections();
@@ -223,6 +224,7 @@ export default function SharePage({ params }: SharePageProps) {
       await connectionsService.requestConnection(index.user.id);
 
       setRequestSent(true);
+      setShowModal(true);
       setAutoRequestConnection(false);
 
       // Clear stored vibecheck results after successful connection request
@@ -241,6 +243,7 @@ export default function SharePage({ params }: SharePageProps) {
       if (error && typeof error === 'object' && 'response' in error && 
           (error as { response?: { error?: string } }).response?.error === "Cannot request in current state: REQUEST") {
         setRequestSent(true);
+        setShowModal(true);
         return;
       }
       setError(error instanceof Error ? error.message : 'Failed to process connection request');
@@ -285,6 +288,7 @@ export default function SharePage({ params }: SharePageProps) {
     setRequestSent(false);
     setAutoRequestConnection(false);
     setIsProcessing(false);
+    setShowModal(false);
     
     // Clear new multi-step process state
     setUploadedFiles([]);
@@ -580,15 +584,25 @@ export default function SharePage({ params }: SharePageProps) {
                 
                 {showVibeCheck && vibeCheckResults.length > 0 && (
                   <div className="flex gap-3">
-                    <Button
-                      onClick={handleStartOver}
-                      variant="bordered"
-                      className="flex-1"
-                    >
-                      Start over
-                    </Button>
+                    {!requestSent && (
+                      <Button
+                        onClick={handleStartOver}
+                        variant="bordered"
+                        className="flex-1"
+                      >
+                        Start over
+                      </Button>
+                    )}
                     
-                    {!requestSent && !autoRequestConnection && (vibeCheckResults[0].score || 0) >= 0.5 && (
+                    {requestSent ? (
+                      <Button
+                        variant="bordered"
+                        className="flex-1 text-gray-800 border-gray-500"
+                        disabled={true}
+                      >
+                        Request sent
+                      </Button>
+                    ) : !autoRequestConnection && (vibeCheckResults[0].score || 0) >= 0.5 && (
                       <Button
                         onClick={handleRequestConnection}
                         variant="bordered"
@@ -597,7 +611,7 @@ export default function SharePage({ params }: SharePageProps) {
                         disabled={isCreatingConnection}
                       >
                         {isCreatingConnection 
-                          ? 'Creating Connection...' 
+                          ? 'Requesting Connection...' 
                           : 'Request Connection'
                         }
                       </Button>
@@ -620,7 +634,7 @@ export default function SharePage({ params }: SharePageProps) {
       </div>
 
       {/* Request Processing/Sent Modal */}
-      <Dialog.Root open={isCreatingConnection || requestSent}>
+      <Dialog.Root open={isCreatingConnection || showModal}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
           <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg max-w-md w-full mx-4 p-6 z-50">
@@ -665,7 +679,7 @@ export default function SharePage({ params }: SharePageProps) {
                       <Button
                         variant="bordered"
                         className="flex-1"
-                        onClick={() => setRequestSent(false)}
+                        onClick={() => setShowModal(false)}
                       >
                         Done
                       </Button>
