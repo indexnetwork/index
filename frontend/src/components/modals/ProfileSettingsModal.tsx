@@ -16,6 +16,7 @@ interface ProfileSettingsModalProps {
   onOpenChange: (open: boolean) => void;
   user: User | null;
   onUserUpdate: (user: User) => void;
+  isOnboarding?: boolean;
 }
 
 interface DialogComponentProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -34,18 +35,20 @@ interface DialogDescriptionProps extends React.HTMLAttributes<HTMLParagraphEleme
 }
 
 // Create simple wrapper components for dialog parts
-const DialogContent = ({ className, children, ...props }: DialogComponentProps) => (
+const DialogContent = ({ className, children, isOnboarding, ...props }: DialogComponentProps & { isOnboarding?: boolean }) => (
   <Dialog.Portal>
-    <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+    <Dialog.Overlay className={`fixed inset-0 z-50 ${isOnboarding ? 'bg-black/70' : 'bg-black/50'}`} />
     <Dialog.Content
       className={`fixed left-[50%] top-[50%] z-50 grid w-full max-w-2xl translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white p-6 shadow-lg duration-200 sm:rounded-lg ${className}`}
       {...props}
     >
       {children}
-      <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </Dialog.Close>
+      {!isOnboarding && (
+        <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </Dialog.Close>
+      )}
     </Dialog.Content>
   </Dialog.Portal>
 );
@@ -68,7 +71,7 @@ const DialogDescription = ({ className, children, ...props }: DialogDescriptionP
   </Dialog.Description>
 );
 
-export default function ProfileSettingsModal({ open, onOpenChange, user, onUserUpdate }: ProfileSettingsModalProps) {
+export default function ProfileSettingsModal({ open, onOpenChange, user, onUserUpdate, isOnboarding }: ProfileSettingsModalProps) {
   const [name, setName] = useState(user?.name || '');
   const [intro, setIntro] = useState(user?.intro || '');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -142,12 +145,17 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   }, [open, user]);
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+    <Dialog.Root open={open} onOpenChange={isOnboarding ? undefined : onOpenChange}>
+      <DialogContent isOnboarding={isOnboarding}>
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Profile Settings</DialogTitle>
+          <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">
+            {isOnboarding ? "Who is this?" : "Profile Settings"}
+          </DialogTitle>
           <DialogDescription>
-            Update your profile information and avatar.
+            {isOnboarding 
+              ? "Complete your profile to get started and help others connect with you."
+              : "Update your profile information and avatar."
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -155,7 +163,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
           {/* Avatar Section */}
           <div className="flex flex-col items-center space-y-4">
             <div className="relative">
-                             <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-200 border-2 border-gray-300">
+                 <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-200 border-2 border-gray-300">
                  {avatarPreview ? (
                    <Image src={avatarPreview} alt="Avatar preview" width={96} height={96} className="w-full h-full object-cover" />
                  ) : user?.avatar ? (
@@ -187,7 +195,9 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               onChange={handleAvatarChange}
               className="hidden"
             />
-            <p className="text-sm text-gray-500">Click the upload button to change your avatar</p>
+            <p className="text-sm text-gray-500">
+              {isOnboarding ? "Upload your avatar *" : "Click the upload button to change your avatar"}
+            </p>
           </div>
 
           {/* Name Field */}
@@ -200,7 +210,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="px-4 py-3"
-              placeholder="Enter your name..."
+              placeholder={isOnboarding ? "Enter your full name..." : "Enter your name..."}
               required
             />
           </div>
@@ -222,33 +232,55 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
           {/* Intro Field */}
           <div>
             <label htmlFor="intro" className="text-md font-medium font-ibm-plex-mono text-black">
-              <div className="mb-2">Introduction</div>
+              <div className="mb-2">
+                {isOnboarding ? "Introduction *" : "Introduction"}
+              </div>
             </label>
             <Textarea
               id="intro"
               value={intro}
               onChange={(e) => setIntro(e.target.value)}
               className="px-4 py-3 min-h-[100px]"
-              placeholder="Tell others about yourself..."
+              placeholder={isOnboarding 
+                ? "Tell others about yourself, your interests, and what you're looking for..." 
+                : "Tell others about yourself..."
+              }
               maxLength={500}
+              required={isOnboarding}
             />
             <p className="text-sm text-gray-500 mt-1">{intro.length}/500 characters</p>
+            {isOnboarding && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
+                <p className="text-sm text-gray-600 font-medium mb-2">Example introduction:</p>
+                <p className="text-sm text-gray-700 italic">
+                  "I’m a VC shifting into the agentic tech space. My background’s a mix of systems thinking, human agency, and media, with experience across program strategy and the research side of emerging tech."
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end space-x-3">
-            <Button
-              type="button"
-              variant="outline" 
-              onClick={() => onOpenChange(false)}
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
+            {!isOnboarding && (
+              <Button
+                type="button"
+                variant="outline" 
+                onClick={() => onOpenChange(false)}
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+            )}
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || (isOnboarding && (!name.trim() || !intro.trim() || (!user?.avatar && !avatarFile)))}
+              className={isOnboarding ? "w-full" : ""}
             >
-              {isLoading ? 'Saving...' : 'Save Changes'}
+              {isLoading 
+                ? 'Saving...' 
+                : isOnboarding 
+                  ? 'Save Your Intro & Get Started' 
+                  : 'Save Changes'
+              }
             </Button>
           </div>
         </form>

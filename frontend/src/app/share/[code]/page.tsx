@@ -13,6 +13,7 @@ import { indexesService as publicIndexesService } from '@/services/indexes';
 import { vibecheckService } from '@/services/vibecheck';
 import ReactMarkdown from "react-markdown";
 import * as Dialog from "@radix-ui/react-dialog";
+import { useRouter } from 'next/navigation';
 
 interface SharePageProps {
   params: Promise<{
@@ -43,6 +44,7 @@ export default function SharePage({ params }: SharePageProps) {
   const indexesService = useIndexes();
   const intentsService = useIntents();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
   const fetchIndex = useCallback(async () => {
     try {
@@ -595,9 +597,7 @@ export default function SharePage({ params }: SharePageProps) {
                       >
                         {isCreatingConnection 
                           ? 'Creating Connection...' 
-                          : authenticated 
-                            ? 'Request Connection' 
-                            : 'Login to Request Connection'
+                          : 'Request Connection'
                         }
                       </Button>
                     )}
@@ -664,13 +664,13 @@ export default function SharePage({ params }: SharePageProps) {
                       <Button
                         variant="bordered"
                         className="flex-1"
-                        onClick={() => setRequestSent(true)}
+                        onClick={() => setRequestSent(false)}
                       >
                         Done
                       </Button>
                       <Button
                         className="flex-1 bg-black text-white hover:bg-gray-800"
-                        onClick={() => setRequestSent(true)}
+                        onClick={() => router.push('/inbox')}
                       >
                         Go to Inbox
                       </Button>

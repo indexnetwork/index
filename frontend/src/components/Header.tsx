@@ -19,6 +19,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
   const [user, setUser] = useState<User | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [userLoading, setUserLoading] = useState(false);
+  const [isOnboarding, setIsOnboarding] = useState(false);
   const api = useAuthenticatedAPI();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -47,6 +48,12 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
       const response = await api.get<APIResponse<User>>('/auth/me');
       if (response.user) {
         setUser(response.user);
+        
+        // Check if user needs onboarding (empty intro)
+        if (!response.user.intro || response.user.intro.trim() === '') {
+          setIsOnboarding(true);
+          setProfileModalOpen(true);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch user:', error);
@@ -319,9 +326,15 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
       {/* Profile Settings Modal */}
       <ProfileSettingsModal
         open={profileModalOpen}
-        onOpenChange={setProfileModalOpen}
+        onOpenChange={(open) => {
+          setProfileModalOpen(open);
+          if (!open && isOnboarding) {
+            setIsOnboarding(false);
+          }
+        }}
         user={user}
         onUserUpdate={setUser}
+        isOnboarding={isOnboarding}
       />
     </div>
   );
