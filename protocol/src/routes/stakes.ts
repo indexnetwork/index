@@ -47,7 +47,7 @@ router.get('/intent/:id/by-user',
         agentAvatar: agents.avatar,
         userId: users.id,
         userName: users.name,
-        userAvatar: users.avatar
+        userIntro: users.intro
       })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
@@ -67,7 +67,7 @@ router.get('/intent/:id/by-user',
             user: {
               id: stake.userId,
               name: stake.userName,
-              avatar: stake.userAvatar
+              intro: stake.userIntro
             },
             totalStake: BigInt(0),
             agents: {}
@@ -126,9 +126,13 @@ router.get('/intent/:id/by-user',
                 summary: intentData[0]?.summary || "", 
                 payload: intentData[0]?.payload || "" 
               },
-              agents: Object.values(user.agents)
+              agents: Object.values(user.agents).map((agent: any) => ({
+                agent: agent.agent,
+                reasoning: Array.from(agent.reasoning).join(' ') // Convert Set to string
+              }))
             }]
           };
+          console.log('synthesisContext', JSON.stringify(synthesisContext, null, 2));
           userResult.synthesis = await generateUserSynthesis(
             synthesisContext,
             `${user.user.name} brings valuable expertise that could complement your work on this goal.`
@@ -205,7 +209,7 @@ router.get('/by-user',
         agentAvatar: agents.avatar,
         userId: users.id,
         userName: users.name,
-        userAvatar: users.avatar
+        userIntro: users.intro
       })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
@@ -232,7 +236,7 @@ router.get('/by-user',
             user: {
               id: stake.userId,
               name: stake.userName,
-              avatar: stake.userAvatar
+              intro: stake.userIntro
             },
             totalStake: BigInt(0),
             intentGroups: {},
@@ -263,7 +267,7 @@ router.get('/by-user',
           stakesByUser[userId].intentGroups[intentGroupKey].agents[agentName] = {
             agent: {
               name: stake.agentName,
-              avatar: stake.agentAvatar
+              intro: stake.userIntro
             },
             stake: BigInt(0),
             reasoning: new Set()
@@ -279,7 +283,7 @@ router.get('/by-user',
           stakesByUser[userId].allAgents[agentName] = {
             agent: {
               name: stake.agentName,
-              avatar: stake.agentAvatar
+              intro: stake.userIntro
             },
             stake: BigInt(0)
           };
@@ -408,7 +412,7 @@ router.get('/index/:code/by-user',
         agentAvatar: agents.avatar,
         userId: users.id,
         userName: users.name,
-        userAvatar: users.avatar,
+        userIntro: users.intro,
         intentId: intents.id,
         intentSummary: intents.summary,
         intentPayload: intents.payload,
@@ -447,7 +451,7 @@ router.get('/index/:code/by-user',
             user: {
               id: stake.userId,
               name: stake.userName,
-              avatar: stake.userAvatar
+              intro: stake.userIntro
             },
             totalStake: BigInt(0),
             intentGroups: {},
@@ -475,7 +479,6 @@ router.get('/index/:code/by-user',
           stakesByUser[userId].intentGroups[intentGroupKey].agents[agentName] = {
             agent: {
               name: stake.agentName,
-              avatar: stake.agentAvatar
             },
             stake: BigInt(0),
             reasoning: new Set()

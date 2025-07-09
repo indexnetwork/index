@@ -10,6 +10,136 @@ import { sendConnectionRequestEmail, sendConnectionAcceptedEmail, sendConnection
 
 const router = Router();
 
+/**
+ * Generates synthesis for connection between two users based on shared intent stakes
+ */
+async function generateConnectionSynthesis(
+  requestingUserId: string, 
+  otherUserId: string, 
+  otherUserName: string
+): Promise<string> {
+  try {
+    // Step 1: Get requesting user's intents
+    const requestingUserIntents = await db.select({
+      id: intents.id,
+      summary: intents.summary,
+      payload: intents.payload
+    })
+    .from(intents)
+    .where(eq(intents.userId, requestingUserId));
+
+    if (requestingUserIntents.length === 0) {
+      return "";
+    }
+
+    const requestingUserIntentIds = requestingUserIntents.map(intent => intent.id);
+
+    // Step 2: Get other user's intent IDs first
+    const otherUserIntents = await db.select({
+      id: intents.id
+    })
+    .from(intents)
+    .where(eq(intents.userId, otherUserId));
+
+    if (otherUserIntents.length === 0) {
+      return "";
+    }
+
+    const otherUserIntentIds = otherUserIntents.map(intent => intent.id);
+
+    // Step 3: Find stakes that connect both users' intents
+    const sharedStakes = await db.select({
+      stake: intentStakes.stake,
+      reasoning: intentStakes.reasoning,
+      stakeIntents: intentStakes.intents,
+      agentName: agents.name,
+      agentAvatar: agents.avatar
+    })
+    .from(intentStakes)
+    .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+    .where(and(
+      isNull(agents.deletedAt),
+      // Stakes must include at least one intent from requesting user
+      sql`EXISTS(
+        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
+        WHERE intent_id IN (${sql.join(requestingUserIntentIds.map(id => sql`${id}`), sql`, `)})
+      )`,
+      // Stakes must also include at least one intent from other user
+      sql`EXISTS(
+        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
+        WHERE intent_id IN (${sql.join(otherUserIntentIds.map(id => sql`${id}`), sql`, `)})
+      )`
+    ));
+
+    if (sharedStakes.length === 0) {
+      return "";
+    }
+
+    // Step 4: Group stakes by requesting user's intents
+    const stakesByIntent = new Map<string, Array<{
+      agent: { name: string; avatar: string };
+      reasoning: string;
+    }>>();
+
+    sharedStakes.forEach(stake => {
+      stake.stakeIntents.forEach(intentId => {
+        if (requestingUserIntentIds.includes(intentId)) {
+          if (!stakesByIntent.has(intentId)) {
+            stakesByIntent.set(intentId, []);
+          }
+          
+          stakesByIntent.get(intentId)!.push({
+            agent: {
+              name: stake.agentName,
+              avatar: stake.agentAvatar
+            },
+            reasoning: stake.reasoning
+          });
+        }
+      });
+    });
+
+    // Step 5: Build synthesis context with relevant intents
+    const relevantIntents = requestingUserIntents.filter(intent => 
+      stakesByIntent.has(intent.id)
+    );
+
+    if (relevantIntents.length === 0) {
+      return "";
+    }
+
+    const synthesisContext: SynthesisUserContext = {
+      user: {
+        id: otherUserId,
+        name: otherUserName
+      },
+      intents: relevantIntents.map(intent => ({
+        intent: {
+          id: intent.id,
+          summary: intent.summary,
+          payload: intent.payload
+        },
+        agents: stakesByIntent.get(intent.id) || []
+      }))
+    };
+
+    // Step 6: Generate synthesis
+    console.log('Connection synthesis context:', JSON.stringify(synthesisContext, null, 2));
+    
+    return await generateUserSynthesis(
+      synthesisContext,
+      `${otherUserName} brings valuable expertise that could complement your work.`,
+      {
+        characterLimit: 1000
+      }
+    );
+
+  } catch (error) {
+    console.error('Error generating connection synthesis:', error);
+    return "";
+  }
+}
+
 // Get connections by user (aggregated current state)
 router.get('/by-user',
   authenticatePrivy,
@@ -99,76 +229,7 @@ router.get('/by-user',
           let synthesis = "";
           
           if (includeSynthesis) {
-            // Get user intents and agent stakes for synthesis
-            const userIntents = await db.select({
-              id: intents.id,
-              summary: intents.summary,
-              payload: intents.payload
-            })
-            .from(intents)
-            .where(eq(intents.userId, conn.otherUserId));
-
-            if (userIntents.length > 0) {
-              const intentIds = userIntents.map(intent => intent.id);
-              
-              // Get stakes for these intents
-              const stakes = await db.select({
-                stake: intentStakes.stake,
-                reasoning: intentStakes.reasoning,
-                stakeIntents: intentStakes.intents,
-                agentName: agents.name,
-                agentAvatar: agents.avatar
-              })
-              .from(intentStakes)
-              .innerJoin(agents, eq(intentStakes.agentId, agents.id))
-              .where(and(
-                isNull(agents.deletedAt),
-                sql`EXISTS(
-                  SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-                  WHERE intent_id IN (${sql.join(intentIds.map(id => sql`${id}`), sql`, `)})
-                )`
-              ));
-
-              // Group stakes by intent
-              const intentStakeMap: Record<string, any[]> = {};
-              stakes.forEach(stake => {
-                stake.stakeIntents.forEach(intentId => {
-                  if (intentIds.includes(intentId)) {
-                    if (!intentStakeMap[intentId]) {
-                      intentStakeMap[intentId] = [];
-                    }
-                    intentStakeMap[intentId].push({
-                      agent: {
-                        name: stake.agentName,
-                        avatar: stake.agentAvatar
-                      },
-                      reasoning: stake.reasoning
-                    });
-                  }
-                });
-              });
-
-              // Build synthesis context
-              const synthesisContext: SynthesisUserContext = {
-                user: {
-                  id: user.id,
-                  name: user.name
-                },
-                intents: userIntents.map(intent => ({
-                  intent: {
-                    id: intent.id,
-                    summary: intent.summary,
-                    payload: intent.payload
-                  },
-                  agents: intentStakeMap[intent.id] || []
-                }))
-              };
-
-              synthesis = await generateUserSynthesis(
-                synthesisContext,
-                `${user.name} brings valuable expertise that could complement your work.`
-              );
-            }
+            synthesis = await generateConnectionSynthesis(userId, conn.otherUserId, user.name);
           }
 
           return {
