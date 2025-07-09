@@ -1,197 +1,239 @@
-import { vibeCheck, type UserData, type VibeCheckOptions } from '../agents/external/vibe_checker';
-import { introMaker, type IntroMakerData, type UserReasoning } from '../agents/external/intro_maker';
+import { vibeCheck, type VibeCheckOptions } from '../agents/external/vibe_checker';
+import { introMaker, type IntroMakerData } from '../agents/external/intro_maker';
 import { cache } from './redis';
+import db from './db';
+import { users as usersTable, intents, intentStakes, agents } from './schema';
+import { eq, isNull, and, sql, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 
-interface AgentReason {
-  agent_name: string;
-  agent_id: string;
-  reasoning: string;
-}
+interface SynthesisOptions extends VibeCheckOptions {}
 
-interface UserIntent {
-  id: string;
-  payload: string;
-  reasons: AgentReason[];
-}
+interface IntroOptions {}
 
-interface User {
-  id: string;
-  name: string;
-  intro: string;
-  intents: UserIntent[];
-}
-
-interface SynthesisInput {
-  users: User[];
-}
-
-// Helper types for generating user synthesis
-export interface SynthesisUserData {
-  id: string;
-  name: string;
-  intro?: string;
-}
-
-export interface SynthesisIntentData {
-  id: string;
-  summary?: string | null;
-  payload?: string;
-}
-
-export interface SynthesisAgentData {
-  agent: {
-    name: string;
-    avatar?: string;
-  };
-  reasoning?: string;
-}
-
-export interface SynthesisUserContext {
-  user: SynthesisUserData;
-  intents: {
-    intent: SynthesisIntentData;
-    agents: SynthesisAgentData[];
-  }[];
-}
-
-// Helper function to convert user context data to synthesis format
-export function convertToSynthesisFormat(userContext: SynthesisUserContext): SynthesisInput {
-  const synthesisUser = {
-    id: userContext.user.id,
-    name: userContext.user.name,
-    intro: userContext.user.intro || "",
-    intents: userContext.intents.map((intentData) => ({
-      id: intentData.intent.id,
-      payload: intentData.intent.payload || intentData.intent.summary || "",
-      reasons: intentData.agents.map((agentData) => ({
-        agent_name: agentData.agent.name,
-        agent_id: agentData.agent.name, // Using name as ID for now
-        reasoning: agentData.reasoning || "",
-      }))
-    }))
-  };
-
-  return { users: [synthesisUser] };
-}
-
-// Helper function to generate synthesis for a single user
-export async function generateUserSynthesis(
-  userContext: SynthesisUserContext, 
-  fallbackMessage?: string,
-  options?: VibeCheckOptions
-): Promise<string> {
-  try {
-    const synthesisData = convertToSynthesisFormat(userContext);
-    return await safe_synthesise(synthesisData, options);
-  } catch (error) {
-    console.error('Synthesis error:', error);
-    return fallbackMessage || `${userContext.user.name} brings valuable expertise that could complement your work.`;
-  }
-}
-
-function createCacheHash(userData: UserData, options?: VibeCheckOptions): string {
-  // Create a stable hash of the input data for caching
-  const sortedUserData = {
-    ...userData,
-    // Sort intents by id for consistent hashing
-    intents: [...userData.intents].sort((a, b) => a.id.localeCompare(b.id))
-  };
-  
-  // Include options in the hash to ensure different configurations get different cache keys
-  const hashData = {
-    userData: sortedUserData,
-    options: options || {}
-  };
-  
+function createCacheHash(data: any, options?: any): string {
+  const hashData = { data, options: options || {} };
   const dataString = JSON.stringify(hashData);
   return crypto.createHash('sha256').update(dataString).digest('hex');
 }
 
-export async function safe_synthesise(data: SynthesisInput, options?: VibeCheckOptions): Promise<string> {
-  if (!data.users || data.users.length === 0) {
-    return "No collaboration opportunities identified at this time.";
-  }
+// Main synthesis function - analyzes how targetUser can help with contextUser's intents
+export async function synthesizeVibeCheck(params: {
+  targetUserId: string; // User being analyzed - their profile info will be used
+  targetUserName?: string;
+  contextUserId?: string; // User requesting analysis - their intents will be analyzed
+  intentIds?: string[]; // Specific context user's intents to focus on (if no contextUserId)
+  options?: SynthesisOptions;
+}): Promise<string> {
+  try {
+    const { targetUserId, contextUserId, intentIds, options } = params;
 
-  const results: string[] = [];
+    // Get target user info
+    const targetUser = await db.select({
+      id: usersTable.id,
+      name: usersTable.name,
+      intro: usersTable.intro
+    })
+    .from(usersTable)
+    .where(eq(usersTable.id, targetUserId))
+    .limit(1);
 
-  // Process each user separately with vibe_checker
-  for (const user of data.users) {
-    if (!user.intents || user.intents.length === 0) {
-      results.push(`While ${user.name} seems like an interesting potential collaborator, no specific collaboration opportunities are visible right now.`);
-      continue;
+    if (targetUser.length === 0) {
+      return "";
     }
 
-    // Convert user to UserData format for vibe_checker
-    const userData: UserData = {
+    const user = targetUser[0];
+
+    // Get intents to analyze (should be context user's intents)
+    let contextIntentIds: string[] = [];
+    if (contextUserId) {
+      const contextIntents = await db.select({ id: intents.id })
+        .from(intents)
+        .where(eq(intents.userId, contextUserId));
+      contextIntentIds = contextIntents.map(i => i.id);
+    } else if (intentIds) {
+      contextIntentIds = intentIds;
+    }
+
+    if (contextIntentIds.length === 0) {
+      return "";
+    }
+
+    // Get target user's intents for filtering stakes
+    let targetIntentIds: string[] = [];
+    const targetIntents = await db.select({ id: intents.id })
+      .from(intents)
+      .where(eq(intents.userId, targetUserId));
+    targetIntentIds = targetIntents.map(i => i.id);
+
+    // Get stakes data - find stakes that connect context user's intents with target user's intents
+    const stakes = await db.select({
+      stake: intentStakes.stake,
+      reasoning: intentStakes.reasoning,
+      stakeIntents: intentStakes.intents,
+      agentName: agents.name,
+      agentAvatar: agents.avatar,
+      intentId: intents.id,
+      intentSummary: intents.summary,
+      intentPayload: intents.payload
+    })
+    .from(intentStakes)
+    .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+    .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
+    .where(and(
+      isNull(agents.deletedAt),
+      eq(intents.userId, contextUserId || targetUserId), // Context user's intents
+      inArray(intents.id, contextIntentIds),
+      // Stakes must also include at least one intent from target user
+      targetIntentIds.length > 0 ? sql`EXISTS(
+        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
+        WHERE intent_id IN (${sql.join(targetIntentIds.map(id => sql`${id}`), sql`, `)})
+      )` : sql`1=1`
+    ));
+
+    if (stakes.length === 0) {
+      return "";
+    }
+
+    // Group by intent
+    const intentGroups = new Map();
+    stakes.forEach(stake => {
+      if (!intentGroups.has(stake.intentId)) {
+        intentGroups.set(stake.intentId, {
+          id: stake.intentId,
+          summary: stake.intentSummary,
+          payload: stake.intentPayload,
+          reasons: []
+        });
+      }
+      intentGroups.get(stake.intentId).reasons.push({
+        agent_name: stake.agentName,
+        agent_id: stake.agentName,
+        reasoning: stake.reasoning
+      });
+    });
+
+    // Prepare data for vibe checker - target user info with context user's intents
+    const userData = {
       id: user.id,
       name: user.name,
-      intro: user.intro,
-      intents: user.intents
+      intro: user.intro || "",
+      intents: Array.from(intentGroups.values())
     };
 
-    // Check cache first using Redis hash
+    // Check cache
     const hashKey = 'synthesis';
     const fieldKey = createCacheHash(userData, options);
     const cachedResult = await cache.hget(hashKey, fieldKey);
     
     if (cachedResult) {
-      console.log(`✅ Cache hit for user ${user.name}`);
-      results.push(cachedResult);
-      continue;
+      return cachedResult;
     }
 
-    // Cache miss - generate new synthesis
-    console.log(`⏳ Cache miss for user ${user.name}, generating synthesis...`);
+    // Generate synthesis
     const vibeResult = await vibeCheck(userData, options);
     
     if (vibeResult.success && vibeResult.synthesis) {
-      // Cache the result using Redis hash with expiration
       await cache.hset(hashKey, fieldKey, vibeResult.synthesis);
-      results.push(vibeResult.synthesis);
-    } else {
-      const fallback = `Unable to generate collaboration synthesis for ${user.name} at this time.`;
-      results.push(fallback);
+      return vibeResult.synthesis;
     }
-  }
 
-  return results.join('\n\n---\n\n');
+    return "";
+    
+  } catch (error) {
+    console.error('Synthesis error:', error);
+    return "";
+  }
 }
 
-// Helper function to generate intro synthesis for email connections
-export async function generateIntroSynthesis(
-  senderUserName: string,
-  senderReasonings: string[],
-  recipientUserName: string,
-  recipientReasonings: string[],
-  fallbackMessage?: string
-): Promise<string> {
+// Intro synthesis function - handles all data preparation internally
+export async function synthesizeIntro(params: {
+  senderUserId: string;
+  recipientUserId: string;
+  options?: IntroOptions;
+}): Promise<string> {
   try {
-    if (!senderReasonings.length || !recipientReasonings.length) {
-      return fallbackMessage || `${senderUserName} and ${recipientUserName} share complementary interests that could lead to interesting collaboration.`;
+    const { senderUserId, recipientUserId } = params;
+
+    // Get users
+    const userRecords = await db.select({
+      id: usersTable.id,
+      name: usersTable.name
+    })
+    .from(usersTable)
+    .where(inArray(usersTable.id, [senderUserId, recipientUserId]));
+
+    if (userRecords.length !== 2) {
+      return "";
+    }
+
+    const senderUser = userRecords.find(u => u.id === senderUserId);
+    const recipientUser = userRecords.find(u => u.id === recipientUserId);
+
+    // Get reasonings for both users from shared stakes
+    const [senderIntents, recipientIntents] = await Promise.all([
+      db.select({ id: intents.id }).from(intents).where(eq(intents.userId, senderUserId)),
+      db.select({ id: intents.id }).from(intents).where(eq(intents.userId, recipientUserId))
+    ]);
+
+    const senderIntentIds = senderIntents.map(i => i.id);
+    const recipientIntentIds = recipientIntents.map(i => i.id);
+
+    if (senderIntentIds.length === 0 || recipientIntentIds.length === 0) {
+      return "";
+    }
+
+    // Get shared stakes
+    const sharedStakes = await db.select({
+      reasoning: intentStakes.reasoning,
+      stakeIntents: intentStakes.intents
+    })
+    .from(intentStakes)
+    .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+    .where(and(
+      isNull(agents.deletedAt),
+      sql`EXISTS(
+        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
+        WHERE intent_id IN (${sql.join(senderIntentIds.map(id => sql`${id}`), sql`, `)})
+      )`,
+      sql`EXISTS(
+        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
+        WHERE intent_id IN (${sql.join(recipientIntentIds.map(id => sql`${id}`), sql`, `)})
+      )`
+    ));
+
+    const senderReasonings: string[] = [];
+    const recipientReasonings: string[] = [];
+
+    sharedStakes.forEach(stake => {
+      const hasSenderIntent = stake.stakeIntents.some(id => senderIntentIds.includes(id));
+      const hasRecipientIntent = stake.stakeIntents.some(id => recipientIntentIds.includes(id));
+      
+      if (hasSenderIntent) senderReasonings.push(stake.reasoning);
+      if (hasRecipientIntent) recipientReasonings.push(stake.reasoning);
+    });
+
+    if (senderReasonings.length === 0 || recipientReasonings.length === 0) {
+      return "";
     }
 
     const introData: IntroMakerData = {
       sender: {
-        userName: senderUserName,
+        userName: senderUser!.name,
         reasonings: senderReasonings
       },
       recipient: {
-        userName: recipientUserName,
+        userName: recipientUser!.name,
         reasonings: recipientReasonings
       }
     };
 
+    console.log('Intro data:', introData);
+
     const result = await introMaker(introData);
+    return result.success && result.synthesis ? result.synthesis : "";
     
-    if (result.success && result.synthesis) {
-      return result.synthesis;
-    } else {
-      console.error('IntroMaker error:', result.error);
-      return fallbackMessage || `${senderUserName} and ${recipientUserName} share complementary interests that could lead to interesting collaboration.`;
-    }
   } catch (error) {
-    console.error('Generate intro synthesis error:', error);
-    return fallbackMessage || `${senderUserName} and ${recipientUserName} share complementary interests that could lead to interesting collaboration.`;
+    console.error('Intro synthesis error:', error);
+    return "";
   }
 }
