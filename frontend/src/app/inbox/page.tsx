@@ -245,7 +245,15 @@ export default function InboxPage() {
   if (loading) {
     return (
       <ClientLayout>
-        <div className="py-8 text-center text-gray-500">Loading inbox...</div>
+        <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
+          backgroundImage: 'url(/grid.png)',
+          backgroundColor: 'white',
+          backgroundSize: '888px'
+        }}>
+          <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-2 text-center text-gray-500">
+            <div className="py-8 text-center text-gray-500">Loading...</div>
+          </div>
+        </div>
       </ClientLayout>
     );
   }

@@ -420,7 +420,11 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                             }}
                             disabled={file.isUploading}
                           >
-                            <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
+                            <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">
+                              {file.name.length > 60
+                                ? file.name.slice(0, 12) + '...' + file.name.slice(-38)
+                                : file.name}
+                            </h4>
                             <ArrowUpRight className="ml-1 h-4 w-4" />
                           </Button>
                         </div>

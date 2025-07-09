@@ -480,8 +480,8 @@ export default function SharePage({ params }: SharePageProps) {
               )}
 
               {isProcessing && (
-                <div className="mt-2 text-center">
-                  <div className="flex items-center justify-center mb-3">
+                <div className=" text-center">
+                  <div className="flex items-center justify-center">
                     <Image 
                     className="h-auto"
                     src={'/loading2.gif'} 
@@ -493,7 +493,7 @@ export default function SharePage({ params }: SharePageProps) {
                     }}
                   />
                   </div>
-                  <p className="text-blue-600 text-sm mt-1">This may take a moment...</p>
+                  <p className="text-gray-800 text-sm mt-1">This may take a moment...</p>
                 </div>
               )}
 
