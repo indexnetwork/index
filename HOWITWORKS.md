@@ -4,7 +4,7 @@
 
 Index Network is a discovery protocol that fundamentally reimagines how people connect online. Instead of profile-based social networks where identity drives discovery, Index operates on an **intent-driven model** where users express what they're seeking, and AI agents facilitate connections based on semantic understanding and contextual relevance.
 
-Index Network tackles a fundamental challenge in how we socialize online: making meaningful connections without oversharing personal details or sifting through irrelevant interactions. By centering discovery on **indexes** (privacy-controlled intent collections) and **intents** (open-ended expressions of what someone seeks), Index enables a more focused, private, and intelligent way for people to connect.
+By centering discovery on **indexes** (privacy-controlled intent collections) and **intents** (open-ended expressions of what someone seeks), Index enables a more efficent, private, and personal way for people to connect.
 
 **Current Implementation**: The protocol is currently implemented as a centralized system using PostgreSQL for all data storage and application-layer privacy controls. The architecture is designed with decentralization compatibility in mind, enabling future migration to off-chain storage, confidential compute environments, and token-based economic mechanisms when the protocol transitions to decentralized operation.
 
