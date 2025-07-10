@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, use } from "react";
+import { useState, useEffect, useCallback, use, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Play, Archive, Pause, ArchiveRestore, Edit } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
-import { useIntents } from "@/contexts/APIContext";
+import { useIntents, useSynthesis } from "@/contexts/APIContext";
 import { Intent, IntentStakesByUserResponse } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
 import ClientLayout from "@/components/ClientLayout";
@@ -28,7 +28,34 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const [isPaused, setIsPaused] = useState(false);
   const [isArchived, setIsArchived] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [syntheses, setSyntheses] = useState<Record<string, string>>({});
+  const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
+  const fetchedSynthesesRef = useRef<Set<string>>(new Set());
   const intentsService = useIntents();
+  const synthesisService = useSynthesis();
+
+  const fetchSynthesis = useCallback(async (targetUserId: string) => {
+    if (fetchedSynthesesRef.current.has(targetUserId)) {
+      return; // Already fetched or in progress
+    }
+
+    fetchedSynthesesRef.current.add(targetUserId);
+    setSynthesisLoading(prev => ({ ...prev, [targetUserId]: true }));
+
+    try {
+      const response = await synthesisService.generateVibeCheck({
+        targetUserId,
+        intentIds: [resolvedParams.id]
+      });
+      setSyntheses(prev => ({ ...prev, [targetUserId]: response.synthesis }));
+    } catch (error) {
+      console.error('Error fetching synthesis:', error);
+      // Set empty synthesis on error to avoid infinite loading
+      setSyntheses(prev => ({ ...prev, [targetUserId]: "" }));
+    } finally {
+      setSynthesisLoading(prev => ({ ...prev, [targetUserId]: false }));
+    }
+  }, [synthesisService, resolvedParams.id]);
 
   const fetchIntentData = useCallback(async () => {
     try {
@@ -49,15 +76,20 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
       }
       const stakesData = await intentsService.getIntentStakesByUser(resolvedParams.id);
       setStakesByUser(stakesData);
+
+      // Automatically fetch synthesis for all users
+      stakesData.forEach(userStakes => {
+        fetchSynthesis(userStakes.user.id);
+      });
+
     } catch (error) {
       console.error('Error fetching stakes:', error);
     } finally {
       if (showLoading) {
-        
         setStakesLoading(false);
       }
     }
-  }, [intentsService, resolvedParams.id]);
+  }, [intentsService, resolvedParams.id, fetchSynthesis]);
 
   // Initial data fetch
   useEffect(() => {
@@ -319,11 +351,21 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                 <div className="mb-6">
                   <h3 className="font-medium text-gray-700 mb-3">What could happen here</h3>
                   <div className="relative min-h-[100px]">
-                    <div className="text-gray-700 prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
-                      <ReactMarkdown>
-                        {userStakes.synthesis}
-                      </ReactMarkdown>
-                    </div>
+                    {synthesisLoading[userStakes.user.id] ? (
+                      <div className="text-gray-500 animate-pulse">
+                        ...
+                      </div>
+                    ) : syntheses[userStakes.user.id] ? (
+                      <div className="text-gray-700 prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                        <ReactMarkdown>
+                          {syntheses[userStakes.user.id]}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <div className="text-gray-500">
+                        Synthesis will appear here...
+                      </div>
+                    )}
                   </div>
                 </div>
 

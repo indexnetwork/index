@@ -15,6 +15,7 @@ import indexRoutes from './routes/indexes';
 import uploadRoutes from './routes/upload';
 import connectionRoutes from './routes/connections';
 import vibecheckRoutes from './routes/vibecheck';
+import synthesisRoutes from './routes/synthesis';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -49,6 +50,7 @@ app.use('/api/indexes/:indexId/files', fileRoutes);
 app.use('/api/indexes', indexRoutes);
 
 app.use('/api/vibecheck', vibecheckRoutes);
+app.use('/api/synthesis', synthesisRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -9,13 +9,9 @@ import {
 export const createConnectionsService = (api: ReturnType<typeof import('../lib/api').useAuthenticatedAPI>) => ({
   // Get connections by user (aggregated)
   getConnectionsByUser: async (
-    type: 'inbox' | 'pending' | 'history' = 'inbox',
-    includeSynthesis: boolean = false
+    type: 'inbox' | 'pending' | 'history' = 'inbox'
   ): Promise<ConnectionsByUserResponse> => {
-    const params = new URLSearchParams({ 
-      type,
-      ...(includeSynthesis && { includeSynthesis: 'true' })
-    });
+    const params = new URLSearchParams({ type });
     const response = await api.get<ConnectionsByUserResponse>(`/connections/by-user?${params}`);
     return response;
   },

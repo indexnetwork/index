@@ -5,7 +5,6 @@ import { intents, users, intentStakes, agents, userConnectionEvents, indexes, in
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, sql, or, notInArray } from 'drizzle-orm';
 import { checkIndexAccessByCode } from '../lib/index-access';
-import { synthesizeVibeCheck } from '../lib/synthesis';
 
 const router = Router();
 
@@ -95,30 +94,18 @@ router.get('/intent/:id/by-user',
       }, {} as Record<string, any>);
 
 
-      // Format results with synthesis summaries
-      const result = (await Promise.all(Object.values(userStakes)
-        .map(async user => {
-          const userResult = {
-            user: user.user,
-            totalStake: user.totalStake.toString(),
-            agents: Object.values(user.agents).map((agent: any) => ({
-              agent: agent.agent,
-              stake: agent.stake.toString(),
-              reasoning: Array.from(agent.reasoning).join(' ')
-            })),
-            synthesis: ""
-          };
-
-          // Generate synthesis summary for this user (intent detail context)
-          userResult.synthesis = await synthesizeVibeCheck({
-            targetUserId: user.user.id,
-            contextUserId: req.user!.id,
-            intentIds: [id]
-          });
-
-          return userResult;
-        })
-      )).sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
+      // Format results without synthesis (synthesis moved to separate endpoint)
+      const result = Object.values(userStakes)
+        .map(user => ({
+          user: user.user,
+          totalStake: user.totalStake.toString(),
+          agents: Object.values(user.agents).map((agent: any) => ({
+            agent: agent.agent,
+            stake: agent.stake.toString(),
+            reasoning: Array.from(agent.reasoning).join(' ')
+          }))
+        }))
+        .sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
       return res.json(result);
     } catch (error) {
@@ -270,9 +257,9 @@ router.get('/by-user',
       }
 
       // Convert to result format and order by total stake desc
-      const result = await Promise.all(Object.values(stakesByUser)
+      const result = Object.values(stakesByUser)
         .sort((a: any, b: any) => Number(b.totalStake - a.totalStake))
-        .map(async (userStakes: any) => {
+        .map((userStakes: any) => {
           const intents = Object.values(userStakes.intentGroups).map((group: any) => {
             // Find the user's intent(s) in this group
             const userIntentsInGroup = userIntents.filter(intent => 
@@ -291,18 +278,11 @@ router.get('/by-user',
             }));
           }).flat().sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
-          // Generate synthesis summary for this user
-          const synthesis = await synthesizeVibeCheck({
-            targetUserId: userStakes.user.id,
-            contextUserId: req.user!.id
-          });
-
           return {
             user: userStakes.user,
-            intents: intents,
-            synthesis: synthesis
+            intents: intents
           };
-        }));
+        });
 
       const filteredResult = result.filter(stake => stake.intents.length > 0);
 
@@ -475,9 +455,9 @@ router.get('/index/:code/by-user',
       }
 
       // Format results grouped by user
-      const result = (await Promise.all(Object.values(stakesByUser)
+      const result = Object.values(stakesByUser)
         .sort((a: any, b: any) => Number(b.totalStake - a.totalStake))
-        .map(async (userStakes: any) => {
+        .map((userStakes: any) => {
           const intents = Object.values(userStakes.intentGroups).map((group: any) => {
             const intentsInGroup = Array.from(userStakes.allIntents.values()).filter((intent: any) =>
               group.intentIds.includes(intent.id)
@@ -494,19 +474,12 @@ router.get('/index/:code/by-user',
             }));
           }).flat().sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
-          // Generate synthesis summary for this user
-          const synthesis = await synthesizeVibeCheck({
-            targetUserId: userStakes.user.id,
-            contextUserId: req.user!.id
-          });
-
           return {
             user: userStakes.user,
-            intents: intents,
-            synthesis: synthesis
+            intents: intents
           };
         })
-      )).filter(stake => stake.intents.length > 0);
+        .filter(stake => stake.intents.length > 0);
 
       return res.json(result);
     } catch (error) {

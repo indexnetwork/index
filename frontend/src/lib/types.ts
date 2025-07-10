@@ -92,7 +92,6 @@ export interface IntentStakesByUserResponse {
     avatar: string;
   };
   totalStake: string;
-  synthesis: string;
   agents: Array<{
     agent: {
       name: string;
@@ -108,7 +107,6 @@ export interface StakesByUserResponse {
     name: string;
     avatar: string;
   };
-  synthesis: string;
   intents: Array<{
     intent: {
       id: string;
@@ -287,7 +285,6 @@ export interface UserConnection {
   status: 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
   isInitiator: boolean;
   lastUpdated: string;
-  synthesis?: string;
 }
 
 export interface ConnectionsByUserResponse {

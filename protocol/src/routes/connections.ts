@@ -4,7 +4,6 @@ import db from '../lib/db';
 import { users, userConnectionEvents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, or, desc, sql, inArray } from 'drizzle-orm';
-import { synthesizeVibeCheck } from '../lib/synthesis';
 import { sendConnectionRequestEmail, sendConnectionAcceptedEmail, sendConnectionDeclinedEmail } from '../lib/email-handlers';
 
 const router = Router();
@@ -16,8 +15,7 @@ router.get('/by-user',
   [
     query('type').optional().isIn(['inbox', 'pending', 'history']),
     query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 50 }).toInt(),
-    query('includeSynthesis').optional().isBoolean()
+    query('limit').optional().isInt({ min: 1, max: 50 }).toInt()
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -28,7 +26,6 @@ router.get('/by-user',
 
       const userId = req.user!.id;
       const { type = 'inbox' } = req.query;
-      const includeSynthesis = req.query.includeSynthesis === 'true';
 
       // Get all connection events involving this user
       const allEvents = await db.select({
@@ -96,22 +93,11 @@ router.get('/by-user',
           const user = otherUsers.find(u => u.id === conn.otherUserId);
           if (!user) return null;
 
-          let synthesis = "";
-          
-          if (includeSynthesis) {
-            synthesis = await synthesizeVibeCheck({
-              targetUserId: conn.otherUserId,
-              contextUserId: userId,
-              options: { characterLimit: 1000 }
-            });
-          }
-
           return {
             user,
             status: conn.currentStatus,
             isInitiator: conn.isInitiator,
-            lastUpdated: conn.lastUpdated,
-            ...(includeSynthesis && { synthesis })
+            lastUpdated: conn.lastUpdated
           };
         })
       );

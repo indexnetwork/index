@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import * as Tabs from "@radix-ui/react-tabs";
 import { History, SendHorizontal, Inbox } from "lucide-react";
-import { useIntents, useConnections } from "@/contexts/APIContext";
+import { useIntents, useConnections, useSynthesis } from "@/contexts/APIContext";
 import { StakesByUserResponse, UserConnection } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { formatDate } from "@/lib/utils";
@@ -19,16 +19,43 @@ export default function InboxPage() {
   const [pendingConnections, setPendingConnections] = useState<UserConnection[]>([]);
   const [historyConnections, setHistoryConnections] = useState<UserConnection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syntheses, setSyntheses] = useState<Record<string, string>>({});
+  const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
+  const fetchedSynthesesRef = useRef<Set<string>>(new Set());
   const intentsService = useIntents();
   const connectionsService = useConnections();
+  const synthesisService = useSynthesis();
+
+  const fetchSynthesis = useCallback(async (targetUserId: string, intentIds?: string[]) => {
+    if (fetchedSynthesesRef.current.has(targetUserId)) {
+      return; // Already fetched or in progress
+    }
+
+    fetchedSynthesesRef.current.add(targetUserId);
+    setSynthesisLoading(prev => ({ ...prev, [targetUserId]: true }));
+
+    try {
+      const response = await synthesisService.generateVibeCheck({
+        targetUserId,
+        intentIds
+      });
+      setSyntheses(prev => ({ ...prev, [targetUserId]: response.synthesis }));
+    } catch (error) {
+      console.error('Error fetching synthesis:', error);
+      // Set empty synthesis on error to avoid infinite loading
+      setSyntheses(prev => ({ ...prev, [targetUserId]: "" }));
+    } finally {
+      setSynthesisLoading(prev => ({ ...prev, [targetUserId]: false }));
+    }
+  }, [synthesisService]);
 
   const fetchData = useCallback(async () => {
     try {
       // Fetch connections and stakes
       const [inboxData, pendingData, historyData, stakesData] = await Promise.all([
-        connectionsService.getConnectionsByUser('inbox', true), // Include synthesis
-        connectionsService.getConnectionsByUser('pending', true), // Include synthesis
-        connectionsService.getConnectionsByUser('history', true), // Include synthesis
+        connectionsService.getConnectionsByUser('inbox'),
+        connectionsService.getConnectionsByUser('pending'),
+        connectionsService.getConnectionsByUser('history'),
         intentsService.getAllStakes()
       ]);
 
@@ -37,12 +64,28 @@ export default function InboxPage() {
       setInboxConnections(inboxData.connections);
       setPendingConnections(pendingData.connections);
       setHistoryConnections(historyData.connections);
+
+      // Automatically fetch synthesis for all users
+      const allUserIds = new Set<string>();
+      
+      // Collect user IDs from discover stakes
+      stakesData.forEach(stake => allUserIds.add(stake.user.id));
+      
+      // Collect user IDs from connections
+      [...inboxData.connections, ...pendingData.connections, ...historyData.connections]
+        .forEach(connection => allUserIds.add(connection.user.id));
+
+      // Fetch synthesis for all unique users
+      allUserIds.forEach(userId => {
+        fetchSynthesis(userId);
+      });
+
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
-  }, [intentsService, connectionsService]);
+  }, [intentsService, connectionsService, fetchSynthesis]);
 
   useEffect(() => {
     fetchData();
@@ -146,11 +189,21 @@ export default function InboxPage() {
         <div className="mb-4">
           <h3 className="font-medium text-gray-700 mb-2 text-sm">What could happen here</h3>
           <div className="space-y-2">
-            <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
-              <ReactMarkdown>
-                {userStake.synthesis}
-              </ReactMarkdown>
-            </div>
+            {synthesisLoading[userStake.user.id] ? (
+              <div className="text-gray-500 text-sm animate-pulse">
+                ...
+              </div>
+            ) : syntheses[userStake.user.id] ? (
+              <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                <ReactMarkdown>
+                  {syntheses[userStake.user.id]}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <div className="text-gray-500 text-sm">
+                Synthesis will appear here...
+              </div>
+            )}
           </div>
         </div>
 
@@ -224,19 +277,27 @@ export default function InboxPage() {
             </div>
           </div>
 
-          {/* What Could Happen Here - show synthesis if available */}
-          {connection.synthesis && (
-            <div className="mb-4">
-              <h3 className="font-medium text-gray-700 mb-2 text-sm">What could happen here</h3>
-              <div className="space-y-2">
+          {/* What Could Happen Here */}
+          <div className="mb-4">
+            <h3 className="font-medium text-gray-700 mb-2 text-sm">What could happen here</h3>
+            <div className="space-y-2">
+              {synthesisLoading[connection.user.id] ? (
+                <div className="text-gray-500 text-sm animate-pulse">
+                  ...
+                </div>
+              ) : syntheses[connection.user.id] ? (
                 <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
                   <ReactMarkdown>
-                    {connection.synthesis}
+                    {syntheses[connection.user.id]}
                   </ReactMarkdown>
                 </div>
-              </div>
+              ) : (
+                <div className="text-gray-500 text-sm">
+                  Synthesis will appear here...
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     );
