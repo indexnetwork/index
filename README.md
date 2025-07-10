@@ -191,7 +191,7 @@ git push origin feature/your-feature-name
 - **[GitHub](https://github.com/indexnetwork/index)** - Source code and issue tracking
 - **[Twitter](https://x.com/indexnetwork_)** - Latest updates and announcements
 - **[Blog](https://blog.index.network)** - Latest insights and updates
-- **[Book a Call](https://calendly.com/d/2vj-8d8-skt/call-with-seren-and-seref)** - Direct contact with founders
+- **[Book a Call](https://calendly.com/d/2vj-8d8-skt/call-with-seren-and-seref)** - Chat with founders
 
 ## License
 
