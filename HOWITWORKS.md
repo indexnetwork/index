@@ -216,7 +216,7 @@ const userRelationship = {
 User uploads files → Index → Intent Inferrer Agent → Suggested Intents
 ```
 
-When a user uploads files to an index, the Intent Inferrer agent analyzes the content using the Unstructured API for document parsing and GPT-4 for intent generation. The agent considers the most likely target audience (e.g., if analyzing a pitch deck, prioritizes investor-focused intents).
+When a user uploads files to an index, the Intent Inferrer agent analyzes the content using the Unstructured API for document parsing and intent generation. The agent considers the most likely target audience (e.g., if analyzing a pitch deck, prioritizes investor-focused intents).
 
 **Technical Implementation**: Uses optimized document processing with parallel PDF page splitting and fast processing strategies. Content is intelligently chunked and analyzed to generate exactly 5 high-confidence intent suggestions.
 
