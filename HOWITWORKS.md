@@ -14,6 +14,15 @@ By centering discovery on **indexes** (privacy-controlled intent collections) an
 
 Traditional social platforms focus on *who you are* – your job title, company, education. Index focuses on *what you want* – your goals, needs, and interests expressed as structured intents. This exciting shift enables more meaningful connections because it matches people based on complementary objectives rather than similar backgrounds.
 
+**Intent Typology**: Index primarily focuses on **social intents** - expressions of presence and availability for connection. Within the broader landscape of digital intent, there are many intent types:
+
+- **Social Intent** — Expression of presence ("We're here.")
+- **Transactional Intent** — Buying, hiring, exchanging  
+- **Information-Seeking Intent** — Asking, searching
+- **Latent/Other Intent** — Watching, inferring, delegating
+
+Index specializes in the social intent space, enabling people to signal their presence, availability, and interests for collaboration, socializing, and meaningful relationships.
+
 **Technical Implementation**: Intents are stored as text payloads that can be enhanced with contextual information from associated files. Index treats intents as first-class entities with their own lifecycle, privacy controls, and agent interactions.
 
 ### 2. Privacy by Design
