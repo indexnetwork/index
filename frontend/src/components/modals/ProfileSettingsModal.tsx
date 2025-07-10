@@ -196,7 +196,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               className="hidden"
             />
             <p className="text-sm text-gray-500">
-              {isOnboarding ? "Upload your avatar *" : "Click the upload button to change your avatar"}
+              {isOnboarding ? "Upload your avatar" : "Click the upload button to change your avatar"}
             </p>
           </div>
 
@@ -253,7 +253,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
                 <p className="text-sm text-gray-600 font-medium mb-2">Example introduction:</p>
                 <p className="text-sm text-gray-700 italic">
-                  "I’m a VC shifting into the agentic tech space. My background’s a mix of systems thinking, human agency, and media, with experience across program strategy and the research side of emerging tech."
+                  a"I'm a VC shifting into the agentic tech space. My background's a mix of systems thinking, human agency, and media, with experience across program strategy and the research side of emerging tech."
                 </p>
               </div>
             )}
@@ -272,7 +272,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
             )}
             <Button
               type="submit"
-              disabled={isLoading || (isOnboarding && (!name.trim() || !intro.trim() || (!user?.avatar && !avatarFile)))}
+              disabled={isLoading || (isOnboarding && (!name.trim() || !intro.trim()))}
               className={isOnboarding ? "w-full" : ""}
             >
               {isLoading 

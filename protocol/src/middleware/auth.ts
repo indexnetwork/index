@@ -59,7 +59,7 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
         }
       }
       
-      let userName = `User ${claims.userId.slice(-8)}`;
+      let userName = '';
       for (const account of privyUser.linkedAccounts) {
         if (account && (account as any).name) {
           userName = (account as any).name;
