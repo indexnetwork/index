@@ -1,8 +1,8 @@
-# Index Protocol: Technical Architecture
+# Index Network: Technical Architecture
 
 ## Overview
 
-The Index Network is a discovery protocol that fundamentally reimagines how people connect online. Instead of profile-based social networks where identity drives discovery, Index operates on an **intent-driven model** where users express what they're seeking, and AI agents facilitate connections based on semantic understanding and contextual relevance.
+Index Network is a discovery protocol that fundamentally reimagines how people connect online. Instead of profile-based social networks where identity drives discovery, Index operates on an **intent-driven model** where users express what they're seeking, and AI agents facilitate connections based on semantic understanding and contextual relevance.
 
 Index Network tackles a fundamental challenge in how we socialize online: making meaningful connections without oversharing personal details or sifting through irrelevant interactions. By centering discovery on **indexes** (privacy-controlled intent collections) and **intents** (open-ended expressions of what someone seeks), Index enables a more focused, private, and intelligent way for people to connect.
 
