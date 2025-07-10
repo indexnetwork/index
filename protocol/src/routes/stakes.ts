@@ -46,6 +46,7 @@ router.get('/intent/:id/by-user',
         agentAvatar: agents.avatar,
         userId: users.id,
         userName: users.name,
+        userAvatar: users.avatar,
         userIntro: users.intro
       })
       .from(intentStakes)
@@ -66,6 +67,7 @@ router.get('/intent/:id/by-user',
             user: {
               id: stake.userId,
               name: stake.userName,
+              avatar: stake.userAvatar,
               intro: stake.userIntro
             },
             totalStake: BigInt(0),
@@ -174,6 +176,7 @@ router.get('/by-user',
         agentAvatar: agents.avatar,
         userId: users.id,
         userName: users.name,
+        userAvatar: users.avatar,
         userIntro: users.intro
       })
       .from(intentStakes)
@@ -201,6 +204,7 @@ router.get('/by-user',
             user: {
               id: stake.userId,
               name: stake.userName,
+              avatar: stake.userAvatar,
               intro: stake.userIntro
             },
             totalStake: BigInt(0),
