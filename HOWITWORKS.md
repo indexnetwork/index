@@ -259,7 +259,7 @@ synthesizeIntro(senderUserId, recipientUserId) → introduction_text
 
 
 **Contextual Privacy in Communication**: All automatically generated communications are based on:
-- Agent reasoning and explanations (publicly shareable)
+- Agent reasoning and explanations (discoverable with contextually relevant people)
 - Synthesis narratives derived from agent insights
 - General collaboration potential assessments
 
