@@ -42,7 +42,7 @@ export class ExampleContextBroker extends BaseContextBroker {
     .leftJoin(indexes, eq(intentIndexes.indexId, indexes.id))
     .where(eq(intentIndexes.intentId, intentId));
 
-    // Example: Find similar intents in the same indexes
+    // Example: Find similar intents in the same indexes (owned by other users)
     let similarIntents: { id: string; payload: string }[] = [];
     if (intentIndexRelations.length > 0) {
       similarIntents = await this.db.select({
@@ -54,7 +54,8 @@ export class ExampleContextBroker extends BaseContextBroker {
       .where(
         and(
           eq(intentIndexes.indexId, intentIndexRelations[0].indexId),
-          ne(intents.id, intentId)
+          ne(intents.id, intentId),
+          ne(intents.userId, intent.userId) // Only intents from other users
         )
       );
     }
