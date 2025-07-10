@@ -81,7 +81,7 @@ Agents query this protected database using natural language within the confident
 
 The separation between intents and indexes serves a crucial strategic purpose: **context isolation for privacy management**. This architectural decision enables users to share different aspects of their professional identity in different contexts without creating a comprehensive profile that spans all areas of their work.
 
-Context isolation makes privacy management delightfully practical and intuitive. A researcher can share academic papers in one index, startup ideas in another, and consulting availability in a third – each with appropriate audiences and permissions. This elegantly prevents the "all-or-nothing" privacy problem of traditional platforms where you either share everything or nothing.
+Context isolation makes privacy management practical and intuitive. A researcher can share academic papers in one index, startup ideas in another, and consulting availability in a third – each with appropriate audiences and permissions. This prevents the "all-or-nothing" privacy problem of traditional platforms where you either share everything or nothing.
 
 ## Agent Runtime Architecture
 
