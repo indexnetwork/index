@@ -2,9 +2,9 @@
 
 ## Overview
 
-The Index protocol is a discovery and matching system that fundamentally reimagines how people connect online. Instead of profile-based social networks where identity drives discovery, Index operates on an **intent-driven model** where users express what they're seeking, and AI agents facilitate connections based on semantic understanding and contextual relevance.
+The Index Network is a discovery protocol that fundamentally reimagines how people connect online. Instead of profile-based social networks where identity drives discovery, Index operates on an **intent-driven model** where users express what they're seeking, and AI agents facilitate connections based on semantic understanding and contextual relevance.
 
-The protocol addresses a core problem in professional networking: the difficulty of finding relevant connections without revealing unnecessary personal information or wading through irrelevant matches. By organizing discovery around **indexes** (privacy-controlled content collections) and **intents** (structured expressions of what someone wants), the system creates a more targeted, private, and intelligent approach to human connection.
+Index Network tackles a fundamental challenge in how we socialize online: making meaningful connections without oversharing personal details or sifting through irrelevant interactions. By centering discovery on **indexes** (privacy-controlled intent collections) and **intents** (open-ended expressions of what someone seeks), Index enables a more focused, private, and intelligent way for people to connect.
 
 **Current Implementation**: The protocol is currently implemented as a centralized system using PostgreSQL for all data storage and application-layer privacy controls. The architecture is designed with decentralization compatibility in mind, enabling future migration to off-chain storage, confidential compute environments, and token-based economic mechanisms when the protocol transitions to decentralized operation.
 
@@ -12,13 +12,13 @@ The protocol addresses a core problem in professional networking: the difficulty
 
 ### 1. Intent Over Identity
 
-Traditional networking platforms focus on *who you are* – your job title, company, education. Index focuses on *what you want* – your goals, needs, and interests expressed as structured intents. This shift enables more meaningful connections because it matches people based on complementary objectives rather than similar backgrounds.
+Traditional social platforms focus on *who you are* – your job title, company, education. Index focuses on *what you want* – your goals, needs, and interests expressed as structured intents. This exciting shift enables more meaningful connections because it matches people based on complementary objectives rather than similar backgrounds.
 
-**Technical Implementation**: Intents are stored as text payloads that can be enhanced with contextual information from associated files. The system treats intents as first-class entities with their own lifecycle, privacy controls, and agent interactions.
+**Technical Implementation**: Intents are stored as text payloads that can be enhanced with contextual information from associated files. Index treats intents as first-class entities with their own lifecycle, privacy controls, and agent interactions.
 
 ### 2. Privacy by Design
 
-Privacy isn't an afterthought but a foundational design constraint. The system uses a multi-layered access control model where content is organized into **indexes** with granular permissions. Users can share specific contexts without exposing their entire professional profile.
+Privacy isn't an afterthought but a foundational design constraint. Index uses a multi-layered access control model where content is organized into **indexes** with granular permissions. Users can share specific contexts without exposing their entire professional profile.
 
 **Technical Implementation**: Index-based access control with four permission levels:
 - `can-read`: View intents in the index
@@ -28,7 +28,7 @@ Privacy isn't an afterthought but a foundational design constraint. The system u
 
 ### 3. Agent-Mediated Trust
 
-Rather than algorithmic matching or manual browsing, AI agents serve as intermediaries that understand context, create connections, and provide reasoning. This creates a more nuanced matching system that can understand semantic relationships and emerging patterns.
+Rather than algorithmic matching or manual browsing, AI agents serve as intermediaries that understand context, create connections, and provide reasoning. This creates a more nuanced discovery experience that can understand semantic relationships and emerging patterns.
 
 **Technical Implementation**: Context broker agents that analyze intent relationships and create "stakes" – confidence signals about potential matches with explanatory reasoning.
 
@@ -51,7 +51,6 @@ intent_stakes → [array of intent_ids] + reasoning
 
 **Why this structure**: The many-to-many relationship between intents and indexes is fundamental for enabling **private discovery networks** across organizations, communities, and professional groups. This design allows a single intent to be shared in multiple contexts—such as a global "Open Collaboration" index, a private company workspace, a community hub, or a direct one-on-one share—each governed by its own privacy and access controls. As a result, users can participate in both broad professional discovery and tightly scoped, invite-only collaboration, all while maintaining granular control over where and how their intents are visible. This flexibility supports targeted, context-aware sharing and ensures that discovery remains both relevant and privacy-preserving across the ecosystem.
 
-
 ### Scalable Intent Storage
 
 **Current Implementation**: Intents are stored in PostgreSQL with a design optimized for future migration to **off-chain** storage with **on-chain finality** using a hash and roll-up architecture. This future approach will enable:
@@ -73,7 +72,7 @@ Agents query this protected database using natural language within the confident
 
 The separation between intents and indexes serves a crucial strategic purpose: **context isolation for privacy management**. This architectural decision enables users to share different aspects of their professional identity in different contexts without creating a comprehensive profile that spans all areas of their work.
 
-Context isolation makes privacy management practical and intuitive. A researcher can share academic papers in one index, startup ideas in another, and consulting availability in a third – each with appropriate audiences and permissions. This prevents the "all-or-nothing" privacy problem of traditional platforms where you either share everything or nothing.
+Context isolation makes privacy management delightfully practical and intuitive. A researcher can share academic papers in one index, startup ideas in another, and consulting availability in a third – each with appropriate audiences and permissions. This elegantly prevents the "all-or-nothing" privacy problem of traditional platforms where you either share everything or nothing.
 
 ## Agent Runtime Architecture
 
@@ -91,9 +90,9 @@ abstract class BaseContextBroker {
 
 **Current Implementation**:
 
-**Semantic Relevancy Broker**: The first and primary agent implementation uses LLM-based semantic analysis to find related intents across users and creates stakes with explanatory reasoning. This agent represents the foundational intelligence layer for the matching system.
+**Semantic Relevancy Broker**: The first and primary agent implementation uses LLM-based semantic analysis to find related intents across users and creates stakes with explanatory reasoning. This agent represents the foundational intelligence layer for the social intent pairing.
 
-**Why this architecture**: The broker pattern allows for multiple competing matching algorithms to operate simultaneously. Each broker can implement different matching strategies (semantic, temporal, network-based) and stake on connections they believe are valuable. This creates a marketplace of matching intelligence where agents compete and collaborate to provide the best matches.
+**Why this architecture**: The broker pattern enables multiple competing broker agents to operate simultaneously. Each broker can implement different brokerage strategies (semantic, temporal, network-based) and stake on connections they believe are valuable. This creates a vibrant marketplace of social intelligence where agents compete and collaborate to provide the best matches.
 
 ### Stakes as Reputation Signals
 
@@ -114,15 +113,15 @@ interface IntentStake {
 
 The underlying intent details of other users remain private within the confidential compute environment.
 
-**Strategic Design**: Stakes serve multiple purposes:
+**Strategic Design**: Stakes serve multiple exciting purposes:
 - **Explainability**: Users understand why they're matched
 - **Quality Control**: Agents build reputation based on stake accuracy
-- **Economic Incentives**: Future token mechanics can reward successful matching
+- **Economic Incentives**: Future token mechanics can reward successful connections
 - **Composability**: Multiple agents can stake on the same intent relationships for different reasons.
 
 ### Multi-Layer Quality Control
 
-The system implements several mechanisms to ensure match quality and prevent abuse:
+Index implements several mechanisms to ensure match quality and prevent abuse:
 
 ### Stake Patterns in Index
 
@@ -137,26 +136,23 @@ The system supports multiple staking patterns that enable different types of dis
 | **1→n (broadcast)** | One agent stakes on the same person across multiple relevant users | "Suggest Bob to 5 different people looking for AI collaborators" | Demand-side liquidity discovery |
 | **n→1 (converge)** | Many agents stake different dimensions on one match candidate | "Trust agent + skill agent + context agent all stake on the same connection" | Multi-perspective evaluation |
 
-These patterns enable the system to scale from individual connections to community-wide discovery while maintaining explainability and agent accountability.
+These patterns enable Index to scale from individual connections to community-wide discovery while maintaining explainability and agent accountability.
 
 ### Programmable Discovery Markets
 
-We expect that discovery markets will become programmable—allowing anyone to define new economic rules and matching strategies over intents. The future of social coordination will be shaped by how these programmable markets are composed, forked, and remixed to surface new forms of connection.
+Index makes discovery markets programmable—allowing anyone to define new economic rules and con strategies over intents. The future of social coordination is shaped by how these programmable markets are composed, forked, and remixed to surface new forms of connection.
 
 **Customizable Market Logic**: Agents and communities will be able to launch their own discovery markets, each with unique staking, scoring, and reward mechanisms. For example, some markets may reward consensus and safe matches, while others incentivize risk-taking and novel connections.
 **Exploration-Driven Incentives**: By supporting mechanisms like logarithmic market scoring rules, these markets can dynamically adjust the "price" of matches. As common connections become saturated, agents are nudged to explore the long tail—surfacing niche, underexplored relationships that might otherwise be missed.
 
-
-**Polarization as Programmable Opportunity**: Programmable markets can explicitly reward agents for bridging divides—such as connecting people with opposing viewpoints or from competing domains. Since these matches are less obvious, the cost to stake is lower, but the potential reward is higher for agents who can justify the connection.
-
-This architecture enables a future where the very logic of discovery is open, remixable, and shaped by the needs and creativity of its participants.
+This architecture enables an exciting future where the very logic of discovery is open, remixable, and shaped by the needs and creativity of its participants.
 
 **Multiple Market Perspectives**: The same intent pool can support multiple discovery markets with different strategies:
 - **Consensus-driven markets**: Focus on safe, obvious matches
 - **Exploration markets**: Reward novel, high-risk connections  
 - **Domain-specific markets**: Optimize for particular industries or contexts
 
-**Network Effects**: As the system grows, the combinatorial explosion of potential connections creates a rich discovery space where specialized "signal miners" - agents optimized for finding specific types of valuable connections - can carve out profitable niches.
+**Network Effects**: As Index Network grows, the combinatorial explosion of potential connections creates a rich discovery space where specialized "signal miners" - agents optimized for finding specific types of valuable connections - can carve out profitable niches.
 
 ### Core Processing Agents
 
@@ -200,9 +196,9 @@ const userRelationship = {
 
 **Ephemeral Structure**: When users connect, the knowledge graph for that relationship dissolves, and new graphs form around emerging opportunities. This prevents static categorization while enabling rich, multi-dimensional relationship reasoning.
 
-**Composable Perspectives**: Each agent contributes its own reasoning layer, creating a composite understanding that's richer than any single matching algorithm could provide. Agents can build on each other's signals, creating compounding relevance where one agent's output becomes another's input signal.
+**Composable Perspectives**: Each agent contributes its own reasoning layer, creating a composite understanding that's richer than any single agent could provide. Agents can build on each other's signals, creating compounding relevance where one agent's output becomes another's input signal.
 
-## Discovery and Matching Flow
+## Discovery and Social Connection Flow
 
 ### 1. Content Upload and Intent Generation
 
@@ -212,7 +208,7 @@ User uploads files → Index → Intent Inferrer Agent → Suggested Intents
 
 When a user uploads files to an index, the Intent Inferrer agent analyzes the content using the Unstructured API for document parsing and GPT-4 for intent generation. The agent considers the most likely target audience (e.g., if analyzing a pitch deck, prioritizes investor-focused intents).
 
-**Technical Implementation**: Uses optimized document processing with parallel PDF page splitting and fast processing strategies. Content is chunked and analyzed to generate exactly 5 high-confidence intent suggestions.
+**Technical Implementation**: Uses optimized document processing with parallel PDF page splitting and fast processing strategies. Content is intelligently chunked and analyzed to generate exactly 5 high-confidence intent suggestions.
 
 ### Data Clean Room Architecture
 
@@ -227,18 +223,18 @@ Agents can only output **reasoning explanations** and **confidence scores as sta
 **Future Direction**: Agent contribution will become permissionless, with norm and flow control enforced using contextual+differential privacy techniques. This will enable open participation by agents while maintaining strong privacy guarantees for all users.
 
 
-### 3. Agent-Mediated Matching
+### 3. Agent-Mediated Connections
 
 ```
 Intent Created → Context Brokers → Semantic Analysis → Stakes Created
 ```
 
-When intents are created or updated, all registered context brokers receive notifications. Each broker applies its matching logic and creates stakes connecting related intents from different users.
+When intents are created or updated, all registered context brokers receive notifications. Each broker applies its connection logic and creates stakes connecting related intents from different users.
 
 
 ## Communication and Synthesis Layer
 
-The system automatically generates contextual communications:
+Index automatically generates contextual communications:
 
 **Connection Requests**: Include AI-generated "What Could Happen Here" synthesis
 **Connection Acceptance**: Include AI-generated introduction text based on shared stakes
@@ -257,7 +253,7 @@ synthesizeIntro(senderUserId, recipientUserId) → introduction_text
 - Synthesis narratives derived from agent insights
 - General collaboration potential assessments
 
-**Never included**: Raw intent content, private file details, or specific personal information from other users. The system maintains privacy while providing meaningful context for why connections might be valuable.
+**Never included**: Raw intent content, private file details, or specific personal information from other users. Index maintains privacy while providing meaningful context for why connections might be valuable.
 
 
 ## API Architecture
@@ -320,7 +316,7 @@ POST /api/indexes/{indexId}/files
 GET /api/indexes/{indexId}/suggested_intents
 ```
 
-**Discovery and Matching**:
+**Discovery and Connections**:
 ```typescript
 // Get stakes involving user's intents
 GET /api/stakes/by-user?includeDiscovered=false
@@ -340,7 +336,7 @@ npm install @index/react
 
 **Core Components**:
 
-**IntentForm**: Create and submit new intents with validation ([Demo](https://index.network/intents))
+**IntentForm**: Create and submit new intents with validation
 ```typescript
 import { IntentForm } from '@index/react';
 
@@ -362,7 +358,7 @@ import { VibeCheck } from '@index/react';
 />
 ```
 
-**MatchList**: Display and manage intent matches with filtering ([Demo](https://index.network/inbox))
+**MatchList**: Display and manage intent matches with filtering
 ```typescript
 import { MatchList } from '@index/react';
 
@@ -384,7 +380,7 @@ import { Radar } from '@index/react';
 />
 ```
 
-**Conversational Agents**: The system also supports conversational integrations for platforms like Slack, Discord, and other chat environments, enabling intent inference and matchmaking within existing communication workflows.
+**Conversational Agents**: Index also supports conversational integrations for platforms like Slack, Discord, and other chat environments, enabling intent inference and matchmaking within existing communication workflows.
 
 ## Connection and Discovery Workflow
 
@@ -430,12 +426,4 @@ const brokerPromises = CONTEXT_BROKERS.map(async (broker) => {
 });
 
 ```
-
-
-### Real-time Collaboration Components
-
-**Radar Integration**: Multiplayer discovery that can be embedded in existing tools ([Demo](https://x.com/indexnetwork_/status/1828847341001924833)):
-- **Google Docs Plugin**: Mention agents to summon relevant collaborators for unfinished documents
-- **Chat Integration**: Invite relevant strangers into conversations based on contextual analysis
-- **Draft Collaboration**: Share unfinished thoughts with contextually relevant experts
 
