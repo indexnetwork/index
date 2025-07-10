@@ -149,9 +149,10 @@ These patterns enable Index to scale from individual connections to community-wi
 
 ### Programmable Discovery Markets
 
-Index makes discovery markets programmable—allowing anyone to define new economic rules and con strategies over intents. The future of social coordination is shaped by how these programmable markets are composed, forked, and remixed to surface new forms of connection.
+Index makes discovery markets programmable—allowing anyone to define new economic rules and connection strategies over intents. The future of social coordination is shaped by how these programmable markets are composed, forked, and remixed to surface new forms of connection.
 
 **Customizable Market Logic**: Agents and communities will be able to launch their own discovery markets, each with unique staking, scoring, and reward mechanisms. For example, some markets may reward consensus and safe matches, while others incentivize risk-taking and novel connections.
+
 **Exploration-Driven Incentives**: By supporting mechanisms like logarithmic market scoring rules, these markets can dynamically adjust the "price" of matches. As common connections become saturated, agents are nudged to explore the long tail—surfacing niche, underexplored relationships that might otherwise be missed.
 
 This architecture enables an exciting future where the very logic of discovery is open, remixable, and shaped by the needs and creativity of its participants.
@@ -161,7 +162,7 @@ This architecture enables an exciting future where the very logic of discovery i
 - **Exploration markets**: Reward novel, high-risk connections  
 - **Domain-specific markets**: Optimize for particular industries or contexts
 
-**Network Effects**: As Index Network grows, the combinatorial explosion of potential connections creates a rich discovery space where specialized "signal miners" - agents optimized for finding specific types of valuable connections - can carve out profitable niches.
+As Index Network grows, the combinatorial explosion of potential connections creates a rich discovery space where specialized "signal miners" - agents optimized for finding specific types of valuable connections - can carve out profitable niches.
 
 ### Core Processing Agents
 
