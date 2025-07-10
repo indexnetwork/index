@@ -45,21 +45,25 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
       // Create new user if not exists
       // Get email from linked accounts - prioritize verified email
       let userEmail = null;
-      let userName = `User ${claims.userId.slice(-8)}`;
-      
+
       if (privyUser.email?.address) {
         userEmail = privyUser.email.address;
-        userName = privyUser.email.address;
       }
-      
-      // If we have linked accounts, try to find an email there
+
       if (!userEmail && privyUser.linkedAccounts) {
         for (const account of privyUser.linkedAccounts) {
           if (account.type === 'email' && account.address) {
             userEmail = account.address;
-            userName = account.address;
             break;
           }
+        }
+      }
+      
+      let userName = `User ${claims.userId.slice(-8)}`;
+      for (const account of privyUser.linkedAccounts) {
+        if (account && (account as any).name) {
+          userName = (account as any).name;
+          break;
         }
       }
 
