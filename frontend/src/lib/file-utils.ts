@@ -9,16 +9,20 @@ const getBaseUrl = () => {
  * @param filename - The avatar filename (e.g., "uuid.jpg")
  * @returns Full URL to the avatar file
  */
-export const getAvatarUrl = (filename: string): string => {
-  if (!filename) return '';
+export const getAvatarUrl = (params : any): string => {
+  
+  if (!params) return '';
+  const { avatar, id } = params;
+
+  if (!avatar) return `https://api.dicebear.com/9.x/shapes/png?seed=${params.id}`;
   
   // If it's already a full URL, return as is
-  if (filename.startsWith('http://') || filename.startsWith('https://')) {
-    return filename;
+  if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
+    return avatar;
   }
   
   // Remove leading slash if present
-  const cleanFilename = filename.startsWith('/') ? filename.slice(1) : filename;
+  const cleanFilename = avatar.startsWith('/') ? avatar.slice(1) : avatar;
   
   return `${getBaseUrl()}/uploads/avatars/${cleanFilename}`;
 };

@@ -336,7 +336,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex items-center gap-4">
                     <Image
-                      src={getAvatarUrl(userStakes.user.avatar)}
+                      src={getAvatarUrl(userStakes.user)}
                       alt={userStakes.user.name}
                       width={48}
                       height={48}
@@ -356,7 +356,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                         ...
                       </div>
                     ) : syntheses[userStakes.user.id] ? (
-                      <div className="text-gray-700 prose prose-sm max-w-none [&_a]:text-[#FC44E7] [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                      <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#ec6767] [&_a]:font-bold [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
                         <ReactMarkdown>
                           {syntheses[userStakes.user.id]}
                         </ReactMarkdown>
@@ -375,7 +375,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                     {userStakes.agents.map((agent) => (
                       <div key={agent.agent.name} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
                         <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gray-100">
-                          <Image src={getAvatarUrl(agent.agent.avatar)} alt={agent.agent.name} width={16} height={16} />
+                          <Image src={getAvatarUrl(agent.agent)} alt={agent.agent.name} width={16} height={16} />
                         </div>
                         <span className="font-medium text-gray-900">{agent.agent.name}</span>
                         <span className="text-gray-400 text-xs">({agent.stake})</span>

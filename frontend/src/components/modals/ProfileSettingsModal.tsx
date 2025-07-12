@@ -168,7 +168,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
                    <Image src={avatarPreview} alt="Avatar preview" width={96} height={96} className="w-full h-full object-cover" />
                  ) : user?.avatar ? (
                    <Image 
-                     src={getAvatarUrl(user.avatar)} 
+                     src={getAvatarUrl(user)} 
                      alt="Current avatar" 
                      width={96} 
                      height={96} 
@@ -253,7 +253,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
                 <p className="text-sm text-gray-600 font-medium mb-2">Example introduction:</p>
                 <p className="text-sm text-gray-700 italic">
-                  a"I'm a VC shifting into the agentic tech space. My background's a mix of systems thinking, human agency, and media, with experience across program strategy and the research side of emerging tech."
+                  I'm a VC shifting into the agentic tech space. My background's a mix of systems thinking, human agency, and media, with experience across program strategy and the research side of emerging tech.
                 </p>
               </div>
             )}
@@ -278,7 +278,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               {isLoading 
                 ? 'Saving...' 
                 : isOnboarding 
-                  ? 'Save Your Intro & Get Started' 
+                  ? 'Save Your Intro & Continue' 
                   : 'Save Changes'
               }
             </Button>

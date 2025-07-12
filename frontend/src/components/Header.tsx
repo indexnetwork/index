@@ -10,7 +10,11 @@ import { User, APIResponse } from '@/lib/types';
 import { getAvatarUrl } from '@/lib/file-utils';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 
-export default function Header({ showNavigation = true }: { showNavigation?: boolean }) {
+interface HeaderProps {
+  showNavigation?: boolean;
+}
+
+export default function Header({ showNavigation = true }: HeaderProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { login, logout, authenticated, ready } = usePrivy();
@@ -41,7 +45,7 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
 
   // Memoize user fetch function to prevent recreation on every render
   const fetchUser = useCallback(async () => {
-    if (!authenticated || !isAlpha || userLoading) return;
+    if (!authenticated || userLoading) return;
     
     setUserLoading(true);
     try {
@@ -53,6 +57,12 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
         if (!response.user.intro || response.user.intro.trim() === '') {
           setIsOnboarding(true);
           setProfileModalOpen(true);
+        } else {
+          try {
+            localStorage.setItem('onboarding_completed', Date.now().toString());
+          } catch (error) {
+            console.warn('Failed to store onboarding completion:', error);
+          }
         }
       }
     } catch (error) {
@@ -60,14 +70,14 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
     } finally {
       setUserLoading(false);
     }
-  }, [authenticated, isAlpha, api, userLoading]);
+  }, [authenticated, api, userLoading]);
 
   // Fetch user data when authenticated and ready
   useEffect(() => {
-    if (ready && authenticated && isAlpha && !user && !userLoading) {
+    if (ready && authenticated && !user && !userLoading) {
       fetchUser();
     }
-  }, [ready, authenticated, isAlpha, user, userLoading, fetchUser]);
+  }, [ready, authenticated, user, userLoading, fetchUser]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -198,21 +208,13 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
                 onClick={() => setDropdownOpen(!dropdownOpen)}
               >
                 <div className="w-8 h-8 rounded-full overflow-hidden mr-3">
-                  {user?.avatar ? (
-                    <Image
-                      src={getAvatarUrl(user.avatar)}
-                      alt={user.name || 'User'}
+                <Image
+                      src={getAvatarUrl(user)}
+                      alt={user?.name || 'User'}
                       width={32}
                       height={32}
                       className="w-full h-full object-cover"
                     />
-                  ) : (
-                    <div className="w-full h-full bg-gray-800 flex items-center justify-center">
-                      <span className="text-white text-sm font-medium">
-                        {user?.name ? user.name.charAt(0).toUpperCase() : 'U'}
-                      </span>
-                    </div>
-                  )}
                 </div>
                 <span className="text-gray-900 font-medium mr-2">
                   {user?.name || 'User'}
@@ -330,6 +332,12 @@ export default function Header({ showNavigation = true }: { showNavigation?: boo
           setProfileModalOpen(open);
           if (!open && isOnboarding) {
             setIsOnboarding(false);
+            // Store onboarding completion in localStorage for other components
+            try {
+              localStorage.setItem('onboarding_completed', Date.now().toString());
+            } catch (error) {
+              console.warn('Failed to store onboarding completion:', error);
+            }
           }
         }}
         user={user}
