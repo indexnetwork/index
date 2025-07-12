@@ -238,7 +238,7 @@ export default function SharePage({ params }: SharePageProps) {
       handleFlow();
       checkUserState();
     }
-  }, [state.step, authenticated, ready, resolvedParams.code, state.autoRequestConnection]);
+  }, [state.step, authenticated, ready, resolvedParams.code, state.autoRequestConnection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for onboarding completion from Header modal
   useEffect(() => {
@@ -312,9 +312,7 @@ export default function SharePage({ params }: SharePageProps) {
     setState(prev => ({ ...prev, step: 'connection-processing' }));
   }, [ready, authenticated, state.user]);
 
-  const handleOnboardingComplete = useCallback(() => {
-    setState(prev => ({ ...prev, step: 'connection-processing' }));
-  }, []);
+
 
   const handleStartOver = useCallback(() => {
     setState(prev => ({

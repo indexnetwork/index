@@ -6,15 +6,18 @@ const getBaseUrl = () => {
 
 /**
  * Generate URL for avatar files
- * @param filename - The avatar filename (e.g., "uuid.jpg")
+ * @param params - Object containing avatar and id/name properties
  * @returns Full URL to the avatar file
  */
-export const getAvatarUrl = (params : any): string => {
+export const getAvatarUrl = (params: { avatar?: string | null; id?: string; name?: string } | null): string => {
   
   if (!params) return '';
-  const { avatar, id } = params;
+  const { avatar } = params;
 
-  if (!avatar) return `https://api.dicebear.com/9.x/shapes/png?seed=${params.id}`;
+  if (!avatar) {
+    const seed = params.id || params.name || 'default';
+    return `https://api.dicebear.com/9.x/shapes/png?seed=${seed}`;
+  }
   
   // If it's already a full URL, return as is
   if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
