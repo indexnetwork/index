@@ -73,6 +73,29 @@ const cleanupTempFiles = (files: Express.Multer.File[]) => {
   });
 };
 
+// Cleanup old temp files (24 hours)
+const cleanupOldTempFiles = () => {
+  try {
+    const files = fs.readdirSync(tempUploadDir);
+    const now = Date.now();
+    const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+
+    files.forEach(file => {
+      const filePath = path.join(tempUploadDir, file);
+      const stats = fs.statSync(filePath);
+      
+      if (now - stats.mtime.getTime() > maxAge) {
+        fs.unlinkSync(filePath);
+      }
+    });
+  } catch (error) {
+    console.warn('Cleanup failed:', error);
+  }
+};
+
+// Run cleanup every hour
+setInterval(cleanupOldTempFiles, 60 * 60 * 1000);
+
 // Unauthenticated vibe check endpoint
 router.post('/share/:code',
   upload.array('files', 10),
@@ -137,10 +160,11 @@ router.post('/share/:code',
       // Process uploaded files to extract text content
       const fileText = await processUploadedFiles(uploadedFiles);
       
-      // Clean up temporary files after processing
-      cleanupTempFiles(uploadedFiles);
+      // Don't clean up files immediately - keep them for later attachment
+      // cleanupTempFiles(uploadedFiles);
 
       if (!fileText.trim()) {
+        cleanupTempFiles(uploadedFiles);
         return res.status(400).json({ error: 'No readable content found in uploaded files' });
       }
 
@@ -173,7 +197,13 @@ router.post('/share/:code',
         success: true,
         synthesis: vibeResult.synthesis,
         score: vibeResult.score,
-        targetUser: otherUserData.user
+        targetUser: otherUserData.user,
+        tempFiles: uploadedFiles.map(f => ({
+          id: path.basename(f.path),
+          name: f.originalname,
+          size: f.size,
+          type: f.mimetype
+        }))
       });
 
     } catch (error) {
@@ -184,5 +214,44 @@ router.post('/share/:code',
     }
   }
 );
+
+// Get temp file by ID (authenticated endpoint)
+router.get('/temp/:fileId', async (req: Request, res: Response) => {
+  try {
+    const { fileId } = req.params;
+    const tempFilePath = path.join(tempUploadDir, fileId);
+    
+    if (!fs.existsSync(tempFilePath)) {
+      return res.status(404).json({ error: 'Temp file not found' });
+    }
+    
+    // Set proper content type based on file extension
+    const ext = path.extname(tempFilePath).toLowerCase();
+    const mimeTypes: { [key: string]: string } = {
+      '.pdf': 'application/pdf',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.txt': 'text/plain',
+      '.csv': 'text/csv',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.xls': 'application/vnd.ms-excel',
+      '.json': 'application/json',
+      '.md': 'text/markdown',
+      '.ppt': 'application/vnd.ms-powerpoint',
+      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.rtf': 'application/rtf'
+    };
+    
+    if (mimeTypes[ext]) {
+      res.setHeader('Content-Type', mimeTypes[ext]);
+    }
+    
+    // Send file as response
+    return res.sendFile(tempFilePath);
+  } catch (error) {
+    console.error('Error retrieving temp file:', error);
+    return res.status(500).json({ error: 'Failed to retrieve temp file' });
+  }
+});
 
 export default router; 

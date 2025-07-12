@@ -7,6 +7,12 @@ export interface VibeCheckResult {
     name: string;
     intro: string;
   };
+  tempFiles?: {
+    id: string;
+    name: string;
+    size: number;
+    type: string;
+  }[];
   error?: string;
 }
 

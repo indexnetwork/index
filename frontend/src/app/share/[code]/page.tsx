@@ -105,6 +105,18 @@ export default function SharePage({ params }: SharePageProps) {
                   },
                   step: 'vibecheck-results'
                 }));
+                
+                // Store temp files in localStorage for later retrieval
+                if (vibeCheckResult.tempFiles) {
+                  localStorage.setItem(`vibecheck_${resolvedParams.code}`, JSON.stringify({
+                    results: [{ 
+                      aiSynthesis: vibeCheckResult.synthesis || '', 
+                      score: vibeCheckResult.score || 0 
+                    }],
+                    tempFiles: vibeCheckResult.tempFiles,
+                    autoRequest: state.autoRequestConnection
+                  }));
+                }
               } else {
                 setState(prev => ({ ...prev, step: 'error', error: vibeCheckResult.error || 'Vibecheck failed' }));
               }
@@ -115,8 +127,11 @@ export default function SharePage({ params }: SharePageProps) {
             // Store vibecheck results and trigger login (only if not already authenticated)
             if (!authenticated) {
               if (state.vibeCheckResults.aiSynthesis) {
+                const stored = localStorage.getItem(`vibecheck_${resolvedParams.code}`);
+                const existing = stored ? JSON.parse(stored) : {};
                 localStorage.setItem(`vibecheck_${resolvedParams.code}`, JSON.stringify({
                   results: [state.vibeCheckResults],
+                  tempFiles: existing.tempFiles || [],
                   autoRequest: state.autoRequestConnection
                 }));
               }
@@ -136,11 +151,26 @@ export default function SharePage({ params }: SharePageProps) {
                 title: `Collaboration with ${state.index.user.name}`
               });
 
-              // Upload files if any
-              if (state.uploadedFiles.length > 0) {
-                setState(prev => ({ ...prev, currentStep: 'Uploading files...' }));
-                for (const file of state.uploadedFiles) {
-                  await indexesService.uploadFile(newIndex.id, file);
+              // Upload files from temp storage if any
+              const stored = localStorage.getItem(`vibecheck_${resolvedParams.code}`);
+              if (stored) {
+                const parsed = JSON.parse(stored);
+                if (parsed.tempFiles && parsed.tempFiles.length > 0) {
+                  setState(prev => ({ ...prev, currentStep: 'Uploading files...' }));
+                  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                  
+                  for (const tempFile of parsed.tempFiles) {
+                    try {
+                      const response = await fetch(`${apiUrl}/vibecheck/temp/${tempFile.id}`);
+                      if (response.ok) {
+                        const blob = await response.blob();
+                        const file = new File([blob], tempFile.name, { type: tempFile.type });
+                        await indexesService.uploadFile(newIndex.id, file);
+                      }
+                    } catch (error) {
+                      console.warn('Failed to retrieve temp file:', error);
+                    }
+                  }
                 }
               }
 
