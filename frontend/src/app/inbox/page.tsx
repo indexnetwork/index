@@ -201,7 +201,7 @@ export default function InboxPage() {
               </div>
             ) : (
               <div className="text-gray-500 text-sm">
-                Synthesis will appear here...
+                ...
               </div>
             )}
           </div>
@@ -293,7 +293,7 @@ export default function InboxPage() {
                 </div>
               ) : (
                 <div className="text-gray-500 text-sm">
-                  Synthesis will appear here...
+                  ...
                 </div>
               )}
             </div>

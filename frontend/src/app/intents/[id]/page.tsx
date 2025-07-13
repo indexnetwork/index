@@ -363,7 +363,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                       </div>
                     ) : (
                       <div className="text-gray-500">
-                        Synthesis will appear here...
+                        ...
                       </div>
                     )}
                   </div>
