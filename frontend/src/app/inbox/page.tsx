@@ -186,26 +186,24 @@ export default function InboxPage() {
         </div>
 
         {/* What Could Happen Here */}
-        <div className="mb-4">
-          <h3 className="font-medium text-gray-700 mb-2 text-sm">What could happen here</h3>
-          <div className="space-y-2">
-            {synthesisLoading[userStake.user.id] ? (
-              <div className="text-gray-500 text-sm animate-pulse">
-                ...
-              </div>
-            ) : syntheses[userStake.user.id] ? (
-              <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#ec6767] [&_a]:font-bold [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
-                <ReactMarkdown>
-                  {syntheses[userStake.user.id]}
-                </ReactMarkdown>
-              </div>
-            ) : (
-              <div className="text-gray-500 text-sm">
-                ...
-              </div>
-            )}
+        {(synthesisLoading[userStake.user.id] || syntheses[userStake.user.id]) && (
+          <div className="mb-4">
+            <h3 className="font-medium text-gray-700 mb-2 text-sm">What could happen here</h3>
+            <div className="space-y-2">
+              {synthesisLoading[userStake.user.id] ? (
+                <div className="text-gray-500 text-sm animate-pulse">
+                  ...
+                </div>
+              ) : (
+                <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#ec6767] [&_a]:font-bold [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                  <ReactMarkdown>
+                    {syntheses[userStake.user.id]}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         { false && 
         <div className="mb-4">
@@ -278,26 +276,24 @@ export default function InboxPage() {
           </div>
 
           {/* What Could Happen Here */}
-          <div className="mb-4">
-            <h3 className="font-medium text-gray-700 mb-2 text-sm">What could happen here</h3>
-            <div className="space-y-2">
-              {synthesisLoading[connection.user.id] ? (
-                <div className="text-gray-500 text-sm animate-pulse">
-                  ...
-                </div>
-              ) : syntheses[connection.user.id] ? (
-                <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#ec6767] [&_a]:font-bold [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
-                  <ReactMarkdown>
-                    {syntheses[connection.user.id]}
-                  </ReactMarkdown>
-                </div>
-              ) : (
-                <div className="text-gray-500 text-sm">
-                  ...
-                </div>
-              )}
+          {(synthesisLoading[connection.user.id] || syntheses[connection.user.id]) && (
+            <div className="mb-4">
+              <h3 className="font-medium text-gray-700 mb-2 text-sm">What could happen here</h3>
+              <div className="space-y-2">
+                {synthesisLoading[connection.user.id] ? (
+                  <div className="text-gray-500 text-sm animate-pulse">
+                    ...
+                  </div>
+                ) : (
+                  <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#ec6767] [&_a]:font-bold [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                    <ReactMarkdown>
+                      {syntheses[connection.user.id]}
+                    </ReactMarkdown>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     );

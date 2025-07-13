@@ -348,26 +348,24 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                   </div>
                 </div>
 
-                <div className="mb-6">
-                  <h3 className="font-medium text-gray-700 mb-3">What could happen here</h3>
-                  <div className="relative min-h-[100px]">
-                    {synthesisLoading[userStakes.user.id] ? (
-                      <div className="text-gray-500 animate-pulse">
-                        ...
-                      </div>
-                    ) : syntheses[userStakes.user.id] ? (
-                      <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#ec6767] [&_a]:font-bold [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
-                        <ReactMarkdown>
-                          {syntheses[userStakes.user.id]}
-                        </ReactMarkdown>
-                      </div>
-                    ) : (
-                      <div className="text-gray-500">
-                        ...
-                      </div>
-                    )}
+                {(synthesisLoading[userStakes.user.id] || syntheses[userStakes.user.id]) && (
+                  <div className="mb-6">
+                    <h3 className="font-medium text-gray-700 mb-3">What could happen here</h3>
+                    <div className="relative min-h-[100px]">
+                      {synthesisLoading[userStakes.user.id] ? (
+                        <div className="text-gray-500 animate-pulse">
+                          ...
+                        </div>
+                      ) : (
+                        <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#ec6767] [&_a]:font-bold [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
+                          <ReactMarkdown>
+                            {syntheses[userStakes.user.id]}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 { false && <div>
                   <h3 className="font-medium text-gray-700 mb-4">Who's backing this match</h3>
