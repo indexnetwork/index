@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
@@ -22,9 +23,34 @@ export default function InboxPage() {
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
-  const intentsService = useIntents();
+  
+  // URL parameter handling
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const validTabs = ['discover', 'inbox', 'pending', 'history'];
+  const urlTab = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState(
+    validTabs.includes(urlTab || '') ? (urlTab as string) : 'inbox'
+  );
+
+    const intentsService = useIntents();
   const connectionsService = useConnections();
   const synthesisService = useSynthesis();
+
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab);
+    const params = new URLSearchParams(searchParams.toString());
+    
+    if (newTab === 'inbox') {
+      // Remove tab parameter for inbox (default)
+      params.delete('tab');
+      const queryString = params.toString();
+      router.replace(`/inbox${queryString ? `?${queryString}` : ''}`);
+    } else {
+      params.set('tab', newTab);
+      router.replace(`/inbox?${params.toString()}`);
+    }
+  };
 
   const fetchSynthesis = useCallback(async (targetUserId: string, intentIds?: string[]) => {
     if (fetchedSynthesesRef.current.has(targetUserId)) {
@@ -90,6 +116,14 @@ export default function InboxPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Sync tab state with URL changes
+  useEffect(() => {
+    const urlTab = searchParams.get('tab');
+    if (validTabs.includes(urlTab || '')) {
+      setActiveTab(urlTab as string);
+    }
+  }, [searchParams]);
 
   const handleConnectionAction = async (action: ConnectionAction, userId: string) => {
     try {
@@ -324,7 +358,7 @@ export default function InboxPage() {
         }}>
 
         <div className="flex flex-col justify-between mb-4">
-          <Tabs.Root defaultValue="discover" className="flex-grow">
+          <Tabs.Root value={activeTab} onValueChange={handleTabChange} className="flex-grow">
             <div className="flex flex-row items-end justify-between">
               <Tabs.List className="overflow-x-auto flex justify-between w-full text-sm text-black">
                 <div className="flex bg-white ">

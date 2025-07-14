@@ -682,7 +682,7 @@ export default function SharePage({ params }: SharePageProps) {
                       </Button>
                       <Button
                         className="flex-1 bg-black text-white hover:bg-gray-800"
-                        onClick={() => router.push('/inbox')}
+                        onClick={() => router.push('/inbox?tab=pending')}
                       >
                         Go to Inbox
                       </Button>
