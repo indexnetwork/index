@@ -145,11 +145,20 @@ export default function SharePage({ params }: SharePageProps) {
 
           case 'connection-processing':
             if (authenticated && state.index?.user?.id) {
-              // Create new index
-              setState(prev => ({ ...prev, currentStep: 'Creating your index...' }));
-              const newIndex = await indexesService.createIndex({
-                title: `Collaboration with ${state.index.user.name}`
-              });
+              // Check for existing index or create new one
+              // setState(prev => ({ ...prev, currentStep: 'Checking for existing index...' }));
+              const indexesResponse = await indexesService.getIndexes(0, 100);
+              
+              let targetIndex = indexesResponse.indexes?.find((index: Index) => index.title === 'My Vibe');
+              
+              if (!targetIndex) {
+                setState(prev => ({ ...prev, currentStep: 'Creating your index...' }));
+                targetIndex = await indexesService.createIndex({
+                  title: `My Vibe`
+                });
+              }
+              
+              const newIndex = targetIndex;
 
               // Upload files from temp storage if any
               const stored = localStorage.getItem(`vibecheck_${resolvedParams.code}`);
