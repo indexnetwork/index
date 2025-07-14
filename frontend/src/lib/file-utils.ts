@@ -11,7 +11,7 @@ const getBaseUrl = () => {
  */
 export const getAvatarUrl = (params: { avatar?: string | null; id?: string; name?: string } | null): string => {
   
-  if (!params) return '';
+  if (!params) return 'https://api.dicebear.com/9.x/shapes/png?seed=default';
   const { avatar } = params;
 
   if (!avatar) {
