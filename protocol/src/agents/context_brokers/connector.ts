@@ -17,7 +17,7 @@ const BROKER_IMPLEMENTATIONS: Record<string, new (agentId: string) => ContextBro
   // Semantic relevancy agent
   '028ef80e-9b1c-434b-9296-bb6130509482': SemanticRelevancyBroker,
   // Example context broker
-  '1c6a36bd-ffb5-4f8f-a20a-bc2e1e3fd55b': ExampleContextBroker,
+  // '1c6a36bd-ffb5-4f8f-a20a-bc2e1e3fd55b': ExampleContextBroker,
 };
 
 // Registry of all available context brokers
