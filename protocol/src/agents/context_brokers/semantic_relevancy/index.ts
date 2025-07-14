@@ -1,6 +1,6 @@
 import { BaseContextBroker } from '../base';
 import { intents, intentStakes, agents } from '../../../lib/schema';
-import { eq, and, ne, sql } from 'drizzle-orm';
+import { eq, and, ne, sql, isNull } from 'drizzle-orm';
 import { llm } from "../../../lib/agents";
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
@@ -20,31 +20,48 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       .from(intents)
       .where(and(
         ne(intents.id, currentIntent.id),
-        ne(intents.userId, currentIntent.userId)
+        ne(intents.userId, currentIntent.userId),
+        eq(intents.isIncognito, false),
+        isNull(intents.archivedAt)
       ));
     console.log('Found other intents:', allIntents.length);
 
-    const relatedIntents = [];
-    
-    // Use LLM to determine semantic relevance
-    for (const otherIntent of allIntents) {
-      const prompt = `Compare these two intents and determine if there's mutual intent.
-      Return only a number between 0 and 1, where 1 means highly related and 0 means not related at all.
-      
-      Intent 1: ${JSON.stringify(currentIntent.payload)}
-      Intent 2: ${JSON.stringify(otherIntent.payload)}`;
+    // Use LLM to determine semantic relevance - PARALLEL PROCESSING
+    const scorePromises = allIntents.map(async (otherIntent) => {
+      try {
+        const prompt = `Compare these two intents and determine if there's mutual intent.
+        Return only a number between 0 and 1, where 1 means highly related and 0 means not related at all.
+        
+        Intent 1: ${JSON.stringify(currentIntent.payload)}
+        Intent 2: ${JSON.stringify(otherIntent.payload)}`;
 
-      const response = await llm.invoke(prompt);
-      const score = parseFloat(response.content.toString());
-      console.log('LLM response for intent comparison:', { score, otherIntentId: otherIntent.id });
+        const response = await llm.invoke(prompt);
+        const score = parseFloat(response.content.toString());
+        //console.log('LLM response for intent comparison:', { score, otherIntentId: otherIntent.id });
 
-      if (score > 0.7) { // Only consider intents with high relevance
-        relatedIntents.push({
+        return {
           intent: otherIntent,
           score
-        });
+        };
+      } catch (error) {
+        console.error(`Error processing intent ${otherIntent.id}:`, error);
+        return {
+          intent: otherIntent,
+          score: 0
+        };
       }
-    }
+    });
+
+    // Wait for all LLM calls to complete
+    const scoredIntents = await Promise.allSettled(scorePromises);
+    
+    // Filter and extract successful results
+    const relatedIntents = scoredIntents
+      .filter(result => result.status === 'fulfilled' && result.value.score > 0.7)
+      .map(result => result.status === 'fulfilled' ? result.value : null)
+      .filter(item => item !== null);
+
+    console.log('Related intents:', relatedIntents);
 
     // Sort by relevance score and take top 5
     return relatedIntents
@@ -71,25 +88,32 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     const relatedIntents = await this.findSemanticallyRelatedIntents(currentIntent);
     console.log('Found related intents:', relatedIntents.length);
 
-    // Create stakes for related intents
-    for (const relatedIntent of relatedIntents) {
-      console.log('Created intent array:', [intentId, relatedIntent.id]);
-      
-      // Create new stake with reasoning from LLM
-      const reasoningPrompt = `Explain why these two intents are related in one sentence:
-      Intent 1: ${JSON.stringify(currentIntent.payload)}
-      Intent 2: ${JSON.stringify(relatedIntent.payload)}`;
+    // Create stakes for related intents - PARALLEL PROCESSING
+    const stakePromises = relatedIntents.map(async (relatedIntent) => {
+      try {
+        console.log('Created intent array:', [intentId, relatedIntent.id]);
+        
+        // Create new stake with reasoning from LLM
+        const reasoningPrompt = `Explain why these two intents are related in one sentence:
+        Intent 1: ${JSON.stringify(currentIntent.payload)}
+        Intent 2: ${JSON.stringify(relatedIntent.payload)}`;
 
-      const response = await llm.invoke(reasoningPrompt);
-      const reasoning = response.content.toString();
-      
-      await this.stakeManager.createStake({
-        intents: [intentId, relatedIntent.id],
-        stake: BigInt(100),
-        reasoning,
-        agentId: this.agentId
-      });
-    }
+        const response = await llm.invoke(reasoningPrompt);
+        const reasoning = response.content.toString();
+        
+        await this.stakeManager.createStake({
+          intents: [intentId, relatedIntent.id],
+          stake: BigInt(100),
+          reasoning,
+          agentId: this.agentId
+        });
+      } catch (error) {
+        console.error(`Error creating stake for intent ${relatedIntent.id}:`, error);
+      }
+    });
+
+    // Wait for all stake creation to complete
+    await Promise.allSettled(stakePromises);
   }
 
   async onIntentArchived(intentId: string): Promise<void> {
