@@ -52,8 +52,8 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
 
       if (!userEmail && privyUser.linkedAccounts) {
         for (const account of privyUser.linkedAccounts) {
-          if (account.type === 'email' && account.address) {
-            userEmail = account.address;
+          if (account.type === 'email' && (account as any).address) {
+            userEmail = (account as any).address;
             break;
           }
         }
