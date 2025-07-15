@@ -573,7 +573,7 @@ export default function CreateIntentModal({
                   e.preventDefault();
                   handleSubmit(e);
                 }}
-                disabled={finalIndexIds.length === 0}
+                disabled={finalIndexIds.length === 0 || !payload.trim()}
               >
                 Broadcast Intent
               </Button>

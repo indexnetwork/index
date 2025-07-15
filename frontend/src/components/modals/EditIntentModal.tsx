@@ -333,7 +333,7 @@ export default function EditIntentModal({
                   e.preventDefault();
                   handleSubmit(e);
                 }}
-                disabled={finalIndexIds.length === 0}
+                disabled={finalIndexIds.length === 0 || !payload.trim()}
               >
                 Update Intent
               </Button>
