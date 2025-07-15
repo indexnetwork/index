@@ -147,7 +147,7 @@ export default function SharePage({ params }: SharePageProps) {
             if (authenticated && state.index?.user?.id) {
               // Check for existing index or create new one
               // setState(prev => ({ ...prev, currentStep: 'Checking for existing index...' }));
-              const indexesResponse = await indexesService.getIndexes(0, 100);
+              const indexesResponse = await indexesService.getIndexes(1, 100);
               
               let targetIndex = indexesResponse.indexes?.find((index: Index) => index.title === 'My Vibe');
               
@@ -563,7 +563,7 @@ export default function SharePage({ params }: SharePageProps) {
 
                     {state.vibeCheckResults.aiSynthesis && (
                       <div className="space-y-2">
-                        <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none">
+                        <div className="text-gray-700 text-sm leading-relaxed prose prose-sm max-w-none [&_a]:text-[#ec6767] [&_a]:font-bold [&_a]:underline [&_a]:hover:opacity-80 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:mb-1 [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mb-1 [&_p]:mb-2 [&_strong]:font-semibold [&_em]:italic [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-sm">
                           <ReactMarkdown>
                             {state.vibeCheckResults.aiSynthesis}
                           </ReactMarkdown>
@@ -647,7 +647,7 @@ export default function SharePage({ params }: SharePageProps) {
                       {state.currentStep || 'Initializing...'}
                     </p>
                     <p className="text-gray-600 text-sm">
-                      Our agents are working to prepare your collaboration space and analyze potential synergies.
+                      Hang tight—our agents are setting up your connection and scoping out awesome ways you can team up!
                     </p>
                   </div>
                 </div>

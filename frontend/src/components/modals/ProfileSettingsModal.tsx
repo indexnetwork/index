@@ -76,6 +76,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   const [intro, setIntro] = useState(user?.intro || '');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const api = useAuthenticatedAPI();
@@ -83,6 +84,16 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Check file size (5MB limit)
+      const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+      if (file.size > maxSize) {
+        setAvatarError('File size must be less than 5MB. Please choose a smaller image.');
+        e.target.value = ''; // Clear the input
+        return;
+      }
+      
+      // Clear any previous error
+      setAvatarError(null);
       setAvatarFile(file);
       
       // Create preview
@@ -141,6 +152,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
       setIntro(user.intro || '');
       setAvatarFile(null);
       setAvatarPreview(null);
+      setAvatarError(null);
     }
   }, [open, user]);
 
@@ -198,6 +210,11 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
             <p className="text-sm text-gray-500">
               {isOnboarding ? "Upload your avatar" : "Click the upload button to change your avatar"}
             </p>
+            {avatarError && (
+              <p className="text-sm text-red-600 font-medium">
+                {avatarError}
+              </p>
+            )}
           </div>
 
           {/* Name Field */}
@@ -215,19 +232,20 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
             />
           </div>
 
-          {/* Email Field (Read-only) */}
-          <div>
-            <label htmlFor="email" className="text-md font-medium font-ibm-plex-mono text-black">
-              <div className="mb-2">Email</div>
-            </label>
-            <Input
-              id="email"
-              value={user?.email || 'Not provided'}
-              className="px-4 py-3 bg-gray-50"
-              disabled
-            />
-            <p className="text-sm text-gray-500 mt-1">Email is managed by your authentication provider</p>
-          </div>
+          {/* Email Field (Read-only) - Hidden during onboarding */}
+          {!isOnboarding && (
+            <div>
+              <label htmlFor="email" className="text-md font-medium font-ibm-plex-mono text-black">
+                <div className="mb-2">Email</div>
+              </label>
+              <Input
+                id="email"
+                value={user?.email || 'Not provided'}
+                className="px-4 py-3 bg-gray-50"
+                disabled
+              />
+            </div>
+          )}
 
           {/* Intro Field */}
           <div>
@@ -272,7 +290,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
             )}
             <Button
               type="submit"
-              disabled={isLoading || (isOnboarding && (!name.trim() || !intro.trim()))}
+              disabled={isLoading || !!avatarError || (isOnboarding && (!name.trim() || !intro.trim()))}
               className={isOnboarding ? "w-full" : ""}
             >
               {isLoading 

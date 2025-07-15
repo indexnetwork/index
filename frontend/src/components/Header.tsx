@@ -36,12 +36,15 @@ export default function Header({ showNavigation = true }: HeaderProps) {
       // Store in localStorage
       localStorage.setItem('alpha', alphaParam);
       setIsAlpha(alphaParam === 'true');
+    } else if (pathname?.startsWith('/share/')) {
+      localStorage.setItem('alpha', 'true');
+      setIsAlpha(true);
     } else {
       // Get from localStorage only once on mount
       const storedAlpha = localStorage.getItem('alpha');
       setIsAlpha(storedAlpha === 'true');
     }
-  }, [alphaParam]);
+  }, [alphaParam, pathname]);
 
   // Memoize user fetch function to prevent recreation on every render
   const fetchUser = useCallback(async () => {

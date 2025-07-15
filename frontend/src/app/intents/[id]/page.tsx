@@ -6,11 +6,12 @@ import { ArrowLeft, Play, Archive, Pause, ArchiveRestore, Edit } from "lucide-re
 import Image from "next/image";
 import Link from "next/link";
 import ReactMarkdown from "react-markdown";
-import { useIntents, useSynthesis } from "@/contexts/APIContext";
+import { useIntents, useSynthesis, useConnections } from "@/contexts/APIContext";
 import { Intent, IntentStakesByUserResponse } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
 import ClientLayout from "@/components/ClientLayout";
 import EditIntentModal from "@/components/modals/EditIntentModal";
+import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 import { formatDate } from "@/lib/utils";
 
 interface IntentDetailPageProps {
@@ -30,9 +31,11 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
+  const [connectionStatuses, setConnectionStatuses] = useState<Record<string, 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped'>>({});
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
   const intentsService = useIntents();
   const synthesisService = useSynthesis();
+  const connectionsService = useConnections();
 
   const fetchSynthesis = useCallback(async (targetUserId: string) => {
     if (fetchedSynthesesRef.current.has(targetUserId)) {
@@ -57,6 +60,43 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
     }
   }, [synthesisService, resolvedParams.id]);
 
+  const fetchConnectionStatus = useCallback(async (targetUserId: string) => {
+    try {
+      const status = await connectionsService.getConnectionStatus(targetUserId);
+      
+      // Convert API status to ConnectionActions format
+      let connectionStatus: 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' = 'none';
+      
+      if (status.status) {
+        switch (status.status) {
+          case 'REQUEST':
+            connectionStatus = status.isInitiator ? 'pending_sent' : 'pending_received';
+            break;
+          case 'ACCEPT':
+            connectionStatus = 'connected';
+            break;
+          case 'DECLINE':
+            connectionStatus = 'declined';
+            break;
+          case 'SKIP':
+            connectionStatus = 'skipped';
+            break;
+          case 'CANCEL':
+            connectionStatus = 'none'; // Canceled connections reset to none
+            break;
+          default:
+            connectionStatus = 'none';
+        }
+      }
+      
+      setConnectionStatuses(prev => ({ ...prev, [targetUserId]: connectionStatus }));
+    } catch (error) {
+      console.error('Error fetching connection status:', error);
+      // Default to 'none' on error
+      setConnectionStatuses(prev => ({ ...prev, [targetUserId]: 'none' }));
+    }
+  }, [connectionsService]);
+
   const fetchIntentData = useCallback(async () => {
     try {
       const intentData = await intentsService.getIntent(resolvedParams.id);
@@ -77,9 +117,10 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
       const stakesData = await intentsService.getIntentStakesByUser(resolvedParams.id);
       setStakesByUser(stakesData);
 
-      // Automatically fetch synthesis for all users
+      // Automatically fetch synthesis and connection status for all users
       stakesData.forEach(userStakes => {
         fetchSynthesis(userStakes.user.id);
+        fetchConnectionStatus(userStakes.user.id);
       });
 
     } catch (error) {
@@ -89,7 +130,7 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
         setStakesLoading(false);
       }
     }
-  }, [intentsService, resolvedParams.id, fetchSynthesis]);
+  }, [intentsService, resolvedParams.id, fetchSynthesis, fetchConnectionStatus]);
 
   // Initial data fetch
   useEffect(() => {
@@ -107,6 +148,40 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
 
     return () => clearInterval(interval);
   }, [fetchStakes, isPaused]);
+
+  const handleConnectionAction = async (action: ConnectionAction, userId: string) => {
+    try {
+      console.log(`Connection action: ${action} for user: ${userId}`);
+      
+      // Call the appropriate connection service method
+      switch (action) {
+        case 'REQUEST':
+          await connectionsService.requestConnection(userId);
+          break;
+        case 'SKIP':
+          await connectionsService.skipConnection(userId);
+          break;
+        case 'ACCEPT':
+          await connectionsService.acceptConnection(userId);
+          break;
+        case 'DECLINE':
+          await connectionsService.declineConnection(userId);
+          break;
+        case 'CANCEL':
+          await connectionsService.cancelConnection(userId);
+          break;
+      }
+
+      // Refresh the connection status for this specific user
+      await fetchConnectionStatus(userId);
+    } catch (error) {
+      console.error('Error handling connection action:', error);
+    }
+  };
+
+  const getConnectionStatus = (userId: string): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
+    return connectionStatuses[userId] || 'none';
+  };
 
   const handleArchiveIntent = useCallback(async () => {
     if (!intent) return;
@@ -345,6 +420,16 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
                     <div>
                       <h2 className="text-lg font-medium text-gray-900">{userStakes.user.name}</h2>
                     </div>
+                  </div>
+                  {/* Connection Actions */}
+                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                    <ConnectionActions
+                      userId={userStakes.user.id}
+                      userName={userStakes.user.name}
+                      connectionStatus={getConnectionStatus(userStakes.user.id)}
+                      onAction={handleConnectionAction}
+                      size="sm"
+                    />
                   </div>
                 </div>
 

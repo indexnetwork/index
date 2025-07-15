@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Intent } from "@/lib/types";
@@ -29,7 +29,18 @@ export default function EditIntentModal({
   const [availableIndexes, setAvailableIndexes] = useState<Array<{ id: string; title: string }>>([]);
   const [selectedIndexIds, setSelectedIndexIds] = useState<string[]>([]);
   const [isLoadingIndexes, setIsLoadingIndexes] = useState(false);
+  const [isGlobalDiscoveryEnabled, setIsGlobalDiscoveryEnabled] = useState(true);
   const indexesService = useIndexes();
+
+  // Get global index ID from environment
+  const globalIndexId = process.env.NEXT_PUBLIC_GLOBAL_INDEX_ID;
+
+  // Compute final index IDs including global discovery
+  const finalIndexIds = useMemo(() => {
+    return isGlobalDiscoveryEnabled && globalIndexId 
+      ? [...selectedIndexIds, globalIndexId] 
+      : selectedIndexIds;
+  }, [isGlobalDiscoveryEnabled, globalIndexId, selectedIndexIds]);
 
   // Initialize form data when modal opens
   useEffect(() => {
@@ -39,7 +50,16 @@ export default function EditIntentModal({
       
       // Set current intent's indexes
       const currentIndexIds = intent.indexes?.map(idx => idx.indexId) || [];
-      setSelectedIndexIds(currentIndexIds);
+      
+      // Check if global discovery is enabled (if global index ID is in the current indexes)
+      const isGlobalEnabled = globalIndexId ? currentIndexIds.includes(globalIndexId) : true;
+      setIsGlobalDiscoveryEnabled(isGlobalEnabled);
+      
+      // Filter out global index ID from selectedIndexIds since it's handled separately
+      const filteredIndexIds = globalIndexId 
+        ? currentIndexIds.filter(id => id !== globalIndexId)
+        : currentIndexIds;
+      setSelectedIndexIds(filteredIndexIds);
       
       // Fetch available indexes
       setIsLoadingIndexes(true);
@@ -56,7 +76,7 @@ export default function EditIntentModal({
       
       setHasInitialized(true);
     }
-  }, [open, intent, hasInitialized, indexesService]);
+  }, [open, intent, hasInitialized, indexesService, globalIndexId]);
 
   // Reset when modal closes
   useEffect(() => {
@@ -69,6 +89,7 @@ export default function EditIntentModal({
       setAvailableIndexes([]);
       setSelectedIndexIds([]);
       setIsLoadingIndexes(false);
+      setIsGlobalDiscoveryEnabled(true);
     }
   }, [open]);
 
@@ -83,7 +104,7 @@ export default function EditIntentModal({
         id: intent.id,
         payload, 
         isIncognito: isIncognito,
-        indexIds: selectedIndexIds
+        indexIds: finalIndexIds
       });
       setIsSuccess(true);
       
@@ -96,7 +117,7 @@ export default function EditIntentModal({
     } finally {
       setIsProcessing(false);
     }
-  }, [intent, payload, isIncognito, selectedIndexIds, onSubmit, onOpenChange]);
+  }, [intent, payload, isIncognito, finalIndexIds, onSubmit, onOpenChange]);
 
   if (!intent) return null;
 
@@ -107,9 +128,6 @@ export default function EditIntentModal({
         <Dialog.Content className="fixed left-[50%] top-[50%] max-h-[85vh] w-[90vw] max-w-lg translate-x-[-50%] translate-y-[-50%] rounded-md bg-white p-6 shadow-lg focus:outline-none overflow-hidden flex flex-col">
           <div className="flex-shrink-0 mb-6">
             <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Edit Intent</Dialog.Title>
-            <Dialog.Description className="text-sm text-gray-600 mt-2">
-              Update your intent details and visibility settings.
-            </Dialog.Description>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -127,13 +145,14 @@ export default function EditIntentModal({
                           id="payload"
                           value={payload}
                           onChange={(e) => setPayload(e.target.value)}
-                          className="min-h-[200px]"
+                          className="min-h-[150px]"
                           placeholder="Enter your intent here..."
                           required
                         />
                       </div>
                     </div>
                   </div>
+
 
                   {/* Visibility Section */}
                   <div>
@@ -178,6 +197,42 @@ export default function EditIntentModal({
                     </div>
                   </div>
 
+
+                  {/* Global Discovery Section */}
+                  <div>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-md font-medium font-ibm-plex-mono text-black">Global Discovery</h3>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Globe className="h-4 w-4" />
+                          </div>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          {isGlobalDiscoveryEnabled 
+                            ? "Your intent will be discoverable globally across the platform"
+                            : "Your intent will only be visible in selected indexes"
+                          }
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 ml-4">
+                        <button
+                          type="button"
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer ${
+                            isGlobalDiscoveryEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                          }`}
+                          onClick={() => setIsGlobalDiscoveryEnabled(!isGlobalDiscoveryEnabled)}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              isGlobalDiscoveryEnabled ? 'translate-x-6' : 'translate-x-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
                   {/* Index Selection Section */}
                   <div>
                     <div className="mb-2">
@@ -278,7 +333,7 @@ export default function EditIntentModal({
                   e.preventDefault();
                   handleSubmit(e);
                 }}
-                disabled={selectedIndexIds.length === 0}
+                disabled={finalIndexIds.length === 0}
               >
                 Update Intent
               </Button>

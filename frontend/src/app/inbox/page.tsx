@@ -14,6 +14,8 @@ import { formatDate } from "@/lib/utils";
 import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 
+const validTabs = ['discover', 'inbox', 'pending', 'history'];
+
 export default function InboxPage() {
   const [discoverStakes, setDiscoverStakes] = useState<StakesByUserResponse[]>([]);
   const [inboxConnections, setInboxConnections] = useState<UserConnection[]>([]);
@@ -27,7 +29,6 @@ export default function InboxPage() {
   // URL parameter handling
   const searchParams = useSearchParams();
   const router = useRouter();
-  const validTabs = ['discover', 'inbox', 'pending', 'history'];
   const urlTab = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(
     validTabs.includes(urlTab || '') ? (urlTab as string) : 'inbox'

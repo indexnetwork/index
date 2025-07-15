@@ -1,6 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
-import { Copy, Globe, Lock, Trash2, Plus, ChevronDown } from "lucide-react";
+import { Copy, Globe, Lock, Trash2, Plus, ChevronDown, Check } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Input } from "../ui/input";
 import { useIndexes } from "@/contexts/APIContext";
@@ -73,6 +73,7 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   });
   const [members, setMembers] = useState<Member[]>([]);
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
+  const [isCopied, setIsCopied] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const permissionsDropdownRef = useRef<HTMLDivElement>(null);
@@ -191,11 +192,11 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     }
   };
 
-
-
   const handleCopyLink = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 1000); // Reset after 2 seconds
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
@@ -377,10 +378,16 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-10 px-4"
+                    className={`h-10 px-4 transition-colors ${
+                      isCopied ? 'bg-green-50 border-green-200 text-green-700' : ''
+                    }`}
                     onClick={() => handleCopyLink(shareUrl)}
                   >
-                    <Copy className="h-4 w-4" />
+                    {isCopied ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
               </div>

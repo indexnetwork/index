@@ -192,21 +192,25 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
   const handleCreateIntent = async (intent: { payload: string; attachments: File[]; isIncognito: boolean; indexIds: string[] }) => {
     try {
-      const newIntent = await intentsService.createIntent({
+      await intentsService.createIntent({
         payload: intent.payload,
         indexIds: intent.indexIds,
         isIncognito: intent.isIncognito
       });
-      // Update local state immediately
-      setAddedIntents(prev => new Set([...prev, selectedSuggestedIntent?.id || '']));
+      
+      // Remove the added intent from suggested intents list
+      if (selectedSuggestedIntent?.id) {
+        setSuggestedIntents(prev => prev.filter(suggestedIntent => suggestedIntent.id !== selectedSuggestedIntent.id));
+        setAddedIntents(prev => new Set([...prev, selectedSuggestedIntent.id]));
+      }
+      
       // Refresh the index data and intents
       const updatedIndex = await indexesService.getIndex(resolvedParams.id);
       setIndex(updatedIndex || null);
       fetchIndexIntents(); // Refresh intents list
       setShowCreateIntentModal(false);
       setSelectedSuggestedIntent(null);
-      // Redirect to the created intent
-      router.push(`/intents/${newIntent.id}`);
+      // Stay on the index page instead of redirecting
     } catch (error) {
       console.error('Error creating intent:', error);
     }

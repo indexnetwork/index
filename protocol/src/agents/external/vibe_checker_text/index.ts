@@ -35,7 +35,7 @@ export interface OtherUserData {
 
 // Zod schema for structured output
 const VibeCheckSchema = z.object({
-  synthesis: z.string().describe("Markdown synthesis explaining collaboration possibilities between the two users. Do not include score or any other text than the synthesis."),
+  synthesis: z.string().describe("Markdown synthesis explaining collaboration possibilities between the two users. Do not include score or any other text other than the synthesis markdown output."),
   score: z.number().min(0).max(1).describe("Collaboration potential score between 0 and 1, where 1 is perfect alignment")
 });
 
@@ -65,7 +65,7 @@ INTENTS:
 ${otherUserData.intents.map(intent => `- ${intent.payload}`).join('\n')}
 
 GUIDELINES:
-- Always output as markdown.
+- Always output as markdown and output rich text.
 - Use "You" vs "${otherUserData.user.name}" context, and always talk to file content owner as "you". Intent owner is the other user.
 - Contextualize user's intents as they wants, thinks, seeks, etc. Dont treat them as a pure database object.
 - Focus on concrete collaboration/business/relationship possibilities

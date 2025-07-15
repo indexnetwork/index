@@ -83,8 +83,8 @@ This isn't just adjacent thinking — it's a chance to push the boundaries of wh
 
     const prompt = `Generate a "What Could Happen Here" collaboration synthesis text.
 
-USER: ${userData.name}
-INTRO: ${userData.intro}
+SUGGESTED USER: ${userData.name}
+SUGGESTED USER INTRO: ${userData.intro}
 
 INTENT CONTEXTS AND AGENT REASONING:
 ${userData.intents.map(intent => `
