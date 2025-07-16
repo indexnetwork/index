@@ -576,7 +576,7 @@ export default function CreateIntentModal({
                   e.preventDefault();
                   handleSubmit(e);
                 }}
-                disabled={finalIndexIds.length === 0 || !payload.trim()}
+                disabled={!payload.trim()}
               >
                 Broadcast Intent
               </Button>
