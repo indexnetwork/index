@@ -1,6 +1,9 @@
 import db from './db';
 import { indexes, indexMembers } from './schema';
-import { eq, isNull, and, sql } from 'drizzle-orm';
+import { eq, isNull, and, sql, or } from 'drizzle-orm';
+
+// Special UUID for "everyone" public access
+export const EVERYONE_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 export interface IndexAccessResult {
   hasAccess: boolean;
@@ -34,30 +37,39 @@ export const checkIndexAccess = async (indexId: string, userId: string): Promise
   
   // Owner always has access
   if (indexData.userId === userId) {
-    return { hasAccess: true, indexData, memberPermissions: ['can-write', 'can-read', 'can-view-files', 'can-match'] };
+    return { hasAccess: true, indexData, memberPermissions: ['can-write', 'can-read', 'can-view-files', 'can-match', 'can-write-intents'] };
   }
 
-  // Public access via link permissions
-  if (indexData.linkPermissions && indexData.linkPermissions.permissions.length > 0) {
-    return { hasAccess: true, indexData, memberPermissions: indexData.linkPermissions.permissions };
-  }
-
-  // Check if user is a member
+  // Check if user is a member OR if "everyone" has permissions
   const membership = await db.select({ 
     userId: indexMembers.userId,
     permissions: indexMembers.permissions 
   }).from(indexMembers)
-    .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)))
-    .limit(1);
+    .where(and(
+      eq(indexMembers.indexId, indexId), 
+      or(eq(indexMembers.userId, userId), eq(indexMembers.userId, EVERYONE_USER_ID))
+    ));
 
   if (membership.length === 0) {
     return { hasAccess: false, error: 'Access denied', status: 403 };
   }
 
+  // Combine user permissions with "everyone" permissions
+  const userMembership = membership.find(m => m.userId === userId);
+  const everyoneMembership = membership.find(m => m.userId === EVERYONE_USER_ID);
+  
+  const combinedPermissions = [
+    ...(userMembership?.permissions || []),
+    ...(everyoneMembership?.permissions || [])
+  ];
+  
+  // Remove duplicates
+  const uniquePermissions = [...new Set(combinedPermissions)];
+
   return { 
     hasAccess: true, 
     indexData, 
-    memberPermissions: membership[0].permissions 
+    memberPermissions: uniquePermissions 
   };
 };
 
@@ -87,30 +99,6 @@ export const checkIndexOwnership = async (indexId: string, userId: string): Prom
   };
 };
 
-export const checkIndexPermission = async (
-  indexId: string, 
-  userId: string, 
-  requiredPermission: string
-): Promise<IndexAccessResult> => {
-  const accessResult = await checkIndexAccess(indexId, userId);
-  
-  if (!accessResult.hasAccess) {
-    return accessResult;
-  }
-
-  const hasPermission = accessResult.memberPermissions?.includes(requiredPermission) || false;
-  
-  if (!hasPermission) {
-    return { 
-      hasAccess: false, 
-      error: `Permission denied: ${requiredPermission} required`, 
-      status: 403 
-    };
-  }
-
-  return accessResult;
-};
-
 export const checkIndexAccessByCode = async (code: string): Promise<IndexAccessResult> => {
   // Use SQL JSON operator to find index by code efficiently
   const index = await db.select({
@@ -138,5 +126,119 @@ export const checkIndexAccessByCode = async (code: string): Promise<IndexAccessR
     hasAccess: true, 
     indexData, 
     memberPermissions: indexData.linkPermissions.permissions 
+  };
+};
+
+export interface MultipleIndexAccessResult {
+  hasAccess: boolean;
+  validIndexIds: string[];
+  invalidIds: string[];
+  error?: string;
+}
+
+/**
+ * Check if user has write access to a single index
+ */
+export const checkIndexWriteAccess = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
+  const accessCheck = await checkIndexAccess(indexId, userId);
+  console.log('accessCheck', accessCheck);
+  if (!accessCheck.hasAccess) {
+    return accessCheck;
+  }
+
+  if (!accessCheck.memberPermissions?.includes('can-write')) {
+    return { 
+      hasAccess: false, 
+      error: 'Write access denied', 
+      status: 403,
+      indexData: accessCheck.indexData
+    };
+  }
+
+  return accessCheck;
+};
+
+/**
+ * Check if user has intent write access to a single index
+ */
+export const checkIndexIntentWriteAccess = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
+  const accessCheck = await checkIndexAccess(indexId, userId);
+  if (!accessCheck.hasAccess) {
+    return accessCheck;
+  }
+
+  // Check for either general write access or specific intent write access
+  const hasWriteAccess = accessCheck.memberPermissions?.includes('can-write') || 
+                        accessCheck.memberPermissions?.includes('can-write-intents');
+
+  if (!hasWriteAccess) {
+    return { 
+      hasAccess: false, 
+      error: 'Intent write access denied', 
+      status: 403,
+      indexData: accessCheck.indexData
+    };
+  }
+
+  return accessCheck;
+};
+
+/**
+ * Check if user has write access to multiple indexes
+ * Returns lists of valid and invalid index IDs
+ */
+export const checkMultipleIndexesWriteAccess = async (indexIds: string[], userId: string): Promise<MultipleIndexAccessResult> => {
+  if (indexIds.length === 0) {
+    return { hasAccess: true, validIndexIds: [], invalidIds: [] };
+  }
+
+  const validIndexIds: string[] = [];
+  const invalidIds: string[] = [];
+
+  for (const indexId of indexIds) {
+    const accessCheck = await checkIndexWriteAccess(indexId, userId);
+
+    if (accessCheck.hasAccess) {
+      validIndexIds.push(indexId);
+    } else {
+      invalidIds.push(indexId);
+    }
+  }
+
+  return {
+    hasAccess: invalidIds.length === 0,
+    validIndexIds,
+    invalidIds,
+    error: invalidIds.length > 0 ? 'Some index IDs are invalid or you don\'t have write access to them' : undefined
+  };
+};
+
+/**
+ * Check if user has intent write access to multiple indexes
+ * Returns lists of valid and invalid index IDs
+ */
+export const checkMultipleIndexesIntentWriteAccess = async (indexIds: string[], userId: string): Promise<MultipleIndexAccessResult> => {
+  if (indexIds.length === 0) {
+    return { hasAccess: true, validIndexIds: [], invalidIds: [] };
+  }
+
+  const validIndexIds: string[] = [];
+  const invalidIds: string[] = [];
+
+  for (const indexId of indexIds) {
+    const accessCheck = await checkIndexIntentWriteAccess(indexId, userId);
+
+    if (accessCheck.hasAccess) {
+      validIndexIds.push(indexId);
+    } else {
+      invalidIds.push(indexId);
+    }
+  }
+
+  return {
+    hasAccess: invalidIds.length === 0,
+    validIndexIds,
+    invalidIds,
+    error: invalidIds.length > 0 ? 'Some index IDs are invalid or you don\'t have intent write access to them' : undefined
   };
 }; 

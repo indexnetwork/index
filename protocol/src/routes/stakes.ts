@@ -299,12 +299,9 @@ router.get('/by-user',
 );
 
 // Get stakes for users within a specific shared index, grouped by user
-router.get('/index/:code/by-user',
+router.get('/index/share/:code/by-user',
   authenticatePrivy,
-  [
-    param('code').isUUID(),
-    query('includeDiscovered').optional().isBoolean()
-  ],
+  [param('code').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
       const errors = validationResult(req);
@@ -313,7 +310,6 @@ router.get('/index/:code/by-user',
       }
 
       const { code } = req.params;
-      const includeDiscovered = req.query.includeDiscovered === 'true';
 
       // Check access to the shared index
       const accessCheck = await checkIndexAccessByCode(code);
@@ -328,40 +324,24 @@ router.get('/index/:code/by-user',
         return res.status(403).json({ error: 'Shared index does not allow matching' });
       }
 
-      // Get intents from the shared index
-      const sharedIndexIntents = await db.select({
+      // Get current user's intents in the shared index
+      const userIntentsInIndex = await db.select({
         intentId: intentIndexes.intentId
       })
       .from(intentIndexes)
-      .where(eq(intentIndexes.indexId, sharedIndexData.id));
+      .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
+      .where(and(
+        eq(intentIndexes.indexId, sharedIndexData.id),
+        eq(intents.userId, req.user!.id)
+      ));
 
-      const sharedIntentIds = sharedIndexIntents.map(item => item.intentId);
+      const userIntentIds = userIntentsInIndex.map(item => item.intentId);
 
-      if (sharedIntentIds.length === 0) {
+      if (userIntentIds.length === 0) {
         return res.json([]);
       }
 
-      // Get users with existing connections (discovered users) if filtering is enabled
-      let discoveredUserIds: string[] = [];
-      if (!includeDiscovered) {
-        const connectionEvents = await db.select({
-          initiatorUserId: userConnectionEvents.initiatorUserId,
-          receiverUserId: userConnectionEvents.receiverUserId,
-        })
-        .from(userConnectionEvents)
-        .where(
-          or(
-            eq(userConnectionEvents.initiatorUserId, req.user!.id),
-            eq(userConnectionEvents.receiverUserId, req.user!.id)
-          )
-        );
-
-        discoveredUserIds = connectionEvents.map(event => 
-          event.initiatorUserId === req.user!.id ? event.receiverUserId : event.initiatorUserId
-        );
-      }
-
-      // Get stakes for shared index intents, excluding authenticated user and discovered users
+      // Get stakes with user info in a single query, excluding the intent owner
       const stakes = await db.select({
         stake: intentStakes.stake,
         reasoning: intentStakes.reasoning,
@@ -370,120 +350,70 @@ router.get('/index/:code/by-user',
         agentAvatar: agents.avatar,
         userId: users.id,
         userName: users.name,
-        userIntro: users.intro,
-        intentId: intents.id,
-        intentSummary: intents.summary,
-        intentPayload: intents.payload,
-        intentUpdatedAt: intents.updatedAt
+        userAvatar: users.avatar,
+        userIntro: users.intro
       })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
       .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
       .innerJoin(users, eq(intents.userId, users.id))
       .where(and(
-        isNull(agents.deletedAt),
         sql`EXISTS(
           SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-          WHERE intent_id IN (${sql.join(sharedIntentIds.map(id => sql`${id}`), sql`, `)})
+          WHERE intent_id IN (${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)})
         )`,
-        sql`${users.id} != ${req.user!.id}`,
-        sql`${users.id} != ${sharedIndexData.userId}`,
-        ...(discoveredUserIds.length > 0 ? [notInArray(users.id, discoveredUserIds)] : [])
+        isNull(agents.deletedAt),
+        sql`${users.id} != ${req.user!.id}`
       ));
 
-      // Group by user first, then by intent group
-      const stakesByUser: Record<string, any> = {};
-
-      for (const stake of stakes) {
-        // Filter to only include intents that are in the shared index
-        const filteredIntents = stake.stakeIntents.filter(intentId => 
-          sharedIntentIds.includes(intentId)
-        );
-        
-        if (filteredIntents.length === 0) continue;
-
-        const userId = stake.userId;
-        
-        if (!stakesByUser[userId]) {
-          stakesByUser[userId] = {
+      // Group by user
+      const userStakes = stakes.reduce((acc, stake) => {
+        const userName = stake.userName;
+        if (!acc[userName]) {
+          acc[userName] = {
             user: {
               id: stake.userId,
               name: stake.userName,
+              avatar: stake.userAvatar,
               intro: stake.userIntro
             },
-            totalStake: BigInt(0),
-            intentGroups: {},
-            allIntents: new Map()
-          };
-        }
-
-        const sortedIntents = [...filteredIntents].sort();
-        const intentGroupKey = sortedIntents.join(',');
-        
-        if (!stakesByUser[userId].intentGroups[intentGroupKey]) {
-          stakesByUser[userId].intentGroups[intentGroupKey] = {
-            intentIds: sortedIntents,
             totalStake: BigInt(0),
             agents: {}
           };
         }
+        acc[userName].totalStake += stake.stake;
 
-        stakesByUser[userId].totalStake += stake.stake;
-        stakesByUser[userId].intentGroups[intentGroupKey].totalStake += stake.stake;
-
-        // Track agents for this intent group
         const agentName = stake.agentName;
-        if (!stakesByUser[userId].intentGroups[intentGroupKey].agents[agentName]) {
-          stakesByUser[userId].intentGroups[intentGroupKey].agents[agentName] = {
+        if (!acc[userName].agents[agentName]) {
+          acc[userName].agents[agentName] = {
             agent: {
               name: stake.agentName,
+              avatar: stake.agentAvatar
             },
             stake: BigInt(0),
             reasoning: new Set()
           };
         }
-        stakesByUser[userId].intentGroups[intentGroupKey].agents[agentName].stake += stake.stake;
+        acc[userName].agents[agentName].stake += stake.stake;
         if (stake.reasoning) {
-          stakesByUser[userId].intentGroups[intentGroupKey].agents[agentName].reasoning.add(stake.reasoning);
+          acc[userName].agents[agentName].reasoning.add(stake.reasoning);
         }
 
-        // Store intent details
-        if (sharedIntentIds.includes(stake.intentId)) {
-          stakesByUser[userId].allIntents.set(stake.intentId, {
-            id: stake.intentId,
-            summary: stake.intentSummary,
-            payload: stake.intentPayload,
-            updatedAt: stake.intentUpdatedAt
-          });
-        }
-      }
+        return acc;
+      }, {} as Record<string, any>);
 
-      // Format results grouped by user
-      const result = Object.values(stakesByUser)
-        .sort((a: any, b: any) => Number(b.totalStake - a.totalStake))
-        .map((userStakes: any) => {
-          const intents = Object.values(userStakes.intentGroups).map((group: any) => {
-            const intentsInGroup = Array.from(userStakes.allIntents.values()).filter((intent: any) =>
-              group.intentIds.includes(intent.id)
-            );
-
-            return intentsInGroup.map((intent: any) => ({
-              intent: intent,
-              totalStake: group.totalStake.toString(),
-              agents: Object.values(group.agents).map((agent: any) => ({
-                agent: agent.agent,
-                stake: agent.stake.toString(),
-                reasoning: Array.from(agent.reasoning).join(' ')
-              }))
-            }));
-          }).flat().sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
-
-          return {
-            user: userStakes.user,
-            intents: intents
-          };
-        })
-        .filter(stake => stake.intents.length > 0);
+      // Format results without synthesis (synthesis moved to separate endpoint)
+      const result = Object.values(userStakes)
+        .map(user => ({
+          user: user.user,
+          totalStake: user.totalStake.toString(),
+          agents: Object.values(user.agents).map((agent: any) => ({
+            agent: agent.agent,
+            stake: agent.stake.toString(),
+            reasoning: Array.from(agent.reasoning).join(' ')
+          }))
+        }))
+        .sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
       return res.json(result);
     } catch (error) {
@@ -492,7 +422,5 @@ router.get('/index/:code/by-user',
     }
   }
 );
-
-
 
 export default router;

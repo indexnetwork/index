@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Response, Request } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
 import { intents, users, indexes, intentIndexes, intentStakes, agents } from '../lib/schema';
@@ -11,6 +11,7 @@ import {
   triggerBrokersOnIntentArchived 
 } from '../agents/context_brokers/connector';
 import { BaseContextBroker } from '../agents/context_brokers/base';
+import { checkMultipleIndexesWriteAccess, checkMultipleIndexesIntentWriteAccess, checkIndexAccessByCode } from '../lib/index-access';
 
 const router = Router();
 
@@ -215,22 +216,14 @@ router.post('/',
 
       const { payload, isIncognito = false, indexIds = [] } = req.body;
 
-      // Verify index IDs exist and user has access to them
+      // Verify index IDs exist and user has intent write access to them
       if (indexIds.length > 0) {
-        const validIndexes = await db.select({ id: indexes.id })
-          .from(indexes)
-          .where(and(
-            isNull(indexes.deletedAt),
-            eq(indexes.userId, req.user!.id)
-          ));
-
-        const validIndexIds = validIndexes.map(idx => idx.id);
-        const invalidIds = indexIds.filter((id: string) => !validIndexIds.includes(id));
-
-        if (invalidIds.length > 0) {
+        const accessCheck = await checkMultipleIndexesIntentWriteAccess(indexIds, req.user!.id);
+        
+        if (!accessCheck.hasAccess) {
           return res.status(400).json({ 
-            error: 'Some index IDs are invalid or you don\'t have access to them',
-            invalidIds 
+            error: accessCheck.error,
+            invalidIds: accessCheck.invalidIds 
           });
         }
       }
@@ -310,22 +303,14 @@ router.put('/:id',
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Verify index IDs exist and user has access to them if indexIds is provided
+      // Verify index IDs exist and user has intent write access to them if indexIds is provided
       if (indexIds !== undefined && indexIds.length > 0) {
-        const validIndexes = await db.select({ id: indexes.id })
-          .from(indexes)
-          .where(and(
-            isNull(indexes.deletedAt),
-            eq(indexes.userId, req.user!.id)
-          ));
-
-        const validIndexIds = validIndexes.map(idx => idx.id);
-        const invalidIds = indexIds.filter((indexId: string) => !validIndexIds.includes(indexId));
-
-        if (invalidIds.length > 0) {
+        const accessCheck = await checkMultipleIndexesIntentWriteAccess(indexIds, req.user!.id);
+        
+        if (!accessCheck.hasAccess) {
           return res.status(400).json({ 
-            error: 'Some index IDs are invalid or you don\'t have access to them',
-            invalidIds 
+            error: accessCheck.error,
+            invalidIds: accessCheck.invalidIds 
           });
         }
       }
@@ -503,23 +488,17 @@ router.post('/:id/indexes',
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Verify index IDs exist and user has access to them
-      const validIndexes = await db.select({ id: indexes.id })
-        .from(indexes)
-        .where(and(
-          isNull(indexes.deletedAt),
-          eq(indexes.userId, req.user!.id)
-        ));
-
-      const validIndexIds = validIndexes.map(idx => idx.id);
-      const invalidIds = indexIds.filter((indexId: string) => !validIndexIds.includes(indexId));
-
-      if (invalidIds.length > 0) {
+      // Verify index IDs exist and user has intent write access to them
+      const accessCheck = await checkMultipleIndexesIntentWriteAccess(indexIds, req.user!.id);
+      
+      if (!accessCheck.hasAccess) {
         return res.status(400).json({ 
-          error: 'Some index IDs are invalid or you don\'t have access to them',
-          invalidIds 
+          error: accessCheck.error,
+          invalidIds: accessCheck.invalidIds 
         });
       }
+
+      const validIndexIds = accessCheck.validIndexIds;
 
       // Check for existing relationships to avoid duplicates
       const existingRelations = await db.select({ indexId: intentIndexes.indexId })
@@ -599,16 +578,28 @@ router.delete('/:id/indexes',
         return res.status(403).json({ error: 'Access denied' });
       }
 
+      // Verify user has intent write access to the indexes being removed
+      const accessCheck = await checkMultipleIndexesIntentWriteAccess(indexIds as string[], req.user!.id);
+      
+      if (!accessCheck.hasAccess) {
+        return res.status(400).json({ 
+          error: accessCheck.error,
+          invalidIds: accessCheck.invalidIds 
+        });
+      }
+
+      const validIndexIds = accessCheck.validIndexIds;
+
       // Remove the relationships
       const deleteResult = await db.delete(intentIndexes)
         .where(and(
           eq(intentIndexes.intentId, id),
-          inArray(intentIndexes.indexId, indexIds as string[])
+          inArray(intentIndexes.indexId, validIndexIds)
         ));
 
       return res.json({
         message: 'Indexes removed from intent successfully',
-        removedCount: indexIds.length
+        removedCount: validIndexIds.length
       });
     } catch (error) {
       console.error('Remove indexes from intent error:', error);
@@ -617,5 +608,72 @@ router.delete('/:id/indexes',
   }
 );
 
+// Create intent via share code (public endpoint)
+router.post('/index/share/:code',
+  authenticatePrivy,
+  [
+    param('code').isUUID(),
+    body('payload').trim().isLength({ min: 1 }),
+    body('isIncognito').optional().isBoolean(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { code } = req.params;
+      const { payload, isIncognito = false } = req.body;
+
+      // Check access to the shared index
+      const accessCheck = await checkIndexAccessByCode(code);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const sharedIndexData = accessCheck.indexData!;
+
+      // Check if the shared index has can-write-intents permission
+      if (!accessCheck.memberPermissions?.includes('can-write-intents')) {
+        return res.status(403).json({ error: 'Shared index does not allow intent creation' });
+      }
+
+      const summary = await summarizeIntent(payload);
+      
+      const newIntent = await db.insert(intents).values({
+        payload,
+        summary,
+        isIncognito,
+        userId: req.user!.id,
+      }).returning({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        isIncognito: intents.isIncognito,
+        createdAt: intents.createdAt,
+        updatedAt: intents.updatedAt,
+        userId: intents.userId
+      });
+
+      // Associate with the shared index
+      await db.insert(intentIndexes).values({
+        intentId: newIntent[0].id,
+        indexId: sharedIndexData.id
+      });
+
+      // Trigger context brokers for new intent
+      triggerBrokersOnIntentCreated(newIntent[0].id);
+
+      return res.status(201).json({
+        message: 'Intent created successfully via shared index',
+        intent: newIntent[0]
+      });
+    } catch (error) {
+      console.error('Create intent via share code error:', error);
+      return res.status(500).json({ error: 'Failed to create intent via shared index' });
+    }
+  }
+);
 
 export default router; 
