@@ -84,19 +84,24 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   const availablePermissions: PublicPermission[] = [
     {
       id: 'can-match',
-      label: 'Match intents',
+      label: 'Can match',
       description: 'Use this index for intent matching'
     },
     {
+      id: 'can-write-intents',
+      label: 'Can write intents',
+      description: 'Create intents in this index'
+    },
+    {
       id: 'can-view-files',
-      label: 'View files',
+      label: 'Can view files',
       description: 'View and download files'
     }
   ];
 
   const memberPermissions = [
-    { id: 'can-write', label: 'Edit files & intents', description: 'Add, edit, and delete files and intents' },
-    { id: 'can-read', label: 'View files & intents', description: 'View and download files and intents' }
+    { id: 'can-write', label: 'Can write', description: 'Create files and intents' },
+    { id: 'can-read', label: 'Can read', description: 'View files and intents' },
   ];
 
   // Load members when modal opens

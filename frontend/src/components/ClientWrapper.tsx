@@ -8,7 +8,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const pathname = usePathname();
   
   // Determine if navigation should be shown based on current path
-  const showNavigation = pathname !== '/' && !pathname.startsWith('/share');
+  const showNavigation = pathname !== '/' && !pathname.startsWith('/share') && !pathname.startsWith('/matchlist');
   
   return (
     <div className="backdrop relative min-h-screen">

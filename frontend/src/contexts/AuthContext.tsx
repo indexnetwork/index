@@ -33,7 +33,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     console.log('pathname', pathname);
     
     const isHomePage = pathname === '/';
-    const isPublicPage = pathname.startsWith('/share') || pathname.startsWith('/simulation');
+    const isPublicPage = pathname.startsWith('/share') || pathname.startsWith('/simulation') || pathname.startsWith('/matchlist');
     
     // Determine if we need to redirect
     const shouldRedirectToIndexes = authenticated && isHomePage;

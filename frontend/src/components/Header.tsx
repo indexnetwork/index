@@ -36,7 +36,7 @@ export default function Header({ showNavigation = true }: HeaderProps) {
       // Store in localStorage
       localStorage.setItem('alpha', alphaParam);
       setIsAlpha(alphaParam === 'true');
-    } else if (pathname?.startsWith('/share/')) {
+    } else if (pathname?.startsWith('/share/') || pathname?.startsWith('/matchlist/')) {
       localStorage.setItem('alpha', 'true');
       setIsAlpha(true);
     } else {

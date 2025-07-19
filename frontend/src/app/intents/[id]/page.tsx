@@ -53,6 +53,8 @@ export default function IntentDetailPage({ params }: IntentDetailPageProps) {
       setSyntheses(prev => ({ ...prev, [targetUserId]: response.synthesis }));
     } catch (error) {
       console.error('Error fetching synthesis:', error);
+      // Remove from fetched ref so it can be retried
+      fetchedSynthesesRef.current.delete(targetUserId);
       // Set empty synthesis on error to avoid infinite loading
       setSyntheses(prev => ({ ...prev, [targetUserId]: "" }));
     } finally {
