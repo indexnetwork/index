@@ -69,7 +69,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const fetchIndexIntents = useCallback(async () => {
     setLoadingIndexIntents(true);
     try {
-      const response = await intentsService.getIntents(1, 100, false, resolvedParams.id);
+      const response = await indexesService.getIndexIntents(resolvedParams.id, 1, 100, false);
       setIntents(response.intents || []);
     } catch (error) {
       console.error('Error fetching index intents:', error);
@@ -77,7 +77,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     } finally {
       setLoadingIndexIntents(false);
     }
-  }, [resolvedParams.id, intentsService]);
+  }, [resolvedParams.id, indexesService]);
 
   const fetchSuggestedIntents = useCallback(async () => {
     if (!index || !index.files || index.files.length === 0) {
@@ -269,7 +269,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     
     setRemovingIntents(prev => new Set([...prev, intentId]));
     try {
-      await intentsService.removeIndexesFromIntent(intentId, [index.id]);
+      await intentsService.removeIntentFromIndex(index.id, intentId);
       // Refresh the intents list
       fetchIndexIntents();
     } catch (error) {

@@ -3,6 +3,7 @@ import { useAuthenticatedAPI, apiClient } from '../lib/api';
 import { 
   Index, 
   IndexFile, 
+  Intent,
   PaginatedResponse, 
   APIResponse, 
   CreateIndexRequest, 
@@ -176,6 +177,18 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   getIntentPreview: async (indexId: string, payload: string): Promise<string> => {
     const response = await api.get<{ payload: string }>(`/indexes/${indexId}/suggested_intents/preview?payload=${encodeURIComponent(payload)}`);
     return response.payload;
+  },
+
+  // Get intents for a specific index with pagination
+  getIndexIntents: async (indexId: string, page: number = 1, limit: number = 10, archived: boolean = false): Promise<PaginatedResponse<Intent>> => {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      archived: archived.toString()
+    });
+    
+    const response = await api.get<PaginatedResponse<Intent>>(`/indexes/${indexId}/intents?${params}`);
+    return response;
   },
 
   // Legacy methods for backward compatibility (these would need intent service integration)

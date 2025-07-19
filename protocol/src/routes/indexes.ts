@@ -1,10 +1,12 @@
 import { Router, Response, Request } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { indexes, users, files, indexMembers, intentIndexes } from '../lib/schema';
+import { indexes, users, files, indexMembers, intentIndexes, intents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { eq, isNull, and, count, desc, or, ilike, exists } from 'drizzle-orm';
+import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists } from 'drizzle-orm';
 import { checkIndexAccess, checkIndexOwnership, checkIndexAccessByCode } from '../lib/index-access';
+import { summarizeIntent } from '../agents/core/intent_summarizer';
+import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
 import crypto from 'crypto';
 
 
@@ -860,6 +862,247 @@ router.get('/share/:code',
     } catch (error) {
       console.error('Get index by share code error:', error);
       return res.status(500).json({ error: 'Failed to fetch index' });
+    }
+  }
+);
+
+// Remove intent from index
+router.delete('/:indexId/intents/:intentId',
+  authenticatePrivy,
+  [
+    param('intentId').isUUID(),
+    param('indexId').isUUID(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { intentId, indexId } = req.params;
+
+      // Check if intent exists
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(and(eq(intents.id, intentId), isNull(intents.archivedAt)))
+        .limit(1);
+
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Intent not found' });
+      }
+
+      // Verify user has intent write access to the index being removed
+      const accessCheck = await checkIndexOwnership(indexId, req.user!.id);
+      
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status || 403).json({ 
+          error: accessCheck.error || 'Access denied'
+        });
+      }
+
+      // Check if the association exists
+      const existingRelation = await db.select({ intentId: intentIndexes.intentId })
+        .from(intentIndexes)
+        .where(and(
+          eq(intentIndexes.intentId, intentId),
+          eq(intentIndexes.indexId, indexId)
+        ))
+        .limit(1);
+
+      if (existingRelation.length === 0) {
+        return res.status(404).json({ error: 'Intent-index association not found' });
+      }
+
+      // Remove the relationship
+      await db.delete(intentIndexes)
+        .where(and(
+          eq(intentIndexes.intentId, intentId),
+          eq(intentIndexes.indexId, indexId)
+        ));
+
+      return res.json({
+        message: 'Intent removed from index successfully'
+      });
+    } catch (error) {
+      console.error('Remove intent from index error:', error);
+      return res.status(500).json({ error: 'Failed to remove intent from index' });
+    }
+  }
+);
+
+// Create intent via share code
+router.post('/share/:code/intents',
+  authenticatePrivy,
+  [
+    param('code').isUUID(),
+    body('payload').trim().isLength({ min: 1 }),
+    body('isIncognito').optional().isBoolean(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { code } = req.params;
+      const { payload, isIncognito = false } = req.body;
+
+      // Check access to the shared index
+      const accessCheck = await checkIndexAccessByCode(code);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const sharedIndexData = accessCheck.indexData!;
+
+      // Check if the shared index has can-write-intents permission
+      if (!accessCheck.memberPermissions?.includes('can-write-intents')) {
+        return res.status(403).json({ error: 'Shared index does not allow intent creation' });
+      }
+
+      const summary = await summarizeIntent(payload);
+      
+      const newIntent = await db.insert(intents).values({
+        payload,
+        summary,
+        isIncognito,
+        userId: req.user!.id,
+      }).returning({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        isIncognito: intents.isIncognito,
+        createdAt: intents.createdAt,
+        updatedAt: intents.updatedAt,
+        userId: intents.userId
+      });
+
+      // Associate with the shared index
+      await db.insert(intentIndexes).values({
+        intentId: newIntent[0].id,
+        indexId: sharedIndexData.id
+      });
+
+      // Trigger context brokers for new intent
+      triggerBrokersOnIntentCreated(newIntent[0].id);
+
+      return res.status(201).json({
+        message: 'Intent created successfully via shared index',
+        intent: newIntent[0]
+      });
+    } catch (error) {
+      console.error('Create intent via share code error:', error);
+      return res.status(500).json({ error: 'Failed to create intent via shared index' });
+    }
+  }
+);
+
+// Get intents for a specific index with pagination
+router.get('/:indexId/intents',
+  authenticatePrivy,
+  [
+    param('indexId').isUUID(),
+    query('page').optional().isInt({ min: 1 }).toInt(),
+    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    query('archived').optional().isBoolean(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { indexId } = req.params;
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 10;
+      const skip = (page - 1) * limit;
+      const showArchived = req.query.archived === 'true';
+
+      // Check access to the index
+      const accessCheck = await checkIndexAccess(indexId, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status || 403).json({ error: accessCheck.error });
+      }
+
+      // Check if user has read permission (owner has all permissions by default)
+      const isOwner = accessCheck.indexData?.userId === req.user!.id;
+      const hasReadPermission = accessCheck.memberPermissions?.includes('can-read');
+      
+      if (!isOwner && !hasReadPermission) {
+        return res.status(403).json({ error: 'Read access denied' });
+      }
+
+      // Build base conditions for intents in this index
+      const baseCondition = and(
+        showArchived ? isNotNull(intents.archivedAt) : isNull(intents.archivedAt),
+        eq(intentIndexes.indexId, indexId)
+      );
+
+      const selectFields = {
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        isIncognito: intents.isIncognito,
+        createdAt: intents.createdAt,
+        updatedAt: intents.updatedAt,
+        archivedAt: intents.archivedAt,
+        userId: intents.userId,
+        userName: users.name,
+        userEmail: users.email,
+        userAvatar: users.avatar
+      };
+
+      // Get intents for this index with pagination
+      const [intentsResult, totalResult] = await Promise.all([
+        db.select(selectFields).from(intents)
+          .innerJoin(users, eq(intents.userId, users.id))
+          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+          .where(baseCondition)
+          .orderBy(desc(intents.createdAt))
+          .offset(skip)
+          .limit(limit),
+        
+        db.select({ count: count() }).from(intents)
+          .innerJoin(users, eq(intents.userId, users.id))
+          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+          .where(baseCondition)
+      ]);
+
+      // Add index counts for each intent
+      const intentsWithCounts = await Promise.all(
+        intentsResult.map(async (intent) => {
+          const indexCount = await db.select({ count: count() })
+            .from(intentIndexes)
+            .where(eq(intentIndexes.intentId, intent.id));
+
+          return {
+            ...intent,
+            user: {
+              id: intent.userId,
+              name: intent.userName,
+              email: intent.userEmail,
+              avatar: intent.userAvatar
+            },
+            _count: { indexes: indexCount[0]?.count || 0 }
+          };
+        })
+      );
+
+      return res.json({
+        intents: intentsWithCounts,
+        pagination: {
+          current: page,
+          total: Math.ceil(totalResult[0].count / limit),
+          count: intentsResult.length,
+          totalCount: totalResult[0].count
+        }
+      });
+    } catch (error) {
+      console.error('Get index intents error:', error);
+      return res.status(500).json({ error: 'Failed to fetch index intents' });
     }
   }
 );

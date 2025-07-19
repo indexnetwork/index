@@ -54,12 +54,11 @@ export default function CreateIntentModal({
 
   // Compute final index IDs including global discovery
   const finalIndexIds = useMemo(() => {
-    return selectedIndexIds
-    /*
+    
     return isGlobalDiscoveryEnabled && globalIndexId 
       ? [...selectedIndexIds, globalIndexId] 
       : selectedIndexIds;
-      */
+      
   }, [isGlobalDiscoveryEnabled, globalIndexId, selectedIndexIds]);
 
   // Initialize form data when modal opens

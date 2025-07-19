@@ -97,7 +97,7 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
 
   // Create intent via share code
   createIntentViaShareCode: async (code: string, payload: string, isIncognito: boolean = false): Promise<Intent> => {
-    const response = await api.post<APIResponse<Intent>>(`/intents/index/share/${code}`, {
+    const response = await api.post<APIResponse<Intent>>(`/indexes/share/${code}/intents`, {
       payload,
       isIncognito
     });
@@ -121,17 +121,10 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     await api.delete(`/intents/${id}`);
   },
 
-  // Add indexes to intent
-  addIndexesToIntent: async (intentId: string, indexIds: string[]): Promise<void> => {
-    await api.post(`/intents/${intentId}/indexes`, { indexIds });
-  },
 
-  // Remove indexes from intent
-  removeIndexesFromIntent: async (intentId: string, indexIds: string[]): Promise<void> => {
-    // For DELETE with body, we can use a POST with _method override or use query params
-    // Using query params approach:
-    const queryParams = indexIds.map(id => `indexIds[]=${id}`).join('&');
-    await api.delete(`/intents/${intentId}/indexes?${queryParams}`);
+  // Remove intent from index
+  removeIntentFromIndex: async (indexId: string, intentId: string): Promise<void> => {
+    await api.delete(`/indexes/${indexId}/intents/${intentId}`);
   },
 
   // Archive intent
