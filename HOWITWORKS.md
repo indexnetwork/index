@@ -27,7 +27,7 @@ Index specializes in the social intent space, enabling people to signal their pr
 
 ### 2. Privacy by Design
 
-Privacy isn't an afterthought but a foundational design constraint. Index uses a multi-layered access control model where content is organized into **indexes** with granular permissions. Users can share specific contexts without exposing their entire professional profile.
+Privacy isn't an afterthought but a foundational design constraint. Index uses a multi-layered access control model where content is organized into **indexes** with granular permissions. Users can share specific contexts without exposing their entire intentions, just like we do in real life.
 
 **Technical Implementation**: Index-based access control with four permission levels:
 - `can-read`: View intents in the index
