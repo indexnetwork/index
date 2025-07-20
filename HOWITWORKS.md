@@ -29,15 +29,16 @@ Index specializes in the social intent space, enabling people to signal their pr
 
 Privacy isn't an afterthought but a foundational design constraint. Index uses a multi-layered access control model where content is organized into **indexes** with granular permissions. Users can share specific contexts without exposing their entire intentions, just like we do in real life.
 
-**Technical Implementation**: Index-based access control with four permission levels:
+**Technical Implementation**: Index-based access control with five permission levels:
 - `can-read`: View intents in the index
 - `can-write`: Add intents to the index  
+- `can-write-intents`: Create and modify intents in the index
 - `can-view-files`: Access supporting documents
 - `can-match`: Participate in discovery within this context
 
-### 3. Agent-Mediated Trust
+### 3. Agent-Mediated Context
 
-Rather than algorithmic matching or manual browsing, AI agents serve as intermediaries that understand context, create connections, and provide reasoning. This creates a more nuanced discovery experience that can understand semantic relationships and emerging patterns.
+Rather than algorithmic matching or manual browsing, multiple AI agents coexist to maintain relationships between contextual elements. The integrity of these relationships forms the context itself as an emergent property—this emergence is the architecture, not imposed frameworks or predefined models.
 
 **Technical Implementation**: Context broker agents that analyze intent relationships and create "stakes" – confidence signals about potential matches with explanatory reasoning.
 
@@ -58,28 +59,29 @@ indexes ←→ users (many:many via index_members)
 intent_stakes → [array of intent_ids] + reasoning
 ```
 
-**Why this structure**: The many-to-many relationship between intents and indexes is fundamental for enabling **private discovery networks** across organizations, communities, and professional groups. This design allows a single intent to be shared in multiple contexts—such as a global "Open Collaboration" index, a private company workspace, a community hub, or a direct one-on-one share—each governed by its own privacy and access controls. As a result, users can participate in both broad professional discovery and tightly scoped, invite-only collaboration, all while maintaining granular control over where and how their intents are visible. This flexibility supports targeted, context-aware sharing and ensures that discovery remains both relevant and privacy-preserving across the ecosystem.
+**Why this structure**: The many-to-many relationship between intents and indexes is fundamental for enabling **private discovery networks** across organizations, communities, and professional groups. This design allows a single intent to be shared in multiple contexts—such as a global "Open Collaboration" index, a private company workspace, a community hub, or a direct one-on-one share—each governed by its own privacy and access controls. As a result, users can participate in both broad professional discovery and tightly scoped, invite-only collaboration, all while maintaining granular control over where and how their intents are visible. 
 
 ### Scalable Intent Storage
 
 **Current Implementation**: Intents are stored in PostgreSQL with a design optimized for future migration to **off-chain** storage with **on-chain finality** using a hash and roll-up architecture. This future approach will enable:
 
-- **Massive Scale**: Store millions of intents per user for approximately $1
-- **Privacy**: Raw intent data never touches public chains
-- **Integrity**: Cryptographic proofs ensure data hasn't been tampered with
-- **Performance**: Fast queries without blockchain latency
+- **Peer-to-Peer Discovery**: Agents enable direct, programmable discovery without intermediaries
+- **Programmable Incentives**: Agents can deploy custom incentive logic at the protocol layer, so that each element remains connected to the value layer.
+- **Privacy**: Raw intent data never leaves confidential compute; not exposed on public chains
+- **Integrity**: Cryptographic proofs guarantee data authenticity
+- **Performance**: Fast, low-latency queries without blockchain bottlenecks
 
-**Privacy Architecture**: The protocol is designed for intents to be **only accessible to agents running in confidential compute environments**. The planned system will maintain a vector database of intents that exists exclusively within TEE-protected infrastructure. No intent data will be exposed to:
+**Privacy Architecture**: The protocol is designed for intents to be **only accessible to agents running in confidential compute environments**. The agent runtime will maintain the storage and retrieval of intents that hosted exclusively within TEE-protected infrastructure. No intent data will be exposed to:
 - Public networks or APIs
 - User interfaces directly
 - Non-TEE computational environments
 - Third-party systems
 
-Agents query this protected database using natural language within the confidential compute network. When agents find matches, they share **only their reasoning and confidence scores** with users through contextually private interfaces - never the raw intent data of other users.
+Users can access their own intent data through standard interfaces, but agents query the protected database using natural language within the confidential compute network when analyzing cross-user relationships. When agents find matches, they share **only their reasoning and confidence scores** with users through contextually private interfaces - never the raw intent data of other users.
 
 ### Why This Separation
 
-The separation between intents and indexes serves a crucial strategic purpose: **context isolation for privacy management**. This architectural decision enables users to share different aspects of their professional identity in different contexts without creating a comprehensive profile that spans all areas of their work.
+The separation between intents and indexes serves a crucial strategic purpose: **context isolation for privacy management**. This architectural decision enables users to share different aspects of their intents in different contexts.
 
 Context isolation makes privacy management practical and intuitive. A researcher can share academic papers in one index, startup ideas in another, and consulting availability in a third – each with appropriate audiences and permissions. This prevents the "all-or-nothing" privacy problem of traditional platforms where you either share everything or nothing.
 
@@ -184,7 +186,14 @@ sumarizeIntent(text: string, maxLength: number)
   → Summary // Condensed version maintaining key meaning
 ```
 
-**Why this separation**: Separating agents enforces context isolation for privacy management and clear separation of concerns. Each agent only accesses the minimum data needed for its task, reducing risk of data leakage and enabling independent optimization of each intelligence component.
+**Why this separation**: Separating agents enables both individualistic and social discovery. While each agent maintains context isolation for privacy and clear separation of concerns, this architecture naturally supports multi-user entities that represent communities, organizations, and networks as they exist in society - creating digital "4th spaces" for discovery.
+
+Indexes can be used for:
+- **Individuals**: Personal indexes that can be used for sharing, organisation.
+- **Group**: Community or organizational indexes that represent shared intentions.
+- **Network**: Shared intentions among inter-group connections.
+
+This simple approach mirrors how we naturally navigate social spaces - we have individual preferences while also being part of communities, organizations, and networks that have their own collective intentions and social dynamics. Each agent accesses only the minimum data needed for its specific social layer, enabling rich collective coordination while maintaining granular privacy controls.
 
 ### Dynamic Knowledge Graph Construction via Staking
 
