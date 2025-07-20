@@ -30,7 +30,7 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
     }
 
     // Get user details from Privy
-    const privyUser = await privyClient.getUser(claims.userId);
+    const privyUser = await privyClient.getUser({idToken: accessToken});
 
     // Find or create user in our database
     let user = await db.select({

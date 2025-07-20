@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import { useIdentityToken } from '@privy-io/react-auth';
 
 // API Configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL!;
@@ -188,13 +188,13 @@ export const apiClient = new APIClient();
 
 // Hook for authenticated API calls
 export function useAuthenticatedAPI() {
-  const { getAccessToken } = usePrivy();
+  const { identityToken } = useIdentityToken();
 
   const makeAuthenticatedRequest = useCallback(async <T>(
     requestFn: (accessToken: string) => Promise<T>
   ): Promise<T> => {
     try {
-      const accessToken = await getAccessToken();
+      const accessToken = identityToken
       if (!accessToken) {
         throw new APIError('No access token available', 401);
       }
@@ -208,7 +208,7 @@ export function useAuthenticatedAPI() {
         401
       );
     }
-  }, [getAccessToken]);
+  }, [identityToken]);
 
   return useMemo(() => ({
     get: <T>(endpoint: string) =>
