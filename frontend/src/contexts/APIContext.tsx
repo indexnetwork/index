@@ -19,16 +19,19 @@ const APIContext = createContext<APIContextType | undefined>(undefined);
 export function APIProvider({ children }: { children: ReactNode }) {
   const api = useAuthenticatedAPI();
   
-  // Use refs to create truly stable singleton instances
+  // Recreate services when api changes to ensure they use the current authenticated API
   const servicesRef = useRef<APIContextType | null>(null);
+  const apiRef = useRef(api);
   
-  if (!servicesRef.current) {
+  // Check if api has changed
+  if (!servicesRef.current || apiRef.current !== api) {
     servicesRef.current = {
       indexesService: createIndexesService(api),
       intentsService: createIntentsService(api),
       connectionsService: createConnectionsService(api),
       synthesisService: createSynthesisService(api)
     };
+    apiRef.current = api;
   }
 
   return (

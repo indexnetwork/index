@@ -35,7 +35,7 @@ type SharePageState = {
   
   // Data
   uploadedFiles: File[];
-  vibeCheckResults: { aiSynthesis?: string; score?: number };
+  vibeCheckResults: { aiSynthesis?: string; score?: number; suggestedIntents?: { payload: string; confidence: number }[] };
   error: string | null;
   
   // Flags
@@ -83,9 +83,14 @@ export default function SharePage({ params }: SharePageProps) {
               const storedVibeCheck = localStorage.getItem(`vibecheck_${resolvedParams.code}`);
               if (storedVibeCheck) {
                 const parsed = JSON.parse(storedVibeCheck);
+                const storedResults = parsed.results[0] || {};
                 setState(prev => ({ 
                   ...prev, 
-                  vibeCheckResults: parsed.results[0] || {},
+                  vibeCheckResults: {
+                    aiSynthesis: storedResults.aiSynthesis,
+                    score: storedResults.score,
+                    suggestedIntents: storedResults.suggestedIntents || []
+                  },
                   step: 'vibecheck-results',
                   autoRequestConnection: parsed.autoRequest || false
                 }));
@@ -101,7 +106,8 @@ export default function SharePage({ params }: SharePageProps) {
                   ...prev,
                   vibeCheckResults: { 
                     aiSynthesis: vibeCheckResult.synthesis || '', 
-                    score: vibeCheckResult.score || 0 
+                    score: vibeCheckResult.score || 0,
+                    suggestedIntents: vibeCheckResult.suggestedIntents || []
                   },
                   step: 'vibecheck-results'
                 }));
@@ -111,7 +117,8 @@ export default function SharePage({ params }: SharePageProps) {
                   localStorage.setItem(`vibecheck_${resolvedParams.code}`, JSON.stringify({
                     results: [{ 
                       aiSynthesis: vibeCheckResult.synthesis || '', 
-                      score: vibeCheckResult.score || 0 
+                      score: vibeCheckResult.score || 0,
+                      suggestedIntents: vibeCheckResult.suggestedIntents || []
                     }],
                     tempFiles: vibeCheckResult.tempFiles,
                     autoRequest: state.autoRequestConnection
@@ -130,7 +137,11 @@ export default function SharePage({ params }: SharePageProps) {
                 const stored = localStorage.getItem(`vibecheck_${resolvedParams.code}`);
                 const existing = stored ? JSON.parse(stored) : {};
                 localStorage.setItem(`vibecheck_${resolvedParams.code}`, JSON.stringify({
-                  results: [state.vibeCheckResults],
+                  results: [{
+                    aiSynthesis: state.vibeCheckResults.aiSynthesis,
+                    score: state.vibeCheckResults.score,
+                    suggestedIntents: state.vibeCheckResults.suggestedIntents || []
+                  }],
                   tempFiles: existing.tempFiles || [],
                   autoRequest: state.autoRequestConnection
                 }));
@@ -183,17 +194,24 @@ export default function SharePage({ params }: SharePageProps) {
                 }
               }
 
-              // Get and add suggested intents
-              setState(prev => ({ ...prev, currentStep: 'Creating intents...' }));
-              const suggestedIntentsResponse = await indexesService.getSuggestedIntents(newIndex.id);
-              const intentsToAdd = (suggestedIntentsResponse.intents || []).slice(0, 2);
-              
-              for (const suggestedIntent of intentsToAdd) {
-                await intentsService.createIntent({
-                  payload: suggestedIntent.payload,
-                  indexIds: [newIndex.id],
-                  isIncognito: false
-                });
+              // Add suggested intents from vibecheck
+              const storedData = localStorage.getItem(`vibecheck_${resolvedParams.code}`);
+              if (storedData) {
+                const parsed = JSON.parse(storedData);
+                const suggestedIntents = parsed.results[0]?.suggestedIntents || [];
+                
+                if (suggestedIntents.length > 0) {
+                  setState(prev => ({ ...prev, currentStep: 'Creating intents...' }));
+                  const intentsToAdd = suggestedIntents.slice(0, 3); // Take top 3
+                  
+                  for (const suggestedIntent of intentsToAdd) {
+                    await intentsService.createIntent({
+                      payload: suggestedIntent.payload,
+                      indexIds: [newIndex.id],
+                      isIncognito: false
+                    });
+                  }
+                }
               }
 
               // Request connection

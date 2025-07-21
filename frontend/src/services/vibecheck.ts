@@ -7,6 +7,10 @@ export interface VibeCheckResult {
     name: string;
     intro: string;
   };
+  suggestedIntents?: {
+    payload: string;
+    confidence: number;
+  }[];
   tempFiles?: {
     id: string;
     name: string;

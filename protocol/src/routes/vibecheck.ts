@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm';
 import { checkIndexAccessByCode } from '../lib/index-access';
 import { vibeCheck } from '../agents/external/vibe_checker_text';
 import { processUploadedFiles } from '../lib/file-processing';
+import { analyzeFolder } from '../agents/core/intent_inferrer';
 
 const router = Router();
 
@@ -186,18 +187,38 @@ router.post('/share/:code',
         intents: userIntents
       };
 
-      // Call the vibe check agent
-      const vibeResult = await vibeCheck(fileText, otherUserData, { timeout: 30000 });
+      // Run vibe check and intent suggestion generation in parallel
+      const [vibeResult, intentInferResult] = await Promise.all([
+        // Call the vibe check agent
+        vibeCheck(fileText, otherUserData, { timeout: 30000 }),
+        
+        // Generate intent suggestions from uploaded files
+        (async () => {
+          try {
+            const fileIds = uploadedFiles.map(f => path.basename(f.path, path.extname(f.path)));
+            return await analyzeFolder(tempUploadDir, fileIds, { timeoutMs: 30000 });
+          } catch (error) {
+            console.warn('Intent inference failed:', error);
+            return { success: false, intents: [] };
+          }
+        })()
+      ]);
 
       if (!vibeResult.success) {
         return res.status(500).json({ error: vibeResult.error || 'Vibe check failed' });
       }
+
+      // Extract intent suggestions from the parallel result
+      const suggestedIntents = intentInferResult.success 
+        ? intentInferResult.intents.slice(0, 5) // Take top 3 suggestions
+        : [];
 
       return res.json({
         success: true,
         synthesis: vibeResult.synthesis,
         score: vibeResult.score,
         targetUser: otherUserData.user,
+        suggestedIntents,
         tempFiles: uploadedFiles.map(f => ({
           id: path.basename(f.path),
           name: f.originalname,
