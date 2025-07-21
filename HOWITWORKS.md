@@ -16,7 +16,7 @@ Traditional social platforms focus on *who you are* – your job title, company,
 
 **Intent Typology**: Index primarily focuses on **social intents** - expressions of presence and availability for connection. Within the broader landscape of digital intent, there are many intent types:
 
-- **Social Intent** — Expression of presence ("We're here.")
+- **Social Intent** — Connecting, relating, engaging with others socially ("We're here.")
 - **Transactional Intent** — Buying, hiring, exchanging  
 - **Information-Seeking Intent** — Asking, searching
 - **Latent/Other Intent** — Watching, inferring, delegating
