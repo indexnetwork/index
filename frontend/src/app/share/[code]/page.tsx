@@ -552,7 +552,6 @@ export default function SharePage({ params }: SharePageProps) {
                         <div className="flex items-center gap-4">
                           <div>
                             <div className="font-semibold text-gray-900 text-right">{state.index?.user?.name || 'User'}</div>
-                            <div className="text-sm text-gray-500 text-right">Index Owner</div>
                           </div>
                           <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                             <span className="text-lg font-bold text-blue-600">{(state.index?.user?.name || 'U').charAt(0)}</span>
