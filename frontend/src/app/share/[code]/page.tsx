@@ -398,7 +398,7 @@ export default function SharePage({ params }: SharePageProps) {
 
   // Check permissions
   const canViewFiles = state.index.linkPermissions?.permissions.includes('can-view-files') || false;
-  const canMatch = state.index.linkPermissions?.permissions.includes('can-match') || false;
+  const canDiscover = state.index.linkPermissions?.permissions.includes('can-discover') || false;
 
   return (
     <ClientLayout>
@@ -456,7 +456,7 @@ export default function SharePage({ params }: SharePageProps) {
           </div>
         )}
 
-        {canMatch && (
+        {canDiscover && (
           <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="w-full">
               {state.step === 'ready' && (
@@ -616,7 +616,7 @@ export default function SharePage({ params }: SharePageProps) {
           </div>
         )}
 
-        {!canViewFiles && !canMatch && (
+        {!canViewFiles && !canDiscover && (
           <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-center items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="text-center">
               <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-2">Limited Access</h3>

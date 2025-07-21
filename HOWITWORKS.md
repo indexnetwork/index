@@ -34,7 +34,7 @@ Privacy isn't an afterthought but a foundational design constraint. Index uses a
 - `can-write`: Add intents to the index  
 - `can-write-intents`: Create and modify intents in the index
 - `can-view-files`: Access supporting documents
-- `can-match`: Participate in discovery within this context
+- `can-discover`: Participate in discovery within this context
 
 ### 3. Agent-Mediated Context
 
@@ -193,7 +193,7 @@ Indexes can be used for:
 - **Group**: Community or organizational indexes that represent shared intentions.
 - **Network**: Shared intentions among inter-group connections.
 
-This simple approach mirrors how we naturally navigate social spaces - we have individual preferences while also being part of communities, organizations, and networks that have their own collective intentions and social dynamics. Each agent accesses only the minimum data needed for its specific social layer, enabling rich collective coordination while maintaining granular privacy controls.
+This simple approach mirrors how we naturally navigate social spaces - we have individual preferences while also being part of communities, organizations, and networks that have their own social dynamics. Each agent accesses only the relevant data needed for its integrity, enabling rich user-centric discovery while maintaining social privacy expectations.
 
 ### Dynamic Knowledge Graph Construction via Staking
 
@@ -215,7 +215,7 @@ const userRelationship = {
 
 **Ephemeral Structure**: When users connect, the knowledge graph for that relationship dissolves, and new graphs form around emerging opportunities. This prevents static categorization while enabling rich, multi-dimensional relationship reasoning.
 
-**Composable Perspectives**: Each agent contributes its own reasoning layer, creating a composite understanding that's richer than any single agent could provide. Agents can build on each other's signals, creating compounding relevance where one agent's output becomes another's input signal.
+**Contextual Integrity**: Each agent contributes its own reasoning layer, creating a composite understanding that's richer than any single agent could provide. Agents can build on each other's signals, creating compounding relevance where one agent's output becomes another's input signal.
 
 ## Discovery and Social Connection Flow
 
@@ -321,7 +321,7 @@ POST /api/indexes
 POST /api/indexes/{id}/members
 {
   "userId": "user-456",
-  "permissions": ["can-read", "can-match"]
+  "permissions": ["can-read", "can-discover"]
 }
 ```
 

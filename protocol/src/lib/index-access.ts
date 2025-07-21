@@ -37,7 +37,7 @@ export const checkIndexAccess = async (indexId: string, userId: string): Promise
   
   // Owner always has access
   if (indexData.userId === userId) {
-    return { hasAccess: true, indexData, memberPermissions: ['can-write', 'can-read', 'can-view-files', 'can-match', 'can-write-intents'] };
+    return { hasAccess: true, indexData, memberPermissions: ['can-write', 'can-read', 'can-view-files', 'can-discover', 'can-write-intents'] };
   }
 
   // Check if user is a member OR if "everyone" has permissions

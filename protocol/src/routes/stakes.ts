@@ -319,9 +319,9 @@ router.get('/index/share/:code/by-user',
 
       const sharedIndexData = accessCheck.indexData!;
 
-      // Check if the shared index has can-match permission
-      if (!accessCheck.memberPermissions?.includes('can-match')) {
-        return res.status(403).json({ error: 'Shared index does not allow matching' });
+      // Check if the shared index has can-discover permission
+      if (!accessCheck.memberPermissions?.includes('can-discover')) {
+        return res.status(403).json({ error: 'Shared index does not allow discovery' });
       }
 
       // Get current user's intents in the shared index

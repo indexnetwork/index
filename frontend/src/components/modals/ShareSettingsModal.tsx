@@ -83,9 +83,9 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   // Available public permissions
   const availablePermissions: PublicPermission[] = [
     {
-      id: 'can-match',
-      label: 'Can match',
-      description: 'Use this index for intent matching'
+      id: 'can-discover',
+      label: 'Can Discover',
+      description: 'Use this index for discovery'
     },
     {
       id: 'can-write-intents',
