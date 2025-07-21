@@ -9,12 +9,13 @@ import ConfigureModal from "@/components/modals/ConfigureModal";
 import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
 import { Index, Intent } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 import { Input } from "@/components/ui/input";
-import { getIndexFileUrl } from "@/lib/file-utils";
+import { getIndexFileUrl, getAvatarUrl } from "@/lib/file-utils";
 import { formatDate } from "@/lib/utils";
 
 interface IndexDetailPageProps {
@@ -524,20 +525,29 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                     className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
                   >
                     <div className="flex-1">
+                      <Link
+                        href={`/intents/${intent.id}`}
+                        className="flex items-center gap-2 mb-1"
+                      >
+                        <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.summary}</h4>
+                        <ArrowUpRight className="h-4 w-4" />
+                      </Link>
                       <div className="flex items-center gap-2">
-                        <Link
-                          href={`/intents/${intent.id}`}
-                          className="flex items-center gap-2"
-                        >
-                          <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.summary}</h4>
-                          <ArrowUpRight className="ml-1 h-4 w-4" />
-                        </Link>
+                        <Image
+                          src={getAvatarUrl(intent.user)}
+                          alt={intent.user.name}
+                          width={20}
+                          height={20}
+                          className="rounded-full"
+                        />
+                        <span className="text-sm text-gray-500">{intent.user.name}</span>
+                        <span className="text-sm text-gray-400">•</span>
+                        <span className="text-sm text-gray-500">{formatDate(intent.createdAt)}</span>
                       </div>
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      //className="text-red-500 hover:text-red-700"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -545,7 +555,6 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                       }}
                       disabled={removingIntents.has(intent.id)}
                     >
-                      
                       {removingIntents.has(intent.id) ? (
                         <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
                       ) : (
