@@ -471,13 +471,25 @@ export default function SharePage({ params }: SharePageProps) {
               )}
               
               {state.step === 'ready' && (
-                <IntentForm
-                  onSubmit={handleIntentFormSubmit}
-                  isSubmitting={false}
-                  submitButtonText="Get Vibe Check"
-                  placeholder="Describe your work, goals, or what you're looking for (optional)..."
-                  vibeCheckIndex={resolvedParams.code}
-                />
+                <>
+                  <div className="mt-4 p-4 bg-white border border-gray-200 rounded-xs">
+                    <div className="flex items-start space-x-4">
+                      <div className="flex-1">
+                        <h3 className="font-medium text-gray-700 mb-2">Drop your files and get instant vibe check.</h3>
+                        <p className="text-sm text-gray-500">
+                          Once uploaded, you'll receive a detailed breakdown of how your content aligns with our mutual goals and potential collaboration opportunities. 
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <IntentForm
+                    onSubmit={handleIntentFormSubmit}
+                    isSubmitting={false}
+                    submitButtonText="Get Vibe Check"
+                    placeholder="Describe your work, goals, or what you're looking for (optional)..."
+                    vibeCheckIndex={resolvedParams.code}
+                  />
+                </>
               )}
 
               {state.step === 'vibecheck-running' && (

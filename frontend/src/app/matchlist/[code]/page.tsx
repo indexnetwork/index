@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Index, IntentStakesByUserResponse } from "@/lib/types";
+import { Index, IntentStakesByUserResponse, User, APIResponse } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from '@privy-io/react-auth';
@@ -11,6 +11,7 @@ import { indexesService as publicIndexesService } from '@/services/indexes';
 import ReactMarkdown from "react-markdown";
 import { formatDate } from "@/lib/utils";
 import { getAvatarUrl } from "@/lib/file-utils";
+import { useAuthenticatedAPI } from '@/lib/api';
 
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 import { Play, Pause } from "lucide-react";
@@ -27,9 +28,10 @@ interface MatchlistPageProps {
 type MatchlistPageState = {
   // Core data
   index: Index | null;
+  user: User | null;
   
   // Flow state
-  step: 'loading' | 'intent-form' | 'intent-creating' | 'auth-required' | 'discovery-results' | 'error';
+  step: 'loading' | 'intent-form' | 'intent-creating' | 'auth-required' | 'onboarding-required' | 'discovery-results' | 'error';
   
   // Intent data
   intentPayload: string;
@@ -52,12 +54,14 @@ type MatchlistPageState = {
   isSubmitting: boolean;
   isPaused: boolean;
   isRefreshing: boolean;
+  autoCreateIntent: boolean;
 };
 
 export default function MatchlistPage({ params }: MatchlistPageProps) {
   const resolvedParams = use(params);
   const [state, setState] = useState<MatchlistPageState>({
     index: null,
+    user: null,
     step: 'loading',
     intentPayload: '',
     createdIntentId: null,
@@ -69,9 +73,11 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
     isSubmitting: false,
     isPaused: false,
     isRefreshing: false,
+    autoCreateIntent: false,
   });
 
   const { login, authenticated, ready } = usePrivy();
+  const api = useAuthenticatedAPI();
   const connectionsService = useConnections();
   const intentsService = useIntents();
   const synthesisService = useSynthesis();
@@ -199,7 +205,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
     }
   }, [intentsService, resolvedParams.code, fetchConnectionStatus, fetchSynthesis, state.createdIntentId]);
 
-  // Main flow effect
+  // Main flow effect - handles all the complex logic in one place
   useEffect(() => {
     const handleFlow = async () => {
       try {
@@ -209,78 +215,104 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
             const index = await publicIndexesService.getIndexByShareCode(resolvedParams.code);
             setState(prev => ({ ...prev, index, step: 'intent-form' }));
             
-                          // Check for stored intent (after user logs in)
-              if (authenticated) {
-                const storedIntent = localStorage.getItem(`matchlist_intent_${resolvedParams.code}`);
-                if (storedIntent) {
-                  const parsed = JSON.parse(storedIntent);
-                  console.log('Found stored intent after login, generating suggestions:', parsed.payload);
-                  
-                  // Clear stored intent
-                  localStorage.removeItem(`matchlist_intent_${resolvedParams.code}`);
-                  
-                  // Auto-create the intent with AI suggestions
-                  try {
-                    setState(prev => ({ ...prev, step: 'intent-creating' }));
+            // Check for stored intent (after user logs in)
+            if (authenticated) {
+              const storedIntent = localStorage.getItem(`matchlist_intent_${resolvedParams.code}`);
+              if (storedIntent) {
+                const parsed = JSON.parse(storedIntent);
+                console.log('Found stored intent after login, generating suggestions:', parsed.payload);
+                
+                // Clear stored intent
+                localStorage.removeItem(`matchlist_intent_${resolvedParams.code}`);
+                
+                // Refresh user data to check onboarding status
+                try {
+                  const response = await api.get<APIResponse<User>>('/auth/me');
+                  if (response.user) {
+                    setState(prev => ({ ...prev, user: response.user || null }));
                     
-                    // Generate suggestions from stored input
-                    const suggestionsResult = await intentSuggestionsService.generateSuggestions({
-                      payload: parsed.payload || undefined,
-                      files: [] // No files in stored intent for now
-                    });
-
-                    const intentsToCreate: string[] = [];
-
-                    if (suggestionsResult.success && suggestionsResult.suggestedIntents.length > 0) {
-                      intentsToCreate.push(...suggestionsResult.suggestedIntents.map(s => s.payload));
-                      console.log(`Creating ${suggestionsResult.suggestedIntents.length} intents from stored input suggestions`);
-                    } else {
-                      intentsToCreate.push(parsed.payload);
-                      console.log('Using original stored input as single intent');
-                    }
-                    
-                    // Create all intents from suggestions
-                    const createdIntents = [];
-                    for (let i = 0; i < intentsToCreate.length; i++) {
-                      try {
-                        const createdIntent = await intentsService.createIntentViaShareCode(
-                          resolvedParams.code,
-                          intentsToCreate[i],
-                          false
-                        );
-                        createdIntents.push(createdIntent);
-                        console.log(`Stored intent ${i + 1}/${intentsToCreate.length} created`);
-                      } catch (error) {
-                        console.error(`Failed to create stored intent ${i + 1}:`, error);
-                      }
-                    }
-
-                    if (createdIntents.length > 0) {
-                      const primaryIntent = createdIntents[0];
+                    // Check if user needs onboarding before creating intent
+                    if (!response.user.intro || response.user.intro.trim() === '') {
                       setState(prev => ({ 
                         ...prev, 
-                        createdIntentId: primaryIntent.id,
-                        step: 'discovery-results'
+                        step: 'onboarding-required',
+                        autoCreateIntent: true
                       }));
-
-                      // Fetch discovery results for the primary intent
-                      await fetchDiscoveryResults(true, primaryIntent.id);
-                    } else {
-                      throw new Error('Failed to create any intents from stored data');
+                      return;
                     }
-                  } catch (error) {
-                    console.error('Error creating stored intent:', error);
-                    setState(prev => ({ ...prev, step: 'intent-form' }));
                   }
+                } catch (error) {
+                  console.error('Failed to fetch user:', error);
+                  setState(prev => ({ ...prev, step: 'error', error: 'Failed to fetch user data' }));
+                  return;
+                }
+                
+                // Auto-create the intent with AI suggestions
+                try {
+                  setState(prev => ({ ...prev, step: 'intent-creating' }));
+                  
+                  // Generate suggestions from stored input
+                  const suggestionsResult = await intentSuggestionsService.generateSuggestions({
+                    payload: parsed.payload || undefined,
+                    files: [] // No files in stored intent for now
+                  });
+
+                  const intentsToCreate: string[] = [];
+
+                  if (suggestionsResult.success && suggestionsResult.suggestedIntents.length > 0) {
+                    intentsToCreate.push(...suggestionsResult.suggestedIntents.map(s => s.payload));
+                    console.log(`Creating ${suggestionsResult.suggestedIntents.length} intents from stored input suggestions`);
+                  } else {
+                    intentsToCreate.push(parsed.payload);
+                    console.log('Using original stored input as single intent');
+                  }
+                  
+                  // Create all intents from suggestions
+                  const createdIntents = [];
+                  for (let i = 0; i < intentsToCreate.length; i++) {
+                    try {
+                      const createdIntent = await intentsService.createIntentViaShareCode(
+                        resolvedParams.code,
+                        intentsToCreate[i],
+                        false
+                      );
+                      createdIntents.push(createdIntent);
+                      console.log(`Stored intent ${i + 1}/${intentsToCreate.length} created`);
+                    } catch (error) {
+                      console.error(`Failed to create stored intent ${i + 1}:`, error);
+                    }
+                  }
+
+                  if (createdIntents.length > 0) {
+                    const primaryIntent = createdIntents[0];
+                    setState(prev => ({ 
+                      ...prev, 
+                      createdIntentId: primaryIntent.id,
+                      step: 'discovery-results'
+                    }));
+
+                    // Fetch discovery results for the primary intent
+                    await fetchDiscoveryResults(true, primaryIntent.id);
+                  } else {
+                    throw new Error('Failed to create any intents from stored data');
+                  }
+                } catch (error) {
+                  console.error('Error creating stored intent:', error);
+                  setState(prev => ({ ...prev, step: 'intent-form' }));
                 }
               }
+            }
             break;
 
           case 'auth-required':
-            // Trigger login for stored intent
+            // Trigger login (only if not already authenticated)
             if (!authenticated) {
               login();
             }
+            break;
+
+          case 'onboarding-required':
+            // User needs to complete onboarding - modal will be shown
             break;
         }
       } catch (error) {
@@ -307,10 +339,77 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
       }
     };
 
+    // Handle user authentication and onboarding check
+    const checkUserState = async () => {
+      if (authenticated && ready && !state.user) {
+        try {
+          const response = await api.get<APIResponse<User>>('/auth/me');
+          if (response.user) {
+            setState(prev => ({ ...prev, user: response.user || null }));
+            
+            // Check if needs onboarding for auto-create intent
+            if (!response.user.intro || response.user.intro.trim() === '') {
+              if (state.autoCreateIntent) {
+                setState(prev => ({ ...prev, step: 'onboarding-required' }));
+              }
+            } else {
+              // User is ready, check if should auto-create intent
+              if (state.autoCreateIntent && (state.step === 'auth-required' || state.step === 'onboarding-required')) {
+                // Re-trigger stored intent creation after auth/onboarding
+                setState(prev => ({ ...prev, step: 'loading' }));
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Failed to fetch user:', error);
+        }
+      }
+    };
+
     if (state.step !== 'error') {
       handleFlow();
+      checkUserState();
     }
-  }, [state.step, authenticated, ready, resolvedParams.code]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.step, authenticated, ready, resolvedParams.code, state.autoCreateIntent]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Listen for onboarding completion from Header modal
+  useEffect(() => {
+    // Check for existing onboarding completion flag
+    const checkOnboardingCompletion = () => {
+      if (state.step === 'onboarding-required') {
+        try {
+          const completed = localStorage.getItem('onboarding_completed');
+          if (completed) {
+            setState(prev => ({ ...prev, step: 'loading' }));
+            localStorage.removeItem('onboarding_completed');
+          }
+        } catch (error) {
+          console.warn('Failed to check onboarding completion:', error);
+        }
+      }
+    };
+
+    // Check initially
+    checkOnboardingCompletion();
+
+    // Listen for storage changes (from other tabs/windows)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'onboarding_completed' && state.step === 'onboarding-required') {
+        setState(prev => ({ ...prev, step: 'loading' }));
+        localStorage.removeItem('onboarding_completed');
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Poll for changes in the same tab (since localStorage events don't fire in same tab)
+    const pollInterval = setInterval(checkOnboardingCompletion, 500);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(pollInterval);
+    };
+  }, [state.step]);
 
   // Poll discovery results every 5 seconds when in discovery-results step
   useEffect(() => {
@@ -350,6 +449,22 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
         setState(prev => ({ 
           ...prev, 
           step: 'auth-required',
+          autoCreateIntent: true,
+          isSubmitting: false
+        }));
+        return;
+      }
+
+      if (!state.user?.intro || state.user.intro.trim() === '') {
+        // Store intent data for after onboarding
+        localStorage.setItem(`matchlist_intent_${resolvedParams.code}`, JSON.stringify({
+          payload: data.payload,
+          files: data.files.map(f => ({ name: f.name, size: f.size, type: f.type })) // Store file metadata
+        }));
+        setState(prev => ({ 
+          ...prev, 
+          step: 'onboarding-required',
+          autoCreateIntent: true,
           isSubmitting: false
         }));
         return;
@@ -447,7 +562,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
         isSubmitting: false
       }));
     }
-  }, [ready, authenticated, resolvedParams.code, intentsService, fetchDiscoveryResults]);
+  }, [ready, authenticated, resolvedParams.code, intentsService, fetchDiscoveryResults, state.user]);
 
   // Get connection status for a user
   const getConnectionStatus = (userId: string): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
@@ -635,6 +750,8 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
             </div>
           </div>
         )}
+
+
 
         {/* Discovery Results */}
         {state.step === 'discovery-results' && (

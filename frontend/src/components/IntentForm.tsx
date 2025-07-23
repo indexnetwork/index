@@ -70,13 +70,7 @@ export default function IntentForm({
   return (
     <div className={`w-full max-w-4xl mx-auto ${className}`}>
       <div className="">
-        {/* Header Section */}
-        <div className="py-2 border-b border-gray-100">
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">What are you looking for?</h3>
-          <p className="text-sm text-gray-600">
-            Express your intent and discover relevant connections. Attach files to provide additional context.
-          </p>
-        </div>
+
 
         {/* Content Section */}
         <div className="py-6">

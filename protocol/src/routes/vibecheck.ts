@@ -98,7 +98,7 @@ const cleanupOldTempFiles = () => {
 setInterval(cleanupOldTempFiles, 60 * 60 * 1000);
 
 // Separate function to handle vibe check logic
-const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: string) => {
+const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: string, payloadText?: string) => {
   // Check access to the shared index
   const accessCheck = await checkIndexAccessByCode(code);
   if (!accessCheck.hasAccess) {
@@ -147,14 +147,20 @@ const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: stri
     };
   }
 
-  // Process uploaded files to extract text content
-  const fileText = await processUploadedFiles(uploadedFiles);
+  // Get text content from either files or payload
+  let fileText: string;
+  if (payloadText) {
+    fileText = payloadText;
+  } else {
+    // Process uploaded files to extract text content
+    fileText = await processUploadedFiles(uploadedFiles);
+  }
   
   if (!fileText.trim()) {
     return {
       success: false,
       status: 400,
-      error: 'No readable content found in uploaded files'
+      error: 'No readable content found'
     };
   }
 
@@ -221,11 +227,27 @@ router.post('/intent-suggestion',
 
       // If only payload, use it directly for intent generation
       if (payload && (!uploadedFiles || uploadedFiles.length === 0)) {
-        return res.json({
+        const response: any = {
           success: true,
           suggestedIntents: [{ payload: payload, confidence: 1.0 }],
           tempFiles: []
-        });
+        };
+
+        // If index code is provided, also perform vibe check with payload
+        if (indexCode) {
+          const vibeCheckResult = await performVibeCheck([], indexCode, payload);
+          
+          if (!vibeCheckResult.success) {
+            return res.status(vibeCheckResult.status || 500).json({ error: vibeCheckResult.error });
+          }
+
+          // Add vibe check results to response
+          response.synthesis = vibeCheckResult.synthesis;
+          response.score = vibeCheckResult.score;
+          response.targetUser = vibeCheckResult.targetUser;
+        }
+
+        return res.json(response);
       }
 
       // If files (with optional payload), process files and use payload as instruction

@@ -84,13 +84,13 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   const availablePermissions: PublicPermission[] = [
     {
       id: 'can-discover',
-      label: 'Can Discover',
-      description: 'Use this index for discovery'
+      label: 'Can discover',
+      description: 'Use this index for public vibecheck'
     },
     {
       id: 'can-write-intents',
       label: 'Can write intents',
-      description: 'Create intents in this index'
+      description: 'Create intents in this index, be discoverable'
     },
     {
       id: 'can-view-files',
