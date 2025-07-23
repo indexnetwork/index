@@ -73,7 +73,7 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
   });
   const [members, setMembers] = useState<Member[]>([]);
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
-  const [isCopied, setIsCopied] = useState(false);
+  const [isCopied, setIsCopied] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const permissionsDropdownRef = useRef<HTMLDivElement>(null);
@@ -197,11 +197,11 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     }
   };
 
-  const handleCopyLink = async (url: string) => {
+  const handleCopyLink = async (url: string, linkType: string) => {
     try {
       await navigator.clipboard.writeText(url);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 1000); // Reset after 2 seconds
+      setIsCopied(linkType);
+      setTimeout(() => setIsCopied(null), 1000); // Reset after 1 second
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
@@ -278,10 +278,12 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
       : `${permissions.length} permissions`;
   };
 
-  // Generate a share link when public
-  const shareUrl = selectedPermissions.length > 0 && index.linkPermissions?.code
-    ? `${window.location.origin}/share/${index.linkPermissions.code}`
-    : '';
+  // Generate links based on permissions
+  const canShowShareLink = (selectedPermissions.includes('can-write-intents') || selectedPermissions.includes('can-discover')) && index.linkPermissions?.code;
+  const canShowMatchlistLink = selectedPermissions.includes('can-write-intents') && index.linkPermissions?.code;
+  
+  const shareUrl = canShowShareLink && index.linkPermissions?.code ? `${window.location.origin}/vibecheck/${index.linkPermissions.code}` : '';
+  const matchlistUrl = canShowMatchlistLink && index.linkPermissions?.code ? `${window.location.origin}/matchlist/${index.linkPermissions.code}` : '';
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -297,7 +299,7 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mt-2 mb-2">
-                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Direct Link</h3>
+                  <h3 className="text-md font-medium font-ibm-plex-mono text-black">Public Access</h3>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     {selectedPermissions.length > 0 ? (
                       <>
@@ -371,8 +373,13 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
               </div>
             </div>
 
-            {selectedPermissions.length > 0 && (
+            {/* Share Link */}
+            {canShowShareLink && (
               <div className="mt-4">
+                <div className="mb-2">
+                  <h4 className="text-sm font-medium text-gray-900">Vibecheck Link</h4>
+                  <p className="text-xs text-gray-500">General access to the index</p>
+                </div>
                 <div className="flex items-center gap-2">
                   <Input
                     readOnly
@@ -384,11 +391,43 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
                     variant="outline"
                     size="sm"
                     className={`h-10 px-4 transition-colors ${
-                      isCopied ? 'bg-green-50 border-green-200 text-green-700' : ''
+                      isCopied === 'share' ? 'bg-green-50 border-green-200 text-green-700' : ''
                     }`}
-                    onClick={() => handleCopyLink(shareUrl)}
+                    onClick={() => handleCopyLink(shareUrl, 'share')}
                   >
-                    {isCopied ? (
+                    {isCopied === 'share' ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Matchlist Link */}
+            {canShowMatchlistLink && (
+              <div className="mt-4">
+                <div className="mb-2">
+                  <h4 className="text-sm font-medium text-gray-900">Matchlist Link</h4>
+                  <p className="text-xs text-gray-500">Access to view and contribute to matchlist</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={matchlistUrl}
+                    className="px-4 py-3"
+                    placeholder="Matchlist link will appear here..."
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`h-10 px-4 transition-colors ${
+                      isCopied === 'matchlist' ? 'bg-green-50 border-green-200 text-green-700' : ''
+                    }`}
+                    onClick={() => handleCopyLink(matchlistUrl, 'matchlist')}
+                  >
+                    {isCopied === 'matchlist' ? (
                       <Check className="h-4 w-4" />
                     ) : (
                       <Copy className="h-4 w-4" />

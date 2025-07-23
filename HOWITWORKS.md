@@ -366,7 +366,7 @@ import { IntentForm } from '@index/react';
 />
 ```
 
-**VibeCheck**: Analyze compatibility between users, intents, or content ([Demo](http://index.network/share/607e6bce-d292-41b3-9fa2-167a5fed1bd2))
+**VibeCheck**: Analyze compatibility between users, intents, or content ([Demo](http://index.network/vibecheck/607e6bce-d292-41b3-9fa2-167a5fed1bd2))
 ```typescript
 import { VibeCheck } from '@index/react';
 

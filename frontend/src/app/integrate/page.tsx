@@ -264,7 +264,7 @@ const components: ComponentConfig[] = [
       {
         title: "VC Thesis Demo",
         description: "How Bumble enhanced matching with VibeCheck compatibility scores",
-        link: "http://index.network/share/607e6bce-d292-41b3-9fa2-167a5fed1bd2"
+        link: "http://index.network/vibecheck/607e6bce-d292-41b3-9fa2-167a5fed1bd2"
       }
     ],
     examples: [
