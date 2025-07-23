@@ -324,24 +324,8 @@ router.get('/index/share/:code/by-user',
         return res.status(403).json({ error: 'Shared index does not allow discovery' });
       }
 
-      // Get current user's intents in the shared index
-      const userIntentsInIndex = await db.select({
-        intentId: intentIndexes.intentId
-      })
-      .from(intentIndexes)
-      .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
-      .where(and(
-        eq(intentIndexes.indexId, sharedIndexData.id),
-        eq(intents.userId, req.user!.id)
-      ));
-
-      const userIntentIds = userIntentsInIndex.map(item => item.intentId);
-
-      if (userIntentIds.length === 0) {
-        return res.json([]);
-      }
-
-      // Get stakes with user info in a single query, excluding the intent owner
+      // Get stakes with user info, filtering through intent_indexes to ensure
+      // only stakes for intents within this specific index are included
       const stakes = await db.select({
         stake: intentStakes.stake,
         reasoning: intentStakes.reasoning,
@@ -356,14 +340,14 @@ router.get('/index/share/:code/by-user',
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
       .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
+      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
       .innerJoin(users, eq(intents.userId, users.id))
       .where(and(
-        sql`EXISTS(
-          SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-          WHERE intent_id IN (${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)})
-        )`,
-        isNull(agents.deletedAt),
-        sql`${users.id} != ${req.user!.id}`
+        // Filter to only intents within this specific shared index
+        eq(intentIndexes.indexId, sharedIndexData.id),
+        // Exclude the current user's own intents
+        sql`${users.id} != ${req.user!.id}`,
+        isNull(agents.deletedAt)
       ));
 
       // Group by user
