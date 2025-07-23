@@ -551,11 +551,20 @@ export default function SharePage({ params }: SharePageProps) {
                   </div>
 
                   <div className="mt-6">
-                    {(state.vibeCheckResults.score || 0) <= 0.5 && (
+                    {(state.vibeCheckResults.score || 0) < 0.25 && (
+                      <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-center mb-4">
+                        <p className="text-red-800 font-medium">Collaboration potential is... well, let's just say low 🤷‍♀️</p>
+                        <p className="text-red-700 text-sm mt-1">
+                          It's not you, it's not them—sometimes the vibes just don't align. Maybe try a different angle, or perhaps this just isn't meant to be. No hard feelings!
+                        </p>
+                      </div>
+                    )}
+                    
+                    {(state.vibeCheckResults.score || 0) >= 0.25 && (state.vibeCheckResults.score || 0) <= 0.5 && (
                       <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-center mb-4">
-                        <p className="text-yellow-800 font-medium">Collaboration potential is moderate</p>
+                        <p className="text-yellow-800 font-medium">Collaboration potential is moderate (aka "it's complicated") 🤔</p>
                         <p className="text-yellow-700 text-sm mt-1">
-                          Based on the analysis, there may be limited synergy for collaboration at this time.
+                          There's some overlap here, but maybe not enough to write home about. Worth exploring further, or maybe just staying friends for now.
                         </p>
                       </div>
                     )}

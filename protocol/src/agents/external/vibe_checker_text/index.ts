@@ -35,7 +35,7 @@ export interface OtherUserData {
 
 // Zod schema for structured output
 const VibeCheckSchema = z.object({
-  synthesis: z.string().describe("Markdown synthesis explaining collaboration possibilities between the two users. Do not include score or any other text other than the synthesis markdown output."),
+  synthesis: z.string().describe("Generate a markdown summary outlining potential collaboration opportunities between the two users. Exclude any collaboration score or unrelated text. Oonly include the markdown synthesis output."),
   score: z.number().min(0).max(1).describe("Collaboration potential score between 0 and 1, where 1 is perfect alignment")
 });
 

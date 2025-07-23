@@ -377,8 +377,8 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
             {canShowShareLink && (
               <div className="mt-4">
                 <div className="mb-2">
-                  <h4 className="text-sm font-medium text-gray-900">Vibecheck Link</h4>
-                  <p className="text-xs text-gray-500">General access to the index</p>
+                  <h4 className="text-sm font-medium text-gray-900">Vibecheck</h4>
+                  <p className="text-xs text-gray-500">People can anonymously compare themselves to the index</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Input
@@ -409,8 +409,8 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
             {canShowMatchlistLink && (
               <div className="mt-4">
                 <div className="mb-2">
-                  <h4 className="text-sm font-medium text-gray-900">Matchlist Link</h4>
-                  <p className="text-xs text-gray-500">Access to view and contribute to matchlist</p>
+                  <h4 className="text-sm font-medium text-gray-900">Matchlist</h4>
+                  <p className="text-xs text-gray-500">People can write intents, be discoverable, and discover others</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Input
