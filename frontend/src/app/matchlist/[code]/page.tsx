@@ -14,6 +14,8 @@ import { getAvatarUrl } from "@/lib/file-utils";
 
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 import { Play, Pause } from "lucide-react";
+import IntentForm from "@/components/IntentForm";
+import { intentSuggestionsService, IntentSuggestion } from "@/services/intentSuggestions";
 
 interface MatchlistPageProps {
   params: Promise<{
@@ -73,7 +75,6 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
   const connectionsService = useConnections();
   const intentsService = useIntents();
   const synthesisService = useSynthesis();
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
 
   // Fetch synthesis 
@@ -208,49 +209,76 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
             const index = await publicIndexesService.getIndexByShareCode(resolvedParams.code);
             setState(prev => ({ ...prev, index, step: 'intent-form' }));
             
-            // Check for stored intent
-            if (authenticated) {
-              const storedIntent = localStorage.getItem(`matchlist_intent_${resolvedParams.code}`);
-              if (storedIntent) {
-                const parsed = JSON.parse(storedIntent);
-                setState(prev => ({ 
-                  ...prev, 
-                  intentPayload: parsed.payload,
-                  step: 'intent-creating'
-                }));
+                          // Check for stored intent (after user logs in)
+              if (authenticated) {
+                const storedIntent = localStorage.getItem(`matchlist_intent_${resolvedParams.code}`);
+                if (storedIntent) {
+                  const parsed = JSON.parse(storedIntent);
+                  console.log('Found stored intent after login, generating suggestions:', parsed.payload);
+                  
+                  // Clear stored intent
+                  localStorage.removeItem(`matchlist_intent_${resolvedParams.code}`);
+                  
+                  // Auto-create the intent with AI suggestions
+                  try {
+                    setState(prev => ({ ...prev, step: 'intent-creating' }));
+                    
+                    // Generate suggestions from stored input
+                    const suggestionsResult = await intentSuggestionsService.generateSuggestions({
+                      payload: parsed.payload || undefined,
+                      files: [] // No files in stored intent for now
+                    });
+
+                    const intentsToCreate: string[] = [];
+
+                    if (suggestionsResult.success && suggestionsResult.suggestedIntents.length > 0) {
+                      intentsToCreate.push(...suggestionsResult.suggestedIntents.map(s => s.payload));
+                      console.log(`Creating ${suggestionsResult.suggestedIntents.length} intents from stored input suggestions`);
+                    } else {
+                      intentsToCreate.push(parsed.payload);
+                      console.log('Using original stored input as single intent');
+                    }
+                    
+                    // Create all intents from suggestions
+                    const createdIntents = [];
+                    for (let i = 0; i < intentsToCreate.length; i++) {
+                      try {
+                        const createdIntent = await intentsService.createIntentViaShareCode(
+                          resolvedParams.code,
+                          intentsToCreate[i],
+                          false
+                        );
+                        createdIntents.push(createdIntent);
+                        console.log(`Stored intent ${i + 1}/${intentsToCreate.length} created`);
+                      } catch (error) {
+                        console.error(`Failed to create stored intent ${i + 1}:`, error);
+                      }
+                    }
+
+                    if (createdIntents.length > 0) {
+                      const primaryIntent = createdIntents[0];
+                      setState(prev => ({ 
+                        ...prev, 
+                        createdIntentId: primaryIntent.id,
+                        step: 'discovery-results'
+                      }));
+
+                      // Fetch discovery results for the primary intent
+                      await fetchDiscoveryResults(true, primaryIntent.id);
+                    } else {
+                      throw new Error('Failed to create any intents from stored data');
+                    }
+                  } catch (error) {
+                    console.error('Error creating stored intent:', error);
+                    setState(prev => ({ ...prev, step: 'intent-form' }));
+                  }
+                }
               }
-            }
-            break;
-
-          case 'intent-creating':
-            if (authenticated && state.intentPayload.trim()) {
-              // Create intent via share code - this will check can-write-intents permission
-              const createdIntent = await intentsService.createIntentViaShareCode(
-                resolvedParams.code,
-                state.intentPayload,
-                false // isIncognito
-              );
-
-              setState(prev => ({ 
-                ...prev, 
-                createdIntentId: createdIntent.id,
-                step: 'discovery-results'
-              }));
-
-              // Clear stored intent
-              localStorage.removeItem(`matchlist_intent_${resolvedParams.code}`);
-
-              // Fetch discovery results
-              await fetchDiscoveryResults(true, createdIntent.id);
-            }
             break;
 
           case 'auth-required':
-            // Store intent and trigger login
-            if (!authenticated && state.intentPayload.trim()) {
-              localStorage.setItem(`matchlist_intent_${resolvedParams.code}`, JSON.stringify({
-                payload: state.intentPayload
-              }));
+            // Trigger login for stored intent
+            if (!authenticated) {
               login();
             }
             break;
@@ -299,24 +327,127 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
     return () => clearInterval(interval);
   }, [state.step, state.isPaused, fetchDiscoveryResults]);
 
-  // Handle intent form submission
-  const handleIntentSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Handle intent form submission and creation
+  const handleIntentSubmission = useCallback(async (data: { payload: string; files: File[]; vibeCheckIndex?: string }) => {
+    console.log('=== CREATING INTENT FROM SUGGESTIONS ===');
+    console.log('Original input:', data.payload);
+    console.log('Files:', data.files);
     
-    if (!state.intentPayload.trim()) return;
+    if (!data.payload.trim() && data.files.length === 0) {
+      console.error('No content provided');
+      return;
+    }
     
     setState(prev => ({ ...prev, isSubmitting: true }));
 
-    if (!ready || !authenticated) {
+    try {
+      if (!ready || !authenticated) {
+        // Store intent data for after login
+        localStorage.setItem(`matchlist_intent_${resolvedParams.code}`, JSON.stringify({
+          payload: data.payload,
+          files: data.files.map(f => ({ name: f.name, size: f.size, type: f.type })) // Store file metadata
+        }));
+        setState(prev => ({ 
+          ...prev, 
+          step: 'auth-required',
+          isSubmitting: false
+        }));
+        return;
+      }
+
+      // Set intent creating state
+      setState(prev => ({ ...prev, step: 'intent-creating' }));
+
+      // First, generate suggestions from the input
+      console.log('Generating suggestions to create multiple intents...');
+      const suggestionsResult = await intentSuggestionsService.generateSuggestions({
+        payload: data.payload.trim() || undefined,
+        files: data.files
+      });
+
+      const intentsToCreate: string[] = [];
+
+      if (suggestionsResult.success && suggestionsResult.suggestedIntents.length > 0) {
+        // Use all AI suggestions as separate intents
+        intentsToCreate.push(...suggestionsResult.suggestedIntents.map(s => s.payload));
+        
+        console.log('=== CREATING MULTIPLE INTENTS FROM AI SUGGESTIONS ===');
+        console.log('Original input:', data.payload);
+        console.log(`Creating ${suggestionsResult.suggestedIntents.length} intents from suggestions:`);
+        
+        suggestionsResult.suggestedIntents.forEach((suggestion: IntentSuggestion, index: number) => {
+          console.log(`  ${index + 1}. ${suggestion.payload} (${Math.round(suggestion.confidence * 100)}%)`);
+        });
+      } else {
+        // Fallback to original input
+        intentsToCreate.push(data.payload.trim());
+        console.log('No suggestions generated, using original input as single intent');
+      }
+
+      // Create all intents
+      const createdIntents = [];
+      console.log(`Creating ${intentsToCreate.length} intents...`);
+      
+      for (let i = 0; i < intentsToCreate.length; i++) {
+        const intentPayload = intentsToCreate[i];
+        try {
+          const createdIntent = await intentsService.createIntentViaShareCode(
+            resolvedParams.code,
+            intentPayload,
+            false // isIncognito
+          );
+          createdIntents.push(createdIntent);
+          console.log(`Intent ${i + 1}/${intentsToCreate.length} created:`, {
+            id: createdIntent.id,
+            payload: intentPayload.substring(0, 100) + (intentPayload.length > 100 ? '...' : '')
+          });
+        } catch (error) {
+          console.error(`Failed to create intent ${i + 1}:`, error);
+        }
+      }
+
+      if (createdIntents.length === 0) {
+        throw new Error('Failed to create any intents');
+      }
+
+      console.log(`=== Successfully created ${createdIntents.length} intents ===`);
+      
+      // Use the first created intent for discovery results
+      const primaryIntent = createdIntents[0];
+      
       setState(prev => ({ 
         ...prev, 
-        step: 'auth-required'
+        createdIntentId: primaryIntent.id,
+        step: 'discovery-results',
+        isSubmitting: false
       }));
-      return;
-    }
 
-    setState(prev => ({ ...prev, step: 'intent-creating' }));
-  }, [ready, authenticated, state.intentPayload]);
+      // Fetch discovery results for the primary intent
+      await fetchDiscoveryResults(true, primaryIntent.id);
+
+    } catch (error) {
+      console.error('Error creating intent:', error);
+      
+      // Handle specific permission errors
+      let errorMessage = 'Something went wrong';
+      if (error instanceof Error) {
+        if (error.message.includes('does not allow intent creation')) {
+          errorMessage = 'You don\'t have permission to create intents in this shared index.';
+        } else if (error.message.includes('Shared index does not allow intent creation')) {
+          errorMessage = 'This shared index doesn\'t allow creating new intents.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      setState(prev => ({ 
+        ...prev, 
+        step: 'error', 
+        error: errorMessage,
+        isSubmitting: false
+      }));
+    }
+  }, [ready, authenticated, resolvedParams.code, intentsService, fetchDiscoveryResults]);
 
   // Get connection status for a user
   const getConnectionStatus = (userId: string): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
@@ -353,35 +484,6 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
     }
   };
 
-  // Handle starting over
-  const handleStartOver = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      step: 'intent-form',
-      intentPayload: '',
-      createdIntentId: null,
-      discoveryResults: [],
-      connectionStatuses: {},
-      syntheses: {},
-      synthesisLoading: {},
-      isSubmitting: false,
-      isPaused: false,
-      isRefreshing: false,
-    }));
-    
-    // Reset the fetched syntheses ref
-    fetchedSynthesesRef.current.clear();
-    
-    localStorage.removeItem(`matchlist_intent_${resolvedParams.code}`);
-  }, [resolvedParams.code]);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
-    }
-  }, [state.intentPayload]);
 
   // Render based on state
   if (state.step === 'loading') {
@@ -496,13 +598,6 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
                     <span className="hidden sm:inline">{state.isPaused ? 'Resume' : 'Pause'}</span>
                   </div>
                 </Button>
-                <Button 
-                  variant="bordered" 
-                  size="sm"
-                  onClick={handleStartOver}
-                >
-                  Start Over
-                </Button>
               </div>
             )}
           </div>
@@ -512,43 +607,12 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
         {state.step === 'intent-form' && (
           <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="w-full">
-              <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">What are you looking for?</h3>
-              
-              <div className="mt-4 p-4 bg-white border border-gray-200 rounded-lg mb-4">
-                <div className="flex items-start space-x-4">
-                  <div className="flex-1">
-                    <h3 className="font-medium text-gray-700 mb-2">Express your intent and discover relevant connections.</h3>
-                    <p className="text-sm text-gray-500">
-                      Share what you're seeking, working on, or interested in. Our system will match you with people in this index who have relevant experience or complementary goals.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <form onSubmit={handleIntentSubmit} className="space-y-4">
-                <div>
-                  <textarea
-                    ref={textareaRef}
-                    value={state.intentPayload}
-                    onChange={(e) => setState(prev => ({ ...prev, intentPayload: e.target.value }))}
-                    placeholder="Describe what you're looking for, working on, or hoping to achieve..."
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none overflow-hidden"
-                    rows={3}
-                    disabled={state.isSubmitting}
-                    style={{ color: "black" }}
-                  />
-                </div>
-                
-                <div className="flex gap-3">
-                  <Button
-                    type="submit"
-                    disabled={!state.intentPayload.trim() || state.isSubmitting}
-                    className="flex-1 bg-black text-white hover:bg-gray-800 border-b-2 border-black"
-                  >
-                    {state.isSubmitting ? 'Processing...' : 'Find Matches'}
-                  </Button>
-                </div>
-              </form>
+              <IntentForm
+                onSubmit={handleIntentSubmission}
+                isSubmitting={state.isSubmitting}
+                submitButtonText="Find Matches"
+                placeholder="Describe what you're looking for, working on, or hoping to achieve..."
+              />
             </div>
           </div>
         )}

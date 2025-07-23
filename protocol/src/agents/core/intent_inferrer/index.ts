@@ -124,6 +124,7 @@ async function loadFilesInParallel(filePaths: string[]): Promise<Array<{ filePat
 export async function analyzeFolder(
   folderPath: string,
   fileIds: string[],
+  textInstruction?: string,
   options: { timeoutMs?: number } = {}
 ): Promise<IntentInferenceResult> {
   try {
@@ -191,7 +192,10 @@ export async function analyzeFolder(
       })).min(5).max(5).describe("Array of 5 high-quality intent objects")
     });
 
-    const prompt = `You are analyzing a collection of ${processedFiles} files and generating intents.
+    // Use text instruction as guidance if provided
+    const instructionText = textInstruction ? `\n\nUSER INSTRUCTION: ${textInstruction}\nUse this instruction to guide how you analyze the content and what types of intents to generate.\n` : '';
+
+    const prompt = `You are analyzing a collection of ${processedFiles} files and generating intents.${instructionText}
 REQUIREMENTS:
 - Analyze the content to identify the primary target audience and their needs.
 - Prioritize generating many intents for the most likely target audience, but also add few for secondary target audiences.
@@ -201,8 +205,6 @@ For example:
 If I uploaded a pitch deck, I would most likely want to generate intents for VCs, angel investors, and other investors.  so 3 investor intent, 1 partnership, 1 early customer.
 If I uploaded a research paper, I would want to generate intents to find other researchers, and other people looking for research.
 If I uploaded a job posting, I would want to find candidates, and other people looking for jobs.
-
-
 
 Examples intents:
 - "Looking for early-stage investors interested in AI and machine learning startups with strong technical backgrounds and experience in scaling deep tech companies"
@@ -242,16 +244,7 @@ ${concatenatedContent.substring(0, 15000)}${concatenatedContent.length > 15000 ?
 }
 
 // Utility functions
-export async function getIntents(folderPath: string, fileIds: string[]): Promise<InferredIntent[]> {
-  const result = await analyzeFolder(folderPath, fileIds);
+export async function getIntents(folderPath: string, fileIds: string[], textInstruction?: string): Promise<InferredIntent[]> {
+  const result = await analyzeFolder(folderPath, fileIds, textInstruction);
   return result.intents;
 }
-
-export function getTopIntentsByConfidence(
-  intents: InferredIntent[], 
-  limit: number = 5
-): InferredIntent[] {
-  return intents
-    .sort((a, b) => b.confidence - a.confidence)
-    .slice(0, limit);
-} 

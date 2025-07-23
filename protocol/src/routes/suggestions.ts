@@ -117,7 +117,7 @@ router.get('/',
           const fileIds = indexFiles.map(file => file.id);
 
           // Use intent suggester to analyze files directly
-          const result = await analyzeFolder(baseUploadDir, fileIds, { timeoutMs: 60000 });
+          const result = await analyzeFolder(baseUploadDir, fileIds, undefined, { timeoutMs: 60000 });
 
           if (result.success) {
             suggestions = result.intents.map((intent: any) => ({

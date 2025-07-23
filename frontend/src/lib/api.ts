@@ -189,7 +189,7 @@ export const apiClient = new APIClient();
 // Hook for authenticated API calls
 export function useAuthenticatedAPI() {
   const { identityToken } = useIdentityToken();
-  const { authenticated, ready } = usePrivy();
+  const { ready } = usePrivy();
 
 
   const makeAuthenticatedRequest = useCallback(async <T>(

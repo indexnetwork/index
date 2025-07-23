@@ -1,5 +1,5 @@
 import { Router, Response, Request } from 'express';
-import { param, validationResult } from 'express-validator';
+import { validationResult, body } from 'express-validator';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -97,11 +97,110 @@ const cleanupOldTempFiles = () => {
 // Run cleanup every hour
 setInterval(cleanupOldTempFiles, 60 * 60 * 1000);
 
-// Unauthenticated vibe check endpoint
-router.post('/share/:code',
+// Separate function to handle vibe check logic
+const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: string) => {
+  // Check access to the shared index
+  const accessCheck = await checkIndexAccessByCode(code);
+  if (!accessCheck.hasAccess) {
+    return {
+      success: false,
+      status: accessCheck.status!,
+      error: accessCheck.error
+    };
+  }
+
+  const sharedIndexData = accessCheck.indexData!;
+
+  // Check if the shared index has can-discover permission
+  if (!accessCheck.memberPermissions?.includes('can-discover')) {
+    return {
+      success: false,
+      status: 403,
+      error: 'Shared index does not allow matching'
+    };
+  }
+
+  // Get intents from the shared index
+  const sharedIndexIntents = await db.select({
+    intentId: intentIndexes.intentId,
+    intent: {
+      id: intents.id,
+      payload: intents.payload,
+      userId: intents.userId
+    },
+    user: {
+      id: users.id,
+      name: users.name,
+      intro: users.intro
+    }
+  })
+  .from(intentIndexes)
+  .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
+  .innerJoin(users, eq(intents.userId, users.id))
+  .where(eq(intentIndexes.indexId, sharedIndexData.id));
+
+  if (sharedIndexIntents.length === 0) {
+    return {
+      success: false,
+      status: 404,
+      error: 'No intents found in shared index'
+    };
+  }
+
+  // Process uploaded files to extract text content
+  const fileText = await processUploadedFiles(uploadedFiles);
+  
+  if (!fileText.trim()) {
+    return {
+      success: false,
+      status: 400,
+      error: 'No readable content found in uploaded files'
+    };
+  }
+
+  // Use the first user's intents (in a real scenario, you might want to pick based on some criteria)
+  const targetUser = sharedIndexIntents[0].user;
+  
+  // Get all intents for this user
+  const userIntents = sharedIndexIntents
+    .filter(item => item.user.id === targetUser.id)
+    .map(item => ({ payload: item.intent.payload }));
+
+  // Prepare other user data for vibe check
+  const otherUserData = {
+    user: {
+      id: targetUser.id,
+      name: targetUser.name,
+      intro: targetUser.intro || ''
+    },
+    intents: userIntents
+  };
+
+  // Run vibe check
+  const vibeResult = await vibeCheck(fileText, otherUserData, { timeout: 30000 });
+
+  if (!vibeResult.success) {
+    return {
+      success: false,
+      status: 500,
+      error: vibeResult.error || 'Vibe check failed'
+    };
+  }
+
+  return {
+    success: true,
+    synthesis: vibeResult.synthesis,
+    score: vibeResult.score,
+    targetUser: otherUserData.user
+  };
+};
+
+// Intent suggestion endpoint - accepts files and/or payload, with optional index code for vibe check
+router.post('/intent-suggestion',
   upload.array('files', 10),
   [
-    param('code').isUUID()
+    body('payload').optional().isString(),
+    body('indexCode').optional().isUUID()
   ],
   async (req: Request, res: Response) => {
     const uploadedFiles = req.files as Express.Multer.File[];
@@ -113,128 +212,76 @@ router.post('/share/:code',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { code } = req.params;
+      const { payload, indexCode } = req.body;
 
-      if (!uploadedFiles || uploadedFiles.length === 0) {
-        return res.status(400).json({ error: 'No files uploaded' });
+      // Must have either files or payload
+      if ((!uploadedFiles || uploadedFiles.length === 0) && !payload) {
+        return res.status(400).json({ error: 'Must provide either files or payload' });
       }
 
-      // Check access to the shared index
-      const accessCheck = await checkIndexAccessByCode(code);
-      if (!accessCheck.hasAccess) {
-        cleanupTempFiles(uploadedFiles);
-        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      // If only payload, use it directly for intent generation
+      if (payload && (!uploadedFiles || uploadedFiles.length === 0)) {
+        return res.json({
+          success: true,
+          suggestedIntents: [{ payload: payload, confidence: 1.0 }],
+          tempFiles: []
+        });
       }
 
-      const sharedIndexData = accessCheck.indexData!;
-
-      // Check if the shared index has can-discover permission
-      if (!accessCheck.memberPermissions?.includes('can-discover')) {
-        cleanupTempFiles(uploadedFiles);
-        return res.status(403).json({ error: 'Shared index does not allow matching' });
-      }
-
-      // Get intents from the shared index
-      const sharedIndexIntents = await db.select({
-        intentId: intentIndexes.intentId,
-        intent: {
-          id: intents.id,
-          payload: intents.payload,
-          userId: intents.userId
-        },
-        user: {
-          id: users.id,
-          name: users.name,
-          intro: users.intro
-        }
-      })
-      .from(intentIndexes)
-      .innerJoin(intents, eq(intentIndexes.intentId, intents.id))
-      .innerJoin(users, eq(intents.userId, users.id))
-      .where(eq(intentIndexes.indexId, sharedIndexData.id));
-
-      if (sharedIndexIntents.length === 0) {
-        cleanupTempFiles(uploadedFiles);
-        return res.status(404).json({ error: 'No intents found in shared index' });
-      }
-
-      // Process uploaded files to extract text content
-      const fileText = await processUploadedFiles(uploadedFiles);
-      
-      // Don't clean up files immediately - keep them for later attachment
-      // cleanupTempFiles(uploadedFiles);
-
-      if (!fileText.trim()) {
-        cleanupTempFiles(uploadedFiles);
-        return res.status(400).json({ error: 'No readable content found in uploaded files' });
-      }
-
-      // Use the first user's intents (in a real scenario, you might want to pick based on some criteria)
-      const targetUser = sharedIndexIntents[0].user;
-      
-      // Get all intents for this user
-      const userIntents = sharedIndexIntents
-        .filter(item => item.user.id === targetUser.id)
-        .map(item => ({ payload: item.intent.payload }));
-
-      // Prepare other user data for vibe check
-      const otherUserData = {
-        user: {
-          id: targetUser.id,
-          name: targetUser.name,
-          intro: targetUser.intro || ''
-        },
-        intents: userIntents
-      };
-
-      // Run vibe check and intent suggestion generation in parallel
-      const [vibeResult, intentInferResult] = await Promise.all([
-        // Call the vibe check agent
-        vibeCheck(fileText, otherUserData, { timeout: 30000 }),
+      // If files (with optional payload), process files and use payload as instruction
+      if (uploadedFiles && uploadedFiles.length > 0) {
+        const fileIds = uploadedFiles.map(f => path.basename(f.path, path.extname(f.path)));
         
-        // Generate intent suggestions from uploaded files
-        (async () => {
-          try {
-            const fileIds = uploadedFiles.map(f => path.basename(f.path, path.extname(f.path)));
-            return await analyzeFolder(tempUploadDir, fileIds, { timeoutMs: 30000 });
-          } catch (error) {
-            console.warn('Intent inference failed:', error);
-            return { success: false, intents: [] };
-          }
-        })()
-      ]);
+        // Always generate intent suggestions
+        const intentInferResult = await analyzeFolder(tempUploadDir, fileIds, payload, { 
+          timeoutMs: 30000
+        });
 
-      if (!vibeResult.success) {
-        return res.status(500).json({ error: vibeResult.error || 'Vibe check failed' });
+        if (!intentInferResult.success) {
+          cleanupTempFiles(uploadedFiles);
+          return res.status(500).json({ error: 'Intent generation failed' });
+        }
+
+        const response: any = {
+          success: true,
+          suggestedIntents: intentInferResult.intents,
+          tempFiles: uploadedFiles.map(f => ({
+            id: path.basename(f.path),
+            name: f.originalname,
+            size: f.size,
+            type: f.mimetype
+          }))
+        };
+
+                 // If index code is provided, also perform vibe check
+         if (indexCode) {
+           const vibeCheckResult = await performVibeCheck(uploadedFiles, indexCode);
+           
+           if (!vibeCheckResult.success) {
+             cleanupTempFiles(uploadedFiles);
+             return res.status(vibeCheckResult.status || 500).json({ error: vibeCheckResult.error });
+           }
+
+          // Add vibe check results to response
+          response.synthesis = vibeCheckResult.synthesis;
+          response.score = vibeCheckResult.score;
+          response.targetUser = vibeCheckResult.targetUser;
+        }
+
+        return res.json(response);
       }
 
-      // Extract intent suggestions from the parallel result
-      const suggestedIntents = intentInferResult.success 
-        ? intentInferResult.intents.slice(0, 5) // Take top 3 suggestions
-        : [];
-
-      return res.json({
-        success: true,
-        synthesis: vibeResult.synthesis,
-        score: vibeResult.score,
-        targetUser: otherUserData.user,
-        suggestedIntents,
-        tempFiles: uploadedFiles.map(f => ({
-          id: path.basename(f.path),
-          name: f.originalname,
-          size: f.size,
-          type: f.mimetype
-        }))
-      });
+      // Fallback case - should not reach here normally
+      return res.status(400).json({ error: 'Invalid request parameters' });
 
     } catch (error) {
-      // Ensure cleanup happens even if there's an error
       cleanupTempFiles(uploadedFiles || []);
-      console.error('Unauthenticated vibe check error:', error);
-      return res.status(500).json({ error: 'Failed to perform vibe check' });
+      console.error('Intent suggestion error:', error);
+      return res.status(500).json({ error: 'Failed to generate intent suggestions' });
     }
   }
 );
+
 
 // Get temp file by ID (authenticated endpoint)
 router.get('/temp/:fileId', async (req: Request, res: Response) => {
