@@ -3,11 +3,14 @@ on:
   push:
     branches:
       - main
+      - dev
     paths:
       - "protocol/**"  # Only run when protocol files change
 jobs:
   main:
     runs-on: ubuntu-latest
+    environment: 
+      name: ${{ github.ref == 'refs/heads/main' && 'mainnet' || 'dev' }}
     steps:
       - name: Install kubectl
         uses: azure/setup-kubectl@v2.0
@@ -64,4 +67,4 @@ jobs:
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/protocol protocol=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/protocol:${{ steps.build-time.outputs.time }} --namespace env-mainnet
+          kubectl set image deployment/protocol protocol=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/protocol:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
