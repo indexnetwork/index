@@ -538,16 +538,6 @@ export default function CreateIntentModal({
                   <p className="text-gray-600">
                     Your intent has been registered.
                   </p>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="border border-gray-200 p-4 rounded-md bg-white">
-                      <p className="text-2xl font-bold text-gray-900">~24h</p>
-                      <p className="text-sm text-gray-600">Estimated Time</p>
-                    </div>
-                    <div className="border border-gray-200 p-4 rounded-md bg-white">
-                      <p className="text-2xl font-bold text-gray-900">85%</p>
-                      <p className="text-sm text-gray-600">Match Probability</p>
-                    </div>
-                  </div>
                   <div className="flex justify-center">
                     <Button
                       className="font-medium bg-gray-800 hover:bg-black text-white"
