@@ -67,4 +67,4 @@ jobs:
 
       - name: Deploy
         run: |-
-          kubectl set image deployment/website website=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/website:${{ steps.build-time.outputs.time }} --namespace env-${GITHUB_REF#refs/heads/}
+          kubectl set image deployment/website website=236785930124.dkr.ecr.us-east-1.amazonaws.com/indexnetwork/website:${{ steps.build-time.outputs.time }} --namespace env-${{ github.ref == 'refs/heads/main' && 'mainnet' || github.ref_name }}
