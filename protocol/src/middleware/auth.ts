@@ -32,6 +32,7 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
     // Get user details from Privy
     const privyUser = await privyClient.getUser({idToken: accessToken});
 
+    console.log('privyUser', privyUser);
     // Find or create user in our database
     let user = await db.select({
       id: users.id,
@@ -54,6 +55,10 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
         for (const account of privyUser.linkedAccounts) {
           if (account.type === 'email' && (account as any).address) {
             userEmail = (account as any).address;
+            break;
+          }
+          else if (account.type === 'google_oauth' && (account as any).email) {
+            userEmail = (account as any).email;
             break;
           }
         }
