@@ -6,7 +6,7 @@ import { ArrowUpRight } from "lucide-react";
 import { Index } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
-import { getIndexFileUrl } from "@/lib/file-utils";
+import { getAvatarUrl, getIndexFileUrl } from "@/lib/file-utils";
 import { usePrivy } from '@privy-io/react-auth';
 import { useConnections, useIndexes, useIntents } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/indexes';
@@ -413,7 +413,18 @@ export default function SharePage({ params }: SharePageProps) {
             <div className="flex items-center gap-2 mb-2">
               <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono">{state.index.title}</h1>
             </div>
-            <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {formatDate(state.index.createdAt)}</p>
+            <div className="flex items-center gap-2">
+                <Image
+                  src={getAvatarUrl(state.index.user)}
+                  alt={state.index.user.name}
+                  width={20}
+                  height={20}
+                  className="rounded-full"
+                />
+                <span className="text-sm text-gray-500">{state.index.user.name}</span>
+                <span className="text-sm text-gray-400">•</span>
+                <span className="text-sm text-gray-500">{formatDate(state.index.createdAt)}</span>
+              </div>
           </div>
         </div>
 
@@ -459,7 +470,10 @@ export default function SharePage({ params }: SharePageProps) {
           <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="w-full">
               {state.step === 'ready' && (
-                <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">Curious how your work fits in?</h3>
+                <div className="w-full">
+                  <h3 className="text-xl font-ibm-plex-mono mt-2 font-semibold text-gray-900 mb-2">Curious how your work fits in?</h3>
+                  <p className="text-sm font-ibm-plex-mono text-gray-800 mb-6">Share your vibe to see how you fit in ideas, and opportunities within this index.</p>
+                </div>
               )}
               
               {state.step === 'vibecheck-running' && (
@@ -471,25 +485,12 @@ export default function SharePage({ params }: SharePageProps) {
               )}
               
               {state.step === 'ready' && (
-                <>
-                  <div className="mt-4 p-4 bg-white border border-gray-200 rounded-xs">
-                    <div className="flex items-start space-x-4">
-                      <div className="flex-1">
-                        <h3 className="font-medium text-gray-700 mb-2">Drop your files and get instant vibe check.</h3>
-                        <p className="text-sm text-gray-500">
-                          You'll receive a breakdown of how your work aligns with our mutual goals and potential collaboration opportunities. 
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <IntentForm
-                    onSubmit={handleIntentFormSubmit}
-                    isSubmitting={false}
-                    submitButtonText="What's the Vibe?"
-                    placeholder="Describe your work, goals, or what you're looking for (optional)..."
-                    vibeCheckIndex={resolvedParams.code}
-                  />
-                </>
+               <IntentForm
+                onSubmit={handleIntentFormSubmit}
+                isSubmitting={false}
+                submitButtonText="What's the Vibe?"
+                vibeCheckIndex={resolvedParams.code}
+              />
               )}
 
               {state.step === 'vibecheck-running' && (

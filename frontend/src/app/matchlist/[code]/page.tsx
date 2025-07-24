@@ -687,14 +687,21 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
           <div className="flex flex-wrap sm:flex-nowrap justify-between items-start gap-4">
             <div className="w-full sm:flex-1 sm:min-w-0 mb-0 sm:mb-0">
               <div className="mb-2">
-                <h1 className="text-xl font-bold font-ibm-plex-mono text-gray-900 break-words">
+                <h1 className="text-2xl font-bold text-gray-900 font-ibm-plex-mono break-words">
                   {state.index.title}
                 </h1>
               </div>
-              <div className="pt-0">
-                <p className="text-gray-500 font-ibm-plex-mono text-sm mt-1">
-                  Created {formatDate(state.index.createdAt)}
-                </p>
+              <div className="flex items-center gap-2">
+                <Image
+                  src={getAvatarUrl(state.index.user)}
+                  alt={state.index.user.name}
+                  width={20}
+                  height={20}
+                  className="rounded-full"
+                />
+                <span className="text-sm text-gray-500">{state.index.user.name}</span>
+                <span className="text-sm text-gray-400">•</span>
+                <span className="text-sm text-gray-500">{formatDate(state.index.createdAt)}</span>
               </div>
             </div>
             {state.step === 'discovery-results' && (
@@ -722,11 +729,12 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
         {state.step === 'intent-form' && (
           <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="w-full">
+              <h3 className=" text-xl font-ibm-plex-mono mt-2 font-semibold text-gray-900 mb-2">What's the vibe? Find your match.</h3>
+              <p className="text-sm font-ibm-plex-mono text-gray-800 mb-6">Connect with people within this index. By sharing your vibe, you enable the agents to surface tailored connections, opportunities, and collaborations aligned with your goals.</p>
               <IntentForm
                 onSubmit={handleIntentSubmission}
                 isSubmitting={state.isSubmitting}
                 submitButtonText="Find Matches"
-                placeholder="Describe what you're looking for, working on, or hoping to achieve..."
               />
             </div>
           </div>
