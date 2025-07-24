@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Lock, ArrowLeft, MessageSquare, Calendar, Slack, LinkedinIcon } from "lucide-react";
 import Link from "next/link";
 import ClientLayout from "@/components/ClientLayout";
@@ -15,7 +14,7 @@ interface Integration {
 }
 
 export default function PrivateIndexPage() {
-  const [integrations, setIntegrations] = useState<Integration[]>([
+  const integrations: Integration[] = [
     {
       id: "notion",
       name: "Notion",
@@ -58,17 +57,7 @@ export default function PrivateIndexPage() {
       description: "Connect your LinkedIn account to access connections and messages",
       connected: false
     }
-  ]);
-
-  const handleConnect = (integrationId: string) => {
-    setIntegrations(prev => 
-      prev.map(integration => 
-        integration.id === integrationId 
-          ? { ...integration, connected: !integration.connected }
-          : integration
-      )
-    );
-  };
+  ];
 
   return (
     <ClientLayout>
@@ -99,25 +88,27 @@ export default function PrivateIndexPage() {
           {integrations.map((integration) => (
             <div
               key={integration.id}
-              className="flex items-center justify-between p-4 bg-white border border-black border-b-2 rounded-[1px] transition-colors"
+              className="flex items-center justify-between p-4 bg-white border border-black border-b-2 rounded-[1px] transition-colors opacity-75"
             >
               <div className="flex items-center gap-3">
                 <div className="p-1.5 bg-gray-100 rounded-lg">
                   {integration.icon}
                 </div>
-                <h3 className="text-base font-medium text-gray-900">{integration.name}</h3>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-medium text-gray-900">{integration.name}</h3>
+                    <span className="px-2 py-0.5 text-xs font-medium text-orange-600 bg-orange-100 rounded-full">
+                      Soon
+                    </span>
+                  </div>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <div 
-                  onClick={() => handleConnect(integration.id)}
-                  className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${
-                    integration.connected ? 'bg-black' : 'bg-gray-200'
-                  }`}
+                  className="relative w-11 h-6 rounded-full bg-gray-200 cursor-not-allowed opacity-50"
                 >
                   <div 
-                    className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${
-                      integration.connected ? 'translate-x-5' : 'translate-x-0'
-                    }`}
+                    className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white"
                   />
                 </div>
               </div>
@@ -126,10 +117,6 @@ export default function PrivateIndexPage() {
         </div>
       </div>
 
-      {/* Footer Info */}
-      <div className="mt-4 text-center text-sm text-gray-500 p-4">
-        Your private index data is encrypted and only accessible to you
-      </div>
     </ClientLayout>
     
   );

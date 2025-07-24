@@ -477,7 +477,7 @@ export default function SharePage({ params }: SharePageProps) {
                       <div className="flex-1">
                         <h3 className="font-medium text-gray-700 mb-2">Drop your files and get instant vibe check.</h3>
                         <p className="text-sm text-gray-500">
-                          Once uploaded, you'll receive a detailed breakdown of how your content aligns with our mutual goals and potential collaboration opportunities. 
+                          You'll receive a breakdown of how your work aligns with our mutual goals and potential collaboration opportunities. 
                         </p>
                       </div>
                     </div>
@@ -485,7 +485,7 @@ export default function SharePage({ params }: SharePageProps) {
                   <IntentForm
                     onSubmit={handleIntentFormSubmit}
                     isSubmitting={false}
-                    submitButtonText="Get Vibe Check"
+                    submitButtonText="What's the Vibe?"
                     placeholder="Describe your work, goals, or what you're looking for (optional)..."
                     vibeCheckIndex={resolvedParams.code}
                   />
