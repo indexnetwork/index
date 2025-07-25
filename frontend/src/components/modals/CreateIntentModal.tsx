@@ -216,8 +216,7 @@ export default function CreateIntentModal({
 
           <div className="flex-1 overflow-y-auto">
             <div className="space-y-6 pr-2">
-              {!isProcessing ? (
-                <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-6">
                   {/* Title Section */}
                   <div>
                     <label htmlFor="title" className="text-md font-medium font-ibm-plex-mono text-black">
@@ -516,37 +515,34 @@ export default function CreateIntentModal({
 
 
                 </form>
-              ) : (
-                <div className="text-center py-8 space-y-6">
-                  <h2 className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Processing Your Intent</h2>
-                  <p className="text-gray-600">
-                    Your intent is being processed. This will just take a moment...
-                  </p>
-                </div>
-              )}
             </div>
           </div>
 
           {/* Fixed Action Buttons */}
-          {!isProcessing && (
-            <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200 flex-shrink-0">
-              <Dialog.Close asChild>
-                <Button variant="outline">
-                  Cancel
-                </Button>
-              </Dialog.Close>
-                                <Button
-                type="submit"
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }}
-                disabled={!payload.trim()}
-              >
-                Broadcast Intent
+          <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200 flex-shrink-0">
+            <Dialog.Close asChild>
+              <Button variant="outline" disabled={isProcessing}>
+                Cancel
               </Button>
-            </div>
-          )}
+            </Dialog.Close>
+            <Button
+              type="submit"
+              onClick={(e) => {
+                e.preventDefault();
+                handleSubmit(e);
+              }}
+              disabled={!payload.trim() || isProcessing}
+            >
+              {isProcessing ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin" />
+                  Broadcasting...
+                </div>
+              ) : (
+                "Broadcast Intent"
+              )}
+            </Button>
+          </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

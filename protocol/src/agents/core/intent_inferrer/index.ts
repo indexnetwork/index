@@ -125,7 +125,10 @@ export async function analyzeFolder(
   folderPath: string,
   fileIds: string[],
   textInstruction?: string,
-  options: { timeoutMs?: number } = {}
+  existingIntents: string[] = [],
+  existingSuggestions: string[] = [],
+  count: number = 5,
+  timeoutMs: number = 60000
 ): Promise<IntentInferenceResult> {
   try {
     // Validate folder path
@@ -189,20 +192,32 @@ export async function analyzeFolder(
       intents: z.array(z.object({
         payload: z.string().describe("Specific intent describing what information the user is looking for"),
         confidence: z.number().min(0.6).max(1.0).describe("Confidence score between 0.6 and 1.0")
-      })).min(5).max(5).describe("Array of 5 high-quality intent objects")
+      })).min(count).max(count).describe(`Array of ${count} high-quality intent objects`)
     });
+
+    // Build context about existing intents and suggestions to avoid duplicates
+    const existingContext = [];
+    if (existingIntents.length > 0) {
+      existingContext.push(`EXISTING USER INTENTS (do not duplicate these):\n${existingIntents.map(intent => `- ${intent}`).join('\n')}`);
+    }
+    if (existingSuggestions.length > 0) {
+      existingContext.push(`EXISTING SUGGESTIONS (do not duplicate these):\n${existingSuggestions.map(suggestion => `- ${suggestion}`).join('\n')}`);
+    }
 
     // Use text instruction as guidance if provided
     const instructionText = textInstruction ? `\n\nUSER INSTRUCTION: ${textInstruction}\nUse this instruction to guide how you analyze the content and what types of intents to generate.\n` : '';
 
-    const prompt = `You are analyzing a collection of ${processedFiles} files and generating intents.${instructionText}
-REQUIREMENTS:
-- Analyze the content to identify the primary target audience and their needs.
-- Prioritize generating many intents for the most likely target audience, but also add few for secondary target audiences.
-- Start with most important intents.
+    const prompt = `You are analyzing a collection of ${processedFiles} files and generating ${count} new intents.${instructionText}
+
+${existingContext.length > 0 ? existingContext.join('\n\n') + '\n\n' : ''}REQUIREMENTS:
+- Generate ${count} completely NEW intents that are different from any existing intents or suggestions listed above
+- Analyze the content to identify the primary target audience and their needs
+- Prioritize generating many intents for the most likely target audience, but also add few for secondary target audiences
+- Start with most important intents
+- Make each intent specific and actionable
 
 For example:
-If I uploaded a pitch deck, I would most likely want to generate intents for VCs, angel investors, and other investors.  so 3 investor intent, 1 partnership, 1 early customer.
+If I uploaded a pitch deck, I would most likely want to generate intents for VCs, angel investors, and other investors. so 3 investor intent, 1 partnership, 1 early customer.
 If I uploaded a research paper, I would want to generate intents to find other researchers, and other people looking for research.
 If I uploaded a job posting, I would want to find candidates, and other people looking for jobs.
 
@@ -219,7 +234,6 @@ ${concatenatedContent.substring(0, 15000)}${concatenatedContent.length > 15000 ?
 `;
 
     // Set up timeout
-    const timeoutMs = options.timeoutMs || 60000;
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Intent generation timeout')), timeoutMs);
     });
@@ -245,6 +259,6 @@ ${concatenatedContent.substring(0, 15000)}${concatenatedContent.length > 15000 ?
 
 // Utility functions
 export async function getIntents(folderPath: string, fileIds: string[], textInstruction?: string): Promise<InferredIntent[]> {
-  const result = await analyzeFolder(folderPath, fileIds, textInstruction);
+  const result = await analyzeFolder(folderPath, fileIds, textInstruction, [], [], 5, 60000);
   return result.intents;
 }

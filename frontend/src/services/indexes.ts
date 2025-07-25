@@ -179,6 +179,16 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response.payload;
   },
 
+  // Replace a single suggestion with a new one
+  replaceSuggestion: async (indexId: string, removedSuggestion: string): Promise<{
+    newSuggestion: { payload: string; confidence: number };
+  }> => {
+    const response = await api.post<{
+      newSuggestion: { payload: string; confidence: number };
+    }>(`/indexes/${indexId}/suggested_intents/replace?removedSuggestion=${encodeURIComponent(removedSuggestion)}`);
+    return response;
+  },
+
   // Get intents for a specific index with pagination
   getIndexIntents: async (indexId: string, page: number = 1, limit: number = 10, archived: boolean = false): Promise<PaginatedResponse<Intent>> => {
     const params = new URLSearchParams({

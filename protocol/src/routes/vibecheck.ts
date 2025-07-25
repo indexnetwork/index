@@ -255,9 +255,15 @@ router.post('/intent-suggestion',
         const fileIds = uploadedFiles.map(f => path.basename(f.path, path.extname(f.path)));
         
         // Always generate intent suggestions
-        const intentInferResult = await analyzeFolder(tempUploadDir, fileIds, payload, { 
-          timeoutMs: 30000
-        });
+        const intentInferResult = await analyzeFolder(
+          tempUploadDir, 
+          fileIds, 
+          payload, // textInstruction
+          [], // existingIntents
+          [], // existingSuggestions
+          5, // count
+          30000 // timeoutMs
+        );
 
         if (!intentInferResult.success) {
           cleanupTempFiles(uploadedFiles);

@@ -13,6 +13,7 @@ import Image from "next/image";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
 import { Index, Intent } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
+import { usePrivy } from "@privy-io/react-auth";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 import { Input } from "@/components/ui/input";
 import { getIndexFileUrl, getAvatarUrl } from "@/lib/file-utils";
@@ -36,12 +37,13 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [loading, setLoading] = useState(true);
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
   const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set());
-  const [addedIntents, setAddedIntents] = useState<Set<string>>(new Set());
   const [suggestedIntents, setSuggestedIntents] = useState<{ id: string; payload: string; confidence: number }[]>([]);
   const [loadingIntents, setLoadingIntents] = useState(false);
   const [intents, setIntents] = useState<Intent[]>([]);
   const [loadingIndexIntents, setLoadingIndexIntents] = useState(false);
   const [removingIntents, setRemovingIntents] = useState<Set<string>>(new Set());
+  const [addingIntents, setAddingIntents] = useState<Set<string>>(new Set());
+  const [replacingIntents, setReplacingIntents] = useState<Set<string>>(new Set());
   
   // New state for title editing
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -55,6 +57,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   
   const indexesService = useIndexes();
   const intentsService = useIntents();
+  const { user: currentUser } = usePrivy();
 
   const fetchIndex = useCallback(async () => {
     try {
@@ -182,7 +185,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const handleAddIntent = async (intentId: string) => {
     const suggestedIntent = suggestedIntents.find(intent => intent.id === intentId);
     if (suggestedIntent && index) {
-      // Open modal immediately with initial payload
+      // Open modal immediately with initial payload (no loading state yet)
       setSelectedSuggestedIntent({
         payload: suggestedIntent.payload,
         id: intentId
@@ -192,28 +195,102 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   };
 
   const handleCreateIntent = async (intent: { payload: string; attachments: File[]; isIncognito: boolean; indexIds: string[] }) => {
+    const currentIntentId = selectedSuggestedIntent?.id;
+    const currentSuggestion = selectedSuggestedIntent?.payload;
+    
+
+    
+    // Set adding state now that user has actually submitted
+    if (currentIntentId) {
+      setAddingIntents(prev => new Set([...prev, currentIntentId]));
+    }
+    
     try {
-      await intentsService.createIntent({
+      // Create the intent and get the created intent data
+      const createdIntent = await intentsService.createIntent({
         payload: intent.payload,
         indexIds: intent.indexIds,
         isIncognito: intent.isIncognito
       });
       
-      // Remove the added intent from suggested intents list
-      if (selectedSuggestedIntent?.id) {
-        setSuggestedIntents(prev => prev.filter(suggestedIntent => suggestedIntent.id !== selectedSuggestedIntent.id));
-        setAddedIntents(prev => new Set([...prev, selectedSuggestedIntent.id]));
+      // Clear adding state
+      if (currentIntentId) {
+        setAddingIntents(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(currentIntentId);
+          return newSet;
+        });
       }
       
-      // Refresh the index data and intents
-      const updatedIndex = await indexesService.getIndex(resolvedParams.id);
-      setIndex(updatedIndex || null);
-      fetchIndexIntents(); // Refresh intents list
+      // If created intent has user data, append it directly
+      // Otherwise, add current user data or refetch to get complete data
+      if (createdIntent.user && createdIntent.user.name) {
+        setIntents(prev => [...prev, createdIntent]);
+              } else {
+          // Always fetch full intent data to get proper user object
+          try {
+            const fullIntent = await intentsService.getIntent(createdIntent.id);
+            setIntents(prev => [...prev, fullIntent]);
+          } catch (error) {
+            console.error('Error fetching full intent data:', error);
+            // Use currentUser as absolute fallback
+            const intentWithUser: Intent = {
+              ...createdIntent,
+              user: {
+                id: currentUser?.id || '',
+                name: currentUser?.email?.toString().split('@')[0] || 'You',
+                email: currentUser?.email?.toString() || null,
+                avatar: null
+              }
+            };
+            setIntents(prev => [...prev, intentWithUser]);
+           }
+        }
+      
+      // Replace the suggestion with a new one
+      if (currentIntentId && currentSuggestion && index) {
+        setReplacingIntents(prev => new Set([...prev, currentIntentId]));
+        
+        try {
+          const response = await indexesService.replaceSuggestion(index.id, currentSuggestion);
+          
+          // Update the suggestions list by replacing the current suggestion with the new one
+          setSuggestedIntents(prev => prev.map(suggestedIntent => 
+            suggestedIntent.id === currentIntentId 
+              ? {
+                  id: `intent-${Date.now()}`, // Generate new unique ID
+                  payload: response.newSuggestion.payload,
+                  confidence: response.newSuggestion.confidence
+                }
+              : suggestedIntent
+          ));
+        } catch (error) {
+          console.error('Error replacing suggestion:', error);
+          // If replacement fails, just remove the suggestion
+          setSuggestedIntents(prev => prev.filter(suggestedIntent => suggestedIntent.id !== currentIntentId));
+        } finally {
+          setReplacingIntents(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(currentIntentId);
+            return newSet;
+          });
+        }
+      }
+      
       setShowCreateIntentModal(false);
       setSelectedSuggestedIntent(null);
       // Stay on the index page instead of redirecting
     } catch (error) {
       console.error('Error creating intent:', error);
+      
+      // Clear adding state on error
+      if (currentIntentId) {
+        setAddingIntents(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(currentIntentId);
+          return newSet;
+        });
+      }
     }
   };
 
@@ -534,13 +611,13 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                       </Link>
                       <div className="flex items-center gap-2">
                         <Image
-                          src={getAvatarUrl(intent.user)}
-                          alt={intent.user.name}
+                          src={getAvatarUrl(intent.user || null)}
+                          alt={intent.user?.name || 'User'}
                           width={20}
                           height={20}
                           className="rounded-full"
                         />
-                        <span className="text-sm text-gray-500">{intent.user.name}</span>
+                        <span className="text-sm text-gray-500">{intent.user?.name || 'Unknown User'}</span>
                         <span className="text-sm text-gray-400">•</span>
                         <span className="text-sm text-gray-500">{formatDate(intent.createdAt)}</span>
                       </div>
@@ -587,20 +664,33 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                   <div key={intent.id} className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.payload}</h4>
+                        {addingIntents.has(intent.id) || replacingIntents.has(intent.id) ? (
+                          // Ghost/skeleton loading state
+                          <div className="space-y-2 w-full">
+                            <div className="h-4 bg-gray-200 rounded animate-pulse w-3/4"></div>
+                            <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2"></div>
+                          </div>
+                        ) : (
+                          <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.payload}</h4>
+                        )}
                       </div>
                     </div>
                     <Button
-                      variant={addedIntents.has(intent.id) ? "default" : "outline"}
+                      variant="outline"
                       size="sm"
                       className="ml-4"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleAddIntent(intent.id);
-                      }}
+                                              onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleAddIntent(intent.id);
+                        }}
+                      disabled={addingIntents.has(intent.id) || replacingIntents.has(intent.id)}
                     >
-                      {addedIntents.has(intent.id) ? "View" : "Add"}
+                      {addingIntents.has(intent.id) || replacingIntents.has(intent.id) ? (
+                        <div className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        "Add"
+                      )}
                     </Button>
                   </div>
                 ))
