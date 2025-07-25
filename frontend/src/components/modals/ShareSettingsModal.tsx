@@ -85,23 +85,23 @@ export default function ShareSettingsModal({ open, onOpenChange, index, onIndexU
     {
       id: 'can-discover',
       label: 'Can discover',
-      description: 'Use this index for public vibecheck'
+      description: 'Allow others to anonymously compare themselves to your index.'
     },
     {
       id: 'can-write-intents',
       label: 'Can write intents',
-      description: 'Create intents in this index, be discoverable'
+      description: 'Let others create their own intents, become discoverable, and explore others.'
     },
     {
       id: 'can-view-files',
       label: 'Can view files',
-      description: 'View and download files'
+      description: 'Enable others to view or download files in this index.'
     }
   ];
 
   const memberPermissions = [
-    { id: 'can-write', label: 'Can write', description: 'Create files and intents' },
-    { id: 'can-read', label: 'Can read', description: 'View files and intents' },
+    { id: 'can-write', label: 'Can write', description: 'Members can create files and intents' },
+    { id: 'can-read', label: 'Can read', description: 'Member can view files and intents' },
   ];
 
   // Load members when modal opens

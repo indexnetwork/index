@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useIndexes } from "@/contexts/APIContext";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { Textarea } from "../ui/textarea";
 import { ChevronDown, ChevronUp, EyeOff, Globe } from "lucide-react";
 
@@ -34,8 +35,8 @@ export default function CreateIntentModal({
 }: CreateIntentModalProps) {
   const [payload, setPayload] = useState(initialPayload);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
   const indexesService = useIndexes();
+  const { success, error } = useNotifications();
   // const [relevantContent, setRelevantContent] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -118,7 +119,6 @@ export default function CreateIntentModal({
       setHasInitialized(false);
       setPayload('');
       setAttachments([]);
-      setIsSuccess(false);
       setIsProcessing(false);
       setIsLoadingPreview(false);
       setIsIncognito(false);
@@ -140,18 +140,19 @@ export default function CreateIntentModal({
       setIsIncognito(false);
       setSelectedIndexIds([]);
       setIsGlobalDiscoveryEnabled(true);
-      setIsSuccess(true);
       
-      setTimeout(() => {
-        setIsSuccess(false);
-        onOpenChange(false);
-      }, 3000);
-    } catch (error) {
-      console.error('Error creating intent:', error);
+      success(
+        "Intent successfully created!",
+        "Your intent has been registered and is now beaconing to relevant people across the network."
+      );
+      onOpenChange(false);
+    } catch (err) {
+      console.error('Error creating intent:', err);
+      error("Intent creation failed", "Please try again later.");
     } finally {
       setIsProcessing(false);
     }
-  }, [payload, attachments, isIncognito, finalIndexIds, onSubmit, onOpenChange]);
+  }, [payload, attachments, isIncognito, finalIndexIds, onSubmit, onOpenChange, success, error]);
 
   const handleFileDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -215,7 +216,7 @@ export default function CreateIntentModal({
 
           <div className="flex-1 overflow-y-auto">
             <div className="space-y-6 pr-2">
-              {!isProcessing && !isSuccess ? (
+              {!isProcessing ? (
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {/* Title Section */}
                   <div>
@@ -515,44 +516,19 @@ export default function CreateIntentModal({
 
 
                 </form>
-              ) : isProcessing ? (
+              ) : (
                 <div className="text-center py-8 space-y-6">
                   <h2 className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Processing Your Intent</h2>
                   <p className="text-gray-600">
-                    Your intent is being processed and broadcasted. This will just take a moment...
+                    Your intent is being processed. This will just take a moment...
                   </p>
-                  <div className="flex justify-center space-x-2">
-                    {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].map((letter) => (
-                      <div
-                        key={letter}
-                        className="w-8 h-8 flex items-center justify-center bg-[#1a2634] text-gray-300 border border-gray-200 rounded-md"
-                      >
-                        {letter}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-8 space-y-6">
-                  <h2 className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Intent Successfully Created!</h2>
-                  <p className="text-gray-600">
-                    Your intent has been registered.
-                  </p>
-                  <div className="flex justify-center">
-                    <Button
-                      className="font-medium bg-gray-800 hover:bg-black text-white"
-                      onClick={() => onOpenChange(false)}
-                    >
-                      View My Intents
-                    </Button>
-                  </div>
                 </div>
               )}
             </div>
           </div>
 
           {/* Fixed Action Buttons */}
-          {!isProcessing && !isSuccess && (
+          {!isProcessing && (
             <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200 flex-shrink-0">
               <Dialog.Close asChild>
                 <Button variant="outline">
