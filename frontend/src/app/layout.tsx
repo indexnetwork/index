@@ -3,6 +3,7 @@ import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { APIProvider } from "@/contexts/APIContext";
+import { NotificationProvider } from "@/contexts/NotificationContext";
 import ClientWrapper from "@/components/ClientWrapper";
 
 export const metadata: Metadata = {
@@ -47,9 +48,11 @@ export default function RootLayout({
         />
         <AuthProvider>
           <APIProvider>
-            <ClientWrapper>
-              {children}
-            </ClientWrapper>
+            <NotificationProvider>
+              <ClientWrapper>
+                {children}
+              </ClientWrapper>
+            </NotificationProvider>
           </APIProvider>
         </AuthProvider>
       </body>

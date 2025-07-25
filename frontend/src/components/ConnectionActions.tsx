@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { UserPlus, X, Check, RotateCcw } from "lucide-react";
+import { useNotifications } from "@/contexts/NotificationContext";
 
 export type ConnectionAction = 'REQUEST' | 'SKIP' | 'CANCEL' | 'ACCEPT' | 'DECLINE';
 
@@ -23,6 +24,7 @@ export default function ConnectionActions({
   size = 'sm',
 }: ConnectionActionsProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const { success, error } = useNotifications();
 
   const handleAction = async (action: ConnectionAction) => {
     if (disabled || isLoading) return;
@@ -30,8 +32,14 @@ export default function ConnectionActions({
     setIsLoading(true);
     try {
       await onAction(action, userId);
-    } catch (error) {
-      console.error('Connection action failed:', error);
+      
+      
+      if (action === 'ACCEPT') {
+        success("Connection accepted!", "Your intro email is on the way. Stay tuned!");
+      }
+    } catch (err) {
+      console.error('Connection action failed:', err);
+      error("Action failed", "Please try again later.");
     } finally {
       setIsLoading(false);
     }
