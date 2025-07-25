@@ -69,6 +69,7 @@ export const files = pgTable('files', {
 export const intentIndexes = pgTable('intent_indexes', {
   intentId: uuid('intent_id').notNull().references(() => intents.id),
   indexId: uuid('index_id').notNull().references(() => indexes.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 export const userConnectionEvents = pgTable('user_connection_events', {
