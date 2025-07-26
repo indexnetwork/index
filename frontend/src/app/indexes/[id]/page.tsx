@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, use } from "react";
+import { useState, useEffect, useCallback, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical } from "lucide-react";
@@ -9,14 +9,13 @@ import ConfigureModal from "@/components/modals/ConfigureModal";
 import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
 import { Index, Intent } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from "@privy-io/react-auth";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 import { Input } from "@/components/ui/input";
-import { getIndexFileUrl, getAvatarUrl } from "@/lib/file-utils";
+import { getIndexFileUrl } from "@/lib/file-utils";
 import { formatDate } from "@/lib/utils";
 
 interface IndexDetailPageProps {
@@ -44,6 +43,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [removingIntents, setRemovingIntents] = useState<Set<string>>(new Set());
   const [addingIntents, setAddingIntents] = useState<Set<string>>(new Set());
   const [replacingIntents, setReplacingIntents] = useState<Set<string>>(new Set());
+  const [isAutoCreatingIntents, setIsAutoCreatingIntents] = useState(false);
   
   // New state for title editing
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -58,6 +58,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const indexesService = useIndexes();
   const intentsService = useIntents();
   const { user: currentUser } = usePrivy();
+  const intentsRef = useRef<HTMLDivElement>(null);
 
   const fetchIndex = useCallback(async () => {
     try {
@@ -89,6 +90,11 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       return;
     }
 
+    // Skip if suggestions were already set by auto-intent creation
+    if (suggestedIntents.length > 0) {
+      return;
+    }
+
     setLoadingIntents(true);
     try {
       const response = await indexesService.getSuggestedIntents(resolvedParams.id);
@@ -111,7 +117,80 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     } finally {
       setLoadingIntents(false);
     }
-  }, [resolvedParams.id, indexesService, index]);
+  }, [resolvedParams.id, indexesService, index, suggestedIntents.length]);
+
+  // Auto-create first 5 intents when first file is added to empty index
+  const handleAutoIntentCreation = useCallback(async (indexId: string) => {
+    setIsAutoCreatingIntents(true);
+    
+    // Scroll to intents section
+    setTimeout(() => {
+      intentsRef.current?.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'start'
+      });
+    }, 100);
+    
+    try {
+      console.log('🤖 Auto-creating first 5 intents for new index');
+      
+      // Fetch 10 suggested intents
+      const response = await indexesService.getSuggestedIntents(indexId);
+      if (response.intents.length === 0) return;
+      
+      // Take first 5 for auto-creation, rest for suggestions
+      const autoIntents = response.intents.slice(0, 5);
+      const remainingSuggestions = response.intents.slice(5);
+      
+      // Auto-create first 5 intents
+      const createdIntents: Intent[] = [];
+      for (const suggestedIntent of autoIntents) {
+        try {
+          const createdIntent = await intentsService.createIntent({
+            payload: suggestedIntent.payload,
+            indexIds: [indexId],
+            isIncognito: false
+          });
+          
+          // Handle user data properly
+          if (createdIntent.user && createdIntent.user.name) {
+            createdIntents.push(createdIntent);
+          } else {
+            // Fetch full intent data to get proper user object
+            try {
+              const fullIntent = await intentsService.getIntent(createdIntent.id);
+              createdIntents.push(fullIntent);
+            } catch (error) {
+              console.error('Error fetching full intent data:', error);
+              createdIntents.push(createdIntent); // Use partial as fallback
+            }
+          }
+        } catch (error) {
+          console.error('Error auto-creating intent:', error);
+        }
+      }
+      
+      // Update intents list with auto-created intents
+      if (createdIntents.length > 0) {
+        setIntents(prev => [...prev, ...createdIntents]);
+      }
+      
+      // Set remaining suggestions
+      const suggestionsWithIds = remainingSuggestions.map((intent, index) => ({
+        id: `intent-${Date.now()}-${index}`,
+        payload: intent.payload,
+        confidence: intent.confidence
+      }));
+      setSuggestedIntents(suggestionsWithIds);
+      
+      console.log(`✅ Auto-created ${createdIntents.length} intents, ${suggestionsWithIds.length} suggestions remaining`);
+      
+    } catch (error) {
+      console.error('Error in auto-intent creation:', error);
+    } finally {
+      setIsAutoCreatingIntents(false);
+    }
+  }, [indexesService, intentsService]);
 
   useEffect(() => {
     fetchIndex();
@@ -141,6 +220,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (index && droppedFiles.length > 0) {
+      const wasEmpty = !index.files || index.files.length === 0;
+      
       try {
         // Add files to uploading state
         const newUploadingFiles = new Set(uploadingFiles);
@@ -153,6 +234,11 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         // Refresh index data
         const updatedIndex = await indexesService.getIndex(resolvedParams.id);
         setIndex(updatedIndex || null);
+        
+        // Auto-create intents if this was the first file upload
+        if (wasEmpty) {
+          await handleAutoIntentCreation(index.id);
+        }
       } catch (error) {
         console.error('Error uploading files:', error);
       } finally {
@@ -471,14 +557,19 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 {/* Merge uploaded files and uploading files into a single list */}
                 {(() => {
                   const uploadedFiles = (index.files || []).map(file => ({ ...file, isUploading: false }));
-                  const uploadingFilesList = Array.from(uploadingFiles).map(fileName => ({
-                    id: `uploading-${fileName}`,
-                    name: fileName,
-                    size: '',
-                    createdAt: new Date().toISOString(),
-                    isUploading: true,
-                    indexId: index.id
-                  }));
+                  const uploadedFileNames = new Set(uploadedFiles.map(file => file.name));
+                  
+                  // Only show uploading files that haven't been uploaded yet
+                  const uploadingFilesList = Array.from(uploadingFiles)
+                    .filter(fileName => !uploadedFileNames.has(fileName))
+                    .map(fileName => ({
+                      id: `uploading-${fileName}`,
+                      name: fileName,
+                      size: '',
+                      createdAt: new Date().toISOString(),
+                      isUploading: true,
+                      indexId: index.id
+                    }));
                   
                   // Combine and sort: uploading files first (newest first), then uploaded files
                   const allFiles = [...uploadingFilesList, ...uploadedFiles];
@@ -554,22 +645,31 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 className="hidden"
                 id="file-upload"
                 multiple
-                onChange={(e) => {
+                onChange={async (e) => {
                   const files = Array.from(e.target.files || []);
                   if (index && files.length > 0) {
+                    const wasEmpty = !index.files || index.files.length === 0;
+                    
                     // Add files to uploading state
                     const newUploadingFiles = new Set(uploadingFiles);
                     files.forEach(file => newUploadingFiles.add(file.name));
                     setUploadingFiles(newUploadingFiles);
 
-                    Promise.all(files.map(file => indexesService.uploadFile(index.id, file)))
-                      .then(() => indexesService.getIndex(resolvedParams.id))
-                      .then(updatedIndex => setIndex(updatedIndex || null))
-                      .catch(error => console.error('Error uploading files:', error))
-                      .finally(() => {
-                        // Clear uploading state
-                        setUploadingFiles(new Set());
-                      });
+                    try {
+                      await Promise.all(files.map(file => indexesService.uploadFile(index.id, file)));
+                      const updatedIndex = await indexesService.getIndex(resolvedParams.id);
+                      setIndex(updatedIndex || null);
+                      
+                      // Auto-create intents if this was the first file upload
+                      if (wasEmpty) {
+                        await handleAutoIntentCreation(index.id);
+                      }
+                    } catch (error) {
+                      console.error('Error uploading files:', error);
+                    } finally {
+                      // Clear uploading state
+                      setUploadingFiles(new Set());
+                    }
                   }
                 }}
               />
@@ -586,37 +686,42 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         </div>
 
         {/* Intents Section */}
-        <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
+        <div ref={intentsRef} className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
           <div className="space-y-3 w-full">
             <div className="flex justify-between items-center">
               <h2 className="text-xl mt-2 font-semibold text-gray-900">Intents</h2>
             </div>
             
-            <div className="space-y-2 flex-1">
-              {loadingIndexIntents ? (
-                <div className="text-center py-4 text-gray-500">Loading intents...</div>
+            <div className="space-y-1 flex-1">
+              {loadingIndexIntents || uploadingFiles.size > 0 || isAutoCreatingIntents ? (
+                <div className={`text-center py-8 text-gray-500 ${isAutoCreatingIntents ? 'flex flex-col items-center justify-center min-h-[200px]' : ''}`}>
+                  {isAutoCreatingIntents ? (
+                    <>
+                      <div className="w-8 h-8 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mb-4"></div>
+                      <div className="text-lg font-medium">Creating your first intents...</div>
+                      <div className="text-sm text-gray-400 mt-2">Analyzing your files and generating relevant intents</div>
+                    </>
+                  ) : uploadingFiles.size > 0 ? (
+                    "Processing files and generating intents..."
+                  ) : (
+                    "Loading intents..."
+                  )}
+                </div>
               ) : intents.length > 0 ? (
                 intents.map((intent) => (
                   <div
                     key={intent.id}
-                    className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                    className="flex items-center justify-between p-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors"
                   >
                     <div className="flex-1">
                       <Link
                         href={`/intents/${intent.id}`}
                         className="flex items-center gap-2 mb-1"
                       >
-                        <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.summary}</h4>
+                        <h4 className="text-sm font-ibm-plex-mono font-medium text-gray-900">{intent.summary}</h4>
                         <ArrowUpRight className="h-4 w-4" />
                       </Link>
                       <div className="flex items-center gap-2">
-                        <Image
-                          src={getAvatarUrl(intent.user || null)}
-                          alt={intent.user?.name || 'User'}
-                          width={20}
-                          height={20}
-                          className="rounded-full"
-                        />
                         <span className="text-sm text-gray-500">{intent.user?.name || 'Unknown User'}</span>
                         <span className="text-sm text-gray-400">•</span>
                         <span className="text-sm text-gray-500">{formatDate(intent.createdAt)}</span>
@@ -649,19 +754,30 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           </div>
         </div>
 
-        { index.files && index.files.length > 0 && 
+        { ((index.files && index.files.length > 0) || uploadingFiles.size > 0) && 
         <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
           <div className="space-y-6 w-full">
             <div className="flex justify-between items-center">
               <h2 className="text-xl mt-2 font-semibold text-gray-900">Suggested Intents</h2>
             </div>
             
-            <div className="space-y-4 flex-1">
-              {loadingIntents ? (
-                <div className="text-center py-4 text-gray-500">Loading suggested intents...</div>
+            <div className="space-y-2 flex-1">
+              {loadingIntents || uploadingFiles.size > 0 || isAutoCreatingIntents ? (
+                <div className={`text-center py-4 text-gray-500 ${isAutoCreatingIntents ? 'flex flex-col items-center justify-center min-h-[150px]' : ''}`}>
+                  {isAutoCreatingIntents ? (
+                    <>
+                      <div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mb-3"></div>
+                      <div className="text-md font-medium">Preparing suggestions...</div>
+                    </>
+                  ) : uploadingFiles.size > 0 ? (
+                    "Processing files and generating suggestions..."
+                  ) : (
+                    "Loading suggested intents..."
+                  )}
+                </div>
               ) : suggestedIntents.length > 0 ? (
                 suggestedIntents.map((intent) => (
-                  <div key={intent.id} className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
+                  <div key={intent.id} className="flex items-center justify-between py-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         {addingIntents.has(intent.id) || replacingIntents.has(intent.id) ? (
@@ -671,7 +787,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                             <div className="h-3 bg-gray-200 rounded animate-pulse w-1/2"></div>
                           </div>
                         ) : (
-                          <h4 className="text-md font-ibm-plex-mono font-medium text-gray-900">{intent.payload}</h4>
+                          <h4 className="text-sm font-ibm-plex-mono font-medium text-gray-900">{intent.payload}</h4>
                         )}
                       </div>
                     </div>

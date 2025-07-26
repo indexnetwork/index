@@ -147,7 +147,7 @@ router.get('/',
             undefined, // textInstruction
             existingIntents, // existingIntents
             [], // existingSuggestions (empty for initial generation)
-            5, // count
+            10, // count (10 for auto-creation: 5 auto + 5 suggestions)
             60000 // timeoutMs
           );
 
