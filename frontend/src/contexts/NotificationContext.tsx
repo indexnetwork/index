@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { Check, X, AlertCircle, Info } from 'lucide-react';
 
 export type NotificationType = 'success' | 'error' | 'warning' | 'info';
