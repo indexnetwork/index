@@ -333,7 +333,11 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
            }
         }
       
-      // Replace the suggestion with a new one
+      // Close modal immediately after intent creation
+      setShowCreateIntentModal(false);
+      setSelectedSuggestedIntent(null);
+      
+      // Replace the suggestion with a new one (happens in background)
       if (currentIntentId && currentSuggestion && index) {
         setReplacingIntents(prev => new Set([...prev, currentIntentId]));
         
@@ -363,11 +367,13 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         }
       }
       
-      setShowCreateIntentModal(false);
-      setSelectedSuggestedIntent(null);
       // Stay on the index page instead of redirecting
     } catch (error) {
       console.error('Error creating intent:', error);
+      
+      // Close modal on error too
+      setShowCreateIntentModal(false);
+      setSelectedSuggestedIntent(null);
       
       // Clear adding state on error
       if (currentIntentId) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { Check, X, AlertCircle, Info } from 'lucide-react';
 
 export type NotificationType = 'success' | 'error' | 'warning' | 'info';
@@ -124,30 +124,27 @@ function NotificationToasts({
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+    <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2">
       {notifications.map((notification, index) => (
         <div
           key={notification.id}
-          className="flex items-start gap-3 p-4 bg-white border border-gray-200 rounded-lg shadow-lg animate-in slide-in-from-bottom-2"
+          className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg shadow-lg animate-in slide-in-from-bottom-2 min-w-64"
           style={{ 
             animationDelay: `${index * 100}ms`,
             animationFillMode: 'both'
           }}
         >
-          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mt-0.5 ${getIconBackground(notification.type)}`}>
+          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center ${getIconBackground(notification.type)}`}>
             {getIcon(notification.type)}
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1">
             <p className="text-sm font-medium text-gray-900">{notification.title}</p>
-            {notification.message && (
-              <p className="text-sm text-gray-500 mt-1">{notification.message}</p>
-            )}
           </div>
           <button
             onClick={() => onRemove(notification.id)}
             className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
       ))}
