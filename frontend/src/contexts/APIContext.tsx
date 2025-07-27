@@ -6,12 +6,14 @@ import { createIndexesService } from '@/services/indexes';
 import { createIntentsService } from '@/services/intents';
 import { createConnectionsService } from '@/services/connections';
 import { createSynthesisService } from '@/services/synthesis';
+import { createIntegrationsService } from '@/services/integrations';
 
 interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
   intentsService: ReturnType<typeof createIntentsService>;
   connectionsService: ReturnType<typeof createConnectionsService>;
   synthesisService: ReturnType<typeof createSynthesisService>;
+  integrationsService: ReturnType<typeof createIntegrationsService>;
 }
 
 const APIContext = createContext<APIContextType | undefined>(undefined);
@@ -29,7 +31,8 @@ export function APIProvider({ children }: { children: ReactNode }) {
       indexesService: createIndexesService(api),
       intentsService: createIntentsService(api),
       connectionsService: createConnectionsService(api),
-      synthesisService: createSynthesisService(api)
+      synthesisService: createSynthesisService(api),
+      integrationsService: createIntegrationsService(api)
     };
     apiRef.current = api;
   }

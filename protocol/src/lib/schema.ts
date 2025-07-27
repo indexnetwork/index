@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, varchar } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Enums
@@ -81,6 +81,20 @@ export const userConnectionEvents = pgTable('user_connection_events', {
   eventType: connectionAction('connection_action').notNull(),
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export const userIntegrations = pgTable('user_integrations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  integrationType: varchar('integration_type', { length: 50 }).notNull(),
+  connectionRequestId: varchar('connection_request_id', { length: 255 }),
+  connectionId: varchar('connection_id', { length: 255 }), 
+  status: varchar('status', { length: 20 }).notNull().default('pending'),
+  redirectUrl: text('redirect_url'),
+  connectedAt: timestamp('connected_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at')
 });
 
 // Relations
