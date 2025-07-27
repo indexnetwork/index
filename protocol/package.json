@@ -12,6 +12,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@composio/core": "^0.1.37",
     "@langchain/community": "^0.3.45",
     "@langchain/core": "^0.3.57",
     "@langchain/langgraph": "^0.2.73",
