@@ -21,6 +21,8 @@ export default function PrivateIndexPage() {
   const [loading, setLoading] = useState(true);
   const [connectingIntegration, setConnectingIntegration] = useState<string | null>(null);
   const [connectionStatuses, setConnectionStatuses] = useState<Record<string, string>>({});
+  const [syncingIntegration, setSyncingIntegration] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
 
   const integrationConfigs: IntegrationConfig[] = [
     {
@@ -160,6 +162,27 @@ export default function PrivateIndexPage() {
     }
   };
 
+  // Handle sync integration
+  const handleSync = async (integrationType: string) => {
+    try {
+      setSyncingIntegration(integrationType);
+      const result = await integrationsService.syncIntegration(integrationType);
+      
+      if (result.success) {
+        console.log(`Sync complete: ${result.filesImported} files, ${result.intentsGenerated} intents`);
+        // Refresh integrations to get updated lastSyncAt
+        await loadIntegrations();
+      } else {
+        console.error('Sync failed:', result.error);
+      }
+    } catch (error) {
+      console.error('Failed to sync integration:', error);
+    } finally {
+      setSyncingIntegration(null);
+    }
+  };
+
+
   useEffect(() => {
     loadIntegrations();
   }, [loadIntegrations]);
@@ -209,32 +232,18 @@ export default function PrivateIndexPage() {
             return (
               <div
                 key={config.id}
-                className="flex items-center justify-between p-4 bg-white border border-black border-b-2 rounded-[1px] transition-colors"
+                className="p-4 bg-white border border-black border-b-2 rounded-[1px] transition-colors"
               >
-                <div className="flex items-center gap-3">
-                  <div className="p-1.5 bg-gray-100 rounded-lg">
-                    {config.icon}
-                  </div>
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-medium text-gray-900">{config.name}</h3>
-                      {isConnected && (
-                        <span className="px-2 py-0.5 text-xs font-medium text-green-600 bg-green-100 rounded-full">
-                          Connected
-                        </span>
-                      )}
-                      {isConnecting && (
-                        <span className="px-2 py-0.5 text-xs font-medium text-blue-600 bg-blue-100 rounded-full">
-                          Connecting...
-                        </span>
-                      )}
+                {/* Header with icon, name, and toggle */}
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-1.5 bg-gray-100 rounded-lg">
+                      {config.icon}
                     </div>
-                    {statusMessage && (
-                      <p className="text-xs text-gray-500 mt-1">{statusMessage}</p>
-                    )}
+                    <div>
+                      <h3 className="text-base font-medium text-gray-900">{config.name}</h3>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
                   <div 
                     className={`relative w-11 h-6 rounded-full cursor-pointer transition-colors ${
                       isConnected ? 'bg-green-500' : 'bg-gray-200'
@@ -255,6 +264,50 @@ export default function PrivateIndexPage() {
                     />
                   </div>
                 </div>
+
+                {/* Status badges */}
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  {isConnected && (
+                    <span className="px-2 py-0.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full">
+                      Connected
+                    </span>
+                  )}
+                  {isConnecting && (
+                    <span className="px-2 py-0.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full">
+                      Connecting...
+                    </span>
+                  )}
+                  {syncingIntegration === config.id && (
+                    <span className="px-2 py-0.5 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-full">
+                      Syncing...
+                    </span>
+                  )}
+                </div>
+
+                {/* Status messages and sync info */}
+                <div className="space-y-1">
+                  {statusMessage && (
+                    <p className="text-xs text-gray-500">{statusMessage}</p>
+                  )}
+                  {integration?.lastSyncAt && (
+                    <p className="text-xs text-gray-400">
+                      Last synced: {new Date(integration.lastSyncAt).toLocaleDateString()} at {new Date(integration.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
+                </div>
+
+                {/* Sync button */}
+                {isConnected && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <button
+                      onClick={() => handleSync(config.id)}
+                      disabled={syncingIntegration === config.id}
+                      className="w-full px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-ibm-plex font-medium transition-colors"
+                    >
+                      {syncingIntegration === config.id ? 'Syncing...' : 'Sync'}
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}

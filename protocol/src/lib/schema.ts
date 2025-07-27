@@ -88,10 +88,10 @@ export const userIntegrations = pgTable('user_integrations', {
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   integrationType: varchar('integration_type', { length: 50 }).notNull(),
   connectionRequestId: varchar('connection_request_id', { length: 255 }),
-  connectionId: varchar('connection_id', { length: 255 }), 
   status: varchar('status', { length: 20 }).notNull().default('pending'),
   redirectUrl: text('redirect_url'),
   connectedAt: timestamp('connected_at'),
+  lastSyncAt: timestamp('last_sync_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at')

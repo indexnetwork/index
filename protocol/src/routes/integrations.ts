@@ -4,6 +4,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
 import { userIntegrations } from '../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { syncIntegration } from '../lib/integration-sync';
 
 const router = Router();
 
@@ -52,7 +53,7 @@ router.get('/',
           name: config.name,
           connected: !!integration,
           connectedAt: integration?.connectedAt,
-          connectionId: integration?.connectionId
+          lastSyncAt: integration?.lastSyncAt,
         };
       });
 
@@ -160,15 +161,10 @@ router.get('/status/:connectionRequestId',
       }
 
       try {
-        // Check with Composio if connection is complete
-        const composioClient = await initComposio();
-        const connectedAccount = await composioClient.connectedAccounts.waitForConnection(connectionRequestId, 1000);
         
-        // Update database record
         await db.update(userIntegrations)
           .set({
             status: 'connected',
-            connectionId: connectedAccount.id,
             connectedAt: new Date()
           })
           .where(eq(userIntegrations.id, integrationRecord.id));
@@ -176,7 +172,6 @@ router.get('/status/:connectionRequestId',
         return res.json({ 
           status: 'connected',
           connectedAt: new Date(),
-          connectionId: connectedAccount.id
         });
       } catch (error) {
         // Connection not ready yet
@@ -224,5 +219,38 @@ router.delete('/:integrationType',
     }
   }
 );
+
+// Sync specific integration
+router.post('/sync/:integrationType',
+  authenticatePrivy,
+  [
+    param('integrationType').isIn(Object.keys(INTEGRATION_MAPPINGS)).withMessage('Invalid integration type'),
+    body('indexId').optional().isUUID()
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const userId = req.user!.id;
+      const integrationType = req.params.integrationType;
+      const { indexId } = req.body;
+
+      const result = await syncIntegration(userId, integrationType, indexId);
+
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+
+      return res.json(result);
+    } catch (error) {
+      console.error('Sync integration error:', error);
+      return res.status(500).json({ error: 'Failed to sync integration' });
+    }
+  }
+);
+
 
 export default router; 

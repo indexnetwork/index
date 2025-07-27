@@ -5,7 +5,7 @@ export interface Integration {
   name: string;
   connected: boolean;
   connectedAt?: string;
-  connectionId?: string;
+  lastSyncAt?: string;
 }
 
 export interface ConnectionRequest {
@@ -16,7 +16,6 @@ export interface ConnectionRequest {
 export interface ConnectionStatus {
   status: 'pending' | 'connected' | 'disconnected';
   connectedAt?: string;
-  connectionId?: string;
 }
 
 // Create integrations service with authenticated API
@@ -40,7 +39,13 @@ export function createIntegrationsService(api: ReturnType<typeof useAuthenticate
     // Disconnect an integration
     async disconnectIntegration(integrationType: string): Promise<{ success: boolean }> {
       return api.delete<{ success: boolean }>(`/integrations/${integrationType}`);
-    }
+    },
+
+    // Sync specific integration
+    async syncIntegration(integrationType: string, indexId?: string): Promise<{ success: boolean; filesImported: number; intentsGenerated: number; error?: string }> {
+      return api.post<{ success: boolean; filesImported: number; intentsGenerated: number; error?: string }>(`/integrations/sync/${integrationType}`, indexId ? { indexId } : {});
+    },
+
   };
 }
 
