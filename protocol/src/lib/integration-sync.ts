@@ -28,16 +28,74 @@ interface SyncResult {
 interface IntegrationFile {
   id: string;
   name: string;
-  content: Buffer;
+  content: string;
   lastModified: Date;
   type: string;
   size: number;
 }
 
+// Convert Notion blocks to markdown
+function blocksToMarkdown(blocks: any[]): string {
+  let markdown = '';
+  
+  for (const block of blocks) {
+    switch (block.type) {
+      case 'paragraph':
+        const text = block.paragraph?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        markdown += `${text}\n\n`;
+        break;
+      case 'heading_1':
+        const h1Text = block.heading_1?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        markdown += `# ${h1Text}\n\n`;
+        break;
+      case 'heading_2':
+        const h2Text = block.heading_2?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        markdown += `## ${h2Text}\n\n`;
+        break;
+      case 'heading_3':
+        const h3Text = block.heading_3?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        markdown += `### ${h3Text}\n\n`;
+        break;
+      case 'bulleted_list_item':
+        const bulletText = block.bulleted_list_item?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        markdown += `- ${bulletText}\n`;
+        break;
+      case 'numbered_list_item':
+        const numberText = block.numbered_list_item?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        markdown += `1. ${numberText}\n`;
+        break;
+      case 'to_do':
+        const todoText = block.to_do?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        const checked = block.to_do?.checked ? '[x]' : '[ ]';
+        markdown += `${checked} ${todoText}\n`;
+        break;
+      case 'code':
+        const codeText = block.code?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        const language = block.code?.language || '';
+        markdown += `\`\`\`${language}\n${codeText}\n\`\`\`\n\n`;
+        break;
+      case 'quote':
+        const quoteText = block.quote?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        markdown += `> ${quoteText}\n\n`;
+        break;
+      case 'divider':
+        markdown += `---\n\n`;
+        break;
+      default:
+        // For other block types, try to extract text content
+        const blockText = block[block.type]?.rich_text?.map((t: any) => t.plain_text).join('') || '';
+        if (blockText) {
+          markdown += `${blockText}\n\n`;
+        }
+        break;
+    }
+  }
+  
+  return markdown.trim();
+}
+
 async function fetchNotionFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
   try {
-
-    
     const composio = await initComposio();
     
     // Get connected accounts for this user and Notion toolkit
@@ -54,8 +112,8 @@ async function fetchNotionFiles(userId: string, lastSyncAt?: Date): Promise<Inte
     const files: IntegrationFile[] = [];
     
     try {
-      // Execute Notion search action
-      const response = await composio.tools.execute("NOTION_SEARCH_NOTION_PAGE",{
+      // Execute Notion search action to get pages
+      const response = await composio.tools.execute("NOTION_SEARCH_NOTION_PAGE", {
         userId: userId,
         arguments: {
           query: "",
@@ -63,15 +121,13 @@ async function fetchNotionFiles(userId: string, lastSyncAt?: Date): Promise<Inte
             timestamp: "last_edited_time", 
             direction: "descending" 
           },
-          page_size: 50
+          page_size: 100
         }
       });
-      
       
       // Parse results
       const results = response.data?.response_data?.results;
       
-      console.log('response', results);
       if (Array.isArray(results)) {
         for (const item of results) {
           const lastModified = new Date(item.last_edited_time || new Date());
@@ -79,19 +135,52 @@ async function fetchNotionFiles(userId: string, lastSyncAt?: Date): Promise<Inte
           // Skip if not modified since last sync
           if (lastSyncAt && lastModified <= lastSyncAt) continue;
           
-          // Create file object
-          const content = JSON.stringify(item, null, 2);
-          
-          files.push({
-            id: item.id || `item-${Date.now()}`,
-            name: item.properties?.title?.title?.[0]?.plain_text || 
-                  item.title?.[0]?.plain_text || 
-                  `Notion Item ${item.id}`,
-            content: Buffer.from(content, 'utf-8'),
-            lastModified,
-            type: 'application/json',
-            size: content.length
-          });
+          try {
+            // Fetch child blocks for each page
+            const blocksResponse = await composio.tools.execute("NOTION_FETCH_NOTION_CHILD_BLOCK", {
+              userId: userId,
+              arguments: {
+                block_id: item.id,
+                page_size: 100
+              }
+            });
+            
+            const blocks = blocksResponse.data?.block_child_data?.results || [];
+            
+            // Convert blocks to markdown
+            let markdownContent = '';
+            
+            // Add page title as main heading
+            const pageTitle = item.properties?.title?.title?.[0]?.plain_text || 
+                            item.title?.[0]?.plain_text || 
+                            `Notion Page ${item.id}`;
+            markdownContent += `# ${pageTitle}\n\n`;
+            
+            // Add page metadata
+            markdownContent += `*Created: ${new Date(item.created_time).toLocaleDateString()}*\n`;
+            markdownContent += `*Last edited: ${new Date(item.last_edited_time).toLocaleDateString()}*\n\n`;
+            markdownContent += `---\n\n`;
+            
+            // Convert blocks to markdown
+            if (blocks.length > 0) {
+              markdownContent += blocksToMarkdown(blocks);
+            } else {
+              markdownContent += '*This page has no content blocks.*\n';
+            }
+            
+            files.push({
+              id: item.id || `item-${Date.now()}`,
+              name: `${item.id}.md`,
+              content: markdownContent,
+              lastModified,
+              type: 'text/markdown',
+              size: markdownContent.length
+            });
+            
+            
+          } catch (blockError) {
+            
+          }
         }
       }
       
@@ -114,7 +203,7 @@ async function saveFilesToTemp(files: IntegrationFile[], userId: string): Promis
   const fileIds: string[] = [];
   
   for (const file of files) {
-    const fileName = `${file.id}.json`;
+    const fileName = `${file.id}.md`;
     const filePath = path.join(tempDir, fileName);
     
     await fs.promises.writeFile(filePath, file.content);
@@ -202,7 +291,7 @@ export async function syncIntegration(
     try {
       // Get existing intents for deduplication
       const existingIntents = await getExistingIntents(userId, indexId);
-      
+      console.log('existingIntents', existingIntents);
       // Analyze files with intent inferrer
       const result = await analyzeFolder(
         tempDir,
@@ -210,7 +299,7 @@ export async function syncIntegration(
         `Generate intents based on content from ${integrationType} integration`,
         existingIntents,
         [], // existingSuggestions
-        5, // count
+        30, // count
         60000 // timeout
       );
       

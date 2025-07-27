@@ -304,7 +304,7 @@ export default function PrivateIndexPage() {
                       disabled={syncingIntegration === config.id}
                       className="w-full px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-ibm-plex font-medium transition-colors"
                     >
-                      {syncingIntegration === config.id ? 'Syncing...' : 'Sync'}
+                      {syncingIntegration === config.id ? 'Syncing...' : 'Sync now'}
                     </button>
                   </div>
                 )}
