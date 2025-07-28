@@ -22,7 +22,6 @@ export default function PrivateIndexPage() {
   const [connectingIntegration, setConnectingIntegration] = useState<string | null>(null);
   const [connectionStatuses, setConnectionStatuses] = useState<Record<string, string>>({});
   const [syncingIntegration, setSyncingIntegration] = useState<string | null>(null);
-  const [syncingAll, setSyncingAll] = useState(false);
 
   const integrationConfigs: IntegrationConfig[] = [
     {
