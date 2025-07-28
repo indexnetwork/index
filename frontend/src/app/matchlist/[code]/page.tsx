@@ -39,6 +39,7 @@ type MatchlistPageState = {
   
   // Discovery data
   discoveryResults: IntentStakesByUserResponse[];
+  fetchAttempts: number;
   
   // Connection management
   connectionStatuses: Record<string, 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped'>;
@@ -66,6 +67,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
     intentPayload: '',
     createdIntentId: null,
     discoveryResults: [],
+    fetchAttempts: 0,
     connectionStatuses: {},
     syntheses: {},
     synthesisLoading: {},
@@ -182,9 +184,12 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
       }
       
       const discoveryResults = await intentsService.getStakesByIndexCode(resolvedParams.code);
+      
+      // Update state with results and increment/reset fetch attempts
       setState(prev => ({ 
         ...prev, 
         discoveryResults,
+        fetchAttempts: discoveryResults.length > 0 ? 0 : prev.fetchAttempts + 1,
         ...(showLoading ? { isSubmitting: false } : { isRefreshing: false })
       }));
 
@@ -288,7 +293,8 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
                     setState(prev => ({ 
                       ...prev, 
                       createdIntentId: primaryIntent.id,
-                      step: 'discovery-results'
+                      step: 'discovery-results',
+                      fetchAttempts: 0
                     }));
 
                     // Fetch discovery results for the primary intent
@@ -534,7 +540,8 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
         ...prev, 
         createdIntentId: primaryIntent.id,
         step: 'discovery-results',
-        isSubmitting: false
+        isSubmitting: false,
+        fetchAttempts: 0
       }));
 
       // Fetch discovery results for the primary intent
@@ -770,7 +777,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
                 <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
                   <Image 
                     className="h-auto"
-                    src={'/generic.png'} 
+                    src={'/loading2.gif'} 
                     alt="Hero Illustration" 
                     width={300} 
                     height={200} 
@@ -779,7 +786,10 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
                     }}
                   />
                   <p className="text-gray-900 font-500 font-ibm-plex-mono text-md mt-4 text-center">
-                    No matches found in this index. Try adjusting your intent or check back later.
+                    {state.fetchAttempts >= 3 
+                      ? "No matches found in this index. Try adjusting your intent or check back later."
+                      : "The agents got the signal! Hang tight—they're looking for your perfect match!"
+                    }
                   </p>
                 </div>
               ) : (

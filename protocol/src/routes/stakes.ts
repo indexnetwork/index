@@ -3,7 +3,7 @@ import { param, query, validationResult } from 'express-validator';
 import db from '../lib/db';
 import { intents, users, intentStakes, agents, userConnectionEvents, indexes, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { eq, isNull, and, sql, or, notInArray } from 'drizzle-orm';
+import { eq, isNull, and, sql, or, notInArray, inArray } from 'drizzle-orm';
 import { checkIndexAccessByCode } from '../lib/index-access';
 
 const router = Router();
@@ -324,9 +324,33 @@ router.get('/index/share/:code/by-user',
         return res.status(403).json({ error: 'Shared index does not allow discovery' });
       }
 
-      // Get stakes with user info, filtering through intent_indexes to ensure
-      // only stakes for intents within this specific index are included
-      const stakes = await db.select({
+
+      // Get our user's non-archived intents in this index
+      const userIntentsQuery = db.select({
+        id: intents.id
+      })
+      .from(intents)
+      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+      .where(and(
+        eq(intentIndexes.indexId, sharedIndexData.id),
+        eq(intents.userId, req.user!.id),
+        isNull(intents.archivedAt)
+      ));
+
+      const userIntents = await userIntentsQuery;
+      const userIntentIds = userIntents.map(intent => intent.id);
+
+      // If user has no non-archived intents in this index, return empty result
+      if (userIntentIds.length === 0) {
+        return res.json([]);
+      }
+
+      // Get stakes for intents in this index that:
+      // 1. Match the user's intent IDs
+      // 2. Are from non-deleted agents
+      // 3. Are associated with the shared index
+      // Join with agents, intents, intent indexes and users tables to get all needed data
+      const query = db.select({
         stake: intentStakes.stake,
         reasoning: intentStakes.reasoning,
         stakeIntents: intentStakes.intents,
@@ -335,7 +359,9 @@ router.get('/index/share/:code/by-user',
         userId: users.id,
         userName: users.name,
         userAvatar: users.avatar,
-        userIntro: users.intro
+        userIntro: users.intro,
+        intentArchivedAt: intents.archivedAt,
+        intentPayload: intents.payload
       })
       .from(intentStakes)
       .innerJoin(agents, eq(intentStakes.agentId, agents.id))
@@ -343,12 +369,21 @@ router.get('/index/share/:code/by-user',
       .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
       .innerJoin(users, eq(intents.userId, users.id))
       .where(and(
-        // Filter to only intents within this specific shared index
         eq(intentIndexes.indexId, sharedIndexData.id),
-        // Exclude the current user's own intents
+        sql`EXISTS (
+          SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
+          WHERE intent_id NOT IN (${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)})
+        )`,
         sql`${users.id} != ${req.user!.id}`,
+        isNull(intents.archivedAt),
         isNull(agents.deletedAt)
       ));
+
+      console.log('Executing query:', query.toSQL());
+      
+      const stakes = await query;
+
+      console.log("aaaa",stakes);
 
       // Group by user
       const userStakes = stakes.reduce((acc, stake) => {
