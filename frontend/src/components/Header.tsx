@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserPlus, LogIn, Settings } from "lucide-react";
+import { UserPlus, LogIn, Settings, Blocks } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useAuthenticatedAPI } from '@/lib/api';
@@ -146,22 +146,13 @@ export default function Header({ showNavigation = true }: HeaderProps) {
     {
       href: "/integrate",
       icon: (color: string) => (
-        <svg 
-          width={44}
-          height={44}
-          viewBox="0 0 24 24" 
-          fill="none" 
-          xmlns="http://www.w3.org/2000/svg"
+        <Blocks 
+          size={48}
+          color={color}
           className="object-contain p-1"
-        >
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M14 2v6h6" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M16 13H8" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M16 17H8" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M10 9H8" stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
+        />
       ),
-      label: "Integrate"
+      label: "Build"
     }
   ], []);
 
