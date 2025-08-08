@@ -16,22 +16,23 @@ export const llm = new ChatOpenAI({
 });
 
 // Traceable LLM wrapper utility
-export const traceableLlm = (name: string, tags: string[], metadata: Record<string, any>) => {
+export function traceableLlm(name: string, tags: string[], metadata: Record<string, any>) {
   return traceable(
     async (prompt: string) => await llm.invoke(prompt),
     { name, tags, metadata }
   );
-};
+}
 
 // Traceable structured output wrapper utility  
-export const traceableStructuredLlm = (name: string, tags: string[], metadata: Record<string, any>) => {
-  return traceable(
+export function traceableStructuredLlm(name: string, tags: string[], metadata: Record<string, any>) {
+  const wrappedFunction = traceable(
     async (prompt: string, schema: any) => {
       const modelWithStructure = llm.withStructuredOutput(schema);
       return await modelWithStructure.invoke(prompt);
     },
     { name, tags, metadata }
   );
-};
+  return wrappedFunction;
+}
 
 export default db; 
