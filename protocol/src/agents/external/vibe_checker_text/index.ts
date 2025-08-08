@@ -139,7 +139,6 @@ This isn't just adjacent thinking — it's a chance to push the boundaries of wh
     });
 
     console.log('Prompt:', prompt);
-    const modelWithStructure = llm.withStructuredOutput(VibeCheckSchema);
     const response = await Promise.race([
       modelWithStructure.invoke(prompt),
       timeoutPromise

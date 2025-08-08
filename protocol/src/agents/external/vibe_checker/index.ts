@@ -4,7 +4,7 @@
  * Generates "What Could Happen Here" synthesis text for user collaboration opportunities.
  */
 
-import { llm } from "../../../lib/agents";
+import { traceableLlm } from "../../../lib/agents";
 
 // Type definitions
 export interface VibeCheckResult {
@@ -118,8 +118,20 @@ ${exampleOutput}
     });
 
     console.log('prompt', prompt);
+    const vibeCall = traceableLlm(
+      "vibe-check-synthesis",
+      ["vibe-checker", "collaboration-synthesis", "user-matching"],
+      {
+        agent_type: "vibe_checker",
+        operation: "collaboration_synthesis",
+        user_id: userData.id,
+        user_name: userData.name,
+        intents_count: userData.intents.length,
+        output_format: outputFormat
+      }
+    );
     const response = await Promise.race([
-      llm.invoke(prompt),
+      vibeCall(prompt),
       timeoutPromise
     ]);
 

@@ -5,7 +5,7 @@
  * Only uses agent reasonings, not full intent data.
  */
 
-import { llm } from "../../../lib/agents";
+import { traceableLlm } from "../../../lib/agents";
 
 // Type definitions
 export interface IntroMakerResult {
@@ -71,8 +71,20 @@ Generate the synthesis:`;
       setTimeout(() => reject(new Error('Intro maker timeout')), timeout);
     });
 
+    const introCall = traceableLlm(
+      "intro-maker-synthesis",
+      ["intro-maker", "email-introduction", "user-connection"],
+      {
+        agent_type: "intro_maker",
+        operation: "introduction_synthesis",
+        sender_name: data.sender.userName,
+        recipient_name: data.recipient.userName,
+        sender_reasonings_count: data.sender.reasonings.length,
+        recipient_reasonings_count: data.recipient.reasonings.length
+      }
+    );
     const response = await Promise.race([
-      llm.invoke(prompt),
+      introCall(prompt),
       timeoutPromise
     ]);
 

@@ -1,7 +1,7 @@
 import { BaseContextBroker } from '../base';
 import { intents, intentStakes, agents } from '../../../lib/schema';
 import { eq, and, ne, sql, isNull } from 'drizzle-orm';
-import { llm } from "../../../lib/agents";
+import { traceableLlm } from "../../../lib/agents";
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
   constructor(agentId: string) {
@@ -35,7 +35,17 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
         Intent 1: ${JSON.stringify(currentIntent.payload)}
         Intent 2: ${JSON.stringify(otherIntent.payload)}`;
 
-        const response = await llm.invoke(prompt);
+        const llmCall = traceableLlm(
+          "intent-semantic-scoring",
+          ["semantic-relevancy", "intent-comparison", "scoring"],
+          {
+            agent_type: "semantic_relevancy_broker",
+            operation: "intent_comparison",
+            current_intent_id: currentIntent.id,
+            other_intent_id: otherIntent.id
+          }
+        );
+        const response = await llmCall(prompt);
         const score = parseFloat(response.content.toString());
         //console.log('LLM response for intent comparison:', { score, otherIntentId: otherIntent.id });
 
@@ -98,7 +108,17 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
         Intent 1: ${JSON.stringify(currentIntent.payload)}
         Intent 2: ${JSON.stringify(relatedIntent.payload)}`;
 
-        const response = await llm.invoke(reasoningPrompt);
+        const reasoningCall = traceableLlm(
+          "intent-reasoning-generation",
+          ["semantic-relevancy", "reasoning", "stake-creation"],
+          {
+            agent_type: "semantic_relevancy_broker",
+            operation: "reasoning_generation",
+            current_intent_id: intentId,
+            related_intent_id: relatedIntent.id
+          }
+        );
+        const response = await reasoningCall(reasoningPrompt);
         const reasoning = response.content.toString();
         
         await this.stakeManager.createStake({

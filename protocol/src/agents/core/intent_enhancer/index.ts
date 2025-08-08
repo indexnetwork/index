@@ -7,7 +7,7 @@
 
 import { UnstructuredClient } from "unstructured-client";
 import { Strategy } from "unstructured-client/sdk/models/shared";
-import { llm } from "../../../lib/agents";
+import { traceableLlm } from "../../../lib/agents";
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -201,7 +201,18 @@ INSTRUCTIONS:
 Enhanced Intent:`;
 
     console.log(prompt);  
-    const response = await llm.invoke(prompt);
+    const enhanceCall = traceableLlm(
+      "intent-enhancement",
+      ["intent-enhancer", "context-enhancement", "intent-expansion"],
+      {
+        agent_type: "intent_enhancer",
+        operation: "intent_enhancement",
+        index_id: indexId,
+        original_intent_length: intentPayload.length,
+        context_length: contextContent.length
+      }
+    );
+    const response = await enhanceCall(prompt);
     const enhancedPayload = response.content as string;
 
     return {

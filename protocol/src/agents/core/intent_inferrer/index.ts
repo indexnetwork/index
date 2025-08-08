@@ -6,7 +6,7 @@
 
 import { UnstructuredClient } from "unstructured-client";
 import { Strategy } from "unstructured-client/sdk/models/shared";
-import { llm } from "../../../lib/agents";
+import { traceableStructuredLlm } from "../../../lib/agents";
 import * as fs from 'fs';
 import path from 'path';
 import { z } from "zod";
@@ -238,9 +238,21 @@ ${concatenatedContent.substring(0, 15000)}${concatenatedContent.length > 15000 ?
       setTimeout(() => reject(new Error('Intent generation timeout')), timeoutMs);
     });
 
-    const modelWithStructure = llm.withStructuredOutput(IntentSchema);
+    const intentInferCall = traceableStructuredLlm(
+      "intent-inference-from-files",
+      ["intent-inferrer", "file-analysis", "structured-output"],
+      {
+        agent_type: "intent_inferrer",
+        operation: "intent_generation",
+        files_processed: processedFiles,
+        content_length: concatenatedContent.length,
+        existing_intents_count: existingIntents.length,
+        existing_suggestions_count: existingSuggestions.length,
+        requested_count: count
+      }
+    );
     const response = await Promise.race([
-      modelWithStructure.invoke(prompt),
+      intentInferCall(prompt, IntentSchema),
       timeoutPromise
     ]);
 
