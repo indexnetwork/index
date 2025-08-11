@@ -1,26 +1,33 @@
 
-# Index Protocol Integration Guide
+# **Index Protocol Integration Guide**
 
-## Overview
+## **Overview**
 
 Index Protocol provides two main integration patterns for discovering and matching users based on their intents and context:
 
-1.  **VibeCheck**: Analyze compatibility between a user and an existing index
-2.  **MatchList**: Create intents and discover matches within a shared index  
+1. **VibeCheck** – Analyze compatibility between a user and an existing index.
+2. **MatchList** – Create intents and discover matches within a shared index.
 
-Both integrations use share codes for access control and support file uploads for context.
+Both integrations use **share codes** for access control and support **file uploads** for context.
 
-### Key Terms
--  **Share Code**: UUID used to access shared indexes with specific permissions
--  **Synthesis**: AI-generated text describing potential collaboration opportunities between users
+---
 
-## VibeCheck Integration
+## **Key Terms**
 
-### Use Case
+* **Share Code** – UUID used to access shared indexes with specific permissions.
+* **Synthesis** – AI-generated text describing potential collaboration opportunities between users.
 
-Analyze how well a user's content/intent fits with an existing index's community and generate an unified collaboration synthesis.
+---
 
-### API Flow
+## **VibeCheck Integration**
+
+### **Use Case**
+
+Analyze how well a user's content/intent fits with an existing index’s community and generate a unified collaboration synthesis.
+
+---
+
+### **API Flow**
 
 ```mermaid
 sequenceDiagram
@@ -38,21 +45,27 @@ Note over Client: Response: suggestedIntents, synthesis, score, tempFiles
 Client->>User: Display compatibility & suggestions
 ```
 
-### API Endpoints
+---
 
-#### Intent Suggestion with VibeCheck
+### **API Endpoints**
+
+#### **1. Intent Suggestion with VibeCheck**
+
+**Request:**
 
 ```http
 POST /vibecheck/intent-suggestion
 Content-Type: multipart/form-data
-{
-"files": [File], // Optional: Files to analyze
-"payload": "string", // Optional: Intent text (what user wants/seeks/offers)
-"indexCode": "uuid" // Optional: Share code for vibe check
-}
 
+{
+  "files": [File],      // Optional: Files to analyze
+  "payload": "string",  // Optional: Intent text (what user wants/seeks/offers)
+  "indexCode": "uuid"   // Optional: Share code for vibe check
+}
 ```
+
 **Response:**
+
 ```json
 {
   "success": true,
@@ -77,16 +90,20 @@ Content-Type: multipart/form-data
     }
   ]
 }
-
 ```
-#### Get Index by Share Code
+
+---
+
+#### **2. Get Index by Share Code**
+
+**Request:**
 
 ```http
-
 GET /indexes/share/{code}
-
 ```
+
 **Response:**
+
 ```json
 {
   "index": {
@@ -114,41 +131,44 @@ GET /indexes/share/{code}
   }
 }
 ```
-### Implementation Example
+
+---
+
+### **Implementation Example**
 
 ```typescript
-
 // VibeCheck integration
+const runVibeCheck = async (content: string, files: File[], shareCode: string) => {
+  const formData = new FormData();
+  if (content) formData.append('payload', content);
+  if (shareCode) formData.append('indexCode', shareCode);
+  files.forEach(file => formData.append('files', file));
 
-const  runVibeCheck  =  async (content:  string, files:  File[], shareCode:  string) => {
+  const response = await fetch('/vibecheck/intent-suggestion', {
+    method: 'POST',
+    body: formData
+  });
 
-	const  formData  =  new  FormData();
-	if (content) formData.append('payload', content); // Intent text: what user wants/seeks/offers
-	if (shareCode) formData.append('indexCode', shareCode);
-
-	files.forEach(file  =>  formData.append('files', file));
-
-	const  response  =  await  fetch('/vibecheck/intent-suggestion', {
-		method:  'POST',
-		body:  formData
-	});
-
-	const  result  =  await  response.json();
-	return {
-		compatibility:  result.score,
-		synthesis:  result.synthesis,
-		suggestions:  result.suggestedIntents
-	};
+  const result = await response.json();
+  return {
+    compatibility: result.score,
+    synthesis: result.synthesis,
+    suggestions: result.suggestedIntents
+  };
 };
-
 ```
-## MatchList Integration
 
-### Use Case
+---
 
-Create intents within a shared index and discover matches with other users who have created intents in the same index.
+## **MatchList Integration**
 
-### API Flow
+### **Use Case**
+
+Create intents within a shared index and discover matches with other users in that index.
+
+---
+
+### **API Flow**
 
 ```mermaid
 sequenceDiagram
@@ -160,40 +180,41 @@ User->>Client: Submit intent text/files
 Client->>API: POST /vibecheck/intent-suggestion
 Note over API: Generate intent suggestions
 API-->>Client: Return suggested intents
+
 loop For each suggested intent
-Client->>API: POST /indexes/share/{code}/intents
-Note over API: Create intent in shared index
-API-->>Client: Intent created successfully
+  Client->>API: POST /indexes/share/{code}/intents
+  API-->>Client: Intent created successfully
 end
 
 Client->>API: GET /stakes/index/share/{code}/by-user
-Note over API: Discover matches in shared index
 API-->>Client: Return matched users
+
 loop For each match
-Client->>API: POST /synthesis/vibecheck
-Note over API: Generate collaboration synthesis
-API-->>Client: Return synthesis text
+  Client->>API: POST /synthesis/vibecheck
+  API-->>Client: Return synthesis text
 end
+
 Client->>User: Display matches & synthesis
 ```
 
-### API Endpoints
+---
 
-#### Create Intent via Share Code
+### **API Endpoints**
+
+#### **1. Create Intent via Share Code**
+
+**Request:**
 
 ```http
-
 POST /indexes/share/{code}/intents
 Authorization: Bearer {token}
 Content-Type: application/json
 
 {
-	"payload": "Seeking collaboration on distributed ML algorithms for real-time inference",
-	"isIncognito": false
+  "payload": "Seeking collaboration on distributed ML algorithms for real-time inference",
+  "isIncognito": false
 }
-
 ```
-
 
 **Response:**
 
@@ -209,9 +230,13 @@ Content-Type: application/json
     "userId": "user-abc123"
   }
 }
-``` 
+```
 
-#### Get Stakes by Index Share Code
+---
+
+#### **2. Get Stakes by Index Share Code**
+
+**Request:**
 
 ```http
 GET /stakes/index/share/{code}/by-user
@@ -239,40 +264,43 @@ Authorization: Bearer {token}
 ]
 ```
 
-#### Generate Collaboration Synthesis
+---
+
+#### **3. Generate Collaboration Synthesis**
+
+**Request:**
 
 ```http
-
 POST /synthesis/vibecheck
 Authorization: Bearer {token}
 Content-Type: application/json
 
 {
-	"targetUserId": "user-def456"
+  "targetUserId": "user-def456"
 }
-
 ```
 
 **Response:**
 
 ```json
 {
-	"synthesis": "Your focus on distributed ML algorithms perfectly complements Dr. Kim's work on real-time inference optimization. Together, you could develop a unified framework that addresses both distributed training and low-latency deployment challenges.",
-	"targetUserId": "user-def456"
+  "synthesis": "Your focus on distributed ML algorithms perfectly complements Dr. Kim's work on real-time inference optimization. Together, you could develop a unified framework that addresses both distributed training and low-latency deployment challenges.",
+  "targetUserId": "user-def456"
 }
 ```
-### Implementation Example
+
+---
+
+### **Implementation Example**
 
 ```typescript
 // MatchList integration
-
 const createMatchlist = async (content: string, files: File[], shareCode: string) => {
   // 1. Generate intent suggestions
   const suggestions = await generateSuggestions(content, files);
 
   // 2. Create intents in shared index
   const createdIntents = [];
-
   for (const suggestion of suggestions.suggestedIntents) {
     const intent = await fetch(`/indexes/share/${shareCode}/intents`, {
       method: 'POST',
@@ -281,11 +309,10 @@ const createMatchlist = async (content: string, files: File[], shareCode: string
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        payload: suggestion.payload, // Intent text describing what user wants/seeks/offers
+        payload: suggestion.payload,
         isIncognito: false,
       }),
     });
-
     createdIntents.push(await intent.json());
   }
 
@@ -304,15 +331,9 @@ const createMatchlist = async (content: string, files: File[], shareCode: string
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          targetUserId: match.user.id,
-        }),
+        body: JSON.stringify({ targetUserId: match.user.id }),
       });
-
-      return {
-        user: match.user,
-        synthesis: await synthesis.json(),
-      };
+      return { user: match.user, synthesis: await synthesis.json() };
     })
   );
 
@@ -320,38 +341,38 @@ const createMatchlist = async (content: string, files: File[], shareCode: string
 };
 ```
 
-  
+---
 
-## Permissions & Access Control
+## **Permissions & Access Control**
 
-  
+### **VibeCheck Permissions**
 
-Both integrations use share codes with permission-based access:
+* `can-discover` – Required to run vibe checks against index.
 
-  
+### **MatchList Permissions**
 
-### VibeCheck Permissions
+* `can-discover` – Required to see matches/stakes.
+* `can-write-intents` – Required to create intents in shared index.
 
--  `can-discover`: Required to run vibe checks against index
+---
 
-### MatchList Permissions
+## **Best Practices**
 
--  `can-discover`: Required to see matches/stakes
--  `can-write-intents`: Required to create intents in shared index
+### **File Handling**
 
+* **Supported Types:** PDF, TXT, DOC, DOCX, Markdown.
+* **Limits:** Max 10 files, 10MB per file.
+* **Cleanup:** Temporary files are automatically deleted after 1 hour.
 
-## Best Practices
+### **Rate Limiting**
 
-### File Handling
+* TBD.
 
--  **File Types**: Supports PDF, TXT, DOC, DOCX, Markdown
--  **Size Limits**: Maximum 10 files, 10MB per file
--  **Cleanup**: Temporary files are automatically cleaned after 1 hour
+### **Authentication**
 
-### Rate Limiting
-TBD 
+* Use **Privy authentication** for user sessions (SIWE-compatible).
+* Include **Bearer token** in all authenticated requests.
 
-### Authentication
+---
 
-- Use Privy authentication for user sessions (SIWE Compatibility example will be shared)
-- Include Bearer token in all authenticated requests
+If you want, I can also turn this into a **PDF-ready developer guide** with a table of contents and inline examples for quick reference. That would make it even easier to hand off to teams.
