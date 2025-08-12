@@ -161,20 +161,53 @@ router.get('/status/:connectionRequestId',
       }
 
       try {
+        // Check with Composio if the connection is actually established
+        const composioClient = await initComposio();
+        const integrationConfig = INTEGRATION_MAPPINGS[integrationRecord.integrationType as keyof typeof INTEGRATION_MAPPINGS];
         
-        await db.update(userIntegrations)
-          .set({
-            status: 'connected',
-            connectedAt: new Date()
-          })
-          .where(eq(userIntegrations.id, integrationRecord.id));
-
-        return res.json({ 
-          status: 'connected',
-          connectedAt: new Date(),
+        console.log(`Checking connection for user ${userId}, integration: ${integrationRecord.integrationType}, toolkit: ${integrationConfig.toolkit}`);
+        
+        // Check if user has connected accounts for this toolkit
+        const connectedAccounts = await composioClient.connectedAccounts.list({
+          userIds: [userId],
+          toolkitSlugs: [integrationConfig.toolkit.toLowerCase()]
         });
+
+        console.log(`Composio connected accounts response:`, connectedAccounts);
+
+        if (connectedAccounts && connectedAccounts.items && connectedAccounts.items.length > 0) {
+          // Check if any account has an active/connected status
+          const activeAccount = connectedAccounts.items.find((account: any) => 
+            account.status === 'ACTIVE' || account.status === 'CONNECTED'
+          );
+          
+          if (activeAccount) {
+            console.log('Connection verified with Composio (status: ACTIVE), updating database status');
+            // Connection verified, update database
+            await db.update(userIntegrations)
+              .set({
+                status: 'connected',
+                connectedAt: new Date()
+              })
+              .where(eq(userIntegrations.id, integrationRecord.id));
+
+            return res.json({ 
+              status: 'connected',
+              connectedAt: new Date(),
+            });
+          } else {
+            const accountStatuses = connectedAccounts.items.map((acc: any) => acc.status).join(', ');
+            console.log(`Account(s) found but not yet active. Current statuses: [${accountStatuses}]`);
+            return res.json({ status: 'pending' });
+          }
+        } else {
+          console.log('No connected accounts found in Composio, status remains pending');
+          // Connection not established yet
+          return res.json({ status: 'pending' });
+        }
       } catch (error) {
-        // Connection not ready yet
+        console.error('Error checking Composio connection status:', error);
+        // Connection not ready yet or error occurred
         return res.json({ status: 'pending' });
       }
     } catch (error) {
@@ -199,8 +232,33 @@ router.delete('/:integrationType',
 
       const userId = req.user!.id;
       const integrationType = req.params.integrationType;
+      const integrationConfig = INTEGRATION_MAPPINGS[integrationType as keyof typeof INTEGRATION_MAPPINGS];
 
-      // Find and soft delete the integration
+      try {
+        // First, disconnect from Composio
+        const composioClient = await initComposio();
+        console.log(`Disconnecting ${integrationType} for user ${userId} from Composio`);
+        
+        // Get connected accounts for this toolkit
+        const connectedAccounts = await composioClient.connectedAccounts.list({
+          userIds: [userId],
+          toolkitSlugs: [integrationConfig.toolkit.toLowerCase()]
+        });
+
+        // Delete each connected account from Composio
+        if (connectedAccounts && connectedAccounts.items) {
+          for (const account of connectedAccounts.items) {
+            console.log(`Deleting Composio connected account: ${account.id}`);
+            await composioClient.connectedAccounts.delete(account.id);
+          }
+          console.log(`Successfully disconnected ${connectedAccounts.items.length} account(s) from Composio`);
+        }
+      } catch (composioError) {
+        console.error('Error disconnecting from Composio:', composioError);
+        // Continue with local disconnection even if Composio fails
+      }
+
+      // Update our database
       const result = await db.update(userIntegrations)
         .set({
           deletedAt: new Date(),
