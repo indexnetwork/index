@@ -104,14 +104,14 @@ async function fetchNotionFiles(userId: string, lastSyncAt?: Date): Promise<Inte
       userIds: [userId],
       toolkitSlugs: ['notion']
     });
-    console.log(`[Integration Sync] Connected Notion accounts: ${connectedAccounts?.length ?? 0}`);
+    console.log(`[Integration Sync] Connected Notion accounts: ${connectedAccounts.items.length}`);
 
-    if (!connectedAccounts || connectedAccounts.length === 0) {
+    if (!connectedAccounts || connectedAccounts.items.length === 0) {
       console.warn('No connected Notion accounts found for user');
       return [];
     }
 
-    const connectedAccountId = connectedAccounts[0]?.id;
+    const connectedAccountId = connectedAccounts.items[0]?.id;
     const files: IntegrationFile[] = [];
 
     try {
