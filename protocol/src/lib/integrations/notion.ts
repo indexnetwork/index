@@ -1,179 +1,57 @@
 import type { IntegrationHandler, IntegrationFile } from './index';
-
-let composio: any;
-const initComposio = async () => {
-  if (!composio) {
-    const { Composio } = await import('@composio/core');
-    composio = new Composio({
-      apiKey: process.env.COMPOSIO_API_KEY,
-    });
-  }
-  return composio;
-};
-
-function blocksToMarkdown(blocks: any[]): string {
-  let markdown = '';
-
-  for (const block of blocks) {
-    switch (block.type) {
-      case 'paragraph':
-        const text = block.paragraph?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `${text}\n\n`;
-        break;
-      case 'heading_1':
-        const h1Text = block.heading_1?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `# ${h1Text}\n\n`;
-        break;
-      case 'heading_2':
-        const h2Text = block.heading_2?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `## ${h2Text}\n\n`;
-        break;
-      case 'heading_3':
-        const h3Text = block.heading_3?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `### ${h3Text}\n\n`;
-        break;
-      case 'bulleted_list_item':
-        const bulletText = block.bulleted_list_item?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `- ${bulletText}\n`;
-        break;
-      case 'numbered_list_item':
-        const numberText = block.numbered_list_item?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `1. ${numberText}\n`;
-        break;
-      case 'to_do':
-        const todoText = block.to_do?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        const checked = block.to_do?.checked ? '[x]' : '[ ]';
-        markdown += `${checked} ${todoText}\n`;
-        break;
-      case 'code':
-        const codeText = block.code?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        const language = block.code?.language || '';
-        markdown += `\`\`\`${language}\n${codeText}\n\`\`\`\n\n`;
-        break;
-      case 'quote':
-        const quoteText = block.quote?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `> ${quoteText}\n\n`;
-        break;
-      case 'divider':
-        markdown += `---\n\n`;
-        break;
-      default:
-        const blockText = block[block.type]?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        if (blockText) {
-          markdown += `${blockText}\n\n`;
-        }
-        break;
-    }
-  }
-
-  return markdown.trim();
-}
+import { getClient } from './composio';
+import { log } from '../log';
+import { withRetry, concurrencyLimit, NotionBlocksResponse, NotionSearchResponse, NotionSearchItem, mapNotionToFile } from './util';
 
 async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
   try {
-    console.log(`[Integration Sync] Fetching Notion files for user ${userId}. Last sync: ${lastSyncAt?.toISOString() ?? 'never'}`);
-    const composio = await initComposio();
+    log.info('Notion sync start', { userId, lastSyncAt: lastSyncAt?.toISOString() });
+    const composio = await getClient();
+    const connectedAccounts = await withRetry(() => composio.connectedAccounts.list({ userIds: [userId], toolkitSlugs: ['notion'] }));
+    const account = connectedAccounts?.items?.[0];
+    if (!account) return [];
+    const connectedAccountId = account.id;
 
-    const connectedAccounts = await composio.connectedAccounts.list({
-      userIds: [userId],
-      toolkitSlugs: ['notion']
-    });
-    console.log(`[Integration Sync] Connected Notion accounts: ${connectedAccounts.items.length}`);
+    // Search pages sorted by last_edited_time desc
+    const search = await withRetry(() => composio.tools.execute('NOTION_SEARCH_NOTION_PAGE', {
+      userId,
+      connectedAccountId,
+      arguments: {
+        query: '',
+        sort: { timestamp: 'last_edited_time', direction: 'descending' },
+        page_size: 100,
+      },
+    }));
+    const parsedSearch = NotionSearchResponse.safeParse(search);
+    const items = parsedSearch.success ? (parsedSearch.data.data?.response_data as any)?.results ?? [] : [];
+    log.info('Notion pages', { count: items.length });
 
-    if (!connectedAccounts || connectedAccounts.items.length === 0) {
-      console.warn('No connected Notion accounts found for user');
-      return [];
-    }
-
-    const connectedAccountId = connectedAccounts.items[0]?.id;
+    const limit = concurrencyLimit(8);
     const files: IntegrationFile[] = [];
+    const tasks = items.map((item: any) => limit(async () => {
+      const itemParsed = NotionSearchItem.safeParse(item);
+      if (!itemParsed.success) return;
+      const lastModified = new Date(itemParsed.data.last_edited_time as any);
+      if (lastSyncAt && lastModified <= lastSyncAt) return;
 
-    try {
-      const response = await composio.tools.execute("NOTION_SEARCH_NOTION_PAGE", {
-        userId: userId,
+      const blocksResp = await withRetry(() => composio.tools.execute('NOTION_FETCH_BLOCK_CONTENTS', {
+        userId,
         connectedAccountId,
-        arguments: {
-          query: "",
-          sort: {
-            timestamp: "last_edited_time",
-            direction: "descending"
-          },
-          page_size: 100
-        }
-      });
+        arguments: { block_id: itemParsed.data.id, page_size: 100 },
+      }), { retries: 3 });
+      const parsedBlocks = NotionBlocksResponse.safeParse(blocksResp);
+      const blocks = parsedBlocks.success ? (parsedBlocks.data.data?.block_child_data as any)?.results ?? [] : [];
+      const file = mapNotionToFile(itemParsed.data, blocks);
+      files.push(file);
+    }));
 
-      const results = response.data?.response_data?.results;
-      console.log(`[Integration Sync] Notion search returned ${Array.isArray(results) ? results.length : 0} pages`);
-
-      if (Array.isArray(results)) {
-        for (const item of results) {
-          const lastModified = new Date(item.last_edited_time || new Date());
-          console.log(`[Integration Sync] Processing page ${item.id} last edited ${lastModified.toISOString()}`);
-
-          if (lastSyncAt && lastModified <= lastSyncAt) {
-            console.log(`[Integration Sync] Skipping page ${item.id} - not modified since last sync`);
-            continue;
-          }
-
-          try {
-            const blocksResponse = await composio.tools.execute("NOTION_FETCH_BLOCK_CONTENTS", {
-              userId: userId,
-              connectedAccountId,
-              arguments: {
-                block_id: item.id,
-                page_size: 100
-              }
-            });
-
-            const blocks = blocksResponse.data?.block_child_data?.results || [];
-            console.log(`[Integration Sync] Retrieved ${blocks.length} blocks for page ${item.id}`);
-
-            let markdownContent = '';
-
-            const pageTitle = item.properties?.title?.title?.[0]?.plain_text ||
-              item.title?.[0]?.plain_text ||
-              `Notion Page ${item.id}`;
-            markdownContent += `# ${pageTitle}\n\n`;
-
-            markdownContent += `*Created: ${new Date(item.created_time).toLocaleDateString()}*\n`;
-            markdownContent += `*Last edited: ${new Date(item.last_edited_time).toLocaleDateString()}*\n\n`;
-            markdownContent += `---\n\n`;
-
-            if (blocks.length > 0) {
-              markdownContent += blocksToMarkdown(blocks);
-            } else {
-              markdownContent += '*This page has no content blocks.*\n';
-            }
-
-            files.push({
-              id: item.id || `item-${Date.now()}`,
-              name: `${item.id}.md`,
-              content: markdownContent,
-              lastModified,
-              type: 'text/markdown',
-              size: markdownContent.length
-            });
-            console.log(`[Integration Sync] Added file ${item.id}.md (${markdownContent.length} chars)`);
-
-          } catch (blockError) {
-            console.warn(`[Integration Sync] Error fetching blocks for page ${item.id}`, blockError);
-          }
-        }
-      }
-
-    } catch (error) {
-      console.warn('Error executing Notion action:', error);
-    }
-    console.log(`[Integration Sync] Total Notion files fetched: ${files.length}`);
+    await Promise.all(tasks);
+    log.info('Notion sync done', { userId, files: files.length });
     return files;
-
   } catch (error) {
-    console.error('Error fetching Notion files:', error);
+    log.error('Notion sync error', { userId, error: (error as Error).message });
     return [];
   }
 }
 
-export const notionHandler: IntegrationHandler = {
-  fetchFiles,
-};
-
+export const notionHandler: IntegrationHandler = { fetchFiles };

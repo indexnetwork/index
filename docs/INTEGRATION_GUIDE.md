@@ -10,13 +10,6 @@ Index Protocol provides two main integration patterns for discovering and matchi
 
 Both integrations use **share codes** for access control and support **file uploads** for context.
 
-### Supported External Integrations
-
-The protocol can import context from external services through modular handlers. Currently available integrations include:
-
-- **Notion** – syncs pages and block content.
-- **Slack** – syncs conversations from selected channels.
-
 ---
 
 ## **Key Terms**

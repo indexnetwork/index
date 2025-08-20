@@ -17,8 +17,13 @@ import { slackHandler } from './slack';
 export { notionHandler } from './notion';
 export { slackHandler } from './slack';
 
-export const handlers: Record<string, IntegrationHandler> = {
+const registry: Record<string, IntegrationHandler> = {
   notion: notionHandler,
   slack: slackHandler,
 };
 
+export const handlers = registry;
+
+export function registerIntegration(type: string, handler: IntegrationHandler) {
+  registry[type] = handler;
+}

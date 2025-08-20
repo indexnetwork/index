@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { log } from '../lib/log';
 import { body, param, query, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
@@ -59,7 +60,7 @@ router.get('/',
 
       return res.json({ integrations: integrationsStatus });
     } catch (error) {
-      console.error('Get integrations error:', error);
+      log.error('Get integrations error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to fetch integrations' });
     }
   }
@@ -114,7 +115,7 @@ router.post('/connect/:integrationType',
         connectionRequestId: connectionRequest.id
       });
     } catch (error) {
-      console.error('Connect integration error:', error);
+      log.error('Connect integration error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to initiate connection' });
     }
   }
@@ -164,16 +165,12 @@ router.get('/status/:connectionRequestId',
         // Check with Composio if the connection is actually established
         const composioClient = await initComposio();
         const integrationConfig = INTEGRATION_MAPPINGS[integrationRecord.integrationType as keyof typeof INTEGRATION_MAPPINGS];
-        
-        console.log(`Checking connection for user ${userId}, integration: ${integrationRecord.integrationType}, toolkit: ${integrationConfig.toolkit}`);
-        
+        // Check connection
         // Check if user has connected accounts for this toolkit
         const connectedAccounts = await composioClient.connectedAccounts.list({
           userIds: [userId],
           toolkitSlugs: [integrationConfig.toolkit.toLowerCase()]
         });
-
-        console.log(`Composio connected accounts response:`, connectedAccounts);
 
         if (connectedAccounts && connectedAccounts.items && connectedAccounts.items.length > 0) {
           // Check if any account has an active/connected status
@@ -182,7 +179,7 @@ router.get('/status/:connectionRequestId',
           );
           
           if (activeAccount) {
-            console.log('Connection verified with Composio (status: ACTIVE), updating database status');
+            log.info('Integration connected', { userId, integration: integrationRecord.integrationType });
             // Connection verified, update database
             await db.update(userIntegrations)
               .set({
@@ -197,21 +194,19 @@ router.get('/status/:connectionRequestId',
             });
           } else {
             const accountStatuses = connectedAccounts.items.map((acc: any) => acc.status).join(', ');
-            console.log(`Account(s) found but not yet active. Current statuses: [${accountStatuses}]`);
             return res.json({ status: 'pending' });
           }
         } else {
-          console.log('No connected accounts found in Composio, status remains pending');
           // Connection not established yet
           return res.json({ status: 'pending' });
         }
       } catch (error) {
-        console.error('Error checking Composio connection status:', error);
+        log.error('Error checking Composio connection', { error: error instanceof Error ? error.message : String(error) });
         // Connection not ready yet or error occurred
         return res.json({ status: 'pending' });
       }
     } catch (error) {
-      console.error('Check connection status error:', error);
+      log.error('Check connection status error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to check connection status' });
     }
   }
@@ -237,7 +232,6 @@ router.delete('/:integrationType',
       try {
         // First, disconnect from Composio
         const composioClient = await initComposio();
-        console.log(`Disconnecting ${integrationType} for user ${userId} from Composio`);
         
         // Get connected accounts for this toolkit
         const connectedAccounts = await composioClient.connectedAccounts.list({
@@ -248,10 +242,9 @@ router.delete('/:integrationType',
         // Delete each connected account from Composio
         if (connectedAccounts && connectedAccounts.items) {
           for (const account of connectedAccounts.items) {
-            console.log(`Deleting Composio connected account: ${account.id}`);
             await composioClient.connectedAccounts.delete(account.id);
           }
-          console.log(`Successfully disconnected ${connectedAccounts.items.length} account(s) from Composio`);
+          log.info('Disconnected accounts', { integrationType, count: connectedAccounts.items.length });
         }
       } catch (composioError) {
         console.error('Error disconnecting from Composio:', composioError);
@@ -304,7 +297,7 @@ router.post('/sync/:integrationType',
 
       return res.json(result);
     } catch (error) {
-      console.error('Sync integration error:', error);
+      log.error('Sync integration error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to sync integration' });
     }
   }

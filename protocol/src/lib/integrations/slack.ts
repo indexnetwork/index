@@ -1,195 +1,78 @@
 import type { IntegrationHandler, IntegrationFile } from './index';
-
-let composio: any;
-export const __setComposio = (client: any) => {
-  composio = client;
-};
-const initComposio = async () => {
-  console.log('[Slack Integration] Initializing Composio client...');
-  if (!composio) {
-    console.log('[Slack Integration] Creating new Composio instance...');
-    const { Composio } = await import('@composio/core');
-    composio = new Composio({
-      apiKey: process.env.COMPOSIO_API_KEY,
-    });
-    console.log('[Slack Integration] Composio client created successfully');
-  } else {
-    console.log('[Slack Integration] Using existing Composio client');
-  }
-  return composio;
-};
-
-function formatMessage(channelName: string, message: any): { content: string; lastModified: Date } {
-  console.log(`[Slack Integration] Formatting message from channel: ${channelName}`, {
-    messageTs: message.ts,
-    messageUser: message.user || message.username,
-    messageText: message.text ? message.text.substring(0, 100) + '...' : 'no text'
-  });
-
-  const ts = typeof message.ts === 'string' ? parseFloat(message.ts) * 1000 : Date.now();
-  const lastModified = new Date(ts);
-  const sender = message.user || message.username || 'unknown';
-  const text = message.text || '';
-  const markdown = `# ${channelName}\n\n**From:** ${sender}\n\n**Sent:** ${lastModified.toISOString()}\n\n${text}`;
-
-  console.log(`[Slack Integration] Formatted message:`, {
-    lastModified: lastModified.toISOString(),
-    contentLength: markdown.length,
-    sender
-  });
-
-  return { content: markdown, lastModified };
-}
+import { getClient } from './composio';
+import { log } from '../log';
+import { paginate, withRetry, concurrencyLimit, SlackChannelsResponse, SlackHistoryResponse, SlackMessage, mapSlackMessageToFile } from './util';
 
 async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
   try {
-    console.log(`[Slack Integration] ===== STARTING SLACK SYNC =====`);
-    console.log(`[Slack Integration] User ID: ${userId}`);
-    console.log(`[Slack Integration] Last sync time: ${lastSyncAt?.toISOString() ?? 'never'}`);
+    log.info('Slack sync start', { userId, lastSyncAt: lastSyncAt?.toISOString() });
+    const composio = await getClient();
 
-    const composioClient = await initComposio();
-    console.log('[Slack Integration] Composio client initialized successfully');
-
-    console.log('[Slack Integration] Fetching connected accounts...');
-    const connectedAccounts = await composioClient.connectedAccounts.list({
+    const connectedAccounts = await withRetry(() => composio.connectedAccounts.list({
       userIds: [userId],
       toolkitSlugs: ['slack'],
-    });
+    }));
 
-    console.log('[Slack Integration] Connected accounts response:', {
-      hasItems: !!connectedAccounts?.items,
-      itemCount: connectedAccounts?.items?.length || 0,
-      items: connectedAccounts?.items?.map((acc: any) => ({ id: acc.id, name: acc.name })) || []
-    });
-
-    if (!connectedAccounts || connectedAccounts.items.length === 0) {
-      console.warn('[Slack Integration] No connected Slack accounts found for user');
+    const account = connectedAccounts?.items?.[0];
+    if (!account) {
+      // No connected accounts; nothing to do
       return [];
     }
+    const connectedAccountId = account.id;
 
-    const connectedAccountId = connectedAccounts.items[0].id;
-    console.log(`[Slack Integration] Using connected account ID: ${connectedAccountId}`);
+    // Fetch channels with pagination
+    const channels: Array<{ id: string; name?: string }> = [];
+    const chanLimit = 200;
+    for await (const page of paginate(
+      (args) => composio.tools.execute('SLACK_LIST_ALL_CHANNELS', { userId, connectedAccountId, arguments: args }),
+      { limit: chanLimit } as any,
+      (resp) => SlackChannelsResponse.safeParse(resp).success ? (resp as any).data?.response_metadata?.next_cursor : undefined,
+      (args, cursor) => ({ ...(args as any), cursor }) as any,
+      { retries: 3 }
+    )) {
+      const parsed = SlackChannelsResponse.safeParse(page);
+      if (!parsed.success) continue;
+      for (const ch of parsed.data.data.channels) {
+        if (ch && ch.id && !channels.find((c) => c.id === ch.id)) channels.push(ch);
+      }
+    }
 
+    log.info('Slack channels', { count: channels.length });
+    if (!channels.length) return [];
+
+    const limit = concurrencyLimit(6);
     const files: IntegrationFile[] = [];
-
-    console.log('[Slack Integration] Fetching all channels with pagination...');
-
-    const allChannels: any[] = [];
-    let cursor: string | undefined = undefined;
-    let page = 1;
-    const limit = 100; // Align with Playground behavior
-
-    do {
-      const args: any = { limit };
-      if (cursor) args.cursor = cursor;
-
-      console.log(`[Slack Integration] Requesting channels page ${page} (limit=${limit})`, { cursor: cursor ? 'present' : 'none' });
-
-      const pageResp = await composioClient.tools.execute('SLACK_LIST_ALL_CHANNELS', {
-        userId,
-        connectedAccountId,
-        arguments: args,
-      });
-
-      const pageChannels = pageResp?.data?.channels || [];
-      console.log(`[Slack Integration] Page ${page} returned ${pageChannels.length} channels`);
-      allChannels.push(...pageChannels);
-
-      cursor = pageResp?.data?.response_metadata?.next_cursor || '';
-      page += 1;
-    } while (cursor);
-
-    // Deduplicate by channel id (defensive)
-    const seen = new Set<string>();
-    const channels = allChannels.filter((ch: any) => {
-      if (!ch?.id) return false;
-      if (seen.has(ch.id)) return false;
-      seen.add(ch.id);
-      return true;
-    });
-
-    console.log(`[Slack Integration] Found ${channels.length} total channels after pagination:`, channels.map((ch: any) => ({ id: ch.id, name: ch.name, purpose: ch.purpose })));
-
-    if (channels.length === 0) {
-      console.warn('[Slack Integration] No channels found in response');
-      // Note: multiple paginated responses; nothing to dump here beyond counts
-    }
-
-    for (const channel of channels) {
-      const channelId = channel.id;
-      const channelName = channel.name || channelId;
-      console.log(`[Slack Integration] Processing channel: ${channelName} (ID: ${channelId})`);
-
+    let messagesTotal = 0;
+    const tasks = channels.map((ch) => limit(async () => {
+      const channelId = ch.id;
+      const channelName = ch.name || ch.id;
       const args: any = { channel: channelId };
-      if (lastSyncAt) {
-        args.oldest = (lastSyncAt.getTime() / 1000).toString();
-        console.log(`[Slack Integration] Filtering messages from: ${args.oldest} (${lastSyncAt.toISOString()})`);
+      if (lastSyncAt) args.oldest = (lastSyncAt.getTime() / 1000).toString();
+
+      const history = await withRetry(
+        () => composio.tools.execute('SLACK_FETCH_CONVERSATION_HISTORY', { userId, connectedAccountId, arguments: args }),
+        { retries: 3 }
+      );
+      const parsed = SlackHistoryResponse.safeParse(history);
+      if (!parsed.success) return;
+      const messages = parsed.data.data?.messages || [];
+      messagesTotal += messages.length;
+      for (const msg of messages) {
+        const msgParsed = SlackMessage.safeParse(msg);
+        if (!msgParsed.success) continue;
+        const file = mapSlackMessageToFile(channelId, channelName, msgParsed.data);
+        if (!lastSyncAt || file.lastModified > lastSyncAt) files.push(file);
       }
+    }));
 
-      console.log(`[Slack Integration] Fetching conversation history for channel ${channelName} with args:`, args);
-
-      const historyResp = await composioClient.tools.execute('SLACK_FETCH_CONVERSATION_HISTORY', {
-        userId,
-        connectedAccountId,
-        arguments: args,
-      });
-
-      console.log(`[Slack Integration] History response for ${channelName}:`, {
-        hasData: !!historyResp?.data,
-        hasMessages: !!historyResp?.data?.messages,
-        messageCount: historyResp?.data?.messages?.length || 0,
-        dataKeys: historyResp?.data ? Object.keys(historyResp.data) : []
-      });
-
-      const messages = historyResp.data?.messages || [];
-      console.log(`[Slack Integration] Found ${messages.length} messages in channel ${channelName}`);
-
-      if (messages.length === 0) {
-        console.log(`[Slack Integration] No messages found in channel ${channelName}`);
-        console.log(`[Slack Integration] Full history response for ${channelName}:`, JSON.stringify(historyResp, null, 2));
-      }
-
-      for (const message of messages) {
-        console.log(`[Slack Integration] Processing message in ${channelName}:`, {
-          ts: message.ts,
-          user: message.user || message.username,
-          textPreview: message.text ? message.text.substring(0, 50) + '...' : 'no text'
-        });
-
-        const { content, lastModified } = formatMessage(channelName, message);
-
-        if (lastSyncAt && lastModified <= lastSyncAt) {
-          console.log(`[Slack Integration] Skipping message ${message.ts} - already synced`);
-          continue;
-        }
-
-        const id = `${channelId}-${message.ts}`;
-        const file: IntegrationFile = {
-          id,
-          name: `${channelName}-${message.ts}.md`,
-          content,
-          lastModified,
-          type: 'text/markdown',
-          size: content.length,
-        };
-
-        files.push(file);
-        console.log(`[Slack Integration] Added file: ${file.name} (${file.size} bytes)`);
-      }
-    }
-
-    console.log(`[Slack Integration] ===== SYNC COMPLETE =====`);
-    console.log(`[Slack Integration] Total files fetched: ${files.length}`);
-    console.log(`[Slack Integration] File details:`, files.map(f => ({ name: f.name, size: f.size, lastModified: f.lastModified.toISOString() })));
-
+    await Promise.all(tasks);
+    log.info('Slack messages', { total: messagesTotal });
+    log.info('Slack sync done', { userId, files: files.length });
     return files;
   } catch (error) {
-    console.error('[Slack Integration] Error fetching Slack files:', error);
-    console.error('[Slack Integration] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    log.error('Slack sync error', { userId, error: (error as Error).message });
     return [];
   }
 }
 
-export const slackHandler: IntegrationHandler = {
-  fetchFiles,
-};
+export const slackHandler: IntegrationHandler = { fetchFiles };
