@@ -65,7 +65,7 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
         const timestampMs = lastSyncAt.getTime();
         const discordEpoch = 1420070400000; // Discord epoch (2015-01-01)
         const snowflake = ((timestampMs - discordEpoch) << 22).toString();
-        //args.after = snowflake;
+        args.after = snowflake;
       }
 
       const messages = await withRetry(
