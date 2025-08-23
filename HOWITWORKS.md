@@ -110,11 +110,11 @@ abstract class BaseContextBroker {
 When agents identify potential connections, they create "stakes" – records that commit to a relationship between specific intents:
 
 ```typescript
-interface IntentStake {
-  intents: string[];        // Array of related intent IDs (references only)
-  stake: bigint;           // Confidence score (future: economic stake)
-  reasoning: string;       // Explanation shared with users (privacy-safe)
-  agentId: string;        // Which agent created this stake
+interface Stake {
+  intents: string[];       // Array of related intent IDs (references only)
+  amount: bigint;          // Confidence score (future: economic stake)
+  reasoning: string;       // Explanation shared with users (privacy-aware)
+  agent: DID;              // Which agent created this stake
 }
 ```
 
