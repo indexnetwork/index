@@ -1,22 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import db from './db';
-import { userIntegrations, intents, intentIndexes, files } from './schema';
-import { eq, and, isNull, gte, desc } from 'drizzle-orm';
+import { userIntegrations, intents, intentIndexes } from './schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
-
-// Initialize Composio SDK
-let composio: any;
-const initComposio = async () => {
-  if (!composio) {
-    const { Composio } = await import('@composio/core');
-    composio = new Composio({
-      apiKey: process.env.COMPOSIO_API_KEY,
-    });
-  }
-  return composio;
-};
-
+import { handlers } from './integrations';
+import { log } from './log';
 
 interface SyncResult {
   success: boolean;
@@ -25,212 +14,28 @@ interface SyncResult {
   error?: string;
 }
 
-interface IntegrationFile {
-  id: string;
-  name: string;
-  content: string;
-  lastModified: Date;
-  type: string;
-  size: number;
-}
-
-// Convert Notion blocks to markdown
-function blocksToMarkdown(blocks: any[]): string {
-  let markdown = '';
-
-  for (const block of blocks) {
-    switch (block.type) {
-      case 'paragraph':
-        const text = block.paragraph?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `${text}\n\n`;
-        break;
-      case 'heading_1':
-        const h1Text = block.heading_1?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `# ${h1Text}\n\n`;
-        break;
-      case 'heading_2':
-        const h2Text = block.heading_2?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `## ${h2Text}\n\n`;
-        break;
-      case 'heading_3':
-        const h3Text = block.heading_3?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `### ${h3Text}\n\n`;
-        break;
-      case 'bulleted_list_item':
-        const bulletText = block.bulleted_list_item?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `- ${bulletText}\n`;
-        break;
-      case 'numbered_list_item':
-        const numberText = block.numbered_list_item?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `1. ${numberText}\n`;
-        break;
-      case 'to_do':
-        const todoText = block.to_do?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        const checked = block.to_do?.checked ? '[x]' : '[ ]';
-        markdown += `${checked} ${todoText}\n`;
-        break;
-      case 'code':
-        const codeText = block.code?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        const language = block.code?.language || '';
-        markdown += `\`\`\`${language}\n${codeText}\n\`\`\`\n\n`;
-        break;
-      case 'quote':
-        const quoteText = block.quote?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        markdown += `> ${quoteText}\n\n`;
-        break;
-      case 'divider':
-        markdown += `---\n\n`;
-        break;
-      default:
-        // For other block types, try to extract text content
-        const blockText = block[block.type]?.rich_text?.map((t: any) => t.plain_text).join('') || '';
-        if (blockText) {
-          markdown += `${blockText}\n\n`;
-        }
-        break;
-    }
-  }
-
-  return markdown.trim();
-}
-
-async function fetchNotionFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
-  try {
-    console.log(`[Integration Sync] Fetching Notion files for user ${userId}. Last sync: ${lastSyncAt?.toISOString() ?? 'never'}`);
-    const composio = await initComposio();
-
-    // Get connected accounts for this user and Notion toolkit
-    const connectedAccounts = await composio.connectedAccounts.list({
-      userIds: [userId],
-      toolkitSlugs: ['notion']
-    });
-    console.log(`[Integration Sync] Connected Notion accounts: ${connectedAccounts.items.length}`);
-
-    if (!connectedAccounts || connectedAccounts.items.length === 0) {
-      console.warn('No connected Notion accounts found for user');
-      return [];
-    }
-
-    const connectedAccountId = connectedAccounts.items[0]?.id;
-    const files: IntegrationFile[] = [];
-
-    try {
-      // Execute Notion search action to get pages
-      const response = await composio.tools.execute("NOTION_SEARCH_NOTION_PAGE", {
-        userId: userId,
-        connectedAccountId,
-        arguments: {
-          query: "",
-          sort: {
-            timestamp: "last_edited_time",
-            direction: "descending"
-          },
-          page_size: 100
-        }
-      });
-
-      // Parse results
-      const results = response.data?.response_data?.results;
-      console.log(`[Integration Sync] Notion search returned ${Array.isArray(results) ? results.length : 0} pages`);
-
-      if (Array.isArray(results)) {
-        for (const item of results) {
-          const lastModified = new Date(item.last_edited_time || new Date());
-          console.log(`[Integration Sync] Processing page ${item.id} last edited ${lastModified.toISOString()}`);
-
-          // Skip if not modified since last sync
-          if (lastSyncAt && lastModified <= lastSyncAt) {
-            console.log(`[Integration Sync] Skipping page ${item.id} - not modified since last sync`);
-            continue;
-          }
-
-          try {
-            // Fetch child blocks for each page
-            const blocksResponse = await composio.tools.execute("NOTION_FETCH_BLOCK_CONTENTS", {
-              userId: userId,
-              connectedAccountId,
-              arguments: {
-                block_id: item.id,
-                page_size: 100
-              }
-            });
-
-            const blocks = blocksResponse.data?.block_child_data?.results || [];
-            console.log(`[Integration Sync] Retrieved ${blocks.length} blocks for page ${item.id}`);
-
-            // Convert blocks to markdown
-            let markdownContent = '';
-
-            // Add page title as main heading
-            const pageTitle = item.properties?.title?.title?.[0]?.plain_text ||
-              item.title?.[0]?.plain_text ||
-              `Notion Page ${item.id}`;
-            markdownContent += `# ${pageTitle}\n\n`;
-
-            // Add page metadata
-            markdownContent += `*Created: ${new Date(item.created_time).toLocaleDateString()}*\n`;
-            markdownContent += `*Last edited: ${new Date(item.last_edited_time).toLocaleDateString()}*\n\n`;
-            markdownContent += `---\n\n`;
-
-            // Convert blocks to markdown
-            if (blocks.length > 0) {
-              markdownContent += blocksToMarkdown(blocks);
-            } else {
-              markdownContent += '*This page has no content blocks.*\n';
-            }
-
-            files.push({
-              id: item.id || `item-${Date.now()}`,
-              name: `${item.id}.md`,
-              content: markdownContent,
-              lastModified,
-              type: 'text/markdown',
-              size: markdownContent.length
-            });
-            console.log(`[Integration Sync] Added file ${item.id}.md (${markdownContent.length} chars)`);
-
-          } catch (blockError) {
-            console.warn(`[Integration Sync] Error fetching blocks for page ${item.id}`, blockError);
-          }
-        }
-      }
-
-    } catch (error) {
-      console.warn('Error executing Notion action:', error);
-    }
-    console.log(`[Integration Sync] Total Notion files fetched: ${files.length}`);
-    return files;
-
-  } catch (error) {
-    console.error('Error fetching Notion files:', error);
-    return [];
-  }
-}
-
-// Save files to temp directory
-async function saveFilesToTemp(files: IntegrationFile[], userId: string): Promise<{ tempDir: string; fileIds: string[] }> {
+function makeTempDir(userId: string): Promise<string> {
   const tempDir = path.join(process.cwd(), 'temp-uploads', `sync-${userId}-${Date.now()}`);
-  await fs.promises.mkdir(tempDir, { recursive: true });
-  console.log(`[Integration Sync] Saving ${files.length} files to temp directory ${tempDir}`);
+  return fs.promises
+    .mkdir(tempDir, { recursive: true })
+    .then(() => tempDir);
+}
 
+async function saveFilesToTemp(files: Array<{ id: string; content: string }>, userId: string): Promise<{ tempDir: string; fileIds: string[] }> {
+  const tempDir = await makeTempDir(userId);
   const fileIds: string[] = [];
-
-  for (const file of files) {
-    const fileName = `${file.id}.md`;
-    const filePath = path.join(tempDir, fileName);
-
-    await fs.promises.writeFile(filePath, file.content);
-    console.log(`[Integration Sync] Wrote file ${filePath} (${file.content.length} chars)`);
-    fileIds.push(file.id);
-  }
-
-  console.log(`[Integration Sync] Saved files with ids: ${fileIds.join(', ')}`);
+  await Promise.all(
+    files.map(async (file) => {
+      const filePath = path.join(tempDir, `${file.id}.md`);
+      await fs.promises.writeFile(filePath, file.content);
+      fileIds.push(file.id);
+    })
+  );
   return { tempDir, fileIds };
 }
 
 // Get existing intents to avoid duplicates
 async function getExistingIntents(userId: string, indexId?: string): Promise<string[]> {
-  console.log(`[Integration Sync] Fetching existing intents for user ${userId}${indexId ? ` and index ${indexId}` : ''}`);
   let existingIntents;
 
   if (indexId) {
@@ -254,7 +59,6 @@ async function getExistingIntents(userId: string, indexId?: string): Promise<str
   }
 
   const payloads = existingIntents.map(intent => intent.payload);
-  console.log(`[Integration Sync] Found ${payloads.length} existing intents`);
   return payloads;
 }
 
@@ -265,7 +69,7 @@ export async function syncIntegration(
   indexId?: string
 ): Promise<SyncResult> {
   try {
-    console.log(`[Integration Sync] Starting sync for user ${userId}, integration ${integrationType}${indexId ? `, index ${indexId}` : ''}`);
+    log.info('Integration sync start', { userId, integrationType });
 
     // Get integration record
     const integration = await db.select()
@@ -279,25 +83,17 @@ export async function syncIntegration(
       .limit(1);
 
     if (integration.length === 0) {
-      console.warn(`[Integration Sync] No active ${integrationType} integration found for user ${userId}`);
       return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Integration not connected' };
     }
 
     const { lastSyncAt } = integration[0];
-    console.log(`[Integration Sync] Last sync timestamp: ${lastSyncAt?.toISOString() ?? 'never'}`);
 
-    // Fetch files based on integration type
-    let files: IntegrationFile[] = [];
-
-    switch (integrationType) {
-      case 'notion':
-        files = await fetchNotionFiles(userId, lastSyncAt || undefined);
-        break;
-      default:
-        return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Unsupported integration type' };
+    const handler = handlers[integrationType];
+    if (!handler) {
+      return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Unsupported integration type' };
     }
-
-    console.log(`[Integration Sync] Retrieved ${files.length} file(s) from ${integrationType}`);
+    const files = await handler.fetchFiles(userId, lastSyncAt || undefined);
+    log.info('Provider files', { count: files.length });
 
     if (files.length === 0) {
       // Update sync timestamp even if no new files
@@ -305,18 +101,19 @@ export async function syncIntegration(
         .set({ lastSyncAt: new Date() })
         .where(eq(userIntegrations.id, integration[0].id));
 
-      console.log(`Sync completed for ${integrationType}: No new files found`);
+      log.info('Integration sync done (no new files)', { userId, integrationType });
       return { success: true, filesImported: 0, intentsGenerated: 0 };
     }
 
     // Save files to temp directory
-    const { tempDir, fileIds } = await saveFilesToTemp(files, userId);
-    console.log(`[Integration Sync] Files saved to temp directory ${tempDir}. IDs: ${fileIds.join(', ')}`);
+    const { tempDir, fileIds } = await saveFilesToTemp(
+      files.map((f) => ({ id: f.id, content: f.content })),
+      userId
+    );
 
     try {
       // Get existing intents for deduplication
       const existingIntents = await getExistingIntents(userId, indexId);
-      console.log(`[Integration Sync] Existing intents count: ${existingIntents.length}`);
       // Analyze files with intent inferrer
       const result = await analyzeFolder(
         tempDir,
@@ -328,14 +125,12 @@ export async function syncIntegration(
         60000 // timeout
       );
 
-      console.log(`[Integration Sync] analyzeFolder result: success=${result.success}, intents=${result.intents?.length || 0}`);
 
       let intentsGenerated = 0;
 
       if (result.success && result.intents.length > 0) {
         // Create intents in database
         for (const intentData of result.intents) {
-          console.log('[Integration Sync] Creating intent with payload:', intentData.payload);
           const newIntent = await db.insert(intents).values({
             payload: intentData.payload,
             userId,
@@ -359,7 +154,7 @@ export async function syncIntegration(
         .set({ lastSyncAt: new Date() })
         .where(eq(userIntegrations.id, integration[0].id));
 
-      console.log(`[Integration Sync] Sync successful. Generated ${intentsGenerated} intents from ${files.length} files`);
+      log.info('Integration sync done', { userId, integrationType, intentsGenerated, files: files.length });
 
       return {
         success: true,
@@ -370,11 +165,10 @@ export async function syncIntegration(
     } finally {
       // Cleanup temp files
       await fs.promises.rm(tempDir, { recursive: true, force: true });
-      console.log(`[Integration Sync] Cleaned up temp directory ${tempDir}`);
     }
 
   } catch (error) {
-    console.error('Sync integration error:', error);
+    log.error('Integration sync error', { userId, integrationType, error: error instanceof Error ? error.message : String(error) });
     return {
       success: false,
       filesImported: 0,
