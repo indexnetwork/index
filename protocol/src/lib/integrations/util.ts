@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import type { IntegrationFile } from './index';
 
 export type RetryOptions = {
@@ -80,31 +79,10 @@ export function concurrencyLimit(n: number) {
   };
 }
 
-// Zod schemas for minimal fields we use
-export const SlackChannel = z.object({ id: z.string(), name: z.string().optional() });
-export const SlackChannelsResponse = z.object({
-  data: z.object({
-    channels: z.array(SlackChannel).default([]),
-    response_metadata: z.object({ next_cursor: z.string().optional() }).partial().optional(),
-  }),
-});
-
-export const SlackMessage = z.object({ ts: z.string(), user: z.string().optional(), username: z.string().optional(), text: z.string().optional() });
-export const SlackHistoryResponse = z.object({
-  data: z.object({ messages: z.array(SlackMessage).default([]) }).partial().passthrough(),
-});
-
-export const NotionSearchItem = z.object({ id: z.string(), created_time: z.string().or(z.date()), last_edited_time: z.string().or(z.date()), properties: z.any().optional(), title: z.any().optional() });
-export const NotionSearchResponse = z.object({
-  data: z.object({ response_data: z.object({ results: z.array(NotionSearchItem).default([]) }).partial() }).partial(),
-});
-
-export const NotionBlocksResponse = z.object({
-  data: z.object({ block_child_data: z.object({ results: z.array(z.any()).default([]) }).partial() }).partial(),
-});
+// Utility functions for parsing integration data
 
 // Formatting helpers
-export function mapSlackMessageToFile(channelId: string, channelName: string, message: z.infer<typeof SlackMessage>): IntegrationFile {
+export function mapSlackMessageToFile(channelId: string, channelName: string, message: any): IntegrationFile {
   const tsMillis = parseFloat(message.ts) * 1000;
   const lastModified = new Date(Number.isFinite(tsMillis) ? tsMillis : Date.now());
   const sender = message.user || message.username || 'unknown';
@@ -113,6 +91,54 @@ export function mapSlackMessageToFile(channelId: string, channelName: string, me
   return {
     id: `${channelId}-${message.ts}`,
     name: `${channelName}-${message.ts}.md`,
+    content,
+    lastModified,
+    type: 'text/markdown',
+    size: content.length,
+  };
+}
+
+export function mapDiscordMessageToFile(channelId: string, channelName: string, message: any): IntegrationFile {
+  const lastModified = new Date(message.edited_timestamp || message.timestamp);
+  const sender = message.author?.global_name || message.author?.username || message.author?.id || 'unknown';
+  
+  // Extract content from various sources
+  let text = message.content || '';
+  
+  // If main content is empty, try to extract from embeds
+  if (!text && message.embeds && message.embeds.length > 0) {
+    const embedTexts: string[] = [];
+    for (const embed of message.embeds) {
+      if (embed.title) embedTexts.push(`**${embed.title}**`);
+      if (embed.description) embedTexts.push(embed.description);
+      if (embed.fields) {
+        for (const field of embed.fields) {
+          embedTexts.push(`**${field.name}:** ${field.value}`);
+        }
+      }
+    }
+    if (embedTexts.length > 0) {
+      text = embedTexts.join('\n\n');
+    }
+  }
+  
+  // Add attachment information if available
+  if (message.attachments && message.attachments.length > 0) {
+    const attachmentsList = message.attachments.map((att: any) => 
+      `- [${att.filename}](${att.url}) (${att.size} bytes)`
+    ).join('\n');
+    text += text ? `\n\n**Attachments:**\n${attachmentsList}` : `**Attachments:**\n${attachmentsList}`;
+  }
+  
+  // If still no content, note the limitation
+  if (!text) {
+    text = '*[Message content unavailable - Discord bot may need MESSAGE_CONTENT intent]*';
+  }
+  
+  const content = `# ${channelName}\n\n**From:** ${sender}\n\n**Sent:** ${lastModified.toISOString()}\n\n${text}`;
+  return {
+    id: `${channelId}-${message.id}`,
+    name: `${channelName}-${message.id}.md`,
     content,
     lastModified,
     type: 'text/markdown',
@@ -173,7 +199,7 @@ export function blocksToMarkdown(blocks: any[]): string {
   return markdown.trim();
 }
 
-export function mapNotionToFile(item: z.infer<typeof NotionSearchItem>, blocks: any[]): IntegrationFile {
+export function mapNotionToFile(item: any, blocks: any[]): IntegrationFile {
   const lastModified = new Date(item.last_edited_time as any);
   const title = (item as any).properties?.title?.title?.[0]?.plain_text || (item as any).title?.[0]?.plain_text || `Notion Page ${item.id}`;
   let content = `# ${title}\n\n`;

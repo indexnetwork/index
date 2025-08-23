@@ -1,7 +1,7 @@
 import type { IntegrationHandler, IntegrationFile } from './index';
 import { getClient } from './composio';
 import { log } from '../log';
-import { withRetry, concurrencyLimit, NotionBlocksResponse, NotionSearchResponse, NotionSearchItem, mapNotionToFile } from './util';
+import { withRetry, concurrencyLimit, mapNotionToFile } from './util';
 
 async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
   try {
@@ -22,26 +22,27 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
         page_size: 100,
       },
     }));
-    const parsedSearch = NotionSearchResponse.safeParse(search);
-    const items = parsedSearch.success ? (parsedSearch.data.data?.response_data as any)?.results ?? [] : [];
+    
+    // Parse search results directly from API response
+    const items = (search as any)?.data?.response_data?.results ?? [];
     log.info('Notion pages', { count: items.length });
 
     const limit = concurrencyLimit(8);
     const files: IntegrationFile[] = [];
     const tasks = items.map((item: any) => limit(async () => {
-      const itemParsed = NotionSearchItem.safeParse(item);
-      if (!itemParsed.success) return;
-      const lastModified = new Date(itemParsed.data.last_edited_time as any);
+      if (!item?.id) return; // Skip invalid items
+      const lastModified = new Date(item.last_edited_time as any);
       if (lastSyncAt && lastModified <= lastSyncAt) return;
 
       const blocksResp = await withRetry(() => composio.tools.execute('NOTION_FETCH_BLOCK_CONTENTS', {
         userId,
         connectedAccountId,
-        arguments: { block_id: itemParsed.data.id, page_size: 100 },
+        arguments: { block_id: item.id, page_size: 100 },
       }), { retries: 3 });
-      const parsedBlocks = NotionBlocksResponse.safeParse(blocksResp);
-      const blocks = parsedBlocks.success ? (parsedBlocks.data.data?.block_child_data as any)?.results ?? [] : [];
-      const file = mapNotionToFile(itemParsed.data, blocks);
+      
+      // Parse blocks directly from API response
+      const blocks = (blocksResp as any)?.data?.block_child_data?.results ?? [];
+      const file = mapNotionToFile(item, blocks);
       files.push(file);
     }));
 

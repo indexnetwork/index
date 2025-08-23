@@ -25,7 +25,7 @@ const initComposio = async () => {
 const INTEGRATION_MAPPINGS = {
   notion: { toolkit: 'NOTION', name: 'Notion' },
   slack: { toolkit: 'SLACK', name: 'Slack' },
-  discord: { toolkit: 'DISCORD', name: 'Discord' },
+  discord: { toolkit: 'DISCORDBOT', name: 'Discord' },
   gmail: { toolkit: 'GMAIL', name: 'Gmail' },
   calendar: { toolkit: 'GOOGLECALENDAR', name: 'Google Calendar' },
   linkedin: { toolkit: 'LINKEDIN', name: 'LinkedIn' }

@@ -1,7 +1,7 @@
 import type { IntegrationHandler, IntegrationFile } from './index';
 import { getClient } from './composio';
 import { log } from '../log';
-import { paginate, withRetry, concurrencyLimit, SlackChannelsResponse, SlackHistoryResponse, SlackMessage, mapSlackMessageToFile } from './util';
+import { paginate, withRetry, concurrencyLimit, mapSlackMessageToFile } from './util';
 
 async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
   try {
@@ -26,14 +26,16 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
     for await (const page of paginate(
       (args) => composio.tools.execute('SLACK_LIST_ALL_CHANNELS', { userId, connectedAccountId, arguments: args }),
       { limit: chanLimit } as any,
-      (resp) => SlackChannelsResponse.safeParse(resp).success ? (resp as any).data?.response_metadata?.next_cursor : undefined,
+      (resp) => (resp as any)?.data?.response_metadata?.next_cursor,
       (args, cursor) => ({ ...(args as any), cursor }) as any,
       { retries: 3 }
     )) {
-      const parsed = SlackChannelsResponse.safeParse(page);
-      if (!parsed.success) continue;
-      for (const ch of parsed.data.data.channels) {
-        if (ch && ch.id && !channels.find((c) => c.id === ch.id)) channels.push(ch);
+      // Parse channels directly from API response
+      const channelList = (page as any)?.data?.channels || [];
+      for (const ch of channelList) {
+        if (ch?.id && !channels.find((c) => c.id === ch.id)) {
+          channels.push({ id: ch.id, name: ch.name });
+        }
       }
     }
 
@@ -53,14 +55,13 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
         () => composio.tools.execute('SLACK_FETCH_CONVERSATION_HISTORY', { userId, connectedAccountId, arguments: args }),
         { retries: 3 }
       );
-      const parsed = SlackHistoryResponse.safeParse(history);
-      if (!parsed.success) return;
-      const messages = parsed.data.data?.messages || [];
+      
+      // Parse messages directly from API response
+      const messages = (history as any)?.data?.messages || [];
       messagesTotal += messages.length;
       for (const msg of messages) {
-        const msgParsed = SlackMessage.safeParse(msg);
-        if (!msgParsed.success) continue;
-        const file = mapSlackMessageToFile(channelId, channelName, msgParsed.data);
+        if (!msg?.ts) continue; // Skip invalid messages
+        const file = mapSlackMessageToFile(channelId, channelName, msg);
         if (!lastSyncAt || file.lastModified > lastSyncAt) files.push(file);
       }
     }));
