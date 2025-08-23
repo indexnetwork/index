@@ -4,7 +4,8 @@ import db from './db';
 import { userIntegrations, intents, intentIndexes } from './schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
-import { handlers, IntegrationFile } from './integrations';
+import { handlers } from './integrations';
+import { log } from './log';
 
 interface SyncResult {
   success: boolean;
@@ -13,30 +14,28 @@ interface SyncResult {
   error?: string;
 }
 
-// Save files to temp directory
-async function saveFilesToTemp(files: IntegrationFile[], userId: string): Promise<{ tempDir: string; fileIds: string[] }> {
+function makeTempDir(userId: string): Promise<string> {
   const tempDir = path.join(process.cwd(), 'temp-uploads', `sync-${userId}-${Date.now()}`);
-  await fs.promises.mkdir(tempDir, { recursive: true });
-  console.log(`[Integration Sync] Saving ${files.length} files to temp directory ${tempDir}`);
+  return fs.promises
+    .mkdir(tempDir, { recursive: true })
+    .then(() => tempDir);
+}
 
+async function saveFilesToTemp(files: Array<{ id: string; content: string }>, userId: string): Promise<{ tempDir: string; fileIds: string[] }> {
+  const tempDir = await makeTempDir(userId);
   const fileIds: string[] = [];
-
-  for (const file of files) {
-    const fileName = `${file.id}.md`;
-    const filePath = path.join(tempDir, fileName);
-
-    await fs.promises.writeFile(filePath, file.content);
-    console.log(`[Integration Sync] Wrote file ${filePath} (${file.content.length} chars)`);
-    fileIds.push(file.id);
-  }
-
-  console.log(`[Integration Sync] Saved files with ids: ${fileIds.join(', ')}`);
+  await Promise.all(
+    files.map(async (file) => {
+      const filePath = path.join(tempDir, `${file.id}.md`);
+      await fs.promises.writeFile(filePath, file.content);
+      fileIds.push(file.id);
+    })
+  );
   return { tempDir, fileIds };
 }
 
 // Get existing intents to avoid duplicates
 async function getExistingIntents(userId: string, indexId?: string): Promise<string[]> {
-  console.log(`[Integration Sync] Fetching existing intents for user ${userId}${indexId ? ` and index ${indexId}` : ''}`);
   let existingIntents;
 
   if (indexId) {
@@ -60,7 +59,6 @@ async function getExistingIntents(userId: string, indexId?: string): Promise<str
   }
 
   const payloads = existingIntents.map(intent => intent.payload);
-  console.log(`[Integration Sync] Found ${payloads.length} existing intents`);
   return payloads;
 }
 
@@ -71,7 +69,7 @@ export async function syncIntegration(
   indexId?: string
 ): Promise<SyncResult> {
   try {
-    console.log(`[Integration Sync] Starting sync for user ${userId}, integration ${integrationType}${indexId ? `, index ${indexId}` : ''}`);
+    log.info('Integration sync start', { userId, integrationType });
 
     // Get integration record
     const integration = await db.select()
@@ -85,20 +83,17 @@ export async function syncIntegration(
       .limit(1);
 
     if (integration.length === 0) {
-      console.warn(`[Integration Sync] No active ${integrationType} integration found for user ${userId}`);
       return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Integration not connected' };
     }
 
     const { lastSyncAt } = integration[0];
-    console.log(`[Integration Sync] Last sync timestamp: ${lastSyncAt?.toISOString() ?? 'never'}`);
 
     const handler = handlers[integrationType];
     if (!handler) {
       return { success: false, filesImported: 0, intentsGenerated: 0, error: 'Unsupported integration type' };
     }
     const files = await handler.fetchFiles(userId, lastSyncAt || undefined);
-
-    console.log(`[Integration Sync] Retrieved ${files.length} file(s) from ${integrationType}`);
+    log.info('Provider files', { count: files.length });
 
     if (files.length === 0) {
       // Update sync timestamp even if no new files
@@ -106,18 +101,19 @@ export async function syncIntegration(
         .set({ lastSyncAt: new Date() })
         .where(eq(userIntegrations.id, integration[0].id));
 
-      console.log(`Sync completed for ${integrationType}: No new files found`);
+      log.info('Integration sync done (no new files)', { userId, integrationType });
       return { success: true, filesImported: 0, intentsGenerated: 0 };
     }
 
     // Save files to temp directory
-    const { tempDir, fileIds } = await saveFilesToTemp(files, userId);
-    console.log(`[Integration Sync] Files saved to temp directory ${tempDir}. IDs: ${fileIds.join(', ')}`);
+    const { tempDir, fileIds } = await saveFilesToTemp(
+      files.map((f) => ({ id: f.id, content: f.content })),
+      userId
+    );
 
     try {
       // Get existing intents for deduplication
       const existingIntents = await getExistingIntents(userId, indexId);
-      console.log(`[Integration Sync] Existing intents count: ${existingIntents.length}`);
       // Analyze files with intent inferrer
       const result = await analyzeFolder(
         tempDir,
@@ -129,14 +125,12 @@ export async function syncIntegration(
         60000 // timeout
       );
 
-      console.log(`[Integration Sync] analyzeFolder result: success=${result.success}, intents=${result.intents?.length || 0}`);
 
       let intentsGenerated = 0;
 
       if (result.success && result.intents.length > 0) {
         // Create intents in database
         for (const intentData of result.intents) {
-          console.log('[Integration Sync] Creating intent with payload:', intentData.payload);
           const newIntent = await db.insert(intents).values({
             payload: intentData.payload,
             userId,
@@ -160,7 +154,7 @@ export async function syncIntegration(
         .set({ lastSyncAt: new Date() })
         .where(eq(userIntegrations.id, integration[0].id));
 
-      console.log(`[Integration Sync] Sync successful. Generated ${intentsGenerated} intents from ${files.length} files`);
+      log.info('Integration sync done', { userId, integrationType, intentsGenerated, files: files.length });
 
       return {
         success: true,
@@ -171,11 +165,10 @@ export async function syncIntegration(
     } finally {
       // Cleanup temp files
       await fs.promises.rm(tempDir, { recursive: true, force: true });
-      console.log(`[Integration Sync] Cleaned up temp directory ${tempDir}`);
     }
 
   } catch (error) {
-    console.error('Sync integration error:', error);
+    log.error('Integration sync error', { userId, integrationType, error: error instanceof Error ? error.message : String(error) });
     return {
       success: false,
       filesImported: 0,
