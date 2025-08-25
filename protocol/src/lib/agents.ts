@@ -1,6 +1,17 @@
 import db from './db';
 import { ChatOpenAI } from '@langchain/openai';
-import { traceable } from "langsmith/traceable";
+import { CallbackHandler } from "langfuse-langchain";
+
+// Helper function to create Langfuse callback handler
+function createLangfuseHandler(sessionId: string, metadata: Record<string, any>) {
+  return new CallbackHandler({
+    publicKey: process.env.LANGFUSE_PUBLIC_KEY || "",
+    secretKey: process.env.LANGFUSE_SECRET_KEY || "",
+    baseUrl: process.env.LANGFUSE_BASE_URL || "https://us.cloud.langfuse.com",
+    sessionId,
+    metadata
+  });
+}
 
 // Simple OpenAI client for agent decisions
 export const llm = new ChatOpenAI({
@@ -15,24 +26,21 @@ export const llm = new ChatOpenAI({
   }
 });
 
-// Traceable LLM wrapper utility
+// LLM wrapper utility with Langfuse tracing
 export function traceableLlm(name: string, tags: string[], metadata: Record<string, any>) {
-  return traceable(
-    async (prompt: string) => await llm.invoke(prompt),
-    { name, tags, metadata }
-  );
+  return async (prompt: string) => {
+    const handler = createLangfuseHandler(name, { ...metadata, tags });
+    return await llm.invoke(prompt, { callbacks: [handler] });
+  };
 }
 
-// Traceable structured output wrapper utility  
+// Structured output wrapper utility with Langfuse tracing
 export function traceableStructuredLlm(name: string, tags: string[], metadata: Record<string, any>) {
-  const wrappedFunction = traceable(
-    async (prompt: string, schema: any) => {
-      const modelWithStructure = llm.withStructuredOutput(schema);
-      return await modelWithStructure.invoke(prompt);
-    },
-    { name, tags, metadata }
-  );
-  return wrappedFunction;
+  return async (prompt: string, schema: any) => {
+    const handler = createLangfuseHandler(name, { ...metadata, tags });
+    const modelWithStructure = llm.withStructuredOutput(schema);
+    return await modelWithStructure.invoke(prompt, { callbacks: [handler] });
+  };
 }
 
 export default db; 

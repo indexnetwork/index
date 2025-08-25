@@ -109,11 +109,9 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
         Intent 2: ${JSON.stringify(relatedIntent.payload)}`;
 
         const reasoningCall = traceableLlm(
-          "intent-reasoning-generation",
-          ["semantic-relevancy", "reasoning", "stake-creation"],
+          "semantic_relevancy_broker",
+          ["context-broker"],
           {
-            agent_type: "semantic_relevancy_broker",
-            operation: "reasoning_generation",
             current_intent_id: intentId,
             related_intent_id: relatedIntent.id
           }
