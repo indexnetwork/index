@@ -16,7 +16,7 @@ on:
       - 'scripts/generate-ctx.sh'
 
 jobs:
-  build-ctx:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,6 +25,33 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
+          python-version: '3.x'
+
+      - name: Install llms-txt CLI
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install llms-txt
+
+      - name: Validate llms.txt parses (minimal)
+        run: |
+          llms_txt2ctx --n_workers 4 llms.txt > /dev/null
+
+      - name: Validate llms.txt parses (full optional)
+        run: |
+          llms_txt2ctx --optional True --n_workers 4 llms.txt > /dev/null
+
+  build-ctx:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+  schedule:
+    - cron: '0 3 * * *'
           python-version: '3.x'
 
       - name: Generate ctx files
@@ -50,4 +77,3 @@ jobs:
             frontend/public/llms-ctx-full.txt
           if-no-files-found: warn
           retention-days: 14
-

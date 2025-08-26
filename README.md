@@ -224,8 +224,9 @@ git push origin feature/your-feature-name
   - `make ctx-clean` – Remove generated ctx files (root and public)
 
 - GitHub Actions: `.github/workflows/llms-ctx.yml`
-  - Triggers on changes to `llms.txt`, `llms-full.txt`, or the generator script (push/PR), and via manual dispatch
-  - Builds ctx files and uploads them as artifacts in the Actions tab (does not commit changes)
+  - Triggers: on push/PR to `main` and `dev`, nightly at 03:00 UTC, and manual dispatch
+  - Validates: parses `llms.txt` using `llms_txt2ctx` (minimal and full)
+  - Builds: ctx files and uploads them as artifacts in the Actions tab (does not commit changes)
 
 ## License
 
