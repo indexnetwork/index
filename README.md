@@ -207,6 +207,26 @@ git push origin feature/your-feature-name
   - Generate full: `llms_txt2ctx --optional True llms.txt > llms-ctx-full.txt`
   - Tip: Ensure links in `llms.txt` point to raw markdown (we use `raw.githubusercontent.com`).
 
+### One-command generation and optional auto-run
+
+- Script: `scripts/generate-ctx.sh`
+  - Creates/uses `.venv`, installs `llms-txt`, generates ctx files, copies to `frontend/public/`.
+  - Run: `bash scripts/generate-ctx.sh`
+
+- Optional pre-commit hook to auto-generate on changes to `llms.txt`/`llms-full.txt`:
+  - Enable hooks path: `git config core.hooksPath scripts/hooks`
+  - The hook will run the generator and stage `llms-ctx*.txt` and public copies.
+
+### Make + CI
+
+- Makefile targets:
+  - `make ctx` – Generate ctx files and copy to `frontend/public/`
+  - `make ctx-clean` – Remove generated ctx files (root and public)
+
+- GitHub Actions: `.github/workflows/llms-ctx.yml`
+  - Triggers on changes to `llms.txt`, `llms-full.txt`, or the generator script (push/PR), and via manual dispatch
+  - Builds ctx files and uploads them as artifacts in the Actions tab (does not commit changes)
+
 ## License
 
 Index Network is licensed under the MIT License. See [LICENSE](LICENSE) for details.

@@ -1,0 +1,53 @@
+name: Generate LLM ctx artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, dev ]
+    paths:
+      - 'llms.txt'
+      - 'llms-full.txt'
+      - 'scripts/generate-ctx.sh'
+  pull_request:
+    branches: [ main, dev ]
+    paths:
+      - 'llms.txt'
+      - 'llms-full.txt'
+      - 'scripts/generate-ctx.sh'
+
+jobs:
+  build-ctx:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Generate ctx files
+        run: |
+          bash scripts/generate-ctx.sh
+
+      - name: Upload ctx artifacts (root)
+        uses: actions/upload-artifact@v4
+        with:
+          name: llms-ctx-root
+          path: |
+            llms-ctx.txt
+            llms-ctx-full.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload ctx artifacts (public)
+        uses: actions/upload-artifact@v4
+        with:
+          name: llms-ctx-public
+          path: |
+            frontend/public/llms-ctx.txt
+            frontend/public/llms-ctx-full.txt
+          if-no-files-found: warn
+          retention-days: 14
+
