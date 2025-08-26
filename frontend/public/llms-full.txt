@@ -42,3 +42,4 @@ Key concepts:
 - [Discord](https://discord.gg/wvdxP6XvYu): Community and support
 - [X (Twitter)](https://x.com/indexnetwork_): Updates and announcements
 - [Blog](https://blog.index.network): Insights and posts
+
