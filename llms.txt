@@ -11,17 +11,17 @@ Important notes:
 
 ## Docs
 
-- [Repository README](https://github.com/indexnetwork/index/blob/dev/README.md): Overview, quick start, architecture
-- [How It Works](https://github.com/indexnetwork/index/blob/dev/HOWITWORKS.md): Technical architecture and privacy model
-- [Integration Guide](https://github.com/indexnetwork/index/blob/dev/docs/INTEGRATION_GUIDE.md): API usage and integration steps
-- [Protocol README](https://github.com/indexnetwork/index/blob/dev/protocol/README.md): Backend server, routes, and DB
-- [Frontend README](https://github.com/indexnetwork/index/blob/dev/frontend/README.md): Next.js app and components
+- [Repository README](https://raw.githubusercontent.com/indexnetwork/index/dev/README.md): Overview, quick start, architecture
+- [How It Works](https://raw.githubusercontent.com/indexnetwork/index/dev/HOWITWORKS.md): Technical architecture and privacy model
+- [Integration Guide](https://raw.githubusercontent.com/indexnetwork/index/dev/docs/INTEGRATION_GUIDE.md): API usage and integration steps
+- [Protocol README](https://raw.githubusercontent.com/indexnetwork/index/dev/protocol/README.md): Backend server, routes, and DB
+- [Frontend README](https://raw.githubusercontent.com/indexnetwork/index/dev/frontend/README.md): Next.js app and components
 
 ## API
 
-- [Routes directory](https://github.com/indexnetwork/index/tree/dev/protocol/src/routes): REST endpoints mounted under `/api`
-- [Schema](https://github.com/indexnetwork/index/blob/dev/protocol/src/lib/schema.ts): Tables for users, intents, indexes, stakes, connections
-- [LangGraph config](https://github.com/indexnetwork/index/blob/dev/protocol/src/agents/langgraph.json): Agent orchestration configuration
+- [API entry (Express app)](https://raw.githubusercontent.com/indexnetwork/index/dev/protocol/src/index.ts): Mounts REST endpoints under `/api`
+- [Schema](https://raw.githubusercontent.com/indexnetwork/index/dev/protocol/src/lib/schema.ts): Tables for users, intents, indexes, stakes, connections
+- [LangGraph config](https://raw.githubusercontent.com/indexnetwork/index/dev/protocol/src/agents/langgraph.json): Agent orchestration configuration
 
 ## Optional
 

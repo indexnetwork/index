@@ -193,7 +193,20 @@ git push origin feature/your-feature-name
 - **[Blog](https://blog.index.network)** - Latest insights and updates
 - **[Book a Call](https://calendly.com/d/2vj-8d8-skt/call-with-seren-and-seref)** - Chat with founders
 
+## LLM Context
+
+- `/.well-known`: The project exposes LLM-friendly indexes:
+  - `GET /llms.txt` – Concise index for LLMs (spec-compliant)
+  - `GET /llms-full.txt` – Expanded index with more references
+  - `GET /llms-ctx.txt` – Prebuilt context (docs + API; excludes Optional)
+  - `GET /llms-ctx-full.txt` – Prebuilt context including Optional links
+
+- Regenerate ctx files using the official CLI (requires network access):
+  - Install: `python3 -m venv .venv && source .venv/bin/activate && pip install llms-txt`
+  - Generate minimal: `llms_txt2ctx llms.txt > llms-ctx.txt`
+  - Generate full: `llms_txt2ctx --optional True llms.txt > llms-ctx-full.txt`
+  - Tip: Ensure links in `llms.txt` point to raw markdown (we use `raw.githubusercontent.com`).
+
 ## License
 
 Index Network is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
