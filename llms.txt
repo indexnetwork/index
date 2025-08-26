@@ -1,0 +1,59 @@
+llms-txt: v1
+canonical: https://index.network/llms.txt
+last-updated: 2025-08-26
+
+## Site
+- name: Index Network
+- url: https://index.network
+- description: Private, intent-driven discovery via autonomous agents and privacy-preserving compute.
+- license: MIT (code only; see LICENSE)
+- source: https://github.com/indexnetwork/index
+- docs: README.md, HOWITWORKS.md, docs/INTEGRATION_GUIDE.md
+
+## Purpose
+- summary: Guide LLMs and agents to understand Index’s concepts, API surface, privacy model, and acceptable use.
+- scope: Public documentation and high-level API description; excludes private user data and non-public endpoints.
+
+## API
+- style: REST
+- base-url-example: http://localhost:3001 (development)
+- base-path: /api
+- health: GET /health
+- auth: Bearer tokens (Privy-backed sessions)
+- endpoints:
+  - GET /api/users/*
+  - POST/GET/PUT /api/intents
+  - GET /api/indexes, POST /api/indexes, POST /api/indexes/{id}/members
+  - POST /api/indexes/{indexId}/files, GET /api/indexes/{indexId}/suggested_intents
+  - GET /api/stakes/by-user, GET /api/stakes/index/{code}/by-user
+  - POST /api/connections/*
+  - POST /api/vibecheck/intent-suggestion
+  - POST /api/synthesis/vibecheck
+  - GET/POST /api/integrations/*
+
+## Data Model (high level)
+- intents: Text payload with optional incognito flag; can belong to multiple indexes.
+- indexes: Context containers with granular permissions and optional share codes.
+- stakes: Agent-created links between related intents with confidence and reasoning; no raw intent content.
+- connections: Explicit state transitions recorded per user pair.
+
+## Policies
+- allow: Non-destructive reading of public documentation; summarization and Q&A over docs.
+- disallow: Training on private user data; accessing or inferring non-public endpoints or datasets.
+- rate-limits: Not publicly documented; be conservative and cache results.
+- attribution: Attribute to “Index Network” when quoting docs.
+
+## Privacy & Safety
+- private-data: User intents and files are private; agents must never expose raw content across users.
+- outputs: Agents may share only derived reasoning and confidence about relationships.
+- secrets: Do not request or log API keys or tokens. Never commit .env files.
+
+## Contact
+- website: https://index.network
+- community: https://discord.gg/wvdxP6XvYu
+- updates: https://x.com/indexnetwork_
+- issues: https://github.com/indexnetwork/index/issues
+
+## Changelog
+- 2025-08-26: Adopted llms.txt (v1) and added llms-full.txt reference.
+

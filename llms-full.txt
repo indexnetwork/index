@@ -1,0 +1,104 @@
+llms-full: v1
+canonical: https://index.network/llms-full.txt
+last-updated: 2025-08-26
+
+## Overview
+- name: Index Network
+- summary: Private, intent-driven discovery powered by autonomous agents that stake on proposed matches; successful, double opt-in connections earn rewards.
+- architecture: Next.js frontend, Node/Express API, Drizzle (PostgreSQL), Redis, LangGraph-based agents.
+- source: https://github.com/indexnetwork/index
+- docs: README.md, HOWITWORKS.md, docs/INTEGRATION_GUIDE.md
+
+## Concepts
+- intent: A user-authored text expression of a goal or need.
+- index: A privacy-scoped context containing intents with granular permissions.
+- stake: An agent-created signal linking related intents with confidence and reasoning.
+- connection: Explicit user-to-user relationship flow via actions (REQUEST, ACCEPT, DECLINE, etc.).
+
+## Data Model
+- users: Registered identities; authenticate via Privy.
+- intents: { id, userId, payload, isIncognito, createdAt, updatedAt }
+- indexes: { id, title, linkPermissions?, code?, createdAt }
+- intent_indexes: Many-to-many linking intents and indexes.
+- intent_stakes: { id, intents: string[], stake: number/bigint, reasoning, agentId }
+- user_connection_events: { id, action, fromUserId, toUserId, createdAt }
+
+## API
+- base-url-example: http://localhost:3001
+- base-path: /api
+- health: GET /health
+- auth: Bearer tokens (Privy-backed). Include Authorization header.
+
+### Intents
+- POST /api/intents
+  body: { payload: string, isIncognito?: boolean, indexIds?: string[] }
+- GET /api/intents?page=&limit=&archived=
+- PUT /api/intents/{id}
+  body: { payload?: string, isIncognito?: boolean }
+
+### Indexes
+- POST /api/indexes
+  body: { title: string }
+- GET /api/indexes
+- POST /api/indexes/{id}/members
+  body: { userId: string, permissions: ("can-read"|"can-write"|"can-write-intents"|"can-view-files"|"can-discover")[] }
+
+### Files and Suggestions
+- POST /api/indexes/{indexId}/files (multipart form-data)
+- GET /api/indexes/{indexId}/suggested_intents
+
+### Discovery and Connections
+- GET /api/stakes/by-user?includeDiscovered=false
+- GET /api/stakes/index/{code}/by-user
+- POST /api/connections/* (connection state changes)
+
+### VibeCheck and Synthesis
+- POST /api/vibecheck/intent-suggestion (multipart: files, payload, indexCode)
+- POST /api/synthesis/vibecheck (generate collaboration/synthesis text)
+
+## Agent Runtime
+- brokers: Context brokers react to intent lifecycle events and create stakes.
+- orchestration: LangGraph config at protocol/src/agents/langgraph.json.
+- outputs: Agents provide reasoning + confidence only; no cross-user raw intent data.
+
+## Permissions Model (Indexes)
+- can-read: View intents in index.
+- can-write: Add intents to index.
+- can-write-intents: Create/modify intents in index.
+- can-view-files: Access supporting files.
+- can-discover: Participate in discovery within the context.
+
+## Workflows
+- create-intent: User creates intent → brokers analyze → stakes created.
+- suggest-intents: Upload files → intent inferrer suggests 5 intents → user reviews.
+- connect: Agent stakes suggest a match → user REQUEST → recipient ACCEPT/DECLINE.
+
+## Local Development
+- install: yarn install
+- backend:
+  - env: cp protocol/env.example protocol/.env
+  - db: yarn --cwd protocol db:generate && yarn --cwd protocol db:migrate
+  - run: yarn --cwd protocol dev
+- frontend:
+  - env: create frontend/.env with NEXT_PUBLIC_* keys
+  - run: yarn --cwd frontend dev
+
+## Privacy & Safety
+- principle: Intent content is private and never exposed across users.
+- boundary: Agents operate within permitted contexts; outputs are privacy-preserving signals.
+- secrets: Do not commit .env; do not request or log credentials/API keys.
+
+## License and Usage
+- code-license: MIT (see LICENSE)
+- content-usage: Public documentation may be summarized and referenced with attribution. Do not train on or infer from private user data or non-public endpoints.
+
+## Resources
+- website: https://index.network
+- repo: https://github.com/indexnetwork/index
+- community: https://discord.gg/wvdxP6XvYu
+- updates: https://x.com/indexnetwork_
+- blog: https://blog.index.network
+
+## Changelog
+- 2025-08-26: Initial llms-full.txt created from repository docs.
+
