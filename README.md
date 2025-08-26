@@ -193,7 +193,41 @@ git push origin feature/your-feature-name
 - **[Blog](https://blog.index.network)** - Latest insights and updates
 - **[Book a Call](https://calendly.com/d/2vj-8d8-skt/call-with-seren-and-seref)** - Chat with founders
 
+## LLM Context
+
+- `/.well-known`: The project exposes LLM-friendly indexes:
+  - `GET /llms.txt` – Concise index for LLMs (spec-compliant)
+  - `GET /llms-full.txt` – Expanded index with more references
+  - `GET /llms-ctx.txt` – Prebuilt context (docs + API; excludes Optional)
+  - `GET /llms-ctx-full.txt` – Prebuilt context including Optional links
+
+- Regenerate ctx files using the official CLI (requires network access):
+  - Install: `python3 -m venv .venv && source .venv/bin/activate && pip install llms-txt`
+  - Generate minimal: `llms_txt2ctx llms.txt > llms-ctx.txt`
+  - Generate full: `llms_txt2ctx --optional True llms.txt > llms-ctx-full.txt`
+  - Tip: Ensure links in `llms.txt` point to raw markdown (we use `raw.githubusercontent.com`).
+
+### One-command generation and optional auto-run
+
+- Script: `scripts/generate-ctx.sh`
+  - Creates/uses `.venv`, installs `llms-txt`, generates ctx files, copies to `frontend/public/`.
+  - Run: `bash scripts/generate-ctx.sh`
+
+- Optional pre-commit hook to auto-generate on changes to `llms.txt`/`llms-full.txt`:
+  - Enable hooks path: `git config core.hooksPath scripts/hooks`
+  - The hook will run the generator and stage `llms-ctx*.txt` and public copies.
+
+### Make + CI
+
+- Makefile targets:
+  - `make ctx` – Generate ctx files and copy to `frontend/public/`
+  - `make ctx-clean` – Remove generated ctx files (root and public)
+
+- GitHub Actions: `.github/workflows/llms-ctx.yml`
+  - Triggers: on push/PR to `main` and `dev`, nightly at 03:00 UTC, and manual dispatch
+  - Validates: parses `llms.txt` using `llms_txt2ctx` (minimal and full)
+  - Builds: ctx files and uploads them as artifacts in the Actions tab (does not commit changes)
+
 ## License
 
 Index Network is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
