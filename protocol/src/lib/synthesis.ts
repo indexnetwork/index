@@ -218,10 +218,12 @@ export async function synthesizeIntro(params: {
 
     const introData: IntroMakerData = {
       sender: {
+        id: senderUser!.id,
         userName: senderUser!.name,
         reasonings: senderReasonings
       },
       recipient: {
+        id: recipientUser!.id,
         userName: recipientUser!.name,
         reasonings: recipientReasonings
       }

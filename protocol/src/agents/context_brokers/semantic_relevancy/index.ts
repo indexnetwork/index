@@ -36,11 +36,9 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
         Intent 2: ${JSON.stringify(otherIntent.payload)}`;
 
         const llmCall = traceableLlm(
-          "intent-semantic-scoring",
-          ["semantic-relevancy", "intent-comparison", "scoring"],
+          "broker-semantic-relevancy-mutuality-score",
+          ["context-broker", "broker-semantic-relevancy"],
           {
-            agent_type: "semantic_relevancy_broker",
-            operation: "intent_comparison",
             current_intent_id: currentIntent.id,
             other_intent_id: otherIntent.id
           }
@@ -109,9 +107,11 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
         Intent 2: ${JSON.stringify(relatedIntent.payload)}`;
 
         const reasoningCall = traceableLlm(
-          "semantic_relevancy_broker",
-          ["context-broker"],
+          "broker-semantic-relevancy-reasoning-generator",
+          ["context-broker", "broker-semantic-relevancy"],
           {
+            agent_type: "semantic_relevancy_broker",
+            operation: "reasoning_generation",
             current_intent_id: intentId,
             related_intent_id: relatedIntent.id
           }

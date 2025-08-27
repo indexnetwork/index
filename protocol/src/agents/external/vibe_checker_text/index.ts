@@ -140,11 +140,9 @@ This isn't just adjacent thinking — it's a chance to push the boundaries of wh
 
     console.log('Prompt:', prompt);
     const vibeCheckCall = traceableStructuredLlm(
-      "vibe-check-text-synthesis",
-      ["vibe-checker", "collaboration-synthesis", "structured-output"],
+      "vibe-check-text",
+      ["vibe-checker", "structured-output"],
       {
-        agent_type: "vibe_checker_text",
-        operation: "collaboration_synthesis",
         other_user_id: otherUserData.user.id,
         other_user_name: otherUserData.user.name,
         intents_count: otherUserData.intents.length

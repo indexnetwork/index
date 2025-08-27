@@ -64,11 +64,9 @@ Generate a concise summary:`;
     });
 
     const summarizeCall = traceableLlm(
-      "text-summarization",
-      ["intent-summarizer", "text-summarization", "length-control"],
+      "intent-summarizer",
+      [],
       {
-        agent_type: "intent_summarizer",
-        operation: "text_summarization",
         original_length: text.length,
         target_length: maxLength
       }

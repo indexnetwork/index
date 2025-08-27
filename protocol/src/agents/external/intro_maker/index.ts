@@ -19,6 +19,7 @@ export interface IntroMakerOptions {
 }
 
 export interface UserReasoning {
+  id: string;
   userName: string;
   reasonings: string[];
 }
@@ -72,15 +73,13 @@ Generate the synthesis:`;
     });
 
     const introCall = traceableLlm(
-      "intro-maker-synthesis",
-      ["intro-maker", "email-introduction", "user-connection"],
+      "intro-maker",
+      [],
       {
-        agent_type: "intro_maker",
-        operation: "introduction_synthesis",
+        sender_id: data.sender.id,
+        recipient_id: data.recipient.id,
         sender_name: data.sender.userName,
         recipient_name: data.recipient.userName,
-        sender_reasonings_count: data.sender.reasonings.length,
-        recipient_reasonings_count: data.recipient.reasonings.length
       }
     );
     const response = await Promise.race([

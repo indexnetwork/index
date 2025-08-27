@@ -239,13 +239,10 @@ ${concatenatedContent.substring(0, 15000)}${concatenatedContent.length > 15000 ?
     });
 
     const intentInferCall = traceableStructuredLlm(
-      "intent-inference-from-files",
-      ["intent-inferrer", "file-analysis", "structured-output"],
+      "intent-inferrer",
+      ["structured-output"],
       {
-        agent_type: "intent_inferrer",
-        operation: "intent_generation",
         files_processed: processedFiles,
-        content_length: concatenatedContent.length,
         existing_intents_count: existingIntents.length,
         existing_suggestions_count: existingSuggestions.length,
         requested_count: count

@@ -202,8 +202,8 @@ Enhanced Intent:`;
 
     console.log(prompt);  
     const enhanceCall = traceableLlm(
-      "intent-enhancement",
-      ["intent-enhancer", "context-enhancement", "intent-expansion"],
+      "intent-enhancer",
+      [],
       {
         agent_type: "intent_enhancer",
         operation: "intent_enhancement",

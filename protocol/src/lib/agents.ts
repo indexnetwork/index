@@ -30,7 +30,7 @@ export const llm = new ChatOpenAI({
 export function traceableLlm(name: string, tags: string[], metadata: Record<string, any>) {
   return async (prompt: string) => {
     const handler = createLangfuseHandler(name, { ...metadata, tags });
-    return await llm.invoke(prompt, { callbacks: [handler] });
+    return await llm.invoke(prompt, { runName: name, callbacks: [handler] });
   };
 }
 
@@ -39,7 +39,7 @@ export function traceableStructuredLlm(name: string, tags: string[], metadata: R
   return async (prompt: string, schema: any) => {
     const handler = createLangfuseHandler(name, { ...metadata, tags });
     const modelWithStructure = llm.withStructuredOutput(schema);
-    return await modelWithStructure.invoke(prompt, { callbacks: [handler] });
+    return await modelWithStructure.invoke(prompt, { runName: name, callbacks: [handler] });
   };
 }
 
