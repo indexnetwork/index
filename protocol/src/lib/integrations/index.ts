@@ -11,13 +11,13 @@ export interface IntegrationHandler {
   fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]>;
 }
 
-import { notionHandler } from './notion';
-import { slackHandler } from './slack';
-import { discordHandler } from './discord';
+import { notionHandler } from './providers/notion';
+import { slackHandler } from './providers/slack';
+import { discordHandler } from './providers/discord';
 
-export { notionHandler } from './notion';
-export { slackHandler } from './slack';
-export { discordHandler } from './discord';
+export { notionHandler } from './providers/notion';
+export { slackHandler } from './providers/slack';
+export { discordHandler } from './providers/discord';
 
 const registry: Record<string, IntegrationHandler> = {
   notion: notionHandler,

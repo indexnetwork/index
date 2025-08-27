@@ -1,4 +1,4 @@
-import type { IntegrationFile } from './index';
+import type { IntegrationFile } from '../index';
 
 export type RetryOptions = {
   retries?: number;
