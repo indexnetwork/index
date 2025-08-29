@@ -17,6 +17,7 @@ import connectionRoutes from './routes/connections';
 import vibecheckRoutes from './routes/vibecheck';
 import synthesisRoutes from './routes/synthesis';
 import integrationRoutes from './routes/integrations';
+import indexLinksRoutes from './routes/index_links';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -48,6 +49,7 @@ app.use('/api/connections', connectionRoutes);
 
 app.use('/api/indexes/:indexId/suggested_intents/', suggestionRoutes);
 app.use('/api/indexes/:indexId/files', fileRoutes);
+app.use('/api/indexes/:indexId/links', indexLinksRoutes);
 app.use('/api/indexes', indexRoutes);
 app.use('/api/integrations', integrationRoutes);
 
