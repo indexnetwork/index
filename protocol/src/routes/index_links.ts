@@ -9,6 +9,7 @@ import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
 import path from 'path';
 import fs from 'fs';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
+import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { config } from '../lib/config';
 import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
 
@@ -191,8 +192,11 @@ router.post('/sync',
 
         if (result.success && result.intents.length > 0) {
           const intentData = result.intents[0];
+          // Generate summary for better UI display
+          const summary = await summarizeIntent(intentData.payload);
           const inserted = await db.insert(intents).values({
             payload: intentData.payload,
+            summary: summary || intentData.payload.slice(0, 150),
             userId,
             isIncognito: false,
           }).returning({ id: intents.id });

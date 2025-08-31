@@ -201,6 +201,29 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response;
   },
 
+  // Index Links (crawl-based intents)
+  getIndexLinks: async (indexId: string): Promise<Array<{ id: string; url: string; maxDepth: number; maxPages: number; includePatterns: string[]; excludePatterns: string[]; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
+    const res = await api.get<{ links: Array<{ id: string; url: string; maxDepth: number; maxPages: number; includePatterns: string[]; excludePatterns: string[]; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }> }>(`/indexes/${indexId}/links`);
+    return res.links || [];
+  },
+
+  addIndexLink: async (indexId: string, link: { url: string; maxDepth?: number; maxPages?: number; include?: string[]; exclude?: string[] }) => {
+    const res = await api.post<{ link: any }>(`/indexes/${indexId}/links`, link);
+    return res.link;
+  },
+
+  deleteIndexLink: async (indexId: string, linkId: string): Promise<void> => {
+    await api.delete(`/indexes/${indexId}/links/${linkId}`);
+  },
+
+  syncIndexLinks: async (indexId: string, opts?: { skipBrokers?: boolean; count?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.skipBrokers !== undefined) params.set('skipBrokers', String(opts.skipBrokers));
+    if (opts?.count !== undefined) params.set('count', String(opts.count));
+    const res = await api.post<{ success: boolean; filesImported: number; intentsGenerated: number; links: number; pagesVisited: number; durationMs: number }>(`/indexes/${indexId}/links/sync${params.toString() ? `?${params.toString()}` : ''}`, {});
+    return res;
+  },
+
   // Legacy methods for backward compatibility (these would need intent service integration)
   addSuggestedIntent: async (indexId: string, intentId: string): Promise<boolean> => {
     try {
