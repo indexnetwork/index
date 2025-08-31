@@ -216,6 +216,11 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     await api.delete(`/indexes/${indexId}/links/${linkId}`);
   },
 
+  updateIndexLink: async (indexId: string, linkId: string, data: { url?: string; maxDepth?: number; maxPages?: number; include?: string[]; exclude?: string[] }) => {
+    const res = await api.patch<{ link: any }>(`/indexes/${indexId}/links/${linkId}`, data);
+    return res.link;
+  },
+
   syncIndexLinks: async (indexId: string, opts?: { skipBrokers?: boolean; count?: number }) => {
     const params = new URLSearchParams();
     if (opts?.skipBrokers !== undefined) params.set('skipBrokers', String(opts.skipBrokers));

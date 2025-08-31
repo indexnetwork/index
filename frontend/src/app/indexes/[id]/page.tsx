@@ -66,6 +66,9 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [addingLink, setAddingLink] = useState(false);
   const [syncingLinks, setSyncingLinks] = useState(false);
   const [lastSyncSummary, setLastSyncSummary] = useState<string>("");
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
+  const [editDepth, setEditDepth] = useState<number>(0);
+  const [editPages, setEditPages] = useState<number>(3);
 
   const fetchLinks = useCallback(async () => {
     try {
@@ -654,24 +657,63 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             <ul className="divide-y">
               {links.map(link => (
                 <li key={link.id} className="py-2 flex items-center justify-between">
-                  <div className="text-sm text-gray-800">
-                    <a href={link.url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{link.url}</a>
-                    <span className="text-gray-400 ml-2">depth {link.maxDepth}, pages {link.maxPages}</span>
+                  <div className="flex-1 mr-3 text-sm text-gray-800">
+                    <a href={link.url} target="_blank" rel="noreferrer" className="text-black underline-offset-2 hover:underline font-ibm-plex-mono">{link.url}</a>
+                    {editingLinkId === link.id ? (
+                      <span className="ml-3 inline-flex items-center gap-2">
+                        <label className="text-xs text-gray-600">depth</label>
+                        <input type="number" value={editDepth} min={0} max={8} onChange={e=>setEditDepth(Number(e.target.value))} className="w-16 border border-black rounded px-2 py-1 text-sm" />
+                        <label className="text-xs text-gray-600">pages</label>
+                        <input type="number" value={editPages} min={1} max={2000} onChange={e=>setEditPages(Number(e.target.value))} className="w-20 border border-black rounded px-2 py-1 text-sm" />
+                      </span>
+                    ) : (
+                      <span className="text-gray-600 ml-2 font-ibm-plex-mono">depth {link.maxDepth}, pages {link.maxPages}</span>
+                    )}
                     {link.lastSyncAt && (
-                      <span className="text-gray-400 ml-2">last: {new Date(link.lastSyncAt).toLocaleString()}</span>
+                      <span className="text-gray-500 ml-2">last: {new Date(link.lastSyncAt).toLocaleString()}</span>
                     )}
                     {link.lastStatus && (
-                      <span className="text-gray-400 ml-2">status: {link.lastStatus}</span>
+                      <div className="text-gray-500 ml-2">status: {link.lastStatus}</div>
                     )}
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDeleteLink(link.id)}
-                    className="border-black text-black hover:bg-gray-100"
-                  >
-                    Delete
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {editingLinkId === link.id ? (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-black text-black hover:bg-gray-100"
+                          onClick={async ()=>{
+                            try {
+                              await indexesService.updateIndexLink(resolvedParams.id, link.id, { maxDepth: editDepth, maxPages: editPages });
+                              setEditingLinkId(null);
+                              await fetchLinks();
+                            } catch(e){ console.error('Update link failed', e);} }}
+                        >Save</Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="border-black text-black hover:bg-gray-100"
+                          onClick={()=> setEditingLinkId(null)}
+                        >Cancel</Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-black text-black hover:bg-gray-100"
+                        onClick={()=>{ setEditingLinkId(link.id); setEditDepth(link.maxDepth); setEditPages(link.maxPages); }}
+                      >Edit</Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteLink(link.id)}
+                      className="border-black text-black hover:bg-gray-100"
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </li>
               ))}
             </ul>

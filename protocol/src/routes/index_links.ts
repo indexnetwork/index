@@ -12,6 +12,7 @@ import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { config } from '../lib/config';
 import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
+import { log } from '../lib/log';
 
 const router = Router({ mergeParams: true });
 
@@ -108,6 +109,76 @@ router.delete('/:linkId',
   }
 );
 
+// Update a link (url, depth, pages, include/exclude)
+router.patch('/:linkId',
+  authenticatePrivy,
+  [
+    param('indexId').isUUID(),
+    param('linkId').isUUID(),
+    body('url').optional().isString().trim().isLength({ min: 1 }),
+    body('maxDepth').optional().isInt({ min: 0, max: 8 }).toInt(),
+    body('maxPages').optional().isInt({ min: 1, max: 2000 }).toInt(),
+    body('include').optional().isArray(),
+    body('exclude').optional().isArray(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+      const { indexId, linkId } = req.params;
+      const access = await checkIndexAccess(indexId, req.user!.id);
+      if (!access.hasAccess) return res.status(access.status!).json({ error: access.error });
+
+      const values: any = { updatedAt: new Date() };
+      if (req.body.url !== undefined) values.url = req.body.url;
+      if (req.body.maxDepth !== undefined) values.maxDepth = req.body.maxDepth;
+      if (req.body.maxPages !== undefined) values.maxPages = req.body.maxPages;
+      if (Array.isArray(req.body.include)) values.includePatterns = req.body.include;
+      if (Array.isArray(req.body.exclude)) values.excludePatterns = req.body.exclude;
+
+      const updated = await db.update(indexLinks)
+        .set(values)
+        .where(and(eq(indexLinks.id, linkId), eq(indexLinks.indexId, indexId)))
+        .returning();
+
+      if (updated.length === 0) return res.status(404).json({ error: 'Link not found' });
+      return res.json({ link: updated[0] });
+    } catch (err) {
+      console.error('Update index link error:', err);
+      return res.status(500).json({ error: 'Failed to update link' });
+    }
+  }
+);
+
+// Last sync status for this index's links
+router.get('/status',
+  authenticatePrivy,
+  [param('indexId').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+      const { indexId } = req.params;
+      const access = await checkIndexAccess(indexId, req.user!.id);
+      if (!access.hasAccess) return res.status(access.status!).json({ error: access.error });
+
+      const links = await db.select().from(indexLinks).where(eq(indexLinks.indexId, indexId));
+      const lastSyncAt = links.reduce<Date | null>((acc, l) => {
+        const d = l.lastSyncAt ? new Date(l.lastSyncAt) : null;
+        if (!d) return acc;
+        if (!acc || d > acc) return d;
+        return acc;
+      }, null);
+      const statuses = Array.from(new Set(links.map(l => l.lastStatus || '').filter(Boolean)));
+      return res.json({ summary: { indexId, links: links.length, lastSyncAt, statuses }, links });
+    } catch (err) {
+      console.error('Get links status error:', err);
+      return res.status(500).json({ error: 'Failed to fetch links status' });
+    }
+  }
+);
 // Sync endpoint (stub): will crawl links, ingest, and generate intents in follow-up commits
 router.post('/sync',
   authenticatePrivy,
@@ -229,12 +300,16 @@ router.post('/sync',
       // Cleanup temp
       await fs.promises.rm(baseTempDir, { recursive: true, force: true });
 
-      // Update link records with last sync info
-      await db.update(indexLinks)
-        .set({ lastSyncAt: new Date(), lastStatus: 'ok', lastError: null })
-        .where(eq(indexLinks.indexId, indexId));
-
       const finishedAt = Date.now();
+      const statusText = `ok: pages=${crawl.pagesVisited} files=${filesImported} intents=${intentsGenerated} duration=${finishedAt - startedAt}ms`;
+      for (const l of links) {
+        await db.update(indexLinks)
+          .set({ lastSyncAt: new Date(), lastStatus: statusText, lastError: null })
+          .where(eq(indexLinks.id, l.id));
+      }
+
+      // Structured log
+      log.info('links-sync', { indexId, pagesVisited: crawl.pagesVisited, filesImported, intentsGenerated, durationMs: finishedAt - startedAt });
       return res.json({
         success: true,
         filesImported,
