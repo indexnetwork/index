@@ -1,6 +1,6 @@
 import { BaseContextBroker } from '../base';
 import { intents, intentStakes, agents } from '../../../lib/schema';
-import { eq, and, ne, sql, isNull } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { traceableLlm } from "../../../lib/agents";
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
@@ -15,16 +15,10 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
 
   private async findSemanticallyRelatedIntents(currentIntent: any): Promise<any[]> {
     console.log('Finding semantically related intents for:', currentIntent);
-    // Get all other intents
-    const allIntents = await this.db.select()
-      .from(intents)
-      .where(and(
-        ne(intents.id, currentIntent.id),
-        ne(intents.userId, currentIntent.userId),
-        eq(intents.isIncognito, false),
-        isNull(intents.archivedAt)
-      ));
-    console.log('Found other intents:', allIntents.length);
+    
+    // Use shared utility to get intents in same indexes
+    const allIntents = await this.getIntentsInSameIndexes(currentIntent.id, true);
+    console.log('Found other intents in same indexes:', allIntents.length);
 
     // Use LLM to determine semantic relevance - PARALLEL PROCESSING
     const scorePromises = allIntents.map(async (otherIntent) => {

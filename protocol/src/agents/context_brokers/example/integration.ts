@@ -1,6 +1,6 @@
 import { BaseContextBroker } from '../base';
 import { intents, users, intentStakes, indexes, intentIndexes, agents } from '../../../lib/schema';
-import { eq, and, or, desc, like, sql, ne } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { llm } from "../../../lib/agents";
 
 export class ExampleContextBroker extends BaseContextBroker {
@@ -43,22 +43,7 @@ export class ExampleContextBroker extends BaseContextBroker {
     .where(eq(intentIndexes.intentId, intentId));
 
     // Example: Find similar intents in the same indexes (owned by other users)
-    let similarIntents: { id: string; payload: string }[] = [];
-    if (intentIndexRelations.length > 0) {
-      similarIntents = await this.db.select({
-        id: intents.id,
-        payload: intents.payload
-      })
-      .from(intents)
-      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-      .where(
-        and(
-          eq(intentIndexes.indexId, intentIndexRelations[0].indexId),
-          ne(intents.id, intentId),
-          ne(intents.userId, intent.userId) // Only intents from other users
-        )
-      );
-    }
+    const similarIntents = await this.getIntentsInSameIndexes(intentId, true);
 
     // Example: Create stakes for similar intents
     if (similarIntents.length > 0) {
@@ -90,7 +75,7 @@ export class ExampleContextBroker extends BaseContextBroker {
 
     console.log(`Processing new intent: ${intentId}`);
     console.log(`Intent belongs to ${intentIndexRelations.length} indexes`);
-    console.log(`Found ${similarIntents.length} similar intents`);
+    console.log(`Found ${similarIntents.length} similar intents in same indexes`);
   }
 
   async onIntentUpdated(intentId: string, previousStatus?: string): Promise<void> {

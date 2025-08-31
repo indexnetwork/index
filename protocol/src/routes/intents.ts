@@ -21,7 +21,8 @@ router.get('/',
     query('page').optional().isInt({ min: 1 }).toInt(),
     query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
     query('archived').optional().isBoolean(),
-    query('indexId').optional().isUUID(),
+    query('indexIds').optional().isArray(),
+    query('indexIds.*').optional().isUUID(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -34,7 +35,7 @@ router.get('/',
       const limit = Number(req.query.limit) || 10;
       const skip = (page - 1) * limit;
       const showArchived = req.query.archived === 'true';
-      const indexId = req.query.indexId as string;
+      const indexIds = req.query.indexIds as string[] | undefined;
 
       // Build base conditions
       const baseCondition = and(
@@ -58,11 +59,11 @@ router.get('/',
 
       // Build queries conditionally
       const [intentsResult, totalResult] = await Promise.all([
-        indexId 
+        indexIds && indexIds.length > 0
           ? db.select(selectFields).from(intents)
               .innerJoin(users, eq(intents.userId, users.id))
               .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-              .where(and(baseCondition, eq(intentIndexes.indexId, indexId)))
+              .where(and(baseCondition, inArray(intentIndexes.indexId, indexIds)))
               .orderBy(desc(intents.createdAt))
               .offset(skip)
               .limit(limit)
@@ -73,11 +74,11 @@ router.get('/',
               .offset(skip)
               .limit(limit),
         
-        indexId
+        indexIds && indexIds.length > 0
           ? db.select({ count: count() }).from(intents)
               .innerJoin(users, eq(intents.userId, users.id))
               .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-              .where(and(baseCondition, eq(intentIndexes.indexId, indexId)))
+              .where(and(baseCondition, inArray(intentIndexes.indexId, indexIds)))
           : db.select({ count: count() }).from(intents)
               .innerJoin(users, eq(intents.userId, users.id))
               .where(baseCondition)

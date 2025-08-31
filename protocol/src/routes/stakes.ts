@@ -13,7 +13,11 @@ const router = Router();
 // Get stakes for a specific intent grouped by user
 router.get('/intent/:id/by-user',
   authenticatePrivy,
-  [param('id').isUUID()],
+  [
+    param('id').isUUID(),
+    query('indexIds').optional().isArray(),
+    query('indexIds.*').optional().isUUID()
+  ],
   async (req: AuthRequest, res: Response) => {
     try {
       const errors = validationResult(req);
@@ -22,6 +26,7 @@ router.get('/intent/:id/by-user',
       }
 
       const { id } = req.params;
+      const indexIds = req.query.indexIds as string[] | undefined;
 
       // Check if intent exists and user has access
       const intent = await db.select({ id: intents.id, userId: intents.userId })
@@ -37,27 +42,50 @@ router.get('/intent/:id/by-user',
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Get stakes with user info in a single query, excluding the intent owner
-      const stakes = await db.select({
-        stake: intentStakes.stake,
-        reasoning: intentStakes.reasoning,
-        stakeIntents: intentStakes.intents,
-        agentName: agents.name,
-        agentAvatar: agents.avatar,
-        userId: users.id,
-        userName: users.name,
-        userAvatar: users.avatar,
-        userIntro: users.intro
-      })
-      .from(intentStakes)
-      .innerJoin(agents, eq(intentStakes.agentId, agents.id))
-      .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
-      .innerJoin(users, eq(intents.userId, users.id))
-      .where(and(
-        sql`${intentStakes.intents} @> ARRAY[${id}]::text[]`,
-        isNull(agents.deletedAt),
-        sql`${users.id} != ${req.user!.id}`
-      ));
+      // Get stakes with user info, optionally filtered by indexes
+      const stakes = indexIds && indexIds.length > 0
+        ? await db.select({
+            stake: intentStakes.stake,
+            reasoning: intentStakes.reasoning,
+            stakeIntents: intentStakes.intents,
+            agentName: agents.name,
+            agentAvatar: agents.avatar,
+            userId: users.id,
+            userName: users.name,
+            userAvatar: users.avatar,
+            userIntro: users.intro
+          })
+          .from(intentStakes)
+          .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+          .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
+          .innerJoin(users, eq(intents.userId, users.id))
+          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+          .where(and(
+            sql`${intentStakes.intents} @> ARRAY[${id}]::text[]`,
+            isNull(agents.deletedAt),
+            sql`${users.id} != ${req.user!.id}`,
+            inArray(intentIndexes.indexId, indexIds)
+          ))
+        : await db.select({
+            stake: intentStakes.stake,
+            reasoning: intentStakes.reasoning,
+            stakeIntents: intentStakes.intents,
+            agentName: agents.name,
+            agentAvatar: agents.avatar,
+            userId: users.id,
+            userName: users.name,
+            userAvatar: users.avatar,
+            userIntro: users.intro
+          })
+          .from(intentStakes)
+          .innerJoin(agents, eq(intentStakes.agentId, agents.id))
+          .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
+          .innerJoin(users, eq(intents.userId, users.id))
+          .where(and(
+            sql`${intentStakes.intents} @> ARRAY[${id}]::text[]`,
+            isNull(agents.deletedAt),
+            sql`${users.id} != ${req.user!.id}`
+          ));
 
       // Group by user
       const userStakes = stakes.reduce((acc, stake) => {
@@ -121,7 +149,9 @@ router.get('/intent/:id/by-user',
 router.get('/by-user',
   authenticatePrivy,
   [
-    query('includeDiscovered').optional().isBoolean()
+    query('includeDiscovered').optional().isBoolean(),
+    query('indexIds').optional().isArray(),
+    query('indexIds.*').optional().isUUID()
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -131,15 +161,30 @@ router.get('/by-user',
       }
 
       const includeDiscovered = req.query.includeDiscovered === 'true';
-      // First get all intents of the user
-      const userIntents = await db.select({
-        id: intents.id,
-        summary: intents.summary,
-        payload: intents.payload,
-        updatedAt: intents.updatedAt
-      })
-      .from(intents)
-      .where(eq(intents.userId, req.user!.id));
+      const indexIds = req.query.indexIds as string[] | undefined;
+      
+      // First get all intents of the user (optionally filtered by indexes)
+      const userIntents = indexIds && indexIds.length > 0
+        ? await db.select({
+            id: intents.id,
+            summary: intents.summary,
+            payload: intents.payload,
+            updatedAt: intents.updatedAt
+          })
+          .from(intents)
+          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+          .where(and(
+            eq(intents.userId, req.user!.id),
+            inArray(intentIndexes.indexId, indexIds)
+          ))
+        : await db.select({
+            id: intents.id,
+            summary: intents.summary,
+            payload: intents.payload,
+            updatedAt: intents.updatedAt
+          })
+          .from(intents)
+          .where(eq(intents.userId, req.user!.id));
 
       const userIntentIds = userIntents.map(intent => intent.id);
 
