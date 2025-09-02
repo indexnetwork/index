@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { indexLinks, intents, intentIndexes, integrationItems } from '../lib/schema';
+import { indexLinks, intents, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import { checkIndexAccess } from '../lib/index-access';
@@ -55,10 +55,6 @@ router.post('/',
   [
     param('indexId').isUUID(),
     body('url').isString().trim().isLength({ min: 1 }),
-    body('maxDepth').optional().isInt({ min: 0, max: 8 }).toInt(),
-    body('maxPages').optional().isInt({ min: 1, max: 1000 }).toInt(),
-    body('include').optional().isArray(),
-    body('exclude').optional().isArray(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -66,7 +62,7 @@ router.post('/',
       if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
       const { indexId } = req.params;
-      const { url, maxDepth = 1, maxPages = 50, include = [], exclude = [] } = req.body;
+      const { url } = req.body;
 
       const access = await checkIndexAccess(indexId, req.user!.id);
       if (!access.hasAccess) return res.status(access.status!).json({ error: access.error });
@@ -74,7 +70,7 @@ router.post('/',
       if (!isValidUrlCandidate(url)) return res.status(400).json({ error: 'Invalid URL' });
 
       const inserted = await db.insert(indexLinks)
-        .values({ indexId, url, maxDepth, maxPages, includePatterns: include, excludePatterns: exclude })
+        .values({ indexId, url })
         .returning();
 
       return res.status(201).json({ link: inserted[0] });
@@ -116,10 +112,6 @@ router.patch('/:linkId',
     param('indexId').isUUID(),
     param('linkId').isUUID(),
     body('url').optional().isString().trim().isLength({ min: 1 }),
-    body('maxDepth').optional().isInt({ min: 0, max: 8 }).toInt(),
-    body('maxPages').optional().isInt({ min: 1, max: 2000 }).toInt(),
-    body('include').optional().isArray(),
-    body('exclude').optional().isArray(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -132,10 +124,7 @@ router.patch('/:linkId',
 
       const values: any = { updatedAt: new Date() };
       if (req.body.url !== undefined) values.url = req.body.url;
-      if (req.body.maxDepth !== undefined) values.maxDepth = req.body.maxDepth;
-      if (req.body.maxPages !== undefined) values.maxPages = req.body.maxPages;
-      if (Array.isArray(req.body.include)) values.includePatterns = req.body.include;
-      if (Array.isArray(req.body.exclude)) values.excludePatterns = req.body.exclude;
+      // removed per-link crawl controls (depth/pages/include/exclude)
 
       const updated = await db.update(indexLinks)
         .set(values)
@@ -195,20 +184,12 @@ router.post('/sync',
       const links = await db.select().from(indexLinks).where(eq(indexLinks.indexId, indexId));
       if (links.length === 0) return res.json({ success: true, filesImported: 0, intentsGenerated: 0, links: 0 });
 
-      // Crawl
-      const linkConfigs = links.map(l => ({
-        url: l.url,
-        maxDepth: l.maxDepth,
-        maxPages: l.maxPages,
-        includePatterns: l.includePatterns,
-        excludePatterns: l.excludePatterns,
-      }));
-
+      // Crawl with global defaults (config.webCrawl)
+      const urls = links.map(l => l.url);
       const startedAt = Date.now();
-      const crawl = await crawlLinksForIndex(linkConfigs);
+      const crawl = await crawlLinksForIndex(urls);
 
       // Per-file processing (1 page -> 1 intent) with dedupe
-      const provider = 'web';
       const userId = req.user!.id;
       const requestedCount = Number((req.query as any).count) || 1; // per page, cap to 1
       const skipBrokersQ = ((req.query as any).skipBrokers || '').toString().toLowerCase();
@@ -221,41 +202,28 @@ router.post('/sync',
       const baseTempDir = path.join(process.cwd(), 'temp-uploads', `links-${userId}-${Date.now()}`);
       await fs.promises.mkdir(baseTempDir, { recursive: true });
 
+      // Existing intents for dedupe by payload (once per sync)
+      const existingIntentRows = await db.select({ payload: intents.payload })
+        .from(intents)
+        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+        .where(eq(intentIndexes.indexId, indexId));
+      const existingPayloads = new Set(existingIntentRows.map(r => r.payload));
+
       for (const f of crawl.files) {
         const meta = crawl.urlMap[f.id];
         if (!meta) continue;
-        // Dedupe mapping on URL + user + index
-        const existing = await db.select({ id: integrationItems.id, contentHash: integrationItems.contentHash })
-          .from(integrationItems)
-          .where(and(
-            eq(integrationItems.provider, provider),
-            eq(integrationItems.externalId, meta.url),
-            eq(integrationItems.userId, userId),
-            eq(integrationItems.indexId, indexId)
-          ));
-        if (existing.length > 0 && existing[0].contentHash === meta.contentHash) {
-          continue; // unchanged
-        }
-
         // Write one file
         const tempDir = path.join(baseTempDir, f.id);
         await fs.promises.mkdir(tempDir, { recursive: true });
         await fs.promises.writeFile(path.join(tempDir, `${f.id}.md`), f.content);
         filesImported += 1;
 
-        // Existing intents for dedupe by payload
-        const existingIntentRows = await db.select({ payload: intents.payload })
-          .from(intents)
-          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-          .where(eq(intentIndexes.indexId, indexId));
-        const existingIntents = existingIntentRows.map(r => r.payload);
-
         // Analyze just this page (count=1)
         const result = await analyzeFolder(
           tempDir,
           [f.id],
           `Generate intents based on content from ${meta.url}`,
-          existingIntents,
+          Array.from(existingPayloads),
           [],
           Math.max(1, Math.min(1, requestedCount)),
           60000
@@ -263,6 +231,9 @@ router.post('/sync',
 
         if (result.success && result.intents.length > 0) {
           const intentData = result.intents[0];
+          if (existingPayloads.has(intentData.payload)) {
+            continue; // dedupe: already have this payload for the index
+          }
           // Generate summary for better UI display
           const summary = await summarizeIntent(intentData.payload);
           const inserted = await db.insert(intents).values({
@@ -273,22 +244,7 @@ router.post('/sync',
           }).returning({ id: intents.id });
           const intentId = inserted[0].id;
           await db.insert(intentIndexes).values({ intentId, indexId });
-
-          // Upsert mapping for this URL
-          if (existing.length > 0) {
-            await db.update(integrationItems)
-              .set({ intentId, contentHash: meta.contentHash, lastSeenAt: new Date() })
-              .where(eq(integrationItems.id, existing[0].id));
-          } else {
-            await db.insert(integrationItems).values({
-              provider,
-              externalId: meta.url,
-              userId,
-              indexId,
-              intentId,
-              contentHash: meta.contentHash,
-            });
-          }
+          existingPayloads.add(intentData.payload);
 
           if (!skipBrokers) {
             triggerBrokersOnIntentCreated(intentId).catch(() => void 0);

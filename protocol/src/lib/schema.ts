@@ -191,10 +191,6 @@ export const indexLinks = pgTable('index_links', {
   id: uuid('id').primaryKey().defaultRandom(),
   indexId: uuid('index_id').notNull().references(() => indexes.id, { onDelete: 'cascade' }),
   url: text('url').notNull(),
-  maxDepth: integer('max_depth').notNull().default(1),
-  maxPages: integer('max_pages').notNull().default(50),
-  includePatterns: text('include_patterns').array().notNull().default([]),
-  excludePatterns: text('exclude_patterns').array().notNull().default([]),
   lastSyncAt: timestamp('last_sync_at'),
   lastStatus: text('last_status'),
   lastError: text('last_error'),
@@ -210,27 +206,8 @@ export const indexLinksRelations = relations(indexLinks, ({ one }) => ({
 }));
 
 // Integration Items mapping (dedupe across integrations; provider='web' for crawled pages)
-export const integrationItems = pgTable('integration_items', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  provider: varchar('provider', { length: 32 }).notNull(),
-  externalId: text('external_id').notNull(),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  indexId: uuid('index_id').references(() => indexes.id, { onDelete: 'cascade' }),
-  intentId: uuid('intent_id').references(() => intents.id, { onDelete: 'set null' }),
-  contentHash: text('content_hash'),
-  lastSeenAt: timestamp('last_seen_at').defaultNow().notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-
-export const integrationItemsRelations = relations(integrationItems, ({ one }) => ({
-  user: one(users, { fields: [integrationItems.userId], references: [users.id] }),
-  index: one(indexes, { fields: [integrationItems.indexId], references: [indexes.id] }),
-}));
-
 export type IndexLink = typeof indexLinks.$inferSelect;
 export type NewIndexLink = typeof indexLinks.$inferInsert;
-export type IntegrationItem = typeof integrationItems.$inferSelect;
-export type NewIntegrationItem = typeof integrationItems.$inferInsert;
 
 export const userConnectionEventsRelations = relations(userConnectionEvents, ({ one }) => ({
   initiatorUser: one(users, {

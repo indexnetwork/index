@@ -202,12 +202,12 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Index Links (crawl-based intents)
-  getIndexLinks: async (indexId: string): Promise<Array<{ id: string; url: string; maxDepth: number; maxPages: number; includePatterns: string[]; excludePatterns: string[]; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
-    const res = await api.get<{ links: Array<{ id: string; url: string; maxDepth: number; maxPages: number; includePatterns: string[]; excludePatterns: string[]; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }> }>(`/indexes/${indexId}/links`);
+  getIndexLinks: async (indexId: string): Promise<Array<{ id: string; url: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
+    const res = await api.get<{ links: Array<{ id: string; url: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }> }>(`/indexes/${indexId}/links`);
     return res.links || [];
   },
 
-  addIndexLink: async (indexId: string, link: { url: string; maxDepth?: number; maxPages?: number; include?: string[]; exclude?: string[] }) => {
+  addIndexLink: async (indexId: string, link: { url: string }) => {
     const res = await api.post<{ link: any }>(`/indexes/${indexId}/links`, link);
     return res.link;
   },
@@ -216,7 +216,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     await api.delete(`/indexes/${indexId}/links/${linkId}`);
   },
 
-  updateIndexLink: async (indexId: string, linkId: string, data: { url?: string; maxDepth?: number; maxPages?: number; include?: string[]; exclude?: string[] }) => {
+  updateIndexLink: async (indexId: string, linkId: string, data: { url?: string }) => {
     const res = await api.patch<{ link: any }>(`/indexes/${indexId}/links/${linkId}`, data);
     return res.link;
   },

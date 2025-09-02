@@ -5,13 +5,7 @@ import type { IntegrationFile } from '../../lib/integrations';
 import { concurrencyLimit } from '../../lib/integrations/core/util';
 import { config } from '../config';
 
-type LinkConfig = {
-  url: string;
-  maxDepth: number;
-  maxPages: number;
-  includePatterns: string[];
-  excludePatterns: string[];
-};
+// Per-link overrides removed; crawler now uses global defaults
 
 type CrawlResult = {
   files: IntegrationFile[];
@@ -130,18 +124,16 @@ function extractLinks(html: string, baseUrl: URL): URL[] {
   return urls;
 }
 
-export async function crawlLinksForIndex(
-  linkConfigs: LinkConfig[]
-): Promise<CrawlResult> {
+export async function crawlLinksForIndex(urls: string[]): Promise<CrawlResult> {
   const files: IntegrationFile[] = [];
   const urlMap: Record<string, { url: string; contentHash: string; lastModified: Date }> = {};
   let pagesVisited = 0;
 
   const limit = concurrencyLimit(config.webCrawl.concurrency);
 
-  for (const link of linkConfigs) {
+  for (const linkUrl of urls) {
     try {
-      const base = new URL(link.url);
+      const base = new URL(linkUrl);
       const robots = config.webCrawl.respectRobots ? parseRobots(await fetchRobotsTxt(base.origin)) : { disallow: [] };
       const seen = new Set<string>();
 
@@ -149,7 +141,7 @@ export async function crawlLinksForIndex(
       const queue: QueueItem[] = [{ url: base, depth: 0 }];
 
       const runTask = async (item: QueueItem) => {
-        if (pagesVisited >= link.maxPages) return;
+        if (pagesVisited >= config.webCrawl.maxPages) return;
         const key = item.url.toString();
         if (seen.has(key)) return;
         seen.add(key);
@@ -157,14 +149,7 @@ export async function crawlLinksForIndex(
         if (!withinScope(item.url, base)) return;
         if (!pathAllowed(item.url.pathname, robots)) return;
 
-        // include/exclude filters (simple substring on path)
-        const path = item.url.pathname;
-        if (link.includePatterns && link.includePatterns.length) {
-          if (!link.includePatterns.some(p => path.includes(p))) return;
-        }
-        if (link.excludePatterns && link.excludePatterns.length) {
-          if (link.excludePatterns.some(p => path.includes(p))) return;
-        }
+        // include/exclude filters removed; crawl remains scoped by host/path and robots
 
         const res = await fetchText(item.url.toString());
         if (!res.ok) return;
@@ -192,7 +177,7 @@ export async function crawlLinksForIndex(
         urlMap[id] = { url: item.url.toString(), contentHash, lastModified: lastMod };
 
         // enqueue child links if depth allows
-        if (item.depth < link.maxDepth) {
+        if (item.depth < config.webCrawl.maxDepth) {
           const links = extractLinks(res.body, item.url);
           for (const n of links) {
             if (withinScope(n, base)) queue.push({ url: n, depth: item.depth + 1 });
@@ -200,7 +185,7 @@ export async function crawlLinksForIndex(
         }
       };
 
-      while (queue.length && pagesVisited < link.maxPages) {
+      while (queue.length && pagesVisited < config.webCrawl.maxPages) {
         const batch: Promise<void>[] = [];
         // process a small batch concurrently
         for (let i = 0; i < config.webCrawl.concurrency && queue.length; i++) {
@@ -211,7 +196,7 @@ export async function crawlLinksForIndex(
       }
 
     } catch (err) {
-      log.warn('crawl link failed', { url: link.url, error: (err as Error).message });
+      log.warn('crawl link failed', { url: linkUrl, error: (err as Error).message });
     }
   }
 
