@@ -10,7 +10,7 @@ import path from 'path';
 import fs from 'fs';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
-import { config } from '../lib/config';
+import { config } from '../lib/crawl/config';
 import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
 import { log } from '../lib/log';
 

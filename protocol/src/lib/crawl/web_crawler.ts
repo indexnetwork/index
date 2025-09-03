@@ -3,7 +3,7 @@ import { URL } from 'url';
 import { log } from '../../lib/log';
 import type { IntegrationFile } from '../../lib/integrations';
 import { concurrencyLimit } from '../../lib/integrations/core/util';
-import { config } from '../config';
+import { config } from './config';
 
 // Per-link overrides removed; crawler now uses global defaults
 
