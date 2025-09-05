@@ -1,0 +1,62 @@
+[
+  {
+    "name": "x.com tweet (freeCodeCamp)",
+    "url": "https://x.com/freeCodeCamp/status/1963331551787147610",
+    "category": "social",
+    "strict": true,
+    "expect": {
+      "minChars": 30
+    }
+  },
+  {
+    "name": "YouTube watch (example video)",
+    "url": "https://www.youtube.com/watch?v=XGmZFNG-qQQ",
+    "category": "video",
+    "strict": false,
+    "expect": {
+      "minChars": 50
+    }
+  },
+  {
+    "name": "Generic article (example)",
+    "url": "https://www.example.com/",
+    "category": "generic",
+    "strict": false,
+    "expect": {
+      "minChars": 50
+    }
+  },
+  {
+    "name": "Google Docs (supply your public doc)",
+    "url": "https://docs.google.com/document/d/1DqlWF3WR4ooAT7PTNs48aZgH63_yGgfUX00i6drZbn4/preview",
+    "category": "doc",
+    "strict": false,
+    "disabled": false,
+    "expect": {
+      "minChars": 100,
+      "requireHeading": true
+    }
+  },
+  {
+    "name": "Google Sheets (published view)",
+    "url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit?gid=0#gid=0",
+    "category": "sheet",
+    "strict": false,
+    "disabled": false,
+    "expect": {
+      "minChars": 50,
+      "requireTable": true
+    }
+  },
+  {
+    "name": "Notion public page (supply)",
+    "url": "https://fankhauser.notion.site/Ethereum-a7954111bcf6444abd03b2f105ad9dd0",
+    "category": "doc",
+    "strict": false,
+    "disabled": false,
+    "expect": {
+      "minChars": 80,
+      "requireHeading": true
+    }
+  }
+]
