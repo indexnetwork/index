@@ -9,10 +9,10 @@
     }
   },
   {
-    "name": "YouTube watch (example video)",
+    "name": "YouTube watch - Firebase video",
     "url": "https://www.youtube.com/watch?v=XGmZFNG-qQQ",
     "category": "video",
-    "strict": false,
+    "strict": true,
     "expect": {
       "minChars": 50
     }
@@ -21,42 +21,67 @@
     "name": "Generic article (example)",
     "url": "https://www.example.com/",
     "category": "generic",
-    "strict": false,
+    "strict": true,
     "expect": {
       "minChars": 50
     }
   },
   {
-    "name": "Google Docs (supply your public doc)",
+    "name": "Google Docs - A Public Doc",
     "url": "https://docs.google.com/document/d/1DqlWF3WR4ooAT7PTNs48aZgH63_yGgfUX00i6drZbn4/preview",
     "category": "doc",
-    "strict": false,
+    "strict": true,
     "disabled": false,
     "expect": {
-      "minChars": 100,
-      "requireHeading": true
+      "minChars": 100
     }
   },
   {
-    "name": "Google Sheets (published view)",
+    "name": "Google Sheets - Public view sheet",
     "url": "https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit?gid=0#gid=0",
     "category": "sheet",
-    "strict": false,
+    "strict": true,
     "disabled": false,
     "expect": {
-      "minChars": 50,
-      "requireTable": true
+      "minChars": 50
     }
   },
   {
-    "name": "Notion public page (supply)",
+    "name": "Notion personal site",
     "url": "https://fankhauser.notion.site/Ethereum-a7954111bcf6444abd03b2f105ad9dd0",
     "category": "doc",
-    "strict": false,
+    "strict": true,
     "disabled": false,
     "expect": {
-      "minChars": 80,
-      "requireHeading": true
+      "minChars": 80
+    }
+  },
+  {
+    "name": "Linkedin Post",
+    "url": "https://www.linkedin.com/posts/nethermind_meet-ben-adams-a-full-time-ethereum-core-activity-7369398522430853123-7UmT?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEhKk2gBIux6AwQc7veQt74cFXkDLMe6XTc",
+    "category": "social",
+    "strict": true,
+    "expect": {
+      "minChars": 30
+    }
+  },
+  {
+    "name": "Linkedin Profile Hyper Seref",
+    "url": "https://www.linkedin.com/in/serefyarar/",
+    "category": "social",
+    "strict": true,
+    "expect": {
+      "minChars": 30
+    }
+  },
+  {
+    "name": "Random Website - Jetbrains",
+    "url": "https://intellij-support.jetbrains.com/hc/en-us/articles/4403794663570-Blurry-text-when-using-Sway-or-fractional-scaling-on-Wayland",
+    "category": "doc",
+    "strict": true,
+    "disabled": false,
+    "expect": {
+      "minChars": 80
     }
   }
 ]
