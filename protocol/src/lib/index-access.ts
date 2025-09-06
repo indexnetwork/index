@@ -2,7 +2,6 @@ import db from './db';
 import { indexes, indexMembers } from './schema';
 import { eq, isNull, and, sql, or } from 'drizzle-orm';
 
-// Special UUID for "everyone" public access
 export const EVERYONE_USER_ID = '00000000-0000-0000-0000-000000000000';
 
 export interface IndexAccessResult {
@@ -20,33 +19,45 @@ export interface IndexAccessResult {
   memberPermissions?: string[];
 }
 
-export const checkIndexAccess = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
-  const index = await db.select({
-    id: indexes.id,
-    userId: indexes.userId,
-    linkPermissions: indexes.linkPermissions
-  }).from(indexes)
-    .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
-    .limit(1);
+// Core function that handles all access patterns
+export async function getIndexWithPermissions(
+  selector: { id: string } | { code: string },
+  userId?: string
+): Promise<IndexAccessResult> {
+  // Get index
+  const query = 'id' in selector 
+    ? and(eq(indexes.id, selector.id), isNull(indexes.deletedAt))
+    : and(isNull(indexes.deletedAt), sql`${indexes.linkPermissions}->>'code' = ${selector.code}`);
+    
+  const [index] = await db.select().from(indexes).where(query).limit(1);
+  if (!index) return { hasAccess: false, error: 'Index not found', status: 404 };
 
-  if (index.length === 0) {
-    return { hasAccess: false, error: 'Index not found', status: 404 };
+  // Code-based access
+  if ('code' in selector) {
+    const permissions = index.linkPermissions?.permissions || [];
+    if (permissions.length === 0) {
+      return { hasAccess: false, error: 'Share link has no permissions', status: 403 };
+    }
+    return { hasAccess: true, indexData: index, memberPermissions: permissions };
   }
 
-  const indexData = index[0];
+  // User-based access
+  if (!userId) return { hasAccess: false, error: 'Auth required', status: 401 };
   
-  // Owner always has access
-  if (indexData.userId === userId) {
-    return { hasAccess: true, indexData, memberPermissions: ['can-write', 'can-read', 'can-view-files', 'can-discover', 'can-write-intents'] };
+  // Owner access
+  if (index.userId === userId) {
+    return { 
+      hasAccess: true, 
+      indexData: index, 
+      memberPermissions: ['can-write', 'can-read', 'can-view-files', 'can-discover', 'can-write-intents'] 
+    };
   }
 
-  // Check if user is a member OR if "everyone" has permissions
-  const membership = await db.select({ 
-    userId: indexMembers.userId,
-    permissions: indexMembers.permissions 
-  }).from(indexMembers)
+  // Member access
+  const membership = await db.select({ permissions: indexMembers.permissions })
+    .from(indexMembers)
     .where(and(
-      eq(indexMembers.indexId, indexId), 
+      eq(indexMembers.indexId, index.id),
       or(eq(indexMembers.userId, userId), eq(indexMembers.userId, EVERYONE_USER_ID))
     ));
 
@@ -54,79 +65,19 @@ export const checkIndexAccess = async (indexId: string, userId: string): Promise
     return { hasAccess: false, error: 'Access denied', status: 403 };
   }
 
-  // Combine user permissions with "everyone" permissions
-  const userMembership = membership.find(m => m.userId === userId);
-  const everyoneMembership = membership.find(m => m.userId === EVERYONE_USER_ID);
-  
-  const combinedPermissions = [
-    ...(userMembership?.permissions || []),
-    ...(everyoneMembership?.permissions || [])
-  ];
-  
-  // Remove duplicates
-  const uniquePermissions = [...new Set(combinedPermissions)];
+  const permissions = [...new Set(membership.flatMap(m => m.permissions || []))];
+  return { hasAccess: true, indexData: index, memberPermissions: permissions };
+}
 
-  return { 
-    hasAccess: true, 
-    indexData, 
-    memberPermissions: uniquePermissions 
-  };
-};
+export const checkIndexAccess = (indexId: string, userId: string) => 
+  getIndexWithPermissions({ id: indexId }, userId);
 
 export const checkIndexOwnership = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
-  const index = await db.select({ 
-    id: indexes.id, 
-    userId: indexes.userId,
-    linkPermissions: indexes.linkPermissions
-  }).from(indexes)
-    .where(and(eq(indexes.id, indexId), isNull(indexes.deletedAt)))
-    .limit(1);
-
-  if (index.length === 0) {
-    return { hasAccess: false, error: 'Index not found', status: 404 };
-  }
-
-  if (index[0].userId !== userId) {
+  const result = await getIndexWithPermissions({ id: indexId }, userId);
+  if (!result.hasAccess || result.indexData?.userId !== userId) {
     return { hasAccess: false, error: 'Access denied', status: 403 };
   }
-
-  return { 
-    hasAccess: true, 
-    indexData: { 
-      ...index[0], 
-      linkPermissions: index[0].linkPermissions
-    } 
-  };
-};
-
-export const checkIndexAccessByCode = async (code: string): Promise<IndexAccessResult> => {
-  // Use SQL JSON operator to find index by code efficiently
-  const index = await db.select({
-    id: indexes.id,
-    userId: indexes.userId,
-    linkPermissions: indexes.linkPermissions
-  }).from(indexes)
-    .where(and(
-      isNull(indexes.deletedAt),
-      sql`${indexes.linkPermissions}->>'code' = ${code}`
-    ))
-    .limit(1);
-
-  if (index.length === 0) {
-    return { hasAccess: false, error: 'Invalid share code', status: 404 };
-  }
-
-  const indexData = index[0];
-
-  if (!indexData.linkPermissions || indexData.linkPermissions.permissions.length === 0) {
-    return { hasAccess: false, error: 'Share link has no permissions', status: 403 };
-  }
-
-  return { 
-    hasAccess: true, 
-    indexData, 
-    memberPermissions: indexData.linkPermissions.permissions 
-  };
+  return result;
 };
 
 export interface MultipleIndexAccessResult {
@@ -136,109 +87,98 @@ export interface MultipleIndexAccessResult {
   error?: string;
 }
 
-/**
- * Check if user has write access to a single index
- */
-export const checkIndexWriteAccess = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
-  const accessCheck = await checkIndexAccess(indexId, userId);
-  console.log('accessCheck', accessCheck);
-  if (!accessCheck.hasAccess) {
-    return accessCheck;
-  }
+// Helper to check specific permissions
+const hasPermissions = (userPermissions: string[] = [], required: string[]): boolean =>
+  required.some(p => userPermissions.includes(p));
 
-  if (!accessCheck.memberPermissions?.includes('can-write')) {
-    return { 
-      hasAccess: false, 
-      error: 'Write access denied', 
-      status: 403,
-      indexData: accessCheck.indexData
-    };
-  }
-
-  return accessCheck;
-};
-
-/**
- * Check if user has intent write access to a single index
- */
 export const checkIndexIntentWriteAccess = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
-  const accessCheck = await checkIndexAccess(indexId, userId);
-  if (!accessCheck.hasAccess) {
-    return accessCheck;
+  const result = await checkIndexAccess(indexId, userId);
+  if (!result.hasAccess) return result;
+
+  const canWrite = hasPermissions(result.memberPermissions, ['can-write', 'can-write-intents']);
+  if (!canWrite) {
+    return { hasAccess: false, error: 'Intent write access denied', status: 403, indexData: result.indexData };
   }
-
-  // Check for either general write access or specific intent write access
-  const hasWriteAccess = accessCheck.memberPermissions?.includes('can-write') || 
-                        accessCheck.memberPermissions?.includes('can-write-intents');
-
-  if (!hasWriteAccess) {
-    return { 
-      hasAccess: false, 
-      error: 'Intent write access denied', 
-      status: 403,
-      indexData: accessCheck.indexData
-    };
-  }
-
-  return accessCheck;
+  return result;
 };
 
-/**
- * Check if user has write access to multiple indexes
- * Returns lists of valid and invalid index IDs
- */
-export const checkMultipleIndexesWriteAccess = async (indexIds: string[], userId: string): Promise<MultipleIndexAccessResult> => {
-  if (indexIds.length === 0) {
-    return { hasAccess: true, validIndexIds: [], invalidIds: [] };
-  }
+// Generic bulk access checker
+async function checkBulkAccess(
+  indexIds: string[], 
+  userId: string, 
+  checkFn: (id: string, userId: string) => Promise<IndexAccessResult>,
+  errorMsg: string
+): Promise<MultipleIndexAccessResult> {
+  if (indexIds.length === 0) return { hasAccess: true, validIndexIds: [], invalidIds: [] };
 
-  const validIndexIds: string[] = [];
-  const invalidIds: string[] = [];
+  const results = await Promise.all(indexIds.map(async id => ({ 
+    id, 
+    result: await checkFn(id, userId) 
+  })));
 
-  for (const indexId of indexIds) {
-    const accessCheck = await checkIndexWriteAccess(indexId, userId);
-
-    if (accessCheck.hasAccess) {
-      validIndexIds.push(indexId);
-    } else {
-      invalidIds.push(indexId);
-    }
-  }
+  const validIndexIds = results.filter(r => r.result.hasAccess).map(r => r.id);
+  const invalidIds = results.filter(r => !r.result.hasAccess).map(r => r.id);
 
   return {
     hasAccess: invalidIds.length === 0,
     validIndexIds,
     invalidIds,
-    error: invalidIds.length > 0 ? 'Some index IDs are invalid or you don\'t have write access to them' : undefined
+    error: invalidIds.length > 0 ? errorMsg : undefined
   };
+}
+
+export const checkMultipleIndexesIntentWriteAccess = (indexIds: string[], userId: string) =>
+  checkBulkAccess(indexIds, userId, checkIndexIntentWriteAccess, 'Some index IDs are invalid or you don\'t have intent write access to them');
+
+export const checkMultipleIndexesReadAccess = async (indexIds: string[], userId: string): Promise<MultipleIndexAccessResult> => {
+  const readCheckFn = async (id: string, userId: string) => {
+    const result = await checkIndexAccess(id, userId);
+    if (!result.hasAccess) return result;
+    
+    const canRead = hasPermissions(result.memberPermissions, ['can-read', 'can-write', 'can-write-intents', 'can-discover']);
+    return canRead ? result : { hasAccess: false, error: 'Read access denied', status: 403 };
+  };
+
+  return checkBulkAccess(indexIds, userId, readCheckFn, 'Some index IDs are invalid or you don\'t have read access to them');
 };
 
-/**
- * Check if user has intent write access to multiple indexes
- * Returns lists of valid and invalid index IDs
- */
-export const checkMultipleIndexesIntentWriteAccess = async (indexIds: string[], userId: string): Promise<MultipleIndexAccessResult> => {
-  if (indexIds.length === 0) {
-    return { hasAccess: true, validIndexIds: [], invalidIds: [] };
+export const getUserAccessibleIndexIds = async (userId: string): Promise<string[]> => {
+  const [owned, member] = await Promise.all([
+    db.select({ id: indexes.id })
+      .from(indexes)
+      .where(and(eq(indexes.userId, userId), isNull(indexes.deletedAt))),
+    db.select({ indexId: indexMembers.indexId })
+      .from(indexMembers)
+      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+      .where(and(
+        or(eq(indexMembers.userId, userId), eq(indexMembers.userId, EVERYONE_USER_ID)),
+        isNull(indexes.deletedAt)
+      ))
+  ]);
+
+  return [...new Set([...owned.map(i => i.id), ...member.map(i => i.indexId)])];
+};
+
+export async function validateAndGetAccessibleIndexIds(
+  requestingUserId: string,
+  requestedIndexIds?: string[]
+): Promise<{
+  validIndexIds: string[];
+  error?: { status: number; message: string; invalidIds?: string[] };
+}> {
+  if (!requestedIndexIds?.length) {
+    return { validIndexIds: await getUserAccessibleIndexIds(requestingUserId) };
   }
 
-  const validIndexIds: string[] = [];
-  const invalidIds: string[] = [];
-
-  for (const indexId of indexIds) {
-    const accessCheck = await checkIndexIntentWriteAccess(indexId, userId);
-
-    if (accessCheck.hasAccess) {
-      validIndexIds.push(indexId);
-    } else {
-      invalidIds.push(indexId);
-    }
-  }
-
-  return {
-    hasAccess: invalidIds.length === 0,
-    validIndexIds,
-    invalidIds,
-    error: invalidIds.length > 0 ? 'Some index IDs are invalid or you don\'t have intent write access to them' : undefined
-  };
-}; 
+  const accessCheck = await checkMultipleIndexesReadAccess(requestedIndexIds, requestingUserId);
+  return accessCheck.hasAccess 
+    ? { validIndexIds: accessCheck.validIndexIds }
+    : {
+        validIndexIds: [],
+        error: {
+          status: 403,
+          message: accessCheck.error || 'Access denied to some indexes',
+          invalidIds: accessCheck.invalidIds
+        }
+      };
+} 

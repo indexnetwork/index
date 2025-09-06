@@ -1,6 +1,7 @@
 import db from '../../lib/db';
 import { intents, intentStakes, type IntentStake, agents, intentIndexes } from '../../lib/schema';
 import { eq, or, desc, like, sql, and, ne, isNull, inArray } from 'drizzle-orm';
+import { getAccessibleIntents } from '../../lib/intent-access';
 
 export abstract class BaseContextBroker {
   protected db = db;
@@ -60,49 +61,14 @@ export abstract class BaseContextBroker {
       return [];
     }
 
-    // Use provided indexIds or get all indexes that the current intent belongs to
-    let indexIds: string[];
-    if (targetIndexIds && targetIndexIds.length > 0) {
-      indexIds = targetIndexIds;
-    } else {
-      const currentIntentIndexes = await this.db.select({ indexId: intentIndexes.indexId })
-        .from(intentIndexes)
-        .where(eq(intentIndexes.intentId, intentId));
-      
-      indexIds = currentIntentIndexes.map(i => i.indexId);
-      
-      if (indexIds.length === 0) {
-        return [];
-      }
-    }
-    
-    // Build conditions
-    const conditions = [
-      ne(intents.id, intentId),
-      eq(intents.isIncognito, false),
-      isNull(intents.archivedAt),
-      inArray(intentIndexes.indexId, indexIds)
-    ];
+    // Use generic function to get accessible intents
+    const result = await getAccessibleIntents(currentIntent.userId, {
+      indexIds: targetIndexIds,
+      includeOwnIntents: !excludeCurrentUser
+    });
 
-    // Optionally exclude intents from the same user
-    if (excludeCurrentUser) {
-      conditions.push(ne(intents.userId, currentIntent.userId));
-    }
-    
-    // Get all other intents that belong to the same indexes
-    return this.db.select({
-        id: intents.id,
-        payload: intents.payload,
-        summary: intents.summary,
-        isIncognito: intents.isIncognito,
-        createdAt: intents.createdAt,
-        updatedAt: intents.updatedAt,
-        archivedAt: intents.archivedAt,
-        userId: intents.userId
-      })
-      .from(intents)
-      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-      .where(and(...conditions));
+    // Filter out the current intent itself
+    return result.intents.filter(intent => intent.id !== intentId);
   }
 
   /**

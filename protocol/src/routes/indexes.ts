@@ -1,10 +1,10 @@
 import { Router, Response, Request } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { indexes, users, files, indexMembers, intentIndexes, intents } from '../lib/schema';
+import { indexes, users, files, indexMembers, intentIndexes, intents, intentStakes, agents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists } from 'drizzle-orm';
-import { checkIndexAccess, checkIndexOwnership, checkIndexAccessByCode } from '../lib/index-access';
+import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists, sql } from 'drizzle-orm';
+import { checkIndexAccess, checkIndexOwnership, getIndexWithPermissions } from '../lib/index-access';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
 import crypto from 'crypto';
@@ -793,7 +793,7 @@ router.get('/share/:code',
 
       const { code } = req.params;
 
-      const accessCheck = await checkIndexAccessByCode(code);
+      const accessCheck = await getIndexWithPermissions({ code });
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
@@ -950,7 +950,7 @@ router.post('/share/:code/intents',
       const { payload, isIncognito = false } = req.body;
 
       // Check access to the shared index
-      const accessCheck = await checkIndexAccessByCode(code);
+      const accessCheck = await getIndexWithPermissions({ code });
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }

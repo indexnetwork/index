@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import db from '../lib/db';
 import { intents, users, intentIndexes } from '../lib/schema';
 import { eq } from 'drizzle-orm';
-import { checkIndexAccessByCode } from '../lib/index-access';
+import { getIndexWithPermissions } from '../lib/index-access';
 import { vibeCheck } from '../agents/external/vibe_checker_text';
 import { processUploadedFiles } from '../lib/file-processing';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
@@ -100,7 +100,7 @@ setInterval(cleanupOldTempFiles, 60 * 60 * 1000);
 // Separate function to handle vibe check logic
 const performVibeCheck = async (uploadedFiles: Express.Multer.File[], code: string, payloadText?: string) => {
   // Check access to the shared index
-  const accessCheck = await checkIndexAccessByCode(code);
+  const accessCheck = await getIndexWithPermissions({ code });
   if (!accessCheck.hasAccess) {
     return {
       success: false,
