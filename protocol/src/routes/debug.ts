@@ -22,7 +22,7 @@ Request:{
 }
 Response:{
     "debugUserId": "7c3ca3cf-048f-43e9-bf47-65f03a6333d8",
-    "pairedStakes": [
+    "results": [
         {
             "userId": "b8c3e467-4f65-44e9-9ed8-bdf749b46dc4",
             "totalStake": "100",
@@ -93,11 +93,17 @@ router.post("/discover", async (req, res: Response) => {
     // Sum up all stake amounts for this user
     totalStake: sql<number>`SUM(${intentStakes.stake})`,
     // Collect all reasoning strings into an array
-    reasonings: sql<string[]>`ARRAY_AGG(${intentStakes.reasoning})`,
-    // Collect all individual stake amounts into an array
-    stakeAmounts: sql<number[]>`ARRAY_AGG(${intentStakes.stake})`,
-    // Collect the authenticated user's intents from each stake
-    userIntents: sql<string[]>`ARRAY_AGG(DISTINCT intentId.id::text)`,
+    stakes: sql<any[]>`ARRAY_AGG(
+      jsonb_build_object(
+        'reasoning', ${intentStakes.reasoning},
+        'stake', ${intentStakes.stake},
+        'intent', jsonb_build_object(
+          'id', intentId.id,
+          'payload', ${intents.payload}, 
+          'createdAt', ${intents.createdAt}
+        )
+      )
+    )`,
   })
   .from(intentStakes)
   // Explode the stake.intents array into individual rows for filtering
@@ -159,7 +165,7 @@ router.post("/discover", async (req, res: Response) => {
 
     return res.json({
       debugUserId: DEBUG_USER_ID,
-      pairedStakes: results,
+      results,
       pagination: {
         page: page,
         limit: limit,
