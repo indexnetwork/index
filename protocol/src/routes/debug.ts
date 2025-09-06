@@ -5,6 +5,58 @@ import { users, intents, intentStakes, intentIndexes } from '../lib/schema';
 
 const router = Router();
 
+/*
+Request:{
+    "userIds": [
+        "b8c3e467-4f65-44e9-9ed8-bdf749b46dc4" // seref's intents limited with userIds
+    ],
+    "indexIds": [
+        "5a338a89-4fc4-48d7-999e-2069ef9ee267" // seref's intents in indexIds
+    ],
+    "intentIds": [
+        "0a31709f-4120-46c5-9a30-aa94891aa378" // seref's specific intents
+    ],
+    "userId": "7c3ca3cf-048f-43e9-bf47-65f03a6333d8",  // seref
+    "page" : 1,
+    "limit": 50
+}
+Response:{
+    "debugUserId": "7c3ca3cf-048f-43e9-bf47-65f03a6333d8",
+    "pairedStakes": [
+        {
+            "userId": "b8c3e467-4f65-44e9-9ed8-bdf749b46dc4",
+            "totalStake": "100",
+            "reasonings": [
+                "These two intents are related because they are identical, both expressing a desire to collaborate with UX designers and researchers to explore the implications of AI-driven user interfaces on user experience design."
+            ],
+            "stakeAmounts": [
+                "100"
+            ],
+            "userIntents": [
+                "0a31709f-4120-46c5-9a30-aa94891aa378"
+            ]
+        }
+    ],
+    "pagination": {
+        "page": 1,
+        "limit": 50,
+        "hasNext": false,
+        "hasPrev": false
+    },
+    "filters": {
+        "intentIds": [
+            "0a31709f-4120-46c5-9a30-aa94891aa378"
+        ],
+        "userIds": [
+            "b8c3e467-4f65-44e9-9ed8-bdf749b46dc4"
+        ],
+        "indexIds": [
+            "5a338a89-4fc4-48d7-999e-2069ef9ee267"
+        ]
+    }
+}    
+*/
+
 // 🚀 Route: Get paired users' staked intents
 router.post("/discover", async (req, res: Response) => {
   try {
@@ -30,6 +82,10 @@ router.post("/discover", async (req, res: Response) => {
  // .innerJoin(intentIndexes, eq(intentIndexes.intentId, intents.id))
   .where(eq(intents.userId, DEBUG_USER_ID));
 
+    // Extract the intent IDs for easier use in the main query
+    const userIntentIds = await authenticatedUserIntents;
+    const intentIdArray = userIntentIds.map(row => row.intentId);
+
   const mainQuery = db
   .select({
     // Get the user ID who has staked
@@ -40,6 +96,8 @@ router.post("/discover", async (req, res: Response) => {
     reasonings: sql<string[]>`ARRAY_AGG(${intentStakes.reasoning})`,
     // Collect all individual stake amounts into an array
     stakeAmounts: sql<number[]>`ARRAY_AGG(${intentStakes.stake})`,
+    // Collect the authenticated user's intents from each stake
+    userIntents: sql<string[]>`ARRAY_AGG(DISTINCT intentId.id::text)`,
   })
   .from(intentStakes)
   // Explode the stake.intents array into individual rows for filtering
@@ -56,16 +114,16 @@ router.post("/discover", async (req, res: Response) => {
   .where(
     and(
       //Only stakes that contain authenticated user's intents
-      sql`${intentStakes.intents}::uuid[] && ARRAY(${authenticatedUserIntents})`,
+      intentIdArray.length > 0 ? sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(intentIdArray.map(id => sql`${id}`), sql`, `)}]::uuid[]` : sql`FALSE`,
 
       // External intent-ids filter (must be authenticated user's intents)
       ...(intentIds && intentIds.length > 0 ? [
-        sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(intentIds, sql`, `)}]::uuid[]`
+        sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(intentIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[]`
       ] : []),
 
       // External user-ids filter (for vibecheck)
       ...(userIds && userIds.length > 0 ? [
-        sql`${intents.userId} = ANY(ARRAY[${sql.join(userIds, sql`, `)}]::uuid[])`
+        sql`${intents.userId} = ANY(ARRAY[${sql.join(userIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
       ] : []),
 
       // External index-ids filter (must be authenticated user's indexes)
@@ -74,7 +132,7 @@ router.post("/discover", async (req, res: Response) => {
           SELECT 1
           FROM ${intentIndexes} ii_filter
           WHERE ii_filter.intent_id = ANY(${intentStakes.intents}::uuid[])
-          AND ii_filter.index_id = ANY(ARRAY[${sql.join(indexIds, sql`, `)}]::uuid[])
+          AND ii_filter.index_id = ANY(ARRAY[${sql.join(indexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])
         )`
       ] : []),
 
