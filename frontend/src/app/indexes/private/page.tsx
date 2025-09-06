@@ -5,6 +5,8 @@ import Link from "next/link";
 import ClientLayout from "@/components/ClientLayout";
 import { Google, Notion } from "@lobehub/icons";
 import { useAPI } from "@/contexts/APIContext";
+import { useAuthenticatedAPI } from "@/lib/api";
+import { createSyncService, type SyncRun } from "@/services/sync";
 import { useEffect, useState, useCallback } from "react";
 import { Integration } from "@/services/integrations";
 
@@ -22,6 +24,9 @@ export default function PrivateIndexPage() {
   const [connectingIntegration, setConnectingIntegration] = useState<string | null>(null);
   const [connectionStatuses, setConnectionStatuses] = useState<Record<string, string>>({});
   const [syncingIntegration, setSyncingIntegration] = useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = useState<Record<string, { status?: string; completed?: number; total?: number }>>({});
+  const api = useAuthenticatedAPI();
+  const syncService = createSyncService(api);
 
   const integrationConfigs: IntegrationConfig[] = [
     {
@@ -165,19 +170,41 @@ export default function PrivateIndexPage() {
   const handleSync = async (integrationType: string) => {
     try {
       setSyncingIntegration(integrationType);
-      const result = await integrationsService.syncIntegration(integrationType);
-      
-      if (result.success) {
-        console.log(`Sync complete: ${result.filesImported} files, ${result.intentsGenerated} intents`);
-        // Refresh integrations to get updated lastSyncAt
-        await loadIntegrations();
-      } else {
-        console.error('Sync failed:', result.error);
-      }
+      // enqueue async run
+      const enq = await integrationsService.syncIntegration(integrationType);
+      const runId = (enq as any).runId as string;
+      if (!runId) throw new Error('Failed to enqueue sync');
+      setSyncProgress(prev => ({ ...prev, [integrationType]: { status: 'queued' } }));
+      const started = Date.now();
+      let stopped = false;
+      const poll = async () => {
+        if (stopped) return;
+        try {
+          const data = await syncService.getRun(runId);
+          const run = data.run as SyncRun;
+          const { progress, stats, status } = run;
+          setSyncProgress(prev => ({ ...prev, [integrationType]: { status, completed: progress?.completed, total: progress?.total } }));
+          if (status === 'succeeded') {
+            await loadIntegrations();
+            stopped = true;
+            setSyncingIntegration(null);
+            return;
+          }
+          if (status === 'failed') {
+            stopped = true;
+            setSyncingIntegration(null);
+            return;
+          }
+        } catch (e) {
+          // keep polling a few times even if errors
+        }
+        setTimeout(poll, 1000);
+      };
+      poll();
     } catch (error) {
       console.error('Failed to sync integration:', error);
     } finally {
-      setSyncingIntegration(null);
+      // keep spinner controlled by poller
     }
   };
 
@@ -276,9 +303,9 @@ export default function PrivateIndexPage() {
                       Connecting...
                     </span>
                   )}
-                  {syncingIntegration === config.id && (
+                  {syncProgress[config.id]?.status && (
                     <span className="px-2 py-0.5 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-full">
-                      Syncing...
+                      {syncProgress[config.id]?.status === 'queued' ? 'Queued…' : syncProgress[config.id]?.status === 'running' ? `Running ${syncProgress[config.id]?.completed ?? 0}/${syncProgress[config.id]?.total ?? 0}` : syncProgress[config.id]?.status}
                     </span>
                   )}
                 </div>

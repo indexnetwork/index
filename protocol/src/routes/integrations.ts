@@ -5,7 +5,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
 import { userIntegrations } from '../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
-import { syncIntegration } from '../lib/integrations/core/integration-sync';
+import { enqueue } from '../lib/sync/queue';
 
 const router = Router();
 
@@ -289,13 +289,21 @@ router.post('/sync/:integrationType',
       const integrationType = req.params.integrationType;
       const { indexId } = req.body;
 
-      const result = await syncIntegration(userId, integrationType, indexId);
-
-      if (!result.success) {
-        return res.status(400).json({ error: result.error });
+      // Map integrationType to sync provider names (same slug here)
+      const provider = integrationType as any;
+      try {
+        const runId = await enqueue(provider, userId, { indexId });
+        return res.status(202).json({
+          runId,
+          success: true,
+          status: 'queued',
+          filesImported: 0,
+          intentsGenerated: 0,
+          message: 'Sync queued; polling run status.'
+        });
+      } catch (e: any) {
+        return res.status(400).json({ error: e?.message || 'Failed to enqueue integration sync' });
       }
-
-      return res.json(result);
     } catch (error) {
       log.error('Sync integration error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to sync integration' });

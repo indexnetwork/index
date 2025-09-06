@@ -191,6 +191,7 @@ export const indexLinks = pgTable('index_links', {
   id: uuid('id').primaryKey().defaultRandom(),
   indexId: uuid('index_id').notNull().references(() => indexes.id, { onDelete: 'cascade' }),
   url: text('url').notNull(),
+  lastContentHash: text('last_content_hash'),
   lastSyncAt: timestamp('last_sync_at'),
   lastStatus: text('last_status'),
   lastError: text('last_error'),
@@ -238,4 +239,41 @@ export type NewFile = typeof files.$inferInsert;
 export type IntentStake = typeof intentStakes.$inferSelect;
 export type NewIntentStake = typeof intentStakes.$inferInsert;
 export type UserConnectionEvent = typeof userConnectionEvents.$inferSelect;
+
+// Unified Sync tables
+export const syncRuns = pgTable('sync_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  provider: varchar('provider', { length: 50 }).notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('queued'),
+  params: json('params').$type<Record<string, any>>().default({}),
+  progress: json('progress').$type<{ total?: number; completed?: number; notes?: string[] } | null>().default(null),
+  stats: json('stats').$type<Record<string, any> | null>().default(null),
+  error: text('error'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  startedAt: timestamp('started_at'),
+  finishedAt: timestamp('finished_at'),
+});
+
+export const syncRunItems = pgTable('sync_run_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references(() => syncRuns.id, { onDelete: 'cascade' }),
+  externalId: text('external_id').notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('pending'),
+  error: text('error'),
+  meta: json('meta').$type<Record<string, any> | null>().default(null),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export const providerCursors = pgTable('provider_cursors', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id),
+  provider: varchar('provider', { length: 50 }).notNull(),
+  cursor: json('cursor').$type<Record<string, any> | null>().default(null),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+export type SyncRun = typeof syncRuns.$inferSelect;
+export type NewSyncRun = typeof syncRuns.$inferInsert;
 export type NewUserConnectionEvent = typeof userConnectionEvents.$inferInsert;

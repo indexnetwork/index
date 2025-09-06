@@ -10,7 +10,8 @@
     "test:crawl4ai": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./tests/crawl4ai.smoke.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "sync-all": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/sync-all.ts"
   },
   "dependencies": {
     "@composio/core": "^0.1.44",
@@ -36,6 +37,7 @@
     "openai": "^4.103.0",
     "postgres": "^3.4.7",
     "resend": "^4.0.1",
+    "p-queue": "^7.4.1",
     "tiktoken": "^1.0.21",
     "unstructured-client": "0.24.1",
     "uuid": "^11.1.0",

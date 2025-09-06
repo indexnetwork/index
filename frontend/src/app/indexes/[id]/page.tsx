@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, use, useRef } from "react";
+import { useState, useEffect, useCallback, use, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical } from "lucide-react";
@@ -10,6 +10,8 @@ import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 
 import Link from "next/link";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
+import { useAuthenticatedAPI } from "@/lib/api";
+import { createSyncService, type SyncRun } from "@/services/sync";
 import { Index, Intent } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from "@privy-io/react-auth";
@@ -66,6 +68,9 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [addingLink, setAddingLink] = useState(false);
   const [syncingLinks, setSyncingLinks] = useState(false);
   const [lastSyncSummary, setLastSyncSummary] = useState<string>("");
+  const [syncProgress, setSyncProgress] = useState<{ completed?: number; total?: number; status?: string } | null>(null);
+  const api = useAuthenticatedAPI();
+  const syncService = useMemo(() => createSyncService(api), [api]);
 
   const fetchLinks = useCallback(async () => {
     try {
@@ -315,13 +320,53 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const handleSyncLinks = async () => {
     try {
       setSyncingLinks(true);
+      setLastSyncSummary("Queued…");
+      setSyncProgress({ status: 'queued' });
       const res = await indexesService.syncIndexLinks(resolvedParams.id, { skipBrokers: true });
-      setLastSyncSummary(`Synced: pages=${res.pagesVisited}, files=${res.filesImported}, intents=${res.intentsGenerated}, ${Math.round(res.durationMs)}ms`);
-      await fetchLinks();
-      await fetchIndexIntents();
+      const runId = (res as any).runId as string;
+      if (!runId) {
+        setLastSyncSummary("Failed to enqueue sync");
+        setSyncingLinks(false);
+        return;
+      }
+      // Poll for status (SSE alternative)
+      const start = Date.now();
+      let stop = false;
+      const poll = async () => {
+        if (stop) return;
+        try {
+          const data = await syncService.getRun(runId);
+          const run = data.run as SyncRun;
+          const { progress, stats, status } = run;
+          if (progress && (progress.completed !== undefined || progress.total !== undefined)) {
+            setSyncProgress({ completed: progress.completed, total: progress.total, status });
+            setLastSyncSummary(`${status === 'running' ? 'Running' : status}: ${progress.completed ?? 0}/${progress.total ?? 0}`);
+          } else {
+            setLastSyncSummary(`${status}`);
+          }
+          if (status === 'succeeded') {
+            const dur = Date.now() - start;
+            setLastSyncSummary(`Synced: pages=${stats?.pagesVisited ?? 0}, files=${stats?.filesImported ?? 0}, intents=${stats?.intentsGenerated ?? 0}, ${dur}ms`);
+            await fetchLinks();
+            await fetchIndexIntents();
+            setSyncProgress(null);
+            setSyncingLinks(false);
+            return;
+          }
+          if (status === 'failed') {
+            setLastSyncSummary(`Sync failed`);
+            setSyncProgress(null);
+            setSyncingLinks(false);
+            return;
+          }
+        } catch (err) {
+          console.error('Polling error:', err);
+        }
+        setTimeout(poll, 1000);
+      };
+      poll();
     } catch (e) {
       console.error('Error syncing links:', e);
-    } finally {
       setSyncingLinks(false);
     }
   };
@@ -617,7 +662,17 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             <h2 className="text-xl mt-2 font-semibold text-gray-900">Index Links</h2>
             <div className="flex items-center gap-2">
               {lastSyncSummary && (
-                <span className="text-xs text-gray-500">{lastSyncSummary}</span>
+                <span className="text-xs text-gray-500">
+                  {lastSyncSummary}
+                  {syncProgress && syncProgress.total ? (
+                    <>
+                      {" "}
+                      <span>
+                        ({syncProgress.completed ?? 0}/{syncProgress.total})
+                      </span>
+                    </>
+                  ) : null}
+                </span>
               )}
               <Button
                 variant="outline"
@@ -625,10 +680,25 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 disabled={syncingLinks}
                 className="border-black text-black hover:bg-gray-100"
               >
-                {syncingLinks ? 'Syncing…' : 'Sync now'}
+                {syncingLinks
+                  ? (syncProgress?.status === 'queued'
+                      ? 'Queued…'
+                      : syncProgress?.status === 'running'
+                        ? `Running ${syncProgress?.completed ?? 0}/${syncProgress?.total ?? 0}`
+                        : 'Syncing…')
+                  : 'Sync now'}
               </Button>
             </div>
           </div>
+
+          {syncProgress?.status === 'running' && (syncProgress?.total ?? 0) > 0 && (
+            <div className="w-full h-1 bg-gray-200 rounded overflow-hidden mb-3">
+              <div
+                className="h-full bg-black transition-all"
+                style={{ width: `${Math.min(100, Math.round(((syncProgress.completed ?? 0) / (syncProgress.total ?? 0)) * 100))}%` }}
+              />
+            </div>
+          )}
 
           <div className="flex gap-2 mb-3">
             <input
@@ -637,11 +707,18 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
               onChange={e => setLinkUrl(e.target.value)}
               placeholder="https://example.com/docs"
               className="flex-1 border border-black px-3 py-2 rounded text-sm text-black font-ibm-plex-mono"
+              disabled={addingLink || syncingLinks}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && linkUrl && !addingLink && !syncingLinks) {
+                  e.preventDefault();
+                  handleAddLink();
+                }
+              }}
             />
             <Button
               variant="outline"
               onClick={handleAddLink}
-              disabled={addingLink || !linkUrl}
+              disabled={addingLink || !linkUrl || syncingLinks}
               className="border-black text-black hover:bg-gray-100"
             >
               {addingLink ? 'Adding…' : 'Add link'}

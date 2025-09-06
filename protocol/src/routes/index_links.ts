@@ -1,18 +1,13 @@
 import { Router, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { indexLinks, intents, intentIndexes } from '../lib/schema';
+import { indexLinks } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { checkIndexAccess } from '../lib/index-access';
-import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
-import path from 'path';
-import fs from 'fs';
-import { analyzeFolder } from '../agents/core/intent_inferrer';
-import { summarizeIntent } from '../agents/core/intent_summarizer';
-import { config } from '../lib/crawl/config';
-import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
-import { log } from '../lib/log';
+// unified sync engine
+import { enqueue } from '../lib/sync/queue';
+ 
 
 const router = Router({ mergeParams: true });
 
@@ -180,99 +175,22 @@ router.post('/sync',
       const { indexId } = req.params;
       const access = await checkIndexAccess(indexId, req.user!.id);
       if (!access.hasAccess) return res.status(access.status!).json({ error: access.error });
-
-      const links = await db.select().from(indexLinks).where(eq(indexLinks.indexId, indexId));
-      if (links.length === 0) return res.json({ success: true, filesImported: 0, intentsGenerated: 0, links: 0 });
-
-      // Crawl with global defaults (config.webCrawl)
-      const urls = links.map(l => l.url);
-      const startedAt = Date.now();
-      const crawl = await crawlLinksForIndex(urls);
-
-      // Per-file processing (1 page -> 1 intent) with dedupe
-      const userId = req.user!.id;
-      const requestedCount = Number((req.query as any).count) || 1; // per page, cap to 1
+      // Enqueue async run using unified sync engine
       const skipBrokersQ = ((req.query as any).skipBrokers || '').toString().toLowerCase();
-      const skipBrokers = skipBrokersQ === '1' || skipBrokersQ === 'true' || !config.linksSync.triggerBrokers;
-
-      let intentsGenerated = 0;
-      let filesImported = 0;
-
-      // Create base temp dir
-      const baseTempDir = path.join(process.cwd(), 'temp-uploads', `links-${userId}-${Date.now()}`);
-      await fs.promises.mkdir(baseTempDir, { recursive: true });
-
-      // Existing intents for dedupe by payload (once per sync)
-      const existingIntentRows = await db.select({ payload: intents.payload })
-        .from(intents)
-        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-        .where(eq(intentIndexes.indexId, indexId));
-      const existingPayloads = new Set(existingIntentRows.map(r => r.payload));
-
-      for (const f of crawl.files) {
-        const meta = crawl.urlMap[f.id];
-        if (!meta) continue;
-        // Write one file
-        const tempDir = path.join(baseTempDir, f.id);
-        await fs.promises.mkdir(tempDir, { recursive: true });
-        await fs.promises.writeFile(path.join(tempDir, `${f.id}.md`), f.content);
-        filesImported += 1;
-
-        // Analyze just this page (count=1)
-        const result = await analyzeFolder(
-          tempDir,
-          [f.id],
-          `Generate intents based on content from ${meta.url}`,
-          Array.from(existingPayloads),
-          [],
-          Math.max(1, Math.min(1, requestedCount)),
-          60000
-        );
-
-        if (result.success && result.intents.length > 0) {
-          const intentData = result.intents[0];
-          if (existingPayloads.has(intentData.payload)) {
-            continue; // dedupe: already have this payload for the index
-          }
-          // Generate summary for better UI display
-          const summary = await summarizeIntent(intentData.payload);
-          const inserted = await db.insert(intents).values({
-            payload: intentData.payload,
-            summary: summary || intentData.payload.slice(0, 150),
-            userId,
-            isIncognito: false,
-          }).returning({ id: intents.id });
-          const intentId = inserted[0].id;
-          await db.insert(intentIndexes).values({ intentId, indexId });
-          existingPayloads.add(intentData.payload);
-
-          if (!skipBrokers) {
-            triggerBrokersOnIntentCreated(intentId).catch(() => void 0);
-          }
-          intentsGenerated += 1;
-        }
-      }
-
-      // Cleanup temp
-      await fs.promises.rm(baseTempDir, { recursive: true, force: true });
-
-      const finishedAt = Date.now();
-      const statusText = `ok: pages=${crawl.pagesVisited} files=${filesImported} intents=${intentsGenerated} duration=${finishedAt - startedAt}ms`;
-      for (const l of links) {
-        await db.update(indexLinks)
-          .set({ lastSyncAt: new Date(), lastStatus: statusText, lastError: null })
-          .where(eq(indexLinks.id, l.id));
-      }
-
-      // Structured log
-      log.info('links-sync', { indexId, pagesVisited: crawl.pagesVisited, filesImported, intentsGenerated, durationMs: finishedAt - startedAt });
-      return res.json({
+      const skipBrokers = skipBrokersQ === '1' || skipBrokersQ === 'true';
+      // Provide quick UX-friendly placeholder stats for compatibility
+      const links = await db.select().from(indexLinks).where(eq(indexLinks.indexId, indexId));
+      const runId = await enqueue('links', req.user!.id, { indexId, skipBrokers });
+      return res.status(202).json({
+        runId,
         success: true,
-        filesImported,
-        intentsGenerated,
+        status: 'queued',
         links: links.length,
-        pagesVisited: crawl.pagesVisited,
-        durationMs: finishedAt - startedAt,
+        filesImported: 0,
+        intentsGenerated: 0,
+        pagesVisited: 0,
+        durationMs: 0,
+        message: 'Sync queued; polling run status.'
       });
     } catch (err) {
       console.error('Sync index links error:', err);

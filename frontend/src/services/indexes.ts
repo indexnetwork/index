@@ -221,11 +221,34 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return res.link;
   },
 
-  syncIndexLinks: async (indexId: string, opts?: { skipBrokers?: boolean; count?: number }) => {
+  syncIndexLinks: async (
+    indexId: string,
+    opts?: { skipBrokers?: boolean; count?: number }
+  ): Promise<{
+    runId: string;
+    success: boolean;
+    status: string;
+    links: number;
+    filesImported: number;
+    intentsGenerated: number;
+    pagesVisited?: number;
+    durationMs?: number;
+    message?: string;
+  }> => {
     const params = new URLSearchParams();
     if (opts?.skipBrokers !== undefined) params.set('skipBrokers', String(opts.skipBrokers));
     if (opts?.count !== undefined) params.set('count', String(opts.count));
-    const res = await api.post<{ success: boolean; filesImported: number; intentsGenerated: number; links: number; pagesVisited: number; durationMs: number }>(`/indexes/${indexId}/links/sync${params.toString() ? `?${params.toString()}` : ''}`, {});
+    const res = await api.post<{
+      runId: string;
+      success: boolean;
+      status: string;
+      links: number;
+      filesImported: number;
+      intentsGenerated: number;
+      pagesVisited?: number;
+      durationMs?: number;
+      message?: string;
+    }>(`/indexes/${indexId}/links/sync${params.toString() ? `?${params.toString()}` : ''}`, {});
     return res;
   },
 
