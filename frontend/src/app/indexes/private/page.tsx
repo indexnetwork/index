@@ -7,6 +7,7 @@ import { Google, Notion } from "@lobehub/icons";
 import { useAPI } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { createSyncService, type SyncRun } from "@/services/sync";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { useEffect, useState, useCallback } from "react";
 import { Integration } from "@/services/integrations";
 
@@ -27,6 +28,7 @@ export default function PrivateIndexPage() {
   const [syncProgress, setSyncProgress] = useState<Record<string, { status?: string; completed?: number; total?: number }>>({});
   const api = useAuthenticatedAPI();
   const syncService = createSyncService(api);
+  const { success: notifySuccess, error: notifyError } = useNotifications();
 
   const integrationConfigs: IntegrationConfig[] = [
     {
@@ -188,11 +190,15 @@ export default function PrivateIndexPage() {
             await loadIntegrations();
             stopped = true;
             setSyncingIntegration(null);
+            const files = run.stats?.filesImported ?? 0;
+            const intents = run.stats?.intentsGenerated ?? 0;
+            notifySuccess(`${integrationType} synced`, `Files ${files}, intents ${intents}`);
             return;
           }
           if (status === 'failed') {
             stopped = true;
             setSyncingIntegration(null);
+            notifyError(`${integrationType} sync failed`);
             return;
           }
         } catch (e) {

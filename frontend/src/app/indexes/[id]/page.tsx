@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { createSyncService, type SyncRun } from "@/services/sync";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { Index, Intent } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from "@privy-io/react-auth";
@@ -71,6 +72,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [syncProgress, setSyncProgress] = useState<{ completed?: number; total?: number; status?: string } | null>(null);
   const api = useAuthenticatedAPI();
   const syncService = useMemo(() => createSyncService(api), [api]);
+  const { success: notifySuccess, error: notifyError, info: notifyInfo } = useNotifications();
 
   const fetchLinks = useCallback(async () => {
     try {
@@ -301,8 +303,10 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       await indexesService.addIndexLink(resolvedParams.id, { url: linkUrl.trim() });
       setLinkUrl("");
       await fetchLinks();
+      notifySuccess('Link added', 'Your URL was added to this index.');
     } catch (e) {
       console.error('Error adding link:', e);
+      notifyError('Failed to add link');
     } finally {
       setAddingLink(false);
     }
@@ -327,6 +331,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       if (!runId) {
         setLastSyncSummary("Failed to enqueue sync");
         setSyncingLinks(false);
+        notifyError('Sync failed to start');
         return;
       }
       // Poll for status (SSE alternative)
@@ -351,12 +356,14 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             await fetchIndexIntents();
             setSyncProgress(null);
             setSyncingLinks(false);
+            notifySuccess('Links synced', `Files ${stats?.filesImported ?? 0}, intents ${stats?.intentsGenerated ?? 0}`);
             return;
           }
           if (status === 'failed') {
             setLastSyncSummary(`Sync failed`);
             setSyncProgress(null);
             setSyncingLinks(false);
+            notifyError('Links sync failed');
             return;
           }
         } catch (err) {
@@ -368,6 +375,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     } catch (e) {
       console.error('Error syncing links:', e);
       setSyncingLinks(false);
+      notifyError('Links sync error');
     }
   };
 
@@ -730,18 +738,31 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           ) : (
             <ul className="divide-y">
               {links.map(link => (
-                <li key={link.id} className="py-2 flex items-center justify-between">
-                  <div className="flex-1 mr-3 text-sm text-gray-800">
-                    <a href={link.url} target="_blank" rel="noreferrer" className="text-black underline-offset-2 hover:underline font-ibm-plex-mono">{link.url}</a>
+                <li key={link.id} className="py-2 flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0 mr-3 text-sm text-gray-800 overflow-hidden">
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-black underline-offset-2 hover:underline font-ibm-plex-mono break-words"
+                    >
+                      {link.url}
+                    </a>
                     {/* per-link depth/pages removed; now using global defaults */}
                     {link.lastSyncAt && (
                       <span className="text-gray-500 ml-2">last: {new Date(link.lastSyncAt).toLocaleString()}</span>
                     )}
-                    {link.lastStatus && (
-                      <div className="text-gray-500 ml-2">status: {link.lastStatus}</div>
-                    )}
+                    <div className="inline-flex items-center gap-2 ml-2">
+                      {link.lastError ? (
+                        <span className="px-1.5 py-0.5 text-[10px] font-medium text-red-700 bg-red-100 border border-red-200 rounded-full">Error</span>
+                      ) : link.lastSyncAt ? (
+                        <span className="px-1.5 py-0.5 text-[10px] font-medium text-green-700 bg-green-100 border border-green-200 rounded-full">Synced</span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 text-[10px] font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-full">Never</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 shrink-0">
                     {/* edit controls removed with per-link settings */}
                     <Button
                       variant="outline"
