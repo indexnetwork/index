@@ -64,20 +64,6 @@ export const linksProvider: SyncProvider<Params> = {
       .where(eq(intentIndexes.indexId, indexId));
     const existingPayloads = new Set(existingIntentRows.map(r => r.payload));
 
-    // Simple semantic-similarity guardrail to avoid near-duplicates
-    function jaccard(a: string, b: string): number {
-      const toTokens = (s: string) => Array.from(new Set(s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)));
-      const A = toTokens(a); const B = toTokens(b);
-      const setA = new Set(A); const setB = new Set(B);
-      let inter = 0; for (const t of setA) if (setB.has(t)) inter++;
-      const uni = setA.size + setB.size - inter;
-      return uni === 0 ? 1 : inter / uni;
-    }
-    function isTooSimilar(payload: string): boolean {
-      for (const p of existingPayloads) { if (jaccard(p, payload) >= 0.9) return true; }
-      return false;
-    }
-
     let intentsGenerated = 0;
     let filesImported = 0;
     let skippedUnchanged = 0;
@@ -113,7 +99,7 @@ export const linksProvider: SyncProvider<Params> = {
 
         if (result.success && result.intents.length > 0) {
           const intentData = result.intents[0];
-          if (!existingPayloads.has(intentData.payload) && !isTooSimilar(intentData.payload)) {
+          if (!existingPayloads.has(intentData.payload)) {
             const summary = await summarizeIntent(intentData.payload);
             const inserted = await db.insert(intents).values({
               payload: intentData.payload,

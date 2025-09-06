@@ -62,7 +62,8 @@ function parseArgs(argv: string[]) {
 
 async function main() {
   const { provider, params, userId, wait, help } = parseArgs(process.argv);
-  if (!provider || provider === 'help' || help) { usage(); process.exit(provider ? 0 : 1); }
+  if (help || provider === 'help') { usage(); process.exit(0); }
+  if (!provider) { usage(); process.exit(1); }
   registerSyncProviders();
   const uid = userId || process.env.SYNC_USER_ID;
   if (!uid) {
