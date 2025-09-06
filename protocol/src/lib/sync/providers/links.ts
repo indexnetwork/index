@@ -12,7 +12,7 @@ import { config } from '../../crawl/config';
 import { log } from '../../log';
 import type { SyncProvider, SyncRun } from '../types';
 
-type Params = { indexId: string; count?: number; skipBrokers?: boolean };
+type Params = { indexId: string; count?: number; skipBrokers?: boolean; all?: boolean };
 
 export const linksProvider: SyncProvider<Params> = {
   name: 'links',
@@ -22,14 +22,32 @@ export const linksProvider: SyncProvider<Params> = {
     const access = await checkIndexAccess(indexId, run.userId);
     if (!access.hasAccess) throw new Error(access.error || 'No access to index');
 
-    const links = await db.select().from(indexLinks).where(eq(indexLinks.indexId, indexId));
-    if (links.length === 0) {
+    const allLinks = await db.select().from(indexLinks).where(eq(indexLinks.indexId, indexId));
+    if (allLinks.length === 0) {
       await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0 } });
+      return;
+    }
+    // Process only never-synced links unless 'all' is set
+    const processAll = params.all === true;
+    const links = processAll ? allLinks : allLinks.filter(l => !l.lastSyncAt);
+    if (links.length === 0) {
+      await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0, note: processAll ? 'nothing-to-do' : 'no-new-links' } });
       return;
     }
 
     const urls = links.map(l => l.url);
     const byUrl = new Map(links.map(l => [l.url, l] as const));
+    const normalize = (u: string) => {
+      try {
+        const x = new URL(u);
+        const host = x.hostname.toLowerCase();
+        const pathname = x.pathname.replace(/\/+$/, '');
+        return `${x.protocol}//${host}${pathname || ''}`;
+      } catch {
+        return u;
+      }
+    };
+    const byNorm = new Map(links.map(l => [normalize(l.url), l] as const));
     const startedAt = Date.now();
     await update({ progress: { total: urls.length, completed: 0, notes: [`starting crawl (${urls.length} urls)`] } });
 
@@ -46,6 +64,20 @@ export const linksProvider: SyncProvider<Params> = {
       .where(eq(intentIndexes.indexId, indexId));
     const existingPayloads = new Set(existingIntentRows.map(r => r.payload));
 
+    // Simple semantic-similarity guardrail to avoid near-duplicates
+    function jaccard(a: string, b: string): number {
+      const toTokens = (s: string) => Array.from(new Set(s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)));
+      const A = toTokens(a); const B = toTokens(b);
+      const setA = new Set(A); const setB = new Set(B);
+      let inter = 0; for (const t of setA) if (setB.has(t)) inter++;
+      const uni = setA.size + setB.size - inter;
+      return uni === 0 ? 1 : inter / uni;
+    }
+    function isTooSimilar(payload: string): boolean {
+      for (const p of existingPayloads) { if (jaccard(p, payload) >= 0.9) return true; }
+      return false;
+    }
+
     let intentsGenerated = 0;
     let filesImported = 0;
     let skippedUnchanged = 0;
@@ -57,7 +89,7 @@ export const linksProvider: SyncProvider<Params> = {
       for (const f of crawl.files) {
         const meta = crawl.urlMap[f.id];
         if (!meta) continue;
-        const linkRow = byUrl.get(meta.url);
+        const linkRow = byUrl.get(meta.url) || byNorm.get(normalize(meta.url));
         if (linkRow && linkRow.lastContentHash && linkRow.lastContentHash === meta.contentHash) {
           skippedUnchanged += 1;
           completed += 1;
@@ -81,7 +113,7 @@ export const linksProvider: SyncProvider<Params> = {
 
         if (result.success && result.intents.length > 0) {
           const intentData = result.intents[0];
-          if (!existingPayloads.has(intentData.payload)) {
+          if (!existingPayloads.has(intentData.payload) && !isTooSimilar(intentData.payload)) {
             const summary = await summarizeIntent(intentData.payload);
             const inserted = await db.insert(intents).values({
               payload: intentData.payload,

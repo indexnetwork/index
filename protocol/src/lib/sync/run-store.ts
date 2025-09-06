@@ -1,3 +1,13 @@
+/**
+ * Run Store
+ *
+ * Responsibility: persist SyncRun state (id, status, progress, stats) so
+ * HTTP clients and the CLI can query progress and survive restarts.
+ *
+ * Modes:
+ * - DB-backed (default): uses run-store.db.ts (Drizzle) when SYNC_USE_DB_STORE != '0'
+ * - In-memory fallback: useful in local dev or tests
+ */
 import { SyncRun } from './types';
 import crypto from 'crypto';
 

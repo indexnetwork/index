@@ -176,11 +176,12 @@ router.post('/sync',
       const access = await checkIndexAccess(indexId, req.user!.id);
       if (!access.hasAccess) return res.status(access.status!).json({ error: access.error });
       // Enqueue async run using unified sync engine
-      const skipBrokersQ = ((req.query as any).skipBrokers || '').toString().toLowerCase();
-      const skipBrokers = skipBrokersQ === '1' || skipBrokersQ === 'true';
+      const q = (req.query as any) || {};
+      const skipBrokers = ['1','true'].includes(String(q.skipBrokers || '').toLowerCase());
+      const all = ['1','true'].includes(String(q.all || '').toLowerCase());
       // Provide quick UX-friendly placeholder stats for compatibility
       const links = await db.select().from(indexLinks).where(eq(indexLinks.indexId, indexId));
-      const runId = await enqueue('links', req.user!.id, { indexId, skipBrokers });
+      const runId = await enqueue('links', req.user!.id, { indexId, skipBrokers, all });
       return res.status(202).json({
         runId,
         success: true,

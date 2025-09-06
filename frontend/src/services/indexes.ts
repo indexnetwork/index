@@ -223,7 +223,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
 
   syncIndexLinks: async (
     indexId: string,
-    opts?: { skipBrokers?: boolean; count?: number }
+    opts?: { skipBrokers?: boolean; count?: number; all?: boolean }
   ): Promise<{
     runId: string;
     success: boolean;
@@ -238,6 +238,7 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     const params = new URLSearchParams();
     if (opts?.skipBrokers !== undefined) params.set('skipBrokers', String(opts.skipBrokers));
     if (opts?.count !== undefined) params.set('count', String(opts.count));
+    if (opts?.all !== undefined) params.set('all', String(opts.all));
     const res = await api.post<{
       runId: string;
       success: boolean;

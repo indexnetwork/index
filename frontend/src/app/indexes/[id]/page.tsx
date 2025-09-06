@@ -321,12 +321,12 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     }
   };
 
-  const handleSyncLinks = async () => {
+  const handleSyncLinks = async (opts?: { all?: boolean }) => {
     try {
       setSyncingLinks(true);
-      setLastSyncSummary("Queued…");
+      setLastSyncSummary("");
       setSyncProgress({ status: 'queued' });
-      const res = await indexesService.syncIndexLinks(resolvedParams.id, { skipBrokers: true });
+      const res = await indexesService.syncIndexLinks(resolvedParams.id, { skipBrokers: true, all: !!opts?.all });
       const runId = (res as any).runId as string;
       if (!runId) {
         setLastSyncSummary("Failed to enqueue sync");
@@ -345,9 +345,6 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           const { progress, stats, status } = run;
           if (progress && (progress.completed !== undefined || progress.total !== undefined)) {
             setSyncProgress({ completed: progress.completed, total: progress.total, status });
-            setLastSyncSummary(`${status === 'running' ? 'Running' : status}: ${progress.completed ?? 0}/${progress.total ?? 0}`);
-          } else {
-            setLastSyncSummary(`${status}`);
           }
           if (status === 'succeeded') {
             const dur = Date.now() - start;
@@ -684,7 +681,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
               )}
               <Button
                 variant="outline"
-                onClick={handleSyncLinks}
+                onClick={() => handleSyncLinks()}
                 disabled={syncingLinks}
                 className="border-black text-black hover:bg-gray-100"
               >
@@ -695,6 +692,14 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                         ? `Running ${syncProgress?.completed ?? 0}/${syncProgress?.total ?? 0}`
                         : 'Syncing…')
                   : 'Sync now'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleSyncLinks({ all: true })}
+                disabled={syncingLinks}
+                className="border-black text-black hover:bg-gray-100"
+              >
+                {syncingLinks ? 'Working…' : 'Sync all'}
               </Button>
             </div>
           </div>
