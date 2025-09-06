@@ -744,7 +744,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                       href={link.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-black underline-offset-2 hover:underline font-ibm-plex-mono break-words"
+                      title={link.url}
+                      className="text-black underline-offset-2 hover:underline font-ibm-plex-mono break-words line-clamp-2 block"
                     >
                       {link.url}
                     </a>
@@ -754,9 +755,9 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                     )}
                     <div className="inline-flex items-center gap-2 ml-2">
                       {link.lastError ? (
-                        <span className="px-1.5 py-0.5 text-[10px] font-medium text-red-700 bg-red-100 border border-red-200 rounded-full">Error</span>
+                        <span title={link.lastError || undefined} className="px-1.5 py-0.5 text-[10px] font-medium text-red-700 bg-red-100 border border-red-200 rounded-full">Error</span>
                       ) : link.lastSyncAt ? (
-                        <span className="px-1.5 py-0.5 text-[10px] font-medium text-green-700 bg-green-100 border border-green-200 rounded-full">Synced</span>
+                        <span title={link.lastStatus || undefined} className="px-1.5 py-0.5 text-[10px] font-medium text-green-700 bg-green-100 border border-green-200 rounded-full">Synced</span>
                       ) : (
                         <span className="px-1.5 py-0.5 text-[10px] font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-full">Never</span>
                       )}
