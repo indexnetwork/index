@@ -7,6 +7,7 @@ import { createIntentsService } from '@/services/intents';
 import { createConnectionsService } from '@/services/connections';
 import { createSynthesisService } from '@/services/synthesis';
 import { createIntegrationsService } from '@/services/integrations';
+import { createDiscoverService } from '@/services/discover';
 
 interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
@@ -14,6 +15,7 @@ interface APIContextType {
   connectionsService: ReturnType<typeof createConnectionsService>;
   synthesisService: ReturnType<typeof createSynthesisService>;
   integrationsService: ReturnType<typeof createIntegrationsService>;
+  discoverService: ReturnType<typeof createDiscoverService>;
 }
 
 const APIContext = createContext<APIContextType | undefined>(undefined);
@@ -32,7 +34,8 @@ export function APIProvider({ children }: { children: ReactNode }) {
       intentsService: createIntentsService(api),
       connectionsService: createConnectionsService(api),
       synthesisService: createSynthesisService(api),
-      integrationsService: createIntegrationsService(api)
+      integrationsService: createIntegrationsService(api),
+      discoverService: createDiscoverService(api)
     };
     apiRef.current = api;
   }
@@ -71,4 +74,9 @@ export function useConnections() {
 export function useSynthesis() {
   const { synthesisService } = useAPI();
   return synthesisService;
+}
+
+export function useDiscover() {
+  const { discoverService } = useAPI();
+  return discoverService;
 } 

@@ -3,6 +3,8 @@
 import { PropsWithChildren } from 'react';
 import { usePathname } from 'next/navigation';
 import Header from "@/components/Header";
+import Sidebar from "@/components/Sidebar";
+import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const pathname = usePathname();
@@ -27,35 +29,45 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   }
   
   return (
-    <div className="backdrop relative min-h-screen">
-      <style jsx>{`
-        .backdrop:after {
-          content: "";
-          position: fixed;
-          left: 0;
-          top: 0;
-          bottom: 0;
-          right: 0;
-          background: url(/noise.jpg);
-          opacity: .12;
-          pointer-events: none;
-          z-index: -1;
-        }
-      `}</style>
-      
-      {/* Header stays persistent across page changes */}
-      <div className="max-w-7xl mx-auto px-2">
-        <Header showNavigation={showNavigation} />
-      </div>
-      
-      {/* Page content */}
-      <main>
-        <div className={`flex-1 px-2 ${showNavigation ? 'max-w-4xl' : 'max-w-6xl'} mx-auto`}>
-          <div className="space-y-6 h-full">
-            {children}
-          </div>
+    <IndexFilterProvider>
+      <div className="backdrop relative min-h-screen">
+        <style jsx>{`
+          .backdrop:after {
+            content: "";
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            right: 0;
+            background: url(/noise.jpg);
+            opacity: .12;
+            pointer-events: none;
+            z-index: -1;
+          }
+        `}</style>
+        
+        {/* Header stays persistent across page changes */}
+        <div className="max-w-7xl mx-auto px-2">
+          <Header showNavigation={false} />
         </div>
-      </main>
-    </div>
+        
+        {/* Page content with sidebar */}
+        <main>
+          <div className="max-w-7xl mx-auto px-2 mt-10 flex">
+            {/* Sidebar */}
+            <aside className="w-1/4 pr-6 top-6">
+              <Sidebar />
+            </aside>
+            
+            {/* Main content area */}
+            <div className="w-3/4">
+              <div className="space-y-6 h-full">
+                {children}
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </IndexFilterProvider>
   );
 } 

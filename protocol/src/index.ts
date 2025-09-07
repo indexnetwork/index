@@ -17,6 +17,7 @@ import connectionRoutes from './routes/connections';
 import vibecheckRoutes from './routes/vibecheck';
 import synthesisRoutes from './routes/synthesis';
 import integrationRoutes from './routes/integrations';
+import discoverRoutes from './routes/discover';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -53,6 +54,7 @@ app.use('/api/integrations', integrationRoutes);
 
 app.use('/api/vibecheck', vibecheckRoutes);
 app.use('/api/synthesis', synthesisRoutes);
+app.use('/api/discover', discoverRoutes);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

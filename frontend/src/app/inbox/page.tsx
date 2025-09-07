@@ -7,12 +7,13 @@ import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import * as Tabs from "@radix-ui/react-tabs";
 import { History, SendHorizontal, Inbox } from "lucide-react";
-import { useIntents, useConnections, useSynthesis } from "@/contexts/APIContext";
+import { useIntents, useConnections, useSynthesis, useDiscover } from "@/contexts/APIContext";
 import { StakesByUserResponse, UserConnection } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { formatDate } from "@/lib/utils";
 import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
+import { useIndexFilter } from "@/contexts/IndexFilterContext";
 
 const validTabs = ['discover', 'inbox', 'pending', 'history'];
 
@@ -25,46 +26,52 @@ export default function InboxPage() {
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
+  const { selectedIndexIds } = useIndexFilter();
   
   // URL parameter handling
   const searchParams = useSearchParams();
   const router = useRouter();
   const urlTab = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState(
-    validTabs.includes(urlTab || '') ? (urlTab as string) : 'inbox'
+    urlTab && validTabs.includes(urlTab) ? urlTab : 'discover'
   );
 
-    const intentsService = useIntents();
+  const intentsService = useIntents();
   const connectionsService = useConnections();
   const synthesisService = useSynthesis();
+  const discoverService = useDiscover();
 
   const handleTabChange = (newTab: string) => {
+    if (!validTabs.includes(newTab)) return;
+    
     setActiveTab(newTab);
     const params = new URLSearchParams(searchParams.toString());
     
-    if (newTab === 'inbox') {
-      // Remove tab parameter for inbox (default)
+    if (newTab === 'discover') {
+      // Remove tab parameter for discover (default)
       params.delete('tab');
       const queryString = params.toString();
-      router.replace(`/inbox${queryString ? `?${queryString}` : ''}`);
+      router.push(`/inbox${queryString ? `?${queryString}` : ''}`);
     } else {
       params.set('tab', newTab);
-      router.replace(`/inbox?${params.toString()}`);
+      router.push(`/inbox?${params.toString()}`);
     }
   };
 
-  const fetchSynthesis = useCallback(async (targetUserId: string, intentIds?: string[]) => {
-    if (fetchedSynthesesRef.current.has(targetUserId)) {
+  const fetchSynthesis = useCallback(async (targetUserId: string, intentIds?: string[], indexIds?: string[]) => {
+    const cacheKey = `${targetUserId}-${(indexIds || []).sort().join(',')}`;
+    if (fetchedSynthesesRef.current.has(cacheKey)) {
       return; // Already fetched or in progress
     }
 
-    fetchedSynthesesRef.current.add(targetUserId);
+    fetchedSynthesesRef.current.add(cacheKey);
     setSynthesisLoading(prev => ({ ...prev, [targetUserId]: true }));
 
     try {
       const response = await synthesisService.generateVibeCheck({
         targetUserId,
-        intentIds
+        intentIds,
+        indexIds
       });
       setSyntheses(prev => ({ ...prev, [targetUserId]: response.synthesis }));
     } catch (error) {
@@ -78,33 +85,62 @@ export default function InboxPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      // Fetch connections and stakes
-      const [inboxData, pendingData, historyData, stakesData] = await Promise.all([
-        connectionsService.getConnectionsByUser('inbox'),
-        connectionsService.getConnectionsByUser('pending'),
-        connectionsService.getConnectionsByUser('history'),
-        intentsService.getAllStakes()
+      // Determine includeDiscovered based on whether we're filtering by indexes
+      const includeDiscovered = selectedIndexIds.length === 0; // Only include discovered when showing all indexes
+      
+      // Determine indexIds to pass to API calls
+      const apiIndexIds = selectedIndexIds.length > 0 ? selectedIndexIds : undefined;
+      
+      // Fetch connections and discover data
+      const [inboxData, pendingData, historyData, discoverData] = await Promise.all([
+        connectionsService.getConnectionsByUser('inbox', apiIndexIds),
+        connectionsService.getConnectionsByUser('pending', apiIndexIds),
+        connectionsService.getConnectionsByUser('history', apiIndexIds),
+        discoverService.discoverUsers({ indexIds: apiIndexIds, excludeDiscovered: true, limit: 50 })
       ]);
 
+      // Transform discover data to match StakesByUserResponse format
+      const transformedStakesData: StakesByUserResponse[] = (discoverData?.results || []).map(result => ({
+        user: {
+          id: result.user.id,
+          name: result.user.name,
+          avatar: result.user.avatar || '',
+        },
+        intents: (result.intents || []).map(stake => ({
+          intent: {
+            id: stake.intent.id,
+            summary: stake.intent.summary,
+            payload: stake.intent.payload,
+            updatedAt: stake.intent.createdAt, // Using createdAt as updatedAt not available
+          },
+          totalStake: String(stake.totalStake),
+          agents: [] // The new API doesn't return agent-specific stakes
+        }))
+      }));
+
       // Set data for each tab
-      setDiscoverStakes(stakesData);
+      setDiscoverStakes(transformedStakesData);
       setInboxConnections(inboxData.connections);
       setPendingConnections(pendingData.connections);
       setHistoryConnections(historyData.connections);
+
+      // Clear previous synthesis cache when filters change
+      fetchedSynthesesRef.current.clear();
+      setSyntheses({});
 
       // Automatically fetch synthesis for all users
       const allUserIds = new Set<string>();
       
       // Collect user IDs from discover stakes
-      stakesData.forEach(stake => allUserIds.add(stake.user.id));
+      transformedStakesData.forEach(stake => allUserIds.add(stake.user.id));
       
       // Collect user IDs from connections
       [...inboxData.connections, ...pendingData.connections, ...historyData.connections]
         .forEach(connection => allUserIds.add(connection.user.id));
 
-      // Fetch synthesis for all unique users
+      // Fetch synthesis for all unique users with current index filter
       allUserIds.forEach(userId => {
-        fetchSynthesis(userId);
+        fetchSynthesis(userId, undefined, apiIndexIds);
       });
 
     } catch (error) {
@@ -112,7 +148,7 @@ export default function InboxPage() {
     } finally {
       setLoading(false);
     }
-  }, [intentsService, connectionsService, fetchSynthesis]);
+  }, [intentsService, connectionsService, fetchSynthesis, selectedIndexIds]);
 
   useEffect(() => {
     fetchData();
@@ -121,14 +157,16 @@ export default function InboxPage() {
   // Sync tab state with URL changes
   useEffect(() => {
     const urlTab = searchParams.get('tab');
-    if (validTabs.includes(urlTab || '')) {
-      setActiveTab(urlTab as string);
+    if (urlTab && validTabs.includes(urlTab)) {
+      setActiveTab(urlTab);
+    } else if (!urlTab) {
+      // Default to discover when no tab is specified
+      setActiveTab('discover');
     }
   }, [searchParams]);
 
   const handleConnectionAction = async (action: ConnectionAction, userId: string) => {
     try {
-      console.log(`Connection action: ${action} for user: ${userId}`);
       
       // Call the appropriate connection service method
       switch (action) {
@@ -173,19 +211,6 @@ export default function InboxPage() {
   };
 
   const renderStakeCard = (userStake: StakesByUserResponse, tabType: 'discover' | 'inbox' | 'pending' | 'history') => {
-    // Get all unique agents across all intents for this user
-    const allAgents = userStake.intents.flatMap(intent => intent.agents);
-    const uniqueAgents = allAgents.reduce((acc, current) => {
-      const existing = acc.find(agent => agent.agent.name === current.agent.name);
-      if (!existing) {
-        acc.push(current);
-      } else {
-        // Sum stakes if agent appears multiple times
-        existing.stake = (parseFloat(existing.stake) + parseFloat(current.stake)).toString();
-      }
-      return acc;
-    }, [] as typeof allAgents);
-
     return (
       <div key={userStake.user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
         <div className="py-4 px-2 sm:px-4 hover:bg-gray-50 transition-colors">
@@ -202,9 +227,11 @@ export default function InboxPage() {
             <div>
               <h2 className="font-bold text-lg text-gray-900 font-ibm-plex-mono">{userStake.user.name}</h2>
               <div className="flex items-center gap-4 text-sm text-gray-500 font-ibm-plex-mono">
-                <span>{userStake.intents.length} mutual intent{userStake.intents.length !== 1 ? 's' : ''}</span>
-                <span>•</span>
-                <span>{uniqueAgents.length} backing agent{uniqueAgents.length !== 1 ? 's' : ''}</span>
+                {userStake.intents.length > 0 ? (
+                  <span>{userStake.intents.length} mutual intent{userStake.intents.length !== 1 ? 's' : ''}</span>
+                ) : (
+                  <span>Potential connection</span>
+                )}
               </div>
             </div>
           </div>
@@ -240,38 +267,24 @@ export default function InboxPage() {
           </div>
         )}
 
-        { false && 
-        <div className="mb-4">
-          <h3 className="font-medium text-gray-700 mb-2 text-sm">Mutual intents ({userStake.intents.length})</h3>
-          <div className="flex flex-wrap gap-2">
-            {userStake.intents.map((intentConnection) => (
-              <Link key={intentConnection.intent.id} href={`/intents/${intentConnection.intent.id}`} className="hover:bg-blue-50 transition-colors">
-                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors  bg-gray-50 border border-gray-200">
-                  <h4 className="text-sm font-ibm-plex-mono font-light text-gray-900">{intentConnection.intent.summary || 'Untitled Intent'}</h4>
-                  <span className="text-gray-400 text-xs">
-                    ({intentConnection.totalStake})
-                  </span>
-                </div>
-              </Link>
-            ))}
+        {userStake.intents.length > 0 && (
+          <div className="mb-4">
+            <h3 className="font-medium text-gray-700 mb-2 text-sm">Mutual intents ({userStake.intents.length})</h3>
+            <div className="flex flex-wrap gap-2">
+              {userStake.intents.map((intentConnection) => (
+                <Link key={intentConnection.intent.id} href={`/intents/${intentConnection.intent.id}`} className="hover:bg-blue-50 transition-colors">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors  bg-gray-50 border border-gray-200">
+                    <h4 className="text-sm font-ibm-plex-mono font-light text-gray-900">{intentConnection.intent.summary || 'Untitled Intent'}</h4>
+                    <span className="text-gray-400 text-xs">
+                      ({intentConnection.totalStake})
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>}
+        )}
 
-        {false &&
-        <div>
-          <h3 className="font-medium text-gray-700 mb-2 text-sm">Who's backing this connection</h3>
-          <div className="flex flex-wrap gap-2">
-            {uniqueAgents.map((agent) => (
-              <div key={agent.agent.name} className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-full">
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gray-100">
-                  <Image src={getAvatarUrl(agent.agent)} alt={agent.agent.name} width={16} height={16} />
-                </div>
-                <span className="font-medium text-gray-900">{agent.agent.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        }
         </div>
       </div>
     );
@@ -427,7 +440,8 @@ export default function InboxPage() {
             <Tabs.Content value="discover" className="mt-4">
               {discoverStakes.length === 0 ? (
                 <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                  No connection suggestions available right now.
+                  <p>No connection suggestions available right now.</p>
+                  <p className="text-sm mt-2">Discovery works by finding users who have staked on your intents. Create some intents first to see suggestions!</p>
                 </div>
               ) : (
                 discoverStakes.map((userStake) => renderStakeCard(userStake, 'discover'))

@@ -40,7 +40,7 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     const shouldRedirectToHome = !authenticated && !isHomePage && !isPublicPage;
     
     if (shouldRedirectToIndexes) {
-      router.push('/indexes');
+      router.push('/inbox');
       return; // Will re-evaluate when pathname changes
     }
     

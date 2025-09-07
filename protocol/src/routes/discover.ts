@@ -1,7 +1,9 @@
 import { Router, Response } from 'express';
-import { eq, ne, sql, and } from 'drizzle-orm';
+import { eq, ne, sql, and, or } from 'drizzle-orm';
+import { body, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { users, intents, intentStakes, intentIndexes } from '../lib/schema';
+import { users, intents, intentStakes, intentIndexes, userConnectionEvents } from '../lib/schema';
+import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -16,7 +18,7 @@ Request:{
     "intentIds": [
         "0a31709f-4120-46c5-9a30-aa94891aa378" // seref's specific intents
     ],
-    "userId": "7c3ca3cf-048f-43e9-bf47-65f03a6333d8",  // seref
+    "excludeDiscovered": true,  // exclude users with existing connections (default: true)
     "page" : 1,
     "limit": 50
 }
@@ -58,33 +60,47 @@ Response:{
 */
 
 // 🚀 Route: Get paired users' staked intents
-router.post("/filter", async (req, res: Response) => {
-  try {
+router.post("/filter", 
+  authenticatePrivy,
+  [
+    body('intentIds').optional().isArray(),
+    body('intentIds.*').optional().isUUID(),
+    body('userIds').optional().isArray(),
+    body('userIds.*').optional().isUUID(),
+    body('indexIds').optional().isArray(),
+    body('indexIds.*').optional().isUUID(),
+    body('excludeDiscovered').optional().isBoolean(),
+    body('page').optional().isInt({ min: 1 }).toInt(),
+    body('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
 
-    
-    // Extract filters from request body
-    const {
-      intentIds,
-      userIds,
-      indexIds,
-      userId,
-      page = 1,
-      limit = 50
-    } = req.body;
+      // Extract filters from request body
+      const {
+        intentIds,
+        userIds,
+        indexIds,
+        excludeDiscovered = true, // Default to true
+        page = 1,
+        limit = 50
+      } = req.body;
 
-    const DEBUG_USER_ID = userId;
+      const authenticatedUserId = req.user!.id;
 
 
-    const authenticatedUserIntents = db
-  .select({ intentId: intents.id })
-  .from(intents)
-  .innerJoin(users, eq(intents.userId, users.id))
- // .innerJoin(intentIndexes, eq(intentIndexes.intentId, intents.id))
-  .where(eq(intents.userId, DEBUG_USER_ID));
+    // Get authenticated user's intents for filtering
+    const authenticatedUserIntents = await db
+      .select({ intentId: intents.id })
+      .from(intents)
+      .where(eq(intents.userId, authenticatedUserId));
 
     // Extract the intent IDs for easier use in the main query
-    const userIntentIds = await authenticatedUserIntents;
-    const intentIdArray = userIntentIds.map(row => row.intentId);
+    const userIntentIds = authenticatedUserIntents.map(row => row.intentId);
 
   const mainQuery = db
   .select({
@@ -92,18 +108,20 @@ router.post("/filter", async (req, res: Response) => {
     userId: intents.userId,
     // Sum up all stake amounts for this user
     totalStake: sql<number>`SUM(${intentStakes.stake})`,
-    // Collect all reasoning strings into an array
+    // Collect all stake information
     stakes: sql<any[]>`ARRAY_AGG(
       jsonb_build_object(
         'reasoning', ${intentStakes.reasoning},
         'stake', ${intentStakes.stake},
+        'intentId', intentId.id,
         'intent', jsonb_build_object(
-          'id', intentId.id,
+          'id', ${intents.id},
           'payload', ${intents.payload},
+          'summary', ${intents.summary},
           'createdAt', ${intents.createdAt}
         )
       )
-    ) FILTER (WHERE ${intents.userId} = ${DEBUG_USER_ID})`,
+    )`,
   })
   .from(intentStakes)
   // Explode the stake.intents array into individual rows for filtering
@@ -115,14 +133,14 @@ router.post("/filter", async (req, res: Response) => {
   // Join with intents table to get user info
   .innerJoin(intents, sql`intentId.id = ${intents.id}`)
   // Join with users table to get user details
-  .innerJoin(users, eq(users.id, intents.userId)) // intent → user
+  .innerJoin(users, eq(users.id, intents.userId))
   
   .where(
     and(
-      //Only stakes that contain authenticated user's intents
-      //intentIdArray.length > 0 ? sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(intentIdArray.map(id => sql`${id}`), sql`, `)}]::uuid[]` : sql`FALSE`,
+      // Only stakes that contain authenticated user's intents
+      userIntentIds.length > 0 ? sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)}]::uuid[]` : sql`FALSE`,
 
-      // External intent-ids filter (must be authenticated user's intents)
+      // External intent-ids filter (must be authenticated user's intents if provided)
       ...(intentIds && intentIds.length > 0 ? [
         sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(intentIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[]`
       ] : []),
@@ -142,7 +160,20 @@ router.post("/filter", async (req, res: Response) => {
         )`
       ] : []),
 
-      // Check if all given intents exist in the same index
+      // Exclude users with existing connections if excludeDiscovered is true
+      ...(excludeDiscovered ? [
+        sql`NOT EXISTS (
+          SELECT 1
+          FROM ${userConnectionEvents} uce
+          WHERE (
+            (uce.initiator_user_id = ${authenticatedUserId} AND uce.receiver_user_id = ${intents.userId})
+            OR
+            (uce.initiator_user_id = ${intents.userId} AND uce.receiver_user_id = ${authenticatedUserId})
+          )
+        )`
+      ] : []),
+
+      // Check if all intents in the stake exist in the same index
       sql`EXISTS (
         SELECT 1 
         FROM ${intentIndexes} ii1
@@ -154,18 +185,63 @@ router.post("/filter", async (req, res: Response) => {
   )
   // Group results by user to get per-user totals
   .groupBy(intents.userId)
-  // Exclude the debug user from results
-  .having(eq(intents.userId, DEBUG_USER_ID))
+  // Exclude the authenticated user from results
+  .having(ne(intents.userId, authenticatedUserId))
   // Add pagination
   .limit(limit)
   .offset((page - 1) * limit);
 
-    console.log("mainQuery SQL:", mainQuery.toSQL());
     const results = await mainQuery;
 
+    // Format the results to match the expected structure
+    const formattedResults = await Promise.all(results.map(async (row) => {
+      // Get user details
+      const userDetails = await db.select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        avatar: users.avatar
+      }).from(users)
+        .where(eq(users.id, row.userId))
+        .limit(1);
+
+      const user = userDetails[0];
+
+      // Process stakes to filter only those that involve authenticated user's intents
+      const relevantStakes = row.stakes.filter((stake: any) => 
+        userIntentIds.includes(stake.intentId)
+      );
+
+      // Get unique intents that are staked
+      const intentMap = new Map();
+      relevantStakes.forEach((stake: any) => {
+        if (!intentMap.has(stake.intent.id)) {
+          intentMap.set(stake.intent.id, {
+            intent: stake.intent,
+            totalStake: 0,
+            reasonings: []
+          });
+        }
+        const intentData = intentMap.get(stake.intent.id);
+        intentData.totalStake += parseInt(stake.stake);
+        if (stake.reasoning) {
+          intentData.reasonings.push(stake.reasoning);
+        }
+      });
+
+      return {
+        user,
+        totalStake: row.totalStake,
+        intents: Array.from(intentMap.values()).map(intentData => ({
+          intent: intentData.intent,
+          totalStake: intentData.totalStake,
+          reasonings: [...new Set(intentData.reasonings)] // Remove duplicate reasonings
+        }))
+      };
+    }));
+
     return res.json({
-      debugUserId: DEBUG_USER_ID,
-      results,
+      results: formattedResults,
       pagination: {
         page: page,
         limit: limit,
@@ -175,24 +251,13 @@ router.post("/filter", async (req, res: Response) => {
       filters: {
         intentIds: intentIds || null,
         userIds: userIds || null,
-        indexIds: indexIds || null
+        indexIds: indexIds || null,
+        excludeDiscovered: excludeDiscovered
       }
     });
   } catch (err) {
-    console.error("[DEBUG] Error:", err);
-    if (err && typeof err === 'object' && 'position' in err) {
-      const pgErr = err as { position?: string; query?: string };
-      const query = (pgErr.query || '');
-      const position = parseInt(pgErr.position || '0', 10);
-      const B = 20; // before
-      const A = 20; // after
-      const errorPos = Math.max(0, position - B);
-      const errorEnd = Math.min(query.length, position + A);
-      const line = query.substring(errorPos, errorEnd);
-      const pointer = " ".repeat(position-errorPos-1) + "^";
-      console.error(`Error near position ${position}:\n...${line}...\n...${pointer}...`);
-    }
-    return res.status(500).json({ error: "Failed to fetch paired stakes" });
+    console.error("Discover filter error:", err);
+    return res.status(500).json({ error: "Failed to fetch discovery data" });
   }
 });
 

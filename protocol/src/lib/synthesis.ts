@@ -24,19 +24,11 @@ export async function synthesizeVibeCheck(params: {
   contextUserId?: string; // User requesting analysis - their intents will be analyzed
   intentIds?: string[]; // Specific context user's intents to focus on (if no contextUserId)
   indexIds?: string[]; // Index filtering for secure access
-  userIds?: string[]; // external user-ids filter (for vibecheck)
-  offset?: number; // pagination offset
-  limit?: number; // pagination limit
   options?: SynthesisOptions;
-}): Promise<{
-  synthesis: string;
-  total: number;
-  offset: number;
-  limit: number;
-}> {
-  const { targetUserId, contextUserId, intentIds, indexIds, userIds, offset = 0, limit = 20, options } = params;
-  
+}): Promise<string> {
   try {
+    const { targetUserId, contextUserId, intentIds, indexIds, options } = params;
+
     // Get target user info
     const targetUser = await db.select({
       id: usersTable.id,
@@ -48,12 +40,7 @@ export async function synthesizeVibeCheck(params: {
     .limit(1);
 
     if (targetUser.length === 0) {
-      return {
-        synthesis: "",
-        total: 0,
-        offset,
-        limit
-      };
+      return "";
     }
 
     const user = targetUser[0];
@@ -64,7 +51,6 @@ export async function synthesizeVibeCheck(params: {
       const contextIntentsResult = await getAccessibleIntents(contextUserId, {
         indexIds: indexIds,
         intentIds: intentIds,
-        userIds: userIds,
         includeOwnIntents: true
       });
       contextIntentIds = contextIntentsResult.intents.map(i => i.id);
@@ -72,48 +58,28 @@ export async function synthesizeVibeCheck(params: {
       // Even when intentIds are provided, we need to validate them through proper access control
       // This requires a contextUserId - without it, we can't validate access
       console.warn('Synthesis called with intentIds but no contextUserId - cannot validate access');
-      return { synthesis: "", total: 0, offset, limit };
+      return "";
     }
 
     if (contextIntentIds.length === 0) {
-      return { synthesis: "", total: 0, offset, limit };
+      return "";
+    }
+
+    // Ensure contextUserId is defined before proceeding
+    if (!contextUserId) {
+      console.warn('Synthesis called without contextUserId');
+      return "";
     }
 
     // Get target user's intents using secure generic function
     const targetIntentsResult = await getAccessibleIntents(targetUserId, {
       indexIds: indexIds,
-      userIds: userIds,
       includeOwnIntents: true
     });
     const targetIntentIds = targetIntentsResult.intents.map(i => i.id);
 
     // Get stakes data - find stakes that connect context user's intents with target user's intents
-    // First get total count for pagination
-    const countResult = await db.select({ 
-      count: sql<number>`count(*)`.mapWith(Number) 
-    })
-    .from(intentStakes)
-    .innerJoin(agents, eq(intentStakes.agentId, agents.id))
-    .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
-    .where(and(
-      isNull(agents.deletedAt),
-      eq(intents.userId, contextUserId || targetUserId), // Context user's intents
-      inArray(intents.id, contextIntentIds),
-      // Stakes must also include at least one intent from target user
-      targetIntentIds.length > 0 ? sql`EXISTS(
-        SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-        WHERE intent_id IN (${sql.join(targetIntentIds.map(id => sql`${id}`), sql`, `)})
-      )` : sql`1=1`
-    ));
-
-    const totalCount = countResult[0]?.count || 0;
-
-    if (totalCount === 0) {
-      return { synthesis: "", total: 0, offset, limit };
-    }
-
-    // Add pagination to stakes query
-    const paginatedStakes = await db.select({
+    const stakes = await db.select({
       stake: intentStakes.stake,
       reasoning: intentStakes.reasoning,
       stakeIntents: intentStakes.intents,
@@ -128,24 +94,22 @@ export async function synthesizeVibeCheck(params: {
     .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
     .where(and(
       isNull(agents.deletedAt),
-      eq(intents.userId, contextUserId || targetUserId), // Context user's intents
+      eq(intents.userId, contextUserId), // Context user's intents (authenticated user)
       inArray(intents.id, contextIntentIds),
       // Stakes must also include at least one intent from target user
       targetIntentIds.length > 0 ? sql`EXISTS(
         SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
         WHERE intent_id IN (${sql.join(targetIntentIds.map(id => sql`${id}`), sql`, `)})
       )` : sql`1=1`
-    ))
-    .offset(offset)
-    .limit(limit);
+    ));
 
-    if (paginatedStakes.length === 0) {
-      return { synthesis: "", total: totalCount, offset, limit };
+    if (stakes.length === 0) {
+      return "";
     }
 
     // Group by intent
     const intentGroups = new Map();
-    paginatedStakes.forEach(stake => {
+    stakes.forEach(stake => {
       if (!intentGroups.has(stake.intentId)) {
         intentGroups.set(stake.intentId, {
           id: stake.intentId,
@@ -175,12 +139,7 @@ export async function synthesizeVibeCheck(params: {
     const cachedResult = await cache.hget(hashKey, fieldKey);
     
     if (cachedResult) {
-      return {
-        synthesis: cachedResult,
-        total: totalCount,
-        offset,
-        limit
-      };
+      return cachedResult;
     }
 
     // Generate synthesis
@@ -188,29 +147,14 @@ export async function synthesizeVibeCheck(params: {
     
     if (vibeResult.success && vibeResult.synthesis) {
       await cache.hset(hashKey, fieldKey, vibeResult.synthesis);
-      return {
-        synthesis: vibeResult.synthesis,
-        total: totalCount,
-        offset,
-        limit
-      };
+      return vibeResult.synthesis;
     }
 
-    return {
-      synthesis: "",
-      total: totalCount,
-      offset,
-      limit
-    };
+    return "";
     
   } catch (error) {
     console.error('Synthesis error:', error);
-    return {
-      synthesis: "",
-      total: 0,
-      offset,
-      limit
-    };
+    return "";
   }
 }
 

@@ -2,6 +2,7 @@
 export interface SynthesisRequest {
   targetUserId: string;
   intentIds?: string[];
+  indexIds?: string[];
   options?: {
     characterLimit?: number;
     [key: string]: unknown;
