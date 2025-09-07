@@ -72,21 +72,32 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
         }
       }
 
-      const newUser = await db.insert(users).values({
-        privyId: claims.userId,
-        email: userEmail,
-        name: userName,
-        intro: null,
-        avatar: null
-      }).returning({
-        id: users.id,
-        privyId: users.privyId,
-        email: users.email,
-        name: users.name,
-        deletedAt: users.deletedAt
-      });
-      
-      user = newUser;
+      // Require an email to create a user
+      if (!userEmail) {
+        return res.status(400).json({ error: 'Email required from identity provider' });
+      }
+
+      try {
+        const newUser = await db.insert(users).values({
+          privyId: claims.userId,
+          email: userEmail,
+          name: userName,
+          intro: null,
+          avatar: null
+        }).returning({
+          id: users.id,
+          privyId: users.privyId,
+          email: users.email,
+          name: users.name,
+          deletedAt: users.deletedAt
+        });
+        user = newUser;
+      } catch (e: any) {
+        if (e && (e.code === '23505' || String(e?.message || '').includes('users_email_unique'))) {
+          return res.status(409).json({ error: 'Email already in use' });
+        }
+        throw e;
+      }
     } else {
       // Update existing user's email if it has changed
       const existingUser = user[0];
@@ -94,13 +105,21 @@ export const authenticatePrivy = async (req: AuthRequest, res: Response, next: N
       
       if (privyUser.email?.address && privyUser.email.address !== existingUser.email) {
         updatedEmail = privyUser.email.address;
-        
-        await db.update(users)
-          .set({ 
-            email: updatedEmail,
-            updatedAt: new Date()
-          })
-          .where(eq(users.id, existingUser.id));
+        try {
+          await db.update(users)
+            .set({ 
+              email: updatedEmail,
+              updatedAt: new Date()
+            })
+            .where(eq(users.id, existingUser.id));
+        } catch (e: any) {
+          if (e && (e.code === '23505' || String(e?.message || '').includes('users_email_unique'))) {
+            // Another account already has this email; keep existing email unchanged
+            updatedEmail = existingUser.email;
+          } else {
+            throw e;
+          }
+        }
           
         // Update the user object for the response
         user[0].email = updatedEmail;

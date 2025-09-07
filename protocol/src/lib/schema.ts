@@ -1,4 +1,4 @@
-import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, varchar, integer } from 'drizzle-orm/pg-core';
+import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, varchar, integer, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Enums
@@ -10,14 +10,18 @@ export const connectionAction = pgEnum('connection_action', [
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   privyId: text('privy_id').notNull().unique(),
-  email: text('email'),
+  // Email is required and must be unique.
+  email: text('email').notNull(),
   name: text('name').notNull(),
   intro: text('intro'),
   avatar: text('avatar'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-});
+}, (table) => ({
+  // Enforce uniqueness on all emails (email is NOT NULL).
+  usersEmailUnique: uniqueIndex('users_email_unique').on(table.email),
+}));
 
 export const intents = pgTable('intents', {
   id: uuid('id').primaryKey().defaultRandom(),
