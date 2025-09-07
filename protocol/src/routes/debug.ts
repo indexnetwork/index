@@ -58,7 +58,7 @@ Response:{
 */
 
 // 🚀 Route: Get paired users' staked intents
-router.post("/discover", async (req, res: Response) => {
+router.post("/filter", async (req, res: Response) => {
   try {
 
     
@@ -99,11 +99,11 @@ router.post("/discover", async (req, res: Response) => {
         'stake', ${intentStakes.stake},
         'intent', jsonb_build_object(
           'id', intentId.id,
-          'payload', ${intents.payload}, 
+          'payload', ${intents.payload},
           'createdAt', ${intents.createdAt}
         )
       )
-    )`,
+    ) FILTER (WHERE ${intents.userId} = ${DEBUG_USER_ID})`,
   })
   .from(intentStakes)
   // Explode the stake.intents array into individual rows for filtering
@@ -120,7 +120,7 @@ router.post("/discover", async (req, res: Response) => {
   .where(
     and(
       //Only stakes that contain authenticated user's intents
-      intentIdArray.length > 0 ? sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(intentIdArray.map(id => sql`${id}`), sql`, `)}]::uuid[]` : sql`FALSE`,
+      //intentIdArray.length > 0 ? sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(intentIdArray.map(id => sql`${id}`), sql`, `)}]::uuid[]` : sql`FALSE`,
 
       // External intent-ids filter (must be authenticated user's intents)
       ...(intentIds && intentIds.length > 0 ? [
@@ -155,7 +155,7 @@ router.post("/discover", async (req, res: Response) => {
   // Group results by user to get per-user totals
   .groupBy(intents.userId)
   // Exclude the debug user from results
-  .having(ne(intents.userId, DEBUG_USER_ID))
+  .having(eq(intents.userId, DEBUG_USER_ID))
   // Add pagination
   .limit(limit)
   .offset((page - 1) * limit);
