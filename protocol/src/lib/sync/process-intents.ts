@@ -8,7 +8,7 @@ import { summarizeIntent } from '../../agents/core/intent_summarizer';
 
 import type { IntegrationFile } from '../integrations';
 
-export async function getExistingPayloads(userId: string, indexId?: string): Promise<Set<string>> {
+export async function getExistingIntents(userId: string, indexId?: string): Promise<Set<string>> {
   if (indexId) {
     const rows = await db
       .select({ payload: intents.payload })

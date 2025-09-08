@@ -271,33 +271,4 @@ router.delete('/:integrationType',
   }
 );
 
-// Sync specific integration
-router.post('/sync/:integrationType',
-  authenticatePrivy,
-  [
-    param('integrationType').isIn(Object.keys(INTEGRATION_MAPPINGS)).withMessage('Invalid integration type'),
-    body('indexId').optional().isUUID()
-  ],
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-      }
-
-      const userId = req.user!.id;
-      const integrationType = req.params.integrationType;
-      const { indexId } = req.body;
-
-      // Map integrationType to sync provider names (same slug here)
-      const provider = integrationType as any;
-      return res.status(202).json({ success: true, accepted: true });
-    } catch (error) {
-      log.error('Sync integration error', { error: error instanceof Error ? error.message : String(error) });
-      return res.status(500).json({ error: 'Failed to sync integration' });
-    }
-  }
-);
-
-
 export default router; 

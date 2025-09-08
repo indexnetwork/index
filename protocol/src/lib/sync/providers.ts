@@ -68,7 +68,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
       .from(intents)
       .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
       .where(eq(intentIndexes.indexId, indexId));
-    const existingPayloads = new Set(existingIntentRows.map(r => r.payload));
+    const existingIntents = new Set(existingIntentRows.map(r => r.payload));
 
     let intentsGenerated = 0;
     let filesImported = 0;
@@ -97,7 +97,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
           tempDir,
           [f.id],
           `Generate intents based on content from ${meta.url}`,
-          Array.from(existingPayloads),
+          Array.from(existingIntents),
           [],
           requestedCount,
           60000
@@ -105,7 +105,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
 
         if (result.success && result.intents.length > 0) {
           const intentData = result.intents[0];
-          if (!existingPayloads.has(intentData.payload)) {
+          if (!existingIntents.has(intentData.payload)) {
             const summary = await summarizeIntent(intentData.payload);
             const inserted = await db.insert(intents).values({
               payload: intentData.payload,
@@ -115,7 +115,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
             }).returning({ id: intents.id });
             const intentId = inserted[0].id;
             await db.insert(intentIndexes).values({ intentId, indexId });
-            existingPayloads.add(intentData.payload);
+            existingIntents.add(intentData.payload);
             if (!skipBrokers) {
               triggerBrokersOnIntentCreated(intentId).catch(() => void 0);
             }

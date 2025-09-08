@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
+import { runSync } from '../lib/sync/runner';
 
 const router = Router();
 
@@ -14,7 +15,9 @@ router.post('/now',
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
     try {
-      // Kubernetes handles async execution; acknowledge immediately.
+      // Fire and forget async sync
+      runSync(req.body.provider, req.user!.id, req.body.params || {});
+      
       return res.status(202).json({ accepted: true });
     } catch {
       return res.status(500).json({ error: 'Failed to accept sync request' });

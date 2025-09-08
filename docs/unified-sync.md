@@ -16,11 +16,12 @@ One engine powers sync for Links (web crawl), Notion, Gmail, Slack, Discord, Cal
 - Ack: `POST /api/sync/now`
   - Body: `{ "provider": "links|notion|gmail|slack|discord|calendar", "params": { "indexId?": "<uuid>" } }`
   - Response: `202 { accepted: true }`
-- Links shortcut: `POST /api/indexes/:indexId/links/sync?all=true|false&skipBrokers=true|false`
+- Links sync: Use the unified sync endpoint with provider "links"
+  - `POST /api/sync/now`
+  - Body: `{ "provider": "links", "params": { "indexId": "<uuid>", "all": true|false, "skipBrokers": true|false } }`
   - Default (no `all`): processes only links that have never been synced (lastSyncAt is null).
   - `all=true`: processes every link in the index.
-  - Response: `202 { success: true, accepted: true }`
-  - Response: `202 { success: true, accepted: true }`
+  - Response: `202 { accepted: true }`
 
 ## CLI (Cron‑friendly)
 

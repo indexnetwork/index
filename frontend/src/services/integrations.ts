@@ -45,22 +45,11 @@ export function createIntegrationsService(api: ReturnType<typeof useAuthenticate
     async syncIntegration(
       integrationType: string,
       indexId?: string
-    ): Promise<{
-      runId: string;
-      success: boolean;
-      status: string;
-      filesImported: number;
-      intentsGenerated: number;
-      message?: string;
-    }> {
-      return api.post<{
-        runId: string;
-        success: boolean;
-        status: string;
-        filesImported: number;
-        intentsGenerated: number;
-        message?: string;
-      }>(`/integrations/sync/${integrationType}`, indexId ? { indexId } : {});
+    ): Promise<{ accepted: boolean }> {
+      return api.post<{ accepted: boolean }>('/sync/now', {
+        provider: integrationType,
+        params: indexId ? { indexId } : {}
+      });
     },
 
   };

@@ -235,10 +235,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     durationMs?: number;
     message?: string;
   }> => {
-    const params = new URLSearchParams();
-    if (opts?.skipBrokers !== undefined) params.set('skipBrokers', String(opts.skipBrokers));
-    if (opts?.count !== undefined) params.set('count', String(opts.count));
-    if (opts?.all !== undefined) params.set('all', String(opts.all));
     const res = await api.post<{
       runId: string;
       success: boolean;
@@ -249,7 +245,13 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
       pagesVisited?: number;
       durationMs?: number;
       message?: string;
-    }>(`/indexes/${indexId}/links/sync${params.toString() ? `?${params.toString()}` : ''}`, {});
+    }>('/sync/now', {
+      provider: 'links',
+      params: {
+        indexId,
+        ...opts
+      }
+    });
     return res;
   },
 
