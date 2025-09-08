@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { enqueue, getRun } from '../lib/sync/queue';
+import { getRun } from '../lib/sync/queue';
 import { SyncProviderName } from '../lib/sync/types';
 import { onRunUpdate, offRunUpdate } from '../lib/sync/events';
 
@@ -17,12 +17,10 @@ router.post('/now',
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
     try {
-      const provider = req.body.provider as SyncProviderName;
-      const params = (req.body.params || {}) as Record<string, any>;
-      const runId = await enqueue(provider, req.user!.id, params);
-      return res.status(202).json({ runId });
-    } catch (err) {
-      return res.status(500).json({ error: 'Failed to enqueue sync' });
+      // Kubernetes handles async execution; acknowledge immediately.
+      return res.status(202).json({ accepted: true });
+    } catch {
+      return res.status(500).json({ error: 'Failed to accept sync request' });
     }
   }
 );
