@@ -1,9 +1,14 @@
-import PQueue from 'p-queue';
 import { runStore } from './run-store';
 import { SyncProvider, SyncRun, SyncProviderName } from './types';
 import { emitRunUpdate } from './events';
 
-const queue = new PQueue({ concurrency: Number(process.env.SYNC_CONCURRENCY || '2') });
+let queuePromise: Promise<any> | null = null;
+async function getQueue() {
+  if (!queuePromise) {
+    queuePromise = import('p-queue').then((m) => new m.default({ concurrency: Number(process.env.SYNC_CONCURRENCY || '2') }));
+  }
+  return queuePromise;
+}
 
 const providers = new Map<SyncProviderName, SyncProvider>();
 
@@ -17,7 +22,7 @@ export async function enqueue(provider: SyncProviderName, userId: string, params
   const run = await runStore.create({ provider, userId, params, status: 'queued' });
   emitRunUpdate(run.id, run);
 
-  queue.add(async () => {
+  (await getQueue()).add(async () => {
     const start = Date.now();
     const started = await runStore.update(run.id, { status: 'running', startedAt: start });
     if (started) emitRunUpdate(run.id, started);
