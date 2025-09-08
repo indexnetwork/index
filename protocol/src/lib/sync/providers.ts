@@ -1,22 +1,30 @@
 import path from 'path';
 import fs from 'fs';
-import db from '../../db';
-import { indexLinks, intents, intentIndexes } from '../../schema';
-import { eq, and } from 'drizzle-orm';
-import { analyzeFolder } from '../../../agents/core/intent_inferrer';
-import { summarizeIntent } from '../../../agents/core/intent_summarizer';
-import { crawlLinksForIndex } from '../../crawl/web_crawler';
-import { checkIndexAccess } from '../../index-access';
-import { triggerBrokersOnIntentCreated } from '../../../agents/context_brokers/connector';
-import { config } from '../../crawl/config';
-import { log } from '../../log';
-import type { SyncProvider, SyncRun } from '../types';
+import db from '../db';
+import { indexLinks, intents, intentIndexes, userIntegrations } from '../schema';
+import { eq, and, isNull } from 'drizzle-orm';
+import { analyzeFolder } from '../../agents/core/intent_inferrer';
+import { summarizeIntent } from '../../agents/core/intent_summarizer';
+import { crawlLinksForIndex } from '../crawl/web_crawler';
+import { checkIndexAccess } from '../index-access';
+import { triggerBrokersOnIntentCreated } from '../../agents/context_brokers/connector';
+import { config } from '../crawl/config';
+import { log } from '../log';
+import { handlers } from '../integrations';
+import { processFilesToIntents } from './process';
 
-type Params = { indexId: string; count?: number; skipBrokers?: boolean; all?: boolean };
+export type SyncProviderName = 'links' | 'gmail' | 'notion' | 'slack' | 'discord' | 'calendar';
 
-export const linksProvider: SyncProvider<Params> = {
+export interface SyncProvider<Params extends Record<string, any> = any> {
+  name: SyncProviderName;
+  start(run: any, params: Params, update: (patch: any) => Promise<void>): Promise<void>;
+}
+
+type LinksParams = { indexId: string; count?: number; skipBrokers?: boolean; all?: boolean };
+
+export const linksProvider: SyncProvider<LinksParams> = {
   name: 'links',
-  async start(run: SyncRun, params: Params, update) {
+  async start(run, params, update) {
     const { indexId } = params;
 
     const access = await checkIndexAccess(indexId, run.userId);
@@ -27,7 +35,6 @@ export const linksProvider: SyncProvider<Params> = {
       await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0 } });
       return;
     }
-    // Process only never-synced links unless 'all' is set
     const processAll = params.all === true;
     const links = processAll ? allLinks : allLinks.filter(l => !l.lastSyncAt);
     if (links.length === 0) {
@@ -57,7 +64,6 @@ export const linksProvider: SyncProvider<Params> = {
     const requestedCount = Math.max(1, Math.min(1, params.count ?? 1));
     const skipBrokers = params.skipBrokers === true || !config.linksSync.triggerBrokers;
 
-    // Existing intents for dedupe by payload
     const existingIntentRows = await db.select({ payload: intents.payload })
       .from(intents)
       .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
@@ -116,7 +122,6 @@ export const linksProvider: SyncProvider<Params> = {
             intentsGenerated += 1;
           }
         }
-        // Update last content hash for this link if we can map it
         if (linkRow) {
           await db.update(indexLinks).set({ lastContentHash: meta.contentHash }).where(eq(indexLinks.id, linkRow.id));
         }
@@ -139,3 +144,63 @@ export const linksProvider: SyncProvider<Params> = {
     await update({ stats: { filesImported, intentsGenerated, links: links.length, pagesVisited: crawl.pagesVisited } });
   },
 };
+
+type IntegrationType = 'notion' | 'gmail' | 'slack' | 'discord' | 'calendar';
+type IntegrationParams = { indexId?: string };
+
+async function getConnectedIntegration(userId: string, integrationType: IntegrationType) {
+  const rows = await db
+    .select()
+    .from(userIntegrations)
+    .where(
+      and(
+        eq(userIntegrations.userId, userId),
+        eq(userIntegrations.integrationType, integrationType),
+        eq(userIntegrations.status, 'connected'),
+        isNull(userIntegrations.deletedAt)
+      )
+    )
+    .limit(1);
+  return rows[0] || null;
+}
+
+export function createIntegrationProvider(type: IntegrationType): SyncProvider<IntegrationParams> {
+  return {
+    name: type,
+    async start(run, params, update) {
+      const integrationRec = await getConnectedIntegration(run.userId, type);
+      if (!integrationRec) throw new Error('Integration not connected');
+
+      const handler = handlers[type];
+      if (!handler) throw new Error('Unsupported integration type');
+
+      const lastSyncAt = integrationRec.lastSyncAt || undefined;
+
+      await update({ progress: { notes: [`fetching ${type} files`] } });
+      const files = await handler.fetchFiles(run.userId, lastSyncAt || undefined);
+      await update({ progress: { total: files.length, completed: 0, notes: [`fetched ${files.length} files`] } });
+
+      const { intentsGenerated, filesImported } = await processFilesToIntents({
+        userId: run.userId,
+        indexId: params.indexId,
+        files,
+        textInstruction: `Generate intents based on content from ${type} integration`,
+        count: 30,
+        summarize: false,
+        onProgress: async (completed, total, note) => {
+          await update({ progress: { total, completed, notes: note ? [note] : [] } });
+        },
+      });
+
+      const finishedAt = new Date();
+      await db
+        .update(userIntegrations)
+        .set({ lastSyncAt: finishedAt })
+        .where(eq(userIntegrations.id, integrationRec.id));
+
+      log.info(`${type}-sync-run`, { runId: run.id, filesImported, intentsGenerated });
+      await update({ stats: { filesImported, intentsGenerated } });
+    },
+  };
+}
+

@@ -1,7 +1,5 @@
 import crypto from 'crypto';
-import type { SyncProviderName, SyncRun, SyncProvider } from './types';
-import { linksProvider } from './providers/links';
-import { createIntegrationProvider } from './providers/integrations';
+import { linksProvider, createIntegrationProvider, type SyncProvider, type SyncProviderName } from './providers';
 
 function rid() {
   return (crypto as any).randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
@@ -19,14 +17,14 @@ const providers: Record<SyncProviderName, SyncProvider> = {
 export async function runSync(provider: SyncProviderName, userId: string, params: Record<string, any> = {}) {
   const p = providers[provider];
   if (!p) throw new Error('Unknown provider');
-  const run: SyncRun = {
+  const run: any = {
     id: rid(),
     provider,
     userId,
     createdAt: Date.now(),
-  } as SyncRun;
+  };
   let stats: Record<string, any> = {};
-  const update = async (patch: Partial<SyncRun>) => {
+  const update = async (patch: any) => {
     if (patch.stats) stats = { ...stats, ...patch.stats };
   };
   await p.start(run, params, update);
