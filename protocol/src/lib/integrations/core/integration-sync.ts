@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import db from './db';
-import { userIntegrations, intents, intentIndexes } from './schema';
+import db from '../../db';
+import { userIntegrations, intents, intentIndexes } from '../../schema';
 import { eq, and, isNull } from 'drizzle-orm';
-import { analyzeFolder } from '../agents/core/intent_inferrer';
-import { handlers } from './integrations';
-import { log } from './log';
+import { analyzeFolder } from '../../../agents/core/intent_inferrer';
+import { handlers } from '../index';
+import { log } from '../../log';
 
 interface SyncResult {
   success: boolean;

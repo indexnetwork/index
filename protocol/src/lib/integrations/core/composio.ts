@@ -21,4 +21,4 @@ export async function getClient(): Promise<ComposioClient> {
   singleton = new Composio({ apiKey }) as unknown as ComposioClient;
   return singleton;
 }
-import { log } from '../log';
+import { log } from '../../log';

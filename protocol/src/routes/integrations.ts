@@ -5,7 +5,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
 import { userIntegrations } from '../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
-import { syncIntegration } from '../lib/integration-sync';
+import { syncIntegration } from '../lib/integrations/core/integration-sync';
 
 const router = Router();
 

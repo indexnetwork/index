@@ -1,7 +1,7 @@
-import type { IntegrationHandler, IntegrationFile } from './index';
-import { getClient } from './composio';
-import { log } from '../log';
-import { paginate, withRetry, concurrencyLimit, mapSlackMessageToFile } from './util';
+import type { IntegrationHandler, IntegrationFile } from '../index';
+import { getClient } from '../core/composio';
+import { log } from '../../log';
+import { paginate, withRetry, concurrencyLimit, mapSlackMessageToFile } from '../core/util';
 
 async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
   try {
