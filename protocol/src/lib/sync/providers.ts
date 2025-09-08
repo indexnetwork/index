@@ -11,7 +11,7 @@ import { triggerBrokersOnIntentCreated } from '../../agents/context_brokers/conn
 import { config } from '../crawl/config';
 import { log } from '../log';
 import { handlers } from '../integrations';
-import { processFilesToIntents } from './process';
+import { processFilesToIntents } from './process-intents';
 
 export type SyncProviderName = 'links' | 'gmail' | 'notion' | 'slack' | 'discord' | 'calendar';
 

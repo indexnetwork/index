@@ -50,12 +50,12 @@ export async function processFilesToIntents(options: {
       await onProgress?.(completed, files.length, `saved ${completed}/${files.length}`);
     }
 
-    const existingPayloads = await getExistingPayloads(userId, indexId);
+    const existingIntents = await getExistingIntents(userId, indexId);
     const result = await analyzeFolder(
       baseTempDir,
       fileIds,
       textInstruction,
-      Array.from(existingPayloads),
+      Array.from(existingIntents),
       [],
       Math.max(1, count),
       timeoutMs
@@ -64,7 +64,7 @@ export async function processFilesToIntents(options: {
     let intentsGenerated = 0;
     if (result.success && result.intents.length > 0) {
       for (const intentData of result.intents) {
-        if (existingPayloads.has(intentData.payload)) continue;
+        if (existingIntents.has(intentData.payload)) continue;
         const summary = summarize ? await summarizeIntent(intentData.payload) : undefined;
         const inserted = await db
           .insert(intents)
@@ -74,7 +74,7 @@ export async function processFilesToIntents(options: {
         if (indexId) {
           await db.insert(intentIndexes).values({ intentId, indexId });
         }
-        existingPayloads.add(intentData.payload);
+        existingIntents.add(intentData.payload);
         intentsGenerated += 1;
       }
     }
