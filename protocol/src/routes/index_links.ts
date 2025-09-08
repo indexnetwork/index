@@ -5,8 +5,7 @@ import { indexLinks } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { and, desc, eq } from 'drizzle-orm';
 import { checkIndexAccess } from '../lib/index-access';
-// unified sync engine
-import { enqueue } from '../lib/sync/queue';
+// queue removed; API is ack-only
  
 
 const router = Router({ mergeParams: true });
@@ -175,24 +174,7 @@ router.post('/sync',
       const { indexId } = req.params;
       const access = await checkIndexAccess(indexId, req.user!.id);
       if (!access.hasAccess) return res.status(access.status!).json({ error: access.error });
-      // Enqueue async run using unified sync engine
-      const q = (req.query as any) || {};
-      const skipBrokers = ['1','true'].includes(String(q.skipBrokers || '').toLowerCase());
-      const all = ['1','true'].includes(String(q.all || '').toLowerCase());
-      // Provide quick UX-friendly placeholder stats for compatibility
-      const links = await db.select().from(indexLinks).where(eq(indexLinks.indexId, indexId));
-      const runId = await enqueue('links', req.user!.id, { indexId, skipBrokers, all });
-      return res.status(202).json({
-        runId,
-        success: true,
-        status: 'queued',
-        links: links.length,
-        filesImported: 0,
-        intentsGenerated: 0,
-        pagesVisited: 0,
-        durationMs: 0,
-        message: 'Sync queued; polling run status.'
-      });
+      return res.status(202).json({ success: true, accepted: true });
     } catch (err) {
       console.error('Sync index links error:', err);
       return res.status(500).json({ error: 'Failed to sync links' });

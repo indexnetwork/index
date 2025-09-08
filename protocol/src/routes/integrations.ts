@@ -5,7 +5,7 @@ import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import db from '../lib/db';
 import { userIntegrations } from '../lib/schema';
 import { eq, and, isNull } from 'drizzle-orm';
-import { enqueue } from '../lib/sync/queue';
+// queue removed; API is ack-only
 
 const router = Router();
 
@@ -291,19 +291,7 @@ router.post('/sync/:integrationType',
 
       // Map integrationType to sync provider names (same slug here)
       const provider = integrationType as any;
-      try {
-        const runId = await enqueue(provider, userId, { indexId });
-        return res.status(202).json({
-          runId,
-          success: true,
-          status: 'queued',
-          filesImported: 0,
-          intentsGenerated: 0,
-          message: 'Sync queued; polling run status.'
-        });
-      } catch (e: any) {
-        return res.status(400).json({ error: e?.message || 'Failed to enqueue integration sync' });
-      }
+      return res.status(202).json({ success: true, accepted: true });
     } catch (error) {
       log.error('Sync integration error', { error: error instanceof Error ? error.message : String(error) });
       return res.status(500).json({ error: 'Failed to sync integration' });

@@ -19,7 +19,6 @@ import synthesisRoutes from './routes/synthesis';
 import integrationRoutes from './routes/integrations';
 import indexLinksRoutes from './routes/index_links';
 import syncRoutes from './routes/sync';
-import { registerSyncProviders } from './lib/sync/register';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -79,13 +78,6 @@ app.use('*', (req, res) => {
     console.log('🟢 Context brokers initialized');
   } catch (err) {
     console.error('🔴 Failed to initialize context brokers:', err);
-  }
-
-  try {
-    registerSyncProviders();
-    console.log('🟢 Sync providers registered');
-  } catch (err) {
-    console.error('🔴 Failed to register sync providers:', err);
   }
 
   app.listen(PORT, () => {
