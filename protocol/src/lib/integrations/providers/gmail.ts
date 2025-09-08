@@ -1,7 +1,38 @@
+// Gmail provider
+//
+// Responsibilities
+// - Discover user's Gmail connected account via Composio
+// - Query Gmail for email threads (always Sent; optionally Inbox)
+// - Hydrate thread messages to obtain full MIME payloads when necessary
+// - Decode and normalize message content into readable markdown IntegrationFiles
+// - Be resilient to variations in Composio tool responses (shape/casing)
+//
+// Behavior
+// - Always indexes Sent Mail (query: `in:sent`).
+// - If env `GMAIL_INCLUDE_RECEIVED=true`, also includes Inbox (query combines to `in:sent OR label:INBOX`).
+// - Applies day‑granular filter when `lastSyncAt` is specified using Gmail's `after:YYYY/MM/DD` (UTC) operator.
+// - Uses concurrency limits and retries for robustness.
+//
+// Composio tools used
+// - GMAIL_LIST_THREADS — list thread ids matching the query
+// - GMAIL_FETCH_MESSAGE_BY_THREAD_ID — fetch messages in a thread
+// - GMAIL_GET_MESSAGE — fetch a single message with full payload when needed
+// - GMAIL_FETCH_EMAILS — fallback broad search if threads path yields nothing
+//
+// Output
+// - Each email message becomes an IntegrationFile with a stable id `${threadId}-${messageId}` and
+//   markdown content including headers (From/To/Cc/Date/Labels) and a body preview.
 import type { IntegrationHandler, IntegrationFile } from '../index';
 import { getClient } from '../core/composio';
 import { log } from '../../log';
 import { withRetry, concurrencyLimit } from '../core/util';
+
+// Whether to include Inbox (received) mail in addition to Sent.
+// Controlled via env: GMAIL_INCLUDE_RECEIVED=true|false (default false).
+function includeReceived(): boolean {
+  const v = String(process.env.GMAIL_INCLUDE_RECEIVED || '').toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(v);
+}
 
 type GmailThread = { id: string; historyId?: string };
 type GmailMessage = {
@@ -26,6 +57,7 @@ type GmailMessage = {
   };
 };
 
+// Gmail bodies use URL-safe base64. This helper safely decodes and tolerates padding.
 function decodeBase64Url(data?: string): string {
   if (!data) return '';
   try {
@@ -37,6 +69,8 @@ function decodeBase64Url(data?: string): string {
   }
 }
 
+// Converts HTML to a readable plaintext approximation for markdown output.
+// Strips scripts/styles, converts block boundaries to newlines, and compresses whitespace.
 function stripHtml(html: string): string {
   try {
     return html
@@ -53,6 +87,8 @@ function stripHtml(html: string): string {
   }
 }
 
+// Walks MIME parts to gather text/plain and text/html bodies and attachment filenames.
+// Returns a merged plaintext body (preferring text/plain, otherwise stripped HTML).
 function extractBodyFromPayload(payload: GmailMessage['payload']): { text: string; attachments: string[] } {
   const attachments: string[] = [];
   let textPlain = '';
@@ -93,11 +129,13 @@ function extractBodyFromPayload(payload: GmailMessage['payload']): { text: strin
   return { text: text.trim(), attachments };
 }
 
+// Case-insensitive header lookup helper. 
 function safeHeader(headers: Array<{ name?: string; value?: string }> | undefined, name: string): string | undefined {
   const h = headers?.find((x) => (x.name || '').toLowerCase() === name.toLowerCase());
   return h?.value || undefined;
 }
 
+// Resolve message date with sane fallbacks: internalDate (ms) → messageTimestamp → Date header → now.
 function toDateFromMessage(msg: GmailMessage): Date {
   // Prefer internalDate (milliseconds since epoch). Fallback to Date header.
   const internal = msg.internalDate ? Number(msg.internalDate) : NaN;
@@ -115,11 +153,14 @@ function toDateFromMessage(msg: GmailMessage): Date {
   return new Date();
 }
 
+// Make filenames OS-safe and short. 
 function sanitizeFilename(s: string, fallback: string): string {
   const base = (s || '').trim() || fallback;
   return base.replace(/[\/:*?"<>|\n\r\t]/g, '-').slice(0, 120);
 }
 
+// Legacy/simple mapping: builds a lightweight markdown file using snippet only.
+// Kept for reference; current flow uses mapGmailMessageToFileRich.
 function mapGmailMessageToFile(threadId: string, msg: GmailMessage): IntegrationFile {
   const headers = msg.payload?.headers || [];
   const subject = safeHeader(headers, 'Subject') || 'No Subject';
@@ -155,6 +196,8 @@ function mapGmailMessageToFile(threadId: string, msg: GmailMessage): Integration
   };
 }
 
+// Gmail supports only day-level precision for `after:` filters.
+// We generate UTC dates to keep behavior deterministic across timezones.
 function toGmailAfterQuery(d: Date): string {
   // Gmail supports after:YYYY/MM/DD (no time). Use UTC date to be deterministic.
   const y = d.getUTCFullYear();
@@ -163,9 +206,13 @@ function toGmailAfterQuery(d: Date): string {
   return `after:${y}/${m}/${day}`;
 }
 
+// Main entry point: fetch IntegrationFiles from Gmail.
+// Steps: resolve account → build query (Sent ± Inbox) → list threads → hydrate messages → map to files →
+// fallback search if needed.
 async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<IntegrationFile[]> {
   try {
-    log.info('Gmail sync start', { userId, lastSyncAt: lastSyncAt?.toISOString() });
+    const addInbox = includeReceived();
+    log.info('Gmail sync start', { userId, lastSyncAt: lastSyncAt?.toISOString(), sent: true, includeInbox: addInbox });
     const composio = await getClient();
 
     // Find a connected Gmail account via Composio
@@ -178,8 +225,9 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
     if (!account) return [];
     const connectedAccountId = account.id;
 
-    // Build query
-    const baseQuery = 'label:INBOX';
+    // Build query: always Sent; optionally include Inbox.
+    // Using a single combined query avoids running two passes and reduces duplicate handling.
+    const baseQuery = addInbox ? 'in:sent OR label:INBOX' : 'in:sent';
     const dateQuery = lastSyncAt ? toGmailAfterQuery(lastSyncAt) : undefined;
     const query = [baseQuery, dateQuery].filter(Boolean).join(' ');
 
@@ -207,7 +255,7 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
       data?.items ||
       [];
 
-    log.info('Gmail threads fetched', { count: threadsList.length, keys: Object.keys(data || {}), query, usedArgs: Object.keys(listArgs) });
+    log.info('Gmail threads fetched', { count: threadsList.length, keys: Object.keys(data || {}), query, usedArgs: Object.keys(listArgs), includeInbox: addInbox });
     if (!threadsList.length) return [];
 
     const limit = concurrencyLimit(6);
@@ -255,6 +303,7 @@ async function fetchFiles(userId: string, lastSyncAt?: Date): Promise<Integratio
         const mid = (msg as any).id || (msg as any).messageId;
         if (!mid) continue;
         let enrichedMsg: GmailMessage = msg;
+        // Enrich message with full payload when the thread response lacks it.
         if (!msg.payload || (!msg.payload.body && !msg.payload.parts)) {
           try {
             const fullResp = await withRetry(() =>
