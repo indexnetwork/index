@@ -22,6 +22,7 @@ export interface DiscoverUser {
   name: string;
   email: string | null;
   avatar: string | null;
+  intro?: string | null;
 }
 
 export interface DiscoverResult {

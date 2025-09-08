@@ -11,18 +11,19 @@ import {
   triggerBrokersOnIntentArchived 
 } from '../agents/context_brokers/connector';
 import { checkMultipleIndexesIntentWriteAccess } from '../lib/index-access';
+import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 
 const router = Router();
 
 // Get all intents with pagination
-router.get('/', 
+router.post('/list', 
   authenticatePrivy,
   [
-    query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
-    query('archived').optional().isBoolean(),
-    query('indexIds').optional().isArray(),
-    query('indexIds.*').optional().isUUID(),
+    body('page').optional().isInt({ min: 1 }).toInt(),
+    body('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+    body('archived').optional().isBoolean(),
+    body('indexIds').optional().isArray(),
+    body('indexIds.*').optional().isUUID(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -31,11 +32,26 @@ router.get('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const page = Number(req.query.page) || 1;
-      const limit = Number(req.query.limit) || 10;
+      const { page = 1, limit = 10, archived, indexIds } = req.body;
       const skip = (page - 1) * limit;
-      const showArchived = req.query.archived === 'true';
-      const indexIds = req.query.indexIds as string[] | undefined;
+      const showArchived = archived === true;
+
+      // Use generic validation function
+      const { validIndexIds, error } = await validateAndGetAccessibleIndexIds(req.user!.id, indexIds);
+      if (error) {
+        return res.status(error.status).json({ 
+          error: error.message,
+          invalidIds: error.invalidIds 
+        });
+      }
+
+      // If user has no accessible indexes, return empty results
+      if (validIndexIds.length === 0) {
+        return res.json({
+          intents: [],
+          pagination: { current: page, total: 0, count: 0, totalCount: 0 }
+        });
+      }
 
       // Build base conditions
       const baseCondition = and(
@@ -57,31 +73,20 @@ router.get('/',
         userAvatar: users.avatar
       };
 
-      // Build queries conditionally
+      // Build queries - always filtered by accessible indexes
       const [intentsResult, totalResult] = await Promise.all([
-        indexIds && indexIds.length > 0
-          ? db.select(selectFields).from(intents)
-              .innerJoin(users, eq(intents.userId, users.id))
-              .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-              .where(and(baseCondition, inArray(intentIndexes.indexId, indexIds)))
-              .orderBy(desc(intents.createdAt))
-              .offset(skip)
-              .limit(limit)
-          : db.select(selectFields).from(intents)
-              .innerJoin(users, eq(intents.userId, users.id))
-              .where(baseCondition)
-              .orderBy(desc(intents.createdAt))
-              .offset(skip)
-              .limit(limit),
+        db.select(selectFields).from(intents)
+          .innerJoin(users, eq(intents.userId, users.id))
+          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+          .where(and(baseCondition, inArray(intentIndexes.indexId, validIndexIds)))
+          .orderBy(desc(intents.createdAt))
+          .offset(skip)
+          .limit(limit),
         
-        indexIds && indexIds.length > 0
-          ? db.select({ count: count() }).from(intents)
-              .innerJoin(users, eq(intents.userId, users.id))
-              .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-              .where(and(baseCondition, inArray(intentIndexes.indexId, indexIds)))
-          : db.select({ count: count() }).from(intents)
-              .innerJoin(users, eq(intents.userId, users.id))
-              .where(baseCondition)
+        db.select({ count: count() }).from(intents)
+          .innerJoin(users, eq(intents.userId, users.id))
+          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+          .where(and(baseCondition, inArray(intentIndexes.indexId, validIndexIds)))
       ]);
 
       // Add index counts

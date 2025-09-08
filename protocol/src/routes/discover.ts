@@ -1,9 +1,10 @@
 import { Router, Response } from 'express';
-import { eq, ne, sql, and, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { body, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { users, intents, intentStakes, intentIndexes, userConnectionEvents } from '../lib/schema';
+import { intents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
+import { discoverUsers } from '../lib/discover';
 
 const router = Router();
 
@@ -102,152 +103,21 @@ router.post("/filter",
     // Extract the intent IDs for easier use in the main query
     const userIntentIds = authenticatedUserIntents.map(row => row.intentId);
 
-  const mainQuery = db
-  .select({
-    // Get the user ID who has staked
-    userId: intents.userId,
-    // Sum up all stake amounts for this user
-    totalStake: sql<number>`SUM(${intentStakes.stake})`,
-    // Collect all stake information
-    stakes: sql<any[]>`ARRAY_AGG(
-      jsonb_build_object(
-        'reasoning', ${intentStakes.reasoning},
-        'stake', ${intentStakes.stake},
-        'intentId', intentId.id,
-        'intent', jsonb_build_object(
-          'id', ${intents.id},
-          'payload', ${intents.payload},
-          'summary', ${intents.summary},
-          'createdAt', ${intents.createdAt}
-        )
-      )
-    )`,
-  })
-  .from(intentStakes)
-  // Explode the stake.intents array into individual rows for filtering
-  // This allows us to match each intent ID separately
-  .innerJoin(
-    sql`UNNEST(${intentStakes.intents}::uuid[]) as intentId(id)`,
-    sql`TRUE`
-  )
-  // Join with intents table to get user info
-  .innerJoin(intents, sql`intentId.id = ${intents.id}`)
-  // Join with users table to get user details
-  .innerJoin(users, eq(users.id, intents.userId))
-  
-  .where(
-    and(
-      // Only stakes that contain authenticated user's intents
-      userIntentIds.length > 0 ? sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)}]::uuid[]` : sql`FALSE`,
-
-      // External intent-ids filter (must be authenticated user's intents if provided)
-      ...(intentIds && intentIds.length > 0 ? [
-        sql`${intentStakes.intents}::uuid[] && ARRAY[${sql.join(intentIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[]`
-      ] : []),
-
-      // External user-ids filter (for vibecheck)
-      ...(userIds && userIds.length > 0 ? [
-        sql`${intents.userId} = ANY(ARRAY[${sql.join(userIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
-      ] : []),
-
-      // External index-ids filter (must be authenticated user's indexes)
-      ...(indexIds && indexIds.length > 0 ? [
-        sql`EXISTS (
-          SELECT 1
-          FROM ${intentIndexes} ii_filter
-          WHERE ii_filter.intent_id = ANY(${intentStakes.intents}::uuid[])
-          AND ii_filter.index_id = ANY(ARRAY[${sql.join(indexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])
-        )`
-      ] : []),
-
-      // Exclude users with existing connections if excludeDiscovered is true
-      ...(excludeDiscovered ? [
-        sql`NOT EXISTS (
-          SELECT 1
-          FROM ${userConnectionEvents} uce
-          WHERE (
-            (uce.initiator_user_id = ${authenticatedUserId} AND uce.receiver_user_id = ${intents.userId})
-            OR
-            (uce.initiator_user_id = ${intents.userId} AND uce.receiver_user_id = ${authenticatedUserId})
-          )
-        )`
-      ] : []),
-
-      // Check if all intents in the stake exist in the same index
-      sql`EXISTS (
-        SELECT 1 
-        FROM ${intentIndexes} ii1
-        WHERE ii1.intent_id = ANY(${intentStakes.intents}::uuid[])
-        GROUP BY ii1.index_id
-        HAVING COUNT(*) = array_length(${intentStakes.intents}, 1)
-      )`
-    )
-  )
-  // Group results by user to get per-user totals
-  .groupBy(intents.userId)
-  // Exclude the authenticated user from results
-  .having(ne(intents.userId, authenticatedUserId))
-  // Add pagination
-  .limit(limit)
-  .offset((page - 1) * limit);
-
-    const results = await mainQuery;
-
-    // Format the results to match the expected structure
-    const formattedResults = await Promise.all(results.map(async (row) => {
-      // Get user details
-      const userDetails = await db.select({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        avatar: users.avatar
-      }).from(users)
-        .where(eq(users.id, row.userId))
-        .limit(1);
-
-      const user = userDetails[0];
-
-      // Process stakes to filter only those that involve authenticated user's intents
-      const relevantStakes = row.stakes.filter((stake: any) => 
-        userIntentIds.includes(stake.intentId)
-      );
-
-      // Get unique intents that are staked
-      const intentMap = new Map();
-      relevantStakes.forEach((stake: any) => {
-        if (!intentMap.has(stake.intent.id)) {
-          intentMap.set(stake.intent.id, {
-            intent: stake.intent,
-            totalStake: 0,
-            reasonings: []
-          });
-        }
-        const intentData = intentMap.get(stake.intent.id);
-        intentData.totalStake += parseInt(stake.stake);
-        if (stake.reasoning) {
-          intentData.reasonings.push(stake.reasoning);
-        }
-      });
-
-      return {
-        user,
-        totalStake: row.totalStake,
-        intents: Array.from(intentMap.values()).map(intentData => ({
-          intent: intentData.intent,
-          totalStake: intentData.totalStake,
-          reasonings: [...new Set(intentData.reasonings)] // Remove duplicate reasonings
-        }))
-      };
-    }));
+    // Use the library function to discover users
+    const { results: formattedResults, pagination } = await discoverUsers({
+      authenticatedUserId,
+      userIntentIds,
+      intentIds,
+      userIds,
+      indexIds,
+      excludeDiscovered,
+      page,
+      limit
+    });
 
     return res.json({
       results: formattedResults,
-      pagination: {
-        page: page,
-        limit: limit,
-        hasNext: results.length === limit,
-        hasPrev: page > 1
-      },
+      pagination,
       filters: {
         intentIds: intentIds || null,
         userIds: userIds || null,

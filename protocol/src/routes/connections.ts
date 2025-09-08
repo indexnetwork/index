@@ -1,21 +1,24 @@
 import { Router, Response } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { users, userConnectionEvents } from '../lib/schema';
+import { users, userConnectionEvents, intents, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, or, desc, sql, inArray } from 'drizzle-orm';
 import { sendConnectionRequestEmail, sendConnectionAcceptedEmail, sendConnectionDeclinedEmail } from '../lib/email-handlers';
+import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 
 const router = Router();
 
 
 // Get connections by user (aggregated current state)
-router.get('/by-user',
+router.post('/by-user',
   authenticatePrivy,
   [
-    query('type').optional().isIn(['inbox', 'pending', 'history']),
-    query('page').optional().isInt({ min: 1 }).toInt(),
-    query('limit').optional().isInt({ min: 1, max: 50 }).toInt()
+    body('type').optional().isIn(['inbox', 'pending', 'history']),
+    body('page').optional().isInt({ min: 1 }).toInt(),
+    body('limit').optional().isInt({ min: 1, max: 50 }).toInt(),
+    body('indexIds').optional().isArray(),
+    body('indexIds.*').optional().isUUID()
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -25,7 +28,21 @@ router.get('/by-user',
       }
 
       const userId = req.user!.id;
-      const { type = 'inbox' } = req.query;
+      const { type = 'inbox', indexIds } = req.body;
+
+      // Use generic validation function
+      const { validIndexIds, error } = await validateAndGetAccessibleIndexIds(userId, indexIds);
+      if (error) {
+        return res.status(error.status).json({ 
+          error: error.message,
+          invalidIds: error.invalidIds 
+        });
+      }
+
+      // If user has no accessible indexes, return empty results
+      if (validIndexIds.length === 0) {
+        return res.json({ connections: [] });
+      }
 
       // Get all connection events involving this user
       const allEvents = await db.select({
@@ -78,7 +95,26 @@ router.get('/by-user',
         return res.json({ connections: [] });
       }
 
-      const otherUserIds = filteredConnections.map(conn => conn.otherUserId);
+      let otherUserIds = filteredConnections.map(conn => conn.otherUserId);
+
+      // Always filter by indexes - only include users who have intents in accessible indexes
+      const usersWithIntentsInIndexes = await db.select({ userId: intents.userId })
+        .from(intents)
+        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+        .where(and(
+          inArray(intents.userId, otherUserIds),
+          inArray(intentIndexes.indexId, validIndexIds),
+          isNull(intents.archivedAt)
+        ));
+
+      const validUserIds = new Set(usersWithIntentsInIndexes.map(u => u.userId));
+      otherUserIds = otherUserIds.filter(userId => validUserIds.has(userId));
+
+      if (otherUserIds.length === 0) {
+        return res.json({ connections: [] });
+      }
+
+      
       const otherUsers = await db.select({
         id: users.id,
         name: users.name,

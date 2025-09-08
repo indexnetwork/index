@@ -19,10 +19,6 @@ router.post('/vibecheck',
     body('intentIds.*').optional().isUUID().withMessage('Each intent ID must be a valid UUID'),
     body('indexIds').optional().isArray().withMessage('Index IDs must be an array'),
     body('indexIds.*').optional().isUUID().withMessage('Each index ID must be a valid UUID'),
-    body('userIds').optional().isArray().withMessage('User IDs must be an array'),
-    body('userIds.*').optional().isUUID().withMessage('Each user ID must be a valid UUID'),
-    body('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer'),
-    body('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
     body('options').optional().isObject().withMessage('Options must be an object')
   ],
   async (req: AuthRequest, res: Response) => {
@@ -33,7 +29,7 @@ router.post('/vibecheck',
       }
 
       const contextUserId = req.user!.id;
-      const { targetUserId, intentIds, indexIds, userIds, offset, limit, options } = req.body;
+      const { targetUserId, intentIds, indexIds, options } = req.body;
 
       // Prevent self-synthesis
       if (contextUserId === targetUserId) {
@@ -54,22 +50,17 @@ router.post('/vibecheck',
         return res.status(400).json({ error: 'No accessible indexes found for synthesis' });
       }
 
-      const result = await synthesizeVibeCheck({
+      const synthesis = await synthesizeVibeCheck({
         targetUserId,
         contextUserId,
         intentIds,
         indexIds: validIndexIds,
-        userIds,
-        offset,
-        limit,
         options
       });
 
+
       return res.json({
-        synthesis: result.synthesis,
-        total: result.total,
-        offset: result.offset,
-        limit: result.limit,
+        synthesis,
         targetUserId,
         contextUserId,
       });

@@ -5,8 +5,8 @@ import { intents, users, intentStakes, userConnectionEvents, indexes, intentInde
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, sql, or, notInArray } from 'drizzle-orm';
 import {getIndexWithPermissions } from '../lib/index-access';
-import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { getAccessibleIntents } from '../lib/intent-access';
+import { discoverUsers } from '../lib/discover';
 
 const router = Router();
 
@@ -51,75 +51,30 @@ router.get('/index/share/:code/by-user',
         return res.json([]);
       }
 
-      // Get stakes for intents in this index that:
-      // 1. Match the user's intent IDs
-      // 2. Are associated with the shared index
-      // Join with intents, intent indexes and users tables to get all needed data
-      const query = db.select({
-        stake: intentStakes.stake,
-        reasoning: intentStakes.reasoning,
-        stakeIntents: intentStakes.intents,
-        userId: users.id,
-        userName: users.name,
-        userAvatar: users.avatar,
-        userIntro: users.intro,
-        intentArchivedAt: intents.archivedAt,
-        intentPayload: intents.payload
-      })
-      .from(intentStakes)
-      .innerJoin(intents, sql`${intents.id}::text = ANY(${intentStakes.intents})`)
-      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-      .innerJoin(users, eq(intents.userId, users.id))
-      .where(and(
-        eq(intentIndexes.indexId, sharedIndexData.id),
-        sql`EXISTS (
-          SELECT 1 FROM unnest(${intentStakes.intents}) AS intent_id
-          WHERE intent_id NOT IN (${sql.join(userIntentIds.map(id => sql`${id}`), sql`, `)})
-        )`,
-        sql`${users.id} != ${req.user!.id}`,
-        isNull(intents.archivedAt)
-      ));
+      // Use the new discovery logic
+      const { results } = await discoverUsers({
+        authenticatedUserId: req.user!.id,
+        userIntentIds,
+        indexIds: [sharedIndexData.id],
+        excludeDiscovered: false, // Include all users, not just undiscovered ones
+        page: 1,
+        limit: 100
+      });
 
-      console.log('Executing query:', query.toSQL());
-      
-      const stakes = await query;
+      // Format results to match the expected response structure
+      const formattedResults = results.map(r => ({
+        user: {
+          id: r.user.id,
+          name: r.user.name,
+          avatar: r.user.avatar,
+          intro: r.user.intro
+        },
+        totalStake: r.totalStake.toString(),
+        reasoning: r.intents.flatMap(i => i.reasonings).filter(r => r).join(' ')
+      }))
+      .sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
 
-      console.log("aaaa",stakes);
-
-      // Group by user
-      const userStakes = stakes.reduce((acc, stake) => {
-        const userName = stake.userName;
-        if (!acc[userName]) {
-          acc[userName] = {
-            user: {
-              id: stake.userId,
-              name: stake.userName,
-              avatar: stake.userAvatar,
-              intro: stake.userIntro
-            },
-            totalStake: BigInt(0),
-            reasoning: new Set()
-          };
-        }
-        acc[userName].totalStake += stake.stake;
-
-        if (stake.reasoning) {
-          acc[userName].reasoning.add(stake.reasoning);
-        }
-
-        return acc;
-      }, {} as Record<string, any>);
-
-      // Format results without synthesis (synthesis moved to separate endpoint)
-      const result = Object.values(userStakes)
-        .map(user => ({
-          user: user.user,
-          totalStake: user.totalStake.toString(),
-          reasoning: Array.from(user.reasoning).join(' ')
-        }))
-        .sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
-
-      return res.json(result);
+      return res.json(formattedResults);
     } catch (error) {
       console.error('Get index stakes by user error:', error);
       return res.status(500).json({ error: 'Failed to fetch index stakes by user' });
