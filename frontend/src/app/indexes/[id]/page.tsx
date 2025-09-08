@@ -11,7 +11,6 @@ import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 import Link from "next/link";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
-import { createSyncService, type SyncRun } from "@/services/sync";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { Index, Intent } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
@@ -69,9 +68,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [addingLink, setAddingLink] = useState(false);
   const [syncingLinks, setSyncingLinks] = useState(false);
   const [lastSyncSummary, setLastSyncSummary] = useState<string>("");
-  const [syncProgress, setSyncProgress] = useState<{ completed?: number; total?: number; status?: string } | null>(null);
+  // Sync progress removed; API is ack-only
   const api = useAuthenticatedAPI();
-  const syncService = useMemo(() => createSyncService(api), [api]);
   const { success: notifySuccess, error: notifyError, info: notifyInfo } = useNotifications();
 
   const fetchLinks = useCallback(async () => {
@@ -325,50 +323,10 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     try {
       setSyncingLinks(true);
       setLastSyncSummary("");
-      setSyncProgress({ status: 'queued' });
-      const res = await indexesService.syncIndexLinks(resolvedParams.id, { skipBrokers: true, all: !!opts?.all });
-      const runId = (res as any).runId as string;
-      if (!runId) {
-        setLastSyncSummary("Failed to enqueue sync");
-        setSyncingLinks(false);
-        notifyError('Sync failed to start');
-        return;
-      }
-      // Poll for status (SSE alternative)
-      const start = Date.now();
-      let stop = false;
-      const poll = async () => {
-        if (stop) return;
-        try {
-          const data = await syncService.getRun(runId);
-          const run = data.run as SyncRun;
-          const { progress, stats, status } = run;
-          if (progress && (progress.completed !== undefined || progress.total !== undefined)) {
-            setSyncProgress({ completed: progress.completed, total: progress.total, status });
-          }
-          if (status === 'succeeded') {
-            const dur = Date.now() - start;
-            setLastSyncSummary(`Synced: pages=${stats?.pagesVisited ?? 0}, files=${stats?.filesImported ?? 0}, intents=${stats?.intentsGenerated ?? 0}, ${dur}ms`);
-            await fetchLinks();
-            await fetchIndexIntents();
-            setSyncProgress(null);
-            setSyncingLinks(false);
-            notifySuccess('Links synced', `Files ${stats?.filesImported ?? 0}, intents ${stats?.intentsGenerated ?? 0}`);
-            return;
-          }
-          if (status === 'failed') {
-            setLastSyncSummary(`Sync failed`);
-            setSyncProgress(null);
-            setSyncingLinks(false);
-            notifyError('Links sync failed');
-            return;
-          }
-        } catch (err) {
-          console.error('Polling error:', err);
-        }
-        setTimeout(poll, 1000);
-      };
-      poll();
+      await indexesService.syncIndexLinks(resolvedParams.id, { skipBrokers: true, all: !!opts?.all });
+      setLastSyncSummary('Sync accepted; running in background');
+      notifySuccess('Sync accepted', 'It will run in the background.');
+      setSyncingLinks(false);
     } catch (e) {
       console.error('Error syncing links:', e);
       setSyncingLinks(false);
@@ -669,14 +627,6 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
               {lastSyncSummary && (
                 <span className="text-xs text-gray-500">
                   {lastSyncSummary}
-                  {syncProgress && syncProgress.total ? (
-                    <>
-                      {" "}
-                      <span>
-                        ({syncProgress.completed ?? 0}/{syncProgress.total})
-                      </span>
-                    </>
-                  ) : null}
                 </span>
               )}
               <Button
@@ -685,13 +635,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 disabled={syncingLinks}
                 className="border-black text-black hover:bg-gray-100"
               >
-                {syncingLinks
-                  ? (syncProgress?.status === 'queued'
-                      ? 'Queued…'
-                      : syncProgress?.status === 'running'
-                        ? `Running ${syncProgress?.completed ?? 0}/${syncProgress?.total ?? 0}`
-                        : 'Syncing…')
-                  : 'Sync now'}
+                {syncingLinks ? 'Syncing…' : 'Sync now'}
               </Button>
               <Button
                 variant="outline"
@@ -704,14 +648,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             </div>
           </div>
 
-          {syncProgress?.status === 'running' && (syncProgress?.total ?? 0) > 0 && (
-            <div className="w-full h-1 bg-gray-200 rounded overflow-hidden mb-3">
-              <div
-                className="h-full bg-black transition-all"
-                style={{ width: `${Math.min(100, Math.round(((syncProgress.completed ?? 0) / (syncProgress.total ?? 0)) * 100))}%` }}
-              />
-            </div>
-          )}
+          {/* Progress bar removed: backend is ack-only */}
 
           <div className="flex gap-2 mb-3">
             <input

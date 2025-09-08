@@ -6,7 +6,6 @@ import ClientLayout from "@/components/ClientLayout";
 import { Google, Notion } from "@lobehub/icons";
 import { useAPI } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
-import { createSyncService, type SyncRun } from "@/services/sync";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useEffect, useState, useCallback } from "react";
 import { Integration } from "@/services/integrations";
@@ -25,9 +24,8 @@ export default function PrivateIndexPage() {
   const [connectingIntegration, setConnectingIntegration] = useState<string | null>(null);
   const [connectionStatuses, setConnectionStatuses] = useState<Record<string, string>>({});
   const [syncingIntegration, setSyncingIntegration] = useState<string | null>(null);
-  const [syncProgress, setSyncProgress] = useState<Record<string, { status?: string; completed?: number; total?: number }>>({});
+  // progress removed; backend is ack-only
   const api = useAuthenticatedAPI();
-  const syncService = createSyncService(api);
   const { success: notifySuccess, error: notifyError } = useNotifications();
 
   const integrationConfigs: IntegrationConfig[] = [
@@ -172,45 +170,13 @@ export default function PrivateIndexPage() {
   const handleSync = async (integrationType: string) => {
     try {
       setSyncingIntegration(integrationType);
-      // enqueue async run
-      const enq = await integrationsService.syncIntegration(integrationType);
-      const runId = (enq as any).runId as string;
-      if (!runId) throw new Error('Failed to enqueue sync');
-      setSyncProgress(prev => ({ ...prev, [integrationType]: { status: 'queued' } }));
-      const started = Date.now();
-      let stopped = false;
-      const poll = async () => {
-        if (stopped) return;
-        try {
-          const data = await syncService.getRun(runId);
-          const run = data.run as SyncRun;
-          const { progress, stats, status } = run;
-          setSyncProgress(prev => ({ ...prev, [integrationType]: { status, completed: progress?.completed, total: progress?.total } }));
-          if (status === 'succeeded') {
-            await loadIntegrations();
-            stopped = true;
-            setSyncingIntegration(null);
-            const files = run.stats?.filesImported ?? 0;
-            const intents = run.stats?.intentsGenerated ?? 0;
-            notifySuccess(`${integrationType} synced`, `Files ${files}, intents ${intents}`);
-            return;
-          }
-          if (status === 'failed') {
-            stopped = true;
-            setSyncingIntegration(null);
-            notifyError(`${integrationType} sync failed`);
-            return;
-          }
-        } catch (e) {
-          // keep polling a few times even if errors
-        }
-        setTimeout(poll, 1000);
-      };
-      poll();
+      await integrationsService.syncIntegration(integrationType);
+      setSyncingIntegration(null);
+      notifySuccess(`${integrationType} sync accepted`, 'It will run in the background.');
     } catch (error) {
       console.error('Failed to sync integration:', error);
     } finally {
-      // keep spinner controlled by poller
+      // spinner ends on ack
     }
   };
 
@@ -309,11 +275,7 @@ export default function PrivateIndexPage() {
                       Connecting...
                     </span>
                   )}
-                  {syncProgress[config.id]?.status && (
-                    <span className="px-2 py-0.5 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-full">
-                      {syncProgress[config.id]?.status === 'queued' ? 'Queued…' : syncProgress[config.id]?.status === 'running' ? `Running ${syncProgress[config.id]?.completed ?? 0}/${syncProgress[config.id]?.total ?? 0}` : syncProgress[config.id]?.status}
-                    </span>
-                  )}
+                  {/* progress badge removed */}
                 </div>
 
                 {/* Status messages and sync info */}
