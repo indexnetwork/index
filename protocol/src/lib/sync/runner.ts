@@ -23,10 +23,7 @@ export async function runSync(provider: SyncProviderName, userId: string, params
     id: rid(),
     provider,
     userId,
-    params,
-    status: 'running',
     createdAt: Date.now(),
-    startedAt: Date.now(),
   } as SyncRun;
   let stats: Record<string, any> = {};
   const update = async (patch: Partial<SyncRun>) => {
@@ -39,4 +36,3 @@ export async function runSync(provider: SyncProviderName, userId: string, params
 export function getProvider(name: SyncProviderName) {
   return providers[name];
 }
-
