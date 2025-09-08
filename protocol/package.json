@@ -37,7 +37,6 @@
     "openai": "^4.103.0",
     "postgres": "^3.4.7",
     "resend": "^4.0.1",
-    "p-queue": "^7.4.1",
     "tiktoken": "^1.0.21",
     "unstructured-client": "0.24.1",
     "uuid": "^11.1.0",

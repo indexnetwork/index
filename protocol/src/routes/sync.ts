@@ -1,7 +1,6 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { SyncProviderName } from '../lib/sync/types';
 
 const router = Router();
 
