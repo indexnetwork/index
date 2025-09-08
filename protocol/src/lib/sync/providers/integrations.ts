@@ -1,5 +1,5 @@
 import db from '../../db';
-import { userIntegrations, providerCursors } from '../../schema';
+import { userIntegrations } from '../../schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { handlers } from '../../integrations';
 import { log } from '../../log';
@@ -36,10 +36,7 @@ export function createIntegrationProvider(type: IntegrationType): SyncProvider<P
       const handler = handlers[type];
       if (!handler) throw new Error('Unsupported integration type');
 
-      // Load provider cursor (store lastSyncAt as a simple delta cursor for now)
-      const cursorRows = await db.select().from(providerCursors).where(and(eq(providerCursors.userId, run.userId), eq(providerCursors.provider, type))).limit(1);
-      const cursor = cursorRows[0]?.cursor as any | undefined;
-      const lastSyncAt = cursor?.lastSyncAt ? new Date(cursor.lastSyncAt) : integrationRec.lastSyncAt || undefined;
+      const lastSyncAt = integrationRec.lastSyncAt || undefined;
 
       await update({ progress: { notes: [`fetching ${type} files`] } });
       const files = await handler.fetchFiles(run.userId, lastSyncAt || undefined);
@@ -62,14 +59,6 @@ export function createIntegrationProvider(type: IntegrationType): SyncProvider<P
         .update(userIntegrations)
         .set({ lastSyncAt: finishedAt })
         .where(eq(userIntegrations.id, integrationRec.id));
-
-      // Persist provider cursor
-      const newCursor = { lastSyncAt: finishedAt.toISOString() } as any;
-      if (cursorRows.length) {
-        await db.update(providerCursors).set({ cursor: newCursor, updatedAt: finishedAt }).where(eq(providerCursors.id, cursorRows[0].id));
-      } else {
-        await db.insert(providerCursors).values({ userId: run.userId, provider: type, cursor: newCursor });
-      }
 
       log.info(`${type}-sync-run`, { runId: run.id, filesImported, intentsGenerated });
       await update({ stats: { filesImported, intentsGenerated } });
