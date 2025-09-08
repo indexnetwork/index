@@ -7,17 +7,15 @@
  * - Suitable for Kubernetes CronJobs and local/manual runs
  *
  * Behavior
- * - Enqueues a run and prints { runId }
- * - With --wait, polls run status once per second and exits 0 on success / 1 on failure
+ * - Runs provider synchronously and exits 0 on success / 1 on failure
  *
  * Examples
- *   yarn sync-all links --index 00000000-0000-0000-0000-000000000000 --user <USER_ID> --wait
+ *   yarn sync-all links --index 00000000-0000-0000-0000-000000000000 --user <USER_ID>
  *   yarn sync-all notion --index <INDEX_ID> --user <USER_ID>
- *   SYNC_USER_ID=<USER_ID> yarn sync-all gmail --index <INDEX_ID> --wait
+ *   SYNC_USER_ID=<USER_ID> yarn sync-all gmail --index <INDEX_ID>
  */
 import 'dotenv/config';
-import { registerSyncProviders } from '../lib/sync/register';
-import { enqueue, getRun } from '../lib/sync/queue';
+import { runSync } from '../lib/sync/runner';
 
 function usage() {
   const text = `
@@ -29,11 +27,10 @@ Providers:
 Options:
   -u, --user <id>      User ID (or set SYNC_USER_ID env)
   -i, --index <id>     Index ID (where intents are attached, when applicable)
-      --wait           Block and exit 0 on success / 1 on failure
   -h, --help           Show this help
 
 Examples:
-  SYNC_USER_ID=123 yarn sync-all links --index 111 --wait
+  SYNC_USER_ID=123 yarn sync-all links --index 111
   yarn sync-all notion --index 111 --user 123
 `;
   console.log(text);
@@ -53,7 +50,6 @@ function parseArgs(argv: string[]) {
     const a = args[i];
     if (a === '--index' || a === '-i') out.params.indexId = args[++i];
     else if (a === '--user' || a === '-u') out.userId = args[++i];
-    else if (a === '--wait') out.wait = true;
     else if (a === '--help' || a === '-h') out.help = true;
     else if (a.startsWith('--')) { const k = a.slice(2); out.params[k] = args[++i]; }
   }
@@ -61,29 +57,16 @@ function parseArgs(argv: string[]) {
 }
 
 async function main() {
-  const { provider, params, userId, wait, help } = parseArgs(process.argv);
+  const { provider, params, userId, help } = parseArgs(process.argv);
   if (help || provider === 'help') { usage(); process.exit(0); }
   if (!provider) { usage(); process.exit(1); }
-  registerSyncProviders();
   const uid = userId || process.env.SYNC_USER_ID;
   if (!uid) {
     console.error('Missing user id. Provide --user or set SYNC_USER_ID env.');
     process.exit(1);
   }
-  const runId = await enqueue(provider as any, uid, params);
-  console.log(JSON.stringify({ runId }));
-  if (wait) {
-    // naive poll
-    for (;;) {
-      const run = await getRun(runId);
-      if (!run) throw new Error('Run disappeared');
-      if (run.status === 'succeeded' || run.status === 'failed') {
-        console.log(JSON.stringify({ run }));
-        process.exit(run.status === 'succeeded' ? 0 : 1);
-      }
-      await new Promise(r => setTimeout(r, 1000));
-    }
-  }
+  const result = await runSync(provider as any, uid, params);
+  console.log(JSON.stringify({ ok: true, stats: result.stats }));
 }
 
 main().catch((e) => {
