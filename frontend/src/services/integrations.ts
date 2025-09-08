@@ -41,9 +41,26 @@ export function createIntegrationsService(api: ReturnType<typeof useAuthenticate
       return api.delete<{ success: boolean }>(`/integrations/${integrationType}`);
     },
 
-    // Sync specific integration
-    async syncIntegration(integrationType: string, indexId?: string): Promise<{ success: boolean; filesImported: number; intentsGenerated: number; error?: string }> {
-      return api.post<{ success: boolean; filesImported: number; intentsGenerated: number; error?: string }>(`/integrations/sync/${integrationType}`, indexId ? { indexId } : {});
+    // Sync specific integration (async run)
+    async syncIntegration(
+      integrationType: string,
+      indexId?: string
+    ): Promise<{
+      runId: string;
+      success: boolean;
+      status: string;
+      filesImported: number;
+      intentsGenerated: number;
+      message?: string;
+    }> {
+      return api.post<{
+        runId: string;
+        success: boolean;
+        status: string;
+        filesImported: number;
+        intentsGenerated: number;
+        message?: string;
+      }>(`/integrations/sync/${integrationType}`, indexId ? { indexId } : {});
     },
 
   };

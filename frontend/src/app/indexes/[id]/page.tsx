@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, use, useRef } from "react";
+import { useState, useEffect, useCallback, use, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical } from "lucide-react";
@@ -10,6 +10,8 @@ import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 
 import Link from "next/link";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
+import { useAuthenticatedAPI } from "@/lib/api";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { Index, Intent } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from "@privy-io/react-auth";
@@ -59,6 +61,26 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const intentsService = useIntents();
   const { user: currentUser } = usePrivy();
   const intentsRef = useRef<HTMLDivElement>(null);
+
+  // Index Links state
+  const [links, setLinks] = useState<Array<{ id: string; url: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>>([]);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [addingLink, setAddingLink] = useState(false);
+  const [syncingLinks, setSyncingLinks] = useState(false);
+  const [lastSyncSummary, setLastSyncSummary] = useState<string>("");
+  // Sync progress removed; API is ack-only
+  const api = useAuthenticatedAPI();
+  const { success: notifySuccess, error: notifyError, info: notifyInfo } = useNotifications();
+
+  const fetchLinks = useCallback(async () => {
+    try {
+      const data = await indexesService.getIndexLinks(resolvedParams.id);
+      setLinks(data);
+    } catch (e) {
+      console.error('Error fetching index links:', e);
+      setLinks([]);
+    }
+  }, [indexesService, resolvedParams.id]);
 
   const fetchIndex = useCallback(async () => {
     try {
@@ -204,6 +226,10 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     fetchSuggestedIntents();
   }, [fetchSuggestedIntents]);
 
+  useEffect(() => {
+    fetchLinks();
+  }, [fetchLinks]);
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -265,6 +291,46 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           return newSet;
         });
       }
+    }
+  };
+
+  const handleAddLink = async () => {
+    if (!linkUrl.trim()) return;
+    try {
+      setAddingLink(true);
+      await indexesService.addIndexLink(resolvedParams.id, { url: linkUrl.trim() });
+      setLinkUrl("");
+      await fetchLinks();
+      notifySuccess('Link added', 'Your URL was added to this index.');
+    } catch (e) {
+      console.error('Error adding link:', e);
+      notifyError('Failed to add link');
+    } finally {
+      setAddingLink(false);
+    }
+  };
+
+  const handleDeleteLink = async (linkId: string) => {
+    try {
+      await indexesService.deleteIndexLink(resolvedParams.id, linkId);
+      await fetchLinks();
+    } catch (e) {
+      console.error('Error deleting link:', e);
+    }
+  };
+
+  const handleSyncLinks = async (opts?: { all?: boolean }) => {
+    try {
+      setSyncingLinks(true);
+      setLastSyncSummary("");
+      await indexesService.syncIndexLinks(resolvedParams.id, { skipBrokers: true, all: !!opts?.all });
+      setLastSyncSummary('Sync accepted; running in background');
+      notifySuccess('Sync accepted', 'It will run in the background.');
+      setSyncingLinks(false);
+    } catch (e) {
+      console.error('Error syncing links:', e);
+      setSyncingLinks(false);
+      notifyError('Links sync error');
     }
   };
 
@@ -551,6 +617,109 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Index Links Panel */}
+        <div className="mt-4 py-4 px-3 sm:px-6 border border-black border-b-0 border-b-2 bg-white">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xl mt-2 font-semibold text-gray-900">Index Links</h2>
+            <div className="flex items-center gap-2">
+              {lastSyncSummary && (
+                <span className="text-xs text-gray-500">
+                  {lastSyncSummary}
+                </span>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => handleSyncLinks()}
+                disabled={syncingLinks}
+                className="border-black text-black hover:bg-gray-100"
+              >
+                {syncingLinks ? 'Syncing…' : 'Sync now'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleSyncLinks({ all: true })}
+                disabled={syncingLinks}
+                className="border-black text-black hover:bg-gray-100"
+              >
+                {syncingLinks ? 'Working…' : 'Sync all'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Progress bar removed: backend is ack-only */}
+
+          <div className="flex gap-2 mb-3">
+            <input
+              type="url"
+              value={linkUrl}
+              onChange={e => setLinkUrl(e.target.value)}
+              placeholder="https://example.com/docs"
+              className="flex-1 border border-black px-3 py-2 rounded text-sm text-black font-ibm-plex-mono"
+              disabled={addingLink || syncingLinks}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && linkUrl && !addingLink && !syncingLinks) {
+                  e.preventDefault();
+                  handleAddLink();
+                }
+              }}
+            />
+            <Button
+              variant="outline"
+              onClick={handleAddLink}
+              disabled={addingLink || !linkUrl || syncingLinks}
+              className="border-black text-black hover:bg-gray-100"
+            >
+              {addingLink ? 'Adding…' : 'Add link'}
+            </Button>
+          </div>
+
+          {links.length === 0 ? (
+            <p className="text-sm text-gray-500">No links added. Add a URL above and sync to generate intents.</p>
+          ) : (
+            <ul className="divide-y">
+              {links.map(link => (
+                <li key={link.id} className="py-2 flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0 mr-3 text-sm text-gray-800 overflow-hidden">
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={link.url}
+                      className="text-black underline-offset-2 hover:underline font-ibm-plex-mono break-words line-clamp-2 block"
+                    >
+                      {link.url}
+                    </a>
+                    {/* per-link depth/pages removed; now using global defaults */}
+                    {link.lastSyncAt && (
+                      <span className="text-gray-500 ml-2">last: {new Date(link.lastSyncAt).toLocaleString()}</span>
+                    )}
+                    <div className="inline-flex items-center gap-2 ml-2">
+                      {link.lastError ? (
+                        <span title={link.lastError || undefined} className="px-1.5 py-0.5 text-[10px] font-medium text-red-700 bg-red-100 border border-red-200 rounded-full">Error</span>
+                      ) : link.lastSyncAt ? (
+                        <span title={link.lastStatus || undefined} className="px-1.5 py-0.5 text-[10px] font-medium text-green-700 bg-green-100 border border-green-200 rounded-full">Synced</span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 text-[10px] font-medium text-gray-600 bg-gray-100 border border-gray-200 rounded-full">Never</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* edit controls removed with per-link settings */}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteLink(link.id)}
+                      className="border-black text-black hover:bg-gray-100"
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">

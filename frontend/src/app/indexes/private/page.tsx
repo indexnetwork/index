@@ -5,6 +5,8 @@ import Link from "next/link";
 import ClientLayout from "@/components/ClientLayout";
 import { Google, Notion } from "@lobehub/icons";
 import { useAPI } from "@/contexts/APIContext";
+import { useAuthenticatedAPI } from "@/lib/api";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { useEffect, useState, useCallback } from "react";
 import { Integration } from "@/services/integrations";
 
@@ -22,6 +24,9 @@ export default function PrivateIndexPage() {
   const [connectingIntegration, setConnectingIntegration] = useState<string | null>(null);
   const [connectionStatuses, setConnectionStatuses] = useState<Record<string, string>>({});
   const [syncingIntegration, setSyncingIntegration] = useState<string | null>(null);
+  // progress removed; backend is ack-only
+  const api = useAuthenticatedAPI();
+  const { success: notifySuccess, error: notifyError } = useNotifications();
 
   const integrationConfigs: IntegrationConfig[] = [
     {
@@ -165,19 +170,13 @@ export default function PrivateIndexPage() {
   const handleSync = async (integrationType: string) => {
     try {
       setSyncingIntegration(integrationType);
-      const result = await integrationsService.syncIntegration(integrationType);
-      
-      if (result.success) {
-        console.log(`Sync complete: ${result.filesImported} files, ${result.intentsGenerated} intents`);
-        // Refresh integrations to get updated lastSyncAt
-        await loadIntegrations();
-      } else {
-        console.error('Sync failed:', result.error);
-      }
+      await integrationsService.syncIntegration(integrationType);
+      setSyncingIntegration(null);
+      notifySuccess(`${integrationType} sync accepted`, 'It will run in the background.');
     } catch (error) {
       console.error('Failed to sync integration:', error);
     } finally {
-      setSyncingIntegration(null);
+      // spinner ends on ack
     }
   };
 
@@ -276,11 +275,7 @@ export default function PrivateIndexPage() {
                       Connecting...
                     </span>
                   )}
-                  {syncingIntegration === config.id && (
-                    <span className="px-2 py-0.5 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-full">
-                      Syncing...
-                    </span>
-                  )}
+                  {/* progress badge removed */}
                 </div>
 
                 {/* Status messages and sync info */}

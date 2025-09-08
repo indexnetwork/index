@@ -201,6 +201,58 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response;
   },
 
+  // Index Links (crawl-based intents)
+  getIndexLinks: async (indexId: string): Promise<Array<{ id: string; url: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
+    const res = await api.get<{ links: Array<{ id: string; url: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }> }>(`/indexes/${indexId}/links`);
+    return res.links || [];
+  },
+
+  addIndexLink: async (indexId: string, link: { url: string }) => {
+    const res = await api.post<{ link: any }>(`/indexes/${indexId}/links`, link);
+    return res.link;
+  },
+
+  deleteIndexLink: async (indexId: string, linkId: string): Promise<void> => {
+    await api.delete(`/indexes/${indexId}/links/${linkId}`);
+  },
+
+  updateIndexLink: async (indexId: string, linkId: string, data: { url?: string }) => {
+    const res = await api.patch<{ link: any }>(`/indexes/${indexId}/links/${linkId}`, data);
+    return res.link;
+  },
+
+  syncIndexLinks: async (
+    indexId: string,
+    opts?: { skipBrokers?: boolean; count?: number; all?: boolean }
+  ): Promise<{
+    runId: string;
+    success: boolean;
+    status: string;
+    links: number;
+    filesImported: number;
+    intentsGenerated: number;
+    pagesVisited?: number;
+    durationMs?: number;
+    message?: string;
+  }> => {
+    const params = new URLSearchParams();
+    if (opts?.skipBrokers !== undefined) params.set('skipBrokers', String(opts.skipBrokers));
+    if (opts?.count !== undefined) params.set('count', String(opts.count));
+    if (opts?.all !== undefined) params.set('all', String(opts.all));
+    const res = await api.post<{
+      runId: string;
+      success: boolean;
+      status: string;
+      links: number;
+      filesImported: number;
+      intentsGenerated: number;
+      pagesVisited?: number;
+      durationMs?: number;
+      message?: string;
+    }>(`/indexes/${indexId}/links/sync${params.toString() ? `?${params.toString()}` : ''}`, {});
+    return res;
+  },
+
   // Legacy methods for backward compatibility (these would need intent service integration)
   addSuggestedIntent: async (indexId: string, intentId: string): Promise<boolean> => {
     try {
