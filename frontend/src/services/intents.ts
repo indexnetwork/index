@@ -77,7 +77,7 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
 
   // Get stakes by index code for a shared index
   getStakesByIndexCode: async (code: string): Promise<IntentStakesByUserResponse[]> => {
-    const response = await api.get<IntentStakesByUserResponse[]>(`/stakes/index/share/${code}/by-user`);
+    const response = await api.get<IntentStakesByUserResponse[]>(`/discover/index/share/${code}/by-user`);
     return response;
   },
 

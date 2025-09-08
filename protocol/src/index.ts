@@ -9,7 +9,6 @@ import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import suggestionRoutes from './routes/suggestions';
 import intentRoutes from './routes/intents';
-import stakesRoutes from './routes/stakes';
 import fileRoutes from './routes/files';
 import indexRoutes from './routes/indexes';
 import uploadRoutes from './routes/upload';
@@ -44,7 +43,6 @@ app.use('/api/users', userRoutes);
 app.use('/api/upload', uploadRoutes);
 //app.use('/api/agents', agentRoutes);
 app.use('/api/intents', intentRoutes);
-app.use('/api/stakes', stakesRoutes);
 app.use('/api/connections', connectionRoutes);
 
 app.use('/api/indexes/:indexId/suggested_intents/', suggestionRoutes);

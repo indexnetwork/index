@@ -1,10 +1,8 @@
 import { Router, Response } from 'express';
-import { eq } from 'drizzle-orm';
-import { body, validationResult } from 'express-validator';
-import db from '../lib/db';
-import { intents } from '../lib/schema';
+import { body, param, validationResult } from 'express-validator';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { discoverUsers } from '../lib/discover';
+import { getIndexWithPermissions } from '../lib/index-access';
 
 const router = Router();
 
@@ -93,20 +91,9 @@ router.post("/filter",
 
       const authenticatedUserId = req.user!.id;
 
-
-    // Get authenticated user's intents for filtering
-    const authenticatedUserIntents = await db
-      .select({ intentId: intents.id })
-      .from(intents)
-      .where(eq(intents.userId, authenticatedUserId));
-
-    // Extract the intent IDs for easier use in the main query
-    const userIntentIds = authenticatedUserIntents.map(row => row.intentId);
-
     // Use the library function to discover users
     const { results: formattedResults, pagination } = await discoverUsers({
       authenticatedUserId,
-      userIntentIds,
       intentIds,
       userIds,
       indexIds,
@@ -130,5 +117,62 @@ router.post("/filter",
     return res.status(500).json({ error: "Failed to fetch discovery data" });
   }
 });
+
+// Get stakes for users within a specific shared index, grouped by user
+router.get('/index/share/:code/by-user',
+  authenticatePrivy,
+  [param('code').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { code } = req.params;
+
+      // Check access to the shared index
+      const accessCheck = await getIndexWithPermissions({ code });
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const sharedIndexData = accessCheck.indexData!;
+
+      // Check if the shared index has can-discover permission
+      if (!accessCheck.memberPermissions?.includes('can-discover')) {
+        return res.status(403).json({ error: 'Shared index does not allow discovery' });
+      }
+
+
+      // Use the new discovery logic
+      const { results } = await discoverUsers({
+        authenticatedUserId: req.user!.id,
+        indexIds: [sharedIndexData.id],
+        excludeDiscovered: false, // Include all users, not just undiscovered ones
+        page: 1,
+        limit: 100
+      });
+
+      // Format results to match the expected response structure
+      const formattedResults = results.map(r => ({
+        user: {
+          id: r.user.id,
+          name: r.user.name,
+          avatar: r.user.avatar,
+          intro: r.user.intro
+        },
+        totalStake: r.totalStake.toString(),
+        reasoning: r.intents.flatMap(i => i.reasonings).filter(r => r).join(' ')
+      }))
+      .sort((a, b) => Number(BigInt(b.totalStake) - BigInt(a.totalStake)));
+
+      return res.json(formattedResults);
+    } catch (error) {
+      console.error('Get index stakes by user error:', error);
+      return res.status(500).json({ error: 'Failed to fetch index stakes by user' });
+    }
+  }
+);
 
 export default router;

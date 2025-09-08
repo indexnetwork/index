@@ -4,7 +4,6 @@ import { users, intents, intentStakes, intentIndexes, userConnectionEvents } fro
 
 export interface DiscoverFilters {
   authenticatedUserId: string;
-  userIntentIds: string[];
   intentIds?: string[];
   userIds?: string[];
   indexIds?: string[];
@@ -45,7 +44,6 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
 }> {
   const {
     authenticatedUserId,
-    userIntentIds,
     intentIds,
     userIds,
     indexIds,
@@ -53,6 +51,45 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
     page = 1,
     limit = 50
   } = filters;
+
+  // Get authenticated user's intents, filtered by index if specified
+  let authenticatedUserIntents;
+  
+  if (indexIds && indexIds.length > 0) {
+    // If indexIds are specified, only get intents in those indexes
+    authenticatedUserIntents = await db
+      .select({ intentId: intents.id })
+      .from(intents)
+      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+      .where(
+        and(
+          eq(intents.userId, authenticatedUserId),
+          sql`${intentIndexes.indexId} = ANY(ARRAY[${sql.join(indexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+        )
+      );
+  } else {
+    // Get all user's intents
+    authenticatedUserIntents = await db
+      .select({ intentId: intents.id })
+      .from(intents)
+      .where(eq(intents.userId, authenticatedUserId));
+  }
+
+  // Extract the intent IDs for easier use in the main query
+  const userIntentIds = authenticatedUserIntents.map(row => row.intentId);
+
+  // If user has no intents, return empty results
+  if (userIntentIds.length === 0) {
+    return {
+      results: [],
+      pagination: {
+        page,
+        limit,
+        hasNext: false,
+        hasPrev: false
+      }
+    };
+  }
 
   // Main query to find users who have staked on authenticated user's intents
   const mainQuery = db
