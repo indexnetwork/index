@@ -8,7 +8,8 @@ import { useIndexes } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { Index } from "@/lib/types";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { getIndexFileUrl } from "@/lib/file-utils";
+import { useLibraryService, LibraryFile, LibraryLink } from "@/services/library";
+import ReactMarkdown from 'react-markdown';
 
 type Props = {
   open: boolean;
@@ -22,6 +23,13 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
   const indexes = useIndexes();
   const api = useAuthenticatedAPI();
   const { info, success, error } = useNotifications();
+  const library = useLibraryService();
+  // No host assumptions; previews fetch via API endpoints.
+  const parseProgress = (status?: string | null) => {
+    if (!status) return 'fetching content…';
+    const m = /progress:(\d{1,3})/.exec(status);
+    return m ? `progress:${Math.min(100, Math.max(0, Number(m[1])))} ` : 'fetching content…';
+  };
   const [isUploading, setIsUploading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -31,37 +39,33 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
   const [integrations, setIntegrations] = useState<Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }>>([]);
   const [pendingIntegration, setPendingIntegration] = useState<null | 'notion' | 'slack' | 'discord'>(null);
 
-  const [fetchedIndex, setFetchedIndex] = useState<Index | null>(null);
-  const effectiveIndex = index ?? fetchedIndex;
-  const files = useMemo(() => effectiveIndex?.files ?? [], [effectiveIndex]);
-  const [links, setLinks] = useState<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null }>>([]);
+  const [files, setFiles] = useState<LibraryFile[]>([]);
+  const [links, setLinks] = useState<LibraryLink[]>([]);
+  const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
 
   const loadLists = useCallback(async () => {
-    const targetId = effectiveIndex?.id || indexId;
-    if (!targetId) return;
     try {
-      const [idx, lns] = await Promise.all([
-        indexes.getIndex(targetId),
-        indexes.getIndexLinks(targetId)
+      const [f, l] = await Promise.all([
+        library.getFiles(),
+        library.getLinks()
       ]);
-      setFetchedIndex(idx || null);
-      setLinks(lns || []);
+      setFiles(f || []);
+      setLinks(l || []);
     } catch {}
-  }, [effectiveIndex?.id, indexId, indexes]);
+  }, [library]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
-    const targetId = effectiveIndex?.id || indexId;
-    if (!targetId || !f || f.length === 0) return;
+    if (!f || f.length === 0) return;
     setIsUploading(true);
     try {
-      await Promise.all(Array.from(f).map(file => indexes.uploadFile(targetId, file)));
+      await Promise.all(Array.from(f).map(file => library.uploadFile(file)));
       onChanged?.();
       await loadLists();
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [effectiveIndex?.id, indexId, indexes, onChanged, loadLists]);
+  }, [library, onChanged, loadLists]);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -83,11 +87,10 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
   }, [handleFilesSelected]);
 
   const handleAddLink = useCallback(async () => {
-    const targetId = effectiveIndex?.id || indexId;
-    if (!targetId || !linkUrl) return;
+    if (!linkUrl) return;
     try {
       setIsAddingLink(true);
-      await indexes.addIndexLink(targetId, { url: linkUrl.trim() });
+      await library.addLink(linkUrl.trim());
       setLinkUrl("");
       onChanged?.();
       await loadLists();
@@ -95,20 +98,11 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
     finally {
       setIsAddingLink(false);
     }
-  }, [effectiveIndex?.id, indexId, indexes, linkUrl, onChanged, loadLists]);
+  }, [library, linkUrl, onChanged, loadLists]);
 
   const handleSyncLinks = useCallback(async () => {
-    const targetId = effectiveIndex?.id || indexId;
-    if (!targetId) return;
-    setIsSyncing(true);
-    try {
-      await indexes.syncIndexLinks(targetId);
-      onChanged?.();
-      await loadLists();
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [effectiveIndex?.id, indexId, indexes, onChanged, loadLists]);
+    // No manual sync; auto-crawl on add
+  }, []);
 
   const loadIntegrations = useCallback(async () => {
     try {
@@ -186,21 +180,14 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
   useEffect(() => {
     if (open) loadIntegrations();
     if (open) loadLists();
+    let t: any;
+    if (open) {
+      t = setInterval(loadLists, 1500);
+    }
+    return () => { if (t) clearInterval(t); };
   }, [open, loadIntegrations, loadLists]);
 
-  useEffect(() => {
-    const loadIndex = async () => {
-      if (!open) return;
-      if (index || !indexId) return;
-      try {
-        const data = await indexes.getIndex(indexId);
-        setFetchedIndex(data || null);
-      } catch {
-        setFetchedIndex(null);
-      }
-    };
-    loadIndex();
-  }, [open, index, indexId, indexes]);
+  // no index context needed for library mode
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -287,11 +274,7 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
                         <span className="inline-flex items-center gap-2"><span className="h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin" /> Adding…</span>
                       ) : 'Add'}
                     </Button>
-                    <Button variant="outline" className="border-black text-black" onClick={handleSyncLinks} disabled={isSyncing}>
-                      {isSyncing ? (
-                        <span className="inline-flex items-center gap-2"><span className="h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin" /> Syncing…</span>
-                      ) : 'Sync links'}
-                    </Button>
+                    {/* Sync removed: auto-crawl on add */}
                   </div>
                 </div>
               </div>
@@ -302,7 +285,7 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-base font-bold font-ibm-plex-mono text-gray-900">Recent</h3>
               </div>
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2 pb-12">
                 {(() => {
                   const map = [
                     ...files.map(f => ({
@@ -310,14 +293,18 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
                       kind: 'file' as const,
                       title: f.name,
                       sub: `${f.size} • ${new Date(f.createdAt).toLocaleDateString()}`,
-                      onClick: () => { const u = getIndexFileUrl(f); window.open(u, '_blank'); }
                     })),
                     ...links.map(l => ({
                       id: `l-${l.id}`,
                       kind: 'link' as const,
                       title: l.url,
-                      sub: l.lastSyncAt ? `last: ${new Date(l.lastSyncAt).toLocaleString()}` : 'link',
-                      onClick: () => window.open(l.url, '_blank')
+                      sub: l.lastSyncAt ? `last: ${new Date(l.lastSyncAt).toLocaleString()}` : parseProgress(l.lastStatus),
+                      onClick: async () => {
+                        const id = l.id;
+                        setPreview({ id, title: l.url });
+                        const res = await library.getLinkContent(id);
+                        if (res?.content) setPreview({ id, title: l.url, content: res.content });
+                      }
                     })),
                   ];
                   const byDate = (x: any) => {
@@ -329,20 +316,52 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
                   const recent = map.sort((a,b) => byDate(b)-byDate(a));
                   if (recent.length === 0) return <div className="text-sm text-gray-500">No items yet.</div>;
                   return recent.map(item => (
-                    <button key={item.id} onClick={item.onClick} className="w-full text-left bg-gray-100 px-3 py-2 hover:bg-gray-200 transition-colors cursor-pointer">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] px-1.5 py-0.5 border border-black rounded-[1px] font-ibm-plex-mono">
-                          {item.kind === 'file' ? 'FILE' : 'LINK'}
-                        </span>
-                        <span className="text-sm font-ibm-plex-mono text-gray-900 truncate">{item.title}</span>
+                    <div key={item.id} className="w-full bg-gray-100 px-3 py-2 hover:bg-gray-200 transition-colors">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[10px] px-1.5 py-0.5 border border-black rounded-[1px] font-ibm-plex-mono">
+                            {item.kind === 'file' ? 'FILE' : 'LINK'}
+                          </span>
+                          <span className="text-sm font-ibm-plex-mono text-gray-900 truncate">{item.title}</span>
+                        </div>
+                        {item.kind === 'link' && (
+                          <button onClick={item.onClick} className="text-xs border border-black px-2 py-1 rounded-[1px] cursor-pointer disabled:cursor-not-allowed" disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}>
+                            View
+                          </button>
+                        )}
                       </div>
-                      <div className="text-xs text-gray-600 font-ibm-plex-mono mt-1 truncate">{item.sub}</div>
-                    </button>
+                      <div className="text-xs text-gray-600 font-ibm-plex-mono mt-1 truncate">
+                        {String(item.sub).startsWith('progress:') ? (
+                          <div className="w-full h-2 bg-white border border-black">
+                            <div className="h-full bg-black" style={{ width: `${Number(String(item.sub).replace('progress:','')) || 10}%` }} />
+                          </div>
+                        ) : (
+                          String(item.sub)
+                        )}
+                      </div>
+                    </div>
                   ));
                 })()}
               </div>
             </section>
           </div>
+
+          {/* Link Preview */}
+          <Dialog.Root open={!!preview} onOpenChange={(v) => { if (!v) setPreview(null); }}>
+            <Dialog.Portal>
+              <Dialog.Overlay className="fixed inset-0 bg-black/40" />
+              <Dialog.Content className="fixed left-1/2 top-1/2 w-[90vw] max-w-[760px] max-h-[80vh] -translate-x-1/2 -translate-y-1/2 rounded-md bg-white p-5 shadow-lg overflow-auto">
+                <Dialog.Title className="text-base font-bold font-ibm-plex-mono text-gray-900 mb-3">{preview?.title}</Dialog.Title>
+                {!preview?.content ? (
+                  <div className="text-sm text-gray-600">Loading content…</div>
+                ) : (
+                  <div className="prose prose-sm max-w-none text-gray-900">
+                    <ReactMarkdown>{preview.content}</ReactMarkdown>
+                  </div>
+                )}
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
 
           <div className="mt-6 flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>

@@ -72,18 +72,14 @@ router.get('/',
           .where(whereCondition)
       ]);
 
-      // Get file counts for each index
+      // Get member counts; files are no longer index-scoped
       const indexesWithCounts = await Promise.all(
         indexesResult.map(async (index) => {
-          const [fileCount, memberCount] = await Promise.all([
-            db.select({ count: count() })
-              .from(files)
-              .where(and(eq(files.indexId, index.id), isNull(files.deletedAt))),
+          const [memberCount] = await Promise.all([
             db.select({ count: count() })
               .from(indexMembers)
               .where(eq(indexMembers.indexId, index.id))
           ]);
-
           return {
             id: index.id,
             title: index.title,
@@ -97,7 +93,7 @@ router.get('/',
               avatar: index.userAvatar
             },
             _count: {
-              files: fileCount[0].count,
+              files: 0,
               members: memberCount[0].count
             }
           };
@@ -207,19 +203,7 @@ router.get('/:id',
         .limit(1);
 
       // Get related data
-      const [indexFiles, indexMembersData, intentCount] = await Promise.all([
-        db.select({
-          id: files.id,
-          name: files.name,
-          type: files.type,
-          size: files.size,
-          createdAt: files.createdAt,
-          indexId: files.indexId
-        }).from(files)
-          .where(and(eq(files.indexId, id), isNull(files.deletedAt)))
-          .orderBy(desc(files.createdAt))
-          .limit(10),
-
+      const [indexMembersData, intentCount] = await Promise.all([
         db.select({
           userId: indexMembers.userId,
           userName: users.name,
@@ -251,10 +235,7 @@ router.get('/:id',
           email: indexData.userEmail,
           avatar: indexData.userAvatar
         },
-        files: indexFiles.map(file => ({
-          ...file,
-          size: file.size.toString()
-        })),
+        files: [],
         members: indexMembersData.map(member => ({
           id: member.userId,
           name: member.userName,
@@ -264,7 +245,7 @@ router.get('/:id',
           createdAt: member.memberCreatedAt
         })),
         _count: {
-          files: indexFiles.length,
+          files: 0,
           members: indexMembersData.length,
           intents: intentCount[0].count
         }
@@ -821,20 +802,7 @@ router.get('/share/:code',
       // Check if can-view-files permission exists
       const canViewFiles = indexResult.linkPermissions?.permissions?.includes('can-view-files');
       
-      let indexFiles: any[] = [];
-      if (canViewFiles) {
-        indexFiles = await db.select({
-          id: files.id,
-          name: files.name,
-          type: files.type,
-          size: files.size,
-          createdAt: files.createdAt,
-          indexId: files.indexId
-        }).from(files)
-          .where(and(eq(files.indexId, indexData.id), isNull(files.deletedAt)))
-          .orderBy(desc(files.createdAt))
-          .limit(10);
-      }
+      const indexFiles: any[] = [];
       
       const result = {
         id: indexResult.id,
@@ -846,15 +814,10 @@ router.get('/share/:code',
           name: indexResult.userName,
           avatar: indexResult.userAvatar
         },
-        ...(canViewFiles && {
-          files: indexFiles.map(file => ({
-            ...file,
-            size: file.size.toString()
-          }))
-        }),
+        ...(canViewFiles && { files: [] }),
         linkPermissions: indexResult.linkPermissions,
         _count: {
-          files: indexFiles.length,
+          files: 0,
         }
       };
 

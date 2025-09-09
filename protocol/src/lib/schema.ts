@@ -63,7 +63,7 @@ export const files = pgTable('files', {
   name: text('name').notNull(),
   size: bigint('size', { mode: 'bigint' }).notNull(),
   type: text('type').notNull(),
-  indexId: uuid('index_id').notNull().references(() => indexes.id),
+  userId: uuid('user_id').references(() => users.id),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
@@ -87,7 +87,7 @@ export const userConnectionEvents = pgTable('user_connection_events', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
-export const userIntegrations = pgTable('user_integrations', {
+export const userIntegrations = pgTable('integrations', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   integrationType: varchar('integration_type', { length: 50 }).notNull(),
@@ -125,15 +125,7 @@ export const indexesRelations = relations(indexes, ({ one, many }) => ({
     references: [users.id],
   }),
   members: many(indexMembers),
-  files: many(files),
   intents: many(intentIndexes),
-}));
-
-export const filesRelations = relations(files, ({ one }) => ({
-  index: one(indexes, {
-    fields: [files.indexId],
-    references: [indexes.id],
-  }),
 }));
 
 
@@ -190,10 +182,10 @@ export const intentStakesRelations = relations(intentStakes, ({ one }) => ({
   }),
 }));
 
-// Index Links: manage crawlable URLs per index
-export const indexLinks = pgTable('index_links', {
+// Links: manage crawlable URLs per user (optionally associated with an index)
+const linksTable = pgTable('links', {
   id: uuid('id').primaryKey().defaultRandom(),
-  indexId: uuid('index_id').notNull().references(() => indexes.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   url: text('url').notNull(),
   lastContentHash: text('last_content_hash'),
   lastSyncAt: timestamp('last_sync_at'),
@@ -202,17 +194,12 @@ export const indexLinks = pgTable('index_links', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
-
-export const indexLinksRelations = relations(indexLinks, ({ one }) => ({
-  index: one(indexes, {
-    fields: [indexLinks.indexId],
-    references: [indexes.id],
-  }),
-}));
+// Backward-compatible export names
+export const indexLinks = linksTable;
 
 // Integration Items mapping (dedupe across integrations; provider='web' for crawled pages)
-export type IndexLink = typeof indexLinks.$inferSelect;
-export type NewIndexLink = typeof indexLinks.$inferInsert;
+export type IndexLink = typeof linksTable.$inferSelect;
+export type NewIndexLink = typeof linksTable.$inferInsert;
 
 export const userConnectionEventsRelations = relations(userConnectionEvents, ({ one }) => ({
   initiatorUser: one(users, {

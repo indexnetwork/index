@@ -30,7 +30,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
     const access = await checkIndexAccess(indexId, run.userId);
     if (!access.hasAccess) throw new Error(access.error || 'No access to index');
 
-    const allLinks = await db.select().from(indexLinks).where(eq(indexLinks.indexId, indexId));
+    const allLinks = await db.select().from(indexLinks).where(eq(indexLinks.userId, run.userId));
     if (allLinks.length === 0) {
       await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0 } });
       return;
@@ -203,4 +203,3 @@ export function createIntegrationProvider(type: IntegrationType): SyncProvider<I
     },
   };
 }
-
