@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, use, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical } from "lucide-react";
+import AddToIndexModal from "@/components/modals/AddToIndexModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
@@ -32,6 +33,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
   const [showCreateIntentModal, setShowCreateIntentModal] = useState(false);
+  const [showAddToIndexModal, setShowAddToIndexModal] = useState(false);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [selectedSuggestedIntent, setSelectedSuggestedIntent] = useState<{ payload: string; id: string } | null>(null);
   const [index, setIndex] = useState<Index | null>(null);
@@ -583,7 +585,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {index ? formatDate(index.createdAt) : ''}</p>
           </div>
           <div className="flex gap-2 mt-4 sm:mt-0 flex-wrap sm:flex-nowrap">
-            <Button
+          <Button
               variant="outline"
               size="sm"
               onClick={() => setShowShareSettingsModal(true)}
@@ -591,6 +593,14 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             >
               <Share2 className="h-4 w-4" />
               Share
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAddToIndexModal(true)}
+              className="flex items-center gap-2"
+            >
+              Add
             </Button>
             {/* Simple options menu */}
             <div className="relative">
@@ -934,8 +944,18 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           <div className="space-y-6 w-full">
             <div className="flex justify-between items-center">
               <h2 className="text-xl mt-2 font-semibold text-gray-900">Suggested Intents</h2>
-            </div>
-            
+        </div>
+
+        <AddToIndexModal
+          open={showAddToIndexModal}
+          onOpenChange={setShowAddToIndexModal}
+          index={index}
+          onChanged={async () => {
+            await fetchIndex();
+            await fetchLinks();
+          }}
+        />
+
             <div className="space-y-2 flex-1">
               {loadingIntents || uploadingFiles.size > 0 || isAutoCreatingIntents ? (
                 <div className={`text-center py-4 text-gray-500 ${isAutoCreatingIntents ? 'flex flex-col items-center justify-center min-h-[150px]' : ''}`}>

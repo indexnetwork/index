@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useIndexes } from '@/contexts/APIContext';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { Index as IndexType } from '@/lib/types';
+import AddToIndexModal from '@/components/modals/AddToIndexModal';
 
 interface IndexItem {
   id: string;
@@ -16,6 +17,7 @@ export default function Sidebar() {
   const [indexes, setIndexes] = useState<IndexItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
+  const [showAddModal, setShowAddModal] = useState(false);
   const indexesService = useIndexes();
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   
@@ -72,6 +74,12 @@ export default function Sidebar() {
     }
   };
 
+  const currentIndexId = useMemo(() => {
+    if (selectedIndexId !== 'all') return selectedIndexId;
+    const first = indexes.find(i => !i.isSelectAll);
+    return first?.id;
+  }, [selectedIndexId, indexes]);
+
   return (
     <div className="space-y-6 font-mono">
       {/* Indexes Section */}
@@ -121,7 +129,10 @@ export default function Sidebar() {
       <div className="bg-white rounded-sm border-black border p-3 pb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-black">Files</h2>
-          <button className="text-sm text-black hover:text-gray-700 font-medium">
+          <button
+            className="text-sm text-black hover:text-gray-700 font-medium"
+            onClick={() => setShowAddModal(true)}
+          >
             + Add new file
           </button>
         </div>
@@ -129,14 +140,24 @@ export default function Sidebar() {
         <p className="text-sm text-black mb-4">To boost your relevancy</p>
         
         {/* File Drop Area */}
-        <div className="border-2 border-dashed border-black rounded-lg p-8 text-center hover:border-gray-600 transition-colors bg-gray-50">
+        <div
+          className="border-2 border-dashed border-black rounded-lg p-8 text-center hover:border-gray-600 transition-colors bg-gray-50 cursor-pointer"
+          onClick={() => setShowAddModal(true)}
+        >
           <p className="text-black text-sm mb-4">Drop your files</p>
         </div>
         
         <div className="mt-4 pt-4 border-t border-black">
-          <p className="text-sm text-black">paste links</p>
+          <p className="text-sm text-black cursor-pointer" onClick={() => setShowAddModal(true)}>paste links</p>
         </div>
       </div>
+
+      <AddToIndexModal
+        open={showAddModal}
+        onOpenChange={setShowAddModal}
+        index={null}
+        indexId={currentIndexId}
+      />
     </div>
   );
 }
