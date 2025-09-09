@@ -202,8 +202,8 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Index Links (crawl-based intents)
-  getIndexLinks: async (indexId: string): Promise<Array<{ id: string; url: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
-    const res = await api.get<{ links: Array<{ id: string; url: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }> }>(`/indexes/${indexId}/links`);
+  getIndexLinks: async (indexId: string): Promise<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
+    const res = await api.get<{ links: Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }> }>(`/indexes/${indexId}/links`);
     return res.links || [];
   },
 

@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { useIndexes } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { Index } from "@/lib/types";
+import { useNotifications } from "@/contexts/NotificationContext";
+import { getIndexFileUrl } from "@/lib/file-utils";
 
 type Props = {
   open: boolean;
@@ -19,15 +21,33 @@ type Props = {
 export default function AddToIndexModal({ open, onOpenChange, index, indexId, onChanged }: Props) {
   const indexes = useIndexes();
   const api = useAuthenticatedAPI();
+  const { info, success, error } = useNotifications();
   const [isUploading, setIsUploading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [isAddingLink, setIsAddingLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [integrations, setIntegrations] = useState<Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }>>([]);
+  const [pendingIntegration, setPendingIntegration] = useState<null | 'notion' | 'slack' | 'discord'>(null);
 
   const [fetchedIndex, setFetchedIndex] = useState<Index | null>(null);
   const effectiveIndex = index ?? fetchedIndex;
   const files = useMemo(() => effectiveIndex?.files ?? [], [effectiveIndex]);
+  const [links, setLinks] = useState<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null }>>([]);
+
+  const loadLists = useCallback(async () => {
+    const targetId = effectiveIndex?.id || indexId;
+    if (!targetId) return;
+    try {
+      const [idx, lns] = await Promise.all([
+        indexes.getIndex(targetId),
+        indexes.getIndexLinks(targetId)
+      ]);
+      setFetchedIndex(idx || null);
+      setLinks(lns || []);
+    } catch {}
+  }, [effectiveIndex?.id, indexId, indexes]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     const targetId = effectiveIndex?.id || indexId;
@@ -36,21 +56,46 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
     try {
       await Promise.all(Array.from(f).map(file => indexes.uploadFile(targetId, file)));
       onChanged?.();
+      await loadLists();
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [effectiveIndex?.id, indexId, indexes, onChanged]);
+  }, [effectiveIndex?.id, indexId, indexes, onChanged, loadLists]);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer?.files || null;
+    if (files && files.length > 0) {
+      void handleFilesSelected(files);
+    }
+  }, [handleFilesSelected]);
 
   const handleAddLink = useCallback(async () => {
     const targetId = effectiveIndex?.id || indexId;
     if (!targetId || !linkUrl) return;
     try {
+      setIsAddingLink(true);
       await indexes.addIndexLink(targetId, { url: linkUrl.trim() });
       setLinkUrl("");
       onChanged?.();
+      await loadLists();
     } catch {}
-  }, [effectiveIndex?.id, indexId, indexes, linkUrl, onChanged]);
+    finally {
+      setIsAddingLink(false);
+    }
+  }, [effectiveIndex?.id, indexId, indexes, linkUrl, onChanged, loadLists]);
 
   const handleSyncLinks = useCallback(async () => {
     const targetId = effectiveIndex?.id || indexId;
@@ -59,10 +104,11 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
     try {
       await indexes.syncIndexLinks(targetId);
       onChanged?.();
+      await loadLists();
     } finally {
       setIsSyncing(false);
     }
-  }, [effectiveIndex?.id, indexId, indexes, onChanged]);
+  }, [effectiveIndex?.id, indexId, indexes, onChanged, loadLists]);
 
   const loadIntegrations = useCallback(async () => {
     try {
@@ -86,23 +132,61 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
     const item = integrations.find(i => i.id === id);
     if (!item) return;
     try {
+      setPendingIntegration(id);
       if (item.connected) {
         await api.delete(`/integrations/${id}`);
         setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: false } : x));
+        success(`${item.name} disconnected`);
       } else {
-        const res = await api.post<{ redirectUrl?: string }>(`/integrations/connect/${id}`);
-        if (res && (res as any).redirectUrl) {
-          window.location.href = (res as any).redirectUrl as string;
+        info(`Connecting to ${item.name}…`);
+        const popup = typeof window !== 'undefined' ? window.open('', `oauth_${id}`, 'width=560,height=720') : null;
+        const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`);
+        const redirect = (res as any).redirectUrl as string | undefined;
+        const reqId = (res as any).connectionRequestId as string | undefined;
+        if (popup && redirect) {
+          popup.location.href = redirect;
+        } else if (redirect) {
+          window.location.href = redirect;
+          return;
+        }
+        if (reqId) {
+          const started = Date.now();
+          const poll = setInterval(async () => {
+            if (popup && popup.closed) {
+              clearInterval(poll);
+              return;
+            }
+            try {
+              const s = await api.get<{ status: 'pending' | 'connected'; connectedAt?: string }>(`/integrations/status/${reqId}`);
+              if (s.status === 'connected') {
+                clearInterval(poll);
+                if (popup && !popup.closed) popup.close();
+                setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: true } : x));
+                success(`${item.name} connected`);
+              }
+              if (Date.now() - started > 90000) {
+                clearInterval(poll);
+                if (popup && !popup.closed) popup.close();
+              }
+            } catch (e) {
+              clearInterval(poll);
+              if (popup && !popup.closed) popup.close();
+              error(`Failed to complete ${item.name} connection`);
+            }
+          }, 1500);
         }
       }
     } catch {
       // ignore
+    } finally {
+      setPendingIntegration(null);
     }
-  }, [api, integrations]);
+  }, [api, integrations, info, success, error]);
 
   useEffect(() => {
     if (open) loadIntegrations();
-  }, [open, loadIntegrations]);
+    if (open) loadLists();
+  }, [open, loadIntegrations, loadLists]);
 
   useEffect(() => {
     const loadIndex = async () => {
@@ -127,7 +211,7 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
             <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Library</Dialog.Title>
           </div>
 
-          <div className="flex-1 overflow-y-auto pr-1 space-y-8">
+          <div className="flex-1 pr-1 space-y-8 overflow-hidden">
             {/* Connect your sources */}
             <section>
               <h3 className="text-base font-bold font-ibm-plex-mono text-gray-900 mb-3">Connect your sources</h3>
@@ -140,39 +224,39 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
                     </span>
                     <button
                       onClick={() => toggleIntegration(it.id)}
-                      className={`relative h-[25px] w-[42px] rounded-full ${it.connected ? 'bg-black' : 'bg-black/40'}`}
+                      disabled={pendingIntegration === it.id}
+                      className={`relative h-[25px] w-[42px] rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed ${it.connected ? 'bg-black' : 'bg-black/40'} ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
                       aria-pressed={it.connected}
+                      aria-busy={pendingIntegration === it.id}
                       aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
                     >
                       <span
-                        className={`absolute top-[2px] ${it.connected ? 'right-[2px]' : 'left-[2px]'} h-[21px] w-[21px] rounded-full bg-white`}
+                        className={`absolute top-[2px] left-[2px] h-[21px] w-[21px] rounded-full bg-white transition-transform duration-200`}
+                        style={{ transform: it.connected ? 'translateX(17px)' : 'translateX(0px)' }}
                       />
+                      {pendingIntegration === it.id && (
+                        <span className="absolute inset-0 grid place-items-center">
+                          <span className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        </span>
+                      )}
                     </button>
                   </div>
                 ))}
               </div>
             </section>
 
-            {/* Files */}
+            {/* Add new (middle) */}
             <section>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-base font-bold font-ibm-plex-mono text-gray-900">Files</h3>
-              </div>
-              {/* Simple recent list (first 4) */}
-              <div className="space-y-2">
-                {files.slice(0, 4).map((f) => (
-                  <div key={f.id} className="bg-gray-100 px-3 py-2">
-                    <div className="text-sm font-ibm-plex-mono text-gray-900">{f.name}</div>
-                    <div className="text-xs text-gray-600 font-ibm-plex-mono">{f.size} • {new Date(f.createdAt).toLocaleDateString()}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Add new */}
               <div className="mt-4">
                 <h4 className="text-base font-bold font-ibm-plex-mono text-gray-900 mb-2">Add new</h4>
                 <div className="border border-gray-400 rounded p-3">
-                  <div className="border border-dashed border-gray-400 bg-gray-100 p-5 text-center">
+                  <div
+                    className={`border border-dashed ${isDragging ? 'border-gray-600' : 'border-gray-400'} bg-gray-100 p-5 text-center cursor-pointer`}
+                    onDragOver={handleDragOver}
+                    onDragEnter={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  >
                     <div className="text-sm font-ibm-plex-mono text-gray-900 mb-2">Drop your files</div>
                     <input
                       ref={fileInputRef}
@@ -183,7 +267,12 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
                       onChange={(e) => handleFilesSelected(e.target.files)}
                     />
                     <label htmlFor="index-file-upload" className="text-sm underline cursor-pointer">or browse</label>
-                    {isUploading && <div className="mt-2 text-xs text-gray-600">Uploading…</div>}
+                    {isUploading && (
+                      <div className="mt-2 text-xs text-gray-600 inline-flex items-center gap-2">
+                        <span className="h-3 w-3 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
+                        Uploading…
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-3 flex gap-2 items-center">
@@ -193,10 +282,64 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
                       onChange={(e) => setLinkUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
                     />
-                    <Button variant="outline" className="border-black text-black" onClick={handleAddLink} disabled={!linkUrl}>Add</Button>
-                    <Button variant="outline" className="border-black text-black" onClick={handleSyncLinks} disabled={isSyncing}> {isSyncing ? "Syncing…" : "Sync links"}</Button>
+                    <Button variant="outline" className="border-black text-black" onClick={handleAddLink} disabled={!linkUrl || isAddingLink}>
+                      {isAddingLink ? (
+                        <span className="inline-flex items-center gap-2"><span className="h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin" /> Adding…</span>
+                      ) : 'Add'}
+                    </Button>
+                    <Button variant="outline" className="border-black text-black" onClick={handleSyncLinks} disabled={isSyncing}>
+                      {isSyncing ? (
+                        <span className="inline-flex items-center gap-2"><span className="h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin" /> Syncing…</span>
+                      ) : 'Sync links'}
+                    </Button>
                   </div>
                 </div>
+              </div>
+            </section>
+
+            {/* Recent (bottom, own scroll) */}
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-base font-bold font-ibm-plex-mono text-gray-900">Recent</h3>
+              </div>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                {(() => {
+                  const map = [
+                    ...files.map(f => ({
+                      id: `f-${f.id}`,
+                      kind: 'file' as const,
+                      title: f.name,
+                      sub: `${f.size} • ${new Date(f.createdAt).toLocaleDateString()}`,
+                      onClick: () => { const u = getIndexFileUrl(f); window.open(u, '_blank'); }
+                    })),
+                    ...links.map(l => ({
+                      id: `l-${l.id}`,
+                      kind: 'link' as const,
+                      title: l.url,
+                      sub: l.lastSyncAt ? `last: ${new Date(l.lastSyncAt).toLocaleString()}` : 'link',
+                      onClick: () => window.open(l.url, '_blank')
+                    })),
+                  ];
+                  const byDate = (x: any) => {
+                    const f = x.id.startsWith('f-');
+                    const src: any = f ? files.find(ff => `f-${ff.id}` === x.id) : links.find(ll => `l-${ll.id}` === x.id);
+                    const d = f ? (src?.createdAt ? new Date(src.createdAt).getTime() : 0) : (src?.createdAt ? new Date(src.createdAt as any).getTime() : (src?.lastSyncAt ? new Date(src.lastSyncAt as any).getTime() : 0));
+                    return d;
+                  };
+                  const recent = map.sort((a,b) => byDate(b)-byDate(a));
+                  if (recent.length === 0) return <div className="text-sm text-gray-500">No items yet.</div>;
+                  return recent.map(item => (
+                    <button key={item.id} onClick={item.onClick} className="w-full text-left bg-gray-100 px-3 py-2 hover:bg-gray-200 transition-colors cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] px-1.5 py-0.5 border border-black rounded-[1px] font-ibm-plex-mono">
+                          {item.kind === 'file' ? 'FILE' : 'LINK'}
+                        </span>
+                        <span className="text-sm font-ibm-plex-mono text-gray-900 truncate">{item.title}</span>
+                      </div>
+                      <div className="text-xs text-gray-600 font-ibm-plex-mono mt-1 truncate">{item.sub}</div>
+                    </button>
+                  ));
+                })()}
               </div>
             </section>
           </div>
