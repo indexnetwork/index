@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useIndexes } from '@/contexts/APIContext';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { Index as IndexType } from '@/lib/types';
-import AddToIndexModal from '@/components/modals/AddToIndexModal';
+import LibraryModal from '@/components/modals/LibraryModal';
 
 interface IndexItem {
   id: string;
@@ -152,11 +152,9 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <AddToIndexModal
+      <LibraryModal
         open={showAddModal}
         onOpenChange={setShowAddModal}
-        index={null}
-        indexId={currentIndexId}
       />
     </div>
   );

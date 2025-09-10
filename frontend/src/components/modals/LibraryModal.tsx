@@ -1,12 +1,10 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useIndexes } from "@/contexts/APIContext";
 import { useAuthenticatedAPI } from "@/lib/api";
-import { Index } from "@/lib/types";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useLibraryService, LibraryFile, LibraryLink } from "@/services/library";
 import ReactMarkdown from 'react-markdown';
@@ -14,13 +12,10 @@ import ReactMarkdown from 'react-markdown';
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  index: Index | null;
-  indexId?: string; // optional fallback; modal will fetch index
   onChanged?: () => void; // ask parent to refresh after any action
 };
 
-export default function AddToIndexModal({ open, onOpenChange, index, indexId, onChanged }: Props) {
-  const indexes = useIndexes();
+export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const api = useAuthenticatedAPI();
   const { info, success, error } = useNotifications();
   const library = useLibraryService();
@@ -246,10 +241,10 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
                       type="file"
                       multiple
                       className="hidden"
-                      id="index-file-upload"
+                      id="library-file-upload"
                       onChange={(e) => handleFilesSelected(e.target.files)}
                     />
-                    <label htmlFor="index-file-upload" className="text-sm underline cursor-pointer">or browse</label>
+                    <label htmlFor="library-file-upload" className="text-sm underline cursor-pointer">or browse</label>
                     {isUploading && (
                       <div className="mt-2 space-y-2">
                         <div className="w-full h-2 bg-white border border-black overflow-hidden">

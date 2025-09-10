@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, use, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical } from "lucide-react";
-import AddToIndexModal from "@/components/modals/AddToIndexModal";
+import LibraryModal from "@/components/modals/LibraryModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
@@ -954,10 +954,9 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
               <h2 className="text-xl mt-2 font-semibold text-gray-900">Suggested Intents</h2>
         </div>
 
-        <AddToIndexModal
+        <LibraryModal
           open={showAddToIndexModal}
           onOpenChange={setShowAddToIndexModal}
-          index={index}
           onChanged={async () => {
             await fetchIndex();
             await fetchLinks();
