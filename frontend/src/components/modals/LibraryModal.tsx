@@ -387,7 +387,27 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             {/* Library items */}
             <section>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Library Items</h3>
+                <div className="flex items-center gap-3">
+                  <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Library Items</h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`h-7 px-2 text-xs ${selectMode ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300'}`}
+                    onClick={() => { setSelectMode(!selectMode); if (selectMode) setSelectedIds(new Set()); }}
+                  >
+                    {selectMode ? 'Done' : 'Select'}
+                  </Button>
+                  {selectMode && selectedIds.size > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50"
+                      onClick={() => handleBulkDelete()}
+                    >
+                      Delete ({selectedIds.size})
+                    </Button>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <Input
                     placeholder="Search..."
@@ -421,27 +441,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       Links
                     </Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={`h-7 px-2 text-xs ${selectMode ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300'}`}
-                    onClick={() => { setSelectMode(!selectMode); if (selectMode) setSelectedIds(new Set()); }}
-                  >
-                    {selectMode ? 'Done' : 'Select'}
-                  </Button>
-                  {selectMode && selectedIds.size > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50"
-                      onClick={() => handleBulkDelete()}
-                    >
-                      Delete ({selectedIds.size})
-                    </Button>
-                  )}
                 </div>
               </div>
-              <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2 pb-8">
+              <div className="space-y-2 h-[400px] overflow-y-auto pr-2 pb-8">
                 {(() => {
                   type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: LibraryFile | LibraryLink };
                   const map: RecentItem[] = [
