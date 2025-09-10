@@ -208,7 +208,8 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   addIndexLink: async (indexId: string, link: { url: string }) => {
-    const res = await api.post<{ link: any }>(`/indexes/${indexId}/links`, link);
+    type IndexLink = { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null };
+    const res = await api.post<{ link: IndexLink }>(`/indexes/${indexId}/links`, link);
     return res.link;
   },
 
@@ -217,7 +218,8 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   updateIndexLink: async (indexId: string, linkId: string, data: { url?: string }) => {
-    const res = await api.patch<{ link: any }>(`/indexes/${indexId}/links/${linkId}`, data);
+    type IndexLink = { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null };
+    const res = await api.patch<{ link: IndexLink }>(`/indexes/${indexId}/links/${linkId}`, data);
     return res.link;
   },
 

@@ -5,7 +5,6 @@ import Link from "next/link";
 import ClientLayout from "@/components/ClientLayout";
 import { Google, Notion } from "@lobehub/icons";
 import { useAPI } from "@/contexts/APIContext";
-import { useAuthenticatedAPI } from "@/lib/api";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useEffect, useState, useCallback } from "react";
 import { Integration } from "@/services/integrations";
@@ -25,8 +24,7 @@ export default function PrivateIndexPage() {
   const [connectionStatuses, setConnectionStatuses] = useState<Record<string, string>>({});
   const [syncingIntegration, setSyncingIntegration] = useState<string | null>(null);
   // progress removed; backend is ack-only
-  const api = useAuthenticatedAPI();
-  const { success: notifySuccess, error: notifyError } = useNotifications();
+  const { success: notifySuccess } = useNotifications();
 
   const integrationConfigs: IntegrationConfig[] = [
     {

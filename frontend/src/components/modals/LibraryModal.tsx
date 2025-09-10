@@ -22,7 +22,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   // No backend progress numbers; show a local pending label.
   const parseProgress = () => 'fetching content…';
   const [isUploading, setIsUploading] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -91,19 +90,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [library, linkUrl, onChanged, loadLists]);
 
-  const handleSyncLinks = useCallback(async () => {
-    // No manual sync; auto-crawl on add
-  }, []);
 
   const loadIntegrations = useCallback(async () => {
     try {
       const res = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>(`/integrations`);
       const wanted: Array<'notion'|'slack'|'discord'> = ['notion','slack','discord'];
-      const items = wanted.map(id => {
+      const items: Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }> = wanted.map(id => {
         const found = res.integrations?.find(i => i.id === id);
-        return { id, name: found?.name ?? id[0].toUpperCase()+id.slice(1), connected: !!found?.connected } as const;
+        return { id, name: found?.name ?? (id[0].toUpperCase()+id.slice(1)), connected: !!found?.connected };
       });
-      setIntegrations(items as any);
+      setIntegrations(items);
     } catch {
       setIntegrations([
         { id: 'notion', name: 'Notion', connected: false },
@@ -126,8 +122,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
         info(`Connecting to ${item.name}…`);
         const popup = typeof window !== 'undefined' ? window.open('', `oauth_${id}`, 'width=560,height=720') : null;
         const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`);
-        const redirect = (res as any).redirectUrl as string | undefined;
-        const reqId = (res as any).connectionRequestId as string | undefined;
+        const redirect = res.redirectUrl;
+        const reqId = res.connectionRequestId;
         if (popup && redirect) {
           popup.location.href = redirect;
         } else if (redirect) {
@@ -153,7 +149,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 clearInterval(poll);
                 if (popup && !popup.closed) popup.close();
               }
-            } catch (e) {
+            } catch {
               clearInterval(poll);
               if (popup && !popup.closed) popup.close();
               error(`Failed to complete ${item.name} connection`);
@@ -171,7 +167,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   useEffect(() => {
     if (open) loadIntegrations();
     if (open) loadLists();
-    let t: any;
+    let t: ReturnType<typeof setInterval> | null = null;
     if (open) {
       t = setInterval(loadLists, 1500);
     }
@@ -197,6 +193,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 {integrations.map((it) => (
                   <div key={it.id} className="flex items-center justify-between border border-black shadow-[0_1px_0_#000] rounded-[1px] px-4 py-3 bg-white">
                     <span className="flex items-center gap-2">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={`/integrations/${it.id}.png`} width={24} height={24} alt="" />
                       <span className="font-medium">{it.name}</span>
                     </span>
@@ -283,7 +280,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               </div>
               <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2 pb-12">
                 {(() => {
-                  const map = [
+                  type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void> };
+                  const map: RecentItem[] = [
                     ...files.map(f => ({
                       id: `f-${f.id}`,
                       kind: 'file' as const,
@@ -303,11 +301,15 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       }
                     })),
                   ];
-                  const byDate = (x: any) => {
-                    const f = x.id.startsWith('f-');
-                    const src: any = f ? files.find(ff => `f-${ff.id}` === x.id) : links.find(ll => `l-${ll.id}` === x.id);
-                    const d = f ? (src?.createdAt ? new Date(src.createdAt).getTime() : 0) : (src?.createdAt ? new Date(src.createdAt as any).getTime() : (src?.lastSyncAt ? new Date(src.lastSyncAt as any).getTime() : 0));
-                    return d;
+                  const byDate = (x: RecentItem) => {
+                    const isFile = x.id.startsWith('f-');
+                    if (isFile) {
+                      const src = files.find(ff => `f-${ff.id}` === x.id);
+                      return src ? new Date(src.createdAt).getTime() : 0;
+                    }
+                    const src = links.find(ll => `l-${ll.id}` === x.id);
+                    const ts = src?.lastSyncAt || src?.createdAt || '';
+                    return ts ? new Date(ts).getTime() : 0;
                   };
                   const recent = map.sort((a,b) => byDate(b)-byDate(a));
                   if (recent.length === 0) return <div className="text-sm text-gray-500">No items yet.</div>;

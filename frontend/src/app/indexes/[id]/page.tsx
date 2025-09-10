@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, use, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical } from "lucide-react";
@@ -11,7 +11,6 @@ import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 
 import Link from "next/link";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
-import { useAuthenticatedAPI } from "@/lib/api";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { Index, Intent } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
@@ -33,7 +32,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
   const [showCreateIntentModal, setShowCreateIntentModal] = useState(false);
-  const [showAddToIndexModal, setShowAddToIndexModal] = useState(false);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [selectedSuggestedIntent, setSelectedSuggestedIntent] = useState<{ payload: string; id: string } | null>(null);
   const [index, setIndex] = useState<Index | null>(null);
@@ -71,8 +70,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [syncingLinks, setSyncingLinks] = useState(false);
   const [lastSyncSummary, setLastSyncSummary] = useState<string>("");
   // Sync progress removed; API is ack-only
-  const api = useAuthenticatedAPI();
-  const { success: notifySuccess, error: notifyError, info: notifyInfo } = useNotifications();
+  const { success: notifySuccess, error: notifyError } = useNotifications();
 
   const fetchLinks = useCallback(async () => {
     try {
@@ -597,7 +595,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowAddToIndexModal(true)}
+              onClick={() => setShowLibraryModal(true)}
               className="flex items-center gap-2"
             >
               Add
@@ -955,8 +953,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         </div>
 
         <LibraryModal
-          open={showAddToIndexModal}
-          onOpenChange={setShowAddToIndexModal}
+          open={showLibraryModal}
+          onOpenChange={setShowLibraryModal}
           onChanged={async () => {
             await fetchIndex();
             await fetchLinks();

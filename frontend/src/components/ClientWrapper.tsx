@@ -9,9 +9,6 @@ import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const pathname = usePathname();
   
-  // Determine if navigation should be shown based on current path
-  const showNavigation = pathname !== '/' && !pathname.startsWith('/vibecheck') && !pathname.startsWith('/matchlist');
-  
   // Define known routes to detect 404 pages
   const knownRoutes = ['/', '/inbox', '/indexes', '/intents', '/integrate', '/stake', '/simulation', '/vibecheck', '/matchlist', '/connections'];
   const isKnownRoute = knownRoutes.some(route => 

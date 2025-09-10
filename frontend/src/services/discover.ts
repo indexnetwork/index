@@ -1,7 +1,4 @@
-import { 
-  PaginatedResponse,
-  APIResponse,
-} from '../lib/types';
+// no external type imports needed here
 
 // Discover-specific types
 export interface DiscoverIntent {

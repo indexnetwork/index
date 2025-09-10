@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useIndexes } from '@/contexts/APIContext';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { Index as IndexType } from '@/lib/types';
@@ -17,7 +17,7 @@ export default function Sidebar() {
   const [indexes, setIndexes] = useState<IndexItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
-  const [showAddModal, setShowAddModal] = useState(false);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
   const indexesService = useIndexes();
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   
@@ -74,11 +74,7 @@ export default function Sidebar() {
     }
   };
 
-  const currentIndexId = useMemo(() => {
-    if (selectedIndexId !== 'all') return selectedIndexId;
-    const first = indexes.find(i => !i.isSelectAll);
-    return first?.id;
-  }, [selectedIndexId, indexes]);
+  // no currentIndexId needed; Library modal is index-agnostic
 
   return (
     <div className="space-y-6 font-mono">
@@ -131,7 +127,7 @@ export default function Sidebar() {
           <h2 className="text-xl font-semibold text-black">Files</h2>
           <button
             className="text-sm text-black hover:text-gray-700 font-medium"
-            onClick={() => setShowAddModal(true)}
+            onClick={() => setShowLibraryModal(true)}
           >
             + Add new file
           </button>
@@ -142,19 +138,19 @@ export default function Sidebar() {
         {/* File Drop Area */}
         <div
           className="border-2 border-dashed border-black rounded-lg p-8 text-center hover:border-gray-600 transition-colors bg-gray-50 cursor-pointer"
-          onClick={() => setShowAddModal(true)}
+          onClick={() => setShowLibraryModal(true)}
         >
           <p className="text-black text-sm mb-4">Drop your files</p>
         </div>
         
         <div className="mt-4 pt-4 border-t border-black">
-          <p className="text-sm text-black cursor-pointer" onClick={() => setShowAddModal(true)}>paste links</p>
+          <p className="text-sm text-black cursor-pointer" onClick={() => setShowLibraryModal(true)}>paste links</p>
         </div>
       </div>
 
       <LibraryModal
-        open={showAddModal}
-        onOpenChange={setShowAddModal}
+        open={showLibraryModal}
+        onOpenChange={setShowLibraryModal}
       />
     </div>
   );

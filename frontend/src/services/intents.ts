@@ -6,7 +6,6 @@ import {
   CreateIntentRequest, 
   UpdateIntentRequest,
   IntentStakesByUserResponse,
-  StakesByUserResponse,
 } from '../lib/types';
 
 // Transform config agents to match Agent interface
