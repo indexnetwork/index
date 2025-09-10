@@ -180,7 +180,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 w-[90vw] max-w-[800px] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-md bg-white p-6 shadow-lg focus:outline-none overflow-hidden flex flex-col">
+        <Dialog.Content className="fixed left-1/2 top-1/2 w-[90vw] max-w-[800px] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-md bg-white dark:bg-white text-gray-900 dark:text-gray-900 p-6 shadow-lg focus:outline-none overflow-hidden flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Library</Dialog.Title>
           </div>
