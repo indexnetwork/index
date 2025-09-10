@@ -82,12 +82,6 @@ export const linksProvider: SyncProvider<LinksParams> = {
         const meta = crawl.urlMap[f.id];
         if (!meta) continue;
         const linkRow = byUrl.get(meta.url) || byNorm.get(normalize(meta.url));
-        if (linkRow && linkRow.lastContentHash && linkRow.lastContentHash === meta.contentHash) {
-          skippedUnchanged += 1;
-          completed += 1;
-          await update({ progress: { total: crawl.files.length, completed, notes: [`skipped unchanged ${completed}/${crawl.files.length}`] } });
-          continue;
-        }
         const tempDir = path.join(baseTempDir, f.id);
         await fs.promises.mkdir(tempDir, { recursive: true });
         await fs.promises.writeFile(path.join(tempDir, `${f.id}.md`), f.content);
@@ -122,9 +116,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
             intentsGenerated += 1;
           }
         }
-        if (linkRow) {
-          await db.update(indexLinks).set({ lastContentHash: meta.contentHash }).where(eq(indexLinks.id, linkRow.id));
-        }
+        
         completed += 1;
         await update({ progress: { total: crawl.files.length, completed, notes: [`processed ${completed}/${crawl.files.length}`] } });
       }

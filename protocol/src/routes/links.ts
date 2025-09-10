@@ -35,7 +35,7 @@ async function crawlAndStore(userId: string, linkId: string, url: string) {
     await fs.promises.writeFile(filepath, file.content);
     await db.update(indexLinks).set({ lastStatus: 'progress:90' }).where(eq(indexLinks.id, linkId));
     await db.update(indexLinks)
-      .set({ lastSyncAt: new Date(), lastStatus: 'ok', lastContentHash: result.urlMap[file.id]?.contentHash || null })
+      .set({ lastSyncAt: new Date(), lastStatus: 'ok' })
       .where(eq(indexLinks.id, linkId));
   } catch (e) {
     await db.update(indexLinks).set({ lastError: (e as Error).message }).where(eq(indexLinks.id, linkId));

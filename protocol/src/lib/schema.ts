@@ -187,7 +187,6 @@ const linksTable = pgTable('links', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
   url: text('url').notNull(),
-  lastContentHash: text('last_content_hash'),
   lastSyncAt: timestamp('last_sync_at'),
   lastStatus: text('last_status'),
   lastError: text('last_error'),
