@@ -24,12 +24,8 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
   const api = useAuthenticatedAPI();
   const { info, success, error } = useNotifications();
   const library = useLibraryService();
-  // No host assumptions; previews fetch via API endpoints.
-  const parseProgress = (status?: string | null) => {
-    if (!status) return 'fetching content…';
-    const m = /progress:(\d{1,3})/.exec(status);
-    return m ? `progress:${Math.min(100, Math.max(0, Number(m[1])))} ` : 'fetching content…';
-  };
+  // No backend progress numbers; show a local pending label.
+  const parseProgress = () => 'fetching content…';
   const [isUploading, setIsUploading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -298,7 +294,7 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
                       id: `l-${l.id}`,
                       kind: 'link' as const,
                       title: l.url,
-                      sub: l.lastSyncAt ? `last: ${new Date(l.lastSyncAt).toLocaleString()}` : parseProgress(l.lastStatus),
+                      sub: l.lastSyncAt ? `last: ${new Date(l.lastSyncAt).toLocaleString()}` : parseProgress(),
                       onClick: async () => {
                         const id = l.id;
                         setPreview({ id, title: l.url });
@@ -331,9 +327,9 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
                         )}
                       </div>
                       <div className="text-xs text-gray-600 font-ibm-plex-mono mt-1 truncate">
-                        {String(item.sub).startsWith('progress:') ? (
-                          <div className="w-full h-2 bg-white border border-black">
-                            <div className="h-full bg-black" style={{ width: `${Number(String(item.sub).replace('progress:','')) || 10}%` }} />
+                        {String(item.sub).startsWith('fetch') ? (
+                          <div className="w-full h-2 bg-white border border-black overflow-hidden">
+                            <div className="h-full bg-black w-1/2 animate-pulse" />
                           </div>
                         ) : (
                           String(item.sub)

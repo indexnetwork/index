@@ -24,21 +24,22 @@ if (!fs.existsSync(baseStore)) fs.mkdirSync(baseStore, { recursive: true });
 
 async function crawlAndStore(userId: string, linkId: string, url: string) {
   try {
-    await db.update(indexLinks).set({ lastStatus: 'progress:10' }).where(eq(indexLinks.id, linkId));
+    // Mark as processing; progress bars belong in the frontend.
+    await db.update(indexLinks).set({ lastStatus: 'processing' }).where(eq(indexLinks.id, linkId));
     const result = await crawlLinksForIndex([url]);
-    await db.update(indexLinks).set({ lastStatus: 'progress:60' }).where(eq(indexLinks.id, linkId));
     const file = result.files[0];
     if (!file) return;
     const dir = path.join(baseStore, userId);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const filepath = path.join(dir, `${linkId}.md`);
     await fs.promises.writeFile(filepath, file.content);
-    await db.update(indexLinks).set({ lastStatus: 'progress:90' }).where(eq(indexLinks.id, linkId));
     await db.update(indexLinks)
       .set({ lastSyncAt: new Date(), lastStatus: 'ok' })
       .where(eq(indexLinks.id, linkId));
   } catch (e) {
-    await db.update(indexLinks).set({ lastError: (e as Error).message }).where(eq(indexLinks.id, linkId));
+    await db.update(indexLinks)
+      .set({ lastError: (e as Error).message, lastStatus: 'error' })
+      .where(eq(indexLinks.id, linkId));
   }
 }
 
