@@ -251,9 +251,14 @@ export default function AddToIndexModal({ open, onOpenChange, index, indexId, on
                     />
                     <label htmlFor="index-file-upload" className="text-sm underline cursor-pointer">or browse</label>
                     {isUploading && (
-                      <div className="mt-2 text-xs text-gray-600 inline-flex items-center gap-2">
-                        <span className="h-3 w-3 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
-                        Uploading…
+                      <div className="mt-2 space-y-2">
+                        <div className="w-full h-2 bg-white border border-black overflow-hidden">
+                          <div className="h-full bg-black w-1/2 animate-pulse" />
+                        </div>
+                        <div className="text-xs text-gray-600 inline-flex items-center gap-2">
+                          <span className="h-3 w-3 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
+                          Uploading…
+                        </div>
                       </div>
                     )}
                   </div>

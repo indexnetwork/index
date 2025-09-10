@@ -866,6 +866,14 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 <p className="text-sm font-medium text-gray-900">Upload Files</p>
                 <p className="text-xs text-gray-500 mt-1">Drag and drop your files here or click to browse</p>
               </label>
+              {uploadingFiles.size > 0 && (
+                <div className="w-full mt-3">
+                  <div className="w-full h-2 bg-white border border-black overflow-hidden">
+                    <div className="h-full bg-black w-1/2 animate-pulse" />
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">Uploading…</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
