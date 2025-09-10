@@ -4,8 +4,8 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useAuthenticatedAPI } from "@/lib/api";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { useAuthenticatedAPI } from "@/lib/api";
 import { useLibraryService, LibraryFile, LibraryLink } from "@/services/library";
 import ReactMarkdown from 'react-markdown';
 
@@ -16,9 +16,9 @@ type Props = {
 };
 
 export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
-  const api = useAuthenticatedAPI();
-  const { info, success, error } = useNotifications();
+  const { success, error } = useNotifications();
   const library = useLibraryService();
+  const api = useAuthenticatedAPI();
   // No backend progress numbers; show a local pending label.
   const parseProgress = () => 'fetching content…';
   const [isUploading, setIsUploading] = useState(false);
@@ -26,9 +26,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [integrations, setIntegrations] = useState<Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }>>([]);
-  const [pendingIntegration, setPendingIntegration] = useState<null | 'notion' | 'slack' | 'discord'>(null);
-
   const [files, setFiles] = useState<LibraryFile[]>([]);
   const [links, setLinks] = useState<LibraryLink[]>([]);
   const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
@@ -47,6 +44,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     message: string;
     payload: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[];
   } | null>(null);
+  const [integrations, setIntegrations] = useState<Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }>>([]);
+  const [pendingIntegration, setPendingIntegration] = useState<null | 'notion' | 'slack' | 'discord'>(null);
 
   const loadLists = useCallback(async () => {
     try {
@@ -121,6 +120,79 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (payload.length > 0) setConfirm({ open: true, message: `This permanently removes ${payload.length} item(s) from your Library. Continue?`, payload });
   }, [files, links, selectedIds]);
 
+  // Integrations (compact section)
+  const loadIntegrations = useCallback(async () => {
+    try {
+      const res = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>(`/integrations`);
+      const wanted: Array<'notion'|'slack'|'discord'> = ['notion','slack','discord'];
+      const items: Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }> = wanted.map(id => {
+        const found = res.integrations?.find(i => i.id === id);
+        return { id, name: found?.name ?? (id[0].toUpperCase()+id.slice(1)), connected: !!found?.connected };
+      });
+      setIntegrations(items);
+    } catch {
+      setIntegrations([
+        { id: 'notion', name: 'Notion', connected: false },
+        { id: 'slack', name: 'Slack', connected: false },
+        { id: 'discord', name: 'Discord', connected: false },
+      ]);
+    }
+  }, [api]);
+
+  const toggleIntegration = useCallback(async (id: 'notion'|'slack'|'discord') => {
+    const item = integrations.find(i => i.id === id);
+    if (!item) return;
+    try {
+      setPendingIntegration(id);
+      if (item.connected) {
+        await api.delete(`/integrations/${id}`);
+        setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: false } : x));
+        success(`${item.name} disconnected`);
+      } else {
+        const popup = typeof window !== 'undefined' ? window.open('', `oauth_${id}`, 'width=560,height=720') : null;
+        const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`);
+        const redirect = res.redirectUrl;
+        const reqId = res.connectionRequestId;
+        if (popup && redirect) {
+          popup.location.href = redirect;
+        } else if (redirect) {
+          window.location.href = redirect;
+          return;
+        }
+        if (reqId) {
+          const started = Date.now();
+          const poll = setInterval(async () => {
+            if (popup && popup.closed) {
+              clearInterval(poll);
+              return;
+            }
+            try {
+              const s = await api.get<{ status: 'pending' | 'connected'; connectedAt?: string }>(`/integrations/status/${reqId}`);
+              if (s.status === 'connected') {
+                clearInterval(poll);
+                if (popup && !popup.closed) popup.close();
+                setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: true } : x));
+                success(`${item.name} connected`);
+              }
+              if (Date.now() - started > 90000) {
+                clearInterval(poll);
+                if (popup && !popup.closed) popup.close();
+              }
+            } catch {
+              clearInterval(poll);
+              if (popup && !popup.closed) popup.close();
+              error(`Failed to complete ${item.name} connection`);
+            }
+          }, 1500);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPendingIntegration(null);
+    }
+  }, [api, integrations, success, error]);
+
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
     setIsUploading(true);
@@ -168,88 +240,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [library, linkUrl, onChanged, loadLists]);
 
 
-  const loadIntegrations = useCallback(async () => {
-    try {
-      const res = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>(`/integrations`);
-      const wanted: Array<'notion'|'slack'|'discord'> = ['notion','slack','discord'];
-      const items: Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }> = wanted.map(id => {
-        const found = res.integrations?.find(i => i.id === id);
-        return { id, name: found?.name ?? (id[0].toUpperCase()+id.slice(1)), connected: !!found?.connected };
-      });
-      setIntegrations(items);
-    } catch {
-      setIntegrations([
-        { id: 'notion', name: 'Notion', connected: false },
-        { id: 'slack', name: 'Slack', connected: false },
-        { id: 'discord', name: 'Discord', connected: false },
-      ]);
-    }
-  }, [api]);
-
-  const toggleIntegration = useCallback(async (id: 'notion'|'slack'|'discord') => {
-    const item = integrations.find(i => i.id === id);
-    if (!item) return;
-    try {
-      setPendingIntegration(id);
-      if (item.connected) {
-        await api.delete(`/integrations/${id}`);
-        setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: false } : x));
-        success(`${item.name} disconnected`);
-      } else {
-        info(`Connecting to ${item.name}…`);
-        const popup = typeof window !== 'undefined' ? window.open('', `oauth_${id}`, 'width=560,height=720') : null;
-        const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`);
-        const redirect = res.redirectUrl;
-        const reqId = res.connectionRequestId;
-        if (popup && redirect) {
-          popup.location.href = redirect;
-        } else if (redirect) {
-          window.location.href = redirect;
-          return;
-        }
-        if (reqId) {
-          const started = Date.now();
-          const poll = setInterval(async () => {
-            if (popup && popup.closed) {
-              clearInterval(poll);
-              return;
-            }
-            try {
-              const s = await api.get<{ status: 'pending' | 'connected'; connectedAt?: string }>(`/integrations/status/${reqId}`);
-              if (s.status === 'connected') {
-                clearInterval(poll);
-                if (popup && !popup.closed) popup.close();
-                setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: true } : x));
-                success(`${item.name} connected`);
-              }
-              if (Date.now() - started > 90000) {
-                clearInterval(poll);
-                if (popup && !popup.closed) popup.close();
-              }
-            } catch {
-              clearInterval(poll);
-              if (popup && !popup.closed) popup.close();
-              error(`Failed to complete ${item.name} connection`);
-            }
-          }, 1500);
-        }
-      }
-    } catch {
-      // ignore
-    } finally {
-      setPendingIntegration(null);
-    }
-  }, [api, integrations, info, success, error]);
-
   useEffect(() => {
-    if (open) loadIntegrations();
-    if (open) loadLists();
+    if (open) { loadLists(); loadIntegrations(); }
     let t: ReturnType<typeof setInterval> | null = null;
     if (open) {
       t = setInterval(loadLists, 1500);
     }
     return () => { if (t) clearInterval(t); };
-  }, [open, loadIntegrations, loadLists]);
+  }, [open, loadLists, loadIntegrations]);
 
   // no index context needed for library mode
 
@@ -262,33 +260,48 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Library</Dialog.Title>
           </div>
 
-          <div className="flex-1 pr-1 space-y-8 overflow-hidden">
+          <div className="flex-1 pr-1 space-y-4 overflow-hidden">
+
             {/* Connect your sources */}
             <section>
-              <h3 className="text-base font-bold font-ibm-plex-mono text-gray-900 mb-3">Connect your sources</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Connect Sources</h3>
+                <span className="text-xs text-gray-500">
+                  {integrations.filter(i => i.connected).length} of {integrations.length} connected
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {integrations.map((it) => (
-                  <div key={it.id} className="flex items-center justify-between border border-black shadow-[0_1px_0_#000] rounded-[1px] px-4 py-3 bg-white">
+                  <div key={it.id} className={`flex items-center justify-between border rounded-[1px] px-3 py-2 transition-colors ${
+                    it.connected 
+                      ? 'border-green-600 bg-green-50' 
+                      : 'border-gray-300 bg-white hover:bg-gray-50'
+                  }`}>
                     <span className="flex items-center gap-2">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`/integrations/${it.id}.png`} width={24} height={24} alt="" />
-                      <span className="font-medium">{it.name}</span>
+                      <img src={`/integrations/${it.id}.png`} width={20} height={20} alt="" />
+                      <span className="text-sm font-medium">{it.name}</span>
+                      {it.connected && (
+                        <span className="h-1.5 w-1.5 bg-green-600 rounded-full" />
+                      )}
                     </span>
                     <button
                       onClick={() => toggleIntegration(it.id)}
                       disabled={pendingIntegration === it.id}
-                      className={`relative h-[25px] w-[42px] rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed ${it.connected ? 'bg-black' : 'bg-black/40'} ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
+                      className={`relative h-[20px] w-[36px] rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed ${
+                        it.connected ? 'bg-green-600' : 'bg-gray-300'
+                      } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
                       aria-pressed={it.connected}
                       aria-busy={pendingIntegration === it.id}
                       aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
                     >
                       <span
-                        className={`absolute top-[2px] left-[2px] h-[21px] w-[21px] rounded-full bg-white transition-transform duration-200`}
-                        style={{ transform: it.connected ? 'translateX(17px)' : 'translateX(0px)' }}
+                        className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200`}
+                        style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
                       />
                       {pendingIntegration === it.id && (
                         <span className="absolute inset-0 grid place-items-center">
-                          <span className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span className="h-2.5 w-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         </span>
                       )}
                     </button>
@@ -297,19 +310,25 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               </div>
             </section>
 
-            {/* Add new (middle) */}
+            {/* Add new content */}
             <section>
-              <div className="mt-4">
-                <h4 className="text-base font-bold font-ibm-plex-mono text-gray-900 mb-2">Add new</h4>
-                <div className="border border-gray-400 rounded p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Add Content</h3>
+                <span className="text-xs text-gray-500">
+                  {files.length + links.length} items total
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* File upload */}
+                <div className="border border-gray-300 rounded p-3">
                   <div
-                    className={`border border-dashed ${isDragging ? 'border-gray-600' : 'border-gray-400'} bg-gray-100 p-5 text-center cursor-pointer`}
+                    className={`border border-dashed ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} bg-gray-50 p-4 text-center cursor-pointer transition-colors rounded`}
                     onDragOver={handleDragOver}
                     onDragEnter={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                   >
-                    <div className="text-sm font-ibm-plex-mono text-gray-900 mb-2">Drop your files</div>
+                    <div className="text-sm font-medium text-gray-700 mb-1">📁 Drop files here</div>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -318,67 +337,85 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       id="library-file-upload"
                       onChange={(e) => handleFilesSelected(e.target.files)}
                     />
-                    <label htmlFor="library-file-upload" className="text-sm underline cursor-pointer">or browse</label>
+                    <label htmlFor="library-file-upload" className="text-xs text-blue-600 underline cursor-pointer hover:text-blue-800">
+                      or click to browse
+                    </label>
                     {isUploading && (
-                      <div className="mt-2 space-y-2">
-                        <div className="w-full h-2 bg-white border border-black overflow-hidden">
-                          <div className="h-full bg-black w-1/2 animate-pulse" />
+                      <div className="mt-2 space-y-1">
+                        <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                          <div className="h-full bg-blue-500 w-1/2 animate-pulse rounded-full" />
                         </div>
-                        <div className="text-xs text-gray-600 inline-flex items-center gap-2">
-                          <span className="h-3 w-3 border-2 border-gray-600 border-t-transparent rounded-full animate-spin" />
+                        <div className="text-xs text-gray-600 inline-flex items-center gap-1">
+                          <span className="h-2.5 w-2.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
                           Uploading…
                         </div>
                       </div>
                     )}
                   </div>
+                </div>
 
-                  <div className="mt-3 flex gap-2 items-center">
+                {/* Link input */}
+                <div className="border border-gray-300 rounded p-3">
+                  <div className="text-sm font-medium text-gray-700 mb-2">🔗 Add URL</div>
+                  <div className="flex gap-2">
                     <Input
-                      placeholder="or paste link https://…"
+                      placeholder="https://example.com"
                       value={linkUrl}
                       onChange={(e) => setLinkUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
+                      className="text-sm"
                     />
-                    <Button variant="outline" className="border-black text-black" onClick={handleAddLink} disabled={!linkUrl || isAddingLink}>
+                    <Button 
+                      variant="outline" 
+                      className="border-gray-400 text-gray-700 hover:bg-gray-50" 
+                      onClick={handleAddLink} 
+                      disabled={!linkUrl || isAddingLink}
+                      size="sm"
+                    >
                       {isAddingLink ? (
-                        <span className="inline-flex items-center gap-2"><span className="h-4 w-4 border-2 border-black border-t-transparent rounded-full animate-spin" /> Adding…</span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="h-3 w-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                          Adding
+                        </span>
                       ) : 'Add'}
                     </Button>
-                    {/* Sync removed: auto-crawl on add */}
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* Library (bottom, own scroll) */}
+            {/* Library items */}
             <section>
-              <div className="flex items-center justify-between mb-3 gap-2">
-                <h3 className="text-base font-bold font-ibm-plex-mono text-gray-900">Library</h3>
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Library Items</h3>
+                <div className="flex items-center gap-2">
                   <Input
-                    placeholder="Search files and links"
+                    placeholder="Search..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="h-8 w-[200px]"
+                    className="h-7 w-[160px] text-sm"
                   />
                   <div className="flex items-center gap-1">
                     <Button
                       variant="outline"
-                      className={`h-8 ${typeFilter==='all' ? 'bg-black text-white' : ''}`}
+                      size="sm"
+                      className={`h-7 px-2 text-xs ${typeFilter==='all' ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300'}`}
                       onClick={() => setTypeFilter('all')}
                     >
                       All
                     </Button>
                     <Button
                       variant="outline"
-                      className={`h-8 ${typeFilter==='file' ? 'bg-black text-white' : ''}`}
+                      size="sm"
+                      className={`h-7 px-2 text-xs ${typeFilter==='file' ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300'}`}
                       onClick={() => setTypeFilter('file')}
                     >
                       Files
                     </Button>
                     <Button
                       variant="outline"
-                      className={`h-8 ${typeFilter==='link' ? 'bg-black text-white' : ''}`}
+                      size="sm"
+                      className={`h-7 px-2 text-xs ${typeFilter==='link' ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300'}`}
                       onClick={() => setTypeFilter('link')}
                     >
                       Links
@@ -386,7 +423,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   </div>
                   <Button
                     variant="outline"
-                    className={`h-8 ${selectMode ? 'bg-black text-white' : ''}`}
+                    size="sm"
+                    className={`h-7 px-2 text-xs ${selectMode ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300'}`}
                     onClick={() => { setSelectMode(!selectMode); if (selectMode) setSelectedIds(new Set()); }}
                   >
                     {selectMode ? 'Done' : 'Select'}
@@ -394,15 +432,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   {selectMode && selectedIds.size > 0 && (
                     <Button
                       variant="outline"
-                      className="h-8 border-red-600 text-red-600"
+                      size="sm"
+                      className="h-7 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50"
                       onClick={() => handleBulkDelete()}
                     >
-                      Delete selected ({selectedIds.size})
+                      Delete ({selectedIds.size})
                     </Button>
                   )}
                 </div>
               </div>
-              <div className="space-y-2 max-h-[360px] overflow-y-auto pr-2 pb-12">
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2 pb-8">
                 {(() => {
                   type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: LibraryFile | LibraryLink };
                   const map: RecentItem[] = [
@@ -437,32 +476,44 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   const recent = filtered.sort((a,b) => a.createdAt < b.createdAt ? 1 : -1);
                   if (recent.length === 0) return <div className="text-sm text-gray-500">No items yet.</div>;
                   return recent.map(item => (
-                    <div key={item.id} className="w-full bg-gray-100 px-3 py-2 hover:bg-gray-200 transition-colors">
+                    <div key={item.id} className={`w-full border rounded-lg px-3 py-2 transition-colors ${
+                      selectedIds.has(item.id) 
+                        ? 'border-blue-500 bg-blue-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
                           {selectMode && (
                             <input
                               type="checkbox"
                               checked={selectedIds.has(item.id)}
                               onChange={(e) => toggleSelected(item.id, e.target.checked)}
-                              className="h-3.5 w-3.5"
+                              className="h-4 w-4 text-blue-600 rounded border-gray-300"
                               aria-label={`Select ${item.kind}`}
                             />
                           )}
-                          <span className="text-[10px] px-1.5 py-0.5 border border-black rounded-[1px] font-ibm-plex-mono">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            item.kind === 'file' 
+                              ? 'bg-blue-100 text-blue-700' 
+                              : 'bg-green-100 text-green-700'
+                          }`}>
                             {item.kind === 'file' ? fileBadge((item.raw as LibraryFile).type, (item.raw as LibraryFile).name) : 'LINK'}
                           </span>
-                          <span className="text-sm font-ibm-plex-mono text-gray-900 truncate">{item.title}</span>
+                          <span className="text-sm text-gray-900 truncate font-medium">{item.title}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           {item.kind === 'link' && !selectMode && (
-                            <button onClick={item.onClick} className="text-xs border border-black px-2 py-1 rounded-[1px] cursor-pointer disabled:cursor-not-allowed" disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}>
+                            <button 
+                              onClick={item.onClick} 
+                              className="text-xs border border-gray-300 text-gray-600 px-2 py-1 rounded hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50" 
+                              disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}
+                            >
                               View
                             </button>
                           )}
                           {!selectMode && (
                             <button
-                              className="text-xs border border-red-600 text-red-600 px-2 py-1 rounded-[1px]"
+                              className="text-xs border border-red-300 text-red-600 px-2 py-1 rounded hover:bg-red-50"
                               onClick={() => handleSingleDelete(item)}
                               aria-label={`Delete ${item.kind}`}
                             >
@@ -471,10 +522,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           )}
                         </div>
                       </div>
-                      <div className="text-xs text-gray-600 font-ibm-plex-mono mt-1 truncate">
+                      <div className="text-xs text-gray-500 mt-1 truncate">
                         {String(item.sub).startsWith('fetch') ? (
-                          <div className="w-full h-2 bg-white border border-black overflow-hidden">
-                            <div className="h-full bg-black w-1/2 animate-pulse" />
+                          <div className="flex items-center gap-2">
+                            <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-500 w-1/2 animate-pulse rounded-full" />
+                            </div>
+                            <span>Processing...</span>
                           </div>
                         ) : (
                           String(item.sub)
