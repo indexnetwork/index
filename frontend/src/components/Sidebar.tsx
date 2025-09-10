@@ -115,7 +115,7 @@ export default function Sidebar() {
       const uploaded = await Promise.all(Array.from(f).map(file => library.uploadFile(file)));
       const last = uploaded[uploaded.length - 1];
       if (last) setLastAdded({ kind: 'file', label: last.name, sub: last.size, at: Date.now() });
-      success('Uploaded');
+      // show only the micro-toast; suppress global success toast
     } catch {
       error('Upload failed');
     } finally {
@@ -135,7 +135,7 @@ export default function Sidebar() {
       const link = await library.addLink(normalized);
       setLinkUrl('');
       setLastAdded({ kind: 'link', label: link.url, at: Date.now() });
-      success('Link added');
+      // show only the micro-toast; suppress global success toast
     } catch {
       error('Failed to add link');
     } finally {
@@ -172,7 +172,7 @@ export default function Sidebar() {
   return (
     <div className="space-y-6 font-mono">
       {/* Indexes Section */}
-      <div className="bg-white rounded-sm border-black border p-3 pb-6">
+      <div className="bg-white rounded-sm border-black border p-3 pb-6 relative">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-black">Indexes</h2>
           <button className="text-sm text-black hover:text-gray-700 font-medium">
@@ -313,27 +313,19 @@ export default function Sidebar() {
             </div>
           </div>
 
-          {/* Just added */}
+          {/* Micro toast: non-intrusive overlay */}
           {lastAdded && (
-            <div className="mt-2 transition-opacity duration-500 "
-                 style={{ opacity: lastFading ? 0 : 1 }}>
-              <div className="text-xs text-gray-500 mb-1">Just added</div>
-              <div className="flex items-center justify-between border border-gray-400 rounded-[1px] px-3 py-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  {lastAdded.kind === 'file' ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 flex-shrink-0">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14,2 14,8 20,8"></polyline>
-                    </svg>
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 flex-shrink-0">
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                    </svg>
-                  )}
-                  <div className="truncate text-sm text-gray-900" title={lastAdded.label}>{lastAdded.label}</div>
+            <div
+              className={`absolute bottom-3 right-3 pointer-events-none transition-opacity duration-500 ${lastFading ? 'opacity-0' : 'opacity-100'}`}
+              aria-live="polite"
+            >
+              <div className="flex items-center gap-2 bg-black text-white rounded-[4px] px-3 py-2 shadow-lg max-w-[260px]">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white flex-shrink-0">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                <div className="text-[12px] leading-tight truncate">
+                  Added {lastAdded.kind === 'file' ? 'file' : 'link'}: <span className="font-medium">{lastAdded.label}</span>
                 </div>
-                <button className="text-xs underline text-gray-700" onClick={() => setShowLibraryModal(true)}>Open</button>
               </div>
             </div>
           )}
