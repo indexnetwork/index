@@ -21,6 +21,12 @@ export const createLibraryService = (api: ReturnType<typeof useAuthenticatedAPI>
     const res = await api.post<{ link: LibraryLink }>(`/links`, { url });
     return res.link;
   },
+  deleteFile: async (id: string): Promise<void> => {
+    await api.delete(`/files/${id}`);
+  },
+  deleteLink: async (id: string): Promise<void> => {
+    await api.delete(`/links/${id}`);
+  },
   getLinkContent: async (id: string): Promise<{ content?: string; pending?: boolean; url?: string; lastStatus?: string | null; lastSyncAt?: string | null }> => {
     return await api.get(`/links/${id}/content`);
   }

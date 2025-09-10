@@ -33,6 +33,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [links, setLinks] = useState<LibraryLink[]>([]);
   const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
 
+  // Enhance UX: select, search, and undo state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [undoBatch, setUndoBatch] = useState<{
+    items: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[];
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null>(null);
+  const [typeFilter, setTypeFilter] = useState<'all'|'file'|'link'>('all');
+
   const loadLists = useCallback(async () => {
     try {
       const [f, l] = await Promise.all([
@@ -43,6 +53,76 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       setLinks(l || []);
     } catch {}
   }, [library]);
+
+  const toggleSelected = useCallback((id: string, checked: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[]) => {
+    try {
+      await Promise.all(batch.map(({ kind, item }) => kind === 'file'
+        ? library.deleteFile((item as LibraryFile).id)
+        : library.deleteLink((item as LibraryLink).id)
+      ));
+      success(batch.length === 1 ? 'Item deleted' : `${batch.length} items deleted`);
+      onChanged?.();
+    } catch {
+      error('Failed to delete some items');
+    } finally {
+      setUndoBatch(null);
+    }
+  }, [library, success, error, onChanged]);
+
+  const handleUndo = useCallback(() => {
+    if (!undoBatch) return;
+    if (undoBatch.timer) clearTimeout(undoBatch.timer);
+    // Restore items into state
+    const filesToRestore = undoBatch.items.filter(i => i.kind === 'file').map(i => i.item as LibraryFile);
+    const linksToRestore = undoBatch.items.filter(i => i.kind === 'link').map(i => i.item as LibraryLink);
+    if (filesToRestore.length > 0) setFiles(prev => [...prev, ...filesToRestore]);
+    if (linksToRestore.length > 0) setLinks(prev => [...prev, ...linksToRestore]);
+    setUndoBatch(null);
+  }, [undoBatch]);
+
+  const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[]) => {
+    // Remove items immediately from UI
+    const fileIds = new Set(items.filter(i => i.kind === 'file').map(i => (i.item as LibraryFile).id));
+    const linkIds = new Set(items.filter(i => i.kind === 'link').map(i => (i.item as LibraryLink).id));
+    if (fileIds.size > 0) setFiles(prev => prev.filter(f => !fileIds.has(f.id)));
+    if (linkIds.size > 0) setLinks(prev => prev.filter(l => !linkIds.has(l.id)));
+
+    // Start 5s timer for actual delete
+    const timer = setTimeout(() => finalizeDeletion(items), 5000);
+    setUndoBatch({ items, timer });
+  }, [finalizeDeletion]);
+
+  const handleSingleDelete = useCallback((item: RecentItem) => {
+    const confirmed = typeof window !== 'undefined'
+      ? window.confirm('This permanently removes it from your Library. Continue?')
+      : true;
+    if (!confirmed) return;
+    const payload = [{ kind: item.kind, item: item.raw }];
+    queueDeletion(payload);
+  }, [queueDeletion]);
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const confirmed = typeof window !== 'undefined'
+      ? window.confirm(`This permanently removes ${selectedIds.size} item(s) from your Library. Continue?`)
+      : true;
+    if (!confirmed) return;
+    // Build payload from current state
+    const payload: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[] = [];
+    files.forEach(f => { if (selectedIds.has(`f-${f.id}`)) payload.push({ kind: 'file', item: f }); });
+    links.forEach(l => { if (selectedIds.has(`l-${l.id}`)) payload.push({ kind: 'link', item: l }); });
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    if (payload.length > 0) queueDeletion(payload);
+  }, [files, links, selectedIds, queueDeletion]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
@@ -275,18 +355,67 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
             {/* Recent (bottom, own scroll) */}
             <section>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-3 gap-2">
                 <h3 className="text-base font-bold font-ibm-plex-mono text-gray-900">Recent</h3>
+                <div className="flex items-center gap-2 ml-auto">
+                  <Input
+                    placeholder="Search files and links"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="h-8 w-[200px]"
+                  />
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      className={`h-8 ${typeFilter==='all' ? 'bg-black text-white' : ''}`}
+                      onClick={() => setTypeFilter('all')}
+                    >
+                      All
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className={`h-8 ${typeFilter==='file' ? 'bg-black text-white' : ''}`}
+                      onClick={() => setTypeFilter('file')}
+                    >
+                      Files
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className={`h-8 ${typeFilter==='link' ? 'bg-black text-white' : ''}`}
+                      onClick={() => setTypeFilter('link')}
+                    >
+                      Links
+                    </Button>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className={`h-8 ${selectMode ? 'bg-black text-white' : ''}`}
+                    onClick={() => { setSelectMode(!selectMode); if (selectMode) setSelectedIds(new Set()); }}
+                  >
+                    {selectMode ? 'Done' : 'Select'}
+                  </Button>
+                  {selectMode && selectedIds.size > 0 && (
+                    <Button
+                      variant="outline"
+                      className="h-8 border-red-600 text-red-600"
+                      onClick={() => handleBulkDelete()}
+                    >
+                      Delete selected ({selectedIds.size})
+                    </Button>
+                  )}
+                </div>
               </div>
               <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2 pb-12">
                 {(() => {
-                  type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void> };
+                  type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: LibraryFile | LibraryLink };
                   const map: RecentItem[] = [
                     ...files.map(f => ({
                       id: `f-${f.id}`,
                       kind: 'file' as const,
                       title: f.name,
-                      sub: `${f.size} • ${new Date(f.createdAt).toLocaleDateString()}`,
+                      sub: `${formatSize(f.size)} • ${new Date(f.createdAt).toLocaleDateString()}`,
+                      createdAt: new Date(f.createdAt).getTime(),
+                      raw: f,
                     })),
                     ...links.map(l => ({
                       id: `l-${l.id}`,
@@ -298,35 +427,52 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                         setPreview({ id, title: l.url });
                         const res = await library.getLinkContent(id);
                         if (res?.content) setPreview({ id, title: l.url, content: res.content });
-                      }
+                      },
+                      createdAt: (l.lastSyncAt ? new Date(l.lastSyncAt).getTime() : (l.createdAt ? new Date(l.createdAt).getTime() : 0)),
+                      raw: l,
                     })),
                   ];
-                  const byDate = (x: RecentItem) => {
-                    const isFile = x.id.startsWith('f-');
-                    if (isFile) {
-                      const src = files.find(ff => `f-${ff.id}` === x.id);
-                      return src ? new Date(src.createdAt).getTime() : 0;
-                    }
-                    const src = links.find(ll => `l-${ll.id}` === x.id);
-                    const ts = src?.lastSyncAt || src?.createdAt || '';
-                    return ts ? new Date(ts).getTime() : 0;
-                  };
-                  const recent = map.sort((a,b) => byDate(b)-byDate(a));
+                  const filtered = map.filter(item => {
+                    const q = item.title.toLowerCase().includes(search.toLowerCase());
+                    const t = typeFilter === 'all' || item.kind === typeFilter;
+                    return q && t;
+                  });
+                  const recent = filtered.sort((a,b) => a.createdAt < b.createdAt ? 1 : -1);
                   if (recent.length === 0) return <div className="text-sm text-gray-500">No items yet.</div>;
                   return recent.map(item => (
                     <div key={item.id} className="w-full bg-gray-100 px-3 py-2 hover:bg-gray-200 transition-colors">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
+                          {selectMode && (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(item.id)}
+                              onChange={(e) => toggleSelected(item.id, e.target.checked)}
+                              className="h-3.5 w-3.5"
+                              aria-label={`Select ${item.kind}`}
+                            />
+                          )}
                           <span className="text-[10px] px-1.5 py-0.5 border border-black rounded-[1px] font-ibm-plex-mono">
-                            {item.kind === 'file' ? 'FILE' : 'LINK'}
+                            {item.kind === 'file' ? fileBadge((item.raw as LibraryFile).type, (item.raw as LibraryFile).name) : 'LINK'}
                           </span>
                           <span className="text-sm font-ibm-plex-mono text-gray-900 truncate">{item.title}</span>
                         </div>
-                        {item.kind === 'link' && (
-                          <button onClick={item.onClick} className="text-xs border border-black px-2 py-1 rounded-[1px] cursor-pointer disabled:cursor-not-allowed" disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}>
-                            View
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {item.kind === 'link' && !selectMode && (
+                            <button onClick={item.onClick} className="text-xs border border-black px-2 py-1 rounded-[1px] cursor-pointer disabled:cursor-not-allowed" disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}>
+                              View
+                            </button>
+                          )}
+                          {!selectMode && (
+                            <button
+                              className="text-xs border border-red-600 text-red-600 px-2 py-1 rounded-[1px]"
+                              onClick={() => handleSingleDelete(item)}
+                              aria-label={`Delete ${item.kind}`}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <div className="text-xs text-gray-600 font-ibm-plex-mono mt-1 truncate">
                         {String(item.sub).startsWith('fetch') ? (
@@ -364,8 +510,57 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           <div className="mt-6 flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
           </div>
+
+          {/* Undo Snackbar */}
+          {undoBatch && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-black text-white text-sm px-4 py-2 rounded shadow-lg flex items-center gap-3">
+              <span>
+                {undoBatch.items.length === 1 ? 'Item removed' : `${undoBatch.items.length} items removed`}
+              </span>
+              <button
+                className="underline"
+                onClick={() => handleUndo()}
+                aria-label="Undo delete"
+              >
+                Undo
+              </button>
+            </div>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
   );
 }
+
+// Helpers: size formatting and file badge
+function formatSize(size: string): string {
+  // If already human-readable, return as-is
+  if (/\d+\s?(KB|MB|GB|B)$/i.test(size)) return size;
+  const n = Number(size);
+  if (Number.isNaN(n)) return size;
+  const units = ['B','KB','MB','GB'];
+  let v = n; let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function fileBadge(mime: string | undefined, name: string): string {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf') return 'PDF';
+  if (['doc','docx','rtf','odt'].includes(ext)) return 'DOC';
+  if (['xls','xlsx','csv'].includes(ext)) return 'SHEET';
+  if (['ppt','pptx','key'].includes(ext)) return 'SLIDE';
+  if (['png','jpg','jpeg','gif','svg','webp'].includes(ext)) return 'IMG';
+  if (['mp4','mov','avi','mkv','webm'].includes(ext)) return 'VID';
+  if (['mp3','wav','m4a','flac'].includes(ext)) return 'AUD';
+  if (['zip','rar','7z','tar','gz'].includes(ext)) return 'ARCH';
+  if (['md','txt','json','yaml','yml'].includes(ext)) return 'TXT';
+  if (mime?.includes('pdf')) return 'PDF';
+  if (mime?.startsWith('image/')) return 'IMG';
+  if (mime?.startsWith('video/')) return 'VID';
+  if (mime?.startsWith('audio/')) return 'AUD';
+  return 'FILE';
+}
+
+// Deletion helpers
+type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: LibraryFile | LibraryLink };
