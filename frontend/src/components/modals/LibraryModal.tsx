@@ -42,6 +42,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     timer: ReturnType<typeof setTimeout> | null;
   } | null>(null);
   const [typeFilter, setTypeFilter] = useState<'all'|'file'|'link'>('all');
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    message: string;
+    payload: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[];
+  } | null>(null);
 
   const loadLists = useCallback(async () => {
     try {
@@ -101,28 +106,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [finalizeDeletion]);
 
   const handleSingleDelete = useCallback((item: RecentItem) => {
-    const confirmed = typeof window !== 'undefined'
-      ? window.confirm('This permanently removes it from your Library. Continue?')
-      : true;
-    if (!confirmed) return;
     const payload = [{ kind: item.kind, item: item.raw }];
-    queueDeletion(payload);
-  }, [queueDeletion]);
+    setConfirm({ open: true, message: 'This permanently removes it from your Library. Continue?', payload });
+  }, []);
 
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
-    const confirmed = typeof window !== 'undefined'
-      ? window.confirm(`This permanently removes ${selectedIds.size} item(s) from your Library. Continue?`)
-      : true;
-    if (!confirmed) return;
     // Build payload from current state
     const payload: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[] = [];
     files.forEach(f => { if (selectedIds.has(`f-${f.id}`)) payload.push({ kind: 'file', item: f }); });
     links.forEach(l => { if (selectedIds.has(`l-${l.id}`)) payload.push({ kind: 'link', item: l }); });
     setSelectedIds(new Set());
     setSelectMode(false);
-    if (payload.length > 0) queueDeletion(payload);
-  }, [files, links, selectedIds, queueDeletion]);
+    if (payload.length > 0) setConfirm({ open: true, message: `This permanently removes ${payload.length} item(s) from your Library. Continue?`, payload });
+  }, [files, links, selectedIds]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
@@ -353,11 +350,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               </div>
             </section>
 
-            {/* Recent (bottom, own scroll) */}
+            {/* Library (bottom, own scroll) */}
             <section>
               <div className="flex items-center justify-between mb-3 gap-2">
-                <h3 className="text-base font-bold font-ibm-plex-mono text-gray-900">Recent</h3>
-                <div className="flex items-center gap-2 ml-auto">
+                <h3 className="text-base font-bold font-ibm-plex-mono text-gray-900">Library</h3>
+              <div className="flex items-center gap-2 ml-auto">
                   <Input
                     placeholder="Search files and links"
                     value={search}
@@ -405,7 +402,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   )}
                 </div>
               </div>
-              <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2 pb-12">
+              <div className="space-y-2 max-h-[360px] overflow-y-auto pr-2 pb-12">
                 {(() => {
                   type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: LibraryFile | LibraryLink };
                   const map: RecentItem[] = [
@@ -526,6 +523,27 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               </button>
             </div>
           )}
+
+          {/* Styled Confirm Dialog */}
+          <Dialog.Root open={!!confirm?.open} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
+            <Dialog.Portal>
+              <Dialog.Overlay className="fixed inset-0 bg-black/40" />
+              <Dialog.Content className="fixed left-1/2 top-1/2 w-[90vw] max-w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-md bg-white dark:bg-white text-gray-900 dark:text-gray-900 p-5 shadow-lg">
+                <Dialog.Title className="text-lg font-bold mb-2 font-ibm-plex-mono">Confirm Delete</Dialog.Title>
+                <p className="text-sm text-gray-700 mb-4">{confirm?.message}</p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>
+                  <Button
+                    variant="outline"
+                    className="border-red-600 text-red-600"
+                    onClick={() => { if (confirm) { queueDeletion(confirm.payload); setConfirm(null); } }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
