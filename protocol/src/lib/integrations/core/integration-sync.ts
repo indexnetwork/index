@@ -134,7 +134,9 @@ export async function syncIntegration(
           const newIntent = await db.insert(intents).values({
             payload: intentData.payload,
             userId,
-            isIncognito: false
+            isIncognito: false,
+            sourceId: integration[0].id,
+            sourceType: 'integration',
           }).returning();
 
           // Associate with index if provided

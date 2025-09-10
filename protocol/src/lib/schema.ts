@@ -5,6 +5,8 @@ import { relations } from 'drizzle-orm';
 export const connectionAction = pgEnum('connection_action', [
   'REQUEST', 'SKIP', 'CANCEL', 'ACCEPT', 'DECLINE'
 ]);
+// Polymorphic source type for intents
+export const sourceType = pgEnum('source_type', ['file', 'integration', 'link']);
 
 // Tables
 export const users = pgTable('users', {
@@ -33,6 +35,9 @@ export const intents = pgTable('intents', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   archivedAt: timestamp('archived_at'),
   userId: uuid('user_id').notNull().references(() => users.id),
+  // Polymorphic nullable source (file | integration | link)
+  sourceId: uuid('source_id'),
+  sourceType: sourceType('source_type'),
 });
 
 export const indexes = pgTable('indexes', {
@@ -117,6 +122,22 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
     references: [users.id],
   }),
   indexes: many(intentIndexes),
+  // Soft polymorphic joins (only one applies based on sourceType)
+  file: one(files, {
+    fields: [intents.sourceId],
+    references: [files.id],
+    relationName: 'intent_file',
+  }),
+  integration: one(userIntegrations, {
+    fields: [intents.sourceId],
+    references: [userIntegrations.id],
+    relationName: 'intent_integration',
+  }),
+  link: one(indexLinks, {
+    fields: [intents.sourceId],
+    references: [indexLinks.id],
+    relationName: 'intent_link',
+  }),
 }));
 
 export const indexesRelations = relations(indexes, ({ one, many }) => ({

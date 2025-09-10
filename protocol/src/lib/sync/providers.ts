@@ -106,6 +106,8 @@ export const linksProvider: SyncProvider<LinksParams> = {
               summary: summary || intentData.payload.slice(0, 150),
               userId,
               isIncognito: false,
+              sourceId: linkRow?.id,
+              sourceType: 'link',
             }).returning({ id: intents.id });
             const intentId = inserted[0].id;
             await db.insert(intentIndexes).values({ intentId, indexId });
@@ -179,6 +181,8 @@ export function createIntegrationProvider(type: IntegrationType): SyncProvider<I
         textInstruction: `Generate intents based on content from ${type} integration`,
         count: 30,
         summarize: false,
+        sourceId: integrationRec.id,
+        sourceType: 'integration',
         onProgress: async (completed, total, note) => {
           await update({ progress: { total, completed, notes: note ? [note] : [] } });
         },
