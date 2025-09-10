@@ -29,6 +29,8 @@ export default function Sidebar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const library = useLibraryService();
   const { success, error } = useNotifications();
+  const [lastAdded, setLastAdded] = useState<null | { kind: 'file'|'link'; label: string; sub?: string; at: number }>(null);
+  const [lastFading, setLastFading] = useState(false);
   const indexesService = useIndexes();
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   
@@ -110,7 +112,9 @@ export default function Sidebar() {
     if (!f || f.length === 0) return;
     setIsUploading(true);
     try {
-      await Promise.all(Array.from(f).map(file => library.uploadFile(file)));
+      const uploaded = await Promise.all(Array.from(f).map(file => library.uploadFile(file)));
+      const last = uploaded[uploaded.length - 1];
+      if (last) setLastAdded({ kind: 'file', label: last.name, sub: last.size, at: Date.now() });
       success('Uploaded');
     } catch {
       error('Upload failed');
@@ -128,8 +132,9 @@ export default function Sidebar() {
     }
     try {
       setIsAddingLink(true);
-      await library.addLink(normalized);
+      const link = await library.addLink(normalized);
       setLinkUrl('');
+      setLastAdded({ kind: 'link', label: link.url, at: Date.now() });
       success('Link added');
     } catch {
       error('Failed to add link');
@@ -137,6 +142,32 @@ export default function Sidebar() {
       setIsAddingLink(false);
     }
   }, [library, linkUrl, success, error]);
+
+  const loadLatest = useCallback(async () => {
+    try {
+      const [files, links] = await Promise.all([library.getFiles(), library.getLinks()]);
+      const lf = (files || []).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      const ll = (links || []).sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
+      const lfTime = lf ? new Date(lf.createdAt).getTime() : 0;
+      const llTime = ll && ll.createdAt ? new Date(ll.createdAt).getTime() : 0;
+      if (lfTime === 0 && llTime === 0) return;
+      if (lfTime >= llTime && lf) setLastAdded({ kind: 'file', label: lf.name, sub: lf.size, at: lfTime });
+      else if (ll) setLastAdded({ kind: 'link', label: ll.url, at: llTime });
+    } catch {
+      // ignore
+    }
+  }, [library]);
+
+  useEffect(() => { loadLatest(); }, [loadLatest]);
+
+  // Auto-hide the "Just added" row after 5 seconds with fade-out
+  useEffect(() => {
+    if (!lastAdded) return;
+    setLastFading(false);
+    const t1 = setTimeout(() => setLastFading(true), 4500);
+    const t2 = setTimeout(() => { setLastAdded(null); setLastFading(false); }, 5000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [lastAdded]);
 
   return (
     <div className="space-y-6 font-mono">
@@ -281,6 +312,31 @@ export default function Sidebar() {
               )}
             </div>
           </div>
+
+          {/* Just added */}
+          {lastAdded && (
+            <div className="mt-2 transition-opacity duration-500 "
+                 style={{ opacity: lastFading ? 0 : 1 }}>
+              <div className="text-xs text-gray-500 mb-1">Just added</div>
+              <div className="flex items-center justify-between border border-gray-400 rounded-[1px] px-3 py-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  {lastAdded.kind === 'file' ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 flex-shrink-0">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14,2 14,8 20,8"></polyline>
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600 flex-shrink-0">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                    </svg>
+                  )}
+                  <div className="truncate text-sm text-gray-900" title={lastAdded.label}>{lastAdded.label}</div>
+                </div>
+                <button className="text-xs underline text-gray-700" onClick={() => setShowLibraryModal(true)}>Open</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
