@@ -25,22 +25,10 @@ function sanitizeName(s: string): string {
   return s.replace(/[\/:*?"<>|\n\r\t]/g, '-').slice(0, 120);
 }
 
-// Helper to parse boolean environment variables
-function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
-  if (!value) return defaultValue;
-  const normalized = value.toLowerCase().trim();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes';
-}
+// (simplified) no env boolean parser — fixed sensible defaults
 
 const CRAWL4AI_BASE_URL = process.env.CRAWL4AI_BASE_URL || 'http://crawl4ai.env-dev:11235';
-const LLM_PROVIDER = process.env.CRAWL4AI_LLM_PROVIDER || 'openai/gpt-4o';
-const FEWSHOT_MODE = (process.env.CRAWL4AI_FEWSHOT_MODE || 'always').toLowerCase();
-const FEWSHOT_ALL_PATTERNS = parseBoolean(process.env.CRAWL4AI_FEWSHOT_ALL_PATTERNS, true);
-const SCAN_FULL_PAGE = parseBoolean(process.env.CRAWL4AI_SCAN_FULL_PAGE, false);
-const DELAY_S = Number(process.env.CRAWL4AI_DELAY_S || '3');
-const SIMULATE_USER = parseBoolean(process.env.CRAWL4AI_SIMULATE_USER, true);
-const REMOVE_OVERLAY = parseBoolean(process.env.CRAWL4AI_REMOVE_OVERLAY, true);
-const MAGIC = parseBoolean(process.env.CRAWL4AI_MAGIC, true);
+const LLM_PROVIDER = 'openai/gpt-4o';
 
 function allPatternsFewShot(): string {
   const blocks = [
@@ -68,10 +56,7 @@ function allPatternsFewShot(): string {
 
 function buildInstruction(): string {
   const base = 'Extract only the content from this page. Remove all non-content elements such as buttons, links, menus, ads, metadata, or boilerplate. Do not paraphrase or summarize — return the exact original text only. Extract as a markdown with a whole.';
-  if (FEWSHOT_MODE === 'always' && FEWSHOT_ALL_PATTERNS) {
-    return `${base}\n\n${allPatternsFewShot()}\nBe concise but complete. Keep original wording.`;
-  }
-  return base;
+  return `${base}\n\n${allPatternsFewShot()}\nBe concise but complete. Keep original wording.`;
 }
 
 async function postCrawl(urls: string[], instruction: string): Promise<Crawl4AIResult> {
@@ -81,13 +66,13 @@ async function postCrawl(urls: string[], instruction: string): Promise<Crawl4AIR
     crawler_config: {
       type: 'CrawlerRunConfig',
       params: {
-        simulate_user: SIMULATE_USER,
+        simulate_user: true,
         override_navigator: true,
-        delay_before_return_html: DELAY_S,
-        magic: MAGIC,
+        delay_before_return_html: 3,
+        magic: true,
         verbose: true,
-        remove_overlay_elements: REMOVE_OVERLAY,
-        scan_full_page: SCAN_FULL_PAGE,
+        remove_overlay_elements: true,
+        scan_full_page: false,
         markdown_generator: {
           type: 'DefaultMarkdownGenerator',
           params: {
@@ -105,7 +90,7 @@ async function postCrawl(urls: string[], instruction: string): Promise<Crawl4AIR
   } as const;
 
   const controller = new AbortController();
-  const timeoutMs = Number(process.env.CRAWL4AI_TIMEOUT_MS || '120000');
+  const timeoutMs = Number(process.env.CRAWL4AI_TIMEOUT_MS || '60000');
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const resp = await fetch(`${CRAWL4AI_BASE_URL}/crawl`, {
