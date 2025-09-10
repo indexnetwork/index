@@ -409,18 +409,28 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     </Button>
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <Input
-                    placeholder="Search..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="h-7 w-[160px] text-sm"
-                  />
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                    <Input
+                      placeholder="Search files and links..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="h-8 w-[200px] text-sm pl-8 border-gray-400 rounded-[1px] font-ibm-plex-mono"
+                    />
+                  </div>
                   <div className="flex items-center gap-1">
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`h-7 px-2 text-xs ${typeFilter==='all' ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300'}`}
+                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-[1px] border-gray-400 ${
+                        typeFilter==='all' 
+                          ? 'bg-gray-900 text-white border-gray-900' 
+                          : 'text-gray-900 hover:bg-gray-50'
+                      }`}
                       onClick={() => setTypeFilter('all')}
                     >
                       All
@@ -428,7 +438,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`h-7 px-2 text-xs ${typeFilter==='file' ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300'}`}
+                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-[1px] border-gray-400 ${
+                        typeFilter==='file' 
+                          ? 'bg-gray-900 text-white border-gray-900' 
+                          : 'text-gray-900 hover:bg-gray-50'
+                      }`}
                       onClick={() => setTypeFilter('file')}
                     >
                       Files
@@ -436,7 +450,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`h-7 px-2 text-xs ${typeFilter==='link' ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300'}`}
+                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-[1px] border-gray-400 ${
+                        typeFilter==='link' 
+                          ? 'bg-gray-900 text-white border-gray-900' 
+                          : 'text-gray-900 hover:bg-gray-50'
+                      }`}
                       onClick={() => setTypeFilter('link')}
                     >
                       Links
