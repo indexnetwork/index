@@ -258,6 +258,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
         <Dialog.Content className="fixed left-1/2 top-1/2 w-[90vw] max-w-[800px] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-md bg-white dark:bg-white text-gray-900 dark:text-gray-900 p-6 shadow-lg focus:outline-none overflow-hidden flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Library</Dialog.Title>
+            <button
+              onClick={() => onOpenChange(false)}
+              className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors"
+              aria-label="Close modal"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
           </div>
 
           <div className="flex-1 pr-1 space-y-4 overflow-hidden">
@@ -314,21 +324,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             <section>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Add Content</h3>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 font-ibm-plex-mono">
                   {files.length + links.length} items total
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {/* File upload */}
-                <div className="border border-gray-300 rounded p-3">
+                <div className="border border-gray-400 rounded-[1px] p-3">
                   <div
-                    className={`border border-dashed ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'} bg-gray-50 p-4 text-center cursor-pointer transition-colors rounded`}
+                    className={`border border-dashed ${isDragging ? 'border-gray-600 bg-gray-100' : 'border-gray-400'} bg-gray-50 p-6 text-center cursor-pointer transition-colors rounded-[1px] flex items-center justify-center min-h-[80px]`}
                     onDragOver={handleDragOver}
                     onDragEnter={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                   >
-                    <div className="text-sm font-medium text-gray-700 mb-1">📁 Drop files here</div>
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -337,48 +346,57 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       id="library-file-upload"
                       onChange={(e) => handleFilesSelected(e.target.files)}
                     />
-                    <label htmlFor="library-file-upload" className="text-xs text-blue-600 underline cursor-pointer hover:text-blue-800">
-                      or click to browse
+                    <label htmlFor="library-file-upload" className="cursor-pointer">
+                      {isUploading ? (
+                        <div className="space-y-2">
+                          <div className="w-8 h-8 mx-auto border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                          <div className="text-xs text-gray-600 font-ibm-plex-mono">Uploading...</div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-gray-500">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14,2 14,8 20,8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10,9 9,9 8,9"></polyline>
+                          </svg>
+                          <div className="text-xs text-gray-500 font-ibm-plex-mono">Drop files or click</div>
+                        </div>
+                      )}
                     </label>
-                    {isUploading && (
-                      <div className="mt-2 space-y-1">
-                        <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500 w-1/2 animate-pulse rounded-full" />
-                        </div>
-                        <div className="text-xs text-gray-600 inline-flex items-center gap-1">
-                          <span className="h-2.5 w-2.5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                          Uploading…
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
 
                 {/* Link input */}
-                <div className="border border-gray-300 rounded p-3">
-                  <div className="text-sm font-medium text-gray-700 mb-2">🔗 Add URL</div>
-                  <div className="flex gap-2">
+                <div className="border border-gray-400 rounded-[1px] p-3 flex items-center">
+                  <div className="flex items-center gap-2 w-full">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500 flex-shrink-0">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                    </svg>
                     <Input
-                      placeholder="https://example.com"
+                      placeholder="Paste URL here"
                       value={linkUrl}
                       onChange={(e) => setLinkUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                      className="text-sm"
+                      className="text-sm border-gray-400 rounded-[1px] font-ibm-plex-mono flex-1"
                     />
-                    <Button 
-                      variant="outline" 
-                      className="border-gray-400 text-gray-700 hover:bg-gray-50" 
-                      onClick={handleAddLink} 
-                      disabled={!linkUrl || isAddingLink}
-                      size="sm"
-                    >
-                      {isAddingLink ? (
-                        <span className="inline-flex items-center gap-1">
-                          <span className="h-3 w-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                          Adding
-                        </span>
-                      ) : 'Add'}
-                    </Button>
+                    {isAddingLink ? (
+                      <div className="w-8 h-8 border-2 border-gray-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                    ) : (
+                      <button
+                        onClick={handleAddLink}
+                        disabled={!linkUrl}
+                        className="p-1.5 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                        aria-label="Add URL"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                          <line x1="12" y1="5" x2="12" y2="19"></line>
+                          <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -411,7 +429,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 )}
                 <div className="flex items-center gap-3">
                   <div className="relative">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
                       <circle cx="11" cy="11" r="8"></circle>
                       <path d="m21 21-4.35-4.35"></path>
                     </svg>
@@ -419,8 +437,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       placeholder="Search files and links..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="h-8 w-[200px] text-sm pl-8 border-gray-400 rounded-[1px] font-ibm-plex-mono"
+                      className="h-9 w-[240px] text-sm pl-10 pr-4 border-gray-400 rounded-[1px] font-ibm-plex-mono bg-white focus:border-gray-600 focus:ring-0"
                     />
+                    {search && (
+                      <button
+                        onClick={() => setSearch('')}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 p-0.5 hover:bg-gray-100 rounded-[1px] transition-colors"
+                        aria-label="Clear search"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                      </button>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
                     <Button
@@ -428,7 +458,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       size="sm"
                       className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-[1px] border-gray-400 ${
                         typeFilter==='all' 
-                          ? 'bg-gray-900 text-white border-gray-900' 
+                          ? 'bg-gray-900 text-white border-gray-900 hover:bg-gray-900 hover:text-white' 
                           : 'text-gray-900 hover:bg-gray-50'
                       }`}
                       onClick={() => setTypeFilter('all')}
@@ -440,7 +470,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       size="sm"
                       className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-[1px] border-gray-400 ${
                         typeFilter==='file' 
-                          ? 'bg-gray-900 text-white border-gray-900' 
+                          ? 'bg-gray-900 text-white border-gray-900 hover:bg-gray-900 hover:text-white' 
                           : 'text-gray-900 hover:bg-gray-50'
                       }`}
                       onClick={() => setTypeFilter('file')}
@@ -452,7 +482,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       size="sm"
                       className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-[1px] border-gray-400 ${
                         typeFilter==='link' 
-                          ? 'bg-gray-900 text-white border-gray-900' 
+                          ? 'bg-gray-900 text-white border-gray-900 hover:bg-gray-900 hover:text-white' 
                           : 'text-gray-900 hover:bg-gray-50'
                       }`}
                       onClick={() => setTypeFilter('link')}
@@ -508,24 +538,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSelected(item.id, !selectedIds.has(item.id));
-                            }}
-                            className={`h-4 w-4 border border-gray-400 rounded-[1px] flex items-center justify-center transition-colors ${
-                              selectedIds.has(item.id) 
-                                ? 'bg-gray-900 border-gray-900' 
-                                : 'bg-white hover:bg-gray-50'
-                            }`}
-                            aria-label={`Select ${item.kind}`}
-                          >
-                            {selectedIds.has(item.id) && (
+                          {selectedIds.has(item.id) && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSelected(item.id, !selectedIds.has(item.id));
+                              }}
+                              className="h-4 w-4 border border-gray-900 bg-gray-900 rounded-[1px] flex items-center justify-center transition-colors"
+                              aria-label={`Select ${item.kind}`}
+                            >
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-white">
                                 <polyline points="20,6 9,17 4,12"></polyline>
                               </svg>
-                            )}
-                          </button>
+                            </button>
+                          )}
                           <span className="text-[10px] px-1.5 py-0.5 border border-gray-400 rounded-[1px] font-ibm-plex-mono text-gray-900">
                             {item.kind === 'file' ? fileBadge((item.raw as LibraryFile).type, (item.raw as LibraryFile).name) : 'LINK'}
                           </span>
@@ -533,20 +559,36 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                         </div>
                         <div className="flex items-center gap-1">
                           {item.kind === 'link' && (
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                item.onClick?.();
-                              }} 
-                              className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50" 
-                              disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}
-                              aria-label="View content"
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                <circle cx="12" cy="12" r="3"></circle>
-                              </svg>
-                            </button>
+                            <>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  item.onClick?.();
+                                }} 
+                                className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50" 
+                                disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}
+                                aria-label="View content"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                  <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText((item.raw as LibraryLink).url);
+                                  success('URL copied to clipboard');
+                                }} 
+                                className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors" 
+                                aria-label="Copy URL"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                              </button>
+                            </>
                           )}
                           <button
                             className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors"
@@ -569,7 +611,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                         {String(item.sub).startsWith('fetch') ? (
                           <div className="flex items-center gap-2">
                             <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                              <div className="h-full bg-blue-500 w-1/2 animate-pulse rounded-full" />
+                              <div className="h-full bg-gray-600 w-1/2 animate-pulse rounded-full" />
                             </div>
                             <span>Processing...</span>
                           </div>
@@ -601,9 +643,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </Dialog.Portal>
           </Dialog.Root>
 
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-          </div>
 
           {/* Undo Snackbar */}
           {undoBatch && (
