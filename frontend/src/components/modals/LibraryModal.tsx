@@ -227,17 +227,26 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
   const handleAddLink = useCallback(async () => {
     if (!linkUrl) return;
+    
+    // Normalize URL - add https:// if no protocol is specified
+    let normalizedUrl = linkUrl.trim();
+    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+      normalizedUrl = `https://${normalizedUrl}`;
+    }
+    
     try {
       setIsAddingLink(true);
-      await library.addLink(linkUrl.trim());
+      await library.addLink(normalizedUrl);
       setLinkUrl("");
       onChanged?.();
       await loadLists();
-    } catch {}
-    finally {
+      success('Link added successfully');
+    } catch (error) {
+      error('Failed to add link. Please check the URL and try again.');
+    } finally {
       setIsAddingLink(false);
     }
-  }, [library, linkUrl, onChanged, loadLists]);
+  }, [library, linkUrl, onChanged, loadLists, success, error]);
 
 
   useEffect(() => {
@@ -276,30 +285,30 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             <section>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Connect Sources</h3>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 font-ibm-plex-mono">
                   {integrations.filter(i => i.connected).length} of {integrations.length} connected
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {integrations.map((it) => (
-                  <div key={it.id} className={`flex items-center justify-between border rounded-[1px] px-3 py-2 transition-colors ${
+                  <div key={it.id} className={`flex items-center justify-between border border-gray-400 rounded-[1px] px-3 py-2 transition-colors ${
                     it.connected 
-                      ? 'border-green-600 bg-green-50' 
-                      : 'border-gray-300 bg-white hover:bg-gray-50'
+                      ? 'bg-gray-100' 
+                      : 'bg-white hover:bg-gray-50'
                   }`}>
                     <span className="flex items-center gap-2">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={`/integrations/${it.id}.png`} width={20} height={20} alt="" />
-                      <span className="text-sm font-medium">{it.name}</span>
+                      <span className="text-sm font-medium text-gray-900 font-ibm-plex-mono">{it.name}</span>
                       {it.connected && (
-                        <span className="h-1.5 w-1.5 bg-green-600 rounded-full" />
+                        <span className="h-1.5 w-1.5 bg-gray-600 rounded-full" />
                       )}
                     </span>
                     <button
                       onClick={() => toggleIntegration(it.id)}
                       disabled={pendingIntegration === it.id}
                       className={`relative h-[20px] w-[36px] rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed ${
-                        it.connected ? 'bg-green-600' : 'bg-gray-300'
+                        it.connected ? 'bg-gray-900' : 'bg-gray-300'
                       } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
                       aria-pressed={it.connected}
                       aria-busy={pendingIntegration === it.id}
@@ -408,11 +417,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Library Items</h3>
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500">{selectedIds.size} selected</span>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50"
+                      className="h-7 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50 font-ibm-plex-mono"
                       onClick={() => handleBulkDelete()}
                     >
                       Delete ({selectedIds.size})
@@ -420,7 +428,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-xs border-gray-300"
+                      className="h-7 px-2 text-xs border-gray-300 font-ibm-plex-mono"
                       onClick={() => setSelectedIds(new Set())}
                     >
                       Clear
@@ -607,13 +615,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           </button>
                         </div>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1 truncate">
+                      <div className="text-xs text-gray-500 mt-1 truncate font-ibm-plex-mono">
                         {String(item.sub).startsWith('fetch') ? (
                           <div className="flex items-center gap-2">
                             <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
                               <div className="h-full bg-gray-600 w-1/2 animate-pulse rounded-full" />
                             </div>
-                            <span>Processing...</span>
+                            <span className="font-ibm-plex-mono">Processing...</span>
                           </div>
                         ) : (
                           String(item.sub)
