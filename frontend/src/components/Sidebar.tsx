@@ -21,7 +21,7 @@ export default function Sidebar() {
   const [loading, setLoading] = useState(true);
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
-  // Files section state (mirror LibraryModal UX)
+  // Quick-add Library interactions in sidebar
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -185,18 +185,33 @@ export default function Sidebar() {
 
       {/* Library Section */}
       <div className="bg-white rounded-sm border-black border p-3 pb-6">
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-2">
           <h2 className="text-xl font-semibold text-black">Library</h2>
-          <button
-            className="text-sm text-black hover:text-gray-700 font-medium"
-            onClick={() => setShowLibraryModal(true)}
-          >
-            Add…
-          </button>
+          <p className="text-sm text-black/80 mt-1">Keep files and links to boost relevancy.</p>
         </div>
 
-        {/* Add Content (styled like LibraryModal) */}
-        <div className="space-y-3">
+        {/* Primary CTA to open modal */}
+        <button
+          onClick={() => setShowLibraryModal(true)}
+          className="mt-2 inline-flex w-full items-center justify-center gap-2 bg-black text-white px-3 py-2 rounded-[1px] text-sm cursor-pointer hover:bg-gray-900"
+          aria-label="Add to Library"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          <span>Add to Library…</span>
+        </button>
+
+        {/* Divider */}
+        <div className="flex items-center gap-3 my-4">
+          <div className="flex-1 h-px bg-gray-300" />
+          <span className="text-[11px] text-gray-500">or quick add</span>
+          <div className="flex-1 h-px bg-gray-300" />
+        </div>
+
+        {/* Quick add controls (match LibraryModal) */}
+        <div className="mt-4 space-y-3">
           {/* File upload */}
           <div className="border border-gray-400 rounded-[1px] p-3">
             <div
