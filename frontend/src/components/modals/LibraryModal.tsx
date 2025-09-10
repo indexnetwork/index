@@ -540,7 +540,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       className={`w-full border rounded-lg px-3 py-2 transition-colors cursor-pointer ${
                         selectedIds.has(item.id) 
                           ? 'border-gray-900 bg-gray-100' 
-                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                          : item.kind === 'link' 
+                            ? 'border-gray-300 bg-gray-25 hover:bg-gray-50' 
+                            : 'border-gray-200 bg-white hover:bg-gray-50'
                       }`}
                       onClick={() => toggleSelected(item.id, !selectedIds.has(item.id))}
                     >
@@ -560,9 +562,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               </svg>
                             </button>
                           )}
-                          <span className="text-[10px] px-1.5 py-0.5 border border-gray-400 rounded-[1px] font-ibm-plex-mono text-gray-900">
-                            {item.kind === 'file' ? fileBadge((item.raw as LibraryFile).type, (item.raw as LibraryFile).name) : 'LINK'}
-                          </span>
+                          {item.kind === 'file' && (
+                            <span className="text-[10px] px-1.5 py-0.5 border border-gray-400 rounded-[1px] font-ibm-plex-mono text-gray-900 bg-gray-100">
+                              {fileBadge((item.raw as LibraryFile).type, (item.raw as LibraryFile).name)}
+                            </span>
+                          )}
+                          {/* Icon for links only */}
+                          {item.kind === 'link' && (
+                            <div className="flex-shrink-0">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                              </svg>
+                            </div>
+                          )}
                           <span className="text-sm text-gray-900 truncate font-medium">{item.title}</span>
                         </div>
                         <div className="flex items-center gap-1">
