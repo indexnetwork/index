@@ -387,17 +387,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             {/* Library items */}
             <section>
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Library Items</h3>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={`h-7 px-2 text-xs ${selectMode ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300'}`}
-                    onClick={() => { setSelectMode(!selectMode); if (selectMode) setSelectedIds(new Set()); }}
-                  >
-                    {selectMode ? 'Done' : 'Select'}
-                  </Button>
-                  {selectMode && selectedIds.size > 0 && (
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Library Items</h3>
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">{selectedIds.size} selected</span>
                     <Button
                       variant="outline"
                       size="sm"
@@ -406,8 +399,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     >
                       Delete ({selectedIds.size})
                     </Button>
-                  )}
-                </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs border-gray-300"
+                      onClick={() => setSelectedIds(new Set())}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                )}
                 <div className="flex items-center gap-2">
                   <Input
                     placeholder="Search..."
@@ -478,31 +479,47 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   const recent = filtered.sort((a,b) => a.createdAt < b.createdAt ? 1 : -1);
                   if (recent.length === 0) return <div className="text-sm text-gray-500">No items yet.</div>;
                   return recent.map(item => (
-                    <div key={item.id} className={`w-full border rounded-lg px-3 py-2 transition-colors ${
-                      selectedIds.has(item.id) 
-                        ? 'border-blue-500 bg-blue-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
+                    <div 
+                      key={item.id} 
+                      className={`w-full border rounded-lg px-3 py-2 transition-colors cursor-pointer ${
+                        selectedIds.has(item.id) 
+                          ? 'border-gray-900 bg-gray-100' 
+                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                      }`}
+                      onClick={() => toggleSelected(item.id, !selectedIds.has(item.id))}
+                    >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
-                          {selectMode && (
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.has(item.id)}
-                              onChange={(e) => toggleSelected(item.id, e.target.checked)}
-                              className="h-4 w-4 text-blue-600 rounded border-gray-300"
-                              aria-label={`Select ${item.kind}`}
-                            />
-                          )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSelected(item.id, !selectedIds.has(item.id));
+                            }}
+                            className={`h-4 w-4 border border-gray-400 rounded-[1px] flex items-center justify-center transition-colors ${
+                              selectedIds.has(item.id) 
+                                ? 'bg-gray-900 border-gray-900' 
+                                : 'bg-white hover:bg-gray-50'
+                            }`}
+                            aria-label={`Select ${item.kind}`}
+                          >
+                            {selectedIds.has(item.id) && (
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+                                <polyline points="20,6 9,17 4,12"></polyline>
+                              </svg>
+                            )}
+                          </button>
                           <span className="text-[10px] px-1.5 py-0.5 border border-gray-400 rounded-[1px] font-ibm-plex-mono text-gray-900">
                             {item.kind === 'file' ? fileBadge((item.raw as LibraryFile).type, (item.raw as LibraryFile).name) : 'LINK'}
                           </span>
                           <span className="text-sm text-gray-900 truncate font-medium">{item.title}</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          {item.kind === 'link' && !selectMode && (
+                          {item.kind === 'link' && (
                             <button 
-                              onClick={item.onClick} 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                item.onClick?.();
+                              }} 
                               className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50" 
                               disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}
                               aria-label="View content"
@@ -513,20 +530,21 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               </svg>
                             </button>
                           )}
-                          {!selectMode && (
-                            <button
-                              className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors"
-                              onClick={() => handleSingleDelete(item)}
-                              aria-label={`Delete ${item.kind}`}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
-                                <polyline points="3,6 5,6 21,6"></polyline>
-                                <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
-                                <line x1="10" y1="11" x2="10" y2="17"></line>
-                                <line x1="14" y1="11" x2="14" y2="17"></line>
-                              </svg>
-                            </button>
-                          )}
+                          <button
+                            className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSingleDelete(item);
+                            }}
+                            aria-label={`Delete ${item.kind}`}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                              <polyline points="3,6 5,6 21,6"></polyline>
+                              <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
                         </div>
                       </div>
                       <div className="text-xs text-gray-500 mt-1 truncate">
