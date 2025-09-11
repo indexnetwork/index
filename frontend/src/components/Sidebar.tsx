@@ -217,7 +217,7 @@ export default function Sidebar() {
       {/* Library Section */}
       <div className="bg-white rounded-sm border-black border p-3 pb-6 relative">
         <div className="mb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <h2 className="text-lg sm:text-xl font-semibold text-black">Library</h2>
             <button
               onClick={() => setShowLibraryModal(true)}
@@ -232,7 +232,7 @@ export default function Sidebar() {
               <span>Manage</span>
             </button>
           </div>
-          <p className="text-xs sm:text-sm text-black/80 leading-relaxed">Store and manage files and links.</p>
+          <p className="text-xs sm:text-sm text-black/80 leading-relaxed">Keep files and links to boost relevancy.</p>
         </div>
 
         {/* Quick add controls */}
