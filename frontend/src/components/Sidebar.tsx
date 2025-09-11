@@ -99,15 +99,6 @@ export default function Sidebar() {
     setIsDragging(false);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const files = e.dataTransfer?.files || null;
-    if (files && files.length > 0) {
-      void handleFilesSelected(files);
-    }
-  }, [handleFilesSelected]);
-
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
     setIsUploading(true);
@@ -123,6 +114,15 @@ export default function Sidebar() {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }, [library, error]);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer?.files || null;
+    if (files && files.length > 0) {
+      void handleFilesSelected(files);
+    }
+  }, [handleFilesSelected]);
 
   const handleAddLink = useCallback(async () => {
     if (!linkUrl) return;
