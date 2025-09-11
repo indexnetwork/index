@@ -1,6 +1,6 @@
 'use client';
 
-import { PropsWithChildren, useState } from 'react';
+import { PropsWithChildren, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
@@ -16,6 +16,9 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
     pathname === route || 
     pathname?.startsWith(route + '/')
   );
+  // Show sidebar only on app pages (exclude landing '/')
+  const sidebarRoutes = useMemo(() => ['/inbox', '/indexes', '/intents', '/integrate', '/stake', '/simulation', '/vibecheck', '/matchlist', '/connections'], []);
+  const showSidebar = useMemo(() => sidebarRoutes.some(route => pathname === route || pathname?.startsWith(route + '/')), [pathname, sidebarRoutes]);
   
   // Don't render header on 404 pages (unknown routes)
   if (!isKnownRoute && pathname) {
@@ -48,21 +51,23 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
         <div className="max-w-7xl mx-auto px-2">
           <Header 
             showNavigation={false}
-            onToggleSidebar={() => setMobileSidebarOpen((v) => !v)}
-            isSidebarOpen={mobileSidebarOpen}
+            onToggleSidebar={showSidebar ? () => setMobileSidebarOpen((v) => !v) : undefined}
+            isSidebarOpen={showSidebar ? mobileSidebarOpen : undefined}
           />
         </div>
         
         {/* Page content with sidebar */}
         <main>
-          <div className="max-w-7xl mx-auto px-2 mt-10 flex flex-col lg:flex-row">
+          <div className={`max-w-7xl mx-auto px-2 mt-10 flex ${showSidebar ? 'flex-col lg:flex-row' : 'flex-col'}`}>
             {/* Sidebar */}
-            <aside id="app-sidebar" className={`w-full lg:w-1/4 lg:pr-6 lg:top-6 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block`}>
-              <Sidebar />
-            </aside>
+            {showSidebar && (
+              <aside id="app-sidebar" className={`w-full lg:w-1/4 lg:pr-6 lg:top-6 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block`}>
+                <Sidebar />
+              </aside>
+            )}
             
             {/* Main content area */}
-            <div className="w-full lg:w-3/4">
+            <div className={`w-full ${showSidebar ? 'lg:w-3/4' : ''}`}>
               <div className="space-y-6 h-full">
                 {children}
               </div>
