@@ -217,11 +217,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     await api.delete(`/indexes/${indexId}/links/${linkId}`);
   },
 
-  updateIndexLink: async (indexId: string, linkId: string, data: { url?: string }) => {
-    type IndexLink = { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null };
-    const res = await api.patch<{ link: IndexLink }>(`/indexes/${indexId}/links/${linkId}`, data);
-    return res.link;
-  },
 
   syncIndexLinks: async (
     indexId: string,
