@@ -28,7 +28,7 @@ export default function Sidebar() {
   const [linkUrl, setLinkUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const library = useLibraryService();
-  const { success, error } = useNotifications();
+  const { error } = useNotifications();
   const [lastAdded, setLastAdded] = useState<null | { kind: 'file'|'link'; label: string; sub?: string; at: number }>(null);
   const [lastFading, setLastFading] = useState(false);
   const indexesService = useIndexes();
@@ -106,7 +106,7 @@ export default function Sidebar() {
     if (files && files.length > 0) {
       void handleFilesSelected(files);
     }
-  }, []);
+  }, [handleFilesSelected]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
@@ -122,7 +122,7 @@ export default function Sidebar() {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }, [library, success, error]);
+  }, [library, error]);
 
   const handleAddLink = useCallback(async () => {
     if (!linkUrl) return;
@@ -141,7 +141,7 @@ export default function Sidebar() {
     } finally {
       setIsAddingLink(false);
     }
-  }, [library, linkUrl, success, error]);
+  }, [library, linkUrl, error]);
 
   const loadLatest = useCallback(async () => {
     try {

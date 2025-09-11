@@ -31,7 +31,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
 
   // Enhance UX: select, search, and undo state
-  const [selectMode, setSelectMode] = useState(false);
+  const [, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [undoBatch, setUndoBatch] = useState<{
@@ -241,7 +241,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       onChanged?.();
       await loadLists();
       success('Link added successfully');
-    } catch (error) {
+    } catch {
       error('Failed to add link. Please check the URL and try again.');
     } finally {
       setIsAddingLink(false);
