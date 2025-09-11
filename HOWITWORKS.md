@@ -328,7 +328,7 @@ POST /api/indexes/{id}/members
 **File Processing**:
 ```typescript
 // Upload files for intent generation
-POST /api/indexes/{indexId}/files
+POST /api/files
 // FormData with file attachment
 
 // Get AI-generated intent suggestions
@@ -445,4 +445,3 @@ const brokerPromises = CONTEXT_BROKERS.map(async (broker) => {
 });
 
 ```
-

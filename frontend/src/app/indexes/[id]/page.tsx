@@ -12,7 +12,7 @@ import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 import Link from "next/link";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { Index, Intent } from "@/lib/types";
+import { Index, Intent, FileRecord } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from "@privy-io/react-auth";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
@@ -38,6 +38,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [index, setIndex] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
+  const [files, setFiles] = useState<FileRecord[]>([]);
   const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set());
   const [suggestedIntents, setSuggestedIntents] = useState<{ id: string; payload: string; confidence: number }[]>([]);
   const [loadingIntents, setLoadingIntents] = useState(false);
@@ -107,7 +108,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   }, [resolvedParams.id, indexesService]);
 
   const fetchSuggestedIntents = useCallback(async () => {
-    if (!index || !index.files || index.files.length === 0) {
+    if (!index || files.length === 0) {
       setSuggestedIntents([]);
       return;
     }
@@ -139,7 +140,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     } finally {
       setLoadingIntents(false);
     }
-  }, [resolvedParams.id, indexesService, index, suggestedIntents.length]);
+  }, [resolvedParams.id, indexesService, index, suggestedIntents.length, files.length]);
 
   // Auto-create first 5 intents when first file is added to empty index
   const handleAutoIntentCreation = useCallback(async (indexId: string) => {
@@ -230,6 +231,20 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     fetchLinks();
   }, [fetchLinks]);
 
+  const fetchFiles = useCallback(async () => {
+    try {
+      const data = await indexesService.getFiles(1, 100);
+      setFiles(data);
+    } catch (e) {
+      console.error('Error fetching files:', e);
+      setFiles([]);
+    }
+  }, [indexesService]);
+
+  useEffect(() => {
+    fetchFiles();
+  }, [fetchFiles]);
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -246,7 +261,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (index && droppedFiles.length > 0) {
-      const wasEmpty = !index.files || index.files.length === 0;
+      const wasEmpty = files.length === 0;
       
       try {
         // Add files to uploading state
@@ -257,9 +272,9 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         for (const file of droppedFiles) {
           await indexesService.uploadFile(index.id, file);
         }
-        // Refresh index data
         const updatedIndex = await indexesService.getIndex(resolvedParams.id);
         setIndex(updatedIndex || null);
+        await fetchFiles();
         
         // Auto-create intents if this was the first file upload
         if (wasEmpty) {
@@ -279,9 +294,9 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       try {
         setDeletingFiles(prev => new Set([...prev, fileId]));
         await indexesService.deleteFile(index.id, fileId);
-        // Refresh index data
         const updatedIndex = await indexesService.getIndex(resolvedParams.id);
         setIndex(updatedIndex || null);
+        await fetchFiles();
       } catch (error) {
         console.error('Error deleting file:', error);
       } finally {
@@ -739,7 +754,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             <div className="space-y-2 flex-1">
                 {/* Merge uploaded files and uploading files into a single list */}
                 {(() => {
-                  const uploadedFiles = (index.files || []).map(file => ({ ...file, isUploading: false }));
+                  const uploadedFiles = (files || []).map(file => ({ ...file, isUploading: false }));
                   const uploadedFileNames = new Set(uploadedFiles.map(file => file.name));
                   
                   // Only show uploading files that haven't been uploaded yet
@@ -750,8 +765,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                       name: fileName,
                       size: '',
                       createdAt: new Date().toISOString(),
-                      isUploading: true,
-                      indexId: index.id
+                      isUploading: true
                     }));
                   
                   // Combine and sort: uploading files first (newest first), then uploaded files
@@ -829,19 +843,20 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 id="file-upload"
                 multiple
                 onChange={async (e) => {
-                  const files = Array.from(e.target.files || []);
-                  if (index && files.length > 0) {
-                    const wasEmpty = !index.files || index.files.length === 0;
+                  const selectedFiles = Array.from(e.target.files || []);
+                  if (index && selectedFiles.length > 0) {
+                    const wasEmpty = files.length === 0;
                     
                     // Add files to uploading state
                     const newUploadingFiles = new Set(uploadingFiles);
-                    files.forEach(file => newUploadingFiles.add(file.name));
+                    selectedFiles.forEach(file => newUploadingFiles.add(file.name));
                     setUploadingFiles(newUploadingFiles);
 
                     try {
-                      await Promise.all(files.map(file => indexesService.uploadFile(index.id, file)));
+                      await Promise.all(selectedFiles.map(file => indexesService.uploadFile(index.id, file)));
                       const updatedIndex = await indexesService.getIndex(resolvedParams.id);
                       setIndex(updatedIndex || null);
+                      await fetchFiles();
                       
                       // Auto-create intents if this was the first file upload
                       if (wasEmpty) {
@@ -945,7 +960,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           </div>
         </div>
 
-        { ((index.files && index.files.length > 0) || uploadingFiles.size > 0) && 
+        { ((files && files.length > 0) || uploadingFiles.size > 0) && 
         <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
           <div className="space-y-6 w-full">
             <div className="flex justify-between items-center">
@@ -958,6 +973,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           onChanged={async () => {
             await fetchIndex();
             await fetchLinks();
+            await fetchFiles();
           }}
         />
 

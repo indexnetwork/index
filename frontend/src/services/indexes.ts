@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAuthenticatedAPI, apiClient } from '../lib/api';
 import { 
   Index, 
-  IndexFile, 
+  FileRecord, 
   Intent,
   PaginatedResponse, 
   APIResponse, 
@@ -12,7 +12,7 @@ import {
 } from '../lib/types';
 
 // Re-export types for convenience
-export type { Index, IndexFile };
+export type { Index, FileRecord };
 
 // Member interface for API responses
 interface Member {
@@ -82,14 +82,14 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   },
 
   // Upload file to index
-  uploadFile: async (indexId: string, file: File): Promise<IndexFile> => {
-    const response = await api.uploadFile<FileUploadResponse>(`/indexes/${indexId}/files`, file);
+  uploadFile: async (_indexId: string, file: File): Promise<FileRecord> => {
+    const response = await api.uploadFile<FileUploadResponse>(`/files`, file);
     return response.file;
   },
 
   // Delete file from index
-  deleteFile: async (indexId: string, fileId: string): Promise<void> => {
-    await api.delete(`/indexes/${indexId}/files/${fileId}`);
+  deleteFile: async (_indexId: string, fileId: string): Promise<void> => {
+    await api.delete(`/files/${fileId}`);
   },
 
   // Member Management
@@ -201,20 +201,26 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response;
   },
 
-  // Index Links (crawl-based intents)
-  getIndexLinks: async (indexId: string): Promise<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
-    const res = await api.get<{ links: Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }> }>(`/indexes/${indexId}/links`);
+  // Links are library-scoped now
+  getIndexLinks: async (_indexId: string): Promise<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
+    const res = await api.get<{ links: Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }> }>(`/links`);
     return res.links || [];
   },
 
-  addIndexLink: async (indexId: string, link: { url: string }) => {
+  addIndexLink: async (_indexId: string, link: { url: string }) => {
     type IndexLink = { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null };
-    const res = await api.post<{ link: IndexLink }>(`/indexes/${indexId}/links`, link);
+    const res = await api.post<{ link: IndexLink }>(`/links`, link);
     return res.link;
   },
 
-  deleteIndexLink: async (indexId: string, linkId: string): Promise<void> => {
-    await api.delete(`/indexes/${indexId}/links/${linkId}`);
+  deleteIndexLink: async (_indexId: string, linkId: string): Promise<void> => {
+    await api.delete(`/links/${linkId}`);
+  },
+
+  // List user files
+  getFiles: async (page: number = 1, limit: number = 100): Promise<FileRecord[]> => {
+    const res = await api.get<{ files: FileRecord[]; pagination: { current: number; total: number; count: number; totalCount: number } }>(`/files?page=${page}&limit=${limit}`);
+    return res.files || [];
   },
 
 

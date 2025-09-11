@@ -114,14 +114,7 @@ GET /indexes/share/{code}
       "name": "Prof. Alex Chen",
       "avatar": "https://example.com/avatars/alex.jpg"
     },
-    "files": [
-      {
-        "id": "file-def456",
-        "name": "research-proposal.pdf",
-        "size": "1048576",
-        "createdAt": "2024-01-15T09:30:00Z"
-      }
-    ],
+    
     "linkPermissions": {
       "permissions": [
         "can-discover",

@@ -35,11 +35,14 @@ export const getAvatarUrl = (params: { avatar?: string | null; id?: string; name
  * @param file - The file object containing indexId, id, and name
  * @returns Full URL to the index file
  */
-export const getIndexFileUrl = (file: { indexId: string; id: string; name: string }): string => {
-  if (!file.indexId || !file.id || !file.name) return '';
-  
-  const extension = getFileExtension(file.name);
-  return `${getBaseUrl()}/uploads/${file.indexId}/${file.id}${extension}`;
+export const getIndexFileUrl = (file: { id: string; name: string; url?: string }): string => {
+  if (!file?.id || !file?.name) return '';
+  if (file.url) {
+    if (isExternalUrl(file.url)) return file.url;
+    const path = file.url.startsWith('/') ? file.url : `/${file.url}`;
+    return `${getBaseUrl()}${path}`;
+  }
+  return '';
 };
 
 /**
