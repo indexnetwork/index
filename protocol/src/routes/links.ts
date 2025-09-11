@@ -88,7 +88,9 @@ router.post('/',
         .returning();
 
       // Auto-crawl async
-      crawlAndStore(req.user!.id, inserted[0].id, url).catch(() => void 0);
+      crawlAndStore(req.user!.id, inserted[0].id, url).catch((err) => {
+        console.error(`Background crawl failed for link ${inserted[0].id}:`, err);
+      });
 
       return res.status(201).json({ link: inserted[0] });
     } catch (err) {
