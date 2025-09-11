@@ -264,8 +264,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 w-[90vw] max-w-[800px] max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-md bg-white dark:bg-white text-gray-900 dark:text-gray-900 p-6 shadow-lg focus:outline-none overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
-          <div className="flex items-center justify-between mb-6">
+        <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-white text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:h-auto sm:max-w-[800px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md sm:p-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-white z-10">
             <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Library</Dialog.Title>
             <button
               onClick={() => onOpenChange(false)}
@@ -279,7 +279,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </button>
           </div>
 
-          <div className="flex-1 pr-1 space-y-4 overflow-hidden">
+          <div className="flex-1 pr-1 space-y-4 overflow-y-auto sm:overflow-hidden">
 
             {/* Connect your sources */}
             <section>
@@ -341,7 +341,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 {/* File upload */}
                 <div className="border border-gray-400 rounded-[1px] p-3">
                   <div
-                    className={`border border-dashed ${isDragging ? 'border-gray-600 bg-gray-100' : 'border-gray-400'} bg-gray-50 p-6 text-center cursor-pointer transition-colors rounded-[1px] flex items-center justify-center min-h-[80px]`}
+                    className={`border border-dashed ${isDragging ? 'border-gray-600 bg-gray-100' : 'border-gray-400'} bg-gray-50 p-4 md:p-6 text-center cursor-pointer transition-colors rounded-[1px] flex items-center justify-center min-h-[72px] md:min-h-[80px]`}
                     onDragOver={handleDragOver}
                     onDragEnter={handleDragOver}
                     onDragLeave={handleDragLeave}
@@ -413,7 +413,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
             {/* Library items */}
             <section>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Library Items</h3>
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-2">
@@ -435,8 +435,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     </Button>
                   </div>
                 )}
-                <div className="flex items-center gap-3">
-                  <div className="relative">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-auto">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
                       <circle cx="11" cy="11" r="8"></circle>
                       <path d="m21 21-4.35-4.35"></path>
@@ -445,7 +445,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       placeholder="Search files and links..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="h-9 w-[240px] text-sm pl-10 pr-4 border-gray-400 rounded-[1px] font-ibm-plex-mono bg-white focus:border-gray-600 focus:ring-0"
+                      className="h-9 w-full sm:w-[240px] max-w-full text-sm pl-10 pr-4 border-gray-400 rounded-[1px] font-ibm-plex-mono bg-white focus:border-gray-600 focus:ring-0"
                     />
                     {search && (
                       <button
@@ -460,7 +460,23 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       </button>
                     )}
                   </div>
-                  <div className="flex items-center gap-1">
+                  {/* Mobile: compact select */}
+                  <div className="w-full sm:hidden mt-1">
+                    <label htmlFor="library-type-filter" className="sr-only">Filter</label>
+                    <select
+                      id="library-type-filter"
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value as 'all'|'file'|'link')}
+                      className="w-full h-9 text-sm border border-gray-400 rounded-[1px] bg-white px-2 font-ibm-plex-mono"
+                    >
+                      <option value="all">All</option>
+                      <option value="file">Files</option>
+                      <option value="link">Links</option>
+                    </select>
+                  </div>
+
+                  {/* Desktop: button group */}
+                  <div className="hidden sm:flex items-center gap-1">
                     <Button
                       variant="outline"
                       size="sm"
@@ -500,7 +516,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   </div>
                 </div>
               </div>
-              <div className="space-y-2 h-[400px] overflow-y-auto pr-2 pb-8">
+              <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pr-2 pb-8">
                 {(() => {
                   type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: LibraryFile | LibraryLink };
                   const map: RecentItem[] = [
@@ -651,7 +667,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           <Dialog.Root open={!!preview} onOpenChange={(v) => { if (!v) setPreview(null); }}>
             <Dialog.Portal>
               <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-              <Dialog.Content className="fixed left-1/2 top-1/2 w-[90vw] max-w-[760px] max-h-[80vh] -translate-x-1/2 -translate-y-1/2 rounded-md bg-white p-5 shadow-lg overflow-auto">
+              <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-white shadow-lg overflow-auto sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:max-w-[760px] sm:max-h-[80vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md sm:p-5">
                 <Dialog.Title className="text-base font-bold font-ibm-plex-mono text-gray-900 mb-3">{preview?.title}</Dialog.Title>
                 {!preview?.content ? (
                   <div className="text-sm text-gray-600">Loading content…</div>
@@ -685,7 +701,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           <Dialog.Root open={!!confirm?.open} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
             <Dialog.Portal>
               <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-              <Dialog.Content className="fixed left-1/2 top-1/2 w-[90vw] max-w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-md bg-white dark:bg-white text-gray-900 dark:text-gray-900 p-5 shadow-lg">
+              <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-md bg-white text-gray-900 p-4 shadow-lg sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md sm:p-5">
                 <Dialog.Title className="text-lg font-bold mb-2 font-ibm-plex-mono">Confirm Delete</Dialog.Title>
                 <p className="text-sm text-gray-700 mb-4">{confirm?.message}</p>
                 <div className="flex justify-end gap-2">
