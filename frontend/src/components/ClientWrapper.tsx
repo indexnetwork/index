@@ -50,14 +50,14 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
         
         {/* Page content with sidebar */}
         <main>
-          <div className="max-w-7xl mx-auto px-2 mt-10 flex">
+          <div className="max-w-7xl mx-auto px-2 mt-10 flex flex-col lg:flex-row">
             {/* Sidebar */}
-            <aside className="w-1/4 pr-6 top-6">
+            <aside className="w-full lg:w-1/4 lg:pr-6 lg:top-6 mb-8 lg:mb-0">
               <Sidebar />
             </aside>
             
             {/* Main content area */}
-            <div className="w-3/4">
+            <div className="w-full lg:w-3/4">
               <div className="space-y-6 h-full">
                 {children}
               </div>

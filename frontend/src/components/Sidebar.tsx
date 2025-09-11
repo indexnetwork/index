@@ -194,8 +194,8 @@ export default function Sidebar() {
                   index.isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
                 }`}
               >
-                <div className="flex items-center">
-                  <span className="text-sm text-black">{index.name}</span>
+                <div className="flex items-center min-w-0">
+                  <span className="text-sm text-black truncate" title={index.name}>{index.name}</span>
                 </div>
                 {index.isSelectAll && (
                   <button 
@@ -215,18 +215,16 @@ export default function Sidebar() {
       </div>
 
       {/* Library Section */}
-      <div className="bg-white rounded-sm border-black border p-3 pb-6">
+      <div className="bg-white rounded-sm border-black border p-3 pb-6 relative">
         <div className="mb-3">
-          {/* Mobile: Stack everything vertically */}
-          <div className="block sm:hidden">
-            <h2 className="text-lg font-semibold text-black mb-2">Library</h2>
-            <p className="text-xs text-black/80 mb-3 leading-relaxed">Keep files and links to boost relevancy.</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <h2 className="text-lg sm:text-xl font-semibold text-black">Library</h2>
             <button
               onClick={() => setShowLibraryModal(true)}
-              className="inline-flex items-center gap-1.5 text-black px-2 py-1 text-xs font-ibm-plex-mono cursor-pointer hover:bg-gray-100 transition-colors rounded-[1px]"
+              className="inline-flex items-center gap-1.5 text-black px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-ibm-plex-mono cursor-pointer hover:bg-gray-100 transition-colors rounded-[1px]"
               aria-label="Open Library"
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h18"></path>
                 <path d="M3 12h18"></path>
                 <path d="M3 18h18"></path>
@@ -234,26 +232,7 @@ export default function Sidebar() {
               <span>Manage</span>
             </button>
           </div>
-          
-          {/* Desktop: Horizontal layout */}
-          <div className="hidden sm:block">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xl font-semibold text-black">Library</h2>
-              <button
-                onClick={() => setShowLibraryModal(true)}
-                className="inline-flex items-center gap-1.5 text-black px-3 py-1.5 text-sm font-ibm-plex-mono cursor-pointer hover:bg-gray-100 transition-colors rounded-[1px]"
-                aria-label="Open Library"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 6h18"></path>
-                  <path d="M3 12h18"></path>
-                  <path d="M3 18h18"></path>
-                </svg>
-                <span>Manage</span>
-              </button>
-            </div>
-            <p className="text-sm text-black/80 leading-relaxed">Keep files and links to boost relevancy.</p>
-          </div>
+          <p className="text-xs sm:text-sm text-black/80 leading-relaxed">Store and manage files and links.</p>
         </div>
 
         {/* Quick add controls */}
