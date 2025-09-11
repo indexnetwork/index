@@ -79,7 +79,22 @@
   .font-ibm-plex-mono {
     @apply font-['IBM_Plex_Mono'];
   }
-} 
+  
+  /* Scoped Library modal polish (neutral/green palette) */
+  .library-modal {
+    --library-accent: #006D4B; /* brand green */
+    --library-ring: 0 109 75 / 0.35; /* rgba(0,109,75,0.35) */
+  }
+  .library-modal :focus { outline: none; }
+  .library-modal :focus-visible {
+    box-shadow: 0 0 0 2px rgb(var(--library-ring));
+  }
+  .library-modal button,
+  .library-modal [role="button"] {
+    border-radius: 8px;
+  }
+  .library-modal svg { transition: color .15s ease, stroke .15s ease; }
+}
 
 #privy-modal-content {
   border-radius: 0px;

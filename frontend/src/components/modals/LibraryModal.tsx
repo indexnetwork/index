@@ -270,15 +270,15 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
-        <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-white text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:h-auto sm:max-w-[800px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md sm:p-6">
-          <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-white z-10">
-            <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Library</Dialog.Title>
+        <Dialog.Content className="library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:h-auto sm:max-w-[800px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
+            <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
             <button
               onClick={() => onOpenChange(false)}
-              className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors"
+              className="p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
               aria-label="Close modal"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] hover:text-[#333]">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
               </svg>
@@ -290,43 +290,39 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             {/* Connect your sources */}
             <section>
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Connect Sources</h3>
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Connect Sources</h3>
                 <span className="text-xs text-gray-500 font-ibm-plex-mono">
                   {integrations.filter(i => i.connected).length} of {integrations.length} connected
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {integrations.map((it) => (
-                  <div key={it.id} className={`flex items-center justify-between border border-gray-400 rounded-[1px] px-3 py-2 transition-colors ${
-                    it.connected 
-                      ? 'bg-gray-100' 
-                      : 'bg-white hover:bg-gray-50'
-                  }`}>
-                    <span className="flex items-center gap-2">
+                  <div key={it.id} className="flex items-center justify-between border border-[#E0E0E0] rounded-lg px-3 py-3 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]">
+                    <span className="flex items-center gap-3">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={`/integrations/${it.id}.png`} width={20} height={20} alt="" />
-                      <span className="text-sm font-medium text-gray-900 font-ibm-plex-mono">{it.name}</span>
+                      <span className="text-sm font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
                       {it.connected && (
-                        <span className="h-1.5 w-1.5 bg-gray-600 rounded-full" />
+                        <span className="h-1.5 w-1.5 bg-[#006D4B] rounded-full" />
                       )}
                     </span>
                     <button
                       onClick={() => toggleIntegration(it.id)}
                       disabled={pendingIntegration === it.id}
-                      className={`relative h-[20px] w-[36px] rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed ${
-                        it.connected ? 'bg-gray-900' : 'bg-gray-300'
+                      className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                        it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
                       } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
                       aria-pressed={it.connected}
                       aria-busy={pendingIntegration === it.id}
                       aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
                     >
                       <span
-                        className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200`}
+                        className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
                         style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
                       />
                       {pendingIntegration === it.id && (
                         <span className="absolute inset-0 grid place-items-center">
-                          <span className="h-2.5 w-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span className="h-2.5 w-2.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
                         </span>
                       )}
                     </button>
@@ -338,16 +334,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             {/* Add new content */}
             <section>
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Add Content</h3>
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Add Content</h3>
                 <span className="text-xs text-gray-500 font-ibm-plex-mono">
                   {files.length + links.length} items total
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {/* File upload */}
-                <div className="border border-gray-400 rounded-[1px] p-3">
+                <div className="border border-[#E0E0E0] rounded-lg p-3 bg-[#FAFAFA]">
                   <div
-                    className={`border border-dashed ${isDragging ? 'border-gray-600 bg-gray-100' : 'border-gray-400'} bg-gray-50 p-4 md:p-6 text-center cursor-pointer transition-colors rounded-[1px] flex items-center justify-center min-h-[72px] md:min-h-[80px]`}
+                    className={`border border-dashed ${isDragging ? 'border-[#CCCCCC] bg-[#F5F5F5]' : 'border-[#DDDDDD]'} bg-[#F5F5F5] p-4 md:p-6 text-center cursor-pointer transition-colors rounded-lg flex items-center justify-center min-h-[72px] md:min-h-[80px]`}
                     onDragOver={handleDragOver}
                     onDragEnter={handleDragOver}
                     onDragLeave={handleDragLeave}
@@ -364,19 +360,19 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <label htmlFor="library-file-upload" className="cursor-pointer">
                       {isUploading ? (
                         <div className="space-y-2">
-                          <div className="w-8 h-8 mx-auto border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                          <div className="text-xs text-gray-600 font-ibm-plex-mono">Uploading...</div>
+                          <div className="w-8 h-8 mx-auto border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                          <div className="text-xs text-[#666] font-ibm-plex-mono">Uploading...</div>
                         </div>
                       ) : (
                         <div className="space-y-1">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-gray-500">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-[#666]">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                             <polyline points="14,2 14,8 20,8"></polyline>
                             <line x1="16" y1="13" x2="8" y2="13"></line>
                             <line x1="16" y1="17" x2="8" y2="17"></line>
                             <polyline points="10,9 9,9 8,9"></polyline>
                           </svg>
-                          <div className="text-xs text-gray-500 font-ibm-plex-mono">Drop files or click</div>
+                          <div className="text-xs text-[#666] font-ibm-plex-mono">Drop files or click</div>
                         </div>
                       )}
                     </label>
@@ -384,9 +380,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 </div>
 
                 {/* Link input */}
-                <div className="border border-gray-400 rounded-[1px] p-3 flex items-center">
+                <div className="border border-[#E0E0E0] rounded-lg p-3 flex items-center bg-[#FAFAFA]">
                   <div className="flex items-center gap-2 w-full">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500 flex-shrink-0">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] flex-shrink-0">
                       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                     </svg>
@@ -395,18 +391,18 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       value={linkUrl}
                       onChange={(e) => setLinkUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                      className="text-sm border-gray-400 rounded-[1px] font-ibm-plex-mono flex-1"
+                      className="text-sm bg-[#F5F5F5] border-[#DDDDDD] rounded-lg font-ibm-plex-mono flex-1 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] focus:border-[#CCCCCC]"
                     />
                     {isAddingLink ? (
-                      <div className="w-8 h-8 border-2 border-gray-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                      <div className="w-8 h-8 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin flex-shrink-0" />
                     ) : (
                       <button
                         onClick={handleAddLink}
                         disabled={!linkUrl}
-                        className="p-1.5 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                        className="p-1.5 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                         aria-label="Add URL"
                       >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
                           <line x1="12" y1="5" x2="12" y2="19"></line>
                           <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
@@ -420,13 +416,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             {/* Library items */}
             <section>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-                <h3 className="text-sm font-bold font-ibm-plex-mono text-gray-900">Library Items</h3>
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Library Items</h3>
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50 font-ibm-plex-mono"
+                      className="h-7 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50 font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                       onClick={() => handleBulkDelete()}
                     >
                       Delete ({selectedIds.size})
@@ -434,7 +430,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-xs border-gray-300 font-ibm-plex-mono"
+                      className="h-7 px-2 text-xs border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                       onClick={() => setSelectedIds(new Set())}
                     >
                       Clear
@@ -443,7 +439,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 )}
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
                   <div className="relative w-full sm:w-auto">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#666]">
                       <circle cx="11" cy="11" r="8"></circle>
                       <path d="m21 21-4.35-4.35"></path>
                     </svg>
@@ -451,15 +447,15 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       placeholder="Search files and links..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="h-9 w-full sm:w-[240px] max-w-full text-sm pl-10 pr-4 border-gray-400 rounded-[1px] font-ibm-plex-mono bg-white focus:border-gray-600 focus:ring-0"
+                      className="h-9 w-full sm:w-[240px] max-w-full text-sm pl-10 pr-4 bg-[#F5F5F5] border-[#DDDDDD] rounded-lg font-ibm-plex-mono focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] focus:border-[#CCCCCC]"
                     />
                     {search && (
                       <button
                         onClick={() => setSearch('')}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 p-0.5 hover:bg-gray-100 rounded-[1px] transition-colors"
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 p-0.5 hover:bg-[#F0F0F0] rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                         aria-label="Clear search"
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
                           <line x1="18" y1="6" x2="6" y2="18"></line>
                           <line x1="6" y1="6" x2="18" y2="18"></line>
                         </svg>
@@ -473,7 +469,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       id="library-type-filter"
                       value={typeFilter}
                       onChange={(e) => setTypeFilter(e.target.value as 'all'|'file'|'link')}
-                      className="w-full h-9 text-sm border border-gray-400 rounded-[1px] bg-white px-2 font-ibm-plex-mono"
+                      className="w-full h-9 text-sm border border-[#DDDDDD] rounded-lg bg-[#F5F5F5] px-2 font-ibm-plex-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)]"
                     >
                       <option value="all">All</option>
                       <option value="file">Files</option>
@@ -486,10 +482,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-[1px] border-gray-400 ${
+                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
                         typeFilter==='all' 
-                          ? 'bg-gray-900 text-white border-gray-900 hover:bg-gray-900 hover:text-white' 
-                          : 'text-gray-900 hover:bg-gray-50'
+                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
+                          : ''
                       }`}
                       onClick={() => setTypeFilter('all')}
                     >
@@ -498,10 +494,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-[1px] border-gray-400 ${
+                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
                         typeFilter==='file' 
-                          ? 'bg-gray-900 text-white border-gray-900 hover:bg-gray-900 hover:text-white' 
-                          : 'text-gray-900 hover:bg-gray-50'
+                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
+                          : ''
                       }`}
                       onClick={() => setTypeFilter('file')}
                     >
@@ -510,10 +506,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-[1px] border-gray-400 ${
+                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
                         typeFilter==='link' 
-                          ? 'bg-gray-900 text-white border-gray-900 hover:bg-gray-900 hover:text-white' 
-                          : 'text-gray-900 hover:bg-gray-50'
+                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
+                          : ''
                       }`}
                       onClick={() => setTypeFilter('link')}
                     >
@@ -555,16 +551,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     return q && t;
                   });
                   const recent = filtered.sort((a,b) => a.createdAt < b.createdAt ? 1 : -1);
-                  if (recent.length === 0) return <div className="text-sm text-gray-500">No items yet.</div>;
+                  if (recent.length === 0) return <div className="text-sm text-[#666]">No items yet.</div>;
                   return recent.map(item => (
                     <div 
                       key={item.id} 
                       className={`w-full border rounded-lg px-3 py-2 transition-colors cursor-pointer ${
                         selectedIds.has(item.id) 
-                          ? 'border-gray-900 bg-gray-100' 
+                          ? 'border-[#CCCCCC] bg-[#F5F5F5]' 
                           : item.kind === 'link' 
-                            ? 'border-gray-300 bg-gray-25 hover:bg-gray-50' 
-                            : 'border-gray-200 bg-white hover:bg-gray-50'
+                            ? 'border-[#E0E0E0] bg-[#FAFAFA] hover:border-[#CCCCCC]' 
+                            : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'
                       }`}
                       onClick={() => toggleSelected(item.id, !selectedIds.has(item.id))}
                     >
@@ -576,7 +572,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 e.stopPropagation();
                                 toggleSelected(item.id, !selectedIds.has(item.id));
                               }}
-                              className="h-4 w-4 border border-gray-900 bg-gray-900 rounded-[1px] flex items-center justify-center transition-colors"
+                              className="h-4 w-4 border border-[#006D4B] bg-[#006D4B] rounded-[4px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                               aria-label={`Select ${item.kind}`}
                             >
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-white">
@@ -585,20 +581,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                             </button>
                           )}
                           {item.kind === 'file' && (
-                            <span className="text-[10px] px-1.5 py-0.5 border border-gray-400 rounded-[1px] font-ibm-plex-mono text-gray-900 bg-gray-100">
+                            <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-md font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
                               {fileBadge((item.raw as LibraryFile).type, (item.raw as LibraryFile).name)}
                             </span>
                           )}
                           {/* Icon for links only */}
                           {item.kind === 'link' && (
                             <div className="flex-shrink-0">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
                                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                               </svg>
                             </div>
                           )}
-                          <span className="text-sm text-gray-900 truncate font-medium">{item.title}</span>
+                          <span className="text-sm text-[#333] truncate font-medium">{item.title}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           {item.kind === 'link' && (
@@ -608,11 +604,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                   e.stopPropagation();
                                   item.onClick?.();
                                 }} 
-                                className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50" 
+                                className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
                                 disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}
                                 aria-label="View content"
                               >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333]">
                                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                                   <circle cx="12" cy="12" r="3"></circle>
                                 </svg>
@@ -623,10 +619,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                   navigator.clipboard.writeText((item.raw as LibraryLink).url);
                                   success('URL copied to clipboard');
                                 }} 
-                                className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors" 
+                                className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
                                 aria-label="Copy URL"
                               >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333]">
                                   <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                                 </svg>
@@ -634,14 +630,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                             </>
                           )}
                           <button
-                            className="p-1 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors"
+                            className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSingleDelete(item);
                             }}
                             aria-label={`Delete ${item.kind}`}
                           >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333]">
                               <polyline points="3,6 5,6 21,6"></polyline>
                               <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
                               <line x1="10" y1="11" x2="10" y2="17"></line>
@@ -650,11 +646,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           </button>
                         </div>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1 truncate font-ibm-plex-mono">
+                      <div className="text-xs text-[#666] mt-1 truncate font-ibm-plex-mono">
                         {String(item.sub).startsWith('fetch') ? (
                           <div className="flex items-center gap-2">
-                            <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                              <div className="h-full bg-gray-600 w-1/2 animate-pulse rounded-full" />
+                            <div className="w-full h-1.5 bg-[#E0E0E0] rounded-full overflow-hidden">
+                              <div className="h-full bg-[#006D4B] w-1/2 animate-pulse rounded-full" />
                             </div>
                             <span className="font-ibm-plex-mono">Processing...</span>
                           </div>
@@ -673,12 +669,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           <Dialog.Root open={!!preview} onOpenChange={(v) => { if (!v) setPreview(null); }}>
             <Dialog.Portal>
               <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-              <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-white shadow-lg overflow-auto sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:max-w-[760px] sm:max-h-[80vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md sm:p-5">
-                <Dialog.Title className="text-base font-bold font-ibm-plex-mono text-gray-900 mb-3">{preview?.title}</Dialog.Title>
+              <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] shadow-lg overflow-auto sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:max-w-[760px] sm:max-h-[80vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-5">
+                <Dialog.Title className="text-base font-bold font-ibm-plex-mono text-[#333] mb-3">{preview?.title}</Dialog.Title>
                 {!preview?.content ? (
-                  <div className="text-sm text-gray-600">Loading content…</div>
+                  <div className="text-sm text-[#666]">Loading content…</div>
                 ) : (
-                  <div className="prose prose-sm max-w-none text-gray-900">
+                  <div className="prose prose-sm max-w-none text-[#333]">
                     <ReactMarkdown>{preview.content}</ReactMarkdown>
                   </div>
                 )}
@@ -689,12 +685,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
           {/* Undo Snackbar */}
           {undoBatch && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-black text-white text-sm px-4 py-2 rounded shadow-lg flex items-center gap-3">
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#333] text-white text-sm px-4 py-2 rounded-lg shadow-lg flex items-center gap-3">
               <span>
                 {undoBatch.items.length === 1 ? 'Item removed' : `${undoBatch.items.length} items removed`}
               </span>
               <button
-                className="underline"
+                className="underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                 onClick={() => handleUndo()}
                 aria-label="Undo delete"
               >
@@ -707,14 +703,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           <Dialog.Root open={!!confirm?.open} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
             <Dialog.Portal>
               <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-              <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-md bg-white text-gray-900 p-4 shadow-lg sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-md sm:p-5">
-                <Dialog.Title className="text-lg font-bold mb-2 font-ibm-plex-mono">Confirm Delete</Dialog.Title>
-                <p className="text-sm text-gray-700 mb-4">{confirm?.message}</p>
+              <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-lg bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 p-4 shadow-lg sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-5">
+                <Dialog.Title className="text-lg font-bold mb-2 font-ibm-plex-mono text-[#333]">Confirm Delete</Dialog.Title>
+                <p className="text-sm text-[#444] mb-4">{confirm?.message}</p>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>
+                  <Button variant="outline" className="rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" onClick={() => setConfirm(null)}>Cancel</Button>
                   <Button
                     variant="outline"
-                    className="border-red-600 text-red-600"
+                    className="rounded-lg border-red-600 text-red-600 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                     onClick={() => { if (confirm) { queueDeletion(confirm.payload); setConfirm(null); } }}
                   >
                     Delete

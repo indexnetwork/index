@@ -32,7 +32,7 @@ export default function Sidebar() {
   const [lastAdded, setLastAdded] = useState<null | { kind: 'file'|'link'; label: string; sub?: string; at: number }>(null);
   const [lastFading, setLastFading] = useState(false);
   const indexesService = useIndexes();
-  const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
+  const { setSelectedIndexIds } = useIndexFilter();
   
   //
 
