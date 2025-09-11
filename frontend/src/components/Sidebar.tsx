@@ -34,7 +34,7 @@ export default function Sidebar() {
   const indexesService = useIndexes();
   const { selectedIndexIds, setSelectedIndexIds } = useIndexFilter();
   
-  console.log('Sidebar rendered, current selectedIndexIds:', selectedIndexIds);
+  //
 
   const fetchIndexes = useCallback(async () => {
     try {
@@ -158,7 +158,11 @@ export default function Sidebar() {
     }
   }, [library]);
 
-  useEffect(() => { loadLatest(); }, [loadLatest]);
+  useEffect(() => {
+    loadLatest();
+    // run once on mount; avoid re-fetch loops on provider re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-hide the "Just added" row after 5 seconds with fade-out
   useEffect(() => {

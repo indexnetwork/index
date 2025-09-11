@@ -249,14 +249,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [library, linkUrl, onChanged, loadLists, success, error]);
 
 
+  // Fetch once per open (ignore function identity changes)
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) { loadLists(); loadIntegrations(); }
-    let t: ReturnType<typeof setInterval> | null = null;
-    if (open) {
-      t = setInterval(loadLists, 1500);
+    if (open && !wasOpen.current) {
+      wasOpen.current = true;
+      loadLists();
+      loadIntegrations();
     }
-    return () => { if (t) clearInterval(t); };
-  }, [open, loadLists, loadIntegrations]);
+    if (!open && wasOpen.current) {
+      wasOpen.current = false;
+    }
+    // Intentionally omit deps to avoid re-fetch noise
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // no index context needed for library mode
 
