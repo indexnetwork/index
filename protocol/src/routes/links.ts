@@ -7,8 +7,20 @@ import { and, desc, eq } from 'drizzle-orm';
 import path from 'path';
 import fs from 'fs';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
+import { privyClient } from '../lib/privy';
+import { users } from '../lib/schema';
 
 const router = Router();
+
+const sseClients = new Map<string, Set<Response>>();
+function pushTo(userId: string, data: any) {
+  const set = sseClients.get(userId);
+  if (!set) return;
+  const payload = `data: ${JSON.stringify(data)}\n\n`;
+  for (const res of set) {
+    try { res.write(payload); } catch {}
+  }
+}
 
 function isValidUrlCandidate(u: string): boolean {
   try {
@@ -19,13 +31,14 @@ function isValidUrlCandidate(u: string): boolean {
   }
 }
 
-const baseStore = path.join(__dirname, '../../uploads/library_links');
+const baseStore = path.join(__dirname, '../../uploads/links');
 if (!fs.existsSync(baseStore)) fs.mkdirSync(baseStore, { recursive: true });
 
 async function crawlAndStore(userId: string, linkId: string, url: string) {
   try {
     // Mark as processing; progress bars belong in the frontend.
     await db.update(indexLinks).set({ lastStatus: 'processing' }).where(eq(indexLinks.id, linkId));
+    pushTo(userId, { type: 'link-status', id: linkId, status: 'processing' });
     const result = await crawlLinksForIndex([url]);
     const file = result.files[0];
     if (!file) return;
@@ -36,10 +49,12 @@ async function crawlAndStore(userId: string, linkId: string, url: string) {
     await db.update(indexLinks)
       .set({ lastSyncAt: new Date(), lastStatus: 'ok' })
       .where(eq(indexLinks.id, linkId));
+    pushTo(userId, { type: 'link-status', id: linkId, status: 'ok' });
   } catch (e) {
     await db.update(indexLinks)
       .set({ lastError: (e as Error).message, lastStatus: 'error' })
       .where(eq(indexLinks.id, linkId));
+    pushTo(userId, { type: 'link-status', id: linkId, status: 'error' });
   }
 }
 
@@ -83,14 +98,44 @@ router.post('/',
   }
 );
 
+// Server-Sent Events for link status updates
+router.get('/events', async (req: any, res: Response) => {
+  try {
+    const token = String(req.query.token || '');
+    if (!token) return res.status(401).json({ error: 'Access token required' });
+    const claims = await privyClient.verifyAuthToken(token);
+    if (!claims?.userId) return res.status(403).json({ error: 'Invalid token' });
+    const row = await db.select({ id: users.id }).from(users).where(eq(users.privyId, claims.userId)).limit(1);
+    if (row.length === 0) return res.status(403).json({ error: 'Unknown user' });
+    const userId = row[0].id;
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    res.write(': ok\n\n');
+    const set = sseClients.get(userId) || new Set<Response>();
+    set.add(res);
+    sseClients.set(userId, set);
+    const keepalive = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 25000);
+    req.on('close', () => {
+      clearInterval(keepalive);
+      const s = sseClients.get(userId);
+      if (s) { s.delete(res); if (s.size === 0) sseClients.delete(userId); }
+    });
+  } catch (e) {
+    return res.status(500).json({ error: 'SSE setup failed' });
+  }
+  return undefined as any;
+});
+
 // Delete a link
 router.delete('/:linkId', authenticatePrivy, [param('linkId').isUUID()], async (req: AuthRequest, res: Response) => {
   try {
     const { linkId } = req.params;
     await db.delete(indexLinks)
       .where(and(eq(indexLinks.id, linkId), eq(indexLinks.userId, req.user!.id)));
-    const fp = path.join(baseStore, req.user!.id, `${linkId}.md`);
-    if (fs.existsSync(fp)) fs.unlinkSync(fp);
+    const fpNew = path.join(baseStore, req.user!.id, `${linkId}.md`);
+    if (fs.existsSync(fpNew)) fs.unlinkSync(fpNew);
     return res.json({ success: true });
   } catch (err) {
     console.error('Delete link error:', err);

@@ -7,7 +7,7 @@ import { Index as IndexType } from '@/lib/types';
 import LibraryModal from '@/components/modals/LibraryModal';
 import { Input } from '@/components/ui/input';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { useLibraryService } from '@/services/library';
+import { useAuthenticatedAPI } from '@/lib/api';
 
 interface IndexItem {
   id: string;
@@ -27,7 +27,7 @@ export default function Sidebar() {
   const [isAddingLink, setIsAddingLink] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const library = useLibraryService();
+  const api = useAuthenticatedAPI();
   const { error } = useNotifications();
   const [lastAdded, setLastAdded] = useState<null | { kind: 'file'|'link'; label: string; sub?: string; at: number }>(null);
   const [lastFading, setLastFading] = useState(false);
@@ -103,7 +103,10 @@ export default function Sidebar() {
     if (!f || f.length === 0) return;
     setIsUploading(true);
     try {
-      const uploaded = await Promise.all(Array.from(f).map(file => library.uploadFile(file)));
+      const uploaded = await Promise.all(Array.from(f).map(async file => {
+        const res = await api.uploadFile<{ file: { id: string; name: string; size: string } }>(`/files`, file);
+        return res.file;
+      }));
       const last = uploaded[uploaded.length - 1];
       if (last) setLastAdded({ kind: 'file', label: last.name, sub: last.size, at: Date.now() });
       // show only the micro-toast; suppress global success toast
@@ -113,7 +116,7 @@ export default function Sidebar() {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }, [library, error]);
+  }, [api, error]);
 
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -132,7 +135,7 @@ export default function Sidebar() {
     }
     try {
       setIsAddingLink(true);
-      const link = await library.addLink(normalized);
+      const { link } = await api.post<{ link: { url: string } }>(`/links`, { url: normalized });
       setLinkUrl('');
       setLastAdded({ kind: 'link', label: link.url, at: Date.now() });
       // show only the micro-toast; suppress global success toast
@@ -141,11 +144,14 @@ export default function Sidebar() {
     } finally {
       setIsAddingLink(false);
     }
-  }, [library, linkUrl, error]);
+  }, [api, linkUrl, error]);
 
   const loadLatest = useCallback(async () => {
     try {
-      const [files, links] = await Promise.all([library.getFiles(), library.getLinks()]);
+      const [{ files }, { links }] = await Promise.all([
+        api.get<{ files: Array<{ id: string; name: string; size: string; createdAt: string }> }>(`/files`),
+        api.get<{ links: Array<{ url: string; createdAt?: string }> }>(`/links`)
+      ]);
       const lf = (files || []).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
       const ll = (links || []).sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
       const lfTime = lf ? new Date(lf.createdAt).getTime() : 0;
@@ -156,7 +162,7 @@ export default function Sidebar() {
     } catch {
       // ignore
     }
-  }, [library]);
+  }, [api]);
 
   useEffect(() => {
     loadLatest();

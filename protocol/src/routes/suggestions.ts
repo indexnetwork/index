@@ -243,7 +243,7 @@ router.post('/replace',
         return res.status(400).json({ error: 'No files found in index' });
       }
 
-      const baseUploadDir = path.join(__dirname, '../../uploads/library_files', req.user!.id);
+      const baseUploadDir = path.join(__dirname, '../../uploads/files', req.user!.id);
       const fileIds = indexFiles.map(file => file.id);
 
       // Generate a single new suggestion

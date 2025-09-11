@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthenticatedAPI } from "@/lib/api";
-import { useLibraryService, LibraryFile, LibraryLink } from "@/services/library";
 import ReactMarkdown from 'react-markdown';
+import { useIdentityToken } from '@privy-io/react-auth';
 
 type Props = {
   open: boolean;
@@ -17,8 +17,8 @@ type Props = {
 
 export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
-  const library = useLibraryService();
   const api = useAuthenticatedAPI();
+  const { identityToken } = useIdentityToken();
   // No backend progress numbers; show a local pending label.
   const parseProgress = () => 'fetching content…';
   const [isUploading, setIsUploading] = useState(false);
@@ -26,8 +26,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<LibraryFile[]>([]);
-  const [links, setLinks] = useState<LibraryLink[]>([]);
+  const [files, setFiles] = useState<Array<{ id: string; name: string; size: string; type: string; createdAt: string; url: string }>>([]);
+  const [links, setLinks] = useState<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string }>>([]);
   const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
 
   // Enhance UX: select, search, and undo state
@@ -35,14 +35,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [undoBatch, setUndoBatch] = useState<{
-    items: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[];
+    items: { kind: 'file' | 'link'; item: any }[];
     timer: ReturnType<typeof setTimeout> | null;
   } | null>(null);
   const [typeFilter, setTypeFilter] = useState<'all'|'file'|'link'>('all');
   const [confirm, setConfirm] = useState<{
     open: boolean;
     message: string;
-    payload: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[];
+    payload: { kind: 'file' | 'link'; item: any }[];
   } | null>(null);
   const [integrations, setIntegrations] = useState<Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }>>([]);
   const [pendingIntegration, setPendingIntegration] = useState<null | 'notion' | 'slack' | 'discord'>(null);
@@ -50,13 +50,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const loadLists = useCallback(async () => {
     try {
       const [f, l] = await Promise.all([
-        library.getFiles(),
-        library.getLinks()
+        api.get<{ files: typeof files }>(`/files`).then(r => r.files || []),
+        api.get<{ links: typeof links }>(`/links`).then(r => r.links || [])
       ]);
-      setFiles(f || []);
-      setLinks(l || []);
+      setFiles(f);
+      setLinks(l);
     } catch {}
-  }, [library]);
+  }, [api]);
 
   const toggleSelected = useCallback((id: string, checked: boolean) => {
     setSelectedIds(prev => {
@@ -66,11 +66,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     });
   }, []);
 
-  const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[]) => {
+  const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: any }[]) => {
     try {
       await Promise.all(batch.map(({ kind, item }) => kind === 'file'
-        ? library.deleteFile((item as LibraryFile).id)
-        : library.deleteLink((item as LibraryLink).id)
+        ? api.delete(`/files/${(item as any).id}`)
+        : api.delete(`/links/${(item as any).id}`)
       ));
       success(batch.length === 1 ? 'Item deleted' : `${batch.length} items deleted`);
       onChanged?.();
@@ -79,23 +79,23 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } finally {
       setUndoBatch(null);
     }
-  }, [library, success, error, onChanged]);
+  }, [api, success, error, onChanged]);
 
   const handleUndo = useCallback(() => {
     if (!undoBatch) return;
     if (undoBatch.timer) clearTimeout(undoBatch.timer);
     // Restore items into state
-    const filesToRestore = undoBatch.items.filter(i => i.kind === 'file').map(i => i.item as LibraryFile);
-    const linksToRestore = undoBatch.items.filter(i => i.kind === 'link').map(i => i.item as LibraryLink);
+    const filesToRestore = undoBatch.items.filter(i => i.kind === 'file').map(i => i.item as any);
+    const linksToRestore = undoBatch.items.filter(i => i.kind === 'link').map(i => i.item as any);
     if (filesToRestore.length > 0) setFiles(prev => [...prev, ...filesToRestore]);
     if (linksToRestore.length > 0) setLinks(prev => [...prev, ...linksToRestore]);
     setUndoBatch(null);
   }, [undoBatch]);
 
-  const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[]) => {
+  const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: any }[]) => {
     // Remove items immediately from UI
-    const fileIds = new Set(items.filter(i => i.kind === 'file').map(i => (i.item as LibraryFile).id));
-    const linkIds = new Set(items.filter(i => i.kind === 'link').map(i => (i.item as LibraryLink).id));
+    const fileIds = new Set(items.filter(i => i.kind === 'file').map(i => (i.item as any).id));
+    const linkIds = new Set(items.filter(i => i.kind === 'link').map(i => (i.item as any).id));
     if (fileIds.size > 0) setFiles(prev => prev.filter(f => !fileIds.has(f.id)));
     if (linkIds.size > 0) setLinks(prev => prev.filter(l => !linkIds.has(l.id)));
 
@@ -112,7 +112,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
     // Build payload from current state
-    const payload: { kind: 'file' | 'link'; item: LibraryFile | LibraryLink }[] = [];
+    const payload: { kind: 'file' | 'link'; item: any }[] = [];
     files.forEach(f => { if (selectedIds.has(`f-${f.id}`)) payload.push({ kind: 'file', item: f }); });
     links.forEach(l => { if (selectedIds.has(`l-${l.id}`)) payload.push({ kind: 'link', item: l }); });
     setSelectedIds(new Set());
@@ -197,14 +197,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (!f || f.length === 0) return;
     setIsUploading(true);
     try {
-      await Promise.all(Array.from(f).map(file => library.uploadFile(file)));
+      await Promise.all(Array.from(f).map(async file => {
+        const res = await api.uploadFile<{ file: (typeof files)[number] }>(`/files`, file);
+        return res.file;
+      }));
       onChanged?.();
       await loadLists();
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [library, onChanged, loadLists]);
+  }, [api, onChanged, loadLists]);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -236,7 +239,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     
     try {
       setIsAddingLink(true);
-      await library.addLink(normalizedUrl);
+      await api.post<{ link: (typeof links)[number] }>(`/links`, { url: normalizedUrl });
       setLinkUrl("");
       onChanged?.();
       await loadLists();
@@ -246,7 +249,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } finally {
       setIsAddingLink(false);
     }
-  }, [library, linkUrl, onChanged, loadLists, success, error]);
+  }, [api, linkUrl, onChanged, loadLists, success, error]);
 
 
   // Fetch once per open (ignore function identity changes)
@@ -265,6 +268,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [open]);
 
   // no index context needed for library mode
+  useEffect(() => {
+    if (!open || !identityToken) return;
+    const base = process.env.NEXT_PUBLIC_API_URL || '';
+    const es = new EventSource(`${base}/links/events?token=${encodeURIComponent(identityToken)}`);
+    es.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data?.type === 'link-status' && (data.status === 'ok' || data.status === 'error')) {
+          loadLists();
+        }
+      } catch {}
+    };
+    return () => { es.close(); };
+  }, [open, identityToken, loadLists]);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -520,7 +537,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               </div>
               <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pr-2 pb-8">
                 {(() => {
-                  type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: LibraryFile | LibraryLink };
+                  type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };
                   const map: RecentItem[] = [
                     ...files.map(f => ({
                       id: `f-${f.id}`,
@@ -528,7 +545,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       title: f.name,
                       sub: `${formatSize(f.size)} • ${new Date(f.createdAt).toLocaleDateString()}`,
                       createdAt: new Date(f.createdAt).getTime(),
-                      raw: f,
+                      raw: f as any,
                     })),
                     ...links.map(l => ({
                       id: `l-${l.id}`,
@@ -538,11 +555,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       onClick: async () => {
                         const id = l.id;
                         setPreview({ id, title: l.url });
-                        const res = await library.getLinkContent(id);
+                        const res = await api.get<{ content?: string; pending?: boolean; url?: string; lastStatus?: string | null; lastSyncAt?: string | null }>(`/links/${id}/content`);
                         if (res?.content) setPreview({ id, title: l.url, content: res.content });
                       },
                       createdAt: (l.lastSyncAt ? new Date(l.lastSyncAt).getTime() : (l.createdAt ? new Date(l.createdAt).getTime() : 0)),
-                      raw: l,
+                      raw: l as any,
                     })),
                   ];
                   const filtered = map.filter(item => {
@@ -582,7 +599,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           )}
                           {item.kind === 'file' && (
                             <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-md font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
-                              {fileBadge((item.raw as LibraryFile).type, (item.raw as LibraryFile).name)}
+                              {fileBadge((item.raw as any).type, (item.raw as any).name)}
                             </span>
                           )}
                           {/* Icon for links only */}
@@ -616,7 +633,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigator.clipboard.writeText((item.raw as LibraryLink).url);
+                                  navigator.clipboard.writeText((item.raw as any).url);
                                   success('URL copied to clipboard');
                                 }} 
                                 className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
@@ -756,4 +773,4 @@ function fileBadge(mime: string | undefined, name: string): string {
 }
 
 // Deletion helpers
-type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: LibraryFile | LibraryLink };
+type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };

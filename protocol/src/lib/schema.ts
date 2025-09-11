@@ -216,6 +216,7 @@ const linksTable = pgTable('links', {
 });
 // Backward-compatible export names
 export const indexLinks = linksTable;
+export const links = linksTable;
 
 // Integration Items mapping (dedupe across integrations; provider='web' for crawled pages)
 export type IndexLink = typeof linksTable.$inferSelect;
