@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import db from '../db';
-import { indexLinks, intents, userIntegrations } from '../schema';
+import { indexLinks, intents, intentIndexes, userIntegrations } from '../schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { analyzeFolder } from '../../agents/core/intent_inferrer';
 import { summarizeIntent } from '../../agents/core/intent_summarizer';
@@ -19,7 +19,7 @@ export interface SyncProvider<Params extends Record<string, any> = any> {
   start(run: any, params: Params, update: (patch: any) => Promise<void>): Promise<void>;
 }
 
-type LinksParams = { count?: number; skipBrokers?: boolean; all?: boolean };
+type LinksParams = { count?: number; skipBrokers?: boolean; all?: boolean; indexId?: string };
 
 export const linksProvider: SyncProvider<LinksParams> = {
   name: 'links',
@@ -59,9 +59,17 @@ export const linksProvider: SyncProvider<LinksParams> = {
     const requestedCount = Math.max(1, Math.min(1, params.count ?? 1));
     const skipBrokers = params.skipBrokers === true || !config.linksSync.triggerBrokers;
 
-    const existingIntentRows = await db.select({ payload: intents.payload })
-      .from(intents)
-      .where(and(eq(intents.userId, userId), isNull(intents.archivedAt)));
+    // If an indexId is provided, dedupe only against intents already in that index.
+    const existingIntentRows = params.indexId
+      ? await db
+          .select({ payload: intents.payload })
+          .from(intents)
+          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+          .where(and(eq(intentIndexes.indexId, params.indexId), eq(intents.userId, userId), isNull(intents.archivedAt)))
+      : await db
+          .select({ payload: intents.payload })
+          .from(intents)
+          .where(and(eq(intents.userId, userId), isNull(intents.archivedAt)));
     const existingIntents = new Set(existingIntentRows.map(r => r.payload));
 
     let intentsGenerated = 0;
@@ -104,6 +112,10 @@ export const linksProvider: SyncProvider<LinksParams> = {
               sourceType: 'link',
             }).returning({ id: intents.id });
             const intentId = inserted[0].id;
+            // Optionally attach to a specific index using the join table.
+            if (params.indexId) {
+              await db.insert(intentIndexes).values({ intentId, indexId: params.indexId });
+            }
             existingIntents.add(intentData.payload);
             if (!skipBrokers) {
               triggerBrokersOnIntentCreated(intentId).catch(() => void 0);
