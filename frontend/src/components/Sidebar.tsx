@@ -216,15 +216,17 @@ export default function Sidebar() {
 
       {/* Library Section */}
       <div className="bg-white rounded-sm border-black border p-3 pb-6">
-        <div className="mb-2">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
-            <h2 className="text-xl font-semibold text-black">Library</h2>
+        <div className="mb-3">
+          {/* Mobile: Stack everything vertically */}
+          <div className="block sm:hidden">
+            <h2 className="text-lg font-semibold text-black mb-2">Library</h2>
+            <p className="text-xs text-black/80 mb-3 leading-relaxed">Keep files and links to boost relevancy.</p>
             <button
               onClick={() => setShowLibraryModal(true)}
-              className="inline-flex items-center gap-1.5 text-black px-3 py-1.5 text-sm font-ibm-plex-mono cursor-pointer hover:bg-gray-100 transition-colors self-start sm:self-auto rounded-[1px]"
+              className="inline-flex items-center gap-1.5 text-black px-2 py-1 text-xs font-ibm-plex-mono cursor-pointer hover:bg-gray-100 transition-colors rounded-[1px]"
               aria-label="Open Library"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 6h18"></path>
                 <path d="M3 12h18"></path>
                 <path d="M3 18h18"></path>
@@ -232,14 +234,33 @@ export default function Sidebar() {
               <span>Manage</span>
             </button>
           </div>
-          <p className="text-sm text-black/80 mt-2 leading-relaxed">Keep files and links to boost relevancy.</p>
+          
+          {/* Desktop: Horizontal layout */}
+          <div className="hidden sm:block">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-semibold text-black">Library</h2>
+              <button
+                onClick={() => setShowLibraryModal(true)}
+                className="inline-flex items-center gap-1.5 text-black px-3 py-1.5 text-sm font-ibm-plex-mono cursor-pointer hover:bg-gray-100 transition-colors rounded-[1px]"
+                aria-label="Open Library"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 6h18"></path>
+                  <path d="M3 12h18"></path>
+                  <path d="M3 18h18"></path>
+                </svg>
+                <span>Manage</span>
+              </button>
+            </div>
+            <p className="text-sm text-black/80 leading-relaxed">Keep files and links to boost relevancy.</p>
+          </div>
         </div>
 
-        {/* Quick add controls (match LibraryModal) */}
-        <div className="mt-4 space-y-3">
+        {/* Quick add controls */}
+        <div className="space-y-3">
           {/* File upload */}
           <div
-            className={`border border-dashed ${isDragging ? 'border-gray-600 bg-gray-100' : 'border-gray-400'} bg-gray-50 p-6 text-center cursor-pointer transition-colors rounded-[1px] flex items-center justify-center min-h-[90px]`}
+            className={`border border-dashed ${isDragging ? 'border-gray-600 bg-gray-100' : 'border-gray-400'} bg-gray-50 p-3 sm:p-6 text-center cursor-pointer transition-colors rounded-[1px] flex items-center justify-center min-h-[60px] sm:min-h-[90px]`}
             onDragOver={handleDragOver}
             onDragEnter={handleDragOver}
             onDragLeave={handleDragLeave}
@@ -256,24 +277,24 @@ export default function Sidebar() {
             />
             {isUploading ? (
               <div className="space-y-2">
-                <div className="w-5 h-5 mx-auto border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                <div className="w-4 h-4 sm:w-5 sm:h-5 mx-auto border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
                 <div className="text-xs text-gray-600">Uploading…</div>
               </div>
             ) : (
               <div className="space-y-1">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-gray-500">
+                <svg width="18" height="18" className="sm:w-5 sm:h-5 mx-auto text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="7,10 12,15 17,10"></polyline>
                   <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
-                <div className="text-xs text-gray-500">Drag & drop or click to select</div>
+                <div className="text-xs text-gray-500 px-2">Drag & drop or click to select</div>
               </div>
             )}
           </div>
 
           {/* Link input */}
           <div className="flex items-center gap-2 w-full">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500 flex-shrink-0">
+            <svg width="14" height="14" className="sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
               <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
             </svg>
@@ -282,18 +303,18 @@ export default function Sidebar() {
               value={linkUrl}
               onChange={(e) => setLinkUrl(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleAddLink(); }}
-              className="text-sm border-gray-400 rounded-[1px] flex-1"
+              className="text-xs sm:text-sm border-gray-400 rounded-[1px] flex-1"
             />
             {isAddingLink ? (
-              <div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <div className="w-5 h-5 sm:w-6 sm:h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
             ) : (
               <button
                 onClick={handleAddLink}
                 disabled={!linkUrl}
-                className="p-1.5 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                className="p-1 sm:p-1.5 hover:bg-gray-100 rounded-[1px] cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                 aria-label="Add URL"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-600">
+                <svg width="12" height="12" className="sm:w-3.5 sm:h-3.5 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="12" y1="5" x2="12" y2="19"></line>
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
