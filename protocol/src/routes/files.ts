@@ -8,6 +8,7 @@ import db from '../lib/db';
 import { files } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc } from 'drizzle-orm';
+import { getUploadsPath } from '../lib/paths';
 
 // Extend the Request interface to include generatedFileId
 declare global {
@@ -21,15 +22,13 @@ declare global {
 const router = Router();
 
 // Configure multer for file uploads (library scope)
-const baseUploadDir = path.join(__dirname, '../../uploads/files');
-if (!fs.existsSync(baseUploadDir)) {
-  fs.mkdirSync(baseUploadDir, { recursive: true });
-}
+const baseUploadDir = getUploadsPath('files');
+if (!fs.existsSync(baseUploadDir)) fs.mkdirSync(baseUploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const userId = (req as AuthRequest).user!.id;
-    const userDir = path.join(baseUploadDir, userId);
+    const userDir = getUploadsPath('files', userId);
     if (!fs.existsSync(userDir)) fs.mkdirSync(userDir, { recursive: true });
     cb(null, userDir);
   },
@@ -206,7 +205,7 @@ router.delete('/:fileId', authenticatePrivy, [param('fileId').isUUID()],
         .where(eq(files.id, fileId));
 
       // Delete physical files from filesystem
-      const userDir = path.join(baseUploadDir, req.user!.id);
+      const userDir = getUploadsPath('files', req.user!.id);
       try {
         const filesInDir = fs.existsSync(userDir) ? fs.readdirSync(userDir) : [];
         const fileToDelete = filesInDir.find(filename => filename.startsWith(fileId + '.'));

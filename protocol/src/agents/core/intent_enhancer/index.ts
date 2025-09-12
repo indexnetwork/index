@@ -13,6 +13,7 @@ import * as path from 'path';
 import db from '../../../lib/db';
 import { indexes } from '../../../lib/schema';
 import { eq } from 'drizzle-orm';
+import { getUploadsPath } from '../../../lib/paths';
 
 // Type definitions
 export interface IntentProcessingResult {
@@ -121,13 +122,24 @@ async function loadFilesInParallel(filePaths: string[]): Promise<Array<{ filePat
  * Gather contextual information from index files with parallel processing
  */
 async function gatherIndexContext(indexId: string): Promise<string> {
-  const owner = await db.select({ userId: indexes.userId })
-    .from(indexes)
-    .where(eq(indexes.id, indexId))
-    .limit(1);
-  const userId = owner[0]?.userId;
+  // Validate UUID early to avoid unnecessary DB hits / cast errors
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(indexId)) return '';
+
+  let userId: string | undefined;
+  try {
+    const owner = await db
+      .select({ userId: indexes.userId })
+      .from(indexes)
+      .where(eq(indexes.id, indexId))
+      .limit(1);
+    userId = owner[0]?.userId;
+  } catch (e) {
+    console.warn('DB lookup for index owner failed:', e);
+    return '';
+  }
   if (!userId) return '';
-  const baseUploadDir = path.join(__dirname, '../../../../uploads/files', userId);
+
+  const baseUploadDir = getUploadsPath('files', userId);
   
   if (!fs.existsSync(baseUploadDir)) {
     return '';

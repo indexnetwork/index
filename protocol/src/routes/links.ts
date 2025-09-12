@@ -31,7 +31,9 @@ function isValidUrlCandidate(u: string): boolean {
   }
 }
 
-const baseStore = path.join(__dirname, '../../uploads/links');
+import { getUploadsPath } from '../lib/paths';
+
+const baseStore = getUploadsPath('links');
 if (!fs.existsSync(baseStore)) fs.mkdirSync(baseStore, { recursive: true });
 
 async function crawlAndStore(userId: string, linkId: string, url: string) {
@@ -42,7 +44,7 @@ async function crawlAndStore(userId: string, linkId: string, url: string) {
     const result = await crawlLinksForIndex([url]);
     const file = result.files[0];
     if (!file) return;
-    const dir = path.join(baseStore, userId);
+    const dir = getUploadsPath('links', userId);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const filepath = path.join(dir, `${linkId}.md`);
     await fs.promises.writeFile(filepath, file.content);
@@ -136,7 +138,7 @@ router.delete('/:linkId', authenticatePrivy, [param('linkId').isUUID()], async (
     const { linkId } = req.params;
     await db.delete(indexLinks)
       .where(and(eq(indexLinks.id, linkId), eq(indexLinks.userId, req.user!.id)));
-    const fpNew = path.join(baseStore, req.user!.id, `${linkId}.md`);
+    const fpNew = path.join(getUploadsPath('links', req.user!.id), `${linkId}.md`);
     if (fs.existsSync(fpNew)) fs.unlinkSync(fpNew);
     return res.json({ success: true });
   } catch (err) {
@@ -151,7 +153,7 @@ router.get('/:linkId/content', authenticatePrivy, [param('linkId').isUUID()], as
     const { linkId } = req.params;
     const rows = await db.select().from(indexLinks).where(and(eq(indexLinks.id, linkId), eq(indexLinks.userId, req.user!.id))).limit(1);
     if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-    const fp = path.join(baseStore, req.user!.id, `${linkId}.md`);
+    const fp = path.join(getUploadsPath('links', req.user!.id), `${linkId}.md`);
     if (!fs.existsSync(fp)) return res.status(202).json({ pending: true, lastStatus: rows[0].lastStatus });
     const content = await fs.promises.readFile(fp, 'utf-8');
     return res.json({ content, url: rows[0].url, lastSyncAt: rows[0].lastSyncAt, lastStatus: rows[0].lastStatus });

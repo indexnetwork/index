@@ -8,6 +8,7 @@ import { eq, isNull, and, count, desc } from 'drizzle-orm';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { processIntent } from '../agents/core/intent_enhancer';
 import { checkIndexAccess } from '../lib/index-access';
+import { getUploadsPath } from '../lib/paths';
 
 // Simple L1 cache for suggestions
 interface CacheEntry {
@@ -137,7 +138,7 @@ router.get('/',
 
           const existingIntents = existingIntentsResult.map(i => i.payload);
 
-          const baseUploadDir = path.join(__dirname, '../../uploads/files', req.user!.id);
+          const baseUploadDir = getUploadsPath('files', req.user!.id);
           const fileIds = indexFiles.map(file => file.id);
 
           // Use intent suggester to analyze files directly with existing intents context
@@ -243,7 +244,7 @@ router.post('/replace',
         return res.status(400).json({ error: 'No files found in index' });
       }
 
-      const baseUploadDir = path.join(__dirname, '../../uploads/files', req.user!.id);
+      const baseUploadDir = getUploadsPath('files', req.user!.id);
       const fileIds = indexFiles.map(file => file.id);
 
       // Generate a single new suggestion
