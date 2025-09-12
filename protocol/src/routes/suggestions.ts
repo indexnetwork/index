@@ -137,7 +137,7 @@ router.get('/',
 
           const existingIntents = existingIntentsResult.map(i => i.payload);
 
-          const baseUploadDir = path.join(__dirname, '../../uploads', indexId);
+          const baseUploadDir = path.join(__dirname, '../../uploads/files', req.user!.id);
           const fileIds = indexFiles.map(file => file.id);
 
           // Use intent suggester to analyze files directly with existing intents context

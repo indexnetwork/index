@@ -10,6 +10,9 @@ import { Strategy } from "unstructured-client/sdk/models/shared";
 import { traceableLlm } from "../../../lib/agents";
 import * as fs from 'fs';
 import * as path from 'path';
+import db from '../../../lib/db';
+import { indexes } from '../../../lib/schema';
+import { eq } from 'drizzle-orm';
 
 // Type definitions
 export interface IntentProcessingResult {
@@ -118,7 +121,13 @@ async function loadFilesInParallel(filePaths: string[]): Promise<Array<{ filePat
  * Gather contextual information from index files with parallel processing
  */
 async function gatherIndexContext(indexId: string): Promise<string> {
-  const baseUploadDir = path.join(__dirname, '../../../../uploads', indexId);
+  const owner = await db.select({ userId: indexes.userId })
+    .from(indexes)
+    .where(eq(indexes.id, indexId))
+    .limit(1);
+  const userId = owner[0]?.userId;
+  if (!userId) return '';
+  const baseUploadDir = path.join(__dirname, '../../../../uploads/files', userId);
   
   if (!fs.existsSync(baseUploadDir)) {
     return '';
