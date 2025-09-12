@@ -44,8 +44,6 @@ export interface FileRecord {
   url?: string;
 }
 
-// Alias removed; use FileRecord everywhere.
-
 export interface IndexMember {
   userId: string;
   userName: string;
