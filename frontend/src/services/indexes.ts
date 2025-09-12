@@ -2,17 +2,15 @@ import { useMemo } from 'react';
 import { useAuthenticatedAPI, apiClient } from '../lib/api';
 import { 
   Index, 
-  IndexFile, 
   Intent,
   PaginatedResponse, 
   APIResponse, 
   CreateIndexRequest, 
-  UpdateIndexRequest, 
-  FileUploadResponse 
+  UpdateIndexRequest
 } from '../lib/types';
 
 // Re-export types for convenience
-export type { Index, IndexFile };
+export type { Index };
 
 // Member interface for API responses
 interface Member {
@@ -32,7 +30,6 @@ export interface SuggestedIntent {
   isAdded?: boolean;
 }
 
-// Service functions that accept API instance as parameter
 export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Get all indexes with pagination
   getIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index>> => {
@@ -79,17 +76,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
   // Delete index
   deleteIndex: async (id: string): Promise<void> => {
     await api.delete(`/indexes/${id}`);
-  },
-
-  // Upload file to index
-  uploadFile: async (indexId: string, file: File): Promise<IndexFile> => {
-    const response = await api.uploadFile<FileUploadResponse>(`/indexes/${indexId}/files`, file);
-    return response.file;
-  },
-
-  // Delete file from index
-  deleteFile: async (indexId: string, fileId: string): Promise<void> => {
-    await api.delete(`/indexes/${indexId}/files/${fileId}`);
   },
 
   // Member Management
@@ -201,60 +187,6 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response;
   },
 
-  // Index Links (crawl-based intents)
-  getIndexLinks: async (indexId: string): Promise<Array<{ id: string; url: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
-    const res = await api.get<{ links: Array<{ id: string; url: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }> }>(`/indexes/${indexId}/links`);
-    return res.links || [];
-  },
-
-  addIndexLink: async (indexId: string, link: { url: string }) => {
-    const res = await api.post<{ link: any }>(`/indexes/${indexId}/links`, link);
-    return res.link;
-  },
-
-  deleteIndexLink: async (indexId: string, linkId: string): Promise<void> => {
-    await api.delete(`/indexes/${indexId}/links/${linkId}`);
-  },
-
-  updateIndexLink: async (indexId: string, linkId: string, data: { url?: string }) => {
-    const res = await api.patch<{ link: any }>(`/indexes/${indexId}/links/${linkId}`, data);
-    return res.link;
-  },
-
-  syncIndexLinks: async (
-    indexId: string,
-    opts?: { skipBrokers?: boolean; count?: number; all?: boolean }
-  ): Promise<{
-    runId: string;
-    success: boolean;
-    status: string;
-    links: number;
-    filesImported: number;
-    intentsGenerated: number;
-    pagesVisited?: number;
-    durationMs?: number;
-    message?: string;
-  }> => {
-    const res = await api.post<{
-      runId: string;
-      success: boolean;
-      status: string;
-      links: number;
-      filesImported: number;
-      intentsGenerated: number;
-      pagesVisited?: number;
-      durationMs?: number;
-      message?: string;
-    }>('/sync/now', {
-      provider: 'links',
-      params: {
-        indexId,
-        ...opts
-      }
-    });
-    return res;
-  },
-
   // Legacy methods for backward compatibility (these would need intent service integration)
   addSuggestedIntent: async (indexId: string, intentId: string): Promise<boolean> => {
     try {
@@ -285,8 +217,6 @@ export const indexesService = {
   createIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   updateIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   deleteIndex: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  uploadFile: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
-  deleteFile: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   addMember: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   removeMember: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); },
   addSuggestedIntent: () => { throw new Error('Use useIndexService() hook instead of indexesService directly'); }

@@ -10,7 +10,7 @@ import ConfigureModal from "@/components/modals/ConfigureModal";
 import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 
 import Link from "next/link";
-import { useIndexes, useIntents } from "@/contexts/APIContext";
+import { useIndexes, useIntents, useFiles, useLinks } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { Index, Intent, FileRecord } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
@@ -61,6 +61,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   
   const indexesService = useIndexes();
   const intentsService = useIntents();
+  const filesService = useFiles();
+  const linksService = useLinks();
   const { user: currentUser } = usePrivy();
   const intentsRef = useRef<HTMLDivElement>(null);
 
@@ -75,7 +77,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
   const fetchLinks = useCallback(async () => {
     try {
-      const data = await indexesService.getLinks();
+      const data = await linksService.getLinks();
       setLinks(data);
     } catch (e) {
       console.error('Error fetching index links:', e);
@@ -233,7 +235,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
   const fetchFiles = useCallback(async () => {
     try {
-      const data = await indexesService.getFiles(1, 100);
+      const data = await filesService.getFiles(1, 100);
       setFiles(data);
     } catch (e) {
       console.error('Error fetching files:', e);
@@ -270,7 +272,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         setUploadingFiles(newUploadingFiles);
 
         for (const file of droppedFiles) {
-          await indexesService.uploadFile(file);
+          await filesService.uploadFile(file);
         }
         const updatedIndex = await indexesService.getIndex(resolvedParams.id);
         setIndex(updatedIndex || null);
@@ -293,7 +295,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     if (index) {
       try {
         setDeletingFiles(prev => new Set([...prev, fileId]));
-        await indexesService.deleteFile(fileId);
+        await filesService.deleteFile(fileId);
         const updatedIndex = await indexesService.getIndex(resolvedParams.id);
         setIndex(updatedIndex || null);
         await fetchFiles();
@@ -313,7 +315,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     if (!linkUrl.trim()) return;
     try {
       setAddingLink(true);
-      await indexesService.addLink({ url: linkUrl.trim() });
+      await linksService.addLink({ url: linkUrl.trim() });
       setLinkUrl("");
       await fetchLinks();
       notifySuccess('Link added', 'Your URL was added to your Library.');
@@ -327,7 +329,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
   const handleDeleteLink = async (linkId: string) => {
     try {
-      await indexesService.deleteLink(linkId);
+      await linksService.deleteLink(linkId);
       await fetchLinks();
     } catch (e) {
       console.error('Error deleting link:', e);
@@ -335,18 +337,8 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   };
 
   const handleSyncLinks = async (opts?: { all?: boolean }) => {
-    try {
-      setSyncingLinks(true);
-      setLastSyncSummary("");
-      await indexesService.syncIndexLinks(resolvedParams.id, { skipBrokers: true, all: !!opts?.all });
-      setLastSyncSummary('Sync accepted; running in background');
-      notifySuccess('Sync accepted', 'It will run in the background.');
-      setSyncingLinks(false);
-    } catch (e) {
-      console.error('Error syncing links:', e);
-      setSyncingLinks(false);
-      notifyError('Links sync error');
-    }
+    // Sync functionality has been removed
+    notifyError('Sync not available', 'This feature has been removed.');
   };
 
   const handleAddIntent = async (intentId: string) => {
@@ -853,7 +845,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                     setUploadingFiles(newUploadingFiles);
 
                     try {
-                      await Promise.all(selectedFiles.map(file => indexesService.uploadFile(file)));
+                      await Promise.all(selectedFiles.map(file => filesService.uploadFile(file)));
                       const updatedIndex = await indexesService.getIndex(resolvedParams.id);
                       setIndex(updatedIndex || null);
                       await fetchFiles();
