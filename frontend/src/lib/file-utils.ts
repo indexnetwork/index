@@ -45,7 +45,6 @@ export const getIndexFileUrl = (file: { id?: string; name?: string; url?: string
   }
   // No URL provided; legacy callers may still depend on id/name, but no path construction remains here.
   return '';
-}
 };
 
 /**
