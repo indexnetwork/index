@@ -7,7 +7,7 @@ import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import * as Tabs from "@radix-ui/react-tabs";
 import { History, SendHorizontal, Inbox } from "lucide-react";
-import { useIntents, useConnections, useSynthesis, useDiscover } from "@/contexts/APIContext";
+import { useConnections, useSynthesis, useDiscover } from "@/contexts/APIContext";
 import { StakesByUserResponse, UserConnection } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { formatDate } from "@/lib/utils";
@@ -36,7 +36,6 @@ export default function InboxPage() {
     urlTab && validTabs.includes(urlTab) ? urlTab : 'discover'
   );
 
-  const intentsService = useIntents();
   const connectionsService = useConnections();
   const synthesisService = useSynthesis();
   const discoverService = useDiscover();
@@ -85,9 +84,6 @@ export default function InboxPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      // Determine includeDiscovered based on whether we're filtering by indexes
-      const includeDiscovered = selectedIndexIds.length === 0; // Only include discovered when showing all indexes
-      
       // Determine indexIds to pass to API calls
       const apiIndexIds = selectedIndexIds.length > 0 ? selectedIndexIds : undefined;
       
@@ -148,7 +144,7 @@ export default function InboxPage() {
     } finally {
       setLoading(false);
     }
-  }, [intentsService, connectionsService, fetchSynthesis, selectedIndexIds]);
+  }, [connectionsService, discoverService, fetchSynthesis, selectedIndexIds]);
 
   useEffect(() => {
     fetchData();

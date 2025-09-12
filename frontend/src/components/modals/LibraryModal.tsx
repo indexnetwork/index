@@ -1,0 +1,762 @@
+"use client";
+
+import * as Dialog from "@radix-ui/react-dialog";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useNotifications } from "@/contexts/NotificationContext";
+import { useAuthenticatedAPI } from "@/lib/api";
+import ReactMarkdown from 'react-markdown';
+import { useIdentityToken } from '@privy-io/react-auth';
+
+type Props = {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onChanged?: () => void; // ask parent to refresh after any action
+};
+
+export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
+  const { success, error } = useNotifications();
+  const api = useAuthenticatedAPI();
+  const { identityToken } = useIdentityToken();
+  // No backend progress numbers; show a local pending label.
+  const parseProgress = () => 'fetching content…';
+  const [isUploading, setIsUploading] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [isAddingLink, setIsAddingLink] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [files, setFiles] = useState<Array<{ id: string; name: string; size: string; type: string; createdAt: string; url: string }>>([]);
+  const [links, setLinks] = useState<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string }>>([]);
+  const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
+
+  // Enhance UX: select, search, and undo state
+  const [, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [undoBatch, setUndoBatch] = useState<{
+    items: { kind: 'file' | 'link'; item: any }[];
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null>(null);
+  const [typeFilter, setTypeFilter] = useState<'all'|'file'|'link'>('all');
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    message: string;
+    payload: { kind: 'file' | 'link'; item: any }[];
+  } | null>(null);
+  const [integrations, setIntegrations] = useState<Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }>>([]);
+  const [pendingIntegration, setPendingIntegration] = useState<null | 'notion' | 'slack' | 'discord'>(null);
+
+  const loadLists = useCallback(async () => {
+    try {
+      const [f, l] = await Promise.all([
+        api.get<{ files: typeof files }>(`/files`).then(r => r.files || []),
+        api.get<{ links: typeof links }>(`/links`).then(r => r.links || [])
+      ]);
+      setFiles(f);
+      setLinks(l);
+    } catch {}
+  }, [api]);
+
+  const toggleSelected = useCallback((id: string, checked: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: any }[]) => {
+    try {
+      await Promise.all(batch.map(({ kind, item }) => kind === 'file'
+        ? api.delete(`/files/${(item as any).id}`)
+        : api.delete(`/links/${(item as any).id}`)
+      ));
+      success(batch.length === 1 ? 'Item deleted' : `${batch.length} items deleted`);
+      onChanged?.();
+    } catch {
+      error('Failed to delete some items');
+    } finally {
+      setUndoBatch(null);
+    }
+  }, [api, success, error, onChanged]);
+
+  const handleUndo = useCallback(() => {
+    if (!undoBatch) return;
+    if (undoBatch.timer) clearTimeout(undoBatch.timer);
+    // Restore items into state
+    const filesToRestore = undoBatch.items.filter(i => i.kind === 'file').map(i => i.item as any);
+    const linksToRestore = undoBatch.items.filter(i => i.kind === 'link').map(i => i.item as any);
+    if (filesToRestore.length > 0) setFiles(prev => [...prev, ...filesToRestore]);
+    if (linksToRestore.length > 0) setLinks(prev => [...prev, ...linksToRestore]);
+    setUndoBatch(null);
+  }, [undoBatch]);
+
+  const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: any }[]) => {
+    // Remove items immediately from UI
+    const fileIds = new Set(items.filter(i => i.kind === 'file').map(i => (i.item as any).id));
+    const linkIds = new Set(items.filter(i => i.kind === 'link').map(i => (i.item as any).id));
+    if (fileIds.size > 0) setFiles(prev => prev.filter(f => !fileIds.has(f.id)));
+    if (linkIds.size > 0) setLinks(prev => prev.filter(l => !linkIds.has(l.id)));
+
+    // Start 5s timer for actual delete
+    const timer = setTimeout(() => finalizeDeletion(items), 5000);
+    setUndoBatch({ items, timer });
+  }, [finalizeDeletion]);
+
+  const handleSingleDelete = useCallback((item: RecentItem) => {
+    const payload = [{ kind: item.kind, item: item.raw }];
+    setConfirm({ open: true, message: 'This permanently removes it from your Library. Continue?', payload });
+  }, []);
+
+  const handleBulkDelete = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    // Build payload from current state
+    const payload: { kind: 'file' | 'link'; item: any }[] = [];
+    files.forEach(f => { if (selectedIds.has(`f-${f.id}`)) payload.push({ kind: 'file', item: f }); });
+    links.forEach(l => { if (selectedIds.has(`l-${l.id}`)) payload.push({ kind: 'link', item: l }); });
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    if (payload.length > 0) setConfirm({ open: true, message: `This permanently removes ${payload.length} item(s) from your Library. Continue?`, payload });
+  }, [files, links, selectedIds]);
+
+  // Integrations (compact section)
+  const loadIntegrations = useCallback(async () => {
+    try {
+      const res = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>(`/integrations`);
+      const wanted: Array<'notion'|'slack'|'discord'> = ['notion','slack','discord'];
+      const items: Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }> = wanted.map(id => {
+        const found = res.integrations?.find(i => i.id === id);
+        return { id, name: found?.name ?? (id[0].toUpperCase()+id.slice(1)), connected: !!found?.connected };
+      });
+      setIntegrations(items);
+    } catch {
+      setIntegrations([
+        { id: 'notion', name: 'Notion', connected: false },
+        { id: 'slack', name: 'Slack', connected: false },
+        { id: 'discord', name: 'Discord', connected: false },
+      ]);
+    }
+  }, [api]);
+
+  const toggleIntegration = useCallback(async (id: 'notion'|'slack'|'discord') => {
+    const item = integrations.find(i => i.id === id);
+    if (!item) return;
+    try {
+      setPendingIntegration(id);
+      if (item.connected) {
+        await api.delete(`/integrations/${id}`);
+        setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: false } : x));
+        success(`${item.name} disconnected`);
+      } else {
+        const popup = typeof window !== 'undefined' ? window.open('', `oauth_${id}`, 'width=560,height=720') : null;
+        const res = await api.post<{ redirectUrl?: string; connectionRequestId?: string }>(`/integrations/connect/${id}`);
+        const redirect = res.redirectUrl;
+        const reqId = res.connectionRequestId;
+        if (popup && redirect) {
+          popup.location.href = redirect;
+        } else if (redirect) {
+          window.location.href = redirect;
+          return;
+        }
+        if (reqId) {
+          const started = Date.now();
+          const poll = setInterval(async () => {
+            if (popup && popup.closed) {
+              clearInterval(poll);
+              return;
+            }
+            try {
+              const s = await api.get<{ status: 'pending' | 'connected'; connectedAt?: string }>(`/integrations/status/${reqId}`);
+              if (s.status === 'connected') {
+                clearInterval(poll);
+                if (popup && !popup.closed) popup.close();
+                setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: true } : x));
+                success(`${item.name} connected`);
+              }
+              if (Date.now() - started > 90000) {
+                clearInterval(poll);
+                if (popup && !popup.closed) popup.close();
+              }
+            } catch {
+              clearInterval(poll);
+              if (popup && !popup.closed) popup.close();
+              error(`Failed to complete ${item.name} connection`);
+            }
+          }, 1500);
+        }
+      }
+    } catch {
+      // ignore
+    } finally {
+      setPendingIntegration(null);
+    }
+  }, [api, integrations, success, error]);
+
+  const handleFilesSelected = useCallback(async (f: FileList | null) => {
+    if (!f || f.length === 0) return;
+    setIsUploading(true);
+    try {
+      await Promise.all(Array.from(f).map(async file => {
+        const res = await api.uploadFile<{ file: (typeof files)[number] }>(`/files`, file);
+        return res.file;
+      }));
+      onChanged?.();
+      await loadLists();
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }, [api, onChanged, loadLists]);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer?.files || null;
+    if (files && files.length > 0) {
+      void handleFilesSelected(files);
+    }
+  }, [handleFilesSelected]);
+
+  const handleAddLink = useCallback(async () => {
+    if (!linkUrl) return;
+    
+    // Normalize URL - add https:// if no protocol is specified
+    let normalizedUrl = linkUrl.trim();
+    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+      normalizedUrl = `https://${normalizedUrl}`;
+    }
+    
+    try {
+      setIsAddingLink(true);
+      await api.post<{ link: (typeof links)[number] }>(`/links`, { url: normalizedUrl });
+      setLinkUrl("");
+      onChanged?.();
+      await loadLists();
+      success('Link added successfully');
+    } catch {
+      error('Failed to add link. Please check the URL and try again.');
+    } finally {
+      setIsAddingLink(false);
+    }
+  }, [api, linkUrl, onChanged, loadLists, success, error]);
+
+
+  // Fetch once per open (ignore function identity changes)
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpen.current) {
+      wasOpen.current = true;
+      loadLists();
+      loadIntegrations();
+    }
+    if (!open && wasOpen.current) {
+      wasOpen.current = false;
+    }
+    // Intentionally omit deps to avoid re-fetch noise
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // no index context needed for library mode
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
+        <Dialog.Content className="library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:h-auto sm:max-w-[800px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
+            <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
+            <button
+              onClick={() => onOpenChange(false)}
+              className="p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+              aria-label="Close modal"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] hover:text-[#333] transition-colors duration-150 ease-in-out">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+
+          <div className="flex-1 pr-1 space-y-4 overflow-y-auto sm:overflow-hidden">
+
+            {/* Connect your sources */}
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Connect Sources</h3>
+                <span className="text-xs text-gray-500 font-ibm-plex-mono">
+                  {integrations.filter(i => i.connected).length} of {integrations.length} connected
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {integrations.map((it) => (
+                  <div key={it.id} className="flex items-center justify-between border border-[#E0E0E0] rounded-lg px-3 py-3 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]">
+                    <span className="flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`/integrations/${it.id}.png`} width={20} height={20} alt="" />
+                      <span className="text-sm font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
+                      {it.connected && (
+                        <span className="h-1.5 w-1.5 bg-[#006D4B] rounded-full" />
+                      )}
+                    </span>
+                    <button
+                      onClick={() => toggleIntegration(it.id)}
+                      disabled={pendingIntegration === it.id}
+                      className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                        it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                      } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
+                      aria-pressed={it.connected}
+                      aria-busy={pendingIntegration === it.id}
+                      aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
+                    >
+                      <span
+                        className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
+                        style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
+                      />
+                      {pendingIntegration === it.id && (
+                        <span className="absolute inset-0 grid place-items-center">
+                          <span className="h-2.5 w-2.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Add new content */}
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Add Content</h3>
+                <span className="text-xs text-gray-500 font-ibm-plex-mono">
+                  {files.length + links.length} items total
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* File upload */}
+                <div className="border border-[#E0E0E0] rounded-lg p-3 bg-[#FAFAFA]">
+                  <div
+                    className={`border border-dashed ${isDragging ? 'border-[#CCCCCC] bg-[#F5F5F5]' : 'border-[#DDDDDD]'} bg-[#F5F5F5] p-4 md:p-6 text-center cursor-pointer transition-colors rounded-lg flex items-center justify-center min-h-[72px] md:min-h-[80px]`}
+                    onDragOver={handleDragOver}
+                    onDragEnter={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      id="library-file-upload"
+                      onChange={(e) => handleFilesSelected(e.target.files)}
+                    />
+                    <label htmlFor="library-file-upload" className="cursor-pointer">
+                      {isUploading ? (
+                        <div className="space-y-2">
+                          <div className="w-8 h-8 mx-auto border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                          <div className="text-xs text-[#666] font-ibm-plex-mono">Uploading...</div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-[#666]">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14,2 14,8 20,8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10,9 9,9 8,9"></polyline>
+                          </svg>
+                          <div className="text-xs text-[#666] font-ibm-plex-mono">Drop files or click</div>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                </div>
+
+                {/* Link input */}
+                <div className="border border-[#E0E0E0] rounded-lg p-3 flex items-center bg-[#FAFAFA]">
+                  <div className="flex items-center gap-2 w-full">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] flex-shrink-0">
+                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                    </svg>
+                    <Input
+                      placeholder="Paste URL here"
+                      value={linkUrl}
+                      onChange={(e) => setLinkUrl(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
+                      className="text-sm bg-[#F5F5F5] border-[#DDDDDD] rounded-lg font-ibm-plex-mono flex-1 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] focus:border-[#CCCCCC]"
+                    />
+                    {isAddingLink ? (
+                      <div className="w-8 h-8 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                    ) : (
+                      <button
+                        onClick={handleAddLink}
+                        disabled={!linkUrl}
+                        className="p-1.5 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        aria-label="Add URL"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                          <line x1="12" y1="5" x2="12" y2="19"></line>
+                          <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Library items */}
+            <section>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Library Items</h3>
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50 font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                      onClick={() => handleBulkDelete()}
+                    >
+                      Delete ({selectedIds.size})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                      onClick={() => setSelectedIds(new Set())}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-auto">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#666]">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                    <Input
+                      placeholder="Search files and links..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="h-9 w-full sm:w-[240px] max-w-full text-sm pl-10 pr-4 bg-[#F5F5F5] border-[#DDDDDD] rounded-lg font-ibm-plex-mono focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] focus:border-[#CCCCCC]"
+                    />
+                    {search && (
+                      <button
+                        onClick={() => setSearch('')}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 p-0.5 hover:bg-[#F0F0F0] rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        aria-label="Clear search"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] transition-colors duration-150 ease-in-out">
+                          <line x1="18" y1="6" x2="6" y2="18"></line>
+                          <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {/* Mobile: compact select */}
+                  <div className="w-full sm:hidden mt-1">
+                    <label htmlFor="library-type-filter" className="sr-only">Filter</label>
+                    <select
+                      id="library-type-filter"
+                      value={typeFilter}
+                      onChange={(e) => setTypeFilter(e.target.value as 'all'|'file'|'link')}
+                      className="w-full h-9 text-sm border border-[#DDDDDD] rounded-lg bg-[#F5F5F5] px-2 font-ibm-plex-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)]"
+                    >
+                      <option value="all">All</option>
+                      <option value="file">Files</option>
+                      <option value="link">Links</option>
+                    </select>
+                  </div>
+
+                  {/* Desktop: button group */}
+                  <div className="hidden sm:flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                        typeFilter==='all' 
+                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
+                          : ''
+                      }`}
+                      onClick={() => setTypeFilter('all')}
+                    >
+                      All
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                        typeFilter==='file' 
+                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
+                          : ''
+                      }`}
+                      onClick={() => setTypeFilter('file')}
+                    >
+                      Files
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                        typeFilter==='link' 
+                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
+                          : ''
+                      }`}
+                      onClick={() => setTypeFilter('link')}
+                    >
+                      Links
+                    </Button>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pr-2 pb-8">
+                {(() => {
+                  type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };
+                  const map: RecentItem[] = [
+                    ...files.map(f => ({
+                      id: `f-${f.id}`,
+                      kind: 'file' as const,
+                      title: f.name,
+                      sub: `${formatSize(f.size)} • ${new Date(f.createdAt).toLocaleDateString()}`,
+                      createdAt: new Date(f.createdAt).getTime(),
+                      raw: f as any,
+                    })),
+                    ...links.map(l => ({
+                      id: `l-${l.id}`,
+                      kind: 'link' as const,
+                      title: l.url,
+                      sub: l.lastSyncAt ? `last: ${new Date(l.lastSyncAt).toLocaleString()}` : parseProgress(),
+                      onClick: async () => {
+                        const id = l.id;
+                        setPreview({ id, title: l.url });
+                        const res = await api.get<{ content?: string; pending?: boolean; url?: string; lastStatus?: string | null; lastSyncAt?: string | null }>(`/links/${id}/content`);
+                        if (res?.content) setPreview({ id, title: l.url, content: res.content });
+                      },
+                      createdAt: (l.lastSyncAt ? new Date(l.lastSyncAt).getTime() : (l.createdAt ? new Date(l.createdAt).getTime() : 0)),
+                      raw: l as any,
+                    })),
+                  ];
+                  const filtered = map.filter(item => {
+                    const q = item.title.toLowerCase().includes(search.toLowerCase());
+                    const t = typeFilter === 'all' || item.kind === typeFilter;
+                    return q && t;
+                  });
+                  const recent = filtered.sort((a,b) => a.createdAt < b.createdAt ? 1 : -1);
+                  if (recent.length === 0) return <div className="text-sm text-[#666]">No items yet.</div>;
+                  return recent.map(item => (
+                    <div 
+                      key={item.id} 
+                      className={`w-full border rounded-lg px-3 py-2 transition-colors cursor-pointer ${
+                        selectedIds.has(item.id) 
+                          ? 'border-[#CCCCCC] bg-[#F5F5F5]' 
+                          : item.kind === 'link' 
+                            ? 'border-[#E0E0E0] bg-[#FAFAFA] hover:border-[#CCCCCC]' 
+                            : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'
+                      }`}
+                      onClick={() => toggleSelected(item.id, !selectedIds.has(item.id))}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {selectedIds.has(item.id) && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSelected(item.id, !selectedIds.has(item.id));
+                              }}
+                              className="h-4 w-4 border border-[#006D4B] bg-[#006D4B] rounded-[4px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                              aria-label={`Select ${item.kind}`}
+                            >
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-white">
+                                <polyline points="20,6 9,17 4,12"></polyline>
+                              </svg>
+                            </button>
+                          )}
+                          {item.kind === 'file' && (
+                            <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-md font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
+                              {fileBadge((item.raw as any).type, (item.raw as any).name)}
+                            </span>
+                          )}
+                          {/* Icon for links only */}
+                          {item.kind === 'link' && (
+                            <div className="flex-shrink-0">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                              </svg>
+                            </div>
+                          )}
+                          <span className="text-sm text-[#333] truncate font-medium">{item.title}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {item.kind === 'link' && (
+                            <>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  item.onClick?.();
+                                }} 
+                                className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
+                                disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}
+                                aria-label="View content"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
+                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                  <circle cx="12" cy="12" r="3"></circle>
+                                </svg>
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigator.clipboard.writeText((item.raw as any).url);
+                                  success('URL copied to clipboard');
+                                }} 
+                                className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
+                                aria-label="Copy URL"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
+                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                </svg>
+                              </button>
+                            </>
+                          )}
+                          <button
+                            className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSingleDelete(item);
+                            }}
+                            aria-label={`Delete ${item.kind}`}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
+                              <polyline points="3,6 5,6 21,6"></polyline>
+                              <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-xs text-[#666] mt-1 truncate font-ibm-plex-mono">
+                        {String(item.sub).startsWith('fetch') ? (
+                          <div className="flex items-center gap-2">
+                            <div className="w-full h-1.5 bg-[#E0E0E0] rounded-full overflow-hidden">
+                              <div className="h-full bg-[#006D4B] w-1/2 animate-pulse rounded-full" />
+                            </div>
+                            <span className="font-ibm-plex-mono">Processing...</span>
+                          </div>
+                        ) : (
+                          String(item.sub)
+                        )}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </section>
+          </div>
+
+          {/* Link Preview */}
+          <Dialog.Root open={!!preview} onOpenChange={(v) => { if (!v) setPreview(null); }}>
+            <Dialog.Portal>
+              <Dialog.Overlay className="fixed inset-0 bg-black/40" />
+              <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] shadow-lg overflow-auto sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:max-w-[760px] sm:max-h-[80vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-5">
+                <Dialog.Title className="text-base font-bold font-ibm-plex-mono text-[#333] mb-3">{preview?.title}</Dialog.Title>
+                {!preview?.content ? (
+                  <div className="text-sm text-[#666]">Loading content…</div>
+                ) : (
+                  <div className="prose prose-sm max-w-none text-[#333]">
+                    <ReactMarkdown>{preview.content}</ReactMarkdown>
+                  </div>
+                )}
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+
+
+          {/* Undo Snackbar */}
+          {undoBatch && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#333] text-white text-sm px-4 py-2 rounded-lg shadow-lg flex items-center gap-3">
+              <span>
+                {undoBatch.items.length === 1 ? 'Item removed' : `${undoBatch.items.length} items removed`}
+              </span>
+              <button
+                className="underline rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                onClick={() => handleUndo()}
+                aria-label="Undo delete"
+              >
+                Undo
+              </button>
+            </div>
+          )}
+
+          {/* Styled Confirm Dialog */}
+          <Dialog.Root open={!!confirm?.open} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
+            <Dialog.Portal>
+              <Dialog.Overlay className="fixed inset-0 bg-black/40" />
+              <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-lg bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 p-4 shadow-lg sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-5">
+                <Dialog.Title className="text-lg font-bold mb-2 font-ibm-plex-mono text-[#333]">Confirm Delete</Dialog.Title>
+                <p className="text-sm text-[#444] mb-4">{confirm?.message}</p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" className="rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" onClick={() => setConfirm(null)}>Cancel</Button>
+                  <Button
+                    variant="outline"
+                    className="rounded-lg border-red-600 text-red-600 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                    onClick={() => { if (confirm) { queueDeletion(confirm.payload); setConfirm(null); } }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+// Helpers: size formatting and file badge
+function formatSize(size: string): string {
+  // If already human-readable, return as-is
+  if (/\d+\s?(KB|MB|GB|B)$/i.test(size)) return size;
+  const n = Number(size);
+  if (Number.isNaN(n)) return size;
+  const units = ['B','KB','MB','GB'];
+  let v = n; let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function fileBadge(mime: string | undefined, name: string): string {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf') return 'PDF';
+  if (['doc','docx','rtf','odt'].includes(ext)) return 'DOC';
+  if (['xls','xlsx','csv'].includes(ext)) return 'SHEET';
+  if (['ppt','pptx','key'].includes(ext)) return 'SLIDE';
+  if (['png','jpg','jpeg','gif','svg','webp'].includes(ext)) return 'IMG';
+  if (['mp4','mov','avi','mkv','webm'].includes(ext)) return 'VID';
+  if (['mp3','wav','m4a','flac'].includes(ext)) return 'AUD';
+  if (['zip','rar','7z','tar','gz'].includes(ext)) return 'ARCH';
+  if (['md','txt','json','yaml','yml'].includes(ext)) return 'TXT';
+  if (mime?.includes('pdf')) return 'PDF';
+  if (mime?.startsWith('image/')) return 'IMG';
+  if (mime?.startsWith('video/')) return 'VID';
+  if (mime?.startsWith('audio/')) return 'AUD';
+  return 'FILE';
+}
+
+// Deletion helpers
+type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };

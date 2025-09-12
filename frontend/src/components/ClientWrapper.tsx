@@ -1,6 +1,6 @@
 'use client';
 
-import { PropsWithChildren } from 'react';
+import { PropsWithChildren, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
@@ -8,16 +8,19 @@ import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const pathname = usePathname();
-  
-  // Determine if navigation should be shown based on current path
-  const showNavigation = pathname !== '/' && !pathname.startsWith('/vibecheck') && !pathname.startsWith('/matchlist');
-  
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
   // Define known routes to detect 404 pages
   const knownRoutes = ['/', '/inbox', '/indexes', '/intents', '/integrate', '/stake', '/simulation', '/vibecheck', '/matchlist', '/connections'];
   const isKnownRoute = knownRoutes.some(route => 
     pathname === route || 
     pathname?.startsWith(route + '/')
   );
+  // Show sidebar only on app pages (exclude landing '/')
+  const showSidebar = useMemo(() => 
+    pathname !== '/' && knownRoutes.filter(route => route !== '/').some(route => 
+      pathname === route || pathname?.startsWith(route + '/')
+    ), [pathname, knownRoutes]);
   
   // Don't render header on 404 pages (unknown routes)
   if (!isKnownRoute && pathname) {
@@ -48,19 +51,25 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
         
         {/* Header stays persistent across page changes */}
         <div className="max-w-7xl mx-auto px-2">
-          <Header showNavigation={false} />
+          <Header 
+            showNavigation={false}
+            onToggleSidebar={showSidebar ? () => setMobileSidebarOpen((v) => !v) : undefined}
+            isSidebarOpen={showSidebar ? mobileSidebarOpen : undefined}
+          />
         </div>
         
         {/* Page content with sidebar */}
         <main>
-          <div className="max-w-7xl mx-auto px-2 mt-10 flex">
+          <div className={`max-w-7xl mx-auto px-2 mt-10 flex ${showSidebar ? 'flex-col lg:flex-row' : 'flex-col'}`}>
             {/* Sidebar */}
-            <aside className="w-1/4 pr-6 top-6">
-              <Sidebar />
-            </aside>
+            {showSidebar && (
+              <aside id="app-sidebar" className={`w-full lg:w-1/4 lg:pr-6 lg:top-6 mb-8 lg:mb-0 ${mobileSidebarOpen ? 'block' : 'hidden'} lg:block`}>
+                <Sidebar />
+              </aside>
+            )}
             
             {/* Main content area */}
-            <div className="w-3/4">
+            <div className={`w-full ${showSidebar ? 'lg:w-3/4' : ''}`}>
               <div className="space-y-6 h-full">
                 {children}
               </div>

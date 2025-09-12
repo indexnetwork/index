@@ -30,18 +30,18 @@ export interface Index {
     files: number;
     members: number;
   };
-  files?: IndexFile[];
+  files?: FileRecord[];
   members?: IndexMember[];
   suggestedIntents?: SuggestedIntent[];
 }
 
-export interface IndexFile {
+export interface FileRecord {
   id: string;
   name: string;
   type: string;
-  size: number;
+  size: number | string;
   createdAt: string;
-  indexId: string;
+  url?: string;
 }
 
 export interface IndexMember {
@@ -217,7 +217,7 @@ export interface CreateMarketPositionRequest {
 
 // File upload response
 export interface FileUploadResponse {
-  file: IndexFile;
+  file: FileRecord;
   message: string;
 }
 

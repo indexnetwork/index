@@ -33,6 +33,9 @@ export async function processFilesToIntents(options: {
   timeoutMs?: number;
   summarize?: boolean;
   onProgress?: (completed: number, total: number, note?: string) => Promise<void> | void;
+  // Polymorphic source (nullable)
+  sourceId?: string;
+  sourceType?: 'file' | 'integration' | 'link';
 }): Promise<{ intentsGenerated: number; filesImported: number }>{
   const { userId, indexId, files, textInstruction, count, summarize = false, timeoutMs = 60000, onProgress } = options;
   if (!files.length) return { intentsGenerated: 0, filesImported: 0 };
@@ -68,7 +71,14 @@ export async function processFilesToIntents(options: {
         const summary = summarize ? await summarizeIntent(intentData.payload) : undefined;
         const inserted = await db
           .insert(intents)
-          .values({ payload: intentData.payload, userId, isIncognito: false, summary: summary })
+          .values({
+            payload: intentData.payload,
+            userId,
+            isIncognito: false,
+            summary: summary,
+            sourceId: options.sourceId,
+            sourceType: options.sourceType,
+          })
           .returning({ id: intents.id });
         const intentId = inserted[0].id;
         if (indexId) {
@@ -83,4 +93,3 @@ export async function processFilesToIntents(options: {
     await fs.promises.rm(baseTempDir, { recursive: true, force: true });
   }
 }
-

@@ -1,18 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback, use, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Upload, Trash2, ArrowUpRight, Share2, ArrowLeft, MoreVertical } from "lucide-react";
+import LibraryModal from "@/components/modals/LibraryModal";
 import ShareSettingsModal from "@/components/modals/ShareSettingsModal";
 import ConfigureModal from "@/components/modals/ConfigureModal";
 import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 
 import Link from "next/link";
 import { useIndexes, useIntents } from "@/contexts/APIContext";
-import { useAuthenticatedAPI } from "@/lib/api";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { Index, Intent } from "@/lib/types";
+import { Index, Intent, FileRecord } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from "@privy-io/react-auth";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
@@ -32,11 +32,13 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [showShareSettingsModal, setShowShareSettingsModal] = useState(false);
   const [showCreateIntentModal, setShowCreateIntentModal] = useState(false);
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [selectedSuggestedIntent, setSelectedSuggestedIntent] = useState<{ payload: string; id: string } | null>(null);
   const [index, setIndex] = useState<Index | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
+  const [files, setFiles] = useState<FileRecord[]>([]);
   const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set());
   const [suggestedIntents, setSuggestedIntents] = useState<{ id: string; payload: string; confidence: number }[]>([]);
   const [loadingIntents, setLoadingIntents] = useState(false);
@@ -69,12 +71,11 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [syncingLinks, setSyncingLinks] = useState(false);
   const [lastSyncSummary, setLastSyncSummary] = useState<string>("");
   // Sync progress removed; API is ack-only
-  const api = useAuthenticatedAPI();
-  const { success: notifySuccess, error: notifyError, info: notifyInfo } = useNotifications();
+  const { success: notifySuccess, error: notifyError } = useNotifications();
 
   const fetchLinks = useCallback(async () => {
     try {
-      const data = await indexesService.getIndexLinks(resolvedParams.id);
+      const data = await indexesService.getLinks();
       setLinks(data);
     } catch (e) {
       console.error('Error fetching index links:', e);
@@ -107,7 +108,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   }, [resolvedParams.id, indexesService]);
 
   const fetchSuggestedIntents = useCallback(async () => {
-    if (!index || !index.files || index.files.length === 0) {
+    if (!index || files.length === 0) {
       setSuggestedIntents([]);
       return;
     }
@@ -139,7 +140,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     } finally {
       setLoadingIntents(false);
     }
-  }, [resolvedParams.id, indexesService, index, suggestedIntents.length]);
+  }, [resolvedParams.id, indexesService, index, suggestedIntents.length, files.length]);
 
   // Auto-create first 5 intents when first file is added to empty index
   const handleAutoIntentCreation = useCallback(async (indexId: string) => {
@@ -230,6 +231,20 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     fetchLinks();
   }, [fetchLinks]);
 
+  const fetchFiles = useCallback(async () => {
+    try {
+      const data = await indexesService.getFiles(1, 100);
+      setFiles(data);
+    } catch (e) {
+      console.error('Error fetching files:', e);
+      setFiles([]);
+    }
+  }, [indexesService]);
+
+  useEffect(() => {
+    fetchFiles();
+  }, [fetchFiles]);
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -246,7 +261,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     
     const droppedFiles = Array.from(e.dataTransfer.files);
     if (index && droppedFiles.length > 0) {
-      const wasEmpty = !index.files || index.files.length === 0;
+      const wasEmpty = files.length === 0;
       
       try {
         // Add files to uploading state
@@ -255,11 +270,11 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         setUploadingFiles(newUploadingFiles);
 
         for (const file of droppedFiles) {
-          await indexesService.uploadFile(index.id, file);
+          await indexesService.uploadFile(file);
         }
-        // Refresh index data
         const updatedIndex = await indexesService.getIndex(resolvedParams.id);
         setIndex(updatedIndex || null);
+        await fetchFiles();
         
         // Auto-create intents if this was the first file upload
         if (wasEmpty) {
@@ -278,10 +293,10 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     if (index) {
       try {
         setDeletingFiles(prev => new Set([...prev, fileId]));
-        await indexesService.deleteFile(index.id, fileId);
-        // Refresh index data
+        await indexesService.deleteFile(fileId);
         const updatedIndex = await indexesService.getIndex(resolvedParams.id);
         setIndex(updatedIndex || null);
+        await fetchFiles();
       } catch (error) {
         console.error('Error deleting file:', error);
       } finally {
@@ -298,10 +313,10 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     if (!linkUrl.trim()) return;
     try {
       setAddingLink(true);
-      await indexesService.addIndexLink(resolvedParams.id, { url: linkUrl.trim() });
+      await indexesService.addLink({ url: linkUrl.trim() });
       setLinkUrl("");
       await fetchLinks();
-      notifySuccess('Link added', 'Your URL was added to this index.');
+      notifySuccess('Link added', 'Your URL was added to your Library.');
     } catch (e) {
       console.error('Error adding link:', e);
       notifyError('Failed to add link');
@@ -312,7 +327,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
   const handleDeleteLink = async (linkId: string) => {
     try {
-      await indexesService.deleteIndexLink(resolvedParams.id, linkId);
+      await indexesService.deleteLink(linkId);
       await fetchLinks();
     } catch (e) {
       console.error('Error deleting link:', e);
@@ -583,7 +598,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             <p className="text-sm text-gray-500 font-ibm-plex-mono">Created {index ? formatDate(index.createdAt) : ''}</p>
           </div>
           <div className="flex gap-2 mt-4 sm:mt-0 flex-wrap sm:flex-nowrap">
-            <Button
+          <Button
               variant="outline"
               size="sm"
               onClick={() => setShowShareSettingsModal(true)}
@@ -591,6 +606,14 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             >
               <Share2 className="h-4 w-4" />
               Share
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowLibraryModal(true)}
+              className="flex items-center gap-2"
+            >
+              Add
             </Button>
             {/* Simple options menu */}
             <div className="relative">
@@ -731,7 +754,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
             <div className="space-y-2 flex-1">
                 {/* Merge uploaded files and uploading files into a single list */}
                 {(() => {
-                  const uploadedFiles = (index.files || []).map(file => ({ ...file, isUploading: false }));
+                  const uploadedFiles = (files || []).map(file => ({ ...file, isUploading: false }));
                   const uploadedFileNames = new Set(uploadedFiles.map(file => file.name));
                   
                   // Only show uploading files that haven't been uploaded yet
@@ -742,8 +765,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                       name: fileName,
                       size: '',
                       createdAt: new Date().toISOString(),
-                      isUploading: true,
-                      indexId: index.id
+                      isUploading: true
                     }));
                   
                   // Combine and sort: uploading files first (newest first), then uploaded files
@@ -821,19 +843,20 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 id="file-upload"
                 multiple
                 onChange={async (e) => {
-                  const files = Array.from(e.target.files || []);
-                  if (index && files.length > 0) {
-                    const wasEmpty = !index.files || index.files.length === 0;
+                  const selectedFiles = Array.from(e.target.files || []);
+                  if (index && selectedFiles.length > 0) {
+                    const wasEmpty = files.length === 0;
                     
                     // Add files to uploading state
                     const newUploadingFiles = new Set(uploadingFiles);
-                    files.forEach(file => newUploadingFiles.add(file.name));
+                    selectedFiles.forEach(file => newUploadingFiles.add(file.name));
                     setUploadingFiles(newUploadingFiles);
 
                     try {
-                      await Promise.all(files.map(file => indexesService.uploadFile(index.id, file)));
+                      await Promise.all(selectedFiles.map(file => indexesService.uploadFile(file)));
                       const updatedIndex = await indexesService.getIndex(resolvedParams.id);
                       setIndex(updatedIndex || null);
+                      await fetchFiles();
                       
                       // Auto-create intents if this was the first file upload
                       if (wasEmpty) {
@@ -856,6 +879,14 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                 <p className="text-sm font-medium text-gray-900">Upload Files</p>
                 <p className="text-xs text-gray-500 mt-1">Drag and drop your files here or click to browse</p>
               </label>
+              {uploadingFiles.size > 0 && (
+                <div className="w-full mt-3">
+                  <div className="w-full h-2 bg-white border border-black overflow-hidden">
+                    <div className="h-full bg-black w-1/2 animate-pulse" />
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1">Uploading…</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -929,13 +960,23 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
           </div>
         </div>
 
-        { ((index.files && index.files.length > 0) || uploadingFiles.size > 0) && 
+        { ((files && files.length > 0) || uploadingFiles.size > 0) && 
         <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
           <div className="space-y-6 w-full">
             <div className="flex justify-between items-center">
               <h2 className="text-xl mt-2 font-semibold text-gray-900">Suggested Intents</h2>
-            </div>
-            
+        </div>
+
+        <LibraryModal
+          open={showLibraryModal}
+          onOpenChange={setShowLibraryModal}
+          onChanged={async () => {
+            await fetchIndex();
+            await fetchLinks();
+            await fetchFiles();
+          }}
+        />
+
             <div className="space-y-2 flex-1">
               {loadingIntents || uploadingFiles.size > 0 || isAutoCreatingIntents ? (
                 <div className={`text-center py-4 text-gray-500 ${isAutoCreatingIntents ? 'flex flex-col items-center justify-center min-h-[150px]' : ''}`}>

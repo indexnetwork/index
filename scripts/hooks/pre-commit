@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run ctx generation when llms files change, then stage outputs
+
+changed_llms=$(git diff --cached --name-only | grep -E '^(llms\.txt|llms-full\.txt)$' || true)
+if [[ -n "${changed_llms}" ]]; then
+  echo "[pre-commit] Detected llms.txt changes; generating ctx files..."
+  scripts/generate-ctx.sh || {
+    echo "[pre-commit] Warning: ctx generation failed; proceeding without blocking commit" >&2
+    exit 0
+  }
+  git add llms-ctx.txt llms-ctx-full.txt frontend/public/llms-ctx.txt frontend/public/llms-ctx-full.txt || true
+fi
+
+exit 0
+

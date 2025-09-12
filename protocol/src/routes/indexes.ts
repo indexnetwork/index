@@ -1,7 +1,7 @@
 import { Router, Response, Request } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { indexes, users, files, indexMembers, intentIndexes, intents, intentStakes, agents } from '../lib/schema';
+import { indexes, users, indexMembers, intentIndexes, intents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists, sql } from 'drizzle-orm';
 import { checkIndexAccess, checkIndexOwnership, getIndexWithPermissions } from '../lib/index-access';
@@ -72,18 +72,14 @@ router.get('/',
           .where(whereCondition)
       ]);
 
-      // Get file counts for each index
+      // Get member counts
       const indexesWithCounts = await Promise.all(
         indexesResult.map(async (index) => {
-          const [fileCount, memberCount] = await Promise.all([
-            db.select({ count: count() })
-              .from(files)
-              .where(and(eq(files.indexId, index.id), isNull(files.deletedAt))),
+          const [memberCount] = await Promise.all([
             db.select({ count: count() })
               .from(indexMembers)
               .where(eq(indexMembers.indexId, index.id))
           ]);
-
           return {
             id: index.id,
             title: index.title,
@@ -97,7 +93,6 @@ router.get('/',
               avatar: index.userAvatar
             },
             _count: {
-              files: fileCount[0].count,
               members: memberCount[0].count
             }
           };
@@ -207,19 +202,7 @@ router.get('/:id',
         .limit(1);
 
       // Get related data
-      const [indexFiles, indexMembersData, intentCount] = await Promise.all([
-        db.select({
-          id: files.id,
-          name: files.name,
-          type: files.type,
-          size: files.size,
-          createdAt: files.createdAt,
-          indexId: files.indexId
-        }).from(files)
-          .where(and(eq(files.indexId, id), isNull(files.deletedAt)))
-          .orderBy(desc(files.createdAt))
-          .limit(10),
-
+      const [indexMembersData, intentCount] = await Promise.all([
         db.select({
           userId: indexMembers.userId,
           userName: users.name,
@@ -251,10 +234,6 @@ router.get('/:id',
           email: indexData.userEmail,
           avatar: indexData.userAvatar
         },
-        files: indexFiles.map(file => ({
-          ...file,
-          size: file.size.toString()
-        })),
         members: indexMembersData.map(member => ({
           id: member.userId,
           name: member.userName,
@@ -264,7 +243,6 @@ router.get('/:id',
           createdAt: member.memberCreatedAt
         })),
         _count: {
-          files: indexFiles.length,
           members: indexMembersData.length,
           intents: intentCount[0].count
         }
@@ -327,7 +305,6 @@ router.post('/',
           avatar: userData[0].avatar
         },
         _count: {
-          files: 0,
           members: 0
         }
       };
@@ -377,7 +354,7 @@ router.put('/:id',
           });
         }
         
-        const validLinkPermissions = ['can-discover', 'can-view-files', 'can-write-intents'];
+        const validLinkPermissions = ['can-discover', 'can-write-intents'];
         const invalidPermissions = linkPermissions.permissions.filter((p: string) => !validLinkPermissions.includes(p));
         if (invalidPermissions.length > 0) {
           return res.status(400).json({ 
@@ -497,7 +474,7 @@ router.post('/:id/members',
       }
 
       // Validate permissions
-      const validPermissions = ['can-write', 'can-read', 'can-view-files', 'can-discover', 'can-write-intents'];
+      const validPermissions = ['can-write', 'can-read', 'can-discover', 'can-write-intents'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -615,7 +592,7 @@ router.patch('/:id/members/:userId',
       }
 
       // Validate permissions
-      const validPermissions = ['can-write', 'can-read', 'can-view-files', 'can-discover', 'can-write-intents'];
+      const validPermissions = ['can-write', 'can-read', 'can-discover', 'can-write-intents'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -690,7 +667,7 @@ router.patch('/:id/link-permissions',
       }
 
       // Validate link permissions
-      const validLinkPermissions = ['can-discover', 'can-view-files', 'can-write-intents'];
+      const validLinkPermissions = ['can-discover',  'can-write-intents'];
       const invalidPermissions = permissions.filter((p: string) => !validLinkPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -818,23 +795,6 @@ router.get('/share/:code',
 
       const indexResult = index[0];
       
-      // Check if can-view-files permission exists
-      const canViewFiles = indexResult.linkPermissions?.permissions?.includes('can-view-files');
-      
-      let indexFiles: any[] = [];
-      if (canViewFiles) {
-        indexFiles = await db.select({
-          id: files.id,
-          name: files.name,
-          type: files.type,
-          size: files.size,
-          createdAt: files.createdAt,
-          indexId: files.indexId
-        }).from(files)
-          .where(and(eq(files.indexId, indexData.id), isNull(files.deletedAt)))
-          .orderBy(desc(files.createdAt))
-          .limit(10);
-      }
       
       const result = {
         id: indexResult.id,
@@ -846,16 +806,7 @@ router.get('/share/:code',
           name: indexResult.userName,
           avatar: indexResult.userAvatar
         },
-        ...(canViewFiles && {
-          files: indexFiles.map(file => ({
-            ...file,
-            size: file.size.toString()
-          }))
-        }),
         linkPermissions: indexResult.linkPermissions,
-        _count: {
-          files: indexFiles.length,
-        }
       };
 
       return res.json({ index: result });

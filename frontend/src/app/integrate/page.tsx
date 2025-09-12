@@ -662,45 +662,42 @@ const apiSections: ApiSection[] = [
   },
   {
     title: "Files",
-    description: "Manage files within indexes",
+    description: "Manage user library files",
     endpoints: [
       {
         method: "GET",
-        path: "/api/indexes/{indexId}/files",
-        description: "Get files for a specific index",
+        path: "/api/files",
+        description: "List files for the authenticated user",
         params: [
-          { name: "indexId", type: "string", required: true, description: "Index ID to get files from" },
           { name: "page", type: "number", required: false, description: "Page number (default: 1)" },
           { name: "limit", type: "number", required: false, description: "Items per page (1-100, default: 10)" }
         ],
-        example: `fetch('/api/indexes/index-123/files?page=1&limit=20', {
+        example: `fetch('/api/files?page=1&limit=20', {
   headers: { 'Authorization': 'Bearer \${token}' }
 })`
       },
       {
         method: "GET",
-        path: "/api/indexes/{indexId}/files/{fileId}",
-        description: "Get a specific file by ID within an index",
+        path: "/api/files/{fileId}",
+        description: "Get a specific file by ID",
         params: [
-          { name: "indexId", type: "string", required: true, description: "Index ID containing the file" },
           { name: "fileId", type: "string", required: true, description: "File ID to retrieve" }
         ],
-        example: `fetch('/api/indexes/index-123/files/file-456', {
+        example: `fetch('/api/files/file-456', {
   headers: { 'Authorization': 'Bearer \${token}' }
 })`
       },
       {
         method: "POST",
-        path: "/api/indexes/{indexId}/files",
-        description: "Upload a file to an index (max 100MB)",
+        path: "/api/files",
+        description: "Upload a file to the user library (max 100MB)",
         params: [
-          { name: "indexId", type: "string", required: true, description: "Index ID to upload file to" },
           { name: "file", type: "File", required: true, description: "File object to upload" }
         ],
         example: `const formData = new FormData();
 formData.append('file', fileBlob);
 
-fetch('/api/indexes/index-123/files', {
+fetch('/api/files', {
   method: 'POST',
   headers: { 'Authorization': 'Bearer \${token}' },
   body: formData
@@ -708,13 +705,12 @@ fetch('/api/indexes/index-123/files', {
       },
       {
         method: "DELETE",
-        path: "/api/indexes/{indexId}/files/{fileId}",
-        description: "Delete a file from an index",
+        path: "/api/files/{fileId}",
+        description: "Delete a file by ID",
         params: [
-          { name: "indexId", type: "string", required: true, description: "Index ID containing the file" },
           { name: "fileId", type: "string", required: true, description: "File ID to delete" }
         ],
-        example: `fetch('/api/indexes/index-123/files/file-456', {
+        example: `fetch('/api/files/file-456', {
   method: 'DELETE',
   headers: { 'Authorization': 'Bearer \${token}' }
 })`
