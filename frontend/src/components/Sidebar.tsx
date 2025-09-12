@@ -21,24 +21,20 @@ export default function Sidebar() {
   const [loading, setLoading] = useState(true);
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
-  // Quick-add Library interactions in sidebar
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const api = useAuthenticatedAPI();
-  const { error } = useNotifications();
-  const [lastAdded, setLastAdded] = useState<null | { kind: 'file'|'link'; label: string; sub?: string; at: number }>(null);
-  const [lastFading, setLastFading] = useState(false);
+  const { success, error } = useNotifications();
   const indexesService = useIndexes();
   const { setSelectedIndexIds } = useIndexFilter();
   
-  //
 
   const fetchIndexes = useCallback(async () => {
     try {
-      const response = await indexesService.getIndexes(1, 100); // Get all indexes
+      const response = await indexesService.getIndexes(1, 100);
       
       if (!response.indexes) {
         setIndexes([{ id: 'all', name: 'All Indexes', isSelectAll: true, isSelected: true }]);
@@ -61,7 +57,6 @@ export default function Sidebar() {
       setIndexes(indexItems);
     } catch (error) {
       console.error('Error fetching indexes:', error);
-      // Fallback to "Select All" only
       setIndexes([{ id: 'all', name: 'All Indexes', isSelectAll: true, isSelected: true }]);
     } finally {
       setLoading(false);
@@ -75,19 +70,14 @@ export default function Sidebar() {
   const handleIndexClick = (indexId: string) => {
     console.log('Index clicked:', indexId);
     setSelectedIndexId(indexId);
-    
     if (indexId === 'all') {
-      // Clear filter to show all indexes
       console.log('Setting filter to empty array (show all)');
       setSelectedIndexIds([]);
     } else {
-      // Filter to show only the selected index
       console.log('Setting filter to:', [indexId]);
       setSelectedIndexIds([indexId]);
     }
   };
-
-  // no currentIndexId needed; Library modal is index-agnostic
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -107,9 +97,11 @@ export default function Sidebar() {
         const res = await api.uploadFile<{ file: { id: string; name: string; size: string } }>(`/files`, file);
         return res.file;
       }));
-      const last = uploaded[uploaded.length - 1];
-      if (last) setLastAdded({ kind: 'file', label: last.name, sub: last.size, at: Date.now() });
-      // show only the micro-toast; suppress global success toast
+      if (uploaded.length === 1) {
+        success('File uploaded successfully', uploaded[0]?.name);
+      } else if (uploaded.length > 1) {
+        success(`${uploaded.length} files uploaded successfully`);
+      }
     } catch {
       error('Upload failed');
     } finally {
@@ -135,54 +127,19 @@ export default function Sidebar() {
     }
     try {
       setIsAddingLink(true);
-      const { link } = await api.post<{ link: { url: string } }>(`/links`, { url: normalized });
+      await api.post<{ link: { url: string } }>(`/links`, { url: normalized });
       setLinkUrl('');
-      setLastAdded({ kind: 'link', label: link.url, at: Date.now() });
-      // show only the micro-toast; suppress global success toast
+      success('Link added successfully');
     } catch {
       error('Failed to add link');
     } finally {
       setIsAddingLink(false);
     }
-  }, [api, linkUrl, error]);
-
-  const loadLatest = useCallback(async () => {
-    try {
-      const [{ files }, { links }] = await Promise.all([
-        api.get<{ files: Array<{ id: string; name: string; size: string; createdAt: string }> }>(`/files`),
-        api.get<{ links: Array<{ url: string; createdAt?: string }> }>(`/links`)
-      ]);
-      const lf = (files || []).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-      const ll = (links || []).sort((a,b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())[0];
-      const lfTime = lf ? new Date(lf.createdAt).getTime() : 0;
-      const llTime = ll && ll.createdAt ? new Date(ll.createdAt).getTime() : 0;
-      if (lfTime === 0 && llTime === 0) return;
-      if (lfTime >= llTime && lf) setLastAdded({ kind: 'file', label: lf.name, sub: lf.size, at: lfTime });
-      else if (ll) setLastAdded({ kind: 'link', label: ll.url, at: llTime });
-    } catch {
-      // ignore
-    }
-  }, [api]);
-
-  useEffect(() => {
-    loadLatest();
-    // run once on mount; avoid re-fetch loops on provider re-renders
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Auto-hide the "Just added" row after 5 seconds with fade-out
-  useEffect(() => {
-    if (!lastAdded) return;
-    setLastFading(false);
-    const t1 = setTimeout(() => setLastFading(true), 4500);
-    const t2 = setTimeout(() => { setLastAdded(null); setLastFading(false); }, 5000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [lastAdded]);
+  }, [api, linkUrl, success, error]);
 
   return (
     <div className="space-y-6 font-mono">
-      {/* Indexes Section */}
-      <div className="bg-white rounded-sm border-black border p-3 pb-6 relative">
+      <div className="bg-white rounded-sm border-black border p-3 pb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-black">Indexes</h2>
           <button className="text-sm text-black hover:text-gray-700 font-medium">
@@ -224,8 +181,7 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Library Section */}
-      <div className="bg-white rounded-sm border-black border p-3 pb-6 relative">
+      <div className="bg-white rounded-sm border-black border p-3 pb-6">
         <div className="mb-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h2 className="text-lg sm:text-xl font-semibold text-black">Library</h2>
@@ -245,9 +201,7 @@ export default function Sidebar() {
           <p className="text-xs sm:text-sm text-black/80 leading-relaxed">Keep files and links to boost relevancy.</p>
         </div>
 
-        {/* Quick add controls */}
         <div className="space-y-3">
-          {/* File upload */}
           <div
             className={`border border-dashed ${isDragging ? 'border-gray-600 bg-gray-100' : 'border-gray-400'} bg-gray-50 p-3 sm:p-6 text-center cursor-pointer transition-colors rounded-[1px] flex items-center justify-center min-h-[60px] sm:min-h-[90px]`}
             onDragOver={handleDragOver}
@@ -281,7 +235,6 @@ export default function Sidebar() {
             )}
           </div>
 
-          {/* Link input */}
           <div className="flex items-center gap-2 w-full">
             <svg width="14" height="14" className="sm:w-4 sm:h-4 text-gray-500 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
@@ -311,22 +264,6 @@ export default function Sidebar() {
             )}
           </div>
 
-          {/* Micro toast: non-intrusive overlay */}
-          {lastAdded && (
-            <div
-              className={`absolute bottom-3 right-3 pointer-events-none transition-opacity duration-500 ${lastFading ? 'opacity-0' : 'opacity-100'}`}
-              aria-live="polite"
-            >
-              <div className="flex items-center gap-2 bg-black text-white rounded-[4px] px-3 py-2 shadow-lg max-w-[260px]">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white flex-shrink-0">
-                  <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-                <div className="text-[12px] leading-tight truncate">
-                  Added {lastAdded.kind === 'file' ? 'file' : 'link'}: <span className="font-medium">{lastAdded.label}</span>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
