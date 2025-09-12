@@ -159,7 +159,7 @@ export default function SharePage({ params }: SharePageProps) {
                       if (response.ok) {
                         const blob = await response.blob();
                         const file = new File([blob], tempFile.name, { type: tempFile.type });
-                        await indexesService.uploadFile(newIndex.id, file);
+                        await indexesService.uploadFile(file);
                       }
                     } catch (error) {
                       console.warn('Failed to retrieve temp file:', error);

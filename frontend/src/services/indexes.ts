@@ -32,7 +32,6 @@ export interface SuggestedIntent {
   isAdded?: boolean;
 }
 
-// Service functions that accept API instance as parameter
 export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>) => ({
   // Get all indexes with pagination
   getIndexes: async (page: number = 1, limit: number = 10): Promise<PaginatedResponse<Index>> => {
@@ -81,14 +80,14 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     await api.delete(`/indexes/${id}`);
   },
 
-  // Upload file to index
-  uploadFile: async (_indexId: string, file: File): Promise<FileRecord> => {
+  // Upload a file to the user's Library
+  uploadFile: async (file: File): Promise<FileRecord> => {
     const response = await api.uploadFile<FileUploadResponse>(`/files`, file);
     return response.file;
   },
 
-  // Delete file from index
-  deleteFile: async (_indexId: string, fileId: string): Promise<void> => {
+  // Delete a file from the user's Library
+  deleteFile: async (fileId: string): Promise<void> => {
     await api.delete(`/files/${fileId}`);
   },
 
@@ -201,23 +200,23 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response;
   },
 
-  // Links are library-scoped now
-  getIndexLinks: async (_indexId: string): Promise<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
+  // Links (Library-scoped)
+  getLinks: async (): Promise<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>> => {
     const res = await api.get<{ links: Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }> }>(`/links`);
     return res.links || [];
   },
 
-  addIndexLink: async (_indexId: string, link: { url: string }) => {
+  addLink: async (link: { url: string }) => {
     type IndexLink = { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null };
     const res = await api.post<{ link: IndexLink }>(`/links`, link);
     return res.link;
   },
 
-  deleteIndexLink: async (_indexId: string, linkId: string): Promise<void> => {
+  deleteLink: async (linkId: string): Promise<void> => {
     await api.delete(`/links/${linkId}`);
   },
 
-  // List user files
+  // Files (Library-scoped)
   getFiles: async (page: number = 1, limit: number = 100): Promise<FileRecord[]> => {
     const res = await api.get<{ files: FileRecord[]; pagination: { current: number; total: number; count: number; totalCount: number } }>(`/files?page=${page}&limit=${limit}`);
     return res.files || [];

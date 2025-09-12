@@ -75,7 +75,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
   const fetchLinks = useCallback(async () => {
     try {
-      const data = await indexesService.getIndexLinks(resolvedParams.id);
+      const data = await indexesService.getLinks();
       setLinks(data);
     } catch (e) {
       console.error('Error fetching index links:', e);
@@ -270,7 +270,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
         setUploadingFiles(newUploadingFiles);
 
         for (const file of droppedFiles) {
-          await indexesService.uploadFile(index.id, file);
+          await indexesService.uploadFile(file);
         }
         const updatedIndex = await indexesService.getIndex(resolvedParams.id);
         setIndex(updatedIndex || null);
@@ -293,7 +293,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     if (index) {
       try {
         setDeletingFiles(prev => new Set([...prev, fileId]));
-        await indexesService.deleteFile(index.id, fileId);
+        await indexesService.deleteFile(fileId);
         const updatedIndex = await indexesService.getIndex(resolvedParams.id);
         setIndex(updatedIndex || null);
         await fetchFiles();
@@ -313,10 +313,10 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     if (!linkUrl.trim()) return;
     try {
       setAddingLink(true);
-      await indexesService.addIndexLink(resolvedParams.id, { url: linkUrl.trim() });
+      await indexesService.addLink({ url: linkUrl.trim() });
       setLinkUrl("");
       await fetchLinks();
-      notifySuccess('Link added', 'Your URL was added to this index.');
+      notifySuccess('Link added', 'Your URL was added to your Library.');
     } catch (e) {
       console.error('Error adding link:', e);
       notifyError('Failed to add link');
@@ -327,7 +327,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
 
   const handleDeleteLink = async (linkId: string) => {
     try {
-      await indexesService.deleteIndexLink(resolvedParams.id, linkId);
+      await indexesService.deleteLink(linkId);
       await fetchLinks();
     } catch (e) {
       console.error('Error deleting link:', e);
@@ -853,7 +853,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                     setUploadingFiles(newUploadingFiles);
 
                     try {
-                      await Promise.all(selectedFiles.map(file => indexesService.uploadFile(index.id, file)));
+                      await Promise.all(selectedFiles.map(file => indexesService.uploadFile(file)));
                       const updatedIndex = await indexesService.getIndex(resolvedParams.id);
                       setIndex(updatedIndex || null);
                       await fetchFiles();
