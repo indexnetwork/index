@@ -35,14 +35,17 @@ export const getAvatarUrl = (params: { avatar?: string | null; id?: string; name
  * @param file - The file object containing indexId, id, and name
  * @returns Full URL to the index file
  */
-export const getIndexFileUrl = (file: { id: string; name: string; url?: string }): string => {
-  if (!file?.id || !file?.name) return '';
+export const getIndexFileUrl = (file: { id?: string; name?: string; url?: string }): string => {
+  if (!file) return '';
   if (file.url) {
     if (isExternalUrl(file.url)) return file.url;
+    const base = getBaseUrl().replace(/\/+$/, '');
     const path = file.url.startsWith('/') ? file.url : `/${file.url}`;
-    return `${getBaseUrl()}${path}`;
+    return `${base}${path}`;
   }
+  // No URL provided; legacy callers may still depend on id/name, but no path construction remains here.
   return '';
+}
 };
 
 /**
