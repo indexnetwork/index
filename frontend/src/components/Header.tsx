@@ -2,13 +2,14 @@ import { Button } from "@/components/ui/button";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserPlus, LogIn, Settings, Blocks } from "lucide-react";
+import { UserPlus, LogIn, Settings, Blocks, Library } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { User, APIResponse } from '@/lib/types';
 import { getAvatarUrl } from '@/lib/file-utils';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
+import LibraryModal from '@/components/modals/LibraryModal';
 
 interface HeaderProps {
   showNavigation?: boolean;
@@ -22,6 +23,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
   const { login, logout, authenticated, ready } = usePrivy();
   const [isAlpha, setIsAlpha] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [libraryModalOpen, setLibraryModalOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [userLoading, setUserLoading] = useState(false);
@@ -255,6 +257,16 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                       Profile Settings
                     </button>
                     <button
+                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
+                      onClick={() => {
+                        setLibraryModalOpen(true);
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <Library className="h-4 w-4 mr-2" />
+                      My Library
+                    </button>
+                    <button
                       className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors"
                       onClick={() => {
                         logout();
@@ -355,6 +367,12 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
         user={user}
         onUserUpdate={setUser}
         isOnboarding={isOnboarding}
+      />
+
+      {/* Library Modal */}
+      <LibraryModal
+        open={libraryModalOpen}
+        onOpenChange={setLibraryModalOpen}
       />
     </div>
   );
