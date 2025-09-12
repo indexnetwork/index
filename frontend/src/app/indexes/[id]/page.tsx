@@ -17,7 +17,6 @@ import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from "@privy-io/react-auth";
 import CreateIntentModal from "@/components/modals/CreateIntentModal";
 import { Input } from "@/components/ui/input";
-import { getIndexFileUrl } from "@/lib/file-utils";
 import { formatDate } from "@/lib/utils";
 
 interface IndexDetailPageProps {
@@ -776,7 +775,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
                             size="lg"
                             onClick={() => {
                               if (!file.isUploading) {
-                                const fileUrl = getIndexFileUrl(file);
+                                const fileUrl = '';
                                 window.open(fileUrl, '_blank');
                               }
                             }}

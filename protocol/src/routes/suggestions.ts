@@ -8,6 +8,7 @@ import { eq, isNull, and, count, desc } from 'drizzle-orm';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { processIntent } from '../agents/core/intent_enhancer';
 import { checkIndexAccess } from '../lib/index-access';
+import { getUploadsPath } from '../lib/paths';
 
 // Simple L1 cache for suggestions
 interface CacheEntry {
@@ -96,7 +97,7 @@ router.get('/',
       // Get current file count for cache validation
       const fileCountResult = await db.select({ count: count() })
         .from(files)
-        .where(and(eq(files.indexId, indexId), isNull(files.deletedAt)));
+        .where(and(eq(files.userId, req.user!.id), isNull(files.deletedAt)));
       
       const currentFileCount = fileCountResult[0].count;
 
@@ -122,7 +123,7 @@ router.get('/',
           id: files.id,
           name: files.name
         }).from(files)
-          .where(and(eq(files.indexId, indexId), isNull(files.deletedAt)));
+          .where(and(eq(files.userId, req.user!.id), isNull(files.deletedAt)));
 
         if (indexFiles.length === 0) {
           suggestions = [];
@@ -137,7 +138,7 @@ router.get('/',
 
           const existingIntents = existingIntentsResult.map(i => i.payload);
 
-          const baseUploadDir = path.join(__dirname, '../../uploads', indexId);
+          const baseUploadDir = getUploadsPath('files', req.user!.id);
           const fileIds = indexFiles.map(file => file.id);
 
           // Use intent suggester to analyze files directly with existing intents context
@@ -210,7 +211,7 @@ router.post('/replace',
       // Get current file count
       const fileCountResult = await db.select({ count: count() })
         .from(files)
-        .where(and(eq(files.indexId, indexId), isNull(files.deletedAt)));
+        .where(and(eq(files.userId, req.user!.id), isNull(files.deletedAt)));
       
       const currentFileCount = fileCountResult[0].count;
 
@@ -237,13 +238,13 @@ router.post('/replace',
         id: files.id,
         name: files.name
       }).from(files)
-        .where(and(eq(files.indexId, indexId), isNull(files.deletedAt)));
+        .where(and(eq(files.userId, req.user!.id), isNull(files.deletedAt)));
 
       if (indexFiles.length === 0) {
         return res.status(400).json({ error: 'No files found in index' });
       }
 
-      const baseUploadDir = path.join(__dirname, '../../uploads', indexId);
+      const baseUploadDir = getUploadsPath('files', req.user!.id);
       const fileIds = indexFiles.map(file => file.id);
 
       // Generate a single new suggestion

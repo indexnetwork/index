@@ -30,17 +30,6 @@ export const getAvatarUrl = (params: { avatar?: string | null; id?: string; name
   return `${getBaseUrl()}/uploads/avatars/${cleanFilename}`;
 };
 
-/**
- * Generate URL for index files
- * @param file - The file object containing indexId, id, and name
- * @returns Full URL to the index file
- */
-export const getIndexFileUrl = (file: { indexId: string; id: string; name: string }): string => {
-  if (!file.indexId || !file.id || !file.name) return '';
-  
-  const extension = getFileExtension(file.name);
-  return `${getBaseUrl()}/uploads/${file.indexId}/${file.id}${extension}`;
-};
 
 /**
  * Extract file extension from filename

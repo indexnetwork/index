@@ -6,9 +6,9 @@ import { ArrowUpRight } from "lucide-react";
 import { Index } from "@/lib/types";
 import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
-import { getAvatarUrl, getIndexFileUrl } from "@/lib/file-utils";
+import { getAvatarUrl } from "@/lib/file-utils";
 import { usePrivy } from '@privy-io/react-auth';
-import { useConnections, useIndexes, useIntents } from '@/contexts/APIContext';
+import { useConnections, useIndexes, useIntents, useFiles } from '@/contexts/APIContext';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { User, APIResponse } from '@/lib/types';
@@ -37,6 +37,7 @@ type SharePageState = {
   
   // Data
   uploadedFiles: File[];
+  tempFiles: { id: string; name: string; size: number; type: string }[];
   vibeCheckResults: { aiSynthesis?: string; score?: number; suggestedIntents?: { payload: string; confidence: number }[] };
   error: string | null;
   
@@ -53,6 +54,7 @@ export default function SharePage({ params }: SharePageProps) {
     user: null,
     step: 'loading',
     uploadedFiles: [],
+    tempFiles: [],
     vibeCheckResults: {},
     error: null,
     autoRequestConnection: false,
@@ -65,6 +67,7 @@ export default function SharePage({ params }: SharePageProps) {
   const connectionsService = useConnections();
   const indexesService = useIndexes();
   const intentsService = useIntents();
+  const filesService = useFiles();
   const router = useRouter();
 
   // Main flow effect - handles all the complex logic in one place
@@ -90,6 +93,7 @@ export default function SharePage({ params }: SharePageProps) {
                     score: storedResults.score,
                     suggestedIntents: storedResults.suggestedIntents || []
                   },
+                  tempFiles: parsed.tempFiles || [],
                   step: 'vibecheck-results',
                   autoRequestConnection: parsed.autoRequest || false
                 }));
@@ -156,7 +160,7 @@ export default function SharePage({ params }: SharePageProps) {
                       if (response.ok) {
                         const blob = await response.blob();
                         const file = new File([blob], tempFile.name, { type: tempFile.type });
-                        await indexesService.uploadFile(newIndex.id, file);
+                        await filesService.uploadFile(file);
                       }
                     } catch (error) {
                       console.warn('Failed to retrieve temp file:', error);
@@ -303,6 +307,7 @@ export default function SharePage({ params }: SharePageProps) {
             score: result.score || 0,
             suggestedIntents: result.suggestedIntents || []
           },
+          tempFiles: result.tempFiles || [],
           step: 'vibecheck-results'
         }));
         
@@ -428,39 +433,45 @@ export default function SharePage({ params }: SharePageProps) {
           </div>
         </div>
 
-        {canViewFiles && (
+        {(state.uploadedFiles.length > 0 || state.tempFiles.length > 0) && (
           <div className="flex flex-col sm:flex-col flex-1 mt-4 py-4 px-3 sm:px-6 justify-between items-start sm:items-center border border-black border-b-0 border-b-2 bg-white">
             <div className="space-y-3 w-full">
               <div className="flex justify-between items-center">
-                <h2 className="text-xl mt-2 font-semibold text-gray-900">Files</h2>
+                <h2 className="text-xl mt-2 font-semibold text-gray-900">Your Uploads</h2>
               </div>
               <div className="space-y-2 flex-1">
-                {state.index.files?.map((file, fileIndex) => (
-                  <div
-                    key={fileIndex}
-                    className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors cursor-pointer"
-                  >
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          className="p-0"
-                          size="lg"
-                          onClick={() => {
-                            const fileUrl = getIndexFileUrl(file);
-                            window.open(fileUrl, '_blank');
-                          }}
-                        >
-                          <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{file.name}</h4>
-                          <ArrowUpRight className="ml-1 h-4 w-4" />
-                        </Button>
+                {state.uploadedFiles.length > 0
+                  ? state.uploadedFiles.map((file, i) => (
+                      <div key={`upl-${i}`} className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-medium font-ibm-plex-mono text-gray-900">{file.name}</span>
+                          </div>
+                          <p className="text-sm text-gray-500">{file.size} bytes</p>
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-500">
-                        {file.size} bytes • {formatDate(file.createdAt)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                    ))
+                  : state.tempFiles.map((f, i) => (
+                      <div key={`tmp-${i}`} className="flex items-center justify-between px-4 py-1 bg-gray-50 hover:bg-gray-100 transition-colors">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              className="p-0"
+                              size="lg"
+                              onClick={() => {
+                                const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+                                window.open(`${base}/vibecheck/temp/${f.id}`, '_blank');
+                              }}
+                            >
+                              <h4 className="text-lg font-medium font-ibm-plex-mono text-gray-900 cursor-pointer">{f.name}</h4>
+                              <ArrowUpRight className="ml-1 h-4 w-4" />
+                            </Button>
+                          </div>
+                          <p className="text-sm text-gray-500">{f.size} bytes</p>
+                        </div>
+                      </div>
+                    ))}
               </div>
             </div>
           </div>
