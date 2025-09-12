@@ -17,7 +17,7 @@ interface IntegrationConfig {
 }
 
 export default function PrivateIndexPage() {
-  const { integrationsService } = useAPI();
+  const { integrationsService, syncService } = useAPI();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
   const [connectingIntegration, setConnectingIntegration] = useState<string | null>(null);
@@ -168,7 +168,7 @@ export default function PrivateIndexPage() {
   const handleSync = async (integrationType: string) => {
     try {
       setSyncingIntegration(integrationType);
-      await integrationsService.syncIntegration(integrationType);
+      await syncService.syncIntegration(integrationType as any);
       setSyncingIntegration(null);
       notifySuccess(`${integrationType} sync accepted`, 'It will run in the background.');
     } catch (error) {

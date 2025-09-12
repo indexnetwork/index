@@ -6,7 +6,6 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { analyzeFolder } from '../../agents/core/intent_inferrer';
 import { summarizeIntent } from '../../agents/core/intent_summarizer';
 import { crawlLinksForIndex } from '../crawl/web_crawler';
-import { checkIndexAccess } from '../index-access';
 import { triggerBrokersOnIntentCreated } from '../../agents/context_brokers/connector';
 import { config } from '../crawl/config';
 import { log } from '../log';
@@ -20,26 +19,37 @@ export interface SyncProvider<Params extends Record<string, any> = any> {
   start(run: any, params: Params, update: (patch: any) => Promise<void>): Promise<void>;
 }
 
-type LinksParams = { indexId: string; count?: number; skipBrokers?: boolean; all?: boolean };
+type LinksParams = { count?: number; skipBrokers?: boolean; all?: boolean; indexId?: string; linkId?: string };
 
 export const linksProvider: SyncProvider<LinksParams> = {
   name: 'links',
   async start(run, params, update) {
-    const { indexId } = params;
 
-    const access = await checkIndexAccess(indexId, run.userId);
-    if (!access.hasAccess) throw new Error(access.error || 'No access to index');
-
-    const allLinks = await db.select().from(indexLinks).where(eq(indexLinks.indexId, indexId));
-    if (allLinks.length === 0) {
-      await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0 } });
-      return;
-    }
-    const processAll = params.all === true;
-    const links = processAll ? allLinks : allLinks.filter(l => !l.lastSyncAt);
-    if (links.length === 0) {
-      await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0, note: processAll ? 'nothing-to-do' : 'no-new-links' } });
-      return;
+    let links: typeof indexLinks.$inferSelect[];
+    
+    // Handle single link sync
+    if (params.linkId) {
+      const singleLink = await db.select().from(indexLinks)
+        .where(and(eq(indexLinks.userId, run.userId), eq(indexLinks.id, params.linkId)))
+        .limit(1);
+      if (singleLink.length === 0) {
+        await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0, note: 'link-not-found' } });
+        return;
+      }
+      links = singleLink;
+    } else {
+      // Handle multiple links sync
+      const allLinks = await db.select().from(indexLinks).where(eq(indexLinks.userId, run.userId));
+      if (allLinks.length === 0) {
+        await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0 } });
+        return;
+      }
+      const processAll = params.all === true;
+      links = processAll ? allLinks : allLinks.filter(l => !l.lastSyncAt);
+      if (links.length === 0) {
+        await update({ stats: { filesImported: 0, intentsGenerated: 0, links: 0, pagesVisited: 0, note: processAll ? 'nothing-to-do' : 'no-new-links' } });
+        return;
+      }
     }
 
     const urls = links.map(l => l.url);
@@ -64,10 +74,17 @@ export const linksProvider: SyncProvider<LinksParams> = {
     const requestedCount = Math.max(1, Math.min(1, params.count ?? 1));
     const skipBrokers = params.skipBrokers === true || !config.linksSync.triggerBrokers;
 
-    const existingIntentRows = await db.select({ payload: intents.payload })
-      .from(intents)
-      .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-      .where(eq(intentIndexes.indexId, indexId));
+    // If an indexId is provided, dedupe only against intents already in that index.
+    const existingIntentRows = params.indexId
+      ? await db
+          .select({ payload: intents.payload })
+          .from(intents)
+          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+          .where(and(eq(intentIndexes.indexId, params.indexId), eq(intents.userId, userId), isNull(intents.archivedAt)))
+      : await db
+          .select({ payload: intents.payload })
+          .from(intents)
+          .where(and(eq(intents.userId, userId), isNull(intents.archivedAt)));
     const existingIntents = new Set(existingIntentRows.map(r => r.payload));
 
     let intentsGenerated = 0;
@@ -82,12 +99,6 @@ export const linksProvider: SyncProvider<LinksParams> = {
         const meta = crawl.urlMap[f.id];
         if (!meta) continue;
         const linkRow = byUrl.get(meta.url) || byNorm.get(normalize(meta.url));
-        if (linkRow && linkRow.lastContentHash && linkRow.lastContentHash === meta.contentHash) {
-          skippedUnchanged += 1;
-          completed += 1;
-          await update({ progress: { total: crawl.files.length, completed, notes: [`skipped unchanged ${completed}/${crawl.files.length}`] } });
-          continue;
-        }
         const tempDir = path.join(baseTempDir, f.id);
         await fs.promises.mkdir(tempDir, { recursive: true });
         await fs.promises.writeFile(path.join(tempDir, `${f.id}.md`), f.content);
@@ -112,9 +123,14 @@ export const linksProvider: SyncProvider<LinksParams> = {
               summary: summary || intentData.payload.slice(0, 150),
               userId,
               isIncognito: false,
+              sourceId: linkRow?.id,
+              sourceType: 'link',
             }).returning({ id: intents.id });
             const intentId = inserted[0].id;
-            await db.insert(intentIndexes).values({ intentId, indexId });
+            // Optionally attach to a specific index using the join table.
+            if (params.indexId) {
+              await db.insert(intentIndexes).values({ intentId, indexId: params.indexId });
+            }
             existingIntents.add(intentData.payload);
             if (!skipBrokers) {
               triggerBrokersOnIntentCreated(intentId).catch(() => void 0);
@@ -122,9 +138,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
             intentsGenerated += 1;
           }
         }
-        if (linkRow) {
-          await db.update(indexLinks).set({ lastContentHash: meta.contentHash }).where(eq(indexLinks.id, linkRow.id));
-        }
+        
         completed += 1;
         await update({ progress: { total: crawl.files.length, completed, notes: [`processed ${completed}/${crawl.files.length}`] } });
       }
@@ -140,7 +154,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
         .where(eq(indexLinks.id, l.id));
     }
 
-    log.info('links-sync-run', { runId: run.id, indexId, pagesVisited: crawl.pagesVisited, filesImported, intentsGenerated, durationMs: finishedAt - startedAt });
+    log.info('links-sync-run', { runId: run.id, pagesVisited: crawl.pagesVisited, filesImported, intentsGenerated, durationMs: finishedAt - startedAt });
     await update({ stats: { filesImported, intentsGenerated, links: links.length, pagesVisited: crawl.pagesVisited } });
   },
 };
@@ -187,6 +201,8 @@ export function createIntegrationProvider(type: IntegrationType): SyncProvider<I
         textInstruction: `Generate intents based on content from ${type} integration`,
         count: 30,
         summarize: false,
+        sourceId: integrationRec.id,
+        sourceType: 'integration',
         onProgress: async (completed, total, note) => {
           await update({ progress: { total, completed, notes: note ? [note] : [] } });
         },
@@ -203,4 +219,3 @@ export function createIntegrationProvider(type: IntegrationType): SyncProvider<I
     },
   };
 }
-

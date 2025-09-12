@@ -8,6 +8,7 @@ import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import ReactMarkdown from 'react-markdown';
 import { useIdentityToken } from '@privy-io/react-auth';
+import { useAPI } from "@/contexts/APIContext";
 
 type Props = {
   open: boolean;
@@ -18,9 +19,8 @@ type Props = {
 export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
+  const { syncService } = useAPI();
   const { identityToken } = useIdentityToken();
-  // No backend progress numbers; show a local pending label.
-  const parseProgress = () => 'fetching content…';
   const [isUploading, setIsUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -29,6 +29,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [files, setFiles] = useState<Array<{ id: string; name: string; size: string; type: string; createdAt: string; url: string }>>([]);
   const [links, setLinks] = useState<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string }>>([]);
   const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
+  const [syncingIntegrations, setSyncingIntegrations] = useState<Set<string>>(new Set());
+  const [syncingLinks, setSyncingLinks] = useState<Set<string>>(new Set());
 
   // Enhance UX: select, search, and undo state
   const [, setSelectMode] = useState(false);
@@ -251,6 +253,38 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api, linkUrl, onChanged, loadLists, success, error]);
 
+  const handleSyncIntegration = useCallback(async (integrationType: string) => {
+    try {
+      setSyncingIntegrations(prev => new Set([...prev, integrationType]));
+      await syncService.syncIntegration(integrationType as any);
+      success(`${integrationType.charAt(0).toUpperCase() + integrationType.slice(1)} sync started`);
+    } catch {
+      error(`Failed to sync ${integrationType}`);
+    } finally {
+      setSyncingIntegrations(prev => {
+        const next = new Set(prev);
+        next.delete(integrationType);
+        return next;
+      });
+    }
+  }, [syncService, success, error]);
+
+  const handleSyncLink = useCallback(async (linkId: string) => {
+    try {
+      setSyncingLinks(prev => new Set([...prev, linkId]));
+      await syncService.syncLink(linkId);
+      success('Link sync started');
+    } catch {
+      error('Failed to sync link');
+    } finally {
+      setSyncingLinks(prev => {
+        const next = new Set(prev);
+        next.delete(linkId);
+        return next;
+      });
+    }
+  }, [syncService, success, error]);
+
 
   // Fetch once per open (ignore function identity changes)
   const wasOpen = useRef(false);
@@ -300,35 +334,46 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {integrations.map((it) => (
-                  <div key={it.id} className="flex items-center justify-between border border-[#E0E0E0] rounded-lg px-3 py-3 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]">
-                    <span className="flex items-center gap-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`/integrations/${it.id}.png`} width={20} height={20} alt="" />
-                      <span className="text-sm font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
-                      {it.connected && (
-                        <span className="h-1.5 w-1.5 bg-[#006D4B] rounded-full" />
-                      )}
-                    </span>
-                    <button
-                      onClick={() => toggleIntegration(it.id)}
-                      disabled={pendingIntegration === it.id}
-                      className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                        it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                      } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
-                      aria-pressed={it.connected}
-                      aria-busy={pendingIntegration === it.id}
-                      aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
-                    >
-                      <span
-                        className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
-                        style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
-                      />
-                      {pendingIntegration === it.id && (
-                        <span className="absolute inset-0 grid place-items-center">
-                          <span className="h-2.5 w-2.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                        </span>
-                      )}
-                    </button>
+                  <div key={it.id} className="flex flex-col gap-2 border border-[#E0E0E0] rounded-lg px-3 py-3 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={`/integrations/${it.id}.png`} width={20} height={20} alt="" />
+                        <span className="text-sm font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
+                        {it.connected && (
+                          <span className="h-1.5 w-1.5 bg-[#006D4B] rounded-full" />
+                        )}
+                      </span>
+                      <button
+                        onClick={() => toggleIntegration(it.id)}
+                        disabled={pendingIntegration === it.id}
+                        className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                          it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                        } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
+                        aria-pressed={it.connected}
+                        aria-busy={pendingIntegration === it.id}
+                        aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
+                      >
+                        <span
+                          className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
+                          style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
+                        />
+                        {pendingIntegration === it.id && (
+                          <span className="absolute inset-0 grid place-items-center">
+                            <span className="h-2.5 w-2.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                    {it.connected && (
+                      <button
+                        onClick={() => handleSyncIntegration(it.id)}
+                        disabled={syncingIntegrations.has(it.id)}
+                        className="w-full h-7 text-xs font-ibm-plex-mono text-[#333] bg-white border border-[#DDDDDD] rounded-lg hover:bg-[#F5F5F5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                      >
+                        {syncingIntegrations.has(it.id) ? 'Syncing...' : 'Sync now'}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -537,7 +582,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       id: `l-${l.id}`,
                       kind: 'link' as const,
                       title: l.url,
-                      sub: l.lastSyncAt ? `last: ${new Date(l.lastSyncAt).toLocaleString()}` : parseProgress(),
+                      sub: l.lastSyncAt ? new Date(l.lastSyncAt).toLocaleString() : (l.createdAt ? new Date(l.createdAt).toLocaleString() : ''),
                       onClick: async () => {
                         const id = l.id;
                         setPreview({ id, title: l.url });
@@ -630,6 +675,25 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                                 </svg>
                               </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSyncLink((item.raw as any).id);
+                                }} 
+                                className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
+                                disabled={syncingLinks.has((item.raw as any).id)}
+                                aria-label="Sync link"
+                              >
+                                {syncingLinks.has((item.raw as any).id) ? (
+                                  <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
+                                ) : (
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
+                                    <polyline points="23 4 23 10 17 10"></polyline>
+                                    <polyline points="1 20 1 14 7 14"></polyline>
+                                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                  </svg>
+                                )}
+                              </button>
                             </>
                           )}
                           <button
@@ -650,16 +714,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                         </div>
                       </div>
                       <div className="text-xs text-[#666] mt-1 truncate font-ibm-plex-mono">
-                        {String(item.sub).startsWith('fetch') ? (
-                          <div className="flex items-center gap-2">
-                            <div className="w-full h-1.5 bg-[#E0E0E0] rounded-full overflow-hidden">
-                              <div className="h-full bg-[#006D4B] w-1/2 animate-pulse rounded-full" />
-                            </div>
-                            <span className="font-ibm-plex-mono">Processing...</span>
-                          </div>
-                        ) : (
-                          String(item.sub)
-                        )}
+                        {String(item.sub)}
                       </div>
                     </div>
                   ));

@@ -39,19 +39,7 @@ export function createIntegrationsService(api: ReturnType<typeof useAuthenticate
     // Disconnect an integration
     async disconnectIntegration(integrationType: string): Promise<{ success: boolean }> {
       return api.delete<{ success: boolean }>(`/integrations/${integrationType}`);
-    },
-
-    // Sync specific integration (async run)
-    async syncIntegration(
-      integrationType: string,
-      indexId?: string
-    ): Promise<{ accepted: boolean }> {
-      return api.post<{ accepted: boolean }>('/sync/now', {
-        provider: integrationType,
-        params: indexId ? { indexId } : {}
-      });
-    },
-
+    }
   };
 }
 

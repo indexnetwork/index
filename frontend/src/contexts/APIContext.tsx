@@ -10,6 +10,7 @@ import { createIntegrationsService } from '@/services/integrations';
 import { createDiscoverService } from '@/services/discover';
 import { createFilesService } from '@/services/files';
 import { createLinksService } from '@/services/links';
+import { createSyncService } from '@/services/sync';
 
 interface APIContextType {
   indexesService: ReturnType<typeof createIndexesService>;
@@ -20,6 +21,7 @@ interface APIContextType {
   discoverService: ReturnType<typeof createDiscoverService>;
   filesService: ReturnType<typeof createFilesService>;
   linksService: ReturnType<typeof createLinksService>;
+  syncService: ReturnType<typeof createSyncService>;
 }
 
 const APIContext = createContext<APIContextType | undefined>(undefined);
@@ -41,7 +43,8 @@ export function APIProvider({ children }: { children: ReactNode }) {
       integrationsService: createIntegrationsService(api),
       discoverService: createDiscoverService(api),
       filesService: createFilesService(api),
-      linksService: createLinksService(api)
+      linksService: createLinksService(api),
+      syncService: createSyncService(api)
     };
     apiRef.current = api;
   }
