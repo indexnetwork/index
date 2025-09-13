@@ -46,8 +46,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     message: string;
     payload: { kind: 'file' | 'link'; item: any }[];
   } | null>(null);
-  const [integrations, setIntegrations] = useState<Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }>>([]);
-  const [pendingIntegration, setPendingIntegration] = useState<null | 'notion' | 'slack' | 'discord'>(null);
+  type IntegrationId = 'notion' | 'slack' | 'discord' | 'google-calendar' | 'gmail';
+  const [integrations, setIntegrations] = useState<Array<{ id: IntegrationId; name: string; connected: boolean }>>([]);
+  const [pendingIntegration, setPendingIntegration] = useState<null | IntegrationId>(null);
 
   const loadLists = useCallback(async () => {
     try {
@@ -126,10 +127,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const loadIntegrations = useCallback(async () => {
     try {
       const res = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>(`/integrations`);
-      const wanted: Array<'notion'|'slack'|'discord'> = ['notion','slack','discord'];
-      const items: Array<{ id: 'notion'|'slack'|'discord'; name: string; connected: boolean }> = wanted.map(id => {
+      const wanted: Array<IntegrationId> = ['notion','slack','discord','google-calendar','gmail'];
+      const items: Array<{ id: IntegrationId; name: string; connected: boolean }> = wanted.map(id => {
         const found = res.integrations?.find(i => i.id === id);
-        return { id, name: found?.name ?? (id[0].toUpperCase()+id.slice(1)), connected: !!found?.connected };
+        const friendlyName: Record<IntegrationId, string> = {
+          notion: 'Notion',
+          slack: 'Slack',
+          discord: 'Discord',
+          'google-calendar': 'Google Calendar',
+          gmail: 'Gmail',
+        };
+        return { id, name: found?.name ?? friendlyName[id], connected: !!found?.connected };
       });
       setIntegrations(items);
     } catch {
@@ -137,11 +145,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
         { id: 'notion', name: 'Notion', connected: false },
         { id: 'slack', name: 'Slack', connected: false },
         { id: 'discord', name: 'Discord', connected: false },
+        { id: 'google-calendar', name: 'Google Calendar', connected: false },
+        { id: 'gmail', name: 'Gmail', connected: false },
       ]);
     }
   }, [api]);
 
-  const toggleIntegration = useCallback(async (id: 'notion'|'slack'|'discord') => {
+  const toggleIntegration = useCallback(async (id: IntegrationId) => {
     const item = integrations.find(i => i.id === id);
     if (!item) return;
     try {
@@ -343,37 +353,48 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                         {it.connected && (
                           <span className="h-1.5 w-1.5 bg-[#006D4B] rounded-full" />
                         )}
-                      </span>
-                      <button
-                        onClick={() => toggleIntegration(it.id)}
-                        disabled={pendingIntegration === it.id}
-                        className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                          it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                        } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
-                        aria-pressed={it.connected}
-                        aria-busy={pendingIntegration === it.id}
-                        aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
-                      >
-                        <span
-                          className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
-                          style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
-                        />
-                        {pendingIntegration === it.id && (
-                          <span className="absolute inset-0 grid place-items-center">
-                            <span className="h-2.5 w-2.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                          </span>
+                        {it.connected && (
+                          <button
+                            onClick={() => handleSyncIntegration(it.id)}
+                            disabled={syncingIntegrations.has(it.id)}
+                            className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                            aria-label={`Sync ${it.name}`}
+                          >
+                            {syncingIntegrations.has(it.id) ? (
+                              <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <polyline points="1 20 1 14 7 14"></polyline>
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                              </svg>
+                            )}
+                          </button>
                         )}
-                      </button>
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => toggleIntegration(it.id)}
+                          disabled={pendingIntegration === it.id}
+                          className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                            it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                          } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
+                          aria-pressed={it.connected}
+                          aria-busy={pendingIntegration === it.id}
+                          aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
+                        >
+                          <span
+                            className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
+                            style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
+                          />
+                          {pendingIntegration === it.id && (
+                            <span className="absolute inset-0 grid place-items-center">
+                              <span className="h-2.5 w-2.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                            </span>
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    {it.connected && (
-                      <button
-                        onClick={() => handleSyncIntegration(it.id)}
-                        disabled={syncingIntegrations.has(it.id)}
-                        className="w-full h-7 text-xs font-ibm-plex-mono text-[#333] bg-white border border-[#DDDDDD] rounded-lg hover:bg-[#F5F5F5] transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                      >
-                        {syncingIntegrations.has(it.id) ? 'Syncing...' : 'Sync now'}
-                      </button>
-                    )}
                   </div>
                 ))}
               </div>
