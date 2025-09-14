@@ -7,6 +7,7 @@ import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists, sql } from 
 import { checkIndexAccess, checkIndexOwnership, getIndexWithPermissions } from '../lib/index-access';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
+// Removed intent-filtering import - using existing suggestions system
 import crypto from 'crypto';
 
 
@@ -52,6 +53,7 @@ router.get('/',
         db.select({
           id: indexes.id,
           title: indexes.title,
+          prompt: indexes.prompt,
           linkPermissions: indexes.linkPermissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
@@ -83,6 +85,7 @@ router.get('/',
           return {
             id: index.id,
             title: index.title,
+            prompt: index.prompt,
             linkPermissions: index.linkPermissions,
             createdAt: index.createdAt,
             updatedAt: index.updatedAt,
@@ -189,6 +192,7 @@ router.get('/:id',
       const index = await db.select({
         id: indexes.id,
         title: indexes.title,
+        prompt: indexes.prompt,
         linkPermissions: indexes.linkPermissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
@@ -225,6 +229,7 @@ router.get('/:id',
       const result = {
         id: indexData.id,
         title: indexData.title,
+        prompt: indexData.prompt,
         linkPermissions: indexData.linkPermissions,
         createdAt: indexData.createdAt,
         updatedAt: indexData.updatedAt,
@@ -261,6 +266,7 @@ router.post('/',
   authenticatePrivy,
   [
     body('title').trim().isLength({ min: 1, max: 255 }),
+    body('prompt').optional().trim(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -269,14 +275,16 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { title } = req.body;
+      const { title, prompt } = req.body;
 
       const newIndex = await db.insert(indexes).values({
         title,
+        prompt: prompt || null,
         userId: req.user!.id,
       }).returning({
         id: indexes.id,
         title: indexes.title,
+        prompt: indexes.prompt,
         linkPermissions: indexes.linkPermissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
@@ -326,6 +334,7 @@ router.put('/:id',
   [
     param('id').isUUID(),
     body('title').optional().trim().isLength({ min: 1, max: 255 }),
+    body('prompt').optional().trim(),
     body('linkPermissions').optional().isObject(),
     body('linkPermissions.permissions').optional().isArray(),
     body('linkPermissions.permissions.*').optional().isString(),
@@ -339,7 +348,7 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { title, linkPermissions } = req.body;
+      const { title, prompt, linkPermissions } = req.body;
 
       const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
       if (!ownershipCheck.hasAccess) {
@@ -379,6 +388,7 @@ router.put('/:id',
 
       const updateData: any = { updatedAt: new Date() };
       if (title !== undefined) updateData.title = title;
+      if (prompt !== undefined) updateData.prompt = prompt || null; // Allow empty string to clear prompt
       if (linkPermissions !== undefined) updateData.linkPermissions = linkPermissions;
 
       const updatedIndex = await db.update(indexes)
@@ -387,6 +397,7 @@ router.put('/:id',
         .returning({
           id: indexes.id,
           title: indexes.title,
+          prompt: indexes.prompt,
           linkPermissions: indexes.linkPermissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
@@ -563,6 +574,51 @@ router.delete('/:id/members/:userId',
     } catch (error) {
       console.error('Remove member error:', error);
       return res.status(500).json({ error: 'Failed to remove member' });
+    }
+  }
+);
+
+// Leave index (remove self as member)
+router.post('/:id/leave',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      // Check if user is a member
+      const membership = await db.select({ userId: indexMembers.userId })
+        .from(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
+        .limit(1);
+
+      if (membership.length === 0) {
+        return res.status(404).json({ error: 'You are not a member of this index' });
+      }
+
+      // Check if user is the owner
+      const indexData = await db.select({ userId: indexes.userId })
+        .from(indexes)
+        .where(eq(indexes.id, id))
+        .limit(1);
+
+      if (indexData[0].userId === req.user!.id) {
+        return res.status(403).json({ error: 'Owner cannot leave their own index' });
+      }
+
+      // Remove member
+      await db.delete(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)));
+
+      return res.json({ message: 'Successfully left the index' });
+    } catch (error) {
+      console.error('Leave index error:', error);
+      return res.status(500).json({ error: 'Failed to leave index' });
     }
   }
 );
@@ -752,6 +808,128 @@ router.get('/:id/members',
     } catch (error) {
       console.error('Get members error:', error);
       return res.status(500).json({ error: 'Failed to get members' });
+    }
+  }
+);
+
+// Get member settings for the current user (works for both owners and members)
+router.get('/:id/member-settings',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      // Use existing access control method
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const indexData = accessCheck.indexData!;
+      const isOwner = indexData.userId === req.user!.id;
+
+      // Get full index data for title and prompt
+      const indexInfo = await db.select({
+        title: indexes.title,
+        prompt: indexes.prompt
+      }).from(indexes)
+        .where(eq(indexes.id, id))
+        .limit(1);
+
+      // For owners, use index settings; for members, use member settings
+      if (isOwner) {
+        return res.json({
+          indexTitle: indexInfo[0].title,
+          indexPrompt: indexInfo[0].prompt,
+          memberPrompt: null, // Owners don't have member prompts
+          autoAssign: false, // Owners don't use auto-assign
+          permissions: ['owner'], // Special permission for owners
+          isOwner: true
+        });
+      } else {
+        // Get member-specific settings
+        const membership = await db.select({
+          prompt: indexMembers.prompt,
+          autoAssign: indexMembers.autoAssign,
+          permissions: indexMembers.permissions
+        }).from(indexMembers)
+          .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
+          .limit(1);
+
+        return res.json({
+          indexTitle: indexInfo[0].title,
+          indexPrompt: indexInfo[0].prompt,
+          memberPrompt: membership[0]?.prompt || null,
+          autoAssign: membership[0]?.autoAssign || false,
+          permissions: membership[0]?.permissions || [],
+          isOwner: false
+        });
+      }
+    } catch (error) {
+      console.error('Get member settings error:', error);
+      return res.status(500).json({ error: 'Failed to fetch member settings' });
+    }
+  }
+);
+
+// Update member settings for the current user (works for both owners and members)
+router.put('/:id/member-settings',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    body('prompt').optional().trim(),
+    body('autoAssign').optional().isBoolean(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const { prompt, autoAssign } = req.body;
+
+      // Use existing access control method
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const indexData = accessCheck.indexData!;
+      const isOwner = indexData.userId === req.user!.id;
+
+      if (isOwner) {
+        // For owners, update the index prompt (not member settings)
+        const updateData: any = { updatedAt: new Date() };
+        if (prompt !== undefined) updateData.prompt = prompt || null;
+
+        await db.update(indexes)
+          .set(updateData)
+          .where(eq(indexes.id, id));
+
+        return res.json({ message: 'Index settings updated successfully' });
+      } else {
+        // For members, update member settings
+        const updateData: any = { updatedAt: new Date() };
+        if (prompt !== undefined) updateData.prompt = prompt || null;
+        if (autoAssign !== undefined) updateData.autoAssign = autoAssign;
+
+        await db.update(indexMembers)
+          .set(updateData)
+          .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)));
+
+        return res.json({ message: 'Member settings updated successfully' });
+      }
+    } catch (error) {
+      console.error('Update member settings error:', error);
+      return res.status(500).json({ error: 'Failed to update member settings' });
     }
   }
 );
@@ -1054,6 +1232,195 @@ router.get('/:indexId/intents',
     } catch (error) {
       console.error('Get index intents error:', error);
       return res.status(500).json({ error: 'Failed to fetch index intents' });
+    }
+  }
+);
+
+// Get member intents - returns indexed intents or delegates to suggestions for suggested intents
+router.get('/:id/member-intents',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    query('tab').optional().isIn(['indexed', 'suggested']),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+      const tab = req.query.tab || 'indexed';
+
+      // Use existing access control method
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      if (tab === 'indexed') {
+        // Get intents that are already in this index for this user
+        const indexedIntents = await db.select({
+          id: intents.id,
+          payload: intents.payload,
+          summary: intents.summary,
+          createdAt: intents.createdAt
+        }).from(intents)
+          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+          .where(and(
+            eq(intentIndexes.indexId, id),
+            eq(intents.userId, req.user!.id),
+            isNull(intents.archivedAt)
+          ))
+          .orderBy(desc(intents.createdAt))
+          .limit(50);
+
+        return res.json({ intents: indexedIntents, tab: 'indexed' });
+      } else {
+        // For suggested intents, get user's intents NOT in this index
+        const userIntentsNotInIndex = await db.select({
+          id: intents.id,
+          payload: intents.payload,
+          summary: intents.summary,
+          createdAt: intents.createdAt
+        }).from(intents)
+          .where(and(
+            eq(intents.userId, req.user!.id),
+            isNull(intents.archivedAt),
+            sql`NOT EXISTS (
+              SELECT 1 FROM ${intentIndexes} 
+              WHERE ${intentIndexes.intentId} = ${intents.id} 
+              AND ${intentIndexes.indexId} = ${id}
+            )`
+          ))
+          .orderBy(desc(intents.createdAt))
+          .limit(50);
+
+        return res.json({ intents: userIntentsNotInIndex, tab: 'suggested' });
+      }
+    } catch (error) {
+      console.error('Get member intents error:', error);
+      return res.status(500).json({ error: 'Failed to fetch member intents' });
+    }
+  }
+);
+
+// Add intent to index (works for both owners and members)
+router.post('/:id/member-intents/:intentId',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    param('intentId').isUUID(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id, intentId } = req.params;
+
+      // Use existing access control method
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const indexData = accessCheck.indexData!;
+      const isOwner = indexData.userId === req.user!.id;
+
+      // Check if intent exists and belongs to the user
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(and(
+          eq(intents.id, intentId),
+          eq(intents.userId, req.user!.id),
+          isNull(intents.archivedAt)
+        ))
+        .limit(1);
+
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Intent not found or does not belong to you' });
+      }
+
+      // Check if intent is already in the index
+      const existingRelation = await db.select({ intentId: intentIndexes.intentId })
+        .from(intentIndexes)
+        .where(and(
+          eq(intentIndexes.intentId, intentId),
+          eq(intentIndexes.indexId, id)
+        ))
+        .limit(1);
+
+      if (existingRelation.length > 0) {
+        return res.status(400).json({ error: 'Intent is already in this index' });
+      }
+
+      // Add the intent to the index
+      await db.insert(intentIndexes).values({
+        intentId,
+        indexId: id
+      });
+
+      return res.json({ message: 'Intent added to index successfully' });
+    } catch (error) {
+      console.error('Add member intent error:', error);
+      return res.status(500).json({ error: 'Failed to add intent to index' });
+    }
+  }
+);
+
+// Remove intent from index (works for both owners and members)
+router.delete('/:id/member-intents/:intentId',
+  authenticatePrivy,
+  [
+    param('id').isUUID(),
+    param('intentId').isUUID(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id, intentId } = req.params;
+
+      // Use existing access control method
+      const accessCheck = await checkIndexAccess(id, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      const indexData = accessCheck.indexData!;
+      const isOwner = indexData.userId === req.user!.id;
+
+      // Check if intent exists and belongs to the user
+      const intent = await db.select({ id: intents.id, userId: intents.userId })
+        .from(intents)
+        .where(and(
+          eq(intents.id, intentId),
+          eq(intents.userId, req.user!.id)
+        ))
+        .limit(1);
+
+      if (intent.length === 0) {
+        return res.status(404).json({ error: 'Intent not found or does not belong to you' });
+      }
+
+      // Remove the intent from the index
+      await db.delete(intentIndexes)
+        .where(and(
+          eq(intentIndexes.intentId, intentId),
+          eq(intentIndexes.indexId, id)
+        ));
+
+      return res.json({ message: 'Intent removed from index successfully' });
+    } catch (error) {
+      console.error('Remove member intent error:', error);
+      return res.status(500).json({ error: 'Failed to remove intent from index' });
     }
   }
 );

@@ -43,6 +43,7 @@ export const intents = pgTable('intents', {
 export const indexes = pgTable('indexes', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
+  prompt: text('prompt'), // Defines what people can share in this index
   linkPermissions: json('link_permissions').$type<{
     permissions: string[];
     code: string;
@@ -57,6 +58,8 @@ export const indexMembers = pgTable('index_members', {
   indexId: uuid('index_id').notNull().references(() => indexes.id),
   userId: uuid('user_id').notNull().references(() => users.id),
   permissions: text('permissions').array().notNull().default([]),
+  prompt: text('prompt'), // Defines what the member is sharing (defaults to index prompt)
+  autoAssign: boolean('auto_assign').notNull().default(false), // Whether system auto-generates or respects manual edits
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 }, (table) => ({

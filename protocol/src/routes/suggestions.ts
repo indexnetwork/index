@@ -4,7 +4,7 @@ import path from 'path';
 import db from '../lib/db';
 import { files, intents, indexes, intentIndexes } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
-import { eq, isNull, and, count, desc } from 'drizzle-orm';
+import { eq, isNull, and, count, desc, sql } from 'drizzle-orm';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
 import { processIntent } from '../agents/core/intent_enhancer';
 import { checkIndexAccess } from '../lib/index-access';
@@ -320,6 +320,61 @@ router.get('/preview',
     } catch (error) {
       console.error('Get intent preview error:', error);
       return res.status(500).json({ error: 'Failed to process intent preview' });
+    }
+  }
+);
+
+// Get member suggestions - returns user's intents not in the index
+router.get('/member',
+  authenticatePrivy,
+  [param('indexId').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { indexId } = req.params;
+
+      // Check access
+      const accessCheck = await checkIndexAccess(indexId, req.user!.id);
+      if (!accessCheck.hasAccess) {
+        return res.status(accessCheck.status!).json({ error: accessCheck.error });
+      }
+
+      // Get user's intents that are NOT in this index
+      const userIntentsNotInIndex = await db.select({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        createdAt: intents.createdAt,
+        confidence: sql<number>`1.0`.as('confidence') // Add confidence field for compatibility
+      }).from(intents)
+        .where(and(
+          eq(intents.userId, req.user!.id),
+          isNull(intents.archivedAt),
+          sql`NOT EXISTS (
+            SELECT 1 FROM ${intentIndexes} 
+            WHERE ${intentIndexes.intentId} = ${intents.id} 
+            AND ${intentIndexes.indexId} = ${indexId}
+          )`
+        ))
+        .orderBy(desc(intents.createdAt))
+        .limit(50);
+
+      return res.json({ 
+        intents: userIntentsNotInIndex.map(intent => ({
+          id: intent.id,
+          payload: intent.payload,
+          summary: intent.summary,
+          createdAt: intent.createdAt,
+          confidence: intent.confidence
+        }))
+      });
+    } catch (error) {
+      console.error('Get member suggestions error:', error);
+      return res.status(500).json({ error: 'Failed to fetch member suggestions' });
     }
   }
 );

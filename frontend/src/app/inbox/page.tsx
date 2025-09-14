@@ -361,7 +361,7 @@ export default function InboxPage() {
 
   return (
     <ClientLayout>
-      <div className="w-full border border-gray-200 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
+      <div className="w-full border border-gray-800 rounded-md px-2 sm:px-4 py-4 sm:py-8" style={{
           backgroundImage: 'url(/grid.png)',
           backgroundColor: 'white',
           backgroundSize: '888px'
