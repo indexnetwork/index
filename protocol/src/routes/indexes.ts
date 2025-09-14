@@ -4,7 +4,13 @@ import db from '../lib/db';
 import { indexes, users, indexMembers, intentIndexes, intents } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, exists, sql } from 'drizzle-orm';
-import { checkIndexAccess, checkIndexOwnership, getIndexWithPermissions } from '../lib/index-access';
+import { 
+  checkIndexAccess, 
+  checkIndexOwnership, 
+  getIndexWithPermissions, 
+  getUserAccessibleIndexIds,
+  checkIndexIntentWriteAccess 
+} from '../lib/index-access';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
 // Removed intent-filtering import - using existing suggestions system
@@ -32,22 +38,25 @@ router.get('/',
       const limit = Number(req.query.limit) || 10;
       const skip = (page - 1) * limit;
 
-      // Users can only see their own indexes or indexes they're members of
+      // Get all accessible index IDs for the user
+      const accessibleIndexIds = await getUserAccessibleIndexIds(req.user!.id);
+      
+      if (accessibleIndexIds.length === 0) {
+        return res.json({
+          indexes: [],
+          pagination: {
+            current: page,
+            total: 0,
+            count: 0,
+            totalCount: 0
+          }
+        });
+      }
+
       const whereCondition = and(
         isNull(indexes.deletedAt),
-        or(
-          eq(indexes.userId, req.user!.id),
-          // Check if user is a member of the index
-          exists(
-            db.select({ indexId: indexMembers.indexId })
-              .from(indexMembers)
-              .where(and(
-                eq(indexMembers.indexId, indexes.id),
-                eq(indexMembers.userId, req.user!.id)
-              ))
-          )
-        )
-      ) ?? isNull(indexes.deletedAt);
+        sql`${indexes.id} = ANY(${accessibleIndexIds})`
+      );
 
       const [indexesResult, totalResult] = await Promise.all([
         db.select({
@@ -1022,7 +1031,7 @@ router.delete('/:indexId/intents/:intentId',
       }
 
       // Verify user has intent write access to the index being removed
-      const accessCheck = await checkIndexOwnership(indexId, req.user!.id);
+      const accessCheck = await checkIndexIntentWriteAccess(indexId, req.user!.id);
       
       if (!accessCheck.hasAccess) {
         return res.status(accessCheck.status || 403).json({ 
