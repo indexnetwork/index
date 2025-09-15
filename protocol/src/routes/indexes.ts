@@ -55,8 +55,19 @@ router.get('/',
 
       const whereCondition = and(
         isNull(indexes.deletedAt),
-        sql`${indexes.id} = ANY(${accessibleIndexIds})`
-      );
+        or(
+          eq(indexes.userId, req.user!.id),
+          // Check if user is a member of the index
+          exists(
+            db.select({ indexId: indexMembers.indexId })
+              .from(indexMembers)
+              .where(and(
+                eq(indexMembers.indexId, indexes.id),
+                eq(indexMembers.userId, req.user!.id)
+              ))
+          )
+        )
+      ) ?? isNull(indexes.deletedAt);
 
       const [indexesResult, totalResult] = await Promise.all([
         db.select({
@@ -1245,13 +1256,10 @@ router.get('/:indexId/intents',
   }
 );
 
-// Get member intents - returns indexed intents or delegates to suggestions for suggested intents
+// Get member intents - returns indexed intents for the current user
 router.get('/:id/member-intents',
   authenticatePrivy,
-  [
-    param('id').isUUID(),
-    query('tab').optional().isIn(['indexed', 'suggested']),
-  ],
+  [param('id').isUUID()],
   async (req: AuthRequest, res: Response) => {
     try {
       const errors = validationResult(req);
@@ -1260,7 +1268,6 @@ router.get('/:id/member-intents',
       }
 
       const { id } = req.params;
-      const tab = req.query.tab || 'indexed';
 
       // Use existing access control method
       const accessCheck = await checkIndexAccess(id, req.user!.id);
@@ -1268,46 +1275,23 @@ router.get('/:id/member-intents',
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
 
-      if (tab === 'indexed') {
-        // Get intents that are already in this index for this user
-        const indexedIntents = await db.select({
-          id: intents.id,
-          payload: intents.payload,
-          summary: intents.summary,
-          createdAt: intents.createdAt
-        }).from(intents)
-          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
-          .where(and(
-            eq(intentIndexes.indexId, id),
-            eq(intents.userId, req.user!.id),
-            isNull(intents.archivedAt)
-          ))
-          .orderBy(desc(intents.createdAt))
-          .limit(50);
+      // Get intents that are already in this index for this user
+      const indexedIntents = await db.select({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        createdAt: intents.createdAt
+      }).from(intents)
+        .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+        .where(and(
+          eq(intentIndexes.indexId, id),
+          eq(intents.userId, req.user!.id),
+          isNull(intents.archivedAt)
+        ))
+        .orderBy(desc(intents.createdAt))
+        .limit(50);
 
-        return res.json({ intents: indexedIntents, tab: 'indexed' });
-      } else {
-        // For suggested intents, get user's intents NOT in this index
-        const userIntentsNotInIndex = await db.select({
-          id: intents.id,
-          payload: intents.payload,
-          summary: intents.summary,
-          createdAt: intents.createdAt
-        }).from(intents)
-          .where(and(
-            eq(intents.userId, req.user!.id),
-            isNull(intents.archivedAt),
-            sql`NOT EXISTS (
-              SELECT 1 FROM ${intentIndexes} 
-              WHERE ${intentIndexes.intentId} = ${intents.id} 
-              AND ${intentIndexes.indexId} = ${id}
-            )`
-          ))
-          .orderBy(desc(intents.createdAt))
-          .limit(50);
-
-        return res.json({ intents: userIntentsNotInIndex, tab: 'suggested' });
-      }
+      return res.json({ intents: indexedIntents });
     } catch (error) {
       console.error('Get member intents error:', error);
       return res.status(500).json({ error: 'Failed to fetch member intents' });

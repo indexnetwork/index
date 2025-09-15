@@ -47,7 +47,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/intents', intentRoutes);
 app.use('/api/connections', connectionRoutes);
 
-app.use('/api/indexes/:indexId/suggested_intents/', suggestionRoutes);
+app.use('/api/indexes/:indexId/suggestions/', suggestionRoutes);
 // New library-scoped endpoints
 app.use('/api/files', fileRoutes);
 app.use('/api/links', linksRoutes);

@@ -21,6 +21,11 @@ interface MemberIntent {
   createdAt: string;
 }
 
+interface RecommendedIntent {
+  id: string;
+  payload: string;
+}
+
 interface MemberSettings {
   indexTitle: string;
   indexPrompt?: string;
@@ -38,7 +43,7 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
   const [memberSettings, setMemberSettings] = useState<MemberSettings | null>(null);
   const [indexedIntents, setIndexedIntents] = useState<MemberIntent[]>([]);
-  const [suggestedIntents, setSuggestedIntents] = useState<MemberIntent[]>([]);
+  const [suggestedIntents, setSuggestedIntents] = useState<RecommendedIntent[]>([]);
   const [loadingIntents, setLoadingIntents] = useState(false);
   const [addingIntents, setAddingIntents] = useState<Set<string>>(new Set());
   const [removingIntents, setRemovingIntents] = useState<Set<string>>(new Set());
@@ -61,13 +66,19 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
   const fetchMemberIntents = useCallback(async (tab: 'indexed' | 'suggested') => {
     try {
       setLoadingIntents(true);
-      const response = await api.get<{ intents: MemberIntent[]; tab: string }>(
-        `/indexes/${index.id}/member-intents?tab=${tab}`
-      );
       
       if (tab === 'indexed') {
+        const response = await api.get<{ intents: MemberIntent[] }>(
+          `/indexes/${index.id}/member-intents`
+        );
         setIndexedIntents(response.intents);
       } else {
+        // Use the new intent recommendations endpoint for suggestions
+        const response = await api.get<{ 
+          intents: RecommendedIntent[]; 
+          indexTitle: string;
+          indexPrompt: string | null;
+        }>(`/indexes/${index.id}/suggestions/intents`);
         setSuggestedIntents(response.intents);
       }
     } catch (err) {
@@ -254,7 +265,7 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    Suggested ({suggestedIntents.length})
+                    Recommended ({suggestedIntents.length})
                   </button>
                 </div>
 
@@ -292,24 +303,33 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                   ) : (
                     suggestedIntents.length > 0 ? (
                       suggestedIntents.map((intent) => (
-                        <div key={intent.id} className="flex items-center justify-between mb-6">
-                          <p className="text-sm text-gray-600">{intent.payload}</p>
-                          <Button 
-                            size="sm" 
-                            className="h-auto py-1 px-2 text-xs font-ibm-plex-mono"
-                            onClick={() => handleAddIntent(intent.id)}
-                            disabled={addingIntents.has(intent.id)}
-                          >
-                            {addingIntents.has(intent.id) ? (
-                              <div className="h-3 w-3 border border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              'Add'
-                            )}
-                          </Button>
+                        <div key={intent.id} className="mb-6 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <p className="text-sm text-gray-700 mb-1">{intent.payload}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button 
+                                size="sm" 
+                                className="h-auto py-1 px-2 text-xs font-ibm-plex-mono"
+                                onClick={() => handleAddIntent(intent.id)}
+                                disabled={addingIntents.has(intent.id)}
+                              >
+                                {addingIntents.has(intent.id) ? (
+                                  <div className="h-3 w-3 border border-white border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  'Add'
+                                )}
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       ))
                     ) : (
-                      <div className="text-center py-4 text-gray-500">No suggested intents available</div>
+                      <div className="text-center py-4 text-gray-500">
+                        <p>No recommendations found</p>
+                        <p className="text-xs mt-1">AI couldn't find any of your intents that match this index's theme</p>
+                      </div>
                     )
                   )}
                 </div>

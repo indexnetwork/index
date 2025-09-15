@@ -126,17 +126,17 @@ export default function EditIntentModal({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50" />
         <Dialog.Content className="fixed left-[50%] top-[50%] max-h-[85vh] w-[90vw] max-w-lg translate-x-[-50%] translate-y-[-50%] rounded-md bg-white p-6 shadow-lg focus:outline-none overflow-hidden flex flex-col">
-          <div className="flex-shrink-0 mb-6">
-            <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">Edit Intent</Dialog.Title>
+          <div className="flex-shrink-0 mb-4">
+            <Dialog.Title className="text-lg font-bold text-gray-900 font-ibm-plex-mono">Edit Intent</Dialog.Title>
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            <div className="space-y-6 pr-2">
+            <div className="space-y-3 pr-2">
               {!isProcessing && !isSuccess ? (
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={handleSubmit} className="space-y-3">
                   {/* Title Section */}
-                  <div>
-                    <label htmlFor="title" className="text-md font-medium font-ibm-plex-mono text-black">
+                  <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+                    <label htmlFor="title" className="text-sm font-medium font-ibm-plex-mono text-gray-900">
                       <div className="mb-2">What are you looking for?</div>
                     </label>
                     <div className="space-y-4">
@@ -145,7 +145,7 @@ export default function EditIntentModal({
                           id="payload"
                           value={payload}
                           onChange={(e) => setPayload(e.target.value)}
-                          className="min-h-[150px]"
+                          className="min-h-[150px] bg-white border-gray-300"
                           placeholder="Enter your intent here..."
                           required
                         />
@@ -155,100 +155,88 @@ export default function EditIntentModal({
 
 
                   {/* Visibility Section */}
-                  <div>
-                    <div className="flex items-start justify-between">
+                  <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+                    <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-md font-medium font-ibm-plex-mono text-black">Incognito Mode</h3>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            {isIncognito ? (
-                              <>
-                                <EyeOff className="h-4 w-4" />
-                              </>
-                            ) : (
-                              <>
-                                <Globe className="h-4 w-4" />
-                              </>
-                            )}
-                          </div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-sm font-medium font-ibm-plex-mono text-gray-900">Incognito Mode</h3>
+                          {isIncognito ? (
+                            <EyeOff className="h-4 w-4 text-gray-500" />
+                          ) : (
+                            <Globe className="h-4 w-4 text-gray-500" />
+                          )}
                         </div>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-xs text-gray-500">
                           {isIncognito 
                             ? "Your intent stays hidden - no one can see you"
                             : "Your intent is visible to relevant people"
                           }
                         </p>
                       </div>
-                      <div className="flex items-center gap-3 ml-4">
-                        <button
-                          type="button"
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer ${
-                            isIncognito ? 'bg-blue-600' : 'bg-gray-300'
+                      <button
+                        type="button"
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer ${
+                          isIncognito ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                        onClick={() => setIsIncognito(!isIncognito)}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            isIncognito ? 'translate-x-6' : 'translate-x-1'
                           }`}
-                          onClick={() => setIsIncognito(!isIncognito)}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              isIncognito ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                          />
-                        </button>
-                      </div>
+                        />
+                      </button>
                     </div>
                   </div>
 
 
                   {/* Global Discovery Section */}
-                  <div>
-                    <div className="flex items-start justify-between">
+                  <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+                    <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-md font-medium font-ibm-plex-mono text-black">Global Discovery</h3>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <Globe className="h-4 w-4" />
-                          </div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="text-sm font-medium font-ibm-plex-mono text-gray-900">Global Discovery</h3>
+                          <Globe className="h-4 w-4 text-gray-500" />
                         </div>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-xs text-gray-500">
                           {isGlobalDiscoveryEnabled 
                             ? "Your intent will be discoverable globally across the platform"
                             : "Your intent will only be visible in selected indexes"
                           }
                         </p>
                       </div>
-                      <div className="flex items-center gap-3 ml-4">
-                        <button
-                          type="button"
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer ${
-                            isGlobalDiscoveryEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                      <button
+                        type="button"
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer ${
+                          isGlobalDiscoveryEnabled ? 'bg-blue-600' : 'bg-gray-300'
+                        }`}
+                        onClick={() => setIsGlobalDiscoveryEnabled(!isGlobalDiscoveryEnabled)}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            isGlobalDiscoveryEnabled ? 'translate-x-6' : 'translate-x-1'
                           }`}
-                          onClick={() => setIsGlobalDiscoveryEnabled(!isGlobalDiscoveryEnabled)}
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              isGlobalDiscoveryEnabled ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                          />
-                        </button>
-                      </div>
+                        />
+                      </button>
                     </div>
                   </div>
                   
                   {/* Index Selection Section */}
-                  <div>
-                    <div className="mb-2">
-                      <h3 className="text-md font-medium font-ibm-plex-mono text-black">Index this intent</h3>
-                      <p className="text-sm text-gray-600">
+                  <div className="bg-gray-50 p-4 rounded-md border border-gray-200">
+                    <div className="mb-3">
+                      <h3 className="text-sm font-medium font-ibm-plex-mono text-gray-900">Index this intent</h3>
+                      <p className="text-xs text-gray-500 mt-1">
                         Select which indexes your intent should be accessible in
                       </p>
                     </div>
                     
                     {isLoadingIndexes ? (
-                      <div className="flex items-center gap-2 p-3 border border-gray-200 rounded-md">
+                      <div className="flex items-center gap-2 p-3 bg-white border border-gray-200 rounded-md">
                         <div className="w-4 h-4 border border-gray-500 border-t-transparent rounded-full animate-spin" />
                         <span className="text-sm text-gray-600">Loading indexes...</span>
                       </div>
                     ) : (
-                      <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded-md p-2">
+                      <div className="space-y-2 max-h-40 overflow-y-auto bg-white border border-gray-200 rounded-md p-2">
                         {availableIndexes.length === 0 ? (
                           <div className="text-sm text-gray-500 p-2 text-center">
                             No indexes available
@@ -257,7 +245,7 @@ export default function EditIntentModal({
                           availableIndexes.map((index) => (
                             <label
                               key={index.id}
-                              className="flex items-center space-x-3 p-1 hover:bg-gray-50 rounded cursor-pointer"
+                              className="flex items-center space-x-3 p-2 hover:bg-gray-50 rounded cursor-pointer transition-colors"
                             >
                               <input
                                 type="checkbox"
@@ -271,7 +259,7 @@ export default function EditIntentModal({
                                 }}
                                 className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                               />
-                              <span className="text-sm font-medium text-gray-900">
+                              <span className="text-sm font-ibm-plex-mono text-gray-900">
                                 {index.title}
                               </span>
                             </label>
@@ -279,7 +267,6 @@ export default function EditIntentModal({
                         )}
                       </div>
                     )}
-
                   </div>
 
                 </form>
@@ -321,9 +308,9 @@ export default function EditIntentModal({
 
           {/* Fixed Action Buttons */}
           {!isProcessing && !isSuccess && (
-            <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200 flex-shrink-0">
+            <div className="flex justify-end space-x-3 mt-4 pt-4 border-t border-gray-200 flex-shrink-0">
               <Dialog.Close asChild>
-                <Button variant="outline">
+                <Button variant="outline" className="text-sm">
                   Cancel
                 </Button>
               </Dialog.Close>
@@ -334,6 +321,7 @@ export default function EditIntentModal({
                   handleSubmit(e);
                 }}
                 disabled={finalIndexIds.length === 0 || !payload.trim()}
+                className="text-sm"
               >
                 Update Intent
               </Button>
