@@ -102,7 +102,7 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
       await api.post(`/indexes/${index.id}/leave`, {});
       success(`Successfully left ${index.title}`);
       onOpenChange(false);
-    } catch (err) {
+    } catch {
       error('Failed to leave index');
     } finally {
       setIsLeaving(false);
@@ -118,7 +118,7 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
       });
       success(memberSettings?.isOwner ? 'Index settings saved' : 'Auto-manage settings saved');
       await fetchMemberSettings(); // Refresh settings
-    } catch (err) {
+    } catch {
       error('Failed to save settings');
     } finally {
       setIsSavingPrompt(false);
@@ -133,7 +133,7 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
       // Refresh intents
       await fetchMemberIntents('indexed');
       await fetchMemberIntents('suggested');
-    } catch (err) {
+    } catch {
       error('Failed to add intent to index');
     } finally {
       setAddingIntents(prev => {
@@ -152,7 +152,7 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
       // Refresh intents
       await fetchMemberIntents('indexed');
       await fetchMemberIntents('suggested');
-    } catch (err) {
+    } catch {
       error('Failed to remove intent from index');
     } finally {
       setRemovingIntents(prev => {

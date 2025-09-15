@@ -4,7 +4,7 @@ export type SyncProviderName = 'links' | 'gmail' | 'notion' | 'slack' | 'discord
 
 export interface SyncParams {
   indexId?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface SyncResponse {

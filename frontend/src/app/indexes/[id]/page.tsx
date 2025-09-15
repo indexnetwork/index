@@ -69,8 +69,6 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const [links, setLinks] = useState<Array<{ id: string; url: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null }>>([]);
   const [linkUrl, setLinkUrl] = useState("");
   const [addingLink, setAddingLink] = useState(false);
-  const [syncingLinks, setSyncingLinks] = useState(false);
-  const [lastSyncSummary, setLastSyncSummary] = useState<string>("");
   // Sync progress removed; API is ack-only
   const { success: notifySuccess, error: notifyError } = useNotifications();
 
@@ -82,7 +80,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       console.error('Error fetching index links:', e);
       setLinks([]);
     }
-  }, [indexesService, resolvedParams.id]);
+  }, [linksService]);
 
   const fetchIndex = useCallback(async () => {
     try {
@@ -240,7 +238,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
       console.error('Error fetching files:', e);
       setFiles([]);
     }
-  }, [indexesService]);
+  }, [filesService]);
 
   useEffect(() => {
     fetchFiles();
@@ -335,7 +333,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     }
   };
 
-  const handleSyncLinks = async (opts?: { all?: boolean }) => {
+  const handleSyncLinks = async () => {
     // Sync functionality has been removed
     notifyError('Sync not available', 'This feature has been removed.');
   };

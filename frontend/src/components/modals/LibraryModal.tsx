@@ -7,8 +7,12 @@ import { Input } from "@/components/ui/input";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import ReactMarkdown from 'react-markdown';
-import { useIdentityToken } from '@privy-io/react-auth';
 import { useAPI } from "@/contexts/APIContext";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
+
+type FileItem = { id: string; name: string; size: string; type: string; createdAt: string; url: string };
+type LinkItem = { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string };
+type LibraryItem = { kind: 'file' | 'link'; item: FileItem | LinkItem };
 
 type Props = {
   open: boolean;
@@ -20,14 +24,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
   const { syncService } = useAPI();
-  const { identityToken } = useIdentityToken();
   const [isUploading, setIsUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [files, setFiles] = useState<Array<{ id: string; name: string; size: string; type: string; createdAt: string; url: string }>>([]);
-  const [links, setLinks] = useState<Array<{ id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string }>>([]);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [links, setLinks] = useState<LinkItem[]>([]);
   const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
   const [syncingIntegrations, setSyncingIntegrations] = useState<Set<string>>(new Set());
   const [syncingLinks, setSyncingLinks] = useState<Set<string>>(new Set());
@@ -37,18 +40,19 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [undoBatch, setUndoBatch] = useState<{
-    items: { kind: 'file' | 'link'; item: any }[];
+    items: LibraryItem[];
     timer: ReturnType<typeof setTimeout> | null;
   } | null>(null);
   const [typeFilter, setTypeFilter] = useState<'all'|'file'|'link'>('all');
   const [confirm, setConfirm] = useState<{
     open: boolean;
     message: string;
-    payload: { kind: 'file' | 'link'; item: any }[];
+    payload: LibraryItem[];
   } | null>(null);
   type IntegrationId = 'notion' | 'slack' | 'discord' | 'google-calendar' | 'gmail';
   const [integrations, setIntegrations] = useState<Array<{ id: IntegrationId; name: string; connected: boolean }>>([]);
   const [pendingIntegration, setPendingIntegration] = useState<null | IntegrationId>(null);
+  const [activeTab, setActiveTab] = useState<'library' | 'intents'>('library');
 
   const loadLists = useCallback(async () => {
     try {
@@ -69,11 +73,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     });
   }, []);
 
-  const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: any }[]) => {
+  const finalizeDeletion = useCallback(async (batch: LibraryItem[]) => {
     try {
       await Promise.all(batch.map(({ kind, item }) => kind === 'file'
-        ? api.delete(`/files/${(item as any).id}`)
-        : api.delete(`/links/${(item as any).id}`)
+        ? api.delete(`/files/${item.id}`)
+        : api.delete(`/links/${item.id}`)
       ));
       success(batch.length === 1 ? 'Item deleted' : `${batch.length} items deleted`);
       onChanged?.();
@@ -88,17 +92,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (!undoBatch) return;
     if (undoBatch.timer) clearTimeout(undoBatch.timer);
     // Restore items into state
-    const filesToRestore = undoBatch.items.filter(i => i.kind === 'file').map(i => i.item as any);
-    const linksToRestore = undoBatch.items.filter(i => i.kind === 'link').map(i => i.item as any);
+    const filesToRestore = undoBatch.items.filter(i => i.kind === 'file').map(i => i.item as FileItem);
+    const linksToRestore = undoBatch.items.filter(i => i.kind === 'link').map(i => i.item as LinkItem);
     if (filesToRestore.length > 0) setFiles(prev => [...prev, ...filesToRestore]);
     if (linksToRestore.length > 0) setLinks(prev => [...prev, ...linksToRestore]);
     setUndoBatch(null);
   }, [undoBatch]);
 
-  const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: any }[]) => {
+  const queueDeletion = useCallback((items: LibraryItem[]) => {
     // Remove items immediately from UI
-    const fileIds = new Set(items.filter(i => i.kind === 'file').map(i => (i.item as any).id));
-    const linkIds = new Set(items.filter(i => i.kind === 'link').map(i => (i.item as any).id));
+    const fileIds = new Set(items.filter(i => i.kind === 'file').map(i => i.item.id));
+    const linkIds = new Set(items.filter(i => i.kind === 'link').map(i => i.item.id));
     if (fileIds.size > 0) setFiles(prev => prev.filter(f => !fileIds.has(f.id)));
     if (linkIds.size > 0) setLinks(prev => prev.filter(l => !linkIds.has(l.id)));
 
@@ -115,7 +119,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
     // Build payload from current state
-    const payload: { kind: 'file' | 'link'; item: any }[] = [];
+    const payload: LibraryItem[] = [];
     files.forEach(f => { if (selectedIds.has(`f-${f.id}`)) payload.push({ kind: 'file', item: f }); });
     links.forEach(l => { if (selectedIds.has(`l-${l.id}`)) payload.push({ kind: 'link', item: l }); });
     setSelectedIds(new Set());
@@ -263,10 +267,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api, linkUrl, onChanged, loadLists, success, error]);
 
-  const handleSyncIntegration = useCallback(async (integrationType: string) => {
+  const handleSyncIntegration = useCallback(async (integrationType: IntegrationId) => {
     try {
       setSyncingIntegrations(prev => new Set([...prev, integrationType]));
-      await syncService.syncIntegration(integrationType as any);
+      await syncService.syncIntegration(integrationType);
       success(`${integrationType.charAt(0).toUpperCase() + integrationType.slice(1)} sync started`);
     } catch {
       error(`Failed to sync ${integrationType}`);
@@ -318,8 +322,32 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
         <Dialog.Content className="library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:h-auto sm:max-w-[800px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
+          <VisuallyHidden>
+            <Dialog.Title>Library</Dialog.Title>
+          </VisuallyHidden>
           <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
-            <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setActiveTab('library')}
+                className={`px-3 py-2 text-sm font-medium font-ibm-plex-mono rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                  activeTab === 'library'
+                    ? 'bg-[#006D4B] text-white'
+                    : 'text-[#666] hover:text-[#333] hover:bg-[#F0F0F0]'
+                }`}
+              >
+                Library
+              </button>
+              <button
+                onClick={() => setActiveTab('intents')}
+                className={`px-3 py-2 text-sm font-medium font-ibm-plex-mono rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                  activeTab === 'intents'
+                    ? 'bg-[#006D4B] text-white'
+                    : 'text-[#666] hover:text-[#333] hover:bg-[#F0F0F0]'
+                }`}
+              >
+                Intents
+              </button>
+            </div>
             <button
               onClick={() => onOpenChange(false)}
               className="p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
@@ -333,8 +361,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           </div>
 
           <div className="flex-1 pr-1 space-y-4 overflow-y-auto sm:overflow-hidden">
-
-            {/* Connect your sources */}
+            {activeTab === 'library' && (
+              <>
+                {/* Connect your sources */}
             <section>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Connect Sources</h3>
@@ -589,7 +618,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               </div>
               <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pr-2 pb-8">
                 {(() => {
-                  type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };
+                  type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: FileItem | LinkItem };
                   const map: RecentItem[] = [
                     ...files.map(f => ({
                       id: `f-${f.id}`,
@@ -597,7 +626,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       title: f.name,
                       sub: `${formatSize(f.size)} • ${new Date(f.createdAt).toLocaleDateString()}`,
                       createdAt: new Date(f.createdAt).getTime(),
-                      raw: f as any,
+                      raw: f,
                     })),
                     ...links.map(l => ({
                       id: `l-${l.id}`,
@@ -611,7 +640,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                         if (res?.content) setPreview({ id, title: l.url, content: res.content });
                       },
                       createdAt: (l.lastSyncAt ? new Date(l.lastSyncAt).getTime() : (l.createdAt ? new Date(l.createdAt).getTime() : 0)),
-                      raw: l as any,
+                      raw: l,
                     })),
                   ];
                   const filtered = map.filter(item => {
@@ -651,7 +680,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           )}
                           {item.kind === 'file' && (
                             <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-md font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
-                              {fileBadge((item.raw as any).type, (item.raw as any).name)}
+                              {fileBadge((item.raw as FileItem).type, (item.raw as FileItem).name)}
                             </span>
                           )}
                           {/* Icon for links only */}
@@ -685,7 +714,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigator.clipboard.writeText((item.raw as any).url);
+                                  navigator.clipboard.writeText((item.raw as LinkItem).url);
                                   success('URL copied to clipboard');
                                 }} 
                                 className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
@@ -699,13 +728,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleSyncLink((item.raw as any).id);
+                                  handleSyncLink((item.raw as LinkItem).id);
                                 }} 
                                 className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
-                                disabled={syncingLinks.has((item.raw as any).id)}
+                                disabled={syncingLinks.has((item.raw as LinkItem).id)}
                                 aria-label="Sync link"
                               >
-                                {syncingLinks.has((item.raw as any).id) ? (
+                                {syncingLinks.has((item.raw as LinkItem).id) ? (
                                   <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
                                 ) : (
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
@@ -742,6 +771,26 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 })()}
               </div>
             </section>
+              </>
+            )}
+
+            {activeTab === 'intents' && (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-[#F0F0F0] rounded-full flex items-center justify-center">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                      <path d="M9 12l2 2 4-4"></path>
+                      <path d="M21 12c-1 0-3-1-3-3s2-3 3-3 3 1 3 3-2 3-3 3"></path>
+                      <path d="M3 12c1 0 3-1 3-3s-2-3-3-3-3 1-3 3 2 3 3 3"></path>
+                      <path d="M12 3c0 1-1 3-3 3s-3-2-3-3 1-3 3-3 3 2 3 3"></path>
+                      <path d="M12 21c0-1 1-3 3-3s3 2 3 3-1 3-3 3-3-2-3-3"></path>
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-bold font-ibm-plex-mono text-[#333] mb-2">Intents</h3>
+                  <p className="text-sm text-[#666] font-ibm-plex-mono">Coming soon - manage your intents here</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Link Preview */}
@@ -835,4 +884,4 @@ function fileBadge(mime: string | undefined, name: string): string {
 }
 
 // Deletion helpers
-type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };
+type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: FileItem | LinkItem };
