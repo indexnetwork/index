@@ -17,6 +17,11 @@ Request:{
     "intentIds": [
         "0a31709f-4120-46c5-9a30-aa94891aa378" // seref's specific intents
     ],
+    "sources": [
+        {"type": "file", "id": "123e4567-e89b-12d3-a456-426614174000"},
+        {"type": "link", "id": "223e4567-e89b-12d3-a456-426614174001"},
+        {"type": "integration", "id": "323e4567-e89b-12d3-a456-426614174002"}
+    ],
     "excludeDiscovered": true,  // exclude users with existing connections (default: true)
     "page" : 1,
     "limit": 50
@@ -68,6 +73,9 @@ router.post("/filter",
     body('userIds.*').optional().isUUID(),
     body('indexIds').optional().isArray(),
     body('indexIds.*').optional().isUUID(),
+    body('sources').optional().isArray(),
+    body('sources.*.type').optional().isIn(['file', 'integration', 'link']),
+    body('sources.*.id').optional().isUUID(),
     body('excludeDiscovered').optional().isBoolean(),
     body('page').optional().isInt({ min: 1 }).toInt(),
     body('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
@@ -84,6 +92,7 @@ router.post("/filter",
         intentIds,
         userIds,
         indexIds,
+        sources,
         excludeDiscovered = true, // Default to true
         page = 1,
         limit = 50
@@ -97,6 +106,7 @@ router.post("/filter",
       intentIds,
       userIds,
       indexIds,
+      sources,
       excludeDiscovered,
       page,
       limit
@@ -109,6 +119,7 @@ router.post("/filter",
         intentIds: intentIds || null,
         userIds: userIds || null,
         indexIds: indexIds || null,
+        sources: sources || null,
         excludeDiscovered: excludeDiscovered
       }
     });

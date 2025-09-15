@@ -7,6 +7,7 @@ export interface DiscoverFilters {
   intentIds?: string[];
   userIds?: string[];
   indexIds?: string[];
+  sources?: Array<{ type: 'file' | 'integration' | 'link'; id: string }>;
   excludeDiscovered?: boolean;
   page?: number;
   limit?: number;
@@ -47,13 +48,28 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
     intentIds,
     userIds,
     indexIds,
+    sources,
     excludeDiscovered = true,
     page = 1,
     limit = 50
   } = filters;
 
-  // Get authenticated user's intents, filtered by index if specified
+  // Get authenticated user's intents, filtered by index and sources if specified
   let authenticatedUserIntents;
+  
+  // Build base conditions
+  const baseConditions = [eq(intents.userId, authenticatedUserId)];
+  
+  // Add source filtering if specified
+  if (sources && sources.length > 0) {
+    const sourceConditions = sources.map(source => 
+      and(
+        eq(intents.sourceType, source.type),
+        eq(intents.sourceId, source.id)
+      )
+    );
+    baseConditions.push(or(...sourceConditions)!);
+  }
   
   if (indexIds && indexIds.length > 0) {
     // If indexIds are specified, only get intents in those indexes
@@ -63,7 +79,7 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
       .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
       .where(
         and(
-          eq(intents.userId, authenticatedUserId),
+          ...baseConditions,
           sql`${intentIndexes.indexId} = ANY(ARRAY[${sql.join(indexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
         )
       );
@@ -72,7 +88,7 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
     authenticatedUserIntents = await db
       .select({ intentId: intents.id })
       .from(intents)
-      .where(eq(intents.userId, authenticatedUserId));
+      .where(and(...baseConditions));
   }
 
   // Extract the intent IDs for easier use in the main query

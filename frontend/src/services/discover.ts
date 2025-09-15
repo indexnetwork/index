@@ -32,6 +32,7 @@ export interface DiscoverFilters {
   intentIds?: string[];
   userIds?: string[];
   indexIds?: string[];
+  sources?: Array<{ type: 'file' | 'integration' | 'link'; id: string }>;
   excludeDiscovered?: boolean;
   page?: number;
   limit?: number;
@@ -49,6 +50,7 @@ export interface DiscoverResponse {
     intentIds: string[] | null;
     userIds: string[] | null;
     indexIds: string[] | null;
+    sources: Array<{ type: 'file' | 'integration' | 'link'; id: string }> | null;
     excludeDiscovered?: boolean;
   };
 }
