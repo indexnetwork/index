@@ -24,6 +24,7 @@ interface MemberIntent {
 interface RecommendedIntent {
   id: string;
   payload: string;
+  summary?: string;
 }
 
 interface MemberSettings {
@@ -76,7 +77,6 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
         // Use the new intent recommendations endpoint for suggestions
         const response = await api.get<{ 
           intents: RecommendedIntent[]; 
-          indexTitle: string;
           indexPrompt: string | null;
         }>(`/indexes/${index.id}/suggestions/intents`);
         setSuggestedIntents(response.intents);

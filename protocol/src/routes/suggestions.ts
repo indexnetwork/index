@@ -93,7 +93,8 @@ router.get('/intents',
 
       const suggestions = (recommendResult.recommendations || []).map(recommendation => ({
         id: recommendation.id,
-        payload: recommendation.payload
+        payload: recommendation.payload,
+        summary: recommendation.summary
       }));
 
       return res.json({ 

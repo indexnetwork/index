@@ -12,6 +12,7 @@ import { z } from "zod";
 export interface RecommendedIntent {
   id: string;
   payload: string;
+  summary?: string;
   confidence: number;
 }
 
