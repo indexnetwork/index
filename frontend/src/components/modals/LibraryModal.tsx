@@ -46,7 +46,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     message: string;
     payload: { kind: 'file' | 'link'; item: any }[];
   } | null>(null);
-  type IntegrationId = 'notion' | 'slack' | 'discord' | 'google-calendar' | 'gmail';
+  type IntegrationId = 'notion' | 'slack' | 'discord' | 'calendar' | 'gmail';
   const [integrations, setIntegrations] = useState<Array<{ id: IntegrationId; name: string; connected: boolean }>>([]);
   const [pendingIntegration, setPendingIntegration] = useState<null | IntegrationId>(null);
 
@@ -127,14 +127,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const loadIntegrations = useCallback(async () => {
     try {
       const res = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>(`/integrations`);
-      const wanted: Array<IntegrationId> = ['notion','slack','discord','google-calendar','gmail'];
+      const wanted: Array<IntegrationId> = ['notion','slack','discord','calendar','gmail'];
       const items: Array<{ id: IntegrationId; name: string; connected: boolean }> = wanted.map(id => {
         const found = res.integrations?.find(i => i.id === id);
         const friendlyName: Record<IntegrationId, string> = {
           notion: 'Notion',
           slack: 'Slack',
           discord: 'Discord',
-          'google-calendar': 'Google Calendar',
+          'calendar': 'Google Calendar',
           gmail: 'Gmail',
         };
         return { id, name: found?.name ?? friendlyName[id], connected: !!found?.connected };
@@ -145,7 +145,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
         { id: 'notion', name: 'Notion', connected: false },
         { id: 'slack', name: 'Slack', connected: false },
         { id: 'discord', name: 'Discord', connected: false },
-        { id: 'google-calendar', name: 'Google Calendar', connected: false },
+        { id: 'calendar', name: 'Google Calendar', connected: false },
         { id: 'gmail', name: 'Gmail', connected: false },
       ]);
     }
@@ -348,7 +348,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-3">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`/integrations/${it.id}.png`} width={20} height={20} alt="" />
+                        <img src={`/integrations/${it.id === 'calendar' ? 'google-calendar' : it.id}.png`} width={20} height={20} alt="" />
                         <span className="text-sm font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
                         {it.connected && (
                           <span className="h-1.5 w-1.5 bg-[#006D4B] rounded-full" />
