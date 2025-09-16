@@ -9,6 +9,9 @@ import { files } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, and, count, desc } from 'drizzle-orm';
 import { getUploadsPath } from '../lib/paths';
+import { processUploadedFiles } from '../lib/file-processing';
+import { processFilesToIntents } from '../lib/sync/process-intents';
+import type { IntegrationFile } from '../lib/integrations';
 
 // Extend the Request interface to include generatedFileId
 declare global {
@@ -156,6 +159,14 @@ router.post('/', authenticatePrivy, upload.single('file'),
 
       console.log(`✅ File uploaded successfully: ${req.generatedFileId!} (${req.file!.originalname})`);
 
+      generateIntentsForUpload({
+        userId: req.user!.id,
+        fileRecord: newFile[0],
+        multerFile: req.file,
+      }).catch((intentError) => {
+        console.error('Intent generation after upload failed:', intentError);
+      });
+
       return res.status(201).json({
         message: 'File uploaded successfully',
         file: {
@@ -239,4 +250,41 @@ function getExt(name: string) {
 function fileUrl(userId: string, fileId: string, name: string) {
   const ext = getExt(name);
   return `/uploads/files/${userId}/${fileId}${ext}`;
+}
+
+async function generateIntentsForUpload(options: {
+  userId: string;
+  fileRecord: {
+    id: string;
+    name: string;
+    type: string;
+  };
+  multerFile: Express.Multer.File;
+}) {
+  const { userId, fileRecord, multerFile } = options;
+  const content = await processUploadedFiles([multerFile]);
+  if (!content.trim()) {
+    console.log(`🤖 Skipping intent generation for ${fileRecord.id} (no readable content)`);
+    return;
+  }
+
+  const uploadAsIntegrationFile: IntegrationFile = {
+    id: fileRecord.id,
+    name: fileRecord.name,
+    content,
+    lastModified: new Date(),
+    type: fileRecord.type,
+    size: multerFile.size,
+  };
+
+  const { intentsGenerated } = await processFilesToIntents({
+    userId,
+    files: [uploadAsIntegrationFile],
+    textInstruction: `Generate intents based on uploaded file ${fileRecord.name}`,
+    count: 5,
+    sourceId: fileRecord.id,
+    sourceType: 'file',
+  });
+
+  console.log(`🤖 Intent generation complete for ${fileRecord.id}: generated ${intentsGenerated}`);
 }
