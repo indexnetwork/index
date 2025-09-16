@@ -168,7 +168,7 @@ export default function PrivateIndexPage() {
   const handleSync = async (integrationType: string) => {
     try {
       setSyncingIntegration(integrationType);
-      await syncService.syncIntegration(integrationType as 'notion' | 'slack' | 'discord' | 'google-calendar' | 'gmail');
+      await syncService.syncIntegration(integrationType as 'notion' | 'slack' | 'discord' | 'calendar' | 'gmail');
       setSyncingIntegration(null);
       notifySuccess(`${integrationType} sync accepted`, 'It will run in the background.');
     } catch (error) {
