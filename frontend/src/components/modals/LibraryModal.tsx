@@ -35,7 +35,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { identityToken } = useIdentityToken();
   const [isUploading, setIsUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<Array<{ id: string; name: string; size: string; type: string; createdAt: string; url: string }>>([]);
@@ -52,15 +51,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const knownIntentIds = useRef<Set<string>>(new Set());
   const connectSourcesRef = useRef<HTMLDivElement | null>(null);
 
-  // Enhance UX: select, search, and undo state
+  // Enhance UX: select and undo state
   const [, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
   const [undoBatch, setUndoBatch] = useState<{
     items: { kind: 'file' | 'link'; item: any }[];
     timer: ReturnType<typeof setTimeout> | null;
   } | null>(null);
-  const [typeFilter, setTypeFilter] = useState<'all'|'file'|'link'>('all');
   const [confirm, setConfirm] = useState<{
     open: boolean;
     message: string;
@@ -380,25 +377,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api, onChanged, loadLists, loadLibraryIntents]);
 
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const files = e.dataTransfer?.files || null;
-    if (files && files.length > 0) {
-      void handleFilesSelected(files);
-    }
-  }, [handleFilesSelected]);
-
   const handleAddLink = useCallback(async () => {
     if (!linkUrl) return;
     
@@ -607,95 +585,64 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             {/* Add new content */}
             <section>
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Add Content</h3>
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Files and URLs</h3>
                 <span className="text-xs text-gray-500 font-ibm-plex-mono">
                   {files.length + links.length} items total
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
                 {/* File upload */}
-                <div className="border border-[#E0E0E0] rounded-lg p-2 bg-[#FAFAFA] md:p-3">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    id="library-file-upload"
-                    onChange={(e) => handleFilesSelected(e.target.files)}
-                  />
-
-                  {/* Mobile / tablet: simple upload button */}
-                  <div className="md:hidden flex items-center justify-between gap-2">
+                <div className="border border-[#E0E0E0] rounded-lg">
+                  <div className="relative w-full">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      id="library-file-upload"
+                      onChange={(e) => handleFilesSelected(e.target.files)}
+                    />
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-ibm-plex-mono rounded-md bg-white border border-[#DDDDDD] text-[#333] shadow-sm hover:bg-[#F0F0F0] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                      disabled={isUploading}
+                      className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-lg flex items-center justify-center gap-1.5"
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
-                        <path d="M12 5v14"></path>
-                        <path d="M5 12h14"></path>
-                      </svg>
-                      Upload files
-                    </button>
-                    {isUploading && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-ibm-plex-mono text-[#666]">
-                        <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
-                        Uploading…
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Desktop: drag-and-drop surface */}
-                  <div
-                    className={`hidden md:flex border border-dashed ${isDragging ? 'border-[#CCCCCC] bg-[#F5F5F5]' : 'border-[#DDDDDD]'} bg-[#F5F5F5] p-2.5 md:p-6 text-center cursor-pointer transition-colors rounded-lg items-center justify-center min-h-[82px]`}
-                    onDragOver={handleDragOver}
-                    onDragEnter={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                  >
-                    <label htmlFor="library-file-upload" className="cursor-pointer w-full">
                       {isUploading ? (
-                        <div className="space-y-2">
-                          <div className="w-8 h-8 mx-auto border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
-                          <div className="text-xs text-[#666] font-ibm-plex-mono">Uploading...</div>
-                        </div>
+                        <>
+                          <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                          Uploading…
+                        </>
                       ) : (
-                        <div className="space-y-1">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-[#666]">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                            <polyline points="14,2 14,8 20,8"></polyline>
-                            <line x1="16" y1="13" x2="8" y2="13"></line>
-                            <line x1="16" y1="17" x2="8" y2="17"></line>
-                            <polyline points="10,9 9,9 8,9"></polyline>
+                        <>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                            <path d="M12 5v14"></path>
+                            <path d="M5 12h14"></path>
                           </svg>
-                          <div className="text-xs text-[#666] font-ibm-plex-mono">Drop files or click</div>
-                        </div>
+                          Upload files
+                        </>
                       )}
-                    </label>
+                    </button>
                   </div>
                 </div>
 
                 {/* Link input */}
-                <div className="border border-[#E0E0E0] rounded-lg p-2 flex items-center bg-[#FAFAFA] md:p-3">
-                  <div className="flex items-center gap-2 w-full">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] flex-shrink-0">
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                    </svg>
+                <div className="border border-[#E0E0E0] rounded-lg">
+                  <div className="relative w-full">
                     <Input
-                      placeholder="Paste URL here"
+                      placeholder="🔗 Paste URL here"
                       value={linkUrl}
                       onChange={(e) => setLinkUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                      className="text-sm bg-[#F5F5F5] border-[#DDDDDD] rounded-lg font-ibm-plex-mono flex-1 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] focus:border-[#CCCCCC]"
+                      className="text-sm bg-white rounded-lg font-ibm-plex-mono w-full pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
                     />
                     {isAddingLink ? (
-                      <div className="w-8 h-8 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <button
                         onClick={handleAddLink}
                         disabled={!linkUrl}
-                        className="p-1.5 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                         aria-label="Add URL"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
@@ -712,7 +659,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             {/* Library items */}
             <section>
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-2">
-                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Library Items</h3>
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-2">
                     <Button
@@ -733,86 +679,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     </Button>
                   </div>
                 )}
-                <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 w-full sm:w-auto">
-                  <div className="relative w-full sm:w-auto">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#666]">
-                      <circle cx="11" cy="11" r="8"></circle>
-                      <path d="m21 21-4.35-4.35"></path>
-                    </svg>
-                    <Input
-                      placeholder="Search files and links..."
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      className="h-9 w-full sm:w-[240px] max-w-full text-sm pl-10 pr-4 bg-[#F5F5F5] border-[#DDDDDD] rounded-lg font-ibm-plex-mono focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] focus:border-[#CCCCCC]"
-                    />
-                    {search && (
-                      <button
-                        onClick={() => setSearch('')}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 p-0.5 hover:bg-[#F0F0F0] rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                        aria-label="Clear search"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] transition-colors duration-150 ease-in-out">
-                          <line x1="18" y1="6" x2="6" y2="18"></line>
-                          <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  {/* Mobile: compact select */}
-                  <div className="w-full sm:hidden mt-1">
-                    <label htmlFor="library-type-filter" className="sr-only">Filter</label>
-                    <select
-                      id="library-type-filter"
-                      value={typeFilter}
-                      onChange={(e) => setTypeFilter(e.target.value as 'all'|'file'|'link')}
-                      className="w-full h-9 text-sm border border-[#DDDDDD] rounded-lg bg-[#F5F5F5] px-2 font-ibm-plex-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)]"
-                    >
-                      <option value="all">All</option>
-                      <option value="file">Files</option>
-                      <option value="link">Links</option>
-                    </select>
-                  </div>
-
-                  {/* Desktop: button group */}
-                  <div className="hidden sm:flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                        typeFilter==='all' 
-                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
-                          : ''
-                      }`}
-                      onClick={() => setTypeFilter('all')}
-                    >
-                      All
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                        typeFilter==='file' 
-                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
-                          : ''
-                      }`}
-                      onClick={() => setTypeFilter('file')}
-                    >
-                      Files
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                        typeFilter==='link' 
-                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
-                          : ''
-                      }`}
-                      onClick={() => setTypeFilter('link')}
-                    >
-                      Links
-                    </Button>
-                  </div>
-                </div>
               </div>
               <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pr-2 pb-8">
                 {(() => {
@@ -841,11 +707,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       raw: l as any,
                     })),
                   ];
-                  const filtered = map.filter(item => {
-                    const q = item.title.toLowerCase().includes(search.toLowerCase());
-                    const t = typeFilter === 'all' || item.kind === typeFilter;
-                    return q && t;
-                  });
+                  const filtered = map;
                   const recent = filtered.sort((a,b) => a.createdAt < b.createdAt ? 1 : -1);
                   if (recent.length === 0) return <div className="text-sm text-[#666]">No items yet.</div>;
                   return recent.map(item => (
@@ -898,34 +760,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  item.onClick?.();
-                                }} 
-                                className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
-                                disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}
-                                aria-label="View content"
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
-                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                  <circle cx="12" cy="12" r="3"></circle>
-                                </svg>
-                              </button>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigator.clipboard.writeText((item.raw as any).url);
-                                  success('URL copied to clipboard');
-                                }} 
-                                className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
-                                aria-label="Copy URL"
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
-                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                </svg>
-                              </button>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
                                   handleSyncLink((item.raw as any).id);
                                 }} 
                                 className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
@@ -971,12 +805,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
               </div>
             </div>
-            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] p-3 shadow-[0_1px_3px_rgba(15,23,42,0.08)] lg:max-h-[70vh] lg:overflow-y-auto`}>
-                <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4]">
-                  <h3 className="text-sm font-semibold font-ibm-plex-mono text-[#222]">Intents</h3>
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] lg:max-h-[70vh] lg:overflow-y-auto`}>
+                <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3">
+                  <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
                   <span className="text-xs text-[#666] font-ibm-plex-mono">{libraryIntents.length}</span>
                 </div>
-                <div className="mt-3 flex-1 lg:overflow-y-auto pr-1 space-y-3">
+                <div className="mt-3 flex-1 lg:overflow-y-auto pr-1 space-y-3 p-3 pt-0">
                   {isLoadingIntents ? (
                     <div className="flex items-center justify-center py-6">
                       <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
