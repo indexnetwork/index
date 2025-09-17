@@ -6,7 +6,8 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { X } from 'lucide-react';
+import { X, ArrowUpRight } from 'lucide-react';
+import Link from 'next/link';
 
 interface IndexMemberSettingsProps {
   open: boolean;
@@ -281,26 +282,37 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                   ) : activeTab === 'indexed' ? (
                     indexedIntents.length > 0 ? (
                       indexedIntents.map((intent) => (
-                        <div key={intent.id}>
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm text-gray-600">{intent.summary}</p>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="h-auto py-1 px-2 text-xs font-ibm-plex-mono"
-                              onClick={() => handleRemoveIntent(intent.id)}
-                              disabled={removingIntents.has(intent.id)}
+                        <div
+                          key={intent.id}
+                          className="flex items-center justify-between p-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex-1">
+                            <Link
+                              href={`/intents/${intent.id}`}
+                              className="flex items-center gap-2 mb-1"
                             >
-                              {removingIntents.has(intent.id) ? (
-                                <div className="h-3 w-3 border border-gray-500 border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                'Remove'
-                              )}
-                            </Button>
+                              <h4 className="text-xs font-ibm-plex-mono font-medium text-gray-900">{intent.summary || intent.payload}</h4>
+                              <ArrowUpRight className="h-3 w-3" />
+                            </Link>
                           </div>
-                          <p className="text-xs text-gray-400 mb-3">
-                            {new Date(intent.createdAt).toLocaleDateString()}
-                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleRemoveIntent(intent.id);
+                            }}
+                            disabled={removingIntents.has(intent.id)}
+                          >
+                            {removingIntents.has(intent.id) ? (
+                              <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <div>
+                                Remove
+                              </div>
+                            )}
+                          </Button>
                         </div>
                       ))
                     ) : (
@@ -309,26 +321,34 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                   ) : (
                     suggestedIntents.length > 0 ? (
                       suggestedIntents.map((intent) => (
-                        <div key={intent.id} className="mb-6 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                              <p className="text-sm text-gray-700 mb-1">{intent.summary || intent.payload}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button 
-                                size="sm" 
-                                className="h-auto py-1 px-2 text-xs font-ibm-plex-mono"
-                                onClick={() => handleAddIntent(intent.id)}
-                                disabled={addingIntents.has(intent.id)}
-                              >
-                                {addingIntents.has(intent.id) ? (
-                                  <div className="h-3 w-3 border border-white border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                  'Add'
-                                )}
-                              </Button>
-                            </div>
+                        <div
+                          key={intent.id}
+                          className="flex items-center justify-between p-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                        >
+                          <div className="flex-1">
+                            <Link
+                              href={`/intents/${intent.id}`}
+                              className="flex items-center gap-2 mb-1"
+                            >
+                              <h4 className="text-xs font-ibm-plex-mono font-medium text-gray-900">{intent.summary || intent.payload}</h4>
+                              <ArrowUpRight className="h-3 w-3" />
+                            </Link>
                           </div>
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleAddIntent(intent.id);
+                            }}
+                            disabled={addingIntents.has(intent.id)}
+                          >
+                            {addingIntents.has(intent.id) ? (
+                              <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              'Add'
+                            )}
+                          </Button>
                         </div>
                       ))
                     ) : (
