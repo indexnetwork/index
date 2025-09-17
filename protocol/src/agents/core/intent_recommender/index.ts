@@ -39,9 +39,9 @@ export async function recommendIntents(
       };
     }
 
-    // Prepare the user intents for analysis
+    // Prepare the user intents for analysis (using indexes instead of UUIDs for efficiency)
     const userIntentsText = userIntents
-      .map((intent, idx) => `${idx + 1}. [ID:${intent.id}] ${intent.payload}`)
+      .map((intent, idx) => `${idx + 1}. ${intent.payload}`)
       .join('\n\n');
 
     // Prepare existing indexed intents for context
@@ -52,7 +52,7 @@ export async function recommendIntents(
     // Define schema for recommendations
     const RecommendationSchema = z.object({
       recommendations: z.array(z.object({
-        id: z.string().describe("The ID of the intent being recommended"),
+        index: z.number().int().positive().describe("The 1-based index of the intent being recommended"),
         confidence: z.number().min(0.0).max(1.0).describe("Confidence score between 0.0 and 1.0")
       })).describe(`Array of recommended intents sorted by relevance`)
     });
@@ -78,12 +78,12 @@ Analyze each user intent and determine which ones would be most valuable additio
 3. Value they would add to the index
 
 Return the most relevant intents with confidence scores (0.0-1.0).
-Include only intents with confidence > 0.3.
+Include only intents with confidence > 0.6.
 Return at most ${maxResults} recommendations.
 
 For each recommendation, provide:
-- The exact ID of the intent
-- A confidence score (0.3-1.0)
+- The index number (1-based) of the intent from the numbered list above
+- A confidence score (0.6-1.0)
 
 Sort recommendations by confidence score (highest first).`;
 
@@ -102,19 +102,22 @@ Sort recommendations by confidence score (highest first).`;
 
     const response = await recommendCall(prompt, RecommendationSchema);
     
-    // Filter and map the results
+    // Filter and map the results (converting indexes back to actual UUIDs)
     const recommendations = response.recommendations
-      .filter((rec: Recommendation) => rec.confidence > 0.3)
+      .filter((rec: Recommendation) => rec.confidence > 0.6)
       .slice(0, maxResults)
       .map((rec: Recommendation) => {
-        const userIntent = userIntents.find(i => i.id === rec.id);
-        if (!userIntent) {
-          console.warn(`Intent ${rec.id} not found in user intents`);
+        // Convert 1-based index to 0-based array index
+        const arrayIndex = rec.index - 1;
+        if (arrayIndex < 0 || arrayIndex >= userIntents.length) {
+          console.warn(`Intent index ${rec.index} is out of bounds`);
           return null;
         }
+        const userIntent = userIntents[arrayIndex];
         return {
           id: userIntent.id,
           payload: userIntent.payload,
+          summary: userIntent.summary,
           confidence: rec.confidence
         };
       })

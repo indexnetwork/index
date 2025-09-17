@@ -45,7 +45,8 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
   const [memberSettings, setMemberSettings] = useState<MemberSettings | null>(null);
   const [indexedIntents, setIndexedIntents] = useState<MemberIntent[]>([]);
   const [suggestedIntents, setSuggestedIntents] = useState<RecommendedIntent[]>([]);
-  const [loadingIntents, setLoadingIntents] = useState(false);
+  const [loadingIndexed, setLoadingIndexed] = useState(false);
+  const [loadingSuggested, setLoadingSuggested] = useState(false);
   const [addingIntents, setAddingIntents] = useState<Set<string>>(new Set());
   const [removingIntents, setRemovingIntents] = useState<Set<string>>(new Set());
   const { success, error } = useNotifications();
@@ -66,14 +67,14 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
   // Fetch member intents
   const fetchMemberIntents = useCallback(async (tab: 'indexed' | 'suggested') => {
     try {
-      setLoadingIntents(true);
-      
       if (tab === 'indexed') {
+        setLoadingIndexed(true);
         const response = await api.get<{ intents: MemberIntent[] }>(
           `/indexes/${index.id}/member-intents`
         );
         setIndexedIntents(response.intents);
       } else {
+        setLoadingSuggested(true);
         // Use the new intent recommendations endpoint for suggestions
         const response = await api.get<{ 
           intents: RecommendedIntent[]; 
@@ -84,7 +85,11 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
     } catch (err) {
       console.error('Failed to fetch member intents:', err);
     } finally {
-      setLoadingIntents(false);
+      if (tab === 'indexed') {
+        setLoadingIndexed(false);
+      } else {
+        setLoadingSuggested(false);
+      }
     }
   }, [api, index.id]);
 
@@ -92,9 +97,11 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
   useEffect(() => {
     if (open) {
       fetchMemberSettings();
-      fetchMemberIntents(activeTab);
+      // Fetch both indexed and suggested intents when modal opens
+      fetchMemberIntents('indexed');
+      fetchMemberIntents('suggested');
     }
-  }, [open, activeTab, fetchMemberSettings, fetchMemberIntents]);
+  }, [open, fetchMemberSettings, fetchMemberIntents]);
 
   const handleLeaveIndex = async () => {
     try {
@@ -165,7 +172,6 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
 
   const handleTabChange = (tab: 'indexed' | 'suggested') => {
     setActiveTab(tab);
-    fetchMemberIntents(tab);
   };
 
   return (
@@ -255,7 +261,7 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    Indexed ({indexedIntents.length})
+                    Indexed {loadingIndexed ? '' : `(${indexedIntents.length})`}
                   </button>
                   <button
                     onClick={() => handleTabChange('suggested')}
@@ -265,19 +271,19 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    Recommended ({suggestedIntents.length})
+                    Recommended {loadingSuggested ? '' : `(${suggestedIntents.length})`}
                   </button>
                 </div>
 
                 <div className="space-y-2">
-                  {loadingIntents ? (
+                  {(activeTab === 'indexed' ? loadingIndexed : loadingSuggested) ? (
                     <div className="text-center py-4 text-gray-500">Loading...</div>
                   ) : activeTab === 'indexed' ? (
                     indexedIntents.length > 0 ? (
                       indexedIntents.map((intent) => (
                         <div key={intent.id}>
                           <div className="flex items-center justify-between">
-                            <p className="text-sm text-gray-600">{intent.payload}</p>
+                            <p className="text-sm text-gray-600">{intent.summary}</p>
                             <Button 
                               variant="outline" 
                               size="sm" 
@@ -306,7 +312,7 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                         <div key={intent.id} className="mb-6 p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1">
-                              <p className="text-sm text-gray-700 mb-1">{intent.payload}</p>
+                              <p className="text-sm text-gray-700 mb-1">{intent.summary || intent.payload}</p>
                             </div>
                             <div className="flex items-center gap-2">
                               <Button 

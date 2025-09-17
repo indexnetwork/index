@@ -83,7 +83,7 @@ router.get('/intents',
         userIntentsNotInIndex as Array<{ id: string; payload: string; summary?: string }>,
         indexPrompt,
         existingIntentPayloads,
-        10 // Return up to 10 suggestions
+        5 // Return up to 10 suggestions
       );
 
       if (!recommendResult.success) {
