@@ -517,7 +517,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           <div className="flex flex-col lg:flex-row gap-3.5 lg:gap-4 lg:flex-1 overflow-hidden">
             <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block lg:flex-1 min-w-0`}
             >
-              <div className="space-y-2 sm:space-y-3 lg:space-y-4 lg:max-h-[70vh] lg:overflow-y-auto">
+              <div className="space-y-2 sm:space-y-3 lg:space-y-4">
 
             {/* Connect your sources */}
             <section ref={connectSourcesRef} className="pr-2">
@@ -534,7 +534,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       <span className="flex items-center gap-3">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={`/integrations/${it.id === 'calendar' ? 'google-calendar' : it.id}.png`} width={20} height={20} alt="" />
-                        <span className="text-sm font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
+                        <span className="text-xs font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
                         {it.connected && (
                           <button
                             onClick={() => handleSyncIntegration(it.id)}
@@ -629,12 +629,15 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 {/* Link input */}
                 <div className="border border-[#E0E0E0] rounded-lg">
                   <div className="relative w-full">
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm pointer-events-none">
+                      🔗
+                    </span>
                     <Input
-                      placeholder="🔗 Paste URL here"
+                      placeholder="Paste URL here"
                       value={linkUrl}
                       onChange={(e) => setLinkUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                      className="text-sm bg-white rounded-lg font-ibm-plex-mono w-full pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
+                      className="text-sm bg-white rounded-lg font-ibm-plex-mono w-full pl-10 pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
                     />
                     {isAddingLink ? (
                       <div className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
@@ -716,9 +719,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       className={`w-full border rounded-lg px-2.5 py-2 transition-colors cursor-pointer md:px-3 ${
                         selectedIds.has(item.id) 
                           ? 'border-[#CCCCCC] bg-[#F5F5F5]' 
-                          : item.kind === 'link' 
-                            ? 'border-[#E0E0E0] bg-[#FAFAFA] hover:border-[#CCCCCC]' 
-                            : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'
+                          : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'
                       }`}
                       onClick={() => toggleSelected(item.id, !selectedIds.has(item.id))}
                     >
@@ -816,15 +817,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
                     </div>
                   ) : intentsByDate.length === 0 ? (
-                    <div className="text-xs text-[#666] font-ibm-plex-mono py-4 text-center space-y-2">
-                      <p>No intents yet. Connect a source to generate suggestions.</p>
-                      <button
-                        type="button"
-                        onClick={handleJumpToSources}
-                        className="inline-flex items-center justify-center gap-1 px-3 py-1.5 text-[11px] font-medium text-white bg-[#0A8F5A] rounded-md shadow-sm hover:bg-[#0b7b4f] transition-colors"
-                      >
-                        Connect sources
-                      </button>
+                    <div className="text-xs text-[#666] font-ibm-plex-mono py-4 text-center">
+                      <p>No intents yet.</p>
                     </div>
                   ) : (
                     intentsByDate.map((section) => {
