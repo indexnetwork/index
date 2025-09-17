@@ -1,7 +1,7 @@
 import { Router, Response, Request } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import db from '../lib/db';
-import { intents, users, indexes, intentIndexes, intentStakes, agents } from '../lib/schema';
+import { intents, users, indexes, intentIndexes, intentStakes, agents, files, indexLinks, userIntegrations } from '../lib/schema';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, sql, inArray } from 'drizzle-orm';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
@@ -121,6 +121,108 @@ router.post('/list',
     } catch (error) {
       console.error('Get intents error:', error);
       return res.status(500).json({ error: 'Failed to fetch intents' });
+    }
+  }
+);
+
+// Get intents generated from library sources (files, links, integrations)
+router.get('/library',
+  authenticatePrivy,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const rows = await db.select({
+        id: intents.id,
+        payload: intents.payload,
+        summary: intents.summary,
+        createdAt: intents.createdAt,
+        sourceType: intents.sourceType,
+        sourceId: intents.sourceId,
+        fileName: files.name,
+        linkUrl: indexLinks.url,
+        integrationType: userIntegrations.integrationType,
+        integrationLastSyncAt: userIntegrations.lastSyncAt,
+      }).from(intents)
+        .leftJoin(files, and(
+          eq(intents.sourceType, 'file'),
+          eq(intents.sourceId, files.id)
+        ))
+        .leftJoin(indexLinks, and(
+          eq(intents.sourceType, 'link'),
+          eq(intents.sourceId, indexLinks.id)
+        ))
+        .leftJoin(userIntegrations, and(
+          eq(intents.sourceType, 'integration'),
+          eq(intents.sourceId, userIntegrations.id)
+        ))
+        .where(and(
+          eq(intents.userId, req.user!.id),
+          isNull(intents.archivedAt),
+          isNotNull(intents.sourceType),
+          isNotNull(intents.sourceId)
+        ))
+        .orderBy(desc(intents.createdAt));
+
+      const friendlyIntegrationName = (integrationType?: string | null): string => {
+        if (!integrationType) return 'Integration';
+        const map: Record<string, string> = {
+          notion: 'Notion',
+          slack: 'Slack',
+          discord: 'Discord',
+          gmail: 'Gmail',
+          'google-calendar': 'Google Calendar',
+        };
+        return map[integrationType] || integrationType
+          .split('-')
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(' ');
+      };
+
+      const intentsBySource = rows.flatMap(row => {
+        if (!row.sourceType || !row.sourceId) return [];
+        const sourceType = row.sourceType as 'file' | 'link' | 'integration';
+        let sourceName = '';
+        let sourceValue: string | null = null;
+        let sourceMeta: string | null = null;
+
+        if (sourceType === 'file') {
+          sourceName = row.fileName || 'File';
+          sourceValue = row.fileName || null;
+        } else if (sourceType === 'link') {
+          sourceValue = row.linkUrl || null;
+          if (row.linkUrl) {
+            try {
+              const url = new URL(row.linkUrl);
+              sourceName = url.hostname || row.linkUrl;
+            } catch {
+              sourceName = row.linkUrl;
+            }
+          } else {
+            sourceName = 'Link';
+          }
+        } else {
+          const friendly = friendlyIntegrationName(row.integrationType);
+          sourceName = friendly;
+          sourceValue = row.integrationType || null;
+          sourceMeta = row.integrationLastSyncAt ? row.integrationLastSyncAt.toISOString() : null;
+        }
+
+        return [{
+          id: row.id,
+          payload: row.payload,
+          summary: row.summary,
+          createdAt: row.createdAt,
+          sourceType,
+          sourceId: row.sourceId,
+          sourceName,
+          sourceValue,
+          sourceMeta,
+        }];
+      });
+
+      return res.json({ intents: intentsBySource });
+    } catch (error) {
+      console.error('Get library intents error:', error);
+      return res.status(500).json({ error: 'Failed to fetch library intents' });
     }
   }
 );
@@ -463,5 +565,3 @@ router.patch('/:id/unarchive',
 );
 
 export default router; 
-
-

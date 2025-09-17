@@ -1,7 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useNotifications } from "@/contexts/NotificationContext";
@@ -16,6 +16,18 @@ type Props = {
   onChanged?: () => void; // ask parent to refresh after any action
 };
 
+type LibrarySourceIntent = {
+  id: string;
+  payload: string;
+  summary?: string | null;
+  createdAt: string;
+  sourceType: 'file' | 'link' | 'integration';
+  sourceId: string;
+  sourceName: string;
+  sourceValue: string | null;
+  sourceMeta: string | null;
+};
+
 export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
@@ -23,7 +35,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { identityToken } = useIdentityToken();
   const [isUploading, setIsUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
   const [isAddingLink, setIsAddingLink] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<Array<{ id: string; name: string; size: string; type: string; createdAt: string; url: string }>>([]);
@@ -31,16 +42,22 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
   const [syncingIntegrations, setSyncingIntegrations] = useState<Set<string>>(new Set());
   const [syncingLinks, setSyncingLinks] = useState<Set<string>>(new Set());
+  const [libraryIntents, setLibraryIntents] = useState<LibrarySourceIntent[]>([]);
+  const [isLoadingIntents, setIsLoadingIntents] = useState(false);
+  const [newIntentIds, setNewIntentIds] = useState<Set<string>>(new Set());
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [activeMobileSection, setActiveMobileSection] = useState<'library' | 'intents'>('library');
+  const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const knownIntentIds = useRef<Set<string>>(new Set());
+  const connectSourcesRef = useRef<HTMLDivElement | null>(null);
 
-  // Enhance UX: select, search, and undo state
+  // Enhance UX: select and undo state
   const [, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
   const [undoBatch, setUndoBatch] = useState<{
     items: { kind: 'file' | 'link'; item: any }[];
     timer: ReturnType<typeof setTimeout> | null;
   } | null>(null);
-  const [typeFilter, setTypeFilter] = useState<'all'|'file'|'link'>('all');
   const [confirm, setConfirm] = useState<{
     open: boolean;
     message: string;
@@ -151,6 +168,144 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api]);
 
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }), []);
+
+  const loadLibraryIntents = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    try {
+      if (!silent) setIsLoadingIntents(true);
+      const res = await api.get<{ intents?: LibrarySourceIntent[] }>(`/intents/library`);
+      const incoming = res.intents ?? [];
+
+      const prevIds = knownIntentIds.current;
+      const nextIds = new Set(incoming.map(item => item.id));
+      const isInitialLoad = prevIds.size === 0;
+
+      if (!isInitialLoad) {
+        const freshIds = incoming.filter(item => !prevIds.has(item.id)).map(item => item.id);
+        if (freshIds.length > 0) {
+          setNewIntentIds(prev => {
+            const next = new Set(prev);
+            freshIds.forEach(id => next.add(id));
+            return next;
+          });
+          freshIds.forEach(id => {
+            const existing = highlightTimers.current.get(id);
+            if (existing) clearTimeout(existing);
+            const timeout = setTimeout(() => {
+              setNewIntentIds(prev => {
+                if (!prev.has(id)) return prev;
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+              });
+              highlightTimers.current.delete(id);
+            }, 6000);
+            highlightTimers.current.set(id, timeout);
+          });
+        }
+      }
+
+      knownIntentIds.current = nextIds;
+      setLibraryIntents(incoming);
+    } catch {
+      setLibraryIntents([]);
+    } finally {
+      if (!silent) setIsLoadingIntents(false);
+    }
+  }, [api]);
+
+  const handleJumpToSources = useCallback(() => {
+    setActiveMobileSection('library');
+    requestAnimationFrame(() => {
+      connectSourcesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  const toggleSection = useCallback((key: string) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const handleCopyIntent = useCallback(async (intent: LibrarySourceIntent) => {
+    try {
+      const text = intent.summary?.trim() && intent.summary.trim().length > 0 ? intent.summary : intent.payload;
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        success('Intent copied');
+        return;
+      }
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.top = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (!ok) throw new Error('execCommand failed');
+      success('Intent copied');
+    } catch {
+      error('Clipboard unavailable');
+    }
+  }, [success, error]);
+
+  const handleOpenIntentSource = useCallback((intent: LibrarySourceIntent) => {
+    if (intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue)) {
+      window.open(intent.sourceValue, '_blank', 'noopener');
+      return;
+    }
+    handleJumpToSources();
+  }, [handleJumpToSources]);
+
+  const intentsByDate = useMemo(() => {
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const ordered = [...libraryIntents].sort((a, b) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    const sections: Array<{ label: string; key: string; items: LibrarySourceIntent[] }> = [];
+    const bucket = new Map<string, { label: string; items: LibrarySourceIntent[] }>();
+
+    for (const intent of ordered) {
+      const createdDate = new Date(intent.createdAt);
+      if (Number.isNaN(createdDate.getTime())) {
+        if (!bucket.has('unknown')) bucket.set('unknown', { label: 'Undated', items: [] });
+        bucket.get('unknown')!.items.push(intent);
+        continue;
+      }
+      const startOfCreated = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
+      const diff = Math.round((startOfToday.getTime() - startOfCreated.getTime()) / msPerDay);
+      let label: string;
+      if (diff === 0) label = 'Today';
+      else if (diff === 1) label = 'Yesterday';
+      else label = dateFormatter.format(createdDate);
+      const key = `${startOfCreated.getTime()}-${label}`;
+      if (!bucket.has(key)) bucket.set(key, { label, items: [] });
+      bucket.get(key)!.items.push(intent);
+    }
+
+    const sortedKeys = Array.from(bucket.keys()).sort((a, b) => {
+      const [timeA] = a.split('-');
+      const [timeB] = b.split('-');
+      return Number(timeB) - Number(timeA);
+    });
+
+    for (const key of sortedKeys) {
+      const entry = bucket.get(key);
+      if (entry) sections.push({ label: entry.label, key, items: entry.items });
+    }
+
+    return sections;
+  }, [libraryIntents, dateFormatter]);
+
   const toggleIntegration = useCallback(async (id: IntegrationId) => {
     const item = integrations.find(i => i.id === id);
     if (!item) return;
@@ -215,30 +370,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       }));
       onChanged?.();
       await loadLists();
+      await loadLibraryIntents();
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [api, onChanged, loadLists]);
-
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const files = e.dataTransfer?.files || null;
-    if (files && files.length > 0) {
-      void handleFilesSelected(files);
-    }
-  }, [handleFilesSelected]);
+  }, [api, onChanged, loadLists, loadLibraryIntents]);
 
   const handleAddLink = useCallback(async () => {
     if (!linkUrl) return;
@@ -255,13 +392,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       setLinkUrl("");
       onChanged?.();
       await loadLists();
+      await loadLibraryIntents();
       success('Link added successfully');
     } catch {
       error('Failed to add link. Please check the URL and try again.');
     } finally {
       setIsAddingLink(false);
     }
-  }, [api, linkUrl, onChanged, loadLists, success, error]);
+  }, [api, linkUrl, onChanged, loadLists, loadLibraryIntents, success, error]);
 
   const handleSyncIntegration = useCallback(async (integrationType: string) => {
     try {
@@ -271,13 +409,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } catch {
       error(`Failed to sync ${integrationType}`);
     } finally {
+      void loadLibraryIntents();
       setSyncingIntegrations(prev => {
         const next = new Set(prev);
         next.delete(integrationType);
         return next;
       });
     }
-  }, [syncService, success, error]);
+  }, [syncService, success, error, loadLibraryIntents]);
 
   const handleSyncLink = useCallback(async (linkId: string) => {
     try {
@@ -287,13 +426,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } catch {
       error('Failed to sync link');
     } finally {
+      void loadLibraryIntents();
       setSyncingLinks(prev => {
         const next = new Set(prev);
         next.delete(linkId);
         return next;
       });
     }
-  }, [syncService, success, error]);
+  }, [syncService, success, error, loadLibraryIntents]);
 
 
   // Fetch once per open (ignore function identity changes)
@@ -303,6 +443,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       wasOpen.current = true;
       loadLists();
       loadIntegrations();
+      loadLibraryIntents();
     }
     if (!open && wasOpen.current) {
       wasOpen.current = false;
@@ -311,13 +452,33 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  useEffect(() => {
+    if (!open) {
+      knownIntentIds.current = new Set();
+      setNewIntentIds(() => new Set());
+      highlightTimers.current.forEach(clearTimeout);
+      highlightTimers.current.clear();
+      return;
+    }
+    setActiveMobileSection('library');
+    const interval = setInterval(() => {
+      void loadLibraryIntents({ silent: true });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [open, loadLibraryIntents]);
+
+  useEffect(() => () => {
+    highlightTimers.current.forEach(clearTimeout);
+    highlightTimers.current.clear();
+  }, []);
+
   // no index context needed for library mode
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
-        <Dialog.Content className="library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:h-auto sm:max-w-[800px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
+        <Dialog.Content className="library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-w-[1050px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
           <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
             <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
             <button
@@ -332,27 +493,48 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </button>
           </div>
 
-          <div className="flex-1 pr-1 space-y-4 overflow-y-auto sm:overflow-hidden">
+          <div className="lg:hidden mb-3 flex items-center gap-2 rounded-lg bg-[#F2F2F2] p-1">
+            <button
+              type="button"
+              className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-md transition-colors ${activeMobileSection === 'library' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
+              onClick={() => setActiveMobileSection('library')}
+            >
+              Library
+            </button>
+            <button
+              type="button"
+              className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-md transition-colors ${activeMobileSection === 'intents' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
+              onClick={() => setActiveMobileSection('intents')}
+            >
+              Intents
+              <span className="ml-1 text-[10px] text-[#666]">({libraryIntents.length})</span>
+              {newIntentIds.size > 0 && (
+                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[#0A8F5A]"></span>
+              )}
+            </button>
+          </div>
+
+          <div className="flex flex-col lg:flex-row gap-3.5 lg:gap-4 lg:flex-1 overflow-hidden">
+            <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block lg:flex-1 min-w-0`}
+            >
+              <div className="space-y-2 sm:space-y-3 lg:space-y-4 lg:max-h-[70vh] lg:overflow-y-auto">
 
             {/* Connect your sources */}
-            <section>
-              <div className="flex items-center justify-between mb-2">
+            <section ref={connectSourcesRef} className="pr-2">
+              <div className="flex items-center justify-between mb-1.5">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Connect Sources</h3>
                 <span className="text-xs text-gray-500 font-ibm-plex-mono">
                   {integrations.filter(i => i.connected).length} of {integrations.length} connected
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-3">
                 {integrations.map((it) => (
-                  <div key={it.id} className="flex flex-col gap-2 border border-[#E0E0E0] rounded-lg px-3 py-3 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]">
+                  <div key={it.id} className="flex flex-col gap-2 border border-[#E0E0E0] rounded-lg px-2.5 py-2 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC] md:px-3 md:py-2.5">
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-3">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={`/integrations/${it.id === 'calendar' ? 'google-calendar' : it.id}.png`} width={20} height={20} alt="" />
                         <span className="text-sm font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
-                        {it.connected && (
-                          <span className="h-1.5 w-1.5 bg-[#006D4B] rounded-full" />
-                        )}
                         {it.connected && (
                           <button
                             onClick={() => handleSyncIntegration(it.id)}
@@ -401,23 +583,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
 
             {/* Add new content */}
-            <section>
+            <section className="pr-2">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Add Content</h3>
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Files and URLs</h3>
                 <span className="text-xs text-gray-500 font-ibm-plex-mono">
                   {files.length + links.length} items total
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
                 {/* File upload */}
-                <div className="border border-[#E0E0E0] rounded-lg p-3 bg-[#FAFAFA]">
-                  <div
-                    className={`border border-dashed ${isDragging ? 'border-[#CCCCCC] bg-[#F5F5F5]' : 'border-[#DDDDDD]'} bg-[#F5F5F5] p-4 md:p-6 text-center cursor-pointer transition-colors rounded-lg flex items-center justify-center min-h-[72px] md:min-h-[80px]`}
-                    onDragOver={handleDragOver}
-                    onDragEnter={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                  >
+                <div className="border border-[#E0E0E0] rounded-lg">
+                  <div className="relative w-full">
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -426,49 +602,47 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       id="library-file-upload"
                       onChange={(e) => handleFilesSelected(e.target.files)}
                     />
-                    <label htmlFor="library-file-upload" className="cursor-pointer">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-lg flex items-center justify-center gap-1.5"
+                    >
                       {isUploading ? (
-                        <div className="space-y-2">
-                          <div className="w-8 h-8 mx-auto border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
-                          <div className="text-xs text-[#666] font-ibm-plex-mono">Uploading...</div>
-                        </div>
+                        <>
+                          <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                          Uploading…
+                        </>
                       ) : (
-                        <div className="space-y-1">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto text-[#666]">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                            <polyline points="14,2 14,8 20,8"></polyline>
-                            <line x1="16" y1="13" x2="8" y2="13"></line>
-                            <line x1="16" y1="17" x2="8" y2="17"></line>
-                            <polyline points="10,9 9,9 8,9"></polyline>
+                        <>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                            <path d="M12 5v14"></path>
+                            <path d="M5 12h14"></path>
                           </svg>
-                          <div className="text-xs text-[#666] font-ibm-plex-mono">Drop files or click</div>
-                        </div>
+                          Upload files
+                        </>
                       )}
-                    </label>
+                    </button>
                   </div>
                 </div>
 
                 {/* Link input */}
-                <div className="border border-[#E0E0E0] rounded-lg p-3 flex items-center bg-[#FAFAFA]">
-                  <div className="flex items-center gap-2 w-full">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] flex-shrink-0">
-                      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                    </svg>
+                <div className="border border-[#E0E0E0] rounded-lg">
+                  <div className="relative w-full">
                     <Input
-                      placeholder="Paste URL here"
+                      placeholder="🔗 Paste URL here"
                       value={linkUrl}
                       onChange={(e) => setLinkUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                      className="text-sm bg-[#F5F5F5] border-[#DDDDDD] rounded-lg font-ibm-plex-mono flex-1 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] focus:border-[#CCCCCC]"
+                      className="text-sm bg-white rounded-lg font-ibm-plex-mono w-full pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
                     />
                     {isAddingLink ? (
-                      <div className="w-8 h-8 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
                     ) : (
                       <button
                         onClick={handleAddLink}
                         disabled={!linkUrl}
-                        className="p-1.5 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                         aria-label="Add URL"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
@@ -483,9 +657,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
 
             {/* Library items */}
-            <section>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Library Items</h3>
+            <section className="pr-2">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-2">
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-2">
                     <Button
@@ -506,88 +679,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     </Button>
                   </div>
                 )}
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
-                  <div className="relative w-full sm:w-auto">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#666]">
-                      <circle cx="11" cy="11" r="8"></circle>
-                      <path d="m21 21-4.35-4.35"></path>
-                    </svg>
-                    <Input
-                      placeholder="Search files and links..."
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      className="h-9 w-full sm:w-[240px] max-w-full text-sm pl-10 pr-4 bg-[#F5F5F5] border-[#DDDDDD] rounded-lg font-ibm-plex-mono focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] focus:border-[#CCCCCC]"
-                    />
-                    {search && (
-                      <button
-                        onClick={() => setSearch('')}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 p-0.5 hover:bg-[#F0F0F0] rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                        aria-label="Clear search"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] transition-colors duration-150 ease-in-out">
-                          <line x1="18" y1="6" x2="6" y2="18"></line>
-                          <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  {/* Mobile: compact select */}
-                  <div className="w-full sm:hidden mt-1">
-                    <label htmlFor="library-type-filter" className="sr-only">Filter</label>
-                    <select
-                      id="library-type-filter"
-                      value={typeFilter}
-                      onChange={(e) => setTypeFilter(e.target.value as 'all'|'file'|'link')}
-                      className="w-full h-9 text-sm border border-[#DDDDDD] rounded-lg bg-[#F5F5F5] px-2 font-ibm-plex-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)]"
-                    >
-                      <option value="all">All</option>
-                      <option value="file">Files</option>
-                      <option value="link">Links</option>
-                    </select>
-                  </div>
-
-                  {/* Desktop: button group */}
-                  <div className="hidden sm:flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                        typeFilter==='all' 
-                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
-                          : ''
-                      }`}
-                      onClick={() => setTypeFilter('all')}
-                    >
-                      All
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                        typeFilter==='file' 
-                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
-                          : ''
-                      }`}
-                      onClick={() => setTypeFilter('file')}
-                    >
-                      Files
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`h-8 px-3 text-xs font-ibm-plex-mono rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                        typeFilter==='link' 
-                          ? 'bg-[#E0E0E0] text-[#333] hover:bg-[#E0E0E0]' 
-                          : ''
-                      }`}
-                      onClick={() => setTypeFilter('link')}
-                    >
-                      Links
-                    </Button>
-                  </div>
-                </div>
               </div>
-              <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pr-2 pb-8">
+              <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pb-8">
                 {(() => {
                   type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };
                   const map: RecentItem[] = [
@@ -614,17 +707,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       raw: l as any,
                     })),
                   ];
-                  const filtered = map.filter(item => {
-                    const q = item.title.toLowerCase().includes(search.toLowerCase());
-                    const t = typeFilter === 'all' || item.kind === typeFilter;
-                    return q && t;
-                  });
+                  const filtered = map;
                   const recent = filtered.sort((a,b) => a.createdAt < b.createdAt ? 1 : -1);
                   if (recent.length === 0) return <div className="text-sm text-[#666]">No items yet.</div>;
                   return recent.map(item => (
                     <div 
                       key={item.id} 
-                      className={`w-full border rounded-lg px-3 py-2 transition-colors cursor-pointer ${
+                      className={`w-full border rounded-lg px-2.5 py-2 transition-colors cursor-pointer md:px-3 ${
                         selectedIds.has(item.id) 
                           ? 'border-[#CCCCCC] bg-[#F5F5F5]' 
                           : item.kind === 'link' 
@@ -671,34 +760,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  item.onClick?.();
-                                }} 
-                                className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
-                                disabled={String(item.sub).startsWith('fetch') || String(item.sub).startsWith('progress:')}
-                                aria-label="View content"
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
-                                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                                  <circle cx="12" cy="12" r="3"></circle>
-                                </svg>
-                              </button>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigator.clipboard.writeText((item.raw as any).url);
-                                  success('URL copied to clipboard');
-                                }} 
-                                className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
-                                aria-label="Copy URL"
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
-                                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                </svg>
-                              </button>
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
                                   handleSyncLink((item.raw as any).id);
                                 }} 
                                 className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
@@ -742,6 +803,187 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 })()}
               </div>
             </section>
+              </div>
+            </div>
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] lg:max-h-[70vh] lg:overflow-y-auto`}>
+                <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3">
+                  <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
+                  <span className="text-xs text-[#666] font-ibm-plex-mono">{libraryIntents.length}</span>
+                </div>
+                <div className="mt-3 flex-1 lg:overflow-y-auto pr-1 space-y-3 p-3 pt-0">
+                  {isLoadingIntents ? (
+                    <div className="flex items-center justify-center py-6">
+                      <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : intentsByDate.length === 0 ? (
+                    <div className="text-xs text-[#666] font-ibm-plex-mono py-4 text-center space-y-2">
+                      <p>No intents yet. Connect a source to generate suggestions.</p>
+                      <button
+                        type="button"
+                        onClick={handleJumpToSources}
+                        className="inline-flex items-center justify-center gap-1 px-3 py-1.5 text-[11px] font-medium text-white bg-[#0A8F5A] rounded-md shadow-sm hover:bg-[#0b7b4f] transition-colors"
+                      >
+                        Connect sources
+                      </button>
+                    </div>
+                  ) : (
+                    intentsByDate.map((section) => {
+                      const isCollapsed = collapsedSections.has(section.key);
+                      return (
+                        <div key={section.key} className="space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleSection(section.key)}
+                            className="w-full flex items-center justify-between text-xs font-ibm-plex-mono font-medium text-[#444] border-b border-[#E8E8E8] pb-1"
+                            aria-expanded={!isCollapsed}
+                          >
+                            <span>{section.label}</span>
+                            <span className="flex items-center gap-1 text-[10px] text-[#777]">
+                              {section.items.length}
+                              <svg
+                                width="10"
+                                height="10"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className={`transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
+                              >
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                              </svg>
+                            </span>
+                          </button>
+                          {!isCollapsed && (
+                            <div className="space-y-2">
+                              {section.items.map((intent) => {
+                                const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
+                                const createdAt = new Date(intent.createdAt);
+                                const createdLabel = Number.isNaN(createdAt.getTime()) ? null : createdAt.toLocaleDateString();
+                                const detail = intent.sourceType === 'link' && intent.sourceValue && intent.sourceValue !== intent.sourceName ? intent.sourceValue : null;
+                                const metaLabel = intent.sourceType === 'integration' && intent.sourceMeta ? (() => {
+                                  const parsed = new Date(intent.sourceMeta!);
+                                  return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleString();
+                                })() : null;
+                                const isFresh = newIntentIds.has(intent.id);
+                                const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
+                          const cardClasses = `relative border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isFresh ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]' : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
+
+                                const icon = (() => {
+                                  if (intent.sourceType === 'file') {
+                                    return (
+                                      <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-md font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
+                                        {fileBadge(intent.sourceMeta ?? undefined, intent.sourceName)}
+                                      </span>
+                                    );
+                                  }
+                                  if (intent.sourceType === 'link') {
+                                    return (
+                                      <svg
+                                        width="16"
+                                        height="16"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="text-[#666]"
+                                      >
+                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                      </svg>
+                                    );
+                                  }
+                                  return (
+                                    <div className="h-[18px] w-[18px] rounded-md bg-white border border-[#E0E0E0] flex items-center justify-center overflow-hidden">
+                                      {intent.sourceValue ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={`/integrations/${intent.sourceValue}.png`} alt="" className="h-4 w-4 object-contain" />
+                                      ) : (
+                                        <span className="text-[9px] font-semibold text-[#555]">APP</span>
+                                      )}
+                                    </div>
+                                  );
+                                })();
+
+                                return (
+                                    <div key={intent.id} className={`group relative ${cardClasses}`}>
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-2">
+                                        {icon}
+                                        {isFresh && (
+                                          <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
+                                        )}
+                                      </div>
+                                      {createdLabel && (
+                                        <span className="flex items-center gap-1 text-[10px] text-[#777] font-ibm-plex-mono whitespace-nowrap">
+                                          <svg
+                                            width="12"
+                                            height="12"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="1.5"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="text-[#777]"
+                                          >
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                            <line x1="16" y1="2" x2="16" y2="6" />
+                                            <line x1="8" y1="2" x2="8" y2="6" />
+                                            <line x1="3" y1="10" x2="21" y2="10" />
+                                          </svg>
+                                          {createdLabel}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="mt-1 text-xs text-[#333] font-medium leading-snug line-clamp-3 break-words">{summary}</div>
+                                    {detail && (
+                                      <div className="mt-0.5 text-[10px] text-[#888] break-words">{detail}</div>
+                                    )}
+                                    {metaLabel && (
+                                      <div className="mt-1 text-[10px] text-[#888] font-ibm-plex-mono">Synced {metaLabel}</div>
+                                    )}
+                              <div className="mt-2 flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 lg:absolute lg:right-2 lg:bottom-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); void handleCopyIntent(intent); }}
+                                  className="h-6 w-6 grid place-items-center rounded-md bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]"
+                                  aria-label="Copy intent"
+                                >
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                        </svg>
+                                      </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleOpenIntentSource(intent); }}
+                                  className={canOpenSource
+                                    ? 'h-6 w-6 grid place-items-center rounded-md bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]'
+                                    : 'h-6 w-6 grid place-items-center rounded-md bg-[#EEF5FF] text-[#3563E9]'}
+                                        aria-label={canOpenSource ? 'Open source' : 'View source details'}
+                                      >
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                          <polyline points="7 7 17 7 17 17"></polyline>
+                                          <line x1="7" y1="17" x2="17" y2="7"></line>
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+
+                </div>
+            </aside>
           </div>
 
           {/* Link Preview */}
