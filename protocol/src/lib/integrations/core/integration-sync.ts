@@ -121,7 +121,7 @@ export async function syncIntegration(
         `Generate intents based on content from ${integrationType} integration`,
         existingIntents,
         [], // existingSuggestions
-        30, // count
+        3, // count (reduced for faster iteration)
         60000 // timeout
       );
 

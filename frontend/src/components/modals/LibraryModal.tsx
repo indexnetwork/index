@@ -45,6 +45,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [syncingLinks, setSyncingLinks] = useState<Set<string>>(new Set());
   const [libraryIntents, setLibraryIntents] = useState<LibrarySourceIntent[]>([]);
   const [isLoadingIntents, setIsLoadingIntents] = useState(false);
+  const [newIntentIds, setNewIntentIds] = useState<Set<string>>(new Set());
+  const [activeMobileSection, setActiveMobileSection] = useState<'library' | 'intents'>('library');
+  const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const knownIntentIds = useRef<Set<string>>(new Set());
 
   // Enhance UX: select, search, and undo state
   const [, setSelectMode] = useState(false);
@@ -165,15 +169,48 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api]);
 
-  const loadLibraryIntents = useCallback(async () => {
+  const loadLibraryIntents = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
     try {
-      setIsLoadingIntents(true);
+      if (!silent) setIsLoadingIntents(true);
       const res = await api.get<{ intents?: LibrarySourceIntent[] }>(`/intents/library`);
-      setLibraryIntents(res.intents ?? []);
+      const incoming = res.intents ?? [];
+
+      const prevIds = knownIntentIds.current;
+      const nextIds = new Set(incoming.map(item => item.id));
+      const isInitialLoad = prevIds.size === 0;
+
+      if (!isInitialLoad) {
+        const freshIds = incoming.filter(item => !prevIds.has(item.id)).map(item => item.id);
+        if (freshIds.length > 0) {
+          setNewIntentIds(prev => {
+            const next = new Set(prev);
+            freshIds.forEach(id => next.add(id));
+            return next;
+          });
+          freshIds.forEach(id => {
+            const existing = highlightTimers.current.get(id);
+            if (existing) clearTimeout(existing);
+            const timeout = setTimeout(() => {
+              setNewIntentIds(prev => {
+                if (!prev.has(id)) return prev;
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+              });
+              highlightTimers.current.delete(id);
+            }, 6000);
+            highlightTimers.current.set(id, timeout);
+          });
+        }
+      }
+
+      knownIntentIds.current = nextIds;
+      setLibraryIntents(incoming);
     } catch {
       setLibraryIntents([]);
     } finally {
-      setIsLoadingIntents(false);
+      if (!silent) setIsLoadingIntents(false);
     }
   }, [api]);
 
@@ -342,6 +379,26 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  useEffect(() => {
+    if (!open) {
+      knownIntentIds.current = new Set();
+      setNewIntentIds(() => new Set());
+      highlightTimers.current.forEach(clearTimeout);
+      highlightTimers.current.clear();
+      return;
+    }
+    setActiveMobileSection('library');
+    const interval = setInterval(() => {
+      void loadLibraryIntents({ silent: true });
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [open, loadLibraryIntents]);
+
+  useEffect(() => () => {
+    highlightTimers.current.forEach(clearTimeout);
+    highlightTimers.current.clear();
+  }, []);
+
   // no index context needed for library mode
 
   return (
@@ -363,9 +420,31 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </button>
           </div>
 
+          <div className="lg:hidden mb-3 flex items-center gap-2 rounded-lg bg-[#F2F2F2] p-1">
+            <button
+              type="button"
+              className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-md transition-colors ${activeMobileSection === 'library' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
+              onClick={() => setActiveMobileSection('library')}
+            >
+              Library
+            </button>
+            <button
+              type="button"
+              className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-md transition-colors ${activeMobileSection === 'intents' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
+              onClick={() => setActiveMobileSection('intents')}
+            >
+              Intents
+              <span className="ml-1 text-[10px] text-[#666]">({libraryIntents.length})</span>
+              {newIntentIds.size > 0 && (
+                <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[#0A8F5A]"></span>
+              )}
+            </button>
+          </div>
+
           <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden">
-            <div className="flex-1 min-w-0">
-              <div className="pr-1 space-y-4 overflow-y-auto lg:pr-2">
+            <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block flex-1 min-w-0`}
+            >
+              <div className="pr-1 space-y-4 max-h-[70vh] overflow-y-auto lg:max-h-none lg:space-y-4 lg:overflow-y-auto lg:pr-2">
 
             {/* Connect your sources */}
             <section>
@@ -377,7 +456,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {integrations.map((it) => (
-                  <div key={it.id} className="flex flex-col gap-2 border border-[#E0E0E0] rounded-lg px-3 py-3 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]">
+                  <div key={it.id} className="flex flex-col gap-2 border border-[#E0E0E0] rounded-lg px-3 py-2.5 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]">
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-3">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -777,12 +856,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
               </div>
             </div>
-            <aside className="w-full lg:w-[330px] flex-shrink-0 border border-[#E0E0E0] rounded-lg bg-[#FAFAFA] p-3 flex flex-col overflow-hidden">
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 border border-[#E0E0E0] rounded-lg bg-[#FAFAFA] p-3 max-h-[65vh] overflow-y-auto lg:max-h-full lg:overflow-y-auto`}>
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
                   <span className="text-xs text-gray-500 font-ibm-plex-mono">{libraryIntents.length}</span>
                 </div>
-                <div className="mt-2 flex-1 overflow-y-auto pr-1 space-y-2">
+                <div className="mt-2 flex-1 lg:overflow-y-auto pr-1 space-y-2">
                   {isLoadingIntents ? (
                     <div className="flex items-center justify-center py-6">
                       <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
@@ -800,11 +879,52 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                         return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleString();
                       })() : null;
                       const typeLabel = intent.sourceType === 'integration' ? 'Integration' : intent.sourceType === 'file' ? 'File' : 'Link';
+                      const isFresh = newIntentIds.has(intent.id);
+                      const cardClasses = `border rounded-lg px-3 py-2.5 transition-colors ${isFresh ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]' : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
+
+                      const icon = (() => {
+                        if (intent.sourceType === 'file') {
+                          return (
+                            <div className="h-[18px] w-[18px] rounded-md bg-[#EEF6FF] text-[#1E64CE] border border-[#C7DBFF] grid place-items-center text-[9px] font-semibold">
+                              FILE
+                            </div>
+                          );
+                        }
+                        if (intent.sourceType === 'link') {
+                          return (
+                            <div className="h-[18px] w-[18px] rounded-md bg-[#F4F1FF] text-[#5C45E2] border border-[#DCD3FF] grid place-items-center">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 1 0-7.07-7.07l-1.72 1.71" />
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                              </svg>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="h-[18px] w-[18px] rounded-md bg-white border border-[#E0E0E0] flex items-center justify-center overflow-hidden">
+                            {intent.sourceValue ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={`/integrations/${intent.sourceValue}.png`} alt="" className="h-4 w-4 object-contain" />
+                            ) : (
+                              <span className="text-[9px] font-semibold text-[#555]">APP</span>
+                            )}
+                          </div>
+                        );
+                      })();
+
                       return (
-                        <div key={intent.id} className="border border-[#E0E0E0] rounded-lg bg-white px-3 py-2">
-                          <div className="flex items-center justify-between text-[10px] uppercase text-[#777] font-ibm-plex-mono">
-                            <span>{typeLabel}</span>
-                            {createdLabel && <span>{createdLabel}</span>}
+                        <div key={intent.id} className={cardClasses}>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 text-[11px] uppercase text-[#777] font-ibm-plex-mono">
+                              <span>{typeLabel}</span>
+                              {isFresh && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide">New</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-[#777] font-ibm-plex-mono">
+                              {icon}
+                              {createdLabel && <span className="whitespace-nowrap">{createdLabel}</span>}
+                            </div>
                           </div>
                           <div className="mt-1 text-xs text-[#333] font-medium leading-snug line-clamp-3 break-words">{summary}</div>
                           <div className="mt-1 text-[11px] text-[#555] break-words">{intent.sourceName}</div>
@@ -812,7 +932,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                             <div className="mt-0.5 text-[10px] text-[#888] break-words">{detail}</div>
                           )}
                           {metaLabel && (
-                            <div className="mt-0.5 text-[10px] text-[#888] font-ibm-plex-mono">Synced {metaLabel}</div>
+                            <div className="mt-1 text-[10px] text-[#888] font-ibm-plex-mono">Synced {metaLabel}</div>
                           )}
                         </div>
                       );
