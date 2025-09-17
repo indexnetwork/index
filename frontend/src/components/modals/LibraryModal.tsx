@@ -948,12 +948,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
               </div>
             </div>
-            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 border border-[#E0E0E0] rounded-lg bg-[#FAFAFA] p-3 max-h-[65vh] overflow-y-auto lg:max-h-full lg:overflow-y-auto`}>
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
-                  <span className="text-xs text-gray-500 font-ibm-plex-mono">{libraryIntents.length}</span>
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] p-3 shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[65vh] overflow-y-auto lg:max-h-full lg:overflow-y-auto`}>
+                <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4]">
+                  <h3 className="text-sm font-semibold font-ibm-plex-mono text-[#222]">Intents</h3>
+                  <span className="text-xs text-[#666] font-ibm-plex-mono">{libraryIntents.length}</span>
                 </div>
-                <div className="mt-2 flex-1 lg:overflow-y-auto pr-1 space-y-2">
+                <div className="mt-3 flex-1 lg:overflow-y-auto pr-1 space-y-3">
                   {isLoadingIntents ? (
                     <div className="flex items-center justify-center py-6">
                       <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
@@ -977,11 +977,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           <button
                             type="button"
                             onClick={() => toggleSection(section.key)}
-                            className="w-full flex items-center justify-between text-[11px] uppercase tracking-wide text-[#555] font-ibm-plex-mono border-b border-[#E8E8E8] pb-1"
+                            className="w-full flex items-center justify-between text-xs font-ibm-plex-mono font-medium text-[#444] border-b border-[#E8E8E8] pb-1"
                             aria-expanded={!isCollapsed}
                           >
                             <span>{section.label}</span>
-                            <span className="flex items-center gap-1 text-[10px] text-[#888]">
+                            <span className="flex items-center gap-1 text-[10px] text-[#777]">
                               {section.items.length}
                               <svg
                                 width="10"
@@ -1052,7 +1052,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 })();
 
                                 return (
-                                  <div key={intent.id} className={`group relative ${cardClasses}`}>
+                                    <div key={intent.id} className={`group relative ${cardClasses}`}>
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="flex items-center gap-2">
                                         {icon}
