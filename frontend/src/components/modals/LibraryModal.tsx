@@ -517,10 +517,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           <div className="flex flex-col lg:flex-row gap-3.5 lg:gap-4 lg:flex-1 overflow-hidden">
             <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block lg:flex-1 min-w-0`}
             >
-              <div className="pr-1 space-y-2 sm:space-y-3 lg:space-y-4 lg:pr-2 lg:max-h-[70vh] lg:overflow-y-auto">
+              <div className="space-y-2 sm:space-y-3 lg:space-y-4 lg:max-h-[70vh] lg:overflow-y-auto">
 
             {/* Connect your sources */}
-            <section ref={connectSourcesRef}>
+            <section ref={connectSourcesRef} className="pr-2">
               <div className="flex items-center justify-between mb-1.5">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Connect Sources</h3>
                 <span className="text-xs text-gray-500 font-ibm-plex-mono">
@@ -583,7 +583,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
 
             {/* Add new content */}
-            <section>
+            <section className="pr-2">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Files and URLs</h3>
                 <span className="text-xs text-gray-500 font-ibm-plex-mono">
@@ -657,7 +657,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
 
             {/* Library items */}
-            <section>
+            <section className="pr-2">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-2">
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-2">
@@ -680,7 +680,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   </div>
                 )}
               </div>
-              <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pr-2 pb-8">
+              <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pb-8">
                 {(() => {
                   type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };
                   const map: RecentItem[] = [
