@@ -142,9 +142,18 @@ router.get('/library',
         integrationType: userIntegrations.integrationType,
         integrationLastSyncAt: userIntegrations.lastSyncAt,
       }).from(intents)
-        .leftJoin(files, eq(intents.sourceId, files.id))
-        .leftJoin(indexLinks, eq(intents.sourceId, indexLinks.id))
-        .leftJoin(userIntegrations, eq(intents.sourceId, userIntegrations.id))
+        .leftJoin(files, and(
+          eq(intents.sourceType, 'file'),
+          eq(intents.sourceId, files.id)
+        ))
+        .leftJoin(indexLinks, and(
+          eq(intents.sourceType, 'link'),
+          eq(intents.sourceId, indexLinks.id)
+        ))
+        .leftJoin(userIntegrations, and(
+          eq(intents.sourceType, 'integration'),
+          eq(intents.sourceId, userIntegrations.id)
+        ))
         .where(and(
           eq(intents.userId, req.user!.id),
           isNull(intents.archivedAt),
