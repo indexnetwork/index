@@ -126,4 +126,4 @@ export async function processUploadedFiles(files: Express.Multer.File[]): Promis
   }
   
   return contentParts.join('\n\n');
-} 
+}
