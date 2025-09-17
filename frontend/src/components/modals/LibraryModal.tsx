@@ -558,9 +558,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                         <img src={`/integrations/${it.id}.png`} width={20} height={20} alt="" />
                         <span className="text-sm font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
                         {it.connected && (
-                          <span className="h-1.5 w-1.5 bg-[#006D4B] rounded-full" />
-                        )}
-                        {it.connected && (
                           <button
                             onClick={() => handleSyncIntegration(it.id)}
                             disabled={syncingIntegrations.has(it.id)}
