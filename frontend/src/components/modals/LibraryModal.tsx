@@ -529,12 +529,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               </div>
               <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-3">
                 {integrations.map((it) => (
-                  <div key={it.id} className="flex flex-col gap-2 border border-[#E0E0E0] rounded-lg px-2.5 py-2 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC] md:px-3 md:py-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-3">
+                  <div key={it.id} className="flex flex-col gap-1 border border-[#E0E0E0] rounded-lg px-2 py-1.5 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC] md:px-2.5 md:py-2 h-[48px]">
+                    <div className="flex items-center justify-between gap-2 h-full">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`/integrations/${it.id === 'calendar' ? 'google-calendar' : it.id}.png`} width={20} height={20} alt="" />
-                        <span className="text-sm font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
+                        <img 
+                          src={`/integrations/${it.id === 'calendar' ? 'google-calendar' : it.id}.png`} 
+                          width={20} 
+                          height={20} 
+                          alt="" 
+                          className="object-contain flex-shrink-0"
+                        />
+                        <span className="text-sm font-medium text-[#333] font-ibm-plex-mono whitespace-nowrap truncate">{it.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         {it.connected && (
                           <button
                             onClick={() => handleSyncIntegration(it.id)}
@@ -553,8 +561,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                             )}
                           </button>
                         )}
-                      </span>
-                      <div className="flex items-center gap-1">
                         <button
                           onClick={() => toggleIntegration(it.id)}
                           disabled={pendingIntegration === it.id}
