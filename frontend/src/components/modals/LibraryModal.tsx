@@ -16,6 +16,18 @@ type Props = {
   onChanged?: () => void; // ask parent to refresh after any action
 };
 
+type LibrarySourceIntent = {
+  id: string;
+  payload: string;
+  summary?: string | null;
+  createdAt: string;
+  sourceType: 'file' | 'link' | 'integration';
+  sourceId: string;
+  sourceName: string;
+  sourceValue: string | null;
+  sourceMeta: string | null;
+};
+
 export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
@@ -31,6 +43,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [preview, setPreview] = useState<{ id: string; title: string; content?: string } | null>(null);
   const [syncingIntegrations, setSyncingIntegrations] = useState<Set<string>>(new Set());
   const [syncingLinks, setSyncingLinks] = useState<Set<string>>(new Set());
+  const [libraryIntents, setLibraryIntents] = useState<LibrarySourceIntent[]>([]);
+  const [isLoadingIntents, setIsLoadingIntents] = useState(false);
 
   // Enhance UX: select, search, and undo state
   const [, setSelectMode] = useState(false);
@@ -151,6 +165,18 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api]);
 
+  const loadLibraryIntents = useCallback(async () => {
+    try {
+      setIsLoadingIntents(true);
+      const res = await api.get<{ intents?: LibrarySourceIntent[] }>(`/intents/library`);
+      setLibraryIntents(res.intents ?? []);
+    } catch {
+      setLibraryIntents([]);
+    } finally {
+      setIsLoadingIntents(false);
+    }
+  }, [api]);
+
   const toggleIntegration = useCallback(async (id: IntegrationId) => {
     const item = integrations.find(i => i.id === id);
     if (!item) return;
@@ -215,11 +241,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       }));
       onChanged?.();
       await loadLists();
+      await loadLibraryIntents();
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [api, onChanged, loadLists]);
+  }, [api, onChanged, loadLists, loadLibraryIntents]);
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -255,13 +282,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       setLinkUrl("");
       onChanged?.();
       await loadLists();
+      await loadLibraryIntents();
       success('Link added successfully');
     } catch {
       error('Failed to add link. Please check the URL and try again.');
     } finally {
       setIsAddingLink(false);
     }
-  }, [api, linkUrl, onChanged, loadLists, success, error]);
+  }, [api, linkUrl, onChanged, loadLists, loadLibraryIntents, success, error]);
 
   const handleSyncIntegration = useCallback(async (integrationType: string) => {
     try {
@@ -271,13 +299,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } catch {
       error(`Failed to sync ${integrationType}`);
     } finally {
+      void loadLibraryIntents();
       setSyncingIntegrations(prev => {
         const next = new Set(prev);
         next.delete(integrationType);
         return next;
       });
     }
-  }, [syncService, success, error]);
+  }, [syncService, success, error, loadLibraryIntents]);
 
   const handleSyncLink = useCallback(async (linkId: string) => {
     try {
@@ -287,13 +316,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } catch {
       error('Failed to sync link');
     } finally {
+      void loadLibraryIntents();
       setSyncingLinks(prev => {
         const next = new Set(prev);
         next.delete(linkId);
         return next;
       });
     }
-  }, [syncService, success, error]);
+  }, [syncService, success, error, loadLibraryIntents]);
 
 
   // Fetch once per open (ignore function identity changes)
@@ -303,6 +333,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       wasOpen.current = true;
       loadLists();
       loadIntegrations();
+      loadLibraryIntents();
     }
     if (!open && wasOpen.current) {
       wasOpen.current = false;
@@ -317,7 +348,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
-        <Dialog.Content className="library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:h-auto sm:max-w-[800px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
+        <Dialog.Content className="library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-w-[1050px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
           <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
             <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
             <button
@@ -332,7 +363,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </button>
           </div>
 
-          <div className="flex-1 pr-1 space-y-4 overflow-y-auto sm:overflow-hidden">
+          <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden">
+            <div className="flex-1 min-w-0">
+              <div className="pr-1 space-y-4 overflow-y-auto lg:pr-2">
 
             {/* Connect your sources */}
             <section>
@@ -484,7 +517,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
             {/* Library items */}
             <section>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-3">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Library Items</h3>
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-2">
@@ -742,6 +775,51 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 })()}
               </div>
             </section>
+              </div>
+            </div>
+            <aside className="w-full lg:w-[330px] flex-shrink-0 border border-[#E0E0E0] rounded-lg bg-[#FAFAFA] p-3 flex flex-col overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
+                  <span className="text-xs text-gray-500 font-ibm-plex-mono">{libraryIntents.length}</span>
+                </div>
+                <div className="mt-2 flex-1 overflow-y-auto pr-1 space-y-2">
+                  {isLoadingIntents ? (
+                    <div className="flex items-center justify-center py-6">
+                      <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : libraryIntents.length === 0 ? (
+                    <div className="text-xs text-[#666] font-ibm-plex-mono py-2">No intents yet.</div>
+                  ) : (
+                    libraryIntents.map((intent) => {
+                      const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
+                      const createdAt = new Date(intent.createdAt);
+                      const createdLabel = Number.isNaN(createdAt.getTime()) ? null : createdAt.toLocaleDateString();
+                      const detail = intent.sourceType === 'link' && intent.sourceValue && intent.sourceValue !== intent.sourceName ? intent.sourceValue : null;
+                      const metaLabel = intent.sourceType === 'integration' && intent.sourceMeta ? (() => {
+                        const parsed = new Date(intent.sourceMeta!);
+                        return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleString();
+                      })() : null;
+                      const typeLabel = intent.sourceType === 'integration' ? 'Integration' : intent.sourceType === 'file' ? 'File' : 'Link';
+                      return (
+                        <div key={intent.id} className="border border-[#E0E0E0] rounded-lg bg-white px-3 py-2">
+                          <div className="flex items-center justify-between text-[10px] uppercase text-[#777] font-ibm-plex-mono">
+                            <span>{typeLabel}</span>
+                            {createdLabel && <span>{createdLabel}</span>}
+                          </div>
+                          <div className="mt-1 text-xs text-[#333] font-medium leading-snug line-clamp-3 break-words">{summary}</div>
+                          <div className="mt-1 text-[11px] text-[#555] break-words">{intent.sourceName}</div>
+                          {detail && (
+                            <div className="mt-0.5 text-[10px] text-[#888] break-words">{detail}</div>
+                          )}
+                          {metaLabel && (
+                            <div className="mt-0.5 text-[10px] text-[#888] font-ibm-plex-mono">Synced {metaLabel}</div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+            </aside>
           </div>
 
           {/* Link Preview */}
