@@ -536,22 +536,22 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </button>
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden">
-            <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block flex-1 min-w-0`}
+          <div className="flex flex-col lg:flex-row gap-3.5 lg:gap-4 lg:flex-1 overflow-hidden">
+            <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block lg:flex-1 min-w-0`}
             >
-              <div className="pr-1 space-y-4 max-h-[65vh] overflow-y-auto lg:max-h-none lg:space-y-4 lg:overflow-y-auto lg:pr-2">
+              <div className="pr-1 space-y-2 sm:space-y-3 lg:space-y-4 lg:pr-2 lg:max-h-[70vh] lg:overflow-y-auto">
 
             {/* Connect your sources */}
             <section ref={connectSourcesRef}>
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-1.5">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Connect Sources</h3>
                 <span className="text-xs text-gray-500 font-ibm-plex-mono">
                   {integrations.filter(i => i.connected).length} of {integrations.length} connected
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-3">
                 {integrations.map((it) => (
-                  <div key={it.id} className="flex flex-col gap-2 border border-[#E0E0E0] rounded-lg px-3 py-2.5 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]">
+                  <div key={it.id} className="flex flex-col gap-2 border border-[#E0E0E0] rounded-lg px-2.5 py-2 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC] md:px-3 md:py-2.5">
                     <div className="flex items-center justify-between">
                       <span className="flex items-center gap-3">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -612,25 +612,48 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   {files.length + links.length} items total
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
                 {/* File upload */}
-                <div className="border border-[#E0E0E0] rounded-lg p-3 bg-[#FAFAFA]">
+                <div className="border border-[#E0E0E0] rounded-lg p-2 bg-[#FAFAFA] md:p-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    id="library-file-upload"
+                    onChange={(e) => handleFilesSelected(e.target.files)}
+                  />
+
+                  {/* Mobile / tablet: simple upload button */}
+                  <div className="md:hidden flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-ibm-plex-mono rounded-md bg-white border border-[#DDDDDD] text-[#333] shadow-sm hover:bg-[#F0F0F0] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                        <path d="M12 5v14"></path>
+                        <path d="M5 12h14"></path>
+                      </svg>
+                      Upload files
+                    </button>
+                    {isUploading && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-ibm-plex-mono text-[#666]">
+                        <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                        Uploading…
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Desktop: drag-and-drop surface */}
                   <div
-                    className={`border border-dashed ${isDragging ? 'border-[#CCCCCC] bg-[#F5F5F5]' : 'border-[#DDDDDD]'} bg-[#F5F5F5] p-4 md:p-6 text-center cursor-pointer transition-colors rounded-lg flex items-center justify-center min-h-[72px] md:min-h-[80px]`}
+                    className={`hidden md:flex border border-dashed ${isDragging ? 'border-[#CCCCCC] bg-[#F5F5F5]' : 'border-[#DDDDDD]'} bg-[#F5F5F5] p-2.5 md:p-6 text-center cursor-pointer transition-colors rounded-lg items-center justify-center min-h-[82px]`}
                     onDragOver={handleDragOver}
                     onDragEnter={handleDragOver}
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                   >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      className="hidden"
-                      id="library-file-upload"
-                      onChange={(e) => handleFilesSelected(e.target.files)}
-                    />
-                    <label htmlFor="library-file-upload" className="cursor-pointer">
+                    <label htmlFor="library-file-upload" className="cursor-pointer w-full">
                       {isUploading ? (
                         <div className="space-y-2">
                           <div className="w-8 h-8 mx-auto border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
@@ -653,7 +676,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 </div>
 
                 {/* Link input */}
-                <div className="border border-[#E0E0E0] rounded-lg p-3 flex items-center bg-[#FAFAFA]">
+                <div className="border border-[#E0E0E0] rounded-lg p-2 flex items-center bg-[#FAFAFA] md:p-3">
                   <div className="flex items-center gap-2 w-full">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] flex-shrink-0">
                       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
@@ -688,7 +711,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
             {/* Library items */}
             <section>
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-3">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-2">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Library Items</h3>
                 {selectedIds.size > 0 && (
                   <div className="flex items-center gap-2">
@@ -710,7 +733,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     </Button>
                   </div>
                 )}
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 w-full sm:w-auto">
                   <div className="relative w-full sm:w-auto">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#666]">
                       <circle cx="11" cy="11" r="8"></circle>
@@ -828,7 +851,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   return recent.map(item => (
                     <div 
                       key={item.id} 
-                      className={`w-full border rounded-lg px-3 py-2 transition-colors cursor-pointer ${
+                      className={`w-full border rounded-lg px-2.5 py-2 transition-colors cursor-pointer md:px-3 ${
                         selectedIds.has(item.id) 
                           ? 'border-[#CCCCCC] bg-[#F5F5F5]' 
                           : item.kind === 'link' 
@@ -948,7 +971,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
               </div>
             </div>
-            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] p-3 shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[65vh] overflow-y-auto lg:max-h-full lg:overflow-y-auto`}>
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] p-3 shadow-[0_1px_3px_rgba(15,23,42,0.08)] lg:max-h-[70vh] lg:overflow-y-auto`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4]">
                   <h3 className="text-sm font-semibold font-ibm-plex-mono text-[#222]">Intents</h3>
                   <span className="text-xs text-[#666] font-ibm-plex-mono">{libraryIntents.length}</span>
@@ -1011,7 +1034,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 })() : null;
                                 const isFresh = newIntentIds.has(intent.id);
                                 const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
-                          const cardClasses = `relative border rounded-lg px-3 py-2.5 transition-colors ${isFresh ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]' : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
+                          const cardClasses = `relative border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isFresh ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]' : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
 
                                 const icon = (() => {
                                   if (intent.sourceType === 'file') {
