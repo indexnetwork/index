@@ -1009,7 +1009,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                   const parsed = new Date(intent.sourceMeta!);
                                   return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleString();
                                 })() : null;
-                                const typeLabel = intent.sourceType === 'integration' ? 'Integration' : intent.sourceType === 'file' ? 'File' : 'Link';
                                 const isFresh = newIntentIds.has(intent.id);
                                 const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
                           const cardClasses = `relative border rounded-lg px-3 py-2.5 transition-colors ${isFresh ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]' : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
@@ -1017,19 +1016,27 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 const icon = (() => {
                                   if (intent.sourceType === 'file') {
                                     return (
-                                      <div className="h-[18px] w-[18px] rounded-md bg-[#EEF6FF] text-[#1E64CE] border border-[#C7DBFF] grid place-items-center text-[9px] font-semibold">
-                                        FILE
-                                      </div>
+                                      <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-md font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
+                                        {fileBadge(intent.sourceMeta ?? undefined, intent.sourceName)}
+                                      </span>
                                     );
                                   }
                                   if (intent.sourceType === 'link') {
                                     return (
-                                      <div className="h-[18px] w-[18px] rounded-md bg-[#F4F1FF] text-[#5C45E2] border border-[#DCD3FF] grid place-items-center">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 1 0-7.07-7.07l-1.72 1.71" />
-                                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                                        </svg>
-                                      </div>
+                                      <svg
+                                        width="16"
+                                        height="16"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="1.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="text-[#666]"
+                                      >
+                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                                      </svg>
                                     );
                                   }
                                   return (
@@ -1047,19 +1054,35 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 return (
                                   <div key={intent.id} className={`group relative ${cardClasses}`}>
                                     <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-2 text-[11px] uppercase text-[#777] font-ibm-plex-mono">
-                                        <span>{typeLabel}</span>
+                                      <div className="flex items-center gap-2">
+                                        {icon}
                                         {isFresh && (
-                                          <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide">New</span>
+                                          <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
                                         )}
                                       </div>
-                                      <div className="flex items-center gap-2 text-[10px] text-[#777] font-ibm-plex-mono">
-                                        {icon}
-                                        {createdLabel && <span className="whitespace-nowrap">{createdLabel}</span>}
-                                      </div>
+                                      {createdLabel && (
+                                        <span className="flex items-center gap-1 text-[10px] text-[#777] font-ibm-plex-mono whitespace-nowrap">
+                                          <svg
+                                            width="12"
+                                            height="12"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="1.5"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            className="text-[#777]"
+                                          >
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                            <line x1="16" y1="2" x2="16" y2="6" />
+                                            <line x1="8" y1="2" x2="8" y2="6" />
+                                            <line x1="3" y1="10" x2="21" y2="10" />
+                                          </svg>
+                                          {createdLabel}
+                                        </span>
+                                      )}
                                     </div>
                                     <div className="mt-1 text-xs text-[#333] font-medium leading-snug line-clamp-3 break-words">{summary}</div>
-                                    <div className="mt-1 text-[11px] text-[#555] break-words">{intent.sourceName}</div>
                                     {detail && (
                                       <div className="mt-0.5 text-[10px] text-[#888] break-words">{detail}</div>
                                     )}
