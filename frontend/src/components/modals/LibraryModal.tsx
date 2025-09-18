@@ -477,6 +477,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
   const totalIntentCount = libraryIntents.length;
   const displayedIntentCount = isSelectionFiltering ? visibleIntents.length : totalIntentCount;
+  const intentCountLabel = isSelectionFiltering ? `${displayedIntentCount} of ${totalIntentCount}` : `${displayedIntentCount}`;
 
   const handleSyncLink = useCallback(async (linkId: string) => {
     try {
@@ -572,7 +573,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               onClick={() => setActiveMobileSection('intents')}
             >
               Intents
-              <span className="ml-1 text-[10px] text-[#666]">({isSelectionFiltering ? `${displayedIntentCount}/${totalIntentCount}` : displayedIntentCount})</span>
+              <span className="ml-1 text-[10px] text-[#666]">({intentCountLabel})</span>
               {newIntentIds.size > 0 && (
                 <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[#0A8F5A]"></span>
               )}
@@ -732,7 +733,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50 font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                      className="h-7 px-2 text-xs border-[#E0E0E0] text-[#444] hover:bg-[#F5F5F5] font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                       onClick={() => handleBulkDelete()}
                     >
                       Delete ({selectedIds.size})
@@ -779,11 +780,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   const recent = filtered.sort((a,b) => a.createdAt < b.createdAt ? 1 : -1);
                   if (recent.length === 0) return <div className="text-sm text-[#666]">No items yet.</div>;
                   return recent.map(item => (
-                    <div 
-                      key={item.id} 
+                    <div
+                      key={item.id}
                       className={`w-full border rounded-lg px-2.5 py-2 transition-colors cursor-pointer md:px-3 ${
-                        selectedIds.has(item.id) 
-                          ? 'border-[#CCCCCC] bg-[#F5F5F5]' 
+                        selectedIds.has(item.id)
+                          ? 'border-[#99CFFF] bg-[#F0F7FF]'
                           : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'
                       }`}
                       onClick={() => toggleSelected(item.id, !selectedIds.has(item.id))}
@@ -796,7 +797,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 e.stopPropagation();
                                 toggleSelected(item.id, !selectedIds.has(item.id));
                               }}
-                              className="h-4 w-4 border border-[#006D4B] bg-[#006D4B] rounded-[4px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                              className="h-4 w-4 border border-[#007EFF] bg-[#007EFF] rounded-[4px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,126,255,0.35)] focus-visible:ring-offset-0"
                               aria-label={`Select ${item.kind}`}
                             >
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-white">
@@ -874,11 +875,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] lg:max-h-[70vh] lg:overflow-y-auto`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3">
                   <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
-                  <span className="text-xs text-[#666] font-ibm-plex-mono">{isSelectionFiltering ? `${displayedIntentCount}/${totalIntentCount}` : displayedIntentCount}</span>
+                  <span className="text-xs text-[#666] font-ibm-plex-mono">{intentCountLabel}</span>
                 </div>
                 {isSelectionFiltering && (
-                  <div className="px-3 text-[11px] text-[#3563E9] font-ibm-plex-mono pb-2">
-                    Filtered by selected sources
+                  <div className="px-3 pb-2">
+                    <div className="inline-flex items-center gap-2 rounded-md bg-[#E6F2FF] px-2.5 py-1 text-[11px] text-[#005BBF] font-ibm-plex-mono">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#007EFF]" />
+                      Showing intents tied to the current selection
+                    </div>
                   </div>
                 )}
                 <div className="mt-3 flex-1 lg:overflow-y-auto pr-1 space-y-3 p-3 pt-0">
@@ -934,7 +938,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 const isSelectedSource = selectedIntentIds.has(intent.id);
                                 const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
                                 const cardClasses = `relative border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isSelectedSource
-                                  ? 'border-[#3563E9] bg-[#EEF5FF] shadow-sm shadow-[rgba(53,99,233,0.18)]'
+                                  ? 'border-[#99CFFF] bg-[#F0F7FF] shadow-sm shadow-[rgba(0,126,255,0.16)]'
                                   : isFresh
                                     ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]'
                                     : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
@@ -982,7 +986,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="flex items-center gap-2">
                                         {icon}
-                                        {isFresh && (
+                                        {isFresh && !isSelectedSource && (
                                           <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
                                         )}
                                       </div>
