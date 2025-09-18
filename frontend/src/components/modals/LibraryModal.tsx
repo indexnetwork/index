@@ -9,6 +9,7 @@ import { useAuthenticatedAPI } from "@/lib/api";
 import ReactMarkdown from 'react-markdown';
 import { useIdentityToken } from '@privy-io/react-auth';
 import { useAPI } from "@/contexts/APIContext";
+import { formatDate } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -54,10 +55,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   // Enhance UX: select and undo state
   const [, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [undoBatch, setUndoBatch] = useState<{
-    items: { kind: 'file' | 'link'; item: any }[];
-    timer: ReturnType<typeof setTimeout> | null;
-  } | null>(null);
   const [confirm, setConfirm] = useState<{
     open: boolean;
     message: string;
@@ -66,6 +63,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   type IntegrationId = 'notion' | 'slack' | 'discord' | 'calendar' | 'gmail';
   const [integrations, setIntegrations] = useState<Array<{ id: IntegrationId; name: string; connected: boolean }>>([]);
   const [pendingIntegration, setPendingIntegration] = useState<null | IntegrationId>(null);
+  
+  // Source filtering state - now supports multiple sources
+  const [activeSourceFilters, setActiveSourceFilters] = useState<Set<string>>(new Set());
 
   const loadLists = useCallback(async () => {
     try {
@@ -86,6 +86,88 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     });
   }, []);
 
+  const { visibleIntents, isSelectionFiltering, selectedIntentIds, isSourceFiltering } = useMemo(() => {
+    if (libraryIntents.length === 0) {
+      return { visibleIntents: libraryIntents, isSelectionFiltering: false, selectedIntentIds: new Set<string>(), isSourceFiltering: false } as const;
+    }
+
+    const fileLabelById = new Map(files.map(f => [f.id, f.name]));
+    const linkUrlById = new Map(links.map(l => [l.id, l.url]));
+
+    const selectedFileIds = new Set<string>();
+    const selectedFileNames = new Set<string>();
+    const selectedLinkIds = new Set<string>();
+    const selectedLinkUrls = new Set<string>();
+
+    selectedIds.forEach(token => {
+      if (token.startsWith('f-')) {
+        const id = token.slice(2);
+        selectedFileIds.add(id);
+        const name = fileLabelById.get(id);
+        if (name) selectedFileNames.add(name);
+      } else if (token.startsWith('l-')) {
+        const id = token.slice(2);
+        selectedLinkIds.add(id);
+        const url = linkUrlById.get(id);
+        if (url) selectedLinkUrls.add(url);
+      }
+    });
+
+    const selectionActive = selectedFileIds.size > 0 || selectedLinkIds.size > 0 || selectedFileNames.size > 0 || selectedLinkUrls.size > 0;
+    const sourceFilterActive = activeSourceFilters.size > 0;
+
+    // If no filtering is active, show all intents
+    if (!selectionActive && !sourceFilterActive) {
+      return { visibleIntents: libraryIntents, isSelectionFiltering: false, selectedIntentIds: new Set<string>(), isSourceFiltering: false } as const;
+    }
+
+    const matchedIds = new Set<string>();
+    const filtered: LibrarySourceIntent[] = [];
+
+    for (const intent of libraryIntents) {
+      let matches = false;
+
+      // Check file/link selection filtering
+      const matchesFile = intent.sourceType === 'file' && (
+        (intent.sourceId && selectedFileIds.has(intent.sourceId)) ||
+        (intent.sourceName && selectedFileNames.has(intent.sourceName)) ||
+        (intent.sourceValue && selectedFileIds.has(intent.sourceValue))
+      );
+
+      const matchesLink = intent.sourceType === 'link' && (
+        (intent.sourceId && selectedLinkIds.has(intent.sourceId)) ||
+        (intent.sourceValue && selectedLinkUrls.has(intent.sourceValue)) ||
+        (intent.sourceName && selectedLinkUrls.has(intent.sourceName))
+      );
+
+      const matchesSource = intent.sourceType === 'integration' && intent.sourceValue && activeSourceFilters.has(intent.sourceValue);
+
+      // Apply filtering logic: show intents that match ANY active filter
+      if (selectionActive && sourceFilterActive) {
+        // Both filters active: show intents that match file/link selection OR source filter
+        matches = Boolean((matchesFile || matchesLink) || matchesSource);
+      } else if (selectionActive) {
+        // Only file/link selection active
+        matches = Boolean(matchesFile || matchesLink);
+      } else if (sourceFilterActive) {
+        // Only source filter active
+        matches = Boolean(matchesSource);
+      }
+
+      if (matches) {
+        filtered.push(intent);
+        matchedIds.add(intent.id);
+      }
+    }
+
+    return { 
+      visibleIntents: filtered, 
+      isSelectionFiltering: selectionActive, 
+      selectedIntentIds: matchedIds,
+      isSourceFiltering: sourceFilterActive
+    } as const;
+  }, [files, links, libraryIntents, selectedIds, activeSourceFilters]);
+
   const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: any }[]) => {
     try {
       await Promise.all(batch.map(({ kind, item }) => kind === 'file'
@@ -96,21 +178,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       onChanged?.();
     } catch {
       error('Failed to delete some items');
-    } finally {
-      setUndoBatch(null);
     }
   }, [api, success, error, onChanged]);
 
-  const handleUndo = useCallback(() => {
-    if (!undoBatch) return;
-    if (undoBatch.timer) clearTimeout(undoBatch.timer);
-    // Restore items into state
-    const filesToRestore = undoBatch.items.filter(i => i.kind === 'file').map(i => i.item as any);
-    const linksToRestore = undoBatch.items.filter(i => i.kind === 'link').map(i => i.item as any);
-    if (filesToRestore.length > 0) setFiles(prev => [...prev, ...filesToRestore]);
-    if (linksToRestore.length > 0) setLinks(prev => [...prev, ...linksToRestore]);
-    setUndoBatch(null);
-  }, [undoBatch]);
 
   const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: any }[]) => {
     // Remove items immediately from UI
@@ -119,9 +189,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (fileIds.size > 0) setFiles(prev => prev.filter(f => !fileIds.has(f.id)));
     if (linkIds.size > 0) setLinks(prev => prev.filter(l => !linkIds.has(l.id)));
 
-    // Start 5s timer for actual delete
-    const timer = setTimeout(() => finalizeDeletion(items), 5000);
-    setUndoBatch({ items, timer });
+    // Delete immediately
+    finalizeDeletion(items);
   }, [finalizeDeletion]);
 
   const handleSingleDelete = useCallback((item: RecentItem) => {
@@ -168,7 +237,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api]);
 
-  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }), []);
 
   const loadLibraryIntents = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -230,29 +298,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     });
   }, []);
 
-  const handleCopyIntent = useCallback(async (intent: LibrarySourceIntent) => {
+  const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
     try {
-      const text = intent.summary?.trim() && intent.summary.trim().length > 0 ? intent.summary : intent.payload;
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        success('Intent copied');
-        return;
-      }
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.top = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(textarea);
-      if (!ok) throw new Error('execCommand failed');
-      success('Intent copied');
+      await api.patch(`/intents/${intent.id}/archive`);
+      success('Intent archived');
+      // Refresh intents after archiving
+      await loadLibraryIntents();
     } catch {
-      error('Clipboard unavailable');
+      error('Failed to archive intent');
     }
-  }, [success, error]);
+  }, [api, success, error, loadLibraryIntents]);
 
   const handleOpenIntentSource = useCallback((intent: LibrarySourceIntent) => {
     if (intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue)) {
@@ -267,7 +322,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     const today = new Date();
     const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-    const ordered = [...libraryIntents].sort((a, b) => {
+    const ordered = [...visibleIntents].sort((a, b) => {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
@@ -286,7 +341,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       let label: string;
       if (diff === 0) label = 'Today';
       else if (diff === 1) label = 'Yesterday';
-      else label = dateFormatter.format(createdDate);
+      else label = formatDate(createdDate).split(',')[0]; // Extract just the date part
       const key = `${startOfCreated.getTime()}-${label}`;
       if (!bucket.has(key)) bucket.set(key, { label, items: [] });
       bucket.get(key)!.items.push(intent);
@@ -304,7 +359,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
 
     return sections;
-  }, [libraryIntents, dateFormatter]);
+  }, [visibleIntents]);
 
   const toggleIntegration = useCallback(async (id: IntegrationId) => {
     const item = integrations.find(i => i.id === id);
@@ -359,6 +414,22 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       setPendingIntegration(null);
     }
   }, [api, integrations, success, error]);
+
+  const handleSourceFilter = useCallback((integrationId: string) => {
+    setActiveSourceFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(integrationId)) {
+        // If already filtering by this source, remove it
+        next.delete(integrationId);
+      } else {
+        // Add this source to the filter
+        next.add(integrationId);
+      }
+      return next;
+    });
+    // Switch to intents view to show the filtered results
+    setActiveMobileSection('intents');
+  }, []);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
@@ -418,6 +489,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [syncService, success, error, loadLibraryIntents]);
 
+  const totalIntentCount = libraryIntents.length;
+  const displayedIntentCount = (isSelectionFiltering || isSourceFiltering) ? visibleIntents.length : totalIntentCount;
+  const intentCountLabel = (isSelectionFiltering || isSourceFiltering) ? `${displayedIntentCount} of ${totalIntentCount}` : `${displayedIntentCount}`;
+
   const handleSyncLink = useCallback(async (linkId: string) => {
     try {
       setSyncingLinks(prev => new Set([...prev, linkId]));
@@ -472,6 +547,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     highlightTimers.current.clear();
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    if (isSelectionFiltering) setActiveMobileSection('intents');
+  }, [isSelectionFiltering, open]);
+
   // no index context needed for library mode
 
   return (
@@ -507,7 +587,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               onClick={() => setActiveMobileSection('intents')}
             >
               Intents
-              <span className="ml-1 text-[10px] text-[#666]">({libraryIntents.length})</span>
+              <span className="ml-1 text-[10px] text-[#666]">({intentCountLabel})</span>
               {newIntentIds.size > 0 && (
                 <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[#0A8F5A]"></span>
               )}
@@ -527,58 +607,96 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   {integrations.filter(i => i.connected).length} of {integrations.length} connected
                 </span>
               </div>
+              {integrations.some(i => i.connected) && (
+                <div className="mb-2">
+                  <span className="text-[10px] text-[#666] font-ibm-plex-mono">
+                    Click connected sources to filter intents (multiple selection supported)
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-3">
-                {integrations.map((it) => (
-                  <div key={it.id} className="flex flex-col gap-2 border border-[#E0E0E0] rounded-lg px-2.5 py-2 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC] md:px-3 md:py-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-3">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`/integrations/${it.id === 'calendar' ? 'google-calendar' : it.id}.png`} width={20} height={20} alt="" />
-                        <span className="text-xs font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
-                        {it.connected && (
-                          <button
-                            onClick={() => handleSyncIntegration(it.id)}
-                            disabled={syncingIntegrations.has(it.id)}
-                            className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                            aria-label={`Sync ${it.name}`}
-                          >
-                            {syncingIntegrations.has(it.id) ? (
-                              <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
-                            ) : (
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
-                                <polyline points="23 4 23 10 17 10"></polyline>
-                                <polyline points="1 20 1 14 7 14"></polyline>
-                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                              </svg>
-                            )}
-                          </button>
-                        )}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => toggleIntegration(it.id)}
-                          disabled={pendingIntegration === it.id}
-                          className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                            it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                          } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
-                          aria-pressed={it.connected}
-                          aria-busy={pendingIntegration === it.id}
-                          aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
-                        >
-                          <span
-                            className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
-                            style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
-                          />
-                          {pendingIntegration === it.id && (
-                            <span className="absolute inset-0 grid place-items-center">
-                              <span className="h-2.5 w-2.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                {integrations.map((it) => {
+                  const isFiltered = activeSourceFilters.has(it.id);
+                  // Count intents from this integration that are currently visible in the filtered results
+                  const intentCount = it.connected ? visibleIntents.filter(intent => 
+                    intent.sourceType === 'integration' && intent.sourceValue === it.id
+                  ).length : 0;
+                  
+                  return (
+                    <div 
+                      key={it.id} 
+                      className={`flex flex-col gap-2 border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${
+                        it.connected ? 'cursor-pointer' : 'cursor-default'
+                      } ${
+                        isFiltered 
+                          ? 'border-[#007EFF] bg-[#F0F7FF] shadow-sm shadow-[rgba(0,126,255,0.16)]' 
+                          : intentCount > 0
+                            ? 'border-[#E0E0E0] bg-[#F8F9FA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]'
+                            : 'border-[#E0E0E0] bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]'
+                      }`}
+                      onClick={() => it.connected && handleSourceFilter(it.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={`/integrations/${it.id === 'calendar' ? 'google-calendar' : it.id}.png`} width={20} height={20} alt="" />
+                          <span className="text-xs font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
+                          {it.connected && isFiltered && intentCount > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#E6F2FF] text-[#005BBF] font-ibm-plex-mono">
+                              {intentCount}
                             </span>
                           )}
-                        </button>
+                          {it.connected && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSyncIntegration(it.id);
+                              }}
+                              disabled={syncingIntegrations.has(it.id)}
+                              className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                              aria-label={`Sync ${it.name}`}
+                            >
+                              {syncingIntegrations.has(it.id) ? (
+                                <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
+                                  <polyline points="23 4 23 10 17 10"></polyline>
+                                  <polyline points="1 20 1 14 7 14"></polyline>
+                                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                </svg>
+                              )}
+                            </button>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleIntegration(it.id);
+                            }}
+                            disabled={pendingIntegration === it.id}
+                            className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                              it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                            } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
+                            aria-pressed={it.connected}
+                            aria-busy={pendingIntegration === it.id}
+                            aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
+                          >
+                            <span
+                              className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
+                              style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
+                            />
+                            {pendingIntegration === it.id && (
+                              <span className="absolute inset-0 grid place-items-center">
+                                <span className="h-2.5 w-2.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                              </span>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
 
@@ -667,7 +785,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2 text-xs border-red-500 text-red-600 hover:bg-red-50 font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                      className="h-7 px-2 text-xs border-[#E0E0E0] text-[#444] hover:bg-[#F5F5F5] font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                       onClick={() => handleBulkDelete()}
                     >
                       Delete ({selectedIds.size})
@@ -691,7 +809,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       id: `f-${f.id}`,
                       kind: 'file' as const,
                       title: f.name,
-                      sub: `${formatSize(f.size)} • ${new Date(f.createdAt).toLocaleDateString()}`,
+                      sub: `${formatSize(f.size)} • ${formatDate(f.createdAt).split(',')[0]}`,
                       createdAt: new Date(f.createdAt).getTime(),
                       raw: f as any,
                     })),
@@ -699,7 +817,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       id: `l-${l.id}`,
                       kind: 'link' as const,
                       title: l.url,
-                      sub: l.lastSyncAt ? new Date(l.lastSyncAt).toLocaleString() : (l.createdAt ? new Date(l.createdAt).toLocaleString() : ''),
+                      sub: l.lastSyncAt ? formatDate(l.lastSyncAt) : (l.createdAt ? formatDate(l.createdAt) : ''),
                       onClick: async () => {
                         const id = l.id;
                         setPreview({ id, title: l.url });
@@ -714,11 +832,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   const recent = filtered.sort((a,b) => a.createdAt < b.createdAt ? 1 : -1);
                   if (recent.length === 0) return <div className="text-sm text-[#666]">No items yet.</div>;
                   return recent.map(item => (
-                    <div 
-                      key={item.id} 
+                    <div
+                      key={item.id}
                       className={`w-full border rounded-lg px-2.5 py-2 transition-colors cursor-pointer md:px-3 ${
-                        selectedIds.has(item.id) 
-                          ? 'border-[#CCCCCC] bg-[#F5F5F5]' 
+                        selectedIds.has(item.id)
+                          ? 'border-[#99CFFF] bg-[#F0F7FF]'
                           : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'
                       }`}
                       onClick={() => toggleSelected(item.id, !selectedIds.has(item.id))}
@@ -731,7 +849,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 e.stopPropagation();
                                 toggleSelected(item.id, !selectedIds.has(item.id));
                               }}
-                              className="h-4 w-4 border border-[#006D4B] bg-[#006D4B] rounded-[4px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                              className="h-4 w-4 border border-[#007EFF] bg-[#007EFF] rounded-[4px] flex items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,126,255,0.35)] focus-visible:ring-offset-0"
                               aria-label={`Select ${item.kind}`}
                             >
                               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-white">
@@ -809,7 +927,18 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] lg:max-h-[70vh] lg:overflow-y-auto`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3">
                   <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
-                  <span className="text-xs text-[#666] font-ibm-plex-mono">{libraryIntents.length}</span>
+                  <div className="flex items-center gap-2">
+                    {isSourceFiltering && (
+                      <button
+                        onClick={() => setActiveSourceFilters(new Set())}
+                        className="text-[10px] px-2 py-1 rounded-md bg-[#F0F0F0] text-[#666] hover:bg-[#E6E6E6] transition-colors font-ibm-plex-mono"
+                        aria-label="Clear source filters"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <span className="text-xs text-[#666] font-ibm-plex-mono">{intentCountLabel}</span>
+                  </div>
                 </div>
                 <div className="mt-3 flex-1 lg:overflow-y-auto pr-1 space-y-3 p-3 pt-0">
                   {isLoadingIntents ? (
@@ -818,7 +947,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     </div>
                   ) : intentsByDate.length === 0 ? (
                     <div className="text-xs text-[#666] font-ibm-plex-mono py-4 text-center">
-                      <p>No intents yet.</p>
+                      <p>
+                        {isSelectionFiltering && isSourceFiltering ? 
+                          `No intents match the selected sources and ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')}.` :
+                          isSourceFiltering ? 
+                            `No intents from ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')} yet.` :
+                            isSelectionFiltering ? 'No intents match the selected sources.' : 'No intents yet.'
+                        }
+                      </p>
                     </div>
                   ) : (
                     intentsByDate.map((section) => {
@@ -854,15 +990,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               {section.items.map((intent) => {
                                 const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
                                 const createdAt = new Date(intent.createdAt);
-                                const createdLabel = Number.isNaN(createdAt.getTime()) ? null : createdAt.toLocaleDateString();
+                                const createdLabel = Number.isNaN(createdAt.getTime()) ? null : formatDate(createdAt).split(',')[0];
                                 const detail = intent.sourceType === 'link' && intent.sourceValue && intent.sourceValue !== intent.sourceName ? intent.sourceValue : null;
                                 const metaLabel = intent.sourceType === 'integration' && intent.sourceMeta ? (() => {
                                   const parsed = new Date(intent.sourceMeta!);
-                                  return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleString();
+                                  return Number.isNaN(parsed.getTime()) ? null : formatDate(parsed);
                                 })() : null;
                                 const isFresh = newIntentIds.has(intent.id);
+                                const isSelectedSource = selectedIntentIds.has(intent.id);
                                 const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
-                          const cardClasses = `relative border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isFresh ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]' : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
+                                const cardClasses = `relative border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isSelectedSource
+                                  ? 'border-[#99CFFF] bg-[#F0F7FF] shadow-sm shadow-[rgba(0,126,255,0.16)]'
+                                  : isFresh
+                                    ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]'
+                                    : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
 
                                 const icon = (() => {
                                   if (intent.sourceType === 'file') {
@@ -907,7 +1048,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                     <div className="flex items-center justify-between gap-2">
                                       <div className="flex items-center gap-2">
                                         {icon}
-                                        {isFresh && (
+                                        {isFresh && !isSelectedSource && (
                                           <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
                                         )}
                                       </div>
@@ -943,15 +1084,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               <div className="mt-2 flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 lg:absolute lg:right-2 lg:bottom-2">
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); void handleCopyIntent(intent); }}
+                                  onClick={(e) => { e.stopPropagation(); handleArchiveIntent(intent); }}
                                   className="h-6 w-6 grid place-items-center rounded-md bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]"
-                                  aria-label="Copy intent"
+                                  aria-label="Archive intent"
                                 >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                        </svg>
-                                      </button>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3,6 5,6 21,6"></polyline>
+                                    <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                  </svg>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); handleOpenIntentSource(intent); }}
@@ -998,21 +1141,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           </Dialog.Root>
 
 
-          {/* Undo Snackbar */}
-          {undoBatch && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#333] text-white text-sm px-4 py-2 rounded-lg shadow-lg flex items-center gap-3">
-              <span>
-                {undoBatch.items.length === 1 ? 'Item removed' : `${undoBatch.items.length} items removed`}
-              </span>
-              <button
-                className="underline rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                onClick={() => handleUndo()}
-                aria-label="Undo delete"
-              >
-                Undo
-              </button>
-            </div>
-          )}
 
           {/* Styled Confirm Dialog */}
           <Dialog.Root open={!!confirm?.open} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
