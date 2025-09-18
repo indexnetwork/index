@@ -66,6 +66,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   type IntegrationId = 'notion' | 'slack' | 'discord' | 'calendar' | 'gmail';
   const [integrations, setIntegrations] = useState<Array<{ id: IntegrationId; name: string; connected: boolean }>>([]);
   const [pendingIntegration, setPendingIntegration] = useState<null | IntegrationId>(null);
+  
+  // Source filtering state - now supports multiple sources
+  const [activeSourceFilters, setActiveSourceFilters] = useState<Set<string>>(new Set());
 
   const loadLists = useCallback(async () => {
     try {
@@ -86,9 +89,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     });
   }, []);
 
-  const { visibleIntents, isSelectionFiltering, selectedIntentIds } = useMemo(() => {
+  const { visibleIntents, isSelectionFiltering, selectedIntentIds, isSourceFiltering } = useMemo(() => {
     if (libraryIntents.length === 0) {
-      return { visibleIntents: libraryIntents, isSelectionFiltering: false, selectedIntentIds: new Set<string>() } as const;
+      return { visibleIntents: libraryIntents, isSelectionFiltering: false, selectedIntentIds: new Set<string>(), isSourceFiltering: false } as const;
     }
 
     const fileLabelById = new Map(files.map(f => [f.id, f.name]));
@@ -114,14 +117,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     });
 
     const selectionActive = selectedFileIds.size > 0 || selectedLinkIds.size > 0 || selectedFileNames.size > 0 || selectedLinkUrls.size > 0;
-    if (!selectionActive) {
-      return { visibleIntents: libraryIntents, isSelectionFiltering: false, selectedIntentIds: new Set<string>() } as const;
+    const sourceFilterActive = activeSourceFilters.size > 0;
+
+    // If no filtering is active, show all intents
+    if (!selectionActive && !sourceFilterActive) {
+      return { visibleIntents: libraryIntents, isSelectionFiltering: false, selectedIntentIds: new Set<string>(), isSourceFiltering: false } as const;
     }
 
     const matchedIds = new Set<string>();
     const filtered: LibrarySourceIntent[] = [];
 
     for (const intent of libraryIntents) {
+      let matches = false;
+
+      // Check file/link selection filtering
       const matchesFile = intent.sourceType === 'file' && (
         (intent.sourceId && selectedFileIds.has(intent.sourceId)) ||
         (intent.sourceName && selectedFileNames.has(intent.sourceName)) ||
@@ -134,14 +143,33 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
         (intent.sourceName && selectedLinkUrls.has(intent.sourceName))
       );
 
-      if (matchesFile || matchesLink) {
+      const matchesSource = intent.sourceType === 'integration' && intent.sourceValue && activeSourceFilters.has(intent.sourceValue);
+
+      // Apply filtering logic: show intents that match ANY active filter
+      if (selectionActive && sourceFilterActive) {
+        // Both filters active: show intents that match file/link selection OR source filter
+        matches = Boolean((matchesFile || matchesLink) || matchesSource);
+      } else if (selectionActive) {
+        // Only file/link selection active
+        matches = Boolean(matchesFile || matchesLink);
+      } else if (sourceFilterActive) {
+        // Only source filter active
+        matches = Boolean(matchesSource);
+      }
+
+      if (matches) {
         filtered.push(intent);
         matchedIds.add(intent.id);
       }
     }
 
-    return { visibleIntents: filtered, isSelectionFiltering: true, selectedIntentIds: matchedIds } as const;
-  }, [files, links, libraryIntents, selectedIds]);
+    return { 
+      visibleIntents: filtered, 
+      isSelectionFiltering: selectionActive, 
+      selectedIntentIds: matchedIds,
+      isSourceFiltering: sourceFilterActive
+    } as const;
+  }, [files, links, libraryIntents, selectedIds, activeSourceFilters]);
 
   const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: any }[]) => {
     try {
@@ -417,6 +445,22 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api, integrations, success, error]);
 
+  const handleSourceFilter = useCallback((integrationId: string) => {
+    setActiveSourceFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(integrationId)) {
+        // If already filtering by this source, remove it
+        next.delete(integrationId);
+      } else {
+        // Add this source to the filter
+        next.add(integrationId);
+      }
+      return next;
+    });
+    // Switch to intents view to show the filtered results
+    setActiveMobileSection('intents');
+  }, []);
+
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
     setIsUploading(true);
@@ -476,8 +520,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [syncService, success, error, loadLibraryIntents]);
 
   const totalIntentCount = libraryIntents.length;
-  const displayedIntentCount = isSelectionFiltering ? visibleIntents.length : totalIntentCount;
-  const intentCountLabel = isSelectionFiltering ? `${displayedIntentCount} of ${totalIntentCount}` : `${displayedIntentCount}`;
+  const displayedIntentCount = (isSelectionFiltering || isSourceFiltering) ? visibleIntents.length : totalIntentCount;
+  const intentCountLabel = (isSelectionFiltering || isSourceFiltering) ? `${displayedIntentCount} of ${totalIntentCount}` : `${displayedIntentCount}`;
 
   const handleSyncLink = useCallback(async (linkId: string) => {
     try {
@@ -593,58 +637,96 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   {integrations.filter(i => i.connected).length} of {integrations.length} connected
                 </span>
               </div>
+              {integrations.some(i => i.connected) && (
+                <div className="mb-2">
+                  <span className="text-[10px] text-[#666] font-ibm-plex-mono">
+                    Click connected sources to filter intents (multiple selection supported)
+                  </span>
+                </div>
+              )}
               <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-3">
-                {integrations.map((it) => (
-                  <div key={it.id} className="flex flex-col gap-2 border border-[#E0E0E0] rounded-lg px-2.5 py-2 transition-colors bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC] md:px-3 md:py-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-3">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={`/integrations/${it.id === 'calendar' ? 'google-calendar' : it.id}.png`} width={20} height={20} alt="" />
-                        <span className="text-xs font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
-                        {it.connected && (
-                          <button
-                            onClick={() => handleSyncIntegration(it.id)}
-                            disabled={syncingIntegrations.has(it.id)}
-                            className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                            aria-label={`Sync ${it.name}`}
-                          >
-                            {syncingIntegrations.has(it.id) ? (
-                              <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
-                            ) : (
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
-                                <polyline points="23 4 23 10 17 10"></polyline>
-                                <polyline points="1 20 1 14 7 14"></polyline>
-                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
-                              </svg>
-                            )}
-                          </button>
-                        )}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => toggleIntegration(it.id)}
-                          disabled={pendingIntegration === it.id}
-                          className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
-                            it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
-                          } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
-                          aria-pressed={it.connected}
-                          aria-busy={pendingIntegration === it.id}
-                          aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
-                        >
-                          <span
-                            className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
-                            style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
-                          />
-                          {pendingIntegration === it.id && (
-                            <span className="absolute inset-0 grid place-items-center">
-                              <span className="h-2.5 w-2.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                {integrations.map((it) => {
+                  const isFiltered = activeSourceFilters.has(it.id);
+                  // Count intents from this integration that are currently visible in the filtered results
+                  const intentCount = it.connected ? visibleIntents.filter(intent => 
+                    intent.sourceType === 'integration' && intent.sourceValue === it.id
+                  ).length : 0;
+                  
+                  return (
+                    <div 
+                      key={it.id} 
+                      className={`flex flex-col gap-2 border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${
+                        it.connected ? 'cursor-pointer' : 'cursor-default'
+                      } ${
+                        isFiltered 
+                          ? 'border-[#007EFF] bg-[#F0F7FF] shadow-sm shadow-[rgba(0,126,255,0.16)]' 
+                          : intentCount > 0
+                            ? 'border-[#E0E0E0] bg-[#F8F9FA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]'
+                            : 'border-[#E0E0E0] bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]'
+                      }`}
+                      onClick={() => it.connected && handleSourceFilter(it.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-3">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={`/integrations/${it.id === 'calendar' ? 'google-calendar' : it.id}.png`} width={20} height={20} alt="" />
+                          <span className="text-xs font-medium text-[#333] font-ibm-plex-mono">{it.name}</span>
+                          {it.connected && isFiltered && intentCount > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#E6F2FF] text-[#005BBF] font-ibm-plex-mono">
+                              {intentCount}
                             </span>
                           )}
-                        </button>
+                          {it.connected && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSyncIntegration(it.id);
+                              }}
+                              disabled={syncingIntegrations.has(it.id)}
+                              className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                              aria-label={`Sync ${it.name}`}
+                            >
+                              {syncingIntegrations.has(it.id) ? (
+                                <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
+                                  <polyline points="23 4 23 10 17 10"></polyline>
+                                  <polyline points="1 20 1 14 7 14"></polyline>
+                                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                </svg>
+                              )}
+                            </button>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleIntegration(it.id);
+                            }}
+                            disabled={pendingIntegration === it.id}
+                            className={`relative h-5 w-9 rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${
+                              it.connected ? 'bg-[#006D4B]' : 'bg-[#D9D9D9]'
+                            } ${pendingIntegration === it.id ? 'opacity-70' : ''}`}
+                            aria-pressed={it.connected}
+                            aria-busy={pendingIntegration === it.id}
+                            aria-label={`${it.name} ${it.connected ? 'connected' : 'disconnected'}`}
+                          >
+                            <span
+                              className={`absolute top-[1px] left-[1px] h-[18px] w-[18px] rounded-full bg-white transition-transform duration-200 shadow-sm`}
+                              style={{ transform: it.connected ? 'translateX(16px)' : 'translateX(0px)' }}
+                            />
+                            {pendingIntegration === it.id && (
+                              <span className="absolute inset-0 grid place-items-center">
+                                <span className="h-2.5 w-2.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                              </span>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
 
@@ -875,13 +957,30 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] lg:max-h-[70vh] lg:overflow-y-auto`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3">
                   <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
-                  <span className="text-xs text-[#666] font-ibm-plex-mono">{intentCountLabel}</span>
+                  <div className="flex items-center gap-2">
+                    {isSourceFiltering && (
+                      <button
+                        onClick={() => setActiveSourceFilters(new Set())}
+                        className="text-[10px] px-2 py-1 rounded-md bg-[#F0F0F0] text-[#666] hover:bg-[#E6E6E6] transition-colors font-ibm-plex-mono"
+                        aria-label="Clear source filters"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <span className="text-xs text-[#666] font-ibm-plex-mono">{intentCountLabel}</span>
+                  </div>
                 </div>
-                {isSelectionFiltering && (
+                {(isSelectionFiltering || isSourceFiltering) && (
                   <div className="px-3 pb-2">
                     <div className="inline-flex items-center gap-2 rounded-md bg-[#E6F2FF] px-2.5 py-1 text-[11px] text-[#005BBF] font-ibm-plex-mono">
                       <span className="h-1.5 w-1.5 rounded-full bg-[#007EFF]" />
-                      Showing intents tied to the current selection
+                      {isSelectionFiltering && isSourceFiltering ? (
+                        <>Showing intents from selected sources and {Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')}</>
+                      ) : isSourceFiltering ? (
+                        <>Showing intents from {Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')}</>
+                      ) : (
+                        <>Showing intents tied to the current selection</>
+                      )}
                     </div>
                   </div>
                 )}
@@ -892,7 +991,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     </div>
                   ) : intentsByDate.length === 0 ? (
                     <div className="text-xs text-[#666] font-ibm-plex-mono py-4 text-center">
-                      <p>{isSelectionFiltering ? 'No intents match the selected sources.' : 'No intents yet.'}</p>
+                      <p>
+                        {isSelectionFiltering && isSourceFiltering ? 
+                          `No intents match the selected sources and ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')}.` :
+                          isSourceFiltering ? 
+                            `No intents from ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')} yet.` :
+                            isSelectionFiltering ? 'No intents match the selected sources.' : 'No intents yet.'
+                        }
+                      </p>
                     </div>
                   ) : (
                     intentsByDate.map((section) => {
