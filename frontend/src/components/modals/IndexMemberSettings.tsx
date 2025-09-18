@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
@@ -8,6 +8,7 @@ import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { X, ArrowUpRight, Plus } from 'lucide-react';
 import Link from 'next/link';
+import { createIntentsService } from '@/services/intents';
 
 interface IndexMemberSettingsProps {
   open: boolean;
@@ -32,19 +33,12 @@ interface MemberSettings {
   isOwner: boolean;
 }
 
-// Predefined tags that users can click to add to their prompt
-const PREDEFINED_TAGS = [
-  { label: 'Agentic AI', value: 'Agentic AI' },
-  { label: 'LLM Usability', value: 'LLM Usability' },
-  { label: 'Human-AI interaction', value: 'Human-AI interaction' },
-  { label: 'UX designers', value: 'UX designers' },
-  { label: 'AI developers', value: 'AI developers' },
-  { label: 'Privacy', value: 'Privacy' },
-  { label: 'Fashion', value: 'Fashion' },
-  { label: 'Social Media', value: 'Social Media' },
-  { label: 'Research', value: 'Research' },
-  { label: 'Collaboration', value: 'Collaboration' }
-];
+interface TagSuggestion {
+  tag: string;
+  relevanceScore: number;
+  relatedIntentIds: string[];
+  description?: string;
+}
 
 export default function IndexMemberSettings({ open, onOpenChange, index }: IndexMemberSettingsProps) {
   const [isLeaving, setIsLeaving] = useState(false);
@@ -58,8 +52,11 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
   const [removingIntents, setRemovingIntents] = useState<Set<string>>(new Set());
   const [removingAll, setRemovingAll] = useState(false);
   const [usedTags, setUsedTags] = useState<Set<string>>(new Set());
+  const [suggestedTags, setSuggestedTags] = useState<TagSuggestion[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
+  const intentsService = useMemo(() => createIntentsService(api), [api]);
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = prompt !== originalPrompt;
@@ -95,6 +92,24 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
     }
   }, [api, index.id]);
 
+  // Fetch tag suggestions (only based on intents, not prompt)
+  const fetchTagSuggestions = useCallback(async () => {
+    try {
+      setLoadingSuggestions(true);
+      const result = await intentsService.suggestTags(
+        '', // Empty prompt to get general intent themes
+        index.id,
+        8 // Get more suggestions since they're static
+      );
+      setSuggestedTags(result.suggestions);
+    } catch (err) {
+      console.error('Failed to fetch tag suggestions:', err);
+      setSuggestedTags([]);
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  }, [intentsService, index.id]);
+
   // Load data when modal opens
   useEffect(() => {
     if (open) {
@@ -103,8 +118,17 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
       fetchMemberIntents('indexed');
       // Reset used tags when modal opens
       setUsedTags(new Set());
+      // Clear suggestions
+      setSuggestedTags([]);
     }
   }, [open, fetchMemberSettings, fetchMemberIntents]);
+
+  // Fetch tag suggestions once when intents are loaded
+  useEffect(() => {
+    if (open && indexedIntents.length > 0 && suggestedTags.length === 0) {
+      fetchTagSuggestions();
+    }
+  }, [open, indexedIntents.length, fetchTagSuggestions, suggestedTags.length]);
 
   const handleLeaveIndex = async () => {
     try {
@@ -193,16 +217,18 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
     setPrompt(originalPrompt);
   };
 
-  const handleTagClick = (tagValue: string) => {
+  const handleTagClick = (tag: string) => {
     // Add the tag to the prompt textarea
     const separator = prompt.trim() ? ', ' : '';
-    setPrompt(prompt + separator + tagValue);
+    setPrompt(prompt + separator + tag);
     // Mark this tag as used
-    setUsedTags(prev => new Set([...prev, tagValue]));
+    setUsedTags(prev => new Set([...prev, tag]));
   };
 
-  // Get visible tags (first 5 unused tags)
-  const visibleTags = PREDEFINED_TAGS.filter(tag => !usedTags.has(tag.value)).slice(0, 4);
+  // Get visible tags (first 5 unused tags from suggestions)
+  const visibleTags = suggestedTags
+    .filter(suggestion => !usedTags.has(suggestion.tag))
+    .slice(0, 5);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -278,18 +304,25 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                   className="w-full text-gray-900 resize-none h-20 text-sm font-ibm-plex-mono outline-none"
                 />
                 
-                {/* Predefined tag buttons inside textarea area - single line only */}
-                <div className="flex gap-2 mt-2 overflow-hidden">
-                  {visibleTags.map((tag) => (
-                    <button
-                      key={tag.value}
-                      onClick={() => handleTagClick(tag.value)}
-                      className="px-3 py-1 bg-gray-800 text-white rounded-full text-xs font-ibm-plex-mono hover:bg-gray-700 transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1"
-                    >
-                      <Plus className="h-3 w-3" />
-                      {tag.label}
-                    </button>
-                  ))}
+                {/* Tag suggestions based on your intents */}
+                <div className="flex gap-2 mt-2 overflow-hidden min-h-[28px] items-center">
+                  {loadingSuggestions ? (
+                    <div className="text-xs text-gray-500 italic">Analyzing your intents...</div>
+                  ) : visibleTags.length > 0 ? (
+                    visibleTags.map((suggestion) => (
+                      <button
+                        key={suggestion.tag}
+                        onClick={() => handleTagClick(suggestion.tag)}
+                        className="px-3 py-1 bg-gray-800 text-white rounded-full text-xs font-ibm-plex-mono hover:bg-gray-700 transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1"
+                        title={suggestion.description || `Based on ${suggestion.relatedIntentIds.length} of your intents`}
+                      >
+                        <Plus className="h-3 w-3" />
+                        {suggestion.tag}
+                      </button>
+                    ))
+                  ) : indexedIntents.length === 0 ? (
+                    <div className="text-xs text-gray-500 italic">Add intents to see tag suggestions</div>
+                  ) : null}
                 </div>
               </div>
             </div>

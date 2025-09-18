@@ -129,6 +129,24 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
   // Unarchive intent
   unarchiveIntent: async (id: string): Promise<void> => {
     await api.patch(`/intents/${id}/unarchive`);
+  },
+
+  // Suggest tags based on user intents and prompt
+  suggestTags: async (prompt: string, indexId?: string, maxSuggestions?: number): Promise<{
+    suggestions: Array<{
+      tag: string;
+      relevanceScore: number;
+      relatedIntentIds: string[];
+      description?: string;
+    }>;
+    intentCount: number;
+  }> => {
+    const response = await api.post('/intents/suggest-tags', {
+      prompt,
+      indexId,
+      maxSuggestions
+    });
+    return response;
   }
 });
 

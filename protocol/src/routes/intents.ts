@@ -12,6 +12,7 @@ import {
 } from '../agents/context_brokers/connector';
 import { checkMultipleIndexesIntentWriteAccess } from '../lib/index-access';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
+import { suggestTags } from '../agents/core/intent_tag_suggester';
 
 const router = Router();
 
@@ -563,5 +564,107 @@ router.patch('/:id/unarchive',
     }
   }
 );
+
+// Suggest tags based on user intents and prompt
+router.post('/suggest-tags',
+  authenticatePrivy,
+  [
+    body('prompt').optional().isString(),
+    body('indexId').optional().isUUID(),
+    body('maxSuggestions').optional().isInt({ min: 1, max: 20 }).toInt(),
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { prompt = '', indexId, maxSuggestions = 10 } = req.body;
+
+      // Build query for fetching intents
+      let query = db
+        .select({
+          id: intents.id,
+          payload: intents.payload,
+          summary: intents.summary,
+          createdAt: intents.createdAt
+        })
+        .from(intents)
+        .where(
+          and(
+            eq(intents.userId, req.user!.id),
+            isNull(intents.archivedAt)
+          )
+        )
+        .orderBy(desc(intents.createdAt));
+
+      // If indexId is provided, filter by that index
+      if (indexId) {
+        query = db
+          .select({
+            id: intents.id,
+            payload: intents.payload,
+            summary: intents.summary,
+            createdAt: intents.createdAt
+          })
+          .from(intents)
+          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+          .where(
+            and(
+              eq(intentIndexes.indexId, indexId),
+              eq(intents.userId, req.user!.id),
+              isNull(intents.archivedAt)
+            )
+          )
+          .orderBy(desc(intents.createdAt));
+      }
+
+      // Fetch all user intents (not limited to 20 for better tag generation)
+      const userIntents = await query;
+
+      if (userIntents.length === 0) {
+        return res.json({ 
+          suggestions: [],
+          message: "No intents found to generate tag suggestions"
+        });
+      }
+
+      // Generate tag suggestions
+      const result = await suggestTags(
+        userIntents.map(intent => ({
+          id: intent.id,
+          payload: intent.payload,
+          summary: intent.summary || undefined
+        })),
+        prompt,
+        {
+          maxSuggestions,
+          minRelevanceScore: 0.3,
+          timeout: 30000
+        }  
+      );
+
+      if (!result.success) {
+        console.error('Failed to generate tag suggestions:', result.error);
+        return res.status(500).json({ 
+          error: 'Failed to generate tag suggestions',
+          details: result.error 
+        });
+      }
+
+      // Return tag suggestions ordered by relevance
+      return res.json({
+        suggestions: result.suggestions || [],
+        intentCount: userIntents.length
+      });
+
+    } catch (error) {
+      console.error('Suggest tags error:', error);
+      return res.status(500).json({ error: 'Failed to generate tag suggestions' });
+    }
+  }
+);
+
 
 export default router; 
