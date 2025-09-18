@@ -300,15 +300,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
   const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
     try {
-      // TODO: Implement archive API call
-      // await api.post(`/intents/${intent.id}/archive`);
+      await api.patch(`/intents/${intent.id}/archive`);
       success('Intent archived');
       // Refresh intents after archiving
       await loadLibraryIntents();
     } catch {
       error('Failed to archive intent');
     }
-  }, [success, error, loadLibraryIntents]);
+  }, [api, success, error, loadLibraryIntents]);
 
   const handleOpenIntentSource = useCallback((intent: LibrarySourceIntent) => {
     if (intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue)) {
