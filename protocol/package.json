@@ -14,8 +14,8 @@
     "sync-all": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/sync-all.ts"
   },
   "dependencies": {
-    "commander": "^13.1.0",
     "@composio/core": "^0.1.44",
+    "@langchain/aws": "^0.1.15",
     "@langchain/community": "^0.3.45",
     "@langchain/core": "^0.3.57",
     "@langchain/langgraph": "^0.2.73",
@@ -23,6 +23,7 @@
     "@privy-io/server-auth": "^1.26.1",
     "@types/ioredis": "^4.28.10",
     "ai": "^4.3.19",
+    "commander": "^13.1.0",
     "composio-core": "^0.5.39",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
