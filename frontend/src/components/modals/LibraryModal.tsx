@@ -55,10 +55,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   // Enhance UX: select and undo state
   const [, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [undoBatch, setUndoBatch] = useState<{
-    items: { kind: 'file' | 'link'; item: any }[];
-    timer: ReturnType<typeof setTimeout> | null;
-  } | null>(null);
   const [confirm, setConfirm] = useState<{
     open: boolean;
     message: string;
@@ -182,21 +178,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       onChanged?.();
     } catch {
       error('Failed to delete some items');
-    } finally {
-      setUndoBatch(null);
     }
   }, [api, success, error, onChanged]);
 
-  const handleUndo = useCallback(() => {
-    if (!undoBatch) return;
-    if (undoBatch.timer) clearTimeout(undoBatch.timer);
-    // Restore items into state
-    const filesToRestore = undoBatch.items.filter(i => i.kind === 'file').map(i => i.item as any);
-    const linksToRestore = undoBatch.items.filter(i => i.kind === 'link').map(i => i.item as any);
-    if (filesToRestore.length > 0) setFiles(prev => [...prev, ...filesToRestore]);
-    if (linksToRestore.length > 0) setLinks(prev => [...prev, ...linksToRestore]);
-    setUndoBatch(null);
-  }, [undoBatch]);
 
   const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: any }[]) => {
     // Remove items immediately from UI
@@ -205,9 +189,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (fileIds.size > 0) setFiles(prev => prev.filter(f => !fileIds.has(f.id)));
     if (linkIds.size > 0) setLinks(prev => prev.filter(l => !linkIds.has(l.id)));
 
-    // Start 5s timer for actual delete
-    const timer = setTimeout(() => finalizeDeletion(items), 5000);
-    setUndoBatch({ items, timer });
+    // Delete immediately
+    finalizeDeletion(items);
   }, [finalizeDeletion]);
 
   const handleSingleDelete = useCallback((item: RecentItem) => {
@@ -315,29 +298,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     });
   }, []);
 
-  const handleCopyIntent = useCallback(async (intent: LibrarySourceIntent) => {
+  const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
     try {
-      const text = intent.summary?.trim() && intent.summary.trim().length > 0 ? intent.summary : intent.payload;
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        success('Intent copied');
-        return;
-      }
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.top = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(textarea);
-      if (!ok) throw new Error('execCommand failed');
-      success('Intent copied');
+      // TODO: Implement archive API call
+      // await api.post(`/intents/${intent.id}/archive`);
+      success('Intent archived');
+      // Refresh intents after archiving
+      await loadLibraryIntents();
     } catch {
-      error('Clipboard unavailable');
+      error('Failed to archive intent');
     }
-  }, [success, error]);
+  }, [success, error, loadLibraryIntents]);
 
   const handleOpenIntentSource = useCallback((intent: LibrarySourceIntent) => {
     if (intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue)) {
@@ -1128,15 +1099,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               <div className="mt-2 flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 lg:absolute lg:right-2 lg:bottom-2">
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); void handleCopyIntent(intent); }}
+                                  onClick={(e) => { e.stopPropagation(); handleArchiveIntent(intent); }}
                                   className="h-6 w-6 grid place-items-center rounded-md bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]"
-                                  aria-label="Copy intent"
+                                  aria-label="Archive intent"
                                 >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                                        </svg>
-                                      </button>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3,6 5,6 21,6"></polyline>
+                                    <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                                  </svg>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); handleOpenIntentSource(intent); }}
@@ -1183,21 +1156,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           </Dialog.Root>
 
 
-          {/* Undo Snackbar */}
-          {undoBatch && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#333] text-white text-sm px-4 py-2 rounded-lg shadow-lg flex items-center gap-3">
-              <span>
-                {undoBatch.items.length === 1 ? 'Item removed' : `${undoBatch.items.length} items removed`}
-              </span>
-              <button
-                className="underline rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                onClick={() => handleUndo()}
-                aria-label="Undo delete"
-              >
-                Undo
-              </button>
-            </div>
-          )}
 
           {/* Styled Confirm Dialog */}
           <Dialog.Root open={!!confirm?.open} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
