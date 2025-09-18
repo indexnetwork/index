@@ -86,6 +86,63 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     });
   }, []);
 
+  const { visibleIntents, isSelectionFiltering, selectedIntentIds } = useMemo(() => {
+    if (libraryIntents.length === 0) {
+      return { visibleIntents: libraryIntents, isSelectionFiltering: false, selectedIntentIds: new Set<string>() } as const;
+    }
+
+    const fileLabelById = new Map(files.map(f => [f.id, f.name]));
+    const linkUrlById = new Map(links.map(l => [l.id, l.url]));
+
+    const selectedFileIds = new Set<string>();
+    const selectedFileNames = new Set<string>();
+    const selectedLinkIds = new Set<string>();
+    const selectedLinkUrls = new Set<string>();
+
+    selectedIds.forEach(token => {
+      if (token.startsWith('f-')) {
+        const id = token.slice(2);
+        selectedFileIds.add(id);
+        const name = fileLabelById.get(id);
+        if (name) selectedFileNames.add(name);
+      } else if (token.startsWith('l-')) {
+        const id = token.slice(2);
+        selectedLinkIds.add(id);
+        const url = linkUrlById.get(id);
+        if (url) selectedLinkUrls.add(url);
+      }
+    });
+
+    const selectionActive = selectedFileIds.size > 0 || selectedLinkIds.size > 0 || selectedFileNames.size > 0 || selectedLinkUrls.size > 0;
+    if (!selectionActive) {
+      return { visibleIntents: libraryIntents, isSelectionFiltering: false, selectedIntentIds: new Set<string>() } as const;
+    }
+
+    const matchedIds = new Set<string>();
+    const filtered: LibrarySourceIntent[] = [];
+
+    for (const intent of libraryIntents) {
+      const matchesFile = intent.sourceType === 'file' && (
+        (intent.sourceId && selectedFileIds.has(intent.sourceId)) ||
+        (intent.sourceName && selectedFileNames.has(intent.sourceName)) ||
+        (intent.sourceValue && selectedFileIds.has(intent.sourceValue))
+      );
+
+      const matchesLink = intent.sourceType === 'link' && (
+        (intent.sourceId && selectedLinkIds.has(intent.sourceId)) ||
+        (intent.sourceValue && selectedLinkUrls.has(intent.sourceValue)) ||
+        (intent.sourceName && selectedLinkUrls.has(intent.sourceName))
+      );
+
+      if (matchesFile || matchesLink) {
+        filtered.push(intent);
+        matchedIds.add(intent.id);
+      }
+    }
+
+    return { visibleIntents: filtered, isSelectionFiltering: true, selectedIntentIds: matchedIds } as const;
+  }, [files, links, libraryIntents, selectedIds]);
+
   const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: any }[]) => {
     try {
       await Promise.all(batch.map(({ kind, item }) => kind === 'file'
@@ -267,7 +324,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     const today = new Date();
     const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-    const ordered = [...libraryIntents].sort((a, b) => {
+    const ordered = [...visibleIntents].sort((a, b) => {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 
@@ -304,7 +361,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
 
     return sections;
-  }, [libraryIntents, dateFormatter]);
+  }, [visibleIntents, dateFormatter]);
 
   const toggleIntegration = useCallback(async (id: IntegrationId) => {
     const item = integrations.find(i => i.id === id);
@@ -418,6 +475,9 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [syncService, success, error, loadLibraryIntents]);
 
+  const totalIntentCount = libraryIntents.length;
+  const displayedIntentCount = isSelectionFiltering ? visibleIntents.length : totalIntentCount;
+
   const handleSyncLink = useCallback(async (linkId: string) => {
     try {
       setSyncingLinks(prev => new Set([...prev, linkId]));
@@ -472,6 +532,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     highlightTimers.current.clear();
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    if (isSelectionFiltering) setActiveMobileSection('intents');
+  }, [isSelectionFiltering, open]);
+
   // no index context needed for library mode
 
   return (
@@ -507,7 +572,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               onClick={() => setActiveMobileSection('intents')}
             >
               Intents
-              <span className="ml-1 text-[10px] text-[#666]">({libraryIntents.length})</span>
+              <span className="ml-1 text-[10px] text-[#666]">({isSelectionFiltering ? `${displayedIntentCount}/${totalIntentCount}` : displayedIntentCount})</span>
               {newIntentIds.size > 0 && (
                 <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-[#0A8F5A]"></span>
               )}
@@ -809,8 +874,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] lg:max-h-[70vh] lg:overflow-y-auto`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3">
                   <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
-                  <span className="text-xs text-[#666] font-ibm-plex-mono">{libraryIntents.length}</span>
+                  <span className="text-xs text-[#666] font-ibm-plex-mono">{isSelectionFiltering ? `${displayedIntentCount}/${totalIntentCount}` : displayedIntentCount}</span>
                 </div>
+                {isSelectionFiltering && (
+                  <div className="px-3 text-[11px] text-[#3563E9] font-ibm-plex-mono pb-2">
+                    Filtered by selected sources
+                  </div>
+                )}
                 <div className="mt-3 flex-1 lg:overflow-y-auto pr-1 space-y-3 p-3 pt-0">
                   {isLoadingIntents ? (
                     <div className="flex items-center justify-center py-6">
@@ -818,7 +888,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     </div>
                   ) : intentsByDate.length === 0 ? (
                     <div className="text-xs text-[#666] font-ibm-plex-mono py-4 text-center">
-                      <p>No intents yet.</p>
+                      <p>{isSelectionFiltering ? 'No intents match the selected sources.' : 'No intents yet.'}</p>
                     </div>
                   ) : (
                     intentsByDate.map((section) => {
@@ -861,8 +931,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                   return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleString();
                                 })() : null;
                                 const isFresh = newIntentIds.has(intent.id);
+                                const isSelectedSource = selectedIntentIds.has(intent.id);
                                 const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
-                          const cardClasses = `relative border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isFresh ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]' : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
+                                const cardClasses = `relative border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isSelectedSource
+                                  ? 'border-[#3563E9] bg-[#EEF5FF] shadow-sm shadow-[rgba(53,99,233,0.18)]'
+                                  : isFresh
+                                    ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]'
+                                    : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
 
                                 const icon = (() => {
                                   if (intent.sourceType === 'file') {
