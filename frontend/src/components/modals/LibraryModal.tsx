@@ -9,6 +9,7 @@ import { useAuthenticatedAPI } from "@/lib/api";
 import ReactMarkdown from 'react-markdown';
 import { useIdentityToken } from '@privy-io/react-auth';
 import { useAPI } from "@/contexts/APIContext";
+import { formatDate } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -253,7 +254,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [api]);
 
-  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }), []);
 
   const loadLibraryIntents = useCallback(async (options?: { silent?: boolean }) => {
     const silent = options?.silent ?? false;
@@ -371,7 +371,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       let label: string;
       if (diff === 0) label = 'Today';
       else if (diff === 1) label = 'Yesterday';
-      else label = dateFormatter.format(createdDate);
+      else label = formatDate(createdDate).split(',')[0]; // Extract just the date part
       const key = `${startOfCreated.getTime()}-${label}`;
       if (!bucket.has(key)) bucket.set(key, { label, items: [] });
       bucket.get(key)!.items.push(intent);
@@ -389,7 +389,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
 
     return sections;
-  }, [visibleIntents, dateFormatter]);
+  }, [visibleIntents]);
 
   const toggleIntegration = useCallback(async (id: IntegrationId) => {
     const item = integrations.find(i => i.id === id);
@@ -839,7 +839,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       id: `f-${f.id}`,
                       kind: 'file' as const,
                       title: f.name,
-                      sub: `${formatSize(f.size)} • ${new Date(f.createdAt).toLocaleDateString()}`,
+                      sub: `${formatSize(f.size)} • ${formatDate(f.createdAt).split(',')[0]}`,
                       createdAt: new Date(f.createdAt).getTime(),
                       raw: f as any,
                     })),
@@ -847,7 +847,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       id: `l-${l.id}`,
                       kind: 'link' as const,
                       title: l.url,
-                      sub: l.lastSyncAt ? new Date(l.lastSyncAt).toLocaleString() : (l.createdAt ? new Date(l.createdAt).toLocaleString() : ''),
+                      sub: l.lastSyncAt ? formatDate(l.lastSyncAt) : (l.createdAt ? formatDate(l.createdAt) : ''),
                       onClick: async () => {
                         const id = l.id;
                         setPreview({ id, title: l.url });
@@ -1034,11 +1034,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               {section.items.map((intent) => {
                                 const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
                                 const createdAt = new Date(intent.createdAt);
-                                const createdLabel = Number.isNaN(createdAt.getTime()) ? null : createdAt.toLocaleDateString();
+                                const createdLabel = Number.isNaN(createdAt.getTime()) ? null : formatDate(createdAt).split(',')[0];
                                 const detail = intent.sourceType === 'link' && intent.sourceValue && intent.sourceValue !== intent.sourceName ? intent.sourceValue : null;
                                 const metaLabel = intent.sourceType === 'integration' && intent.sourceMeta ? (() => {
                                   const parsed = new Date(intent.sourceMeta!);
-                                  return Number.isNaN(parsed.getTime()) ? null : parsed.toLocaleString();
+                                  return Number.isNaN(parsed.getTime()) ? null : formatDate(parsed);
                                 })() : null;
                                 const isFresh = newIntentIds.has(intent.id);
                                 const isSelectedSource = selectedIntentIds.has(intent.id);
