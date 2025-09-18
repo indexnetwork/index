@@ -6,7 +6,7 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { X, ArrowUpRight } from 'lucide-react';
+import { X, ArrowUpRight, Plus } from 'lucide-react';
 import Link from 'next/link';
 
 interface IndexMemberSettingsProps {
@@ -22,11 +22,6 @@ interface MemberIntent {
   createdAt: string;
 }
 
-interface RecommendedIntent {
-  id: string;
-  payload: string;
-  summary?: string;
-}
 
 interface MemberSettings {
   indexTitle: string;
@@ -37,36 +32,52 @@ interface MemberSettings {
   isOwner: boolean;
 }
 
+// Predefined tags that users can click to add to their prompt
+const PREDEFINED_TAGS = [
+  { label: 'Agentic AI', value: 'Agentic AI' },
+  { label: 'LLM Usability', value: 'LLM Usability' },
+  { label: 'Human-AI interaction', value: 'Human-AI interaction' },
+  { label: 'UX designers', value: 'UX designers' },
+  { label: 'AI developers', value: 'AI developers' },
+  { label: 'Privacy', value: 'Privacy' },
+  { label: 'Fashion', value: 'Fashion' },
+  { label: 'Social Media', value: 'Social Media' },
+  { label: 'Research', value: 'Research' },
+  { label: 'Collaboration', value: 'Collaboration' }
+];
+
 export default function IndexMemberSettings({ open, onOpenChange, index }: IndexMemberSettingsProps) {
   const [isLeaving, setIsLeaving] = useState(false);
-  const [autoManage, setAutoManage] = useState(false);
   const [prompt, setPrompt] = useState('');
-  const [activeTab, setActiveTab] = useState<'indexed' | 'suggested'>('indexed');
+  const [originalPrompt, setOriginalPrompt] = useState('');
   const [isSavingPrompt, setIsSavingPrompt] = useState(false);
   const [memberSettings, setMemberSettings] = useState<MemberSettings | null>(null);
   const [indexedIntents, setIndexedIntents] = useState<MemberIntent[]>([]);
-  const [suggestedIntents, setSuggestedIntents] = useState<RecommendedIntent[]>([]);
   const [loadingIndexed, setLoadingIndexed] = useState(false);
-  const [loadingSuggested, setLoadingSuggested] = useState(false);
   const [addingIntents, setAddingIntents] = useState<Set<string>>(new Set());
   const [removingIntents, setRemovingIntents] = useState<Set<string>>(new Set());
+  const [removingAll, setRemovingAll] = useState(false);
+  const [usedTags, setUsedTags] = useState<Set<string>>(new Set());
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = prompt !== originalPrompt;
 
   // Fetch member settings when modal opens
   const fetchMemberSettings = useCallback(async () => {
     try {
       const response = await api.get<MemberSettings>(`/indexes/${index.id}/member-settings`);
       setMemberSettings(response);
-      setAutoManage(response.autoAssign);
       setPrompt(response.memberPrompt || '');
+      setOriginalPrompt(response.memberPrompt || '');
     } catch (err) {
       console.error('Failed to fetch member settings:', err);
     }
   }, [api, index.id]);
 
   // Fetch member intents
-  const fetchMemberIntents = useCallback(async (tab: 'indexed' | 'suggested') => {
+  const fetchMemberIntents = useCallback(async (tab: 'indexed') => {
     try {
       if (tab === 'indexed') {
         setLoadingIndexed(true);
@@ -74,22 +85,12 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
           `/indexes/${index.id}/member-intents`
         );
         setIndexedIntents(response.intents);
-      } else {
-        setLoadingSuggested(true);
-        // Use the new intent recommendations endpoint for suggestions
-        const response = await api.get<{ 
-          intents: RecommendedIntent[]; 
-          indexPrompt: string | null;
-        }>(`/indexes/${index.id}/suggestions/intents`);
-        setSuggestedIntents(response.intents);
       }
     } catch (err) {
       console.error('Failed to fetch member intents:', err);
     } finally {
       if (tab === 'indexed') {
         setLoadingIndexed(false);
-      } else {
-        setLoadingSuggested(false);
       }
     }
   }, [api, index.id]);
@@ -98,9 +99,10 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
   useEffect(() => {
     if (open) {
       fetchMemberSettings();
-      // Fetch both indexed and suggested intents when modal opens
+      // Fetch indexed intents when modal opens
       fetchMemberIntents('indexed');
-      fetchMemberIntents('suggested');
+      // Reset used tags when modal opens
+      setUsedTags(new Set());
     }
   }, [open, fetchMemberSettings, fetchMemberIntents]);
 
@@ -122,9 +124,10 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
       setIsSavingPrompt(true);
       await api.put(`/indexes/${index.id}/member-settings`, { 
         prompt: prompt.trim() || null,
-        autoAssign: memberSettings?.isOwner ? undefined : autoManage 
+        autoAssign: memberSettings?.isOwner ? undefined : false 
       });
-      success(memberSettings?.isOwner ? 'Index settings saved' : 'Auto-manage settings saved');
+      success('Settings saved');
+      setOriginalPrompt(prompt); // Update original prompt after saving
       await fetchMemberSettings(); // Refresh settings
     } catch (err) {
       error('Failed to save settings');
@@ -140,7 +143,6 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
       success('Intent added to index');
       // Refresh intents
       await fetchMemberIntents('indexed');
-      await fetchMemberIntents('suggested');
     } catch (err) {
       error('Failed to add intent to index');
     } finally {
@@ -159,7 +161,6 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
       success('Intent removed from index');
       // Refresh intents
       await fetchMemberIntents('indexed');
-      await fetchMemberIntents('suggested');
     } catch (err) {
       error('Failed to remove intent from index');
     } finally {
@@ -171,9 +172,37 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
     }
   };
 
-  const handleTabChange = (tab: 'indexed' | 'suggested') => {
-    setActiveTab(tab);
+  const handleRemoveAllIntents = async () => {
+    try {
+      setRemovingAll(true);
+      // Remove all intents one by one
+      await Promise.all(indexedIntents.map(intent => 
+        api.delete(`/indexes/${index.id}/member-intents/${intent.id}`)
+      ));
+      success('All intents removed from index');
+      // Refresh intents
+      await fetchMemberIntents('indexed');
+    } catch (err) {
+      error('Failed to remove all intents');
+    } finally {
+      setRemovingAll(false);
+    }
   };
+
+  const handleCancel = () => {
+    setPrompt(originalPrompt);
+  };
+
+  const handleTagClick = (tagValue: string) => {
+    // Add the tag to the prompt textarea
+    const separator = prompt.trim() ? ', ' : '';
+    setPrompt(prompt + separator + tagValue);
+    // Mark this tag as used
+    setUsedTags(prev => new Set([...prev, tagValue]));
+  };
+
+  // Get visible tags (first 5 unused tags)
+  const visibleTags = PREDEFINED_TAGS.filter(tag => !usedTags.has(tag.value)).slice(0, 4);
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -195,96 +224,103 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
             </div>
           </div>
           
-          <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
+          <Dialog.Close 
+            className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100"
+            onClick={(e) => {
+              if (hasUnsavedChanges) {
+                e.preventDefault();
+                if (confirm('You have unsaved changes. Are you sure you want to close?')) {
+                  onOpenChange(false);
+                }
+              }
+            }}
+          >
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </Dialog.Close>
         
         <div className="space-y-6">
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-2">What I'm sharing in {index.title}</h3>
-              <p className="text-sm text-gray-600">
-                <span className="font-medium">LLM usability</span> research and accessibility improvements. 
-                <span className="font-medium"> Agentic AI</span> system development and intent prediction. 
-                <span className="font-medium"> AI-driven interface design</span> and human behavior studies. 
-                I'm also offering collaboration opportunities with, researchers working on responsible AI development, 
-                <span className="font-medium"> UX designers</span> exploring AI interface paradigms, 
-                <span className="font-medium"> developers</span> focused on making AI tools more accessible
-              </p>
-            </div>
-          </div>
-
           <div>
-            <div className="flex items-center justify-between mb-4">
+            <div className="mt-12 mb-3 flex items-center justify-between min-h-[32px]">
               <h3 className="text-sm font-medium font-ibm-plex-mono text-black">
-                {autoManage ? 'Instruct what to share and what to keep private' : `My intents in ${memberSettings?.indexTitle || index.title}`}
+                Instruct what to share and what to keep private
               </h3>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoManage}
-                  onChange={(e) => setAutoManage(e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-700">Auto manage my intents</span>
-              </label>
+              {/* Save/Discard buttons aligned to the right of the label */}
+              {hasUnsavedChanges && (
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCancel}
+                    className="font-ibm-plex-mono"
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSavePrompt}
+                    disabled={isSavingPrompt}
+                    className="font-ibm-plex-mono"
+                  >
+                    {isSavingPrompt ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              )}
             </div>
 
-            {autoManage ? (
-              <div className="space-y-3">
+            <div>
+              <div className="relative border border-gray-300 rounded-lg p-3">
                 <textarea
                   id="prompt"
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="e.g., Share my AI-related intents like research papers and projects, but keep personal details private..."
-                  className="w-full text-gray-900 p-3 border border-gray-300 rounded-lg resize-none h-24 text-sm font-ibm-plex-mono"
+                  className="w-full text-gray-900 resize-none h-20 text-sm font-ibm-plex-mono outline-none"
                 />
-                <div className="flex justify-end">
-                  <Button 
-                    size="sm" 
-                    className="font-ibm-plex-mono"
-                    disabled={!prompt.trim() || isSavingPrompt}
-                    onClick={handleSavePrompt}
-                  >
-                    {isSavingPrompt ? 'Saving...' : 'Save'}
-                  </Button>
+                
+                {/* Predefined tag buttons inside textarea area - single line only */}
+                <div className="flex gap-2 mt-2 overflow-hidden">
+                  {visibleTags.map((tag) => (
+                    <button
+                      key={tag.value}
+                      onClick={() => handleTagClick(tag.value)}
+                      className="px-3 py-1 bg-gray-800 text-white rounded-full text-xs font-ibm-plex-mono hover:bg-gray-700 transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1"
+                    >
+                      <Plus className="h-3 w-3" />
+                      {tag.label}
+                    </button>
+                  ))}
                 </div>
               </div>
-            ) : (
-              <div>
-                <div className="flex gap-4 border-b border-gray-200 mb-4">
-                  <button
-                    onClick={() => handleTabChange('indexed')}
-                    className={`pb-2 text-sm font-medium font-ibm-plex-mono transition-colors ${
-                      activeTab === 'indexed'
-                        ? 'border-b-2 border-black text-black'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    Indexed {loadingIndexed ? '' : `(${indexedIntents.length})`}
-                  </button>
-                  <button
-                    onClick={() => handleTabChange('suggested')}
-                    className={`pb-2 text-sm font-medium font-ibm-plex-mono transition-colors ${
-                      activeTab === 'suggested'
-                        ? 'border-b-2 border-black text-black'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    Recommended {loadingSuggested ? '' : `(${suggestedIntents.length})`}
-                  </button>
+            </div>
+            
+            <div className="mt-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-sm font-medium font-ibm-plex-mono text-black">
+                    My intents in {memberSettings?.indexTitle || index.title} {loadingIndexed ? '' : `(${indexedIntents.length})`}
+                  </h3>
+                  {indexedIntents.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRemoveAllIntents}
+                      disabled={removingAll}
+                      className="font-ibm-plex-mono text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
+                    >
+                      {removingAll ? 'Removing...' : 'Remove all'}
+                    </Button>
+                  )}
                 </div>
 
                 <div className="space-y-2">
-                  {(activeTab === 'indexed' ? loadingIndexed : loadingSuggested) ? (
+                  {loadingIndexed ? (
                     <div className="text-center py-4 text-gray-500">Loading...</div>
-                  ) : activeTab === 'indexed' ? (
+                  ) : (
                     indexedIntents.length > 0 ? (
                       indexedIntents.map((intent) => (
                         <div
                           key={intent.id}
-                          className="flex items-center justify-between p-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                          className="group flex items-center justify-between p-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors"
                         >
                           <div className="flex-1">
                             <Link
@@ -304,6 +340,7 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                               handleRemoveIntent(intent.id);
                             }}
                             disabled={removingIntents.has(intent.id)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity"
                           >
                             {removingIntents.has(intent.id) ? (
                               <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
@@ -318,50 +355,9 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                     ) : (
                       <div className="text-center py-4 text-gray-500">No intents indexed yet</div>
                     )
-                  ) : (
-                    suggestedIntents.length > 0 ? (
-                      suggestedIntents.map((intent) => (
-                        <div
-                          key={intent.id}
-                          className="flex items-center justify-between p-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors"
-                        >
-                          <div className="flex-1">
-                            <Link
-                              href={`/intents/${intent.id}`}
-                              className="flex items-center gap-2 mb-1"
-                            >
-                              <h4 className="text-xs font-ibm-plex-mono font-medium text-gray-900">{intent.summary || intent.payload}</h4>
-                              <ArrowUpRight className="h-3 w-3" />
-                            </Link>
-                          </div>
-                          <Button
-                            size="sm"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleAddIntent(intent.id);
-                            }}
-                            disabled={addingIntents.has(intent.id)}
-                          >
-                            {addingIntents.has(intent.id) ? (
-                              <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              'Add'
-                            )}
-                          </Button>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-4 text-gray-500">
-                        <p>No recommendations found</p>
-                        <p className="text-xs mt-1">AI couldn't find any of your intents that match this index's theme</p>
-                      </div>
-                    )
                   )}
                 </div>
-                
               </div>
-            )}
           </div>
         </div>
         </Dialog.Content>
