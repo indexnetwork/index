@@ -940,20 +940,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <span className="text-xs text-[#666] font-ibm-plex-mono">{intentCountLabel}</span>
                   </div>
                 </div>
-                {(isSelectionFiltering || isSourceFiltering) && (
-                  <div className="px-3 pb-2">
-                    <div className="inline-flex items-center gap-2 rounded-md bg-[#E6F2FF] px-2.5 py-1 text-[11px] text-[#005BBF] font-ibm-plex-mono">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#007EFF]" />
-                      {isSelectionFiltering && isSourceFiltering ? (
-                        <>Showing intents from selected sources and {Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')}</>
-                      ) : isSourceFiltering ? (
-                        <>Showing intents from {Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')}</>
-                      ) : (
-                        <>Showing intents tied to the current selection</>
-                      )}
-                    </div>
-                  </div>
-                )}
                 <div className="mt-3 flex-1 lg:overflow-y-auto pr-1 space-y-3 p-3 pt-0">
                   {isLoadingIntents ? (
                     <div className="flex items-center justify-center py-6">
