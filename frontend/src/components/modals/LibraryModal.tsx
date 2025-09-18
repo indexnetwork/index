@@ -435,18 +435,27 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (!f || f.length === 0) return;
     setIsUploading(true);
     try {
-      await Promise.all(Array.from(f).map(async file => {
+      const uploadedFiles = await Promise.all(Array.from(f).map(async file => {
         const res = await api.uploadFile<{ file: (typeof files)[number] }>(`/files`, file);
         return res.file;
       }));
       onChanged?.();
       await loadLists();
-      await loadLibraryIntents();
+      
+      // Provide user feedback about automatic intent generation
+      const fileCount = uploadedFiles.length;
+      const fileText = fileCount === 1 ? 'file' : 'files';
+      success(`${fileCount} ${fileText} uploaded successfully. Intent generation started automatically.`);
+      
+      // Refresh intents after a short delay to catch the automatically generated intents
+      setTimeout(() => {
+        void loadLibraryIntents();
+      }, 2000);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
-  }, [api, onChanged, loadLists, loadLibraryIntents]);
+  }, [api, onChanged, loadLists, loadLibraryIntents, success]);
 
   const handleAddLink = useCallback(async () => {
     if (!linkUrl) return;
@@ -459,18 +468,37 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     
     try {
       setIsAddingLink(true);
-      await api.post<{ link: (typeof links)[number] }>(`/links`, { url: normalizedUrl });
+      const response = await api.post<{ link: (typeof links)[number] }>(`/links`, { url: normalizedUrl });
       setLinkUrl("");
       onChanged?.();
       await loadLists();
-      await loadLibraryIntents();
       success('Link added successfully');
+      
+      // Automatically trigger sync for the newly added link
+      if (response.link?.id) {
+        try {
+          setSyncingLinks(prev => new Set([...prev, response.link.id]));
+          await syncService.syncLink(response.link.id);
+          success('Link sync started automatically');
+        } catch (syncError) {
+          console.warn('Auto-sync failed:', syncError);
+          // Don't show error to user since link was added successfully
+        } finally {
+          setSyncingLinks(prev => {
+            const next = new Set(prev);
+            next.delete(response.link.id);
+            return next;
+          });
+          // Refresh intents after sync attempt
+          void loadLibraryIntents();
+        }
+      }
     } catch {
       error('Failed to add link. Please check the URL and try again.');
     } finally {
       setIsAddingLink(false);
     }
-  }, [api, linkUrl, onChanged, loadLists, loadLibraryIntents, success, error]);
+  }, [api, linkUrl, onChanged, loadLists, loadLibraryIntents, success, error, syncService]);
 
   const handleSyncIntegration = useCallback(async (integrationType: string) => {
     try {

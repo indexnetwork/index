@@ -10,7 +10,7 @@ import ConfigureModal from "@/components/modals/ConfigureModal";
 import DeleteIndexModal from "@/components/modals/DeleteIndexModal";
 
 import Link from "next/link";
-import { useIndexes, useIntents, useFiles, useLinks } from "@/contexts/APIContext";
+import { useIndexes, useIntents, useFiles, useLinks, useAPI } from "@/contexts/APIContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { Index, Intent, FileRecord } from "@/lib/types";
 import ClientLayout from "@/components/ClientLayout";
@@ -62,6 +62,7 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
   const intentsService = useIntents();
   const filesService = useFiles();
   const linksService = useLinks();
+  const { syncService } = useAPI();
   const { user: currentUser } = usePrivy();
   const intentsRef = useRef<HTMLDivElement>(null);
 
@@ -314,10 +315,21 @@ export default function IndexDetailPage({ params }: IndexDetailPageProps) {
     if (!linkUrl.trim()) return;
     try {
       setAddingLink(true);
-      await linksService.addLink({ url: linkUrl.trim() });
+      const response = await linksService.addLink({ url: linkUrl.trim() });
       setLinkUrl("");
       await fetchLinks();
       notifySuccess('Link added', 'Your URL was added to your Library.');
+      
+      // Automatically trigger sync for the newly added link
+      if (response?.id) {
+        try {
+          await syncService.syncLink(response.id);
+          notifySuccess('Link sync started automatically');
+        } catch (syncError) {
+          console.warn('Auto-sync failed:', syncError);
+          // Don't show error to user since link was added successfully
+        }
+      }
     } catch (e) {
       console.error('Error adding link:', e);
       notifyError('Failed to add link');

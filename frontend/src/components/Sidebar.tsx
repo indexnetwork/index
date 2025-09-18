@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useIndexes } from '@/contexts/APIContext';
+import { useIndexes, useAPI } from '@/contexts/APIContext';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { Index as IndexType } from '@/lib/types';
 import LibraryModal from '@/components/modals/LibraryModal';
@@ -33,6 +33,7 @@ export default function Sidebar() {
   const { success, error } = useNotifications();
   const indexesService = useIndexes();
   const { setSelectedIndexIds } = useIndexFilter();
+  const { syncService } = useAPI();
   
 
   const fetchIndexes = useCallback(async () => {
@@ -101,10 +102,13 @@ export default function Sidebar() {
         const res = await api.uploadFile<{ file: { id: string; name: string; size: string } }>(`/files`, file);
         return res.file;
       }));
-      if (uploaded.length === 1) {
-        success('File uploaded successfully', uploaded[0]?.name);
-      } else if (uploaded.length > 1) {
-        success(`${uploaded.length} files uploaded successfully`);
+      
+      const fileCount = uploaded.length;
+      const fileText = fileCount === 1 ? 'file' : 'files';
+      if (fileCount === 1) {
+        success(`File uploaded successfully. Intent generation started automatically.`, uploaded[0]?.name);
+      } else if (fileCount > 1) {
+        success(`${fileCount} ${fileText} uploaded successfully. Intent generation started automatically.`);
       }
     } catch {
       error('Upload failed');
@@ -112,7 +116,7 @@ export default function Sidebar() {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }, [api, error]);
+  }, [api, success, error]);
 
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -131,15 +135,26 @@ export default function Sidebar() {
     }
     try {
       setIsAddingLink(true);
-      await api.post<{ link: { url: string } }>(`/links`, { url: normalized });
+      const response = await api.post<{ link: { id: string; url: string } }>(`/links`, { url: normalized });
       setLinkUrl('');
       success('Link added successfully');
+      
+      // Automatically trigger sync for the newly added link
+      if (response.link?.id) {
+        try {
+          await syncService.syncLink(response.link.id);
+          success('Link sync started automatically');
+        } catch (syncError) {
+          console.warn('Auto-sync failed:', syncError);
+          // Don't show error to user since link was added successfully
+        }
+      }
     } catch {
       error('Failed to add link');
     } finally {
       setIsAddingLink(false);
     }
-  }, [api, linkUrl, success, error]);
+  }, [api, linkUrl, success, error, syncService]);
 
   return (
     <div className="space-y-6 font-mono">
