@@ -594,7 +594,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </button>
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-3.5 lg:gap-4 lg:flex-1 overflow-hidden">
+          <div className="flex flex-col lg:flex-row gap-3.5 lg:gap-4 flex-1 overflow-hidden">
             <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block lg:flex-1 min-w-0`}
             >
               <div className="space-y-2 sm:space-y-3 lg:space-y-4">
@@ -702,11 +702,33 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
             {/* Add new content */}
             <section className="pr-2">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 min-h-[40px]">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Files and URLs</h3>
-                <span className="text-xs text-gray-500 font-ibm-plex-mono">
-                  {files.length + links.length} items total
-                </span>
+                <div className="flex items-center gap-3">
+                  {selectedIds.size > 0 && (
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs border-[#E0E0E0] text-[#444] hover:bg-[#F5F5F5] font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        onClick={() => handleBulkDelete()}
+                      >
+                        Delete ({selectedIds.size})
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        onClick={() => setSelectedIds(new Set())}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  )}
+                  <span className="text-xs text-gray-500 font-ibm-plex-mono">
+                    {files.length + links.length} items total
+                  </span>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
                 {/* File upload */}
@@ -779,28 +801,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
 
             {/* Library items */}
             <section className="pr-2">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-2">
-                {selectedIds.size > 0 && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs border-[#E0E0E0] text-[#444] hover:bg-[#F5F5F5] font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                      onClick={() => handleBulkDelete()}
-                    >
-                      Delete ({selectedIds.size})
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                      onClick={() => setSelectedIds(new Set())}
-                    >
-                      Clear
-                    </Button>
-                  </div>
-                )}
-              </div>
               <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pb-8">
                 {(() => {
                   type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };
@@ -924,7 +924,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
               </div>
             </div>
-            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] lg:max-h-[70vh] lg:overflow-y-auto`}>
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] overflow-y-auto`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3">
                   <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
                   <div className="flex items-center gap-2">
@@ -940,7 +940,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <span className="text-xs text-[#666] font-ibm-plex-mono">{intentCountLabel}</span>
                   </div>
                 </div>
-                <div className="mt-3 flex-1 lg:overflow-y-auto pr-1 space-y-3 p-3 pt-0">
+                <div className="mt-3 flex-1 pr-1 space-y-3 p-3 pt-0">
                   {isLoadingIntents ? (
                     <div className="flex items-center justify-center py-6">
                       <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
