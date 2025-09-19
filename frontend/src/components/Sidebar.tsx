@@ -141,14 +141,12 @@ export default function Sidebar() {
     }
   }, [api, linkUrl, success, error]);
 
+
   return (
     <div className="space-y-6 font-mono">
       <div className="bg-white rounded-sm border-black border p-3 pb-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-black">Indexes</h2>
-          <button className="text-sm text-black hover:text-gray-700 font-medium">
-            + Add new index
-          </button>
         </div>
         
         <div className="space-y-3">

@@ -9,7 +9,7 @@ import { X } from "lucide-react";
 interface CreateIndexModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (index: { name: string }) => Promise<void>;
+  onSubmit: (index: { name: string; prompt?: string }) => Promise<void>;
 }
 
 interface DialogComponentProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -64,13 +64,15 @@ const DialogDescription = ({ className, children, ...props }: DialogDescriptionP
 
 export default function CreateIndexModal({ open, onOpenChange, onSubmit }: CreateIndexModalProps) {
   const [name, setName] = useState('');
+  const [prompt, setPrompt] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
-      await onSubmit({ name });
+      await onSubmit({ name, prompt: prompt.trim() || undefined });
       setName('');
+      setPrompt('');
       onOpenChange(false);
     } catch (error) {
       console.error('Error creating index:', error);
@@ -107,6 +109,20 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                 className=" px-4 py-3"
                 placeholder="Enter index name..."
                 required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="prompt" className="text-md font-medium font-ibm-plex-mono text-black">
+                <div className="mb-2">Prompt (Optional)</div>
+              </label>
+              <textarea
+                id="prompt"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                placeholder="Define what people can share in this index..."
+                rows={3}
               />
             </div>
 

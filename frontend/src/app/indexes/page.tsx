@@ -60,10 +60,11 @@ export default function IndexesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency array - only run once on mount
 
-  const handleCreateIndex = async (indexData: { name: string }) => {
+  const handleCreateIndex = async (indexData: { name: string; prompt?: string }) => {
     try {
       const createRequest = {
-        title: indexData.name
+        title: indexData.name,
+        prompt: indexData.prompt
       };
       
       const newIndex = await indexesService.createIndex(createRequest);

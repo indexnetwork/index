@@ -182,6 +182,7 @@ export interface APIResponse<T> {
 // Request types
 export interface CreateIndexRequest {
   title: string;
+  prompt?: string;
 }
 
 export interface UpdateIndexRequest {

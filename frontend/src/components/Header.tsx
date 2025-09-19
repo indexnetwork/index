@@ -2,14 +2,17 @@ import { Button } from "@/components/ui/button";
 import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { UserPlus, LogIn, Settings, Blocks, Library } from "lucide-react";
+import { UserPlus, LogIn, Settings, Blocks, Library, Plus } from "lucide-react";
 import { usePrivy } from '@privy-io/react-auth';
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { User, APIResponse } from '@/lib/types';
 import { getAvatarUrl } from '@/lib/file-utils';
+import { useIndexes } from '@/contexts/APIContext';
+import { useNotifications } from '@/contexts/NotificationContext';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 import LibraryModal from '@/components/modals/LibraryModal';
+import CreateIndexModal from '@/components/modals/CreateIndexModal';
 
 interface HeaderProps {
   showNavigation?: boolean;
@@ -24,11 +27,14 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
   const [isAlpha, setIsAlpha] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [libraryModalOpen, setLibraryModalOpen] = useState(false);
+  const [createIndexModalOpen, setCreateIndexModalOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [userLoading, setUserLoading] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
   const api = useAuthenticatedAPI();
+  const indexesService = useIndexes();
+  const { success, error } = useNotifications();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Memoize alpha parameter check to prevent unnecessary re-runs
@@ -78,6 +84,22 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
       setUserLoading(false);
     }
   }, [authenticated, api, userLoading]);
+
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string }) => {
+    try {
+      const createRequest = {
+        title: indexData.name,
+        prompt: indexData.prompt
+      };
+      
+      await indexesService.createIndex(createRequest);
+      setCreateIndexModalOpen(false);
+      success('Index created successfully');
+    } catch (error) {
+      console.error('Error creating index:', error);
+      error('Failed to create index');
+    }
+  }, [indexesService, success, error]);
 
   // Fetch user data when authenticated and ready
   useEffect(() => {
@@ -267,6 +289,16 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                       My Library
                     </button>
                     <button
+                      className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
+                      onClick={() => {
+                        setCreateIndexModalOpen(true);
+                        setDropdownOpen(false);
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Create Index
+                    </button>
+                    <button
                       className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors"
                       onClick={() => {
                         logout();
@@ -373,6 +405,13 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
       <LibraryModal
         open={libraryModalOpen}
         onOpenChange={setLibraryModalOpen}
+      />
+
+      {/* Create Index Modal */}
+      <CreateIndexModal
+        open={createIndexModalOpen}
+        onOpenChange={setCreateIndexModalOpen}
+        onSubmit={handleCreateIndex}
       />
     </div>
   );
