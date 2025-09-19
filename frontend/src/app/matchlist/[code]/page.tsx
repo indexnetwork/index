@@ -16,7 +16,6 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 import { Play, Pause } from "lucide-react";
 import IntentForm from "@/components/IntentForm";
-import { intentSuggestionsService, IntentSuggestion } from "@/services/intentSuggestions";
 
 interface MatchlistPageProps {
   params: Promise<{

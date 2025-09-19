@@ -18,7 +18,6 @@ import { formatDate } from "@/lib/utils";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useRouter } from 'next/navigation';
 import IntentForm from '@/components/IntentForm';
-import { intentSuggestionsService } from '@/services/intentSuggestions';
 
 interface SharePageProps {
   params: Promise<{
