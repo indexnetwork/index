@@ -11,8 +11,8 @@ import { traceableLlm } from "../../../lib/agents";
 import * as fs from 'fs';
 import * as path from 'path';
 import db from '../../../lib/db';
-import { indexes } from '../../../lib/schema';
-import { eq } from 'drizzle-orm';
+import { indexes, indexMembers } from '../../../lib/schema';
+import { eq, and, sql } from 'drizzle-orm';
 import { getUploadsPath } from '../../../lib/paths';
 import { validate as isValidUUID } from 'uuid';
 
@@ -129,9 +129,12 @@ async function gatherIndexContext(indexId: string): Promise<string> {
   let userId: string | undefined;
   try {
     const owner = await db
-      .select({ userId: indexes.userId })
-      .from(indexes)
-      .where(eq(indexes.id, indexId))
+      .select({ userId: indexMembers.userId })
+      .from(indexMembers)
+      .where(and(
+        eq(indexMembers.indexId, indexId),
+        sql`'owner' = ANY(${indexMembers.permissions})`
+      ))
       .limit(1);
     userId = owner[0]?.userId;
   } catch (e) {

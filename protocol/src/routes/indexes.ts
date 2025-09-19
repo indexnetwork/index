@@ -10,7 +10,8 @@ import {
   getIndexWithPermissions, 
   getUserAccessibleIndexIds,
   checkIndexIntentWriteAccess,
-  validateOwnershipChange
+  validateOwnershipChange,
+  EVERYONE_USER_ID
 } from '../lib/index-access';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
@@ -56,17 +57,17 @@ router.get('/',
 
       const whereCondition = and(
         isNull(indexes.deletedAt),
-        or(
-          eq(indexes.userId, req.user!.id),
-          // Check if user is a member of the index
-          exists(
-            db.select({ indexId: indexMembers.indexId })
-              .from(indexMembers)
-              .where(and(
-                eq(indexMembers.indexId, indexes.id),
-                eq(indexMembers.userId, req.user!.id)
-              ))
-          )
+        // User must be a member of the index (including owners)
+        exists(
+          db.select({ indexId: indexMembers.indexId })
+            .from(indexMembers)
+            .where(and(
+              eq(indexMembers.indexId, indexes.id),
+              or(
+                eq(indexMembers.userId, req.user!.id),
+                eq(indexMembers.userId, EVERYONE_USER_ID)
+              )
+            ))
         )
       ) ?? isNull(indexes.deletedAt);
 
@@ -78,12 +79,16 @@ router.get('/',
           linkPermissions: indexes.linkPermissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
-          userId: indexes.userId,
+          ownerId: indexMembers.userId,
           userName: users.name,
           userEmail: users.email,
           userAvatar: users.avatar
         }).from(indexes)
-          .innerJoin(users, eq(indexes.userId, users.id))
+          .innerJoin(indexMembers, and(
+            eq(indexes.id, indexMembers.indexId),
+            sql`'owner' = ANY(${indexMembers.permissions})`
+          ))
+          .innerJoin(users, eq(indexMembers.userId, users.id))
           .where(whereCondition)
           .orderBy(desc(indexes.createdAt))
           .offset(skip)
@@ -91,7 +96,10 @@ router.get('/',
 
         db.select({ count: count() })
           .from(indexes)
-          .innerJoin(users, eq(indexes.userId, users.id))
+          .innerJoin(indexMembers, and(
+            eq(indexes.id, indexMembers.indexId),
+            sql`'owner' = ANY(${indexMembers.permissions})`
+          ))
           .where(whereCondition)
       ]);
 
@@ -111,7 +119,7 @@ router.get('/',
             createdAt: index.createdAt,
             updatedAt: index.updatedAt,
             user: {
-              id: index.userId,
+              id: index.ownerId,
               name: index.userName,
               email: index.userEmail,
               avatar: index.userAvatar
@@ -217,12 +225,16 @@ router.get('/:id',
         linkPermissions: indexes.linkPermissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
-        userId: indexes.userId,
+        ownerId: indexMembers.userId,
         userName: users.name,
         userEmail: users.email,
         userAvatar: users.avatar
       }).from(indexes)
-        .innerJoin(users, eq(indexes.userId, users.id))
+        .innerJoin(indexMembers, and(
+          eq(indexes.id, indexMembers.indexId),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        ))
+        .innerJoin(users, eq(indexMembers.userId, users.id))
         .where(and(eq(indexes.id, id), isNull(indexes.deletedAt)))
         .limit(1);
 
@@ -255,7 +267,7 @@ router.get('/:id',
         createdAt: indexData.createdAt,
         updatedAt: indexData.updatedAt,
         user: {
-          id: indexData.userId,
+          id: indexData.ownerId,
           name: indexData.userName,
           email: indexData.userEmail,
           avatar: indexData.userAvatar
@@ -301,15 +313,13 @@ router.post('/',
       const newIndex = await db.insert(indexes).values({
         title,
         prompt: prompt || null,
-        userId: req.user!.id,
       }).returning({
         id: indexes.id,
         title: indexes.title,
         prompt: indexes.prompt,
         linkPermissions: indexes.linkPermissions,
         createdAt: indexes.createdAt,
-        updatedAt: indexes.updatedAt,
-        userId: indexes.userId
+        updatedAt: indexes.updatedAt
       });
 
       // Add creator as owner member
@@ -336,13 +346,13 @@ router.post('/',
         createdAt: newIndex[0].createdAt,
         updatedAt: newIndex[0].updatedAt,
         user: {
-          id: newIndex[0].userId,
+          id: req.user!.id, // Use the requesting user ID as owner
           name: userData[0].name,
           email: userData[0].email,
           avatar: userData[0].avatar
         },
         _count: {
-          members: 0
+          members: 1 // Now has 1 member (the owner)
         }
       };
 
@@ -429,8 +439,7 @@ router.put('/:id',
           prompt: indexes.prompt,
           linkPermissions: indexes.linkPermissions,
           createdAt: indexes.createdAt,
-          updatedAt: indexes.updatedAt,
-          userId: indexes.userId
+          updatedAt: indexes.updatedAt
         });
 
       const result = updatedIndex[0];
@@ -800,8 +809,7 @@ router.patch('/:id/link-permissions',
           title: indexes.title,
           linkPermissions: indexes.linkPermissions,
           createdAt: indexes.createdAt,
-          updatedAt: indexes.updatedAt,
-          userId: indexes.userId
+          updatedAt: indexes.updatedAt
         });
 
       const result = updatedIndex[0];
@@ -982,12 +990,16 @@ router.get('/share/:code',
         linkPermissions: indexes.linkPermissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
-        userId: indexes.userId,
+        ownerId: indexMembers.userId,
         userName: users.name,
         userEmail: users.email,
         userAvatar: users.avatar
       }).from(indexes)
-        .innerJoin(users, eq(indexes.userId, users.id))
+        .innerJoin(indexMembers, and(
+          eq(indexes.id, indexMembers.indexId),
+          sql`'owner' = ANY(${indexMembers.permissions})`
+        ))
+        .innerJoin(users, eq(indexMembers.userId, users.id))
         .where(and(eq(indexes.id, indexData.id), isNull(indexes.deletedAt)))
         .limit(1);
 
@@ -1000,7 +1012,7 @@ router.get('/share/:code',
         createdAt: indexResult.createdAt,
         updatedAt: indexResult.updatedAt,
         user: {
-          id: indexResult.userId,
+          id: indexResult.ownerId,
           name: indexResult.userName,
           avatar: indexResult.userAvatar
         },

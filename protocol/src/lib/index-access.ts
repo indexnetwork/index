@@ -10,7 +10,6 @@ export interface IndexAccessResult {
   status?: number;
   indexData?: {
     id: string;
-    userId: string;
     linkPermissions?: {
       permissions: string[];
       code: string;

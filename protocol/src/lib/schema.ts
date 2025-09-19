@@ -51,7 +51,6 @@ export const indexes = pgTable('indexes', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),
-  userId: uuid('user_id').notNull().references(() => users.id),
 });
 
 export const indexMembers = pgTable('index_members', {
@@ -143,11 +142,7 @@ export const intentsRelations = relations(intents, ({ one, many }) => ({
   }),
 }));
 
-export const indexesRelations = relations(indexes, ({ one, many }) => ({
-  user: one(users, {
-    fields: [indexes.userId],
-    references: [users.id],
-  }),
+export const indexesRelations = relations(indexes, ({ many }) => ({
   members: many(indexMembers),
   intents: many(intentIndexes),
 }));
