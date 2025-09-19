@@ -9,7 +9,8 @@ import {
   checkIndexOwnership, 
   getIndexWithPermissions, 
   getUserAccessibleIndexIds,
-  checkIndexIntentWriteAccess 
+  checkIndexIntentWriteAccess,
+  validateOwnershipChange
 } from '../lib/index-access';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
@@ -311,6 +312,14 @@ router.post('/',
         userId: indexes.userId
       });
 
+      // Add creator as owner member
+      await db.insert(indexMembers).values({
+        indexId: newIndex[0].id,
+        userId: req.user!.id,
+        permissions: ['owner'],
+        prompt: prompt || null, // Use index prompt as default member prompt
+      });
+
       // Get user information
       const userData = await db.select({
         name: users.name,
@@ -505,7 +514,7 @@ router.post('/:id/members',
       }
 
       // Validate permissions
-      const validPermissions = ['can-write', 'can-read', 'can-discover', 'can-write-intents'];
+      const validPermissions = ['can-write', 'can-read', 'can-discover', 'can-write-intents', 'owner'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -524,11 +533,18 @@ router.post('/:id/members',
         return res.status(400).json({ error: 'User is already a member of this index' });
       }
 
+      // Get index prompt to use as default member prompt
+      const indexData = await db.select({ prompt: indexes.prompt })
+        .from(indexes)
+        .where(eq(indexes.id, id))
+        .limit(1);
+
       // Add member
       await db.insert(indexMembers).values({
         indexId: id,
         userId,
         permissions,
+        prompt: indexData[0]?.prompt || null, // Use index prompt as default member prompt
       });
 
       // Get member details
@@ -586,6 +602,12 @@ router.delete('/:id/members/:userId',
         return res.status(404).json({ error: 'Member not found' });
       }
 
+      // Validate ownership change to ensure at least one owner remains
+      const ownershipValidation = await validateOwnershipChange(id, userId, []);
+      if (!ownershipValidation.canChange) {
+        return res.status(400).json({ error: ownershipValidation.error });
+      }
+
       // Remove member
       await db.delete(indexMembers)
         .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, userId)));
@@ -621,14 +643,10 @@ router.post('/:id/leave',
         return res.status(404).json({ error: 'You are not a member of this index' });
       }
 
-      // Check if user is the owner
-      const indexData = await db.select({ userId: indexes.userId })
-        .from(indexes)
-        .where(eq(indexes.id, id))
-        .limit(1);
-
-      if (indexData[0].userId === req.user!.id) {
-        return res.status(403).json({ error: 'Owner cannot leave their own index' });
+      // Validate ownership change to ensure at least one owner remains
+      const ownershipValidation = await validateOwnershipChange(id, req.user!.id, []);
+      if (!ownershipValidation.canChange) {
+        return res.status(400).json({ error: ownershipValidation.error });
       }
 
       // Remove member
@@ -668,7 +686,7 @@ router.patch('/:id/members/:userId',
       }
 
       // Validate permissions
-      const validPermissions = ['can-write', 'can-read', 'can-discover', 'can-write-intents'];
+      const validPermissions = ['can-write', 'can-read', 'can-discover', 'can-write-intents', 'owner'];
       const invalidPermissions = permissions.filter((p: string) => !validPermissions.includes(p));
       if (invalidPermissions.length > 0) {
         return res.status(400).json({ 
@@ -685,6 +703,12 @@ router.patch('/:id/members/:userId',
 
       if (existingMember.length === 0) {
         return res.status(404).json({ error: 'Member not found' });
+      }
+
+      // Validate ownership change to ensure at least one owner remains
+      const ownershipValidation = await validateOwnershipChange(id, userId, permissions);
+      if (!ownershipValidation.canChange) {
+        return res.status(400).json({ error: ownershipValidation.error });
       }
 
       // Update member permissions
@@ -852,7 +876,7 @@ router.get('/:id/member-settings',
       }
 
       const indexData = accessCheck.indexData!;
-      const isOwner = indexData.userId === req.user!.id;
+      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
 
       // Get full index data for title and prompt
       const indexInfo = await db.select({
@@ -862,35 +886,23 @@ router.get('/:id/member-settings',
         .where(eq(indexes.id, id))
         .limit(1);
 
-      // For owners, use index settings; for members, use member settings
-      if (isOwner) {
-        return res.json({
-          indexTitle: indexInfo[0].title,
-          indexPrompt: indexInfo[0].prompt,
-          memberPrompt: null, // Owners don't have member prompts
-          autoAssign: false, // Owners don't use auto-assign
-          permissions: ['owner'], // Special permission for owners
-          isOwner: true
-        });
-      } else {
-        // Get member-specific settings
-        const membership = await db.select({
-          prompt: indexMembers.prompt,
-          autoAssign: indexMembers.autoAssign,
-          permissions: indexMembers.permissions
-        }).from(indexMembers)
-          .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
-          .limit(1);
+      // Get member-specific settings (works for both owners and regular members)
+      const membership = await db.select({
+        prompt: indexMembers.prompt,
+        autoAssign: indexMembers.autoAssign,
+        permissions: indexMembers.permissions
+      }).from(indexMembers)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)))
+        .limit(1);
 
-        return res.json({
-          indexTitle: indexInfo[0].title,
-          indexPrompt: indexInfo[0].prompt,
-          memberPrompt: membership[0]?.prompt || null,
-          autoAssign: membership[0]?.autoAssign || false,
-          permissions: membership[0]?.permissions || [],
-          isOwner: false
-        });
-      }
+      return res.json({
+        indexTitle: indexInfo[0].title,
+        indexPrompt: indexInfo[0].prompt,
+        memberPrompt: membership[0]?.prompt || null,
+        autoAssign: membership[0]?.autoAssign || false,
+        permissions: membership[0]?.permissions || [],
+        isOwner: isOwner
+      });
     } catch (error) {
       console.error('Get member settings error:', error);
       return res.status(500).json({ error: 'Failed to fetch member settings' });
@@ -923,30 +935,18 @@ router.put('/:id/member-settings',
       }
 
       const indexData = accessCheck.indexData!;
-      const isOwner = indexData.userId === req.user!.id;
+      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
 
-      if (isOwner) {
-        // For owners, update the index prompt (not member settings)
-        const updateData: any = { updatedAt: new Date() };
-        if (prompt !== undefined) updateData.prompt = prompt || null;
+      // Update member settings (works for both owners and regular members)
+      const updateData: any = { updatedAt: new Date() };
+      if (prompt !== undefined) updateData.prompt = prompt || null;
+      if (autoAssign !== undefined) updateData.autoAssign = autoAssign;
 
-        await db.update(indexes)
-          .set(updateData)
-          .where(eq(indexes.id, id));
+      await db.update(indexMembers)
+        .set(updateData)
+        .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)));
 
-        return res.json({ message: 'Index settings updated successfully' });
-      } else {
-        // For members, update member settings
-        const updateData: any = { updatedAt: new Date() };
-        if (prompt !== undefined) updateData.prompt = prompt || null;
-        if (autoAssign !== undefined) updateData.autoAssign = autoAssign;
-
-        await db.update(indexMembers)
-          .set(updateData)
-          .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)));
-
-        return res.json({ message: 'Member settings updated successfully' });
-      }
+      return res.json({ message: 'Member settings updated successfully' });
     } catch (error) {
       console.error('Update member settings error:', error);
       return res.status(500).json({ error: 'Failed to update member settings' });
@@ -1177,7 +1177,7 @@ router.get('/:indexId/intents',
       }
 
       // Check if user has read permission (owner has all permissions by default)
-      const isOwner = accessCheck.indexData?.userId === req.user!.id;
+      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
       const hasReadPermission = accessCheck.memberPermissions?.includes('can-read');
       
       if (!isOwner && !hasReadPermission) {
@@ -1322,7 +1322,7 @@ router.post('/:id/member-intents/:intentId',
       }
 
       const indexData = accessCheck.indexData!;
-      const isOwner = indexData.userId === req.user!.id;
+      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
 
       // Check if intent exists and belongs to the user
       const intent = await db.select({ id: intents.id, userId: intents.userId })
@@ -1388,7 +1388,7 @@ router.delete('/:id/member-intents/:intentId',
       }
 
       const indexData = accessCheck.indexData!;
-      const isOwner = indexData.userId === req.user!.id;
+      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
 
       // Check if intent exists and belongs to the user
       const intent = await db.select({ id: intents.id, userId: intents.userId })

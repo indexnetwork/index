@@ -44,16 +44,7 @@ export async function getIndexWithPermissions(
   // User-based access
   if (!userId) return { hasAccess: false, error: 'Auth required', status: 401 };
   
-  // Owner access
-  if (index.userId === userId) {
-    return { 
-      hasAccess: true, 
-      indexData: index, 
-      memberPermissions: ['can-write', 'can-read', 'can-view-files', 'can-discover', 'can-write-intents'] 
-    };
-  }
-
-  // Member access
+  // Check membership (including owner permission)
   const membership = await db.select({ permissions: indexMembers.permissions })
     .from(indexMembers)
     .where(and(
@@ -66,6 +57,16 @@ export async function getIndexWithPermissions(
   }
 
   const permissions = [...new Set(membership.flatMap(m => m.permissions || []))];
+  
+  // If user has owner permission, grant all permissions
+  if (permissions.includes('owner')) {
+    return { 
+      hasAccess: true, 
+      indexData: index, 
+      memberPermissions: ['owner', 'can-write', 'can-read', 'can-view-files', 'can-discover', 'can-write-intents'] 
+    };
+  }
+  
   return { hasAccess: true, indexData: index, memberPermissions: permissions };
 }
 
@@ -74,7 +75,7 @@ export const checkIndexAccess = (indexId: string, userId: string) =>
 
 export const checkIndexOwnership = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
   const result = await getIndexWithPermissions({ id: indexId }, userId);
-  if (!result.hasAccess || result.indexData?.userId !== userId) {
+  if (!result.hasAccess || !result.memberPermissions?.includes('owner')) {
     return { hasAccess: false, error: 'Access denied', status: 403 };
   }
   return result;
@@ -89,7 +90,7 @@ export interface MultipleIndexAccessResult {
 
 // Helper to check specific permissions
 const hasPermissions = (userPermissions: string[] = [], required: string[]): boolean =>
-  required.some(p => userPermissions.includes(p));
+  userPermissions.includes('owner') || required.some(p => userPermissions.includes(p));
 
 export const checkIndexIntentWriteAccess = async (indexId: string, userId: string): Promise<IndexAccessResult> => {
   const result = await checkIndexAccess(indexId, userId);
@@ -143,20 +144,15 @@ export const checkMultipleIndexesReadAccess = async (indexIds: string[], userId:
 };
 
 export const getUserAccessibleIndexIds = async (userId: string): Promise<string[]> => {
-  const [owned, member] = await Promise.all([
-    db.select({ id: indexes.id })
-      .from(indexes)
-      .where(and(eq(indexes.userId, userId), isNull(indexes.deletedAt))),
-    db.select({ indexId: indexMembers.indexId })
-      .from(indexMembers)
-      .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
-      .where(and(
-        or(eq(indexMembers.userId, userId), eq(indexMembers.userId, EVERYONE_USER_ID)),
-        isNull(indexes.deletedAt)
-      ))
-  ]);
+  const member = await db.select({ indexId: indexMembers.indexId })
+    .from(indexMembers)
+    .innerJoin(indexes, eq(indexMembers.indexId, indexes.id))
+    .where(and(
+      or(eq(indexMembers.userId, userId), eq(indexMembers.userId, EVERYONE_USER_ID)),
+      isNull(indexes.deletedAt)
+    ));
 
-  return [...new Set([...owned.map(i => i.id), ...member.map(i => i.indexId)])];
+  return [...new Set(member.map(i => i.indexId))];
 };
 
 export async function validateAndGetAccessibleIndexIds(
@@ -181,4 +177,64 @@ export async function validateAndGetAccessibleIndexIds(
           invalidIds: accessCheck.invalidIds
         }
       };
+}
+
+/**
+ * Validates that an index has at least one owner
+ */
+export async function validateIndexHasOwner(indexId: string): Promise<boolean> {
+  const owners = await db.select({ userId: indexMembers.userId })
+    .from(indexMembers)
+    .where(and(
+      eq(indexMembers.indexId, indexId),
+      sql`'owner' = ANY(${indexMembers.permissions})`
+    ));
+    
+  return owners.length > 0;
+}
+
+/**
+ * Checks if removing/updating a user's permissions would leave the index without an owner
+ */
+export async function validateOwnershipChange(
+  indexId: string, 
+  targetUserId: string, 
+  newPermissions: string[]
+): Promise<{ canChange: boolean; error?: string }> {
+  // If new permissions include owner, change is safe
+  if (newPermissions.includes('owner')) {
+    return { canChange: true };
+  }
+
+  // Check if this user is currently an owner
+  const currentMembership = await db.select({ permissions: indexMembers.permissions })
+    .from(indexMembers)
+    .where(and(
+      eq(indexMembers.indexId, indexId),
+      eq(indexMembers.userId, targetUserId)
+    ))
+    .limit(1);
+
+  if (currentMembership.length === 0 || !currentMembership[0].permissions?.includes('owner')) {
+    // User is not currently an owner, change is safe
+    return { canChange: true };
+  }
+
+  // User is currently an owner, check if there are other owners
+  const otherOwners = await db.select({ userId: indexMembers.userId })
+    .from(indexMembers)
+    .where(and(
+      eq(indexMembers.indexId, indexId),
+      sql`'owner' = ANY(${indexMembers.permissions})`,
+      sql`${indexMembers.userId} != ${targetUserId}`
+    ));
+
+  if (otherOwners.length === 0) {
+    return { 
+      canChange: false, 
+      error: 'Cannot remove the last owner from an index. Transfer ownership to another user first.' 
+    };
+  }
+
+  return { canChange: true };
 } 
