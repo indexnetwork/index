@@ -6,8 +6,7 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { X, ArrowUpRight, Plus } from 'lucide-react';
-import Link from 'next/link';
+import { X, Plus } from 'lucide-react';
 import { createIntentsService } from '@/services/intents';
 
 interface IndexMemberSettingsProps {
@@ -356,13 +355,9 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
                           className="group flex items-center justify-between p-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors"
                         >
                           <div className="flex-1">
-                            <Link
-                              href={`/intents/${intent.id}`}
-                              className="flex items-center gap-2 mb-1"
-                            >
+                            <div className="flex items-center gap-2 mb-1">
                               <h4 className="text-xs font-ibm-plex-mono font-medium text-gray-900">{intent.summary || intent.payload}</h4>
-                              <ArrowUpRight className="h-3 w-3" />
-                            </Link>
+                            </div>
                           </div>
                           <Button
                             variant="outline"

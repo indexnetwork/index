@@ -268,14 +268,12 @@ export default function InboxPage() {
             <h3 className="font-medium text-gray-700 mb-2 text-sm">Mutual intents ({userStake.intents.length})</h3>
             <div className="flex flex-wrap gap-2">
               {userStake.intents.map((intentConnection) => (
-                <Link key={intentConnection.intent.id} href={`/intents/${intentConnection.intent.id}`} className="hover:bg-blue-50 transition-colors">
-                  <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 transition-colors  bg-gray-50 border border-gray-200">
-                    <h4 className="text-sm font-ibm-plex-mono font-light text-gray-900">{intentConnection.intent.summary || 'Untitled Intent'}</h4>
-                    <span className="text-gray-400 text-xs">
-                      ({intentConnection.totalStake})
-                    </span>
-                  </div>
-                </Link>
+                <div key={intentConnection.intent.id} className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200">
+                  <h4 className="text-sm font-ibm-plex-mono font-light text-gray-900">{intentConnection.intent.summary || 'Untitled Intent'}</h4>
+                  <span className="text-gray-400 text-xs">
+                    ({intentConnection.totalStake})
+                  </span>
+                </div>
               ))}
             </div>
           </div>

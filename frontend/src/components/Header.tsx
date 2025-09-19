@@ -142,34 +142,6 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
       label: "Inbox"
     },
     {
-      href: "/indexes",
-      icon: (color: string) => (
-        <Image 
-          src="/icon-folder.svg" 
-          width={48} 
-          height={48}
-          className="object-contain p-1"
-          alt="Indexes icon"
-          style={{filter: color === "#f59e0b" ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
-        />
-      ),
-      label: "Indexes"
-    },
-    {
-      href: "/intents",
-      icon: (color: string) => (
-        <Image 
-          src="/icon-intent.svg" 
-          width={44} 
-          height={44}
-          className="object-contain p-1"
-          alt="Intents icon"
-          style={{filter: color === "#f59e0b" ? "invert(70%) sepia(40%) saturate(1000%) hue-rotate(360deg) brightness(100%)" : "invert(50%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(90%)"}}
-        />
-      ),
-      label: "Intents"
-    },
-    {
       href: "/integrate",
       icon: (color: string) => (
         <Blocks 
@@ -224,7 +196,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
               </svg>
             </button>
           )}
-          <Link href={authenticated ? "/indexes" : "/"}>
+          <Link href={authenticated ? "/inbox" : "/"}>
             <div className="relative mr-2 cursor-pointer">
               <Image 
                 src="/logo-black.svg" 
