@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useIndexes } from '@/contexts/APIContext';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { Index as IndexType } from '@/lib/types';
-import IndexMemberSettings from '@/components/modals/IndexMemberSettings';
+import IndexSettingsModal from '@/components/modals/IndexSettingsModal';
 import { Settings } from 'lucide-react';
 
 interface IndexItem {
@@ -131,7 +131,7 @@ export default function Sidebar() {
       </div>
 
       {selectedIndexSettings && (
-        <IndexMemberSettings
+        <IndexSettingsModal
           open={!!selectedIndexSettings}
           onOpenChange={(open) => !open && setSelectedIndexSettings(null)}
           index={selectedIndexSettings}

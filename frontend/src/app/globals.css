@@ -90,3 +90,7 @@
 a#protected-by-privy {
   display: none;
 }
+
+button {
+  cursor: pointer;
+}
