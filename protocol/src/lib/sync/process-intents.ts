@@ -5,6 +5,7 @@ import { intents, intentIndexes } from '../schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { analyzeFolder } from '../../agents/core/intent_inferrer';
 import { summarizeIntent } from '../../agents/core/intent_summarizer';
+import { intentIndexer } from '../../agents/core/intent_indexer';
 
 import type { IntegrationFile } from '../integrations';
 
@@ -84,6 +85,10 @@ export async function processFilesToIntents(options: {
         if (indexId) {
           await db.insert(intentIndexes).values({ intentId, indexId });
         }
+        
+        // Run intent indexer for auto-assignment
+        await intentIndexer.processIntent(intentId);
+        
         existingIntents.add(intentData.payload);
         intentsGenerated += 1;
       }

@@ -15,6 +15,7 @@ import {
 } from '../lib/index-access';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
 import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
+import { intentIndexer } from '../agents/core/intent_indexer';
 // Removed intent-filtering import - using existing suggestions system
 import crypto from 'crypto';
 
@@ -443,6 +444,11 @@ router.put('/:id',
         });
 
       const result = updatedIndex[0];
+
+      // If index prompt changed, reprocess all member intents for this index
+      if (prompt !== undefined) {
+        await intentIndexer.reprocessIndexIntents(id);
+      }
 
       return res.json({
         message: 'Index updated successfully',
@@ -954,6 +960,11 @@ router.put('/:id/member-settings',
         .set(updateData)
         .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)));
 
+      // If prompt or autoAssign changed, reprocess user's intents for this index
+      if (prompt !== undefined || autoAssign !== undefined) {
+        await intentIndexer.reprocessUserIndexIntents(req.user!.id, id);
+      }
+
       return res.json({ message: 'Member settings updated successfully' });
     } catch (error) {
       console.error('Update member settings error:', error);
@@ -1145,6 +1156,9 @@ router.post('/share/:code/intents',
         intentId: newIntent[0].id,
         indexId: sharedIndexData.id
       });
+
+      // Run intent indexer before context brokers (auto-assign to relevant indexes)
+      await intentIndexer.processIntent(newIntent[0].id);
 
       // Trigger context brokers for new intent
       triggerBrokersOnIntentCreated(newIntent[0].id);

@@ -4,6 +4,7 @@ import db from '../../db';
 import { userIntegrations, intents, intentIndexes } from '../../schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { analyzeFolder } from '../../../agents/core/intent_inferrer';
+import { intentIndexer } from '../../../agents/core/intent_indexer';
 import { handlers } from '../index';
 import { log } from '../../log';
 
@@ -146,6 +147,9 @@ export async function syncIntegration(
               indexId
             });
           }
+
+          // Run intent indexer for auto-assignment
+          await intentIndexer.processIntent(newIntent[0].id);
 
           intentsGenerated++;
         }

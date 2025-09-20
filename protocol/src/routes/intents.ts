@@ -10,6 +10,7 @@ import {
   triggerBrokersOnIntentUpdated, 
   triggerBrokersOnIntentArchived 
 } from '../agents/context_brokers/connector';
+import { intentIndexer } from '../agents/core/intent_indexer';
 import { checkMultipleIndexesIntentWriteAccess } from '../lib/index-access';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { suggestTags } from '../agents/core/intent_tag_suggester';
@@ -364,6 +365,9 @@ router.post('/',
         );
       }
 
+      // Run intent indexer before context brokers (auto-assign to relevant indexes)
+      await intentIndexer.processIntent(newIntent[0].id);
+
       // Trigger context brokers for new intent
       triggerBrokersOnIntentCreated(newIntent[0].id);
 
@@ -463,6 +467,9 @@ router.put('/:id',
           );
         }
       }
+
+      // Run intent indexer before context brokers (auto-assign to relevant indexes)
+      await intentIndexer.processIntent(updatedIntent[0].id);
 
       // Trigger context brokers for updated intent
       triggerBrokersOnIntentUpdated(updatedIntent[0].id);
