@@ -14,8 +14,7 @@ import {
   EVERYONE_USER_ID
 } from '../lib/index-access';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
-import { triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
-import { intentIndexer } from '../agents/core/intent_indexer';
+import { Events } from '../lib/events';
 // Removed intent-filtering import - using existing suggestions system
 import crypto from 'crypto';
 
@@ -445,9 +444,12 @@ router.put('/:id',
 
       const result = updatedIndex[0];
 
-      // If index prompt changed, reprocess all member intents for this index
+      // If index prompt changed, trigger centralized event
       if (prompt !== undefined) {
-        await intentIndexer.reprocessIndexIntents(id);
+        await Events.Index.onPromptUpdated({
+          indexId: id,
+          promptChanged: true
+        });
       }
 
       return res.json({
@@ -960,9 +962,14 @@ router.put('/:id/member-settings',
         .set(updateData)
         .where(and(eq(indexMembers.indexId, id), eq(indexMembers.userId, req.user!.id)));
 
-      // If prompt or autoAssign changed, reprocess user's intents for this index
+      // If prompt or autoAssign changed, trigger centralized event
       if (prompt !== undefined || autoAssign !== undefined) {
-        await intentIndexer.reprocessUserIndexIntents(req.user!.id, id);
+        await Events.Member.onSettingsUpdated({
+          userId: req.user!.id,
+          indexId: id,
+          promptChanged: prompt !== undefined,
+          autoAssignChanged: autoAssign !== undefined
+        });
       }
 
       return res.json({ message: 'Member settings updated successfully' });
@@ -1157,11 +1164,12 @@ router.post('/share/:code/intents',
         indexId: sharedIndexData.id
       });
 
-      // Run intent indexer before context brokers (auto-assign to relevant indexes)
-      await intentIndexer.processIntent(newIntent[0].id);
-
-      // Trigger context brokers for new intent
-      triggerBrokersOnIntentCreated(newIntent[0].id);
+      // Trigger centralized intent created event
+      await Events.Intent.onCreated({
+        intentId: newIntent[0].id,
+        userId: req.user!.id,
+        payload: newIntent[0].payload
+      });
 
       return res.status(201).json({
         message: 'Intent created successfully via shared index',

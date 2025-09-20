@@ -5,12 +5,7 @@ import { intents, users, indexes, intentIndexes, intentStakes, agents, files, in
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import { eq, isNull, isNotNull, and, count, desc, or, ilike, sql, inArray } from 'drizzle-orm';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
-import { 
-  triggerBrokersOnIntentCreated, 
-  triggerBrokersOnIntentUpdated, 
-  triggerBrokersOnIntentArchived 
-} from '../agents/context_brokers/connector';
-import { intentIndexer } from '../agents/core/intent_indexer';
+import { Events } from '../lib/events';
 import { checkMultipleIndexesIntentWriteAccess } from '../lib/index-access';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { suggestTags } from '../agents/core/intent_tag_suggester';
@@ -365,11 +360,12 @@ router.post('/',
         );
       }
 
-      // Run intent indexer before context brokers (auto-assign to relevant indexes)
-      await intentIndexer.processIntent(newIntent[0].id);
-
-      // Trigger context brokers for new intent
-      triggerBrokersOnIntentCreated(newIntent[0].id);
+      // Trigger centralized intent created event
+      await Events.Intent.onCreated({
+        intentId: newIntent[0].id,
+        userId: req.user!.id,
+        payload: newIntent[0].payload
+      });
 
       return res.status(201).json({
         message: 'Intent created successfully',
@@ -468,11 +464,12 @@ router.put('/:id',
         }
       }
 
-      // Run intent indexer before context brokers (auto-assign to relevant indexes)
-      await intentIndexer.processIntent(updatedIntent[0].id);
-
-      // Trigger context brokers for updated intent
-      triggerBrokersOnIntentUpdated(updatedIntent[0].id);
+      // Trigger centralized intent updated event
+      await Events.Intent.onUpdated({
+        intentId: updatedIntent[0].id,
+        userId: req.user!.id,
+        payload: updatedIntent[0].payload
+      });
 
       return res.json({
         message: 'Intent updated successfully',
@@ -519,8 +516,11 @@ router.patch('/:id/archive',
         })
         .where(eq(intents.id, id));
 
-      // Trigger context brokers for archived intent
-      triggerBrokersOnIntentArchived(id);
+      // Trigger centralized intent archived event
+      await Events.Intent.onArchived({
+        intentId: id,
+        userId: req.user!.id
+      });
 
       return res.json({ message: 'Intent archived successfully' });
     } catch (error) {
