@@ -87,7 +87,7 @@ export async function processFilesToIntents(options: {
         }
         
         // Trigger centralized intent created event
-        await Events.Intent.onCreated({
+        Events.Intent.onCreated({
           intentId,
           userId,
           payload: intentData.payload

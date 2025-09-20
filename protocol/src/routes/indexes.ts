@@ -447,7 +447,7 @@ router.put('/:id',
 
       // If index prompt changed, trigger centralized event
       if (prompt !== undefined) {
-        await Events.Index.onPromptUpdated({
+        Events.Index.onPromptUpdated({
           indexId: id,
           promptChanged: true
         });
@@ -965,7 +965,7 @@ router.put('/:id/member-settings',
 
       // If prompt or autoAssign changed, trigger centralized event
       if (prompt !== undefined || autoAssign !== undefined) {
-        await Events.Member.onSettingsUpdated({
+        Events.Member.onSettingsUpdated({
           userId: req.user!.id,
           indexId: id,
           promptChanged: prompt !== undefined,
@@ -1166,7 +1166,7 @@ router.post('/share/:code/intents',
       });
 
       // Trigger centralized intent created event
-      await Events.Intent.onCreated({
+      Events.Intent.onCreated({
         intentId: newIntent[0].id,
         userId: req.user!.id,
         payload: newIntent[0].payload
@@ -1323,8 +1323,7 @@ router.get('/:id/member-intents',
           eq(intents.userId, req.user!.id),
           isNull(intents.archivedAt)
         ))
-        .orderBy(desc(intents.createdAt))
-        .limit(50);
+        .orderBy(desc(intents.createdAt));
 
       return res.json({ intents: indexedIntents });
     } catch (error) {

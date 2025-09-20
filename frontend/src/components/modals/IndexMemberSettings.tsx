@@ -122,6 +122,20 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
     }
   }, [open, fetchMemberSettings, fetchMemberIntents]);
 
+  // Auto-refresh intents every 3 seconds when modal is open
+  useEffect(() => {
+    if (!open) return;
+
+    const interval = setInterval(() => {
+      // Call fetchMemberIntents directly without including it in dependencies
+      api.get<{ intents: MemberIntent[] }>(`/indexes/${index.id}/member-intents`)
+        .then(response => setIndexedIntents(response.intents))
+        .catch(err => console.error('Failed to refresh member intents:', err));
+    }, 3000); // 3 seconds
+
+    return () => clearInterval(interval);
+  }, [open, api, index.id]);
+
   // Fetch tag suggestions once when intents are loaded
   useEffect(() => {
     if (open && indexedIntents.length > 0 && suggestedTags.length === 0) {
@@ -156,24 +170,6 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
       error('Failed to save settings');
     } finally {
       setIsSavingPrompt(false);
-    }
-  };
-
-  const handleAddIntent = async (intentId: string) => {
-    setAddingIntents(prev => new Set([...prev, intentId]));
-    try {
-      await api.post(`/indexes/${index.id}/member-intents/${intentId}`, {});
-      success('Intent added to index');
-      // Refresh intents
-      await fetchMemberIntents('indexed');
-    } catch (err) {
-      error('Failed to add intent to index');
-    } finally {
-      setAddingIntents(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(intentId);
-        return newSet;
-      });
     }
   };
 
@@ -233,7 +229,7 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[75vh] flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">{index.title}</Dialog.Title>
             <div className="flex items-center gap-2">
@@ -264,128 +260,129 @@ export default function IndexMemberSettings({ open, onOpenChange, index }: Index
             <span className="sr-only">Close</span>
           </Dialog.Close>
         
-        <div className="space-y-6">
-          <div>
-            <div className="mt-12 mb-3 flex items-center justify-between min-h-[32px]">
-              <h3 className="text-sm font-medium font-ibm-plex-mono text-black">
-                Instruct what to share and what to keep private
-              </h3>
-              {/* Save/Discard buttons aligned to the right of the label */}
-              {hasUnsavedChanges && (
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleCancel}
-                    className="font-ibm-plex-mono"
-                  >
-                    Discard
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleSavePrompt}
-                    disabled={isSavingPrompt}
-                    className="font-ibm-plex-mono"
-                  >
-                    {isSavingPrompt ? 'Saving...' : 'Save'}
-                  </Button>
-                </div>
-              )}
-            </div>
+        {/* Fixed header section */}
+        <div className="flex-shrink-0">
+          <div className="mt-6 mb-3 flex items-center justify-between min-h-[32px]">
+            <h3 className="text-sm font-medium font-ibm-plex-mono text-black">
+              Instruct what to share and what to keep private
+            </h3>
+            {/* Save/Discard buttons aligned to the right of the label */}
+            {hasUnsavedChanges && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancel}
+                  className="font-ibm-plex-mono"
+                >
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSavePrompt}
+                  disabled={isSavingPrompt}
+                  className="font-ibm-plex-mono"
+                >
+                  {isSavingPrompt ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
+            )}
+          </div>
 
-            <div>
-              <div className="relative border border-gray-300 rounded-lg p-3">
-                <textarea
-                  id="prompt"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="e.g., Share my AI-related intents like research papers and projects, but keep personal details private..."
-                  className="w-full text-gray-900 resize-none h-20 text-sm font-ibm-plex-mono outline-none"
-                />
-                
-                {/* Tag suggestions based on your intents */}
-                <div className="flex gap-2 mt-2 overflow-hidden min-h-[28px] items-center">
-                  {loadingSuggestions ? (
-                    <div className="text-xs text-gray-500 italic">Analyzing your intents...</div>
-                  ) : visibleTags.length > 0 ? (
-                    visibleTags.map((suggestion) => (
-                      <button
-                        key={suggestion.tag}
-                        onClick={() => handleTagClick(suggestion.tag)}
-                        className="px-3 py-1 bg-gray-800 text-white rounded-full text-xs font-ibm-plex-mono hover:bg-gray-700 transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1"
-                        title={suggestion.description || `Based on ${suggestion.relatedIntentIds.length} of your intents`}
-                      >
-                        <Plus className="h-3 w-3" />
-                        {suggestion.tag}
-                      </button>
-                    ))
-                  ) : indexedIntents.length === 0 ? (
-                    <div className="text-xs text-gray-500 italic">Add intents to see tag suggestions</div>
-                  ) : null}
-                </div>
+          <div>
+            <div className="relative border border-gray-300 rounded-lg p-3">
+              <textarea
+                id="prompt"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="e.g., Share my AI-related intents like research papers and projects, but keep personal details private..."
+                className="w-full text-gray-900 resize-none h-20 text-sm font-ibm-plex-mono outline-none"
+              />
+              
+              {/* Tag suggestions based on your intents */}
+              <div className="flex gap-2 mt-2 overflow-hidden min-h-[28px] items-center">
+                {loadingSuggestions ? (
+                  <div className="text-xs text-gray-500 italic">Analyzing your intents...</div>
+                ) : visibleTags.length > 0 ? (
+                  visibleTags.map((suggestion) => (
+                    <button
+                      key={suggestion.tag}
+                      onClick={() => handleTagClick(suggestion.tag)}
+                      className="px-3 py-1 bg-gray-800 text-white rounded-full text-xs font-ibm-plex-mono hover:bg-gray-700 transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1"
+                      title={suggestion.description || `Based on ${suggestion.relatedIntentIds.length} of your intents`}
+                    >
+                      <Plus className="h-3 w-3" />
+                      {suggestion.tag}
+                    </button>
+                  ))
+                ) : indexedIntents.length === 0 ? (
+                  <div className="text-xs text-gray-500 italic">Add intents to see tag suggestions</div>
+                ) : null}
               </div>
             </div>
-            
-            <div className="mt-6">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-sm font-medium font-ibm-plex-mono text-black">
-                    My intents in {memberSettings?.indexTitle || index.title} {loadingIndexed ? '' : `(${indexedIntents.length})`}
-                  </h3>
-                  {indexedIntents.length > 0 && (
+          </div>
+        </div>
+
+        {/* Fixed intent list header */}
+        <div className="flex-shrink-0 mt-6 mb-4 flex items-center justify-between">
+          <h3 className="text-sm font-medium font-ibm-plex-mono text-black">
+            My intents in {memberSettings?.indexTitle || index.title} {loadingIndexed ? '' : `(${indexedIntents.length})`}
+          </h3>
+          {indexedIntents.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRemoveAllIntents}
+              disabled={removingAll}
+              className="font-ibm-plex-mono text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
+            >
+              {removingAll ? 'Removing...' : 'Remove all'}
+            </Button>
+          )}
+        </div>
+
+        {/* Scrollable intent list */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="space-y-2 pr-2">
+            {loadingIndexed ? (
+              <div className="text-center py-4 text-gray-500">Loading...</div>
+            ) : (
+              indexedIntents.length > 0 ? (
+                indexedIntents.map((intent) => (
+                  <div
+                    key={intent.id}
+                    className="group flex items-center justify-between p-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="text-xs font-ibm-plex-mono font-medium text-gray-900">{intent.summary || intent.payload}</h4>
+                      </div>
+                    </div>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={handleRemoveAllIntents}
-                      disabled={removingAll}
-                      className="font-ibm-plex-mono text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleRemoveIntent(intent.id);
+                      }}
+                      disabled={removingIntents.has(intent.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      {removingAll ? 'Removing...' : 'Remove all'}
-                    </Button>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  {loadingIndexed ? (
-                    <div className="text-center py-4 text-gray-500">Loading...</div>
-                  ) : (
-                    indexedIntents.length > 0 ? (
-                      indexedIntents.map((intent) => (
-                        <div
-                          key={intent.id}
-                          className="group flex items-center justify-between p-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="text-xs font-ibm-plex-mono font-medium text-gray-900">{intent.summary || intent.payload}</h4>
-                            </div>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleRemoveIntent(intent.id);
-                            }}
-                            disabled={removingIntents.has(intent.id)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            {removingIntents.has(intent.id) ? (
-                              <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <div>
-                                Remove
-                              </div>
-                            )}
-                          </Button>
+                      {removingIntents.has(intent.id) ? (
+                        <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <div>
+                          Remove
                         </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-4 text-gray-500">No intents indexed yet</div>
-                    )
-                  )}
-                </div>
-              </div>
+                      )}
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4 text-gray-500">No intents indexed yet</div>
+              )
+            )}
           </div>
         </div>
         </Dialog.Content>

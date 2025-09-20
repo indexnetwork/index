@@ -361,7 +361,7 @@ router.post('/',
       }
 
       // Trigger centralized intent created event
-      await Events.Intent.onCreated({
+      Events.Intent.onCreated({
         intentId: newIntent[0].id,
         userId: req.user!.id,
         payload: newIntent[0].payload
@@ -465,7 +465,7 @@ router.put('/:id',
       }
 
       // Trigger centralized intent updated event
-      await Events.Intent.onUpdated({
+      Events.Intent.onUpdated({
         intentId: updatedIntent[0].id,
         userId: req.user!.id,
         payload: updatedIntent[0].payload
@@ -517,7 +517,7 @@ router.patch('/:id/archive',
         .where(eq(intents.id, id));
 
       // Trigger centralized intent archived event
-      await Events.Intent.onArchived({
+      Events.Intent.onArchived({
         intentId: id,
         userId: req.user!.id
       });

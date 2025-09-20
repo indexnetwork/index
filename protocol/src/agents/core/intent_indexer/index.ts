@@ -5,7 +5,7 @@ import { evaluateIntentRelevance } from './evaluator';
 
 // Constants
 const RELEVANCE_THRESHOLD = 0.7;
-const BATCH_SIZE = 50;
+const BATCH_SIZE = 500;
 
 export interface IntentIndexerResult {
   success: boolean;
@@ -115,37 +115,29 @@ export class IntentIndexer {
    */
   async processBulkIntents(intentIds: string[]): Promise<IntentIndexerResult> {
     console.log(`🔄 Processing ${intentIds.length} intents in bulk`);
-    
     let totalIndexed = 0;
     let totalDeIndexed = 0;
     const errors: string[] = [];
-    
-    // Process in batches to avoid overwhelming the system
-    for (let i = 0; i < intentIds.length; i += BATCH_SIZE) {
-      const batch = intentIds.slice(i, i + BATCH_SIZE);
-      console.log(`📦 Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(intentIds.length / BATCH_SIZE)}`);
-      
-      // Process each batch in parallel
-      const results = await Promise.all(
-        batch.map(intentId => this.processIntent(intentId))
-      );
-      results.forEach((result, idx) => {
+
+    // Fire off all processIntent calls in parallel, do not wait for results
+    intentIds.forEach(intentId => {
+      this.processIntent(intentId).then(result => {
         if (result.success) {
           totalIndexed += result.indexedCount;
           totalDeIndexed += result.deIndexedCount;
         } else {
-          errors.push(`Intent ${batch[idx]}: ${result.error}`);
+          errors.push(`Intent ${intentId}: ${result.error}`);
         }
+      }).catch(err => {
+        errors.push(`Intent ${intentId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
       });
-    }
-    
-    console.log(`🎯 Bulk processing complete: +${totalIndexed} -${totalDeIndexed}, ${errors.length} errors`);
-    
+    });
+
+    // Immediately return, do not wait for any to finish
     return {
-      success: errors.length === 0,
-      indexedCount: totalIndexed,
-      deIndexedCount: totalDeIndexed,
-      error: errors.length > 0 ? errors.join('; ') : undefined
+      success: true,
+      indexedCount: 0,
+      deIndexedCount: 0
     };
   }
   /**

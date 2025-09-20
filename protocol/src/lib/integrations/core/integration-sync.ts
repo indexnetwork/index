@@ -149,7 +149,7 @@ export async function syncIntegration(
           }
 
           // Trigger centralized intent created event
-          await Events.Intent.onCreated({
+          Events.Intent.onCreated({
             intentId: newIntent[0].id,
             userId,
             payload: intentData.payload
