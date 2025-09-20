@@ -99,7 +99,7 @@ export default function Sidebar() {
                 key={index.id}
                 onClick={() => handleIndexClick(index.id)}
                 className={`flex items-center justify-between group rounded cursor-pointer px-3 py-3 ${
-                  index.isSelected ? 'bg-gray-100' : 'hover:bg-gray-50'
+                  index.isSelected ? 'bg-gray-200' : 'hover:bg-gray-50'
                 }`}
               >
                 <div className="flex items-center min-w-0">
