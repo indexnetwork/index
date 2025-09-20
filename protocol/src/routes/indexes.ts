@@ -328,6 +328,7 @@ router.post('/',
         userId: req.user!.id,
         permissions: ['owner'],
         prompt: prompt || null, // Use index prompt as default member prompt
+        autoAssign: true
       });
 
       // Get user information

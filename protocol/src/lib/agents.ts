@@ -41,7 +41,7 @@ export function traceableLlm(name: string, tags: string[], metadata: Record<stri
     const handler = createLangfuseHandler(name, { ...metadata, tags });
     const response = await llm.invoke(prompt, { runName: name, callbacks: [handler] });
     
-    console.log(JSON.stringify(response, null, 2));
+    // console.log(JSON.stringify(response, null, 2));
     // Handle new response format with reasoning content
     if (response.content && Array.isArray(response.content)) {
       // Extract text from the new format

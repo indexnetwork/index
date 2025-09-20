@@ -28,6 +28,7 @@ export class IntentIndexer {
     try {
       console.log(`🔍 Processing intent ${intentId} for auto-indexing`);
       
+      
       // Get intent details
       const intent = await db.select({
         id: intents.id,
@@ -110,7 +111,7 @@ export class IntentIndexer {
   }
   
   /**
-   * Process multiple intents in batches
+   * Process multiple intents in batches (in parallel per batch)
    */
   async processBulkIntents(intentIds: string[]): Promise<IntentIndexerResult> {
     console.log(`🔄 Processing ${intentIds.length} intents in bulk`);
@@ -124,15 +125,18 @@ export class IntentIndexer {
       const batch = intentIds.slice(i, i + BATCH_SIZE);
       console.log(`📦 Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(intentIds.length / BATCH_SIZE)}`);
       
-      for (const intentId of batch) {
-        const result = await this.processIntent(intentId);
+      // Process each batch in parallel
+      const results = await Promise.all(
+        batch.map(intentId => this.processIntent(intentId))
+      );
+      results.forEach((result, idx) => {
         if (result.success) {
           totalIndexed += result.indexedCount;
           totalDeIndexed += result.deIndexedCount;
         } else {
-          errors.push(`Intent ${intentId}: ${result.error}`);
+          errors.push(`Intent ${batch[idx]}: ${result.error}`);
         }
-      }
+      });
     }
     
     console.log(`🎯 Bulk processing complete: +${totalIndexed} -${totalDeIndexed}, ${errors.length} errors`);
@@ -144,7 +148,6 @@ export class IntentIndexer {
       error: errors.length > 0 ? errors.join('; ') : undefined
     };
   }
-  
   /**
    * Reprocess all intents for a specific user in a specific index (when member settings change)
    */
