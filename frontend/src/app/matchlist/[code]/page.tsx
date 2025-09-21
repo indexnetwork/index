@@ -31,7 +31,7 @@ type MatchlistPageState = {
   user: User | null;
   
   // Flow state
-  step: 'loading' | 'intent-form' | 'intent-creating' | 'auth-required' | 'onboarding-required' | 'discovery-results' | 'error';
+  step: 'loading' | 'intent-form' | 'intent-creating' | 'auth-required' | 'discovery-results' | 'error';
   
   // Intent data
   intentPayload: string;
@@ -239,11 +239,8 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
                     
                     // Check if user needs onboarding before creating intent
                     if (!response.user.intro || response.user.intro.trim() === '') {
-                      setState(prev => ({ 
-                        ...prev, 
-                        step: 'onboarding-required',
-                        autoCreateIntent: true
-                      }));
+                      // Redirect to onboarding page
+                      window.location.href = '/onboarding';
                       return;
                     }
                   }
@@ -318,9 +315,6 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
             }
             break;
 
-          case 'onboarding-required':
-            // User needs to complete onboarding - modal will be shown
-            break;
         }
       } catch (error) {
         console.error('Flow error:', error);
@@ -357,11 +351,11 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
             // Check if needs onboarding for auto-create intent
             if (!response.user.intro || response.user.intro.trim() === '') {
               if (state.autoCreateIntent) {
-                setState(prev => ({ ...prev, step: 'onboarding-required' }));
+                window.location.href = '/onboarding';
               }
             } else {
               // User is ready, check if should auto-create intent
-              if (state.autoCreateIntent && (state.step === 'auth-required' || state.step === 'onboarding-required')) {
+              if (state.autoCreateIntent && state.step === 'auth-required') {
                 // Re-trigger stored intent creation after auth/onboarding
                 setState(prev => ({ ...prev, step: 'loading' }));
               }
@@ -379,44 +373,6 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
     }
   }, [state.step, authenticated, ready, resolvedParams.code, state.autoCreateIntent]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for onboarding completion from Header modal
-  useEffect(() => {
-    // Check for existing onboarding completion flag
-    const checkOnboardingCompletion = () => {
-      if (state.step === 'onboarding-required') {
-        try {
-          const completed = localStorage.getItem('onboarding_completed');
-          if (completed) {
-            setState(prev => ({ ...prev, step: 'loading' }));
-            localStorage.removeItem('onboarding_completed');
-          }
-        } catch (error) {
-          console.warn('Failed to check onboarding completion:', error);
-        }
-      }
-    };
-
-    // Check initially
-    checkOnboardingCompletion();
-
-    // Listen for storage changes (from other tabs/windows)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'onboarding_completed' && state.step === 'onboarding-required') {
-        setState(prev => ({ ...prev, step: 'loading' }));
-        localStorage.removeItem('onboarding_completed');
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Poll for changes in the same tab (since localStorage events don't fire in same tab)
-    const pollInterval = setInterval(checkOnboardingCompletion, 500);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(pollInterval);
-    };
-  }, [state.step]);
 
   // Poll discovery results every 5 seconds when in discovery-results step
   useEffect(() => {
@@ -468,12 +424,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
           payload: data.payload,
           files: data.files.map(f => ({ name: f.name, size: f.size, type: f.type })) // Store file metadata
         }));
-        setState(prev => ({ 
-          ...prev, 
-          step: 'onboarding-required',
-          autoCreateIntent: true,
-          isSubmitting: false
-        }));
+        window.location.href = '/onboarding';
         return;
       }
 

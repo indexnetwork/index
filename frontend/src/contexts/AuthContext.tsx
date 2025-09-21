@@ -33,18 +33,20 @@ function AuthProviderInner({ children }: { children: ReactNode }) {
     console.log('pathname', pathname);
     
     const isHomePage = pathname === '/';
+    const isOnboardingPage = pathname === '/onboarding';
     const isPublicPage = pathname.startsWith('/vibecheck') || pathname.startsWith('/simulation') || pathname.startsWith('/matchlist');
     
     // Determine if we need to redirect
     const shouldRedirectToIndexes = authenticated && isHomePage;
     const shouldRedirectToHome = !authenticated && !isHomePage && !isPublicPage;
+    const shouldRedirectOnboardingToHome = !authenticated && isOnboardingPage;
     
     if (shouldRedirectToIndexes) {
       router.push('/inbox');
       return; // Will re-evaluate when pathname changes
     }
     
-    if (shouldRedirectToHome) {
+    if (shouldRedirectToHome || shouldRedirectOnboardingToHome) {
       router.push('/');
       return; // Will re-evaluate when pathname changes
     }

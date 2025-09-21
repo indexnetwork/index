@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { UserPlus, LogIn, Settings, Blocks, Library, Plus } from "lucide-react";
@@ -23,6 +23,7 @@ interface HeaderProps {
 export default function Header({ showNavigation = true, onToggleSidebar, isSidebarOpen }: HeaderProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { login, logout, authenticated, ready } = usePrivy();
   const [isAlpha, setIsAlpha] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -31,7 +32,6 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
   const [user, setUser] = useState<User | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [userLoading, setUserLoading] = useState(false);
-  const [isOnboarding, setIsOnboarding] = useState(false);
   const api = useAuthenticatedAPI();
   const indexesService = useIndexes();
   const { success, error } = useNotifications();
@@ -68,8 +68,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
         
         // Check if user needs onboarding (empty intro)
         if (!response.user.intro || response.user.intro.trim() === '') {
-          setIsOnboarding(true);
-          setProfileModalOpen(true);
+          // Redirect to onboarding page instead of showing modal
+          router.push('/onboarding');
         } else {
           try {
             localStorage.setItem('onboarding_completed', Date.now().toString());
@@ -83,7 +83,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
     } finally {
       setUserLoading(false);
     }
-  }, [authenticated, api, userLoading]);
+  }, [authenticated, api, userLoading, router]);
 
   const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string }) => {
     try {
@@ -356,21 +356,9 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
       {/* Profile Settings Modal */}
       <ProfileSettingsModal
         open={profileModalOpen}
-        onOpenChange={(open) => {
-          setProfileModalOpen(open);
-          if (!open && isOnboarding) {
-            setIsOnboarding(false);
-            // Store onboarding completion in localStorage for other components
-            try {
-              localStorage.setItem('onboarding_completed', Date.now().toString());
-            } catch (error) {
-              console.warn('Failed to store onboarding completion:', error);
-            }
-          }
-        }}
+        onOpenChange={setProfileModalOpen}
         user={user}
         onUserUpdate={setUser}
-        isOnboarding={isOnboarding}
       />
 
       {/* Library Modal */}

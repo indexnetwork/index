@@ -11,14 +11,14 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Define known routes to detect 404 pages
-  const knownRoutes = useMemo(() => ['/', '/inbox', '/integrate', '/stake', '/simulation', '/vibecheck', '/matchlist', '/connections'], []);
+  const knownRoutes = useMemo(() => ['/', '/inbox', '/integrate', '/stake', '/simulation', '/vibecheck', '/matchlist', '/connections', '/onboarding'], []);
   const isKnownRoute = knownRoutes.some(route => 
     pathname === route || 
     pathname?.startsWith(route + '/')
   );
-  // Show sidebar only on app pages (exclude landing '/')
+  // Show sidebar only on app pages (exclude landing '/' and onboarding)
   const showSidebar = useMemo(() => 
-    pathname !== '/' && knownRoutes.filter(route => route !== '/').some(route => 
+    pathname !== '/' && pathname !== '/onboarding' && knownRoutes.filter(route => route !== '/' && route !== '/onboarding').some(route => 
       pathname === route || pathname?.startsWith(route + '/')
     ), [pathname, knownRoutes]);
   

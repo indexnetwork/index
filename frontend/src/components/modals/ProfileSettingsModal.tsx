@@ -16,7 +16,6 @@ interface ProfileSettingsModalProps {
   onOpenChange: (open: boolean) => void;
   user: User | null;
   onUserUpdate: (user: User) => void;
-  isOnboarding?: boolean;
 }
 
 interface DialogComponentProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -35,20 +34,18 @@ interface DialogDescriptionProps extends React.HTMLAttributes<HTMLParagraphEleme
 }
 
 // Create simple wrapper components for dialog parts
-const DialogContent = ({ className, children, isOnboarding, ...props }: DialogComponentProps & { isOnboarding?: boolean }) => (
+const DialogContent = ({ className, children, ...props }: DialogComponentProps) => (
   <Dialog.Portal>
-    <Dialog.Overlay className={`fixed inset-0 z-50 ${isOnboarding ? 'bg-black/70' : 'bg-black/50'}`} />
+    <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
     <Dialog.Content
       className={`fixed left-[50%] top-[50%] z-50 grid w-full max-w-2xl translate-x-[-50%] translate-y-[-50%] gap-4 border bg-white p-6 shadow-lg duration-200 sm:rounded-lg ${className}`}
       {...props}
     >
       {children}
-      {!isOnboarding && (
-        <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
-          <X className="h-4 w-4" />
-          <span className="sr-only">Close</span>
-        </Dialog.Close>
-      )}
+      <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
+        <X className="h-4 w-4" />
+        <span className="sr-only">Close</span>
+      </Dialog.Close>
     </Dialog.Content>
   </Dialog.Portal>
 );
@@ -71,7 +68,7 @@ const DialogDescription = ({ className, children, ...props }: DialogDescriptionP
   </Dialog.Description>
 );
 
-export default function ProfileSettingsModal({ open, onOpenChange, user, onUserUpdate, isOnboarding }: ProfileSettingsModalProps) {
+export default function ProfileSettingsModal({ open, onOpenChange, user, onUserUpdate }: ProfileSettingsModalProps) {
   const [name, setName] = useState(user?.name || '');
   const [intro, setIntro] = useState(user?.intro || '');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -157,17 +154,14 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
   }, [open, user]);
 
   return (
-    <Dialog.Root open={open} onOpenChange={isOnboarding ? undefined : onOpenChange}>
-      <DialogContent isOnboarding={isOnboarding}>
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-gray-900 font-ibm-plex-mono">
-            {isOnboarding ? "Who is this?" : "Profile Settings"}
+            Profile Settings
           </DialogTitle>
           <DialogDescription>
-            {isOnboarding 
-              ? "Complete your profile to get started and help others connect with you."
-              : "Update your profile information and avatar."
-            }
+            Update your profile information and avatar.
           </DialogDescription>
         </DialogHeader>
 
@@ -208,7 +202,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               className="hidden"
             />
             <p className="text-sm text-gray-500">
-              {isOnboarding ? "Upload your avatar" : "Click the upload button to change your avatar"}
+              Click the upload button to change your avatar
             </p>
             {avatarError && (
               <p className="text-sm text-red-600 font-medium">
@@ -227,13 +221,13 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="px-4 py-3"
-              placeholder={isOnboarding ? "Enter your full name..." : "Enter your name..."}
+              placeholder="Enter your name..."
               required
             />
           </div>
 
-          {/* Email Field (Read-only) - Hidden during onboarding */}
-          {!isOnboarding && (
+          {/* Email Field (Read-only) */}
+          {true && (
             <div>
               <label htmlFor="email" className="text-md font-medium font-ibm-plex-mono text-black">
                 <div className="mb-2">Email</div>
@@ -251,7 +245,7 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
           <div>
             <label htmlFor="intro" className="text-md font-medium font-ibm-plex-mono text-black">
               <div className="mb-2">
-                {isOnboarding ? "Introduction *" : "Introduction"}
+                Introduction
               </div>
             </label>
             <Textarea
@@ -259,46 +253,26 @@ export default function ProfileSettingsModal({ open, onOpenChange, user, onUserU
               value={intro}
               onChange={(e) => setIntro(e.target.value)}
               className="px-4 py-3 min-h-[100px]"
-              placeholder={isOnboarding 
-                ? "Tell others about yourself, your interests, and what you're looking for..." 
-                : "Tell others about yourself..."
-              }
+              placeholder="Tell others about yourself..."
               maxLength={500}
-              required={isOnboarding}
             />
             <p className="text-sm text-gray-500 mt-1">{intro.length}/500 characters</p>
-            {isOnboarding && (
-              <div className="mt-3 p-3 bg-gray-50 rounded-lg border">
-                <p className="text-sm text-gray-600 font-medium mb-2">Example introduction:</p>
-                <p className="text-sm text-gray-700 italic">
-                  I'm a VC shifting into the agentic tech space. My background's a mix of systems thinking, human agency, and media, with experience across program strategy and the research side of emerging tech.
-                </p>
-              </div>
-            )}
           </div>
 
           <div className="flex justify-end space-x-3">
-            {!isOnboarding && (
-              <Button
-                type="button"
-                variant="outline" 
-                onClick={() => onOpenChange(false)}
-                disabled={isLoading}
-              >
-                Cancel
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="outline" 
+              onClick={() => onOpenChange(false)}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
             <Button
               type="submit"
-              disabled={isLoading || !!avatarError || (isOnboarding && (!name.trim() || !intro.trim()))}
-              className={isOnboarding ? "w-full" : ""}
+              disabled={isLoading || !!avatarError}
             >
-              {isLoading 
-                ? 'Saving...' 
-                : isOnboarding 
-                  ? 'Save Your Intro & Continue' 
-                  : 'Save Changes'
-              }
+              {isLoading ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         </form>
