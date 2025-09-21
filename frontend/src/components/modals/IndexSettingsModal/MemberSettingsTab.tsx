@@ -94,7 +94,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
       api.get<{ intents: MemberIntent[] }>(`/indexes/${index.id}/member-intents`)
         .then(response => setIndexedIntents(response.intents))
         .catch(err => console.error('Failed to refresh member intents:', err));
-    }, 3000);
+    }, 1000);
 
     return () => clearInterval(interval);
   }, [api, index.id]);

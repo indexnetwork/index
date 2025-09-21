@@ -179,36 +179,17 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
   };
 
   const handleRemoveMember = async (memberId: string) => {
-    const member = members.find(m => m.id === memberId);
-    if (!member) return;
-
-    // Prevent removing any owner
-    if (member.permissions.includes('owner')) {
-      alert('Owners cannot be removed from the index.');
-      return;
-    }
-
     try {
       await indexesService.removeMember(index.id, memberId);
       setMembers(prev => prev.filter(member => member.id !== memberId));
     } catch (error) {
       console.error('Error removing member:', error);
-      // Show user-friendly error message
-      if (error instanceof Error && error.message.includes('owner')) {
-        alert('Owners cannot be removed from the index.');
-      }
     }
   };
 
   const handleMemberPermissionToggle = async (memberId: string, permission: string) => {
     const member = members.find(m => m.id === memberId);
     if (!member) return;
-
-    // Prevent any permission changes for owners
-    if (member.permissions.includes('owner')) {
-      alert('Owner permissions cannot be modified. Owners have full access by default.');
-      return;
-    }
 
     const hasPermission = member.permissions.includes(permission);
     const newPermissions = hasPermission
@@ -222,10 +203,6 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
       ));
     } catch (error) {
       console.error('Error updating member permissions:', error);
-      // Show user-friendly error message
-      if (error instanceof Error && error.message.includes('owner')) {
-        alert('Cannot modify owner permissions.');
-      }
     }
   };
 
@@ -486,20 +463,18 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
                     </button>
                     
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`${
-                      member.permissions.includes('owner')
-                        ? 'text-gray-400 cursor-not-allowed'
-                        : 'text-red-500 hover:text-red-700 hover:bg-red-50'
-                    }`}
-                    onClick={() => handleRemoveMember(member.id)}
-                    disabled={member.permissions.includes('owner')}
-                    title={member.permissions.includes('owner') ? 'Owners cannot be removed' : 'Remove member'}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {/* Only show remove button for non-owners */}
+                  {!member.permissions.includes('owner') && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={() => handleRemoveMember(member.id)}
+                      title="Remove member"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             ))
