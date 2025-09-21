@@ -94,7 +94,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
       api.get<{ intents: MemberIntent[] }>(`/indexes/${index.id}/member-intents`)
         .then(response => setIndexedIntents(response.intents))
         .catch(err => console.error('Failed to refresh member intents:', err));
-    }, 1000);
+    }, 2000);
 
     return () => clearInterval(interval);
   }, [api, index.id]);
@@ -104,7 +104,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
     if (indexedIntents.length > 0 && suggestedTags.length === 0) {
       fetchTagSuggestions();
     }
-  }, [indexedIntents.length, fetchTagSuggestions, suggestedTags.length]);
+  }, []);
 
   const handleLeaveIndex = async () => {
     try {
