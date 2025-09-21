@@ -1,0 +1,64 @@
+name: 📚 Generate API Documentation
+
+on:
+  push:
+    paths:
+      - 'protocol/src/routes/**'
+      - 'scripts/generate-api-docs.js'
+    branches: ['main', 'dev']
+  pull_request:
+    paths:
+      - 'protocol/src/routes/**'
+      - 'scripts/generate-api-docs.js'
+
+jobs:
+  generate-docs:
+    name: Generate API Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'yarn'
+          cache-dependency-path: protocol/yarn.lock
+          
+      - name: 📥 Install dependencies
+        run: |
+          cd protocol
+          yarn install --frozen-lockfile
+          
+      - name: 📚 Generate API documentation
+        run: |
+          cd protocol
+          yarn docs:api
+          
+      - name: 📋 Check for documentation changes
+        id: verify-changed-files
+        run: |
+          if [ -n "$(git status --porcelain docs/api/)" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "API documentation has changes"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT  
+            echo "No API documentation changes"
+          fi
+          
+      - name: 📝 Commit documentation updates
+        if: steps.verify-changed-files.outputs.changed == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add docs/api/
+          git commit -m "docs: 🤖 Auto-update API documentation"
+          
+      - name: 🚀 Push documentation updates
+        if: steps.verify-changed-files.outputs.changed == 'true' && github.event_name == 'push'
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ${{ github.ref }}

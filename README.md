@@ -160,6 +160,9 @@ yarn drizzle:studio      # Open database GUI
 
 # Code quality
 yarn lint               # Run ESLint
+
+# API Documentation
+yarn docs:api           # Generate API documentation from routes
 ```
 
 ## Contributing
@@ -191,6 +194,8 @@ git push origin feature/your-feature-name
 ## Resources
 
 - **[index.network](https://index.network)** - Production application
+- **[API Documentation](docs/api/README.md)** - Comprehensive REST API reference (64 endpoints)
+- **[Integration Guide](docs/INTEGRATION_GUIDE.md)** - Developer integration examples
 - **[GitHub](https://github.com/indexnetwork/index)** - Source code and issue tracking
 - **[Twitter](https://x.com/indexnetwork_)** - Latest updates and announcements
 - **[Blog](https://blog.index.network)** - Latest insights and updates
