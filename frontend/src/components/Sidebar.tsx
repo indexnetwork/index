@@ -99,7 +99,7 @@ export default function Sidebar() {
               <div
                 key={index.id}
                 onClick={() => handleIndexClick(index.id)}
-                className={`flex items-center justify-between group rounded cursor-pointer px-3 py-3 ${
+                className={`flex items-center justify-between group rounded cursor-pointer px-3 py-2 ${
                   index.isSelected ? 'bg-gray-200' : 'hover:bg-gray-50'
                 }`}
               >
@@ -119,7 +119,7 @@ export default function Sidebar() {
                         setSelectedIndexSettings(index.fullIndex);
                       }
                     }}
-                    className="p-1 cursor-pointer hover:bg-gray-200 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="cursor-pointer hover:bg-gray-200 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <Settings className="w-5 h-5 text-black" />
                   </button>

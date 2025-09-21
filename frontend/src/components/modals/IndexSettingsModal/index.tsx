@@ -85,16 +85,19 @@ export default function IndexSettingsModal({ open, onOpenChange, index, onIndexU
 
           {/* Tab Content */}
           <div className="flex-1 overflow-hidden">
-            {activeTab === 'member' ? (
+            <div className={activeTab === 'member' ? 'block' : 'hidden'}>
               <MemberSettingsTab 
                 index={index} 
                 onLeave={handleLeave}
               />
-            ) : (
-              <OwnerSettingsTab 
-                index={index} 
-                onIndexUpdate={onIndexUpdate}
-              />
+            </div>
+            {memberSettings?.isOwner && (
+              <div className={activeTab === 'owner' ? 'block' : 'hidden'}>
+                <OwnerSettingsTab 
+                  index={index} 
+                  onIndexUpdate={onIndexUpdate}
+                />
+              </div>
             )}
           </div>
         </Dialog.Content>
