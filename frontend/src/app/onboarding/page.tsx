@@ -73,7 +73,7 @@ export default function OnboardingPage() {
         { id: 'notion', name: 'Notion', connected: false },
         { id: 'slack', name: 'Slack', connected: false },
         { id: 'discord', name: 'Discord', connected: false },
-        { id: 'calendar', name: 'Google Calendar', connected: false },
+        { id: 'calendar', name: 'Calendar', connected: false },
         { id: 'gmail', name: 'Gmail', connected: false },
       ];
       
@@ -277,12 +277,12 @@ export default function OnboardingPage() {
       case 'profile':
         return (
           <div className="max-w-md mx-auto">
-            <div className="text-center mb-8">
+            <div className="mb-8">
               <h1 className="text-2xl font-bold text-[#333] mb-2 font-ibm-plex-mono">Tell us who you are.</h1>
             </div>
 
             <div className="space-y-6">
-              <div className="flex justify-center">
+              <div className="flex">
                 <div className="relative">
                   <div className="w-20 h-20 rounded-full overflow-hidden bg-[#F5F5F5] flex items-center justify-center">
                     {avatarPreview ? (
@@ -359,17 +359,17 @@ export default function OnboardingPage() {
       case 'connections':
         return (
           <div className="max-w-2xl mx-auto">
-            <div className="text-center mb-8">
+            <div className="mb-8">
               <h1 className="text-2xl font-bold text-[#333] mb-4 font-ibm-plex-mono">Connect your accounts.</h1>
-              <p className="text-[#666] font-ibm-plex-mono">
+              <p className="text-black text-[14px] font-ibm-plex-mono">
                 Link the places you already work and share. Nobody gets notified, and it's only used to understand what you're looking for.
               </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
               {integrations.map((integration) => (
-                <div key={integration.id} className="border border-[#E0E0E0] rounded-lg p-4 bg-white">
-                  <div className="flex items-center justify-between mb-3">
+                <div key={integration.id} className="border border-b-2 border-[#000] p-4 bg-white">
+                  <div className="flex items-center justify-between mb-0">
                     <div className="flex items-center gap-3">
                       <Image 
                         src={`/integrations/${integration.id === 'calendar' ? 'google-calendar' : integration.id}.png`} 
@@ -377,7 +377,7 @@ export default function OnboardingPage() {
                         height={24} 
                         alt={integration.name}
                       />
-                      <span className="font-medium text-[#333] font-ibm-plex-mono">{integration.name}</span>
+                      <span className="font-small text-[#333] font-ibm-plex-mono text-[14px]">{integration.name}</span>
                     </div>
                     <button
                       onClick={() => toggleIntegration(integration.id)}
@@ -430,7 +430,7 @@ export default function OnboardingPage() {
       case 'library':
         return (
           <div className="max-w-2xl mx-auto">
-            <div className="text-center mb-8">
+            <div className=" mb-8">
               <h1 className="text-2xl font-bold text-[#333] mb-4 font-ibm-plex-mono">Help Index guide your discovery</h1>
               <p className="text-[#666] font-ibm-plex-mono mb-6">
                 Write what you're curious about. You can add or paste text-based context – for example, a <strong>research note</strong>, a <strong>draft proposal</strong>, or a <strong>blogpost</strong> you wrote or found inspiring. Whether it's one source or several, Index uses them only to guide better matches.
