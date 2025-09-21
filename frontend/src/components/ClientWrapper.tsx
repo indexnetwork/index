@@ -11,7 +11,7 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Define known routes to detect 404 pages
-  const knownRoutes = ['/', '/inbox', '/integrate', '/stake', '/simulation', '/vibecheck', '/matchlist', '/connections'];
+  const knownRoutes = useMemo(() => ['/', '/inbox', '/integrate', '/stake', '/simulation', '/vibecheck', '/matchlist', '/connections'], []);
   const isKnownRoute = knownRoutes.some(route => 
     pathname === route || 
     pathname?.startsWith(route + '/')

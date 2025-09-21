@@ -95,8 +95,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
       await indexesService.createIndex(createRequest);
       setCreateIndexModalOpen(false);
       success('Index created successfully');
-    } catch (error) {
-      console.error('Error creating index:', error);
+    } catch (err) {
+      console.error('Error creating index:', err);
       error('Failed to create index');
     }
   }, [indexesService, success, error]);

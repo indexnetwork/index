@@ -7,6 +7,7 @@ import Image from "next/image";
 import ClientLayout from "@/components/ClientLayout";
 import { usePrivy } from '@privy-io/react-auth';
 import { useConnections, useIntents, useSynthesis } from '@/contexts/APIContext';
+import { createIntentSuggestionsService, SuggestedIntent } from '@/services/intentSuggestions';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import ReactMarkdown from "react-markdown";
 import { formatDate } from "@/lib/utils";
@@ -82,6 +83,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
   const connectionsService = useConnections();
   const intentsService = useIntents();
   const synthesisService = useSynthesis();
+  const intentSuggestionsService = createIntentSuggestionsService(api);
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
 
   // Fetch synthesis 
@@ -495,8 +497,8 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
         console.log('Original input:', data.payload);
         console.log(`Creating ${suggestionsResult.suggestedIntents.length} intents from suggestions:`);
         
-        suggestionsResult.suggestedIntents.forEach((suggestion: IntentSuggestion, index: number) => {
-          console.log(`  ${index + 1}. ${suggestion.payload} (${Math.round(suggestion.confidence * 100)}%)`);
+        suggestionsResult.suggestedIntents.forEach((suggestion: SuggestedIntent, index: number) => {
+          console.log(`  ${index + 1}. ${suggestion.payload} (${Math.round(suggestion.relevanceScore * 100)}%)`);
         });
       } else {
         // Fallback to original input
@@ -568,7 +570,7 @@ export default function MatchlistPage({ params }: MatchlistPageProps) {
         isSubmitting: false
       }));
     }
-  }, [ready, authenticated, resolvedParams.code, intentsService, fetchDiscoveryResults, state.user]);
+  }, [ready, authenticated, resolvedParams.code, intentsService, intentSuggestionsService, fetchDiscoveryResults, state.user]);
 
   // Get connection status for a user
   const getConnectionStatus = (userId: string): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {

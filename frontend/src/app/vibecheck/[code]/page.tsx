@@ -9,6 +9,7 @@ import ClientLayout from "@/components/ClientLayout";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { usePrivy } from '@privy-io/react-auth';
 import { useConnections, useIndexes, useIntents, useFiles } from '@/contexts/APIContext';
+import { createIntentSuggestionsService } from '@/services/intentSuggestions';
 import { indexesService as publicIndexesService } from '@/services/indexes';
 import { useAuthenticatedAPI } from '@/lib/api';
 import { User, APIResponse } from '@/lib/types';
@@ -67,6 +68,7 @@ export default function SharePage({ params }: SharePageProps) {
   const indexesService = useIndexes();
   const intentsService = useIntents();
   const filesService = useFiles();
+  const intentSuggestionsService = createIntentSuggestionsService(api);
   const router = useRouter();
 
   // Main flow effect - handles all the complex logic in one place
@@ -304,7 +306,10 @@ export default function SharePage({ params }: SharePageProps) {
           vibeCheckResults: { 
             aiSynthesis: result.synthesis || '', 
             score: result.score || 0,
-            suggestedIntents: result.suggestedIntents || []
+            suggestedIntents: result.suggestedIntents.map(intent => ({
+              payload: intent.payload,
+              confidence: intent.relevanceScore
+            })) || []
           },
           tempFiles: result.tempFiles || [],
           step: 'vibecheck-results'
@@ -316,7 +321,10 @@ export default function SharePage({ params }: SharePageProps) {
             results: [{ 
               aiSynthesis: result.synthesis || '', 
               score: result.score || 0,
-              suggestedIntents: result.suggestedIntents || []
+              suggestedIntents: result.suggestedIntents.map(intent => ({
+                payload: intent.payload,
+                confidence: intent.relevanceScore
+              })) || []
             }],
             tempFiles: result.tempFiles,
             autoRequest: state.autoRequestConnection
@@ -329,7 +337,7 @@ export default function SharePage({ params }: SharePageProps) {
       console.error('Intent suggestion error:', error);
       setState(prev => ({ ...prev, step: 'error', error: 'Failed to process request' }));
     }
-  }, [state.index, resolvedParams.code, state.autoRequestConnection]);
+  }, [state.index, resolvedParams.code, state.autoRequestConnection, intentSuggestionsService]);
 
   const handleRequestConnection = useCallback(() => {
     if (!ready || !authenticated) {

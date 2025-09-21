@@ -141,7 +141,15 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
     }>;
     intentCount: number;
   }> => {
-    const response = await api.post('/intents/suggest-tags', {
+    const response = await api.post<{
+      suggestions: Array<{
+        tag: string;
+        relevanceScore: number;
+        relatedIntentIds: string[];
+        description?: string;
+      }>;
+      intentCount: number;
+    }>('/intents/suggest-tags', {
       prompt,
       indexId,
       maxSuggestions

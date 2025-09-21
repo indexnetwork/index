@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import * as Tabs from "@radix-ui/react-tabs";
 import { History, SendHorizontal, Inbox } from "lucide-react";

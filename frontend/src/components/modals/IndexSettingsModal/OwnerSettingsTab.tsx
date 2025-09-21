@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Copy, Globe, Lock, Trash2, Plus, Check } from 'lucide-react';
 import { Input } from '../../ui/input';
 import { useIndexes } from '@/contexts/APIContext';
-import { Member, PublicPermission } from './types.js';
+import { Member } from './types.js';
 
 interface OwnerSettingsTabProps {
   index: Index;

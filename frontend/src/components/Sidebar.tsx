@@ -23,7 +23,7 @@ export default function Sidebar() {
   const indexesService = useIndexes();
   const { setSelectedIndexIds } = useIndexFilter();
   
-
+  
   const fetchIndexes = useCallback(async () => {
     try {
       const response = await indexesService.getIndexes(1, 100);
@@ -54,7 +54,8 @@ export default function Sidebar() {
     } finally {
       setLoading(false);
     }
-  }, [indexesService]); // Remove selectedIndexId dependency
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indexesService]);
 
   useEffect(() => {
     fetchIndexes();

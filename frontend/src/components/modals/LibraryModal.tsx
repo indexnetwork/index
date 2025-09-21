@@ -7,9 +7,9 @@ import { Input } from "@/components/ui/input";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { useAuthenticatedAPI } from "@/lib/api";
 import ReactMarkdown from 'react-markdown';
-import { useIdentityToken } from '@privy-io/react-auth';
 import { useAPI } from "@/contexts/APIContext";
 import { formatDate } from "@/lib/utils";
+import { SyncProviderName } from "@/services/sync";
 
 type Props = {
   open: boolean;
@@ -33,7 +33,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
   const { syncService } = useAPI();
-  const { identityToken } = useIdentityToken();
   const [isUploading, setIsUploading] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [isAddingLink, setIsAddingLink] = useState(false);
@@ -58,7 +57,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [confirm, setConfirm] = useState<{
     open: boolean;
     message: string;
-    payload: { kind: 'file' | 'link'; item: any }[];
+    payload: { kind: 'file' | 'link'; item: { id: string; name?: string; url?: string } }[];
   } | null>(null);
   type IntegrationId = 'notion' | 'slack' | 'discord' | 'calendar' | 'gmail';
   const [integrations, setIntegrations] = useState<Array<{ id: IntegrationId; name: string; connected: boolean }>>([]);
@@ -168,11 +167,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } as const;
   }, [files, links, libraryIntents, selectedIds, activeSourceFilters]);
 
-  const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: any }[]) => {
+  const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: { id: string } }[]) => {
     try {
       await Promise.all(batch.map(({ kind, item }) => kind === 'file'
-        ? api.delete(`/files/${(item as any).id}`)
-        : api.delete(`/links/${(item as any).id}`)
+        ? api.delete(`/files/${item.id}`)
+        : api.delete(`/links/${item.id}`)
       ));
       success(batch.length === 1 ? 'Item deleted' : `${batch.length} items deleted`);
       onChanged?.();
@@ -182,10 +181,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [api, success, error, onChanged]);
 
 
-  const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: any }[]) => {
+  const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: { id: string } }[]) => {
     // Remove items immediately from UI
-    const fileIds = new Set(items.filter(i => i.kind === 'file').map(i => (i.item as any).id));
-    const linkIds = new Set(items.filter(i => i.kind === 'link').map(i => (i.item as any).id));
+    const fileIds = new Set(items.filter(i => i.kind === 'file').map(i => i.item.id));
+    const linkIds = new Set(items.filter(i => i.kind === 'link').map(i => i.item.id));
     if (fileIds.size > 0) setFiles(prev => prev.filter(f => !fileIds.has(f.id)));
     if (linkIds.size > 0) setLinks(prev => prev.filter(l => !linkIds.has(l.id)));
 
@@ -201,7 +200,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
     // Build payload from current state
-    const payload: { kind: 'file' | 'link'; item: any }[] = [];
+    const payload: { kind: 'file' | 'link'; item: { id: string; name?: string; url?: string; size?: string; type?: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string } }[] = [];
     files.forEach(f => { if (selectedIds.has(`f-${f.id}`)) payload.push({ kind: 'file', item: f }); });
     links.forEach(l => { if (selectedIds.has(`l-${l.id}`)) payload.push({ kind: 'link', item: l }); });
     setSelectedIds(new Set());
@@ -436,7 +435,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     setIsUploading(true);
     try {
       await Promise.all(Array.from(f).map(async file => {
-        const res = await api.uploadFile<{ file: (typeof files)[number] }>(`/files`, file);
+        const res = await api.uploadFile<{ file: { id: string; name: string; size: string; type: string; createdAt: string; url: string } }>(`/files`, file);
         return res.file;
       }));
       onChanged?.();
@@ -459,7 +458,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     
     try {
       setIsAddingLink(true);
-      await api.post<{ link: (typeof links)[number] }>(`/links`, { url: normalizedUrl });
+      await api.post<{ link: { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string } }>(`/links`, { url: normalizedUrl });
       setLinkUrl("");
       onChanged?.();
       await loadLists();
@@ -475,7 +474,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const handleSyncIntegration = useCallback(async (integrationType: string) => {
     try {
       setSyncingIntegrations(prev => new Set([...prev, integrationType]));
-      await syncService.syncIntegration(integrationType as any);
+      await syncService.syncIntegration(integrationType as SyncProviderName);
       success(`${integrationType.charAt(0).toUpperCase() + integrationType.slice(1)} sync started`);
     } catch {
       error(`Failed to sync ${integrationType}`);
@@ -803,7 +802,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             <section className="pr-2">
               <div className="space-y-2 max-h-[45vh] sm:h-[400px] overflow-y-auto pb-8">
                 {(() => {
-                  type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };
+                  type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: { id: string; name?: string; url?: string; type?: string; createdAt?: string; lastSyncAt?: string | null } };
                   const map: RecentItem[] = [
                     ...files.map(f => ({
                       id: `f-${f.id}`,
@@ -811,7 +810,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       title: f.name,
                       sub: `${formatSize(f.size)} • ${formatDate(f.createdAt).split(',')[0]}`,
                       createdAt: new Date(f.createdAt).getTime(),
-                      raw: f as any,
+                      raw: f,
                     })),
                     ...links.map(l => ({
                       id: `l-${l.id}`,
@@ -825,7 +824,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                         if (res?.content) setPreview({ id, title: l.url, content: res.content });
                       },
                       createdAt: (l.lastSyncAt ? new Date(l.lastSyncAt).getTime() : (l.createdAt ? new Date(l.createdAt).getTime() : 0)),
-                      raw: l as any,
+                      raw: l,
                     })),
                   ];
                   const filtered = map;
@@ -859,7 +858,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           )}
                           {item.kind === 'file' && (
                             <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-md font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
-                              {fileBadge((item.raw as any).type, (item.raw as any).name)}
+                              {fileBadge(item.raw.type, item.raw.name || '')}
                             </span>
                           )}
                           {/* Icon for links only */}
@@ -879,13 +878,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleSyncLink((item.raw as any).id);
+                                  handleSyncLink(item.raw.id);
                                 }} 
                                 className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
-                                disabled={syncingLinks.has((item.raw as any).id)}
+                                disabled={syncingLinks.has(item.raw.id)}
                                 aria-label="Sync link"
                               >
-                                {syncingLinks.has((item.raw as any).id) ? (
+                                {syncingLinks.has(item.raw.id) ? (
                                   <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
                                 ) : (
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
@@ -1199,4 +1198,4 @@ function fileBadge(mime: string | undefined, name: string): string {
 }
 
 // Deletion helpers
-type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: any };
+type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: { id: string; name?: string; url?: string; type?: string; createdAt?: string; lastSyncAt?: string | null } };

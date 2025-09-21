@@ -101,9 +101,11 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
 
   // Fetch tag suggestions once when intents are loaded
   useEffect(() => {
+    if (!indexedIntents || !loadingIndexed) return;
     if (indexedIntents.length > 0 && suggestedTags.length === 0) {
       fetchTagSuggestions();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLeaveIndex = async () => {
@@ -112,7 +114,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
       await api.post(`/indexes/${index.id}/leave`, {});
       success(`Successfully left ${index.title}`);
       onLeave();
-    } catch (err) {
+    } catch {
       error('Failed to leave index');
     } finally {
       setIsLeaving(false);
@@ -129,7 +131,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
       success('Settings saved');
       setOriginalPrompt(prompt);
       await fetchMemberSettings();
-    } catch (err) {
+    } catch {
       error('Failed to save settings');
     } finally {
       setIsSavingPrompt(false);
@@ -142,7 +144,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
       await api.delete(`/indexes/${index.id}/member-intents/${intentId}`);
       success('Intent removed from index');
       await fetchMemberIntents();
-    } catch (err) {
+    } catch {
       error('Failed to remove intent from index');
     } finally {
       setRemovingIntents(prev => {
@@ -161,7 +163,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
       ));
       success('All intents removed from index');
       await fetchMemberIntents();
-    } catch (err) {
+    } catch {
       error('Failed to remove all intents');
     } finally {
       setRemovingAll(false);
