@@ -8,9 +8,8 @@ import Image from "next/image";
 import { User, AvatarUploadResponse, APIResponse } from "@/lib/types";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { getAvatarUrl } from "@/lib/file-utils";
-import { useAPI } from "@/contexts/APIContext";
-import { SyncProviderName } from "@/services/sync";
 import { useNotifications } from "@/contexts/NotificationContext";
+import ClientLayout from "@/components/ClientLayout";
 
 type OnboardingStep = 'profile' | 'connections' | 'library' | 'indexes';
 
@@ -26,7 +25,6 @@ export default function OnboardingPage() {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const api = useAuthenticatedAPI();
-  const { syncService } = useAPI();
   const { success, error } = useNotifications();
 
   // Profile step states
@@ -64,6 +62,37 @@ export default function OnboardingPage() {
   ];
   const [selectedIndexes, setSelectedIndexes] = useState<Set<string>>(new Set());
 
+  // Load integrations status
+  const loadIntegrations = React.useCallback(async () => {
+    try {
+      const response = await api.get<{ integrations: Array<{ id: string; name: string; connected: boolean }> }>('/integrations');
+      const integrationsFromAPI = response.integrations || [];
+      
+      // Default integrations with proper names
+      const defaultIntegrations: IntegrationState[] = [
+        { id: 'notion', name: 'Notion', connected: false },
+        { id: 'slack', name: 'Slack', connected: false },
+        { id: 'discord', name: 'Discord', connected: false },
+        { id: 'calendar', name: 'Google Calendar', connected: false },
+        { id: 'gmail', name: 'Gmail', connected: false },
+      ];
+      
+      // Map API response to our local state format
+      const updatedIntegrations = defaultIntegrations.map(integration => {
+        const apiIntegration = integrationsFromAPI.find(i => i.id === integration.id);
+        return {
+          ...integration,
+          connected: apiIntegration?.connected || false
+        };
+      });
+      
+      setIntegrations(updatedIntegrations);
+    } catch (error) {
+      console.error('Failed to fetch integrations:', error);
+      // Keep default state if API fails
+    }
+  }, [api]);
+
   React.useEffect(() => {
     // Fetch user data on load
     const fetchUser = async () => {
@@ -79,8 +108,15 @@ export default function OnboardingPage() {
       }
     };
 
-    fetchUser();
-  }, [api]);
+    const loadData = async () => {
+      await Promise.all([
+        fetchUser(),
+        loadIntegrations()
+      ]);
+    };
+
+    loadData();
+  }, [api, loadIntegrations]);
 
   const uploadAvatar = async (file: File): Promise<string> => {
     const result = await api.uploadFile<AvatarUploadResponse>('/upload/avatar', file, undefined, 'avatar');
@@ -118,8 +154,8 @@ export default function OnboardingPage() {
         setUser(response.user);
         setCurrentStep('connections');
       }
-    } catch (error) {
-      console.error('Error updating profile:', error);
+    } catch (err) {
+      console.error('Error updating profile:', err);
       error('Failed to update profile');
     } finally {
       setIsLoading(false);
@@ -134,7 +170,8 @@ export default function OnboardingPage() {
       setPendingIntegration(id);
       if (item.connected) {
         await api.delete(`/integrations/${id}`);
-        setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: false } : x));
+        // Refresh integrations from API to get real status
+        await loadIntegrations();
         success(`${item.name} disconnected`);
       } else {
         const popup = typeof window !== 'undefined' ? window.open('', `oauth_${id}`, 'width=560,height=720') : null;
@@ -161,7 +198,8 @@ export default function OnboardingPage() {
               if (s.status === 'connected') {
                 clearInterval(poll);
                 if (popup && !popup.closed) popup.close();
-                setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: true } : x));
+                // Refresh integrations from API to get real status
+                await loadIntegrations();
                 success(`${item.name} connected`);
               }
               if (Date.now() - started > 90000) {
@@ -181,7 +219,7 @@ export default function OnboardingPage() {
     } finally {
       setPendingIntegration(null);
     }
-  }, [api, integrations, success, error]);
+  }, [api, integrations, success, error, loadIntegrations]);
 
   const handleFilesSelected = useCallback(async (f: FileList | null) => {
     if (!f || f.length === 0) return;
@@ -248,10 +286,10 @@ export default function OnboardingPage() {
                 <div className="relative">
                   <div className="w-20 h-20 rounded-full overflow-hidden bg-[#F5F5F5] flex items-center justify-center">
                     {avatarPreview ? (
-                      <img src={avatarPreview} alt="Avatar preview" className="w-full h-full object-cover" />
+                      <Image src={avatarPreview} alt="Avatar preview" width={80} height={80} className="w-full h-full object-cover" />
                     ) : user?.avatar ? (
                       <Image 
-                        src={getAvatarUrl(user.avatar)} 
+                        src={getAvatarUrl(user)} 
                         alt="Avatar" 
                         width={80} 
                         height={80} 
@@ -333,7 +371,7 @@ export default function OnboardingPage() {
                 <div key={integration.id} className="border border-[#E0E0E0] rounded-lg p-4 bg-white">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <img 
+                      <Image 
                         src={`/integrations/${integration.id === 'calendar' ? 'google-calendar' : integration.id}.png`} 
                         width={24} 
                         height={24} 
@@ -584,11 +622,13 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA]">
-      {/* Main content */}
-      <div className="px-6 py-12">
-        {renderStepContent()}
+    <ClientLayout>
+      <div className="bg-[#FAFAFA]">
+        {/* Main content */}
+        <div className="px-6 py-12">
+          {renderStepContent()}
+        </div>
       </div>
-    </div>
+    </ClientLayout>
   );
 }
