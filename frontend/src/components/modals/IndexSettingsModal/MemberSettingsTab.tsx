@@ -191,8 +191,8 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
           <h3 className="text-sm font-medium font-ibm-plex-mono text-black">
             Instruct what to share and what to keep private
           </h3>
-          {hasUnsavedChanges && (
-            <div className="flex gap-2">
+          <div className="flex gap-2">
+            {hasUnsavedChanges && (
               <Button
                 variant="outline"
                 size="sm"
@@ -201,16 +201,16 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
               >
                 Discard
               </Button>
-              <Button
-                size="sm"
-                onClick={handleSavePrompt}
-                disabled={isSavingPrompt}
-                className="font-ibm-plex-mono"
-              >
-                {isSavingPrompt ? 'Saving...' : 'Save'}
-              </Button>
-            </div>
-          )}
+            )}
+            <Button
+              size="sm"
+              onClick={handleSavePrompt}
+              disabled={isSavingPrompt || !hasUnsavedChanges}
+              className="font-ibm-plex-mono"
+            >
+              {isSavingPrompt ? 'Updating...' : 'Update'}
+            </Button>
+          </div>
         </div>
 
         <div>
@@ -266,7 +266,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
       </div>
 
       {/* Scrollable intent list */}
-      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="flex-1 overflow-y-auto min-h-0 max-h-[300px]">
         <div className="space-y-2 pr-2">
           {loadingIndexed ? (
             <div className="text-center py-4 text-gray-500">Loading...</div>

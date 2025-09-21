@@ -272,7 +272,7 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
               {showPermissionsDropdown && (
                 <div
                   ref={permissionsDropdownRef}
-                  className="absolute top-full right-0 z-50 mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg"
+                  className="absolute top-full right-0 z-[9999] mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg"
                 >
                   <div className="p-2">
                     {availablePermissions.map((permission) => (
@@ -392,7 +392,7 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
           {showSuggestions && filteredSuggestions.length > 0 && (
             <div
               ref={suggestionsRef}
-              className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+              className="absolute top-full left-0 right-0 z-[9999] mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
             >
               {filteredSuggestions.map((user) => (
                 <button
@@ -417,7 +417,7 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
           {showSuggestions && memberSearchQuery && filteredSuggestions.length === 0 && (
             <div
               ref={suggestionsRef}
-              className="absolute top-full left-0 right-0 z-50 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4"
+              className="absolute top-full left-0 right-0 z-[9999] mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4"
             >
               <p className="text-sm text-gray-500 text-center">No users found matching "{memberSearchQuery}"</p>
             </div>
@@ -461,7 +461,7 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
                     {showMemberDropdowns[member.id] && (
                       <div
                         ref={(el) => { memberDropdownRefs.current[member.id] = el; }}
-                        className="absolute top-full right-0 z-50 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg"
+                        className="absolute top-full right-0 z-[9999] mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg"
                       >
                         <div className="p-2">
                           {memberPermissions.map((permission) => (
