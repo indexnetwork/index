@@ -46,8 +46,8 @@ export default function IndexSettingsModal({ open, onOpenChange, index, onIndexU
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[75vh] flex flex-col">
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[75vh] flex flex-col z-50">
           <div className="flex items-center justify-between mb-4">
             <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">{index.title}</Dialog.Title>
           </div>
@@ -84,7 +84,7 @@ export default function IndexSettingsModal({ open, onOpenChange, index, onIndexU
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-visible">
+          <div className="flex-1 overflow-hidden">
             <div className={`h-full ${activeTab === 'member' ? 'block' : 'hidden'}`}>
               <MemberSettingsTab 
                 index={index} 

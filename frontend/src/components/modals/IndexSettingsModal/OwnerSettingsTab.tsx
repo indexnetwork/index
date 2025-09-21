@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Copy, Globe, Lock, Trash2, Plus, ChevronDown, Check } from 'lucide-react';
@@ -25,11 +26,15 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
   const [members, setMembers] = useState<Member[]>([]);
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
   const [isCopied, setIsCopied] = useState<string | null>(null);
+  const [dropdownPositions, setDropdownPositions] = useState<Record<string, { top: number; left: number; width: number }>>({});
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const permissionsDropdownRef = useRef<HTMLDivElement>(null);
   const memberDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const permissionsButtonRef = useRef<HTMLButtonElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const memberButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const indexesService = useIndexes();
 
   // Available public permissions
@@ -201,10 +206,48 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
 
   const handleSearchInputChange = (value: string) => {
     setMemberSearchQuery(value);
-    setShowSuggestions(value.length > 0);
+    const shouldShow = value.length > 0;
+    
+    if (shouldShow && searchContainerRef.current) {
+      calculateDropdownPosition(searchContainerRef.current, 'suggestions', searchContainerRef.current.offsetWidth);
+    }
+    
+    setShowSuggestions(shouldShow);
+  };
+
+  const togglePermissionsDropdown = () => {
+    const isOpening = !showPermissionsDropdown;
+    
+    if (isOpening && permissionsButtonRef.current) {
+      calculateDropdownPosition(permissionsButtonRef.current, 'permissions', 320);
+    }
+    
+    setShowPermissionsDropdown(!showPermissionsDropdown);
+  };
+
+  const calculateDropdownPosition = (buttonElement: HTMLElement, dropdownKey: string, width: number = 256) => {
+    const rect = buttonElement.getBoundingClientRect();
+    const position = {
+      top: rect.bottom + window.scrollY + 4,
+      left: rect.right + window.scrollX - width,
+      width
+    };
+    
+    setDropdownPositions(prev => ({
+      ...prev,
+      [dropdownKey]: position
+    }));
+    
+    return position;
   };
 
   const toggleMemberDropdown = (memberId: string) => {
+    const isOpening = !showMemberDropdowns[memberId];
+    
+    if (isOpening && memberButtonRefs.current[memberId]) {
+      calculateDropdownPosition(memberButtonRefs.current[memberId]!, `member-${memberId}`, 256);
+    }
+    
     setShowMemberDropdowns(prev => ({
       ...prev,
       [memberId]: !prev[memberId]
@@ -228,7 +271,7 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
   const matchlistUrl = canShowMatchlistLink && index.linkPermissions?.code ? `${window.location.origin}/matchlist/${index.linkPermissions.code}` : '';
 
   return (
-    <div className="space-y-8 mt-6">
+    <div className="space-y-8 mt-6 mr-0.5">
       <div>
         <div className="flex items-start justify-between">
           <div className="flex-1">
@@ -252,7 +295,8 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
             )}
             <div className="relative">
               <button
-                onClick={() => !isUpdatingVisibility && setShowPermissionsDropdown(!showPermissionsDropdown)}
+                ref={permissionsButtonRef}
+                onClick={() => !isUpdatingVisibility && togglePermissionsDropdown()}
                 disabled={isUpdatingVisibility}
                 className={`flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   isUpdatingVisibility ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
@@ -269,36 +313,6 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
                 <ChevronDown className="h-4 w-4 text-gray-400" />
               </button>
               
-              {showPermissionsDropdown && (
-                <div
-                  ref={permissionsDropdownRef}
-                  className="absolute top-full right-0 z-[9999] mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg"
-                >
-                  <div className="p-2">
-                    {availablePermissions.map((permission) => (
-                      <label
-                        key={permission.id}
-                        className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-md cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedPermissions.includes(permission.id)}
-                          onChange={() => handlePermissionToggle(permission.id)}
-                          className="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-900">
-                            {permission.label}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {permission.description}
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -375,53 +389,26 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
         {/* Member picker input */}
         <div className="relative mb-4">
           <div className="flex items-center gap-2">
-            <div className="relative flex-1">
+            <div ref={searchContainerRef} className="relative flex-1">
               <Plus className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 ref={searchInputRef}
                 placeholder="Search people by name or email..."
                 value={memberSearchQuery}
                 onChange={(e) => handleSearchInputChange(e.target.value)}
-                onFocus={() => memberSearchQuery && setShowSuggestions(true)}
+                onFocus={() => {
+                  if (memberSearchQuery) {
+                    if (searchContainerRef.current) {
+                      calculateDropdownPosition(searchContainerRef.current, 'suggestions', searchContainerRef.current.offsetWidth);
+                    }
+                    setShowSuggestions(true);
+                  }
+                }}
                 className="pl-10 pr-4 py-3"
               />
             </div>
           </div>
           
-          {/* Suggestions dropdown */}
-          {showSuggestions && filteredSuggestions.length > 0 && (
-            <div
-              ref={suggestionsRef}
-              className="absolute top-full left-0 right-0 z-[9999] mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
-            >
-              {filteredSuggestions.map((user) => (
-                <button
-                  key={user.id}
-                  onClick={() => handleAddMember(user)}
-                  className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 text-left"
-                >
-                  <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
-                    {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                    <p className="text-xs text-gray-500">{user.email}</p>
-                  </div>
-                  <Plus className="h-4 w-4 text-gray-400" />
-                </button>
-              ))}
-            </div>
-          )}
-          
-          {/* No results message */}
-          {showSuggestions && memberSearchQuery && filteredSuggestions.length === 0 && (
-            <div
-              ref={suggestionsRef}
-              className="absolute top-full left-0 right-0 z-[9999] mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4"
-            >
-              <p className="text-sm text-gray-500 text-center">No users found matching "{memberSearchQuery}"</p>
-            </div>
-          )}
         </div>
         
         {/* Members list */}
@@ -449,6 +436,7 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
                   {/* Member permissions dropdown */}
                   <div className="relative">
                     <button
+                      ref={(el) => { memberButtonRefs.current[member.id] = el; }}
                       onClick={() => toggleMemberDropdown(member.id)}
                       className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                     >
@@ -458,36 +446,6 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
                       <ChevronDown className="h-4 w-4 text-gray-400" />
                     </button>
                     
-                    {showMemberDropdowns[member.id] && (
-                      <div
-                        ref={(el) => { memberDropdownRefs.current[member.id] = el; }}
-                        className="absolute top-full right-0 z-[9999] mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg"
-                      >
-                        <div className="p-2">
-                          {memberPermissions.map((permission) => (
-                            <label
-                              key={permission.id}
-                              className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-md cursor-pointer"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={member.permissions.includes(permission.id)}
-                                onChange={() => handleMemberPermissionToggle(member.id, permission.id)}
-                                className="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                              />
-                              <div className="flex-1">
-                                <div className="text-sm font-medium text-gray-900">
-                                  {permission.label}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {permission.description}
-                                </div>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                   <Button
                     variant="ghost"
@@ -503,6 +461,132 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
           )}
         </div>
       </div>
+
+      {/* Portal-rendered dropdowns */}
+      {typeof window !== 'undefined' && (
+        <>
+          {/* Permissions dropdown */}
+          {showPermissionsDropdown && dropdownPositions.permissions && createPortal(
+            <div
+              ref={permissionsDropdownRef}
+              className="fixed z-[99999] bg-white border border-gray-200 rounded-lg shadow-lg pointer-events-auto"
+              style={{
+                top: dropdownPositions.permissions.top,
+                left: dropdownPositions.permissions.left,
+                width: dropdownPositions.permissions.width
+              }}
+            >
+              <div className="p-2">
+                {availablePermissions.map((permission) => (
+                  <label
+                    key={permission.id}
+                    className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-md cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPermissions.includes(permission.id)}
+                      onChange={() => handlePermissionToggle(permission.id)}
+                      className="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-gray-900">
+                        {permission.label}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {permission.description}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>,
+            document.body
+          )}
+
+          {/* Suggestions dropdown */}
+          {showSuggestions && dropdownPositions.suggestions && createPortal(
+            <div
+              ref={suggestionsRef}
+              className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+              style={{
+                top: dropdownPositions.suggestions.top,
+                left: dropdownPositions.suggestions.left,
+                width: dropdownPositions.suggestions.width
+              }}
+            >
+              {filteredSuggestions.length > 0 ? (
+                filteredSuggestions.map((user) => (
+                  <button
+                    key={user.id}
+                    onClick={() => handleAddMember(user)}
+                    className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 text-left"
+                  >
+                    <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
+                      {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{user.name}</p>
+                      <p className="text-xs text-gray-500">{user.email}</p>
+                    </div>
+                    <Plus className="h-4 w-4 text-gray-400" />
+                  </button>
+                ))
+              ) : memberSearchQuery ? (
+                <div className="p-4">
+                  <p className="text-sm text-gray-500 text-center">No users found matching "{memberSearchQuery}"</p>
+                </div>
+              ) : null}
+            </div>,
+            document.body
+          )}
+
+          {/* Member dropdowns */}
+          {Object.entries(showMemberDropdowns).map(([memberId, isOpen]) => 
+            isOpen && dropdownPositions[`member-${memberId}`] ? createPortal(
+              <div
+                key={memberId}
+                ref={(el) => { memberDropdownRefs.current[memberId] = el; }}
+                className="fixed z-[99999] bg-white border border-gray-200 rounded-lg shadow-lg pointer-events-auto"
+                style={{
+                  top: dropdownPositions[`member-${memberId}`].top,
+                  left: dropdownPositions[`member-${memberId}`].left,
+                  width: dropdownPositions[`member-${memberId}`].width
+                }}
+              >
+                <div className="p-2">
+                  {memberPermissions.map((permission) => {
+                    const member = members.find(m => m.id === memberId);
+                    if (!member) return null;
+                    
+                    return (
+                      <label
+                        key={permission.id}
+                        className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-md cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={member.permissions.includes(permission.id)}
+                          onChange={() => handleMemberPermissionToggle(memberId, permission.id)}
+                          className="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-gray-900">
+                            {permission.label}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {permission.description}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>,
+              document.body
+            ) : null
+          )}
+        </>
+      )}
     </div>
   );
 }
