@@ -54,6 +54,8 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
   const memberPermissions = [
     { id: 'can-write', label: 'Can write', description: 'Members can create files and intents' },
     { id: 'can-read', label: 'Can read', description: 'Member can view files and intents' },
+    { id: 'can-discover', label: 'Can discover', description: 'Member can discover and be discovered by others' },
+    { id: 'can-write-intents', label: 'Can write intents', description: 'Member can create intents and explore others' }
   ];
 
   // Load members on mount
@@ -177,17 +179,36 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
   };
 
   const handleRemoveMember = async (memberId: string) => {
+    const member = members.find(m => m.id === memberId);
+    if (!member) return;
+
+    // Prevent removing any owner
+    if (member.permissions.includes('owner')) {
+      alert('Owners cannot be removed from the index.');
+      return;
+    }
+
     try {
       await indexesService.removeMember(index.id, memberId);
       setMembers(prev => prev.filter(member => member.id !== memberId));
     } catch (error) {
       console.error('Error removing member:', error);
+      // Show user-friendly error message
+      if (error instanceof Error && error.message.includes('owner')) {
+        alert('Owners cannot be removed from the index.');
+      }
     }
   };
 
   const handleMemberPermissionToggle = async (memberId: string, permission: string) => {
     const member = members.find(m => m.id === memberId);
     if (!member) return;
+
+    // Prevent any permission changes for owners
+    if (member.permissions.includes('owner')) {
+      alert('Owner permissions cannot be modified. Owners have full access by default.');
+      return;
+    }
 
     const hasPermission = member.permissions.includes(permission);
     const newPermissions = hasPermission
@@ -201,6 +222,10 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
       ));
     } catch (error) {
       console.error('Error updating member permissions:', error);
+      // Show user-friendly error message
+      if (error instanceof Error && error.message.includes('owner')) {
+        alert('Cannot modify owner permissions.');
+      }
     }
   };
 
@@ -258,6 +283,12 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
     if (permissions.length === 0) {
       return 'No access';
     }
+    
+    // If user is an owner, show that prominently
+    if (permissions.includes('owner')) {
+      return 'Owner';
+    }
+    
     return permissions.length === 1 
       ? '1 permission' 
       : `${permissions.length} permissions`;
@@ -437,21 +468,35 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
                   <div className="relative">
                     <button
                       ref={(el) => { memberButtonRefs.current[member.id] = el; }}
-                      onClick={() => toggleMemberDropdown(member.id)}
-                      className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                      onClick={() => member.permissions.includes('owner') ? null : toggleMemberDropdown(member.id)}
+                      disabled={member.permissions.includes('owner')}
+                      className={`flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                        member.permissions.includes('owner')
+                          ? 'cursor-not-allowed opacity-75 bg-gray-50'
+                          : 'hover:bg-gray-50 cursor-pointer'
+                      }`}
+                      title={member.permissions.includes('owner') ? 'Owner permissions cannot be modified' : ''}
                     >
                       <span className="text-gray-700">
                         {getMemberPermissionsText(member.permissions)}
                       </span>
-                      <ChevronDown className="h-4 w-4 text-gray-400" />
+                      <ChevronDown className={`h-4 w-4 ${
+                        member.permissions.includes('owner') ? 'text-gray-300' : 'text-gray-400'
+                      }`} />
                     </button>
                     
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                    className={`${
+                      member.permissions.includes('owner')
+                        ? 'text-gray-400 cursor-not-allowed'
+                        : 'text-red-500 hover:text-red-700 hover:bg-red-50'
+                    }`}
                     onClick={() => handleRemoveMember(member.id)}
+                    disabled={member.permissions.includes('owner')}
+                    title={member.permissions.includes('owner') ? 'Owners cannot be removed' : 'Remove member'}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
@@ -540,9 +585,13 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
             document.body
           )}
 
-          {/* Member dropdowns */}
-          {Object.entries(showMemberDropdowns).map(([memberId, isOpen]) => 
-            isOpen && dropdownPositions[`member-${memberId}`] ? createPortal(
+          {/* Member dropdowns - only show for non-owners */}
+          {Object.entries(showMemberDropdowns).map(([memberId, isOpen]) => {
+            const member = members.find(m => m.id === memberId);
+            // Don't show dropdown for owners
+            if (!member || member.permissions.includes('owner')) return null;
+            
+            return isOpen && dropdownPositions[`member-${memberId}`] ? createPortal(
               <div
                 key={memberId}
                 ref={(el) => { memberDropdownRefs.current[memberId] = el; }}
@@ -555,9 +604,6 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
               >
                 <div className="p-2">
                   {memberPermissions.map((permission) => {
-                    const member = members.find(m => m.id === memberId);
-                    if (!member) return null;
-                    
                     return (
                       <label
                         key={permission.id}
@@ -583,8 +629,8 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
                 </div>
               </div>,
               document.body
-            ) : null
-          )}
+            ) : null;
+          })}
         </>
       )}
     </div>
