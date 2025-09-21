@@ -123,8 +123,9 @@ export class MemberEvents {
     
     try {
       // Only reprocess if prompt or auto-assign changed
+      await new Promise(resolve => setTimeout(resolve, 1000));
       if (event.promptChanged || event.autoAssignChanged) {
-        await intentIndexer.reprocessUserIndexIntents(event.userId, event.indexId);
+        intentIndexer.reprocessUserIndexIntents(event.userId, event.indexId);
       }
       
       console.log(`✅ Member settings updated event processed: user ${event.userId} in index ${event.indexId}`);

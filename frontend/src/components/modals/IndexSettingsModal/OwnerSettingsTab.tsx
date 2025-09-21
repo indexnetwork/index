@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Copy, Globe, Lock, Trash2, Plus, ChevronDown, Check } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check } from 'lucide-react';
 import { Input } from '../../ui/input';
 import { useIndexes } from '@/contexts/APIContext';
 import { Member, PublicPermission } from './types.js';
@@ -18,10 +18,11 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [showPermissionsDropdown, setShowPermissionsDropdown] = useState(false);
-  const [showMemberDropdowns, setShowMemberDropdowns] = useState<Record<string, boolean>>({});
-  const [selectedPermissions, setSelectedPermissions] = useState<string[]>(() => {
-    return index.linkPermissions?.permissions || [];
+  const [publicAccess, setPublicAccess] = useState<boolean>(() => {
+    return !!(index.linkPermissions?.permissions && index.linkPermissions.permissions.length > 0);
+  });
+  const [anyoneCanJoin, setAnyoneCanJoin] = useState<boolean>(() => {
+    return index.linkPermissions?.permissions?.includes('can-write-intents') || false;
   });
   const [members, setMembers] = useState<Member[]>([]);
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
@@ -30,33 +31,9 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
-  const permissionsDropdownRef = useRef<HTMLDivElement>(null);
-  const memberDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const permissionsButtonRef = useRef<HTMLButtonElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
-  const memberButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const indexesService = useIndexes();
 
-  // Available public permissions
-  const availablePermissions: PublicPermission[] = [
-    {
-      id: 'can-discover',
-      label: 'Can discover',
-      description: 'Allow others to anonymously compare themselves to your index.'
-    },
-    {
-      id: 'can-write-intents',
-      label: 'Can write intents',
-      description: 'Let others create their own intents, become discoverable, and explore others.'
-    }
-  ];
-
-  const memberPermissions = [
-    { id: 'can-write', label: 'Can write', description: 'Members can create files and intents' },
-    { id: 'can-read', label: 'Can read', description: 'Member can view files and intents' },
-    { id: 'can-discover', label: 'Can discover', description: 'Member can discover and be discovered by others' },
-    { id: 'can-write-intents', label: 'Can write intents', description: 'Member can create intents and explore others' }
-  ];
 
   // Load members on mount
   const loadMembers = useCallback(async () => {
@@ -85,7 +62,7 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
         name: user.name,
         email: user.email,
         avatar: user.avatar,
-        permissions: ['can-write'] // Default permissions for new users
+        permissions: [] // Will be set when adding member
       })));
     } catch (error) {
       console.error('Error searching users:', error);
@@ -118,26 +95,24 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
           searchInputRef.current && !searchInputRef.current.contains(event.target as Node)) {
         setShowSuggestions(false);
       }
-      if (permissionsDropdownRef.current && !permissionsDropdownRef.current.contains(event.target as Node)) {
-        setShowPermissionsDropdown(false);
-      }
-      
-      // Close member dropdowns when clicking outside
-      Object.keys(showMemberDropdowns).forEach(memberId => {
-        const dropdownRef = memberDropdownRefs.current[memberId];
-        if (dropdownRef && !dropdownRef.contains(event.target as Node)) {
-          setShowMemberDropdowns(prev => ({ ...prev, [memberId]: false }));
-        }
-      });
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showMemberDropdowns]);
+  }, []);
 
-  const handleUpdatePermissions = async (permissions: string[]) => {
+  const handleUpdatePermissions = async (publicAccess: boolean, anyoneCanJoin: boolean) => {
     try {
       setIsUpdatingVisibility(true);
+      const permissions: string[] = [];
+      
+      if (publicAccess) {
+        permissions.push('can-discover');
+        if (anyoneCanJoin) {
+          permissions.push('can-write-intents');
+        }
+      }
+      
       await indexesService.updateLinkPermissions(index.id, permissions);
       const updatedIndex = await indexesService.getIndex(index.id);
       onIndexUpdate?.(updatedIndex);
@@ -158,18 +133,30 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
     }
   };
 
-  const handlePermissionToggle = (permissionId: string) => {
-    const updatedPermissions = selectedPermissions.includes(permissionId)
-      ? selectedPermissions.filter(id => id !== permissionId)
-      : [...selectedPermissions, permissionId];
+  const handlePublicAccessToggle = () => {
+    const newPublicAccess = !publicAccess;
+    setPublicAccess(newPublicAccess);
     
-    setSelectedPermissions(updatedPermissions);
-    handleUpdatePermissions(updatedPermissions);
+    // If turning off public access, also turn off anyone can join
+    if (!newPublicAccess) {
+      setAnyoneCanJoin(false);
+      handleUpdatePermissions(newPublicAccess, false);
+    } else {
+      handleUpdatePermissions(newPublicAccess, anyoneCanJoin);
+    }
+  };
+
+  const handleAnyoneCanJoinToggle = () => {
+    const newAnyoneCanJoin = !anyoneCanJoin;
+    setAnyoneCanJoin(newAnyoneCanJoin);
+    handleUpdatePermissions(publicAccess, newAnyoneCanJoin);
   };
 
   const handleAddMember = async (user: Member) => {
     try {
-      const newMember = await indexesService.addMember(index.id, user.id, user.permissions);
+      // All new members get basic member permissions
+      const defaultPermissions = ['can-read', 'can-write'];
+      const newMember = await indexesService.addMember(index.id, user.id, defaultPermissions);
       setMembers(prev => [...prev, newMember]);
       setMemberSearchQuery('');
       setShowSuggestions(false);
@@ -187,24 +174,6 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
     }
   };
 
-  const handleMemberPermissionToggle = async (memberId: string, permission: string) => {
-    const member = members.find(m => m.id === memberId);
-    if (!member) return;
-
-    const hasPermission = member.permissions.includes(permission);
-    const newPermissions = hasPermission
-      ? member.permissions.filter(p => p !== permission)
-      : [...member.permissions, permission];
-
-    try {
-      const updatedMember = await indexesService.updateMemberPermissions(index.id, memberId, newPermissions);
-      setMembers(prev => prev.map(member => 
-        member.id === memberId ? updatedMember : member
-      ));
-    } catch (error) {
-      console.error('Error updating member permissions:', error);
-    }
-  };
 
   const handleSearchInputChange = (value: string) => {
     setMemberSearchQuery(value);
@@ -215,16 +184,6 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
     }
     
     setShowSuggestions(shouldShow);
-  };
-
-  const togglePermissionsDropdown = () => {
-    const isOpening = !showPermissionsDropdown;
-    
-    if (isOpening && permissionsButtonRef.current) {
-      calculateDropdownPosition(permissionsButtonRef.current, 'permissions', 320);
-    }
-    
-    setShowPermissionsDropdown(!showPermissionsDropdown);
   };
 
   const calculateDropdownPosition = (buttonElement: HTMLElement, dropdownKey: string, width: number = 256) => {
@@ -243,50 +202,32 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
     return position;
   };
 
-  const toggleMemberDropdown = (memberId: string) => {
-    const isOpening = !showMemberDropdowns[memberId];
-    
-    if (isOpening && memberButtonRefs.current[memberId]) {
-      calculateDropdownPosition(memberButtonRefs.current[memberId]!, `member-${memberId}`, 256);
-    }
-    
-    setShowMemberDropdowns(prev => ({
-      ...prev,
-      [memberId]: !prev[memberId]
-    }));
-  };
-
-  const getMemberPermissionsText = (permissions: string[]) => {
-    if (permissions.length === 0) {
-      return 'No access';
-    }
-    
+  const getMemberRoleText = (permissions: string[]) => {
     // If user is an owner, show that prominently
     if (permissions.includes('owner')) {
       return 'Owner';
     }
     
-    return permissions.length === 1 
-      ? '1 permission' 
-      : `${permissions.length} permissions`;
+    return 'Member';
   };
 
   // Generate links based on permissions
-  const canShowShareLink = (selectedPermissions.includes('can-write-intents') || selectedPermissions.includes('can-discover')) && index.linkPermissions?.code;
-  const canShowMatchlistLink = selectedPermissions.includes('can-write-intents') && index.linkPermissions?.code;
+  const canShowShareLink = publicAccess && index.linkPermissions?.code;
+  const canShowMatchlistLink = anyoneCanJoin && index.linkPermissions?.code;
   
   const shareUrl = canShowShareLink && index.linkPermissions?.code ? `${window.location.origin}/vibecheck/${index.linkPermissions.code}` : '';
   const matchlistUrl = canShowMatchlistLink && index.linkPermissions?.code ? `${window.location.origin}/matchlist/${index.linkPermissions.code}` : '';
 
   return (
     <div className="space-y-8 mt-6 mr-0.5">
-      <div>
-        <div className="flex items-start justify-between">
+      <div className="space-y-4">
+        {/* Allow Incognito Visitors Toggle */}
+        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
           <div className="flex-1">
-            <div className="flex items-center gap-3 mt-2 mb-2">
-              <h3 className="text-md font-medium font-ibm-plex-mono text-black">Public Access</h3>
+            <div className="flex items-center gap-3 mb-1">
+              <h3 className="text-md font-medium font-ibm-plex-mono text-black">Allow Incognito Visitors</h3>
               <div className="flex items-center gap-2 text-sm text-gray-600">
-                {selectedPermissions.length > 0 ? (
+                {publicAccess ? (
                   <Globe className="h-4 w-4" />
                 ) : (
                   <Lock className="h-4 w-4" />
@@ -294,34 +235,55 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
               </div>
             </div>
             <p className="text-sm text-gray-600">
-              Grant access to anyone with the link
+              Non-members can view content without signing in or joining. They remain invisible to others.
             </p>
           </div>
           <div className="flex items-center gap-3 ml-4">
             {isUpdatingVisibility && (
               <div className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
             )}
-            <div className="relative">
-              <button
-                ref={permissionsButtonRef}
-                onClick={() => !isUpdatingVisibility && togglePermissionsDropdown()}
-                disabled={isUpdatingVisibility}
-                className={`flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  isUpdatingVisibility ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+            <button
+              onClick={() => !isUpdatingVisibility && handlePublicAccessToggle()}
+              disabled={isUpdatingVisibility}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                publicAccess ? 'bg-blue-600' : 'bg-gray-300'
+              } ${isUpdatingVisibility ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  publicAccess ? 'translate-x-6' : 'translate-x-1'
                 }`}
-              >
-                <span className="text-gray-700">
-                  {selectedPermissions.length === 0 
-                    ? 'No access' 
-                    : selectedPermissions.length === 1 
-                      ? '1 permission' 
-                      : `${selectedPermissions.length} permissions`
-                  }
-                </span>
-                <ChevronDown className="h-4 w-4 text-gray-400" />
-              </button>
-              
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Anyone Can Join Toggle */}
+        <div className={`flex items-center justify-between p-4 bg-gray-50 rounded-lg transition-opacity ${
+          !publicAccess ? 'opacity-50' : ''
+        }`}>
+          <div className="flex-1">
+            <div className="flex items-center gap-3 mb-1">
+              <h3 className="text-md font-medium font-ibm-plex-mono text-black">Anyone Can Join</h3>
             </div>
+            <p className="text-sm text-gray-600">
+              Membership is open. People can become members instantly without an invite or approval.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 ml-4">
+            <button
+              onClick={() => publicAccess && !isUpdatingVisibility && handleAnyoneCanJoinToggle()}
+              disabled={!publicAccess || isUpdatingVisibility}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                anyoneCanJoin && publicAccess ? 'bg-blue-600' : 'bg-gray-300'
+              } ${!publicAccess || isUpdatingVisibility ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  anyoneCanJoin && publicAccess ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
           </div>
         </div>
 
@@ -441,27 +403,15 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {/* Member permissions dropdown */}
-                  <div className="relative">
-                    <button
-                      ref={(el) => { memberButtonRefs.current[member.id] = el; }}
-                      onClick={() => member.permissions.includes('owner') ? null : toggleMemberDropdown(member.id)}
-                      disabled={member.permissions.includes('owner')}
-                      className={`flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                        member.permissions.includes('owner')
-                          ? 'cursor-not-allowed opacity-75 bg-gray-50'
-                          : 'hover:bg-gray-50 cursor-pointer'
-                      }`}
-                      title={member.permissions.includes('owner') ? 'Owner permissions cannot be modified' : ''}
-                    >
-                      <span className="text-gray-700">
-                        {getMemberPermissionsText(member.permissions)}
-                      </span>
-                      <ChevronDown className={`h-4 w-4 ${
-                        member.permissions.includes('owner') ? 'text-gray-300' : 'text-gray-400'
-                      }`} />
-                    </button>
-                    
+                  {/* Member role display */}
+                  <div className={`px-3 py-2 border border-gray-300 rounded-md bg-white text-sm ${
+                    member.permissions.includes('owner') ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'
+                  }`}>
+                    <span className={`${
+                      member.permissions.includes('owner') ? 'text-blue-700 font-medium' : 'text-gray-700'
+                    }`}>
+                      {getMemberRoleText(member.permissions)}
+                    </span>
                   </div>
                   {/* Only show remove button for non-owners */}
                   {!member.permissions.includes('owner') && (
@@ -485,44 +435,6 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
       {/* Portal-rendered dropdowns */}
       {typeof window !== 'undefined' && (
         <>
-          {/* Permissions dropdown */}
-          {showPermissionsDropdown && dropdownPositions.permissions && createPortal(
-            <div
-              ref={permissionsDropdownRef}
-              className="fixed z-[99999] bg-white border border-gray-200 rounded-lg shadow-lg pointer-events-auto"
-              style={{
-                top: dropdownPositions.permissions.top,
-                left: dropdownPositions.permissions.left,
-                width: dropdownPositions.permissions.width
-              }}
-            >
-              <div className="p-2">
-                {availablePermissions.map((permission) => (
-                  <label
-                    key={permission.id}
-                    className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-md cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedPermissions.includes(permission.id)}
-                      onChange={() => handlePermissionToggle(permission.id)}
-                      className="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                    />
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900">
-                        {permission.label}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {permission.description}
-                      </div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>,
-            document.body
-          )}
-
           {/* Suggestions dropdown */}
           {showSuggestions && dropdownPositions.suggestions && createPortal(
             <div
@@ -559,53 +471,6 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
             </div>,
             document.body
           )}
-
-          {/* Member dropdowns - only show for non-owners */}
-          {Object.entries(showMemberDropdowns).map(([memberId, isOpen]) => {
-            const member = members.find(m => m.id === memberId);
-            // Don't show dropdown for owners
-            if (!member || member.permissions.includes('owner')) return null;
-            
-            return isOpen && dropdownPositions[`member-${memberId}`] ? createPortal(
-              <div
-                key={memberId}
-                ref={(el) => { memberDropdownRefs.current[memberId] = el; }}
-                className="fixed z-[99999] bg-white border border-gray-200 rounded-lg shadow-lg pointer-events-auto"
-                style={{
-                  top: dropdownPositions[`member-${memberId}`].top,
-                  left: dropdownPositions[`member-${memberId}`].left,
-                  width: dropdownPositions[`member-${memberId}`].width
-                }}
-              >
-                <div className="p-2">
-                  {memberPermissions.map((permission) => {
-                    return (
-                      <label
-                        key={permission.id}
-                        className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-md cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={member.permissions.includes(permission.id)}
-                          onChange={() => handleMemberPermissionToggle(memberId, permission.id)}
-                          className="mt-0.5 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <div className="flex-1">
-                          <div className="text-sm font-medium text-gray-900">
-                            {permission.label}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {permission.description}
-                          </div>
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>,
-              document.body
-            ) : null;
-          })}
         </>
       )}
     </div>

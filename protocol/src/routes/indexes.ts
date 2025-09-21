@@ -951,9 +951,6 @@ router.put('/:id/member-settings',
         return res.status(accessCheck.status!).json({ error: accessCheck.error });
       }
 
-      const indexData = accessCheck.indexData!;
-      const isOwner = accessCheck.memberPermissions?.includes('owner') || false;
-
       // Update member settings (works for both owners and regular members)
       const updateData: any = { updatedAt: new Date() };
       if (prompt !== undefined) updateData.prompt = prompt || null;
