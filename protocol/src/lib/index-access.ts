@@ -62,7 +62,7 @@ export async function getIndexWithPermissions(
     return { 
       hasAccess: true, 
       indexData: index, 
-      memberPermissions: ['owner', 'can-write', 'can-read', 'can-view-files', 'can-discover', 'can-write-intents'] 
+      memberPermissions: ['owner', 'can-write', 'can-read', 'can-discover', 'can-write-intents'] 
     };
   }
   

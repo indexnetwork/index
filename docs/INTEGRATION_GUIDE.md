@@ -117,8 +117,7 @@ GET /indexes/share/{code}
     
     "linkPermissions": {
       "permissions": [
-        "can-discover",
-        "can-view-files"
+        "can-discover"
       ]
     }
   }

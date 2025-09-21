@@ -43,11 +43,6 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
       id: 'can-write-intents',
       label: 'Can write intents',
       description: 'Let others create their own intents, become discoverable, and explore others.'
-    },
-    {
-      id: 'can-view-files',
-      label: 'Can view files',
-      description: 'Enable others to view or download files in this index.'
     }
   ];
 

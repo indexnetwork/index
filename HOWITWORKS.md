@@ -29,11 +29,10 @@ Index specializes in the social intent space, enabling people to signal their pr
 
 Privacy isn't an afterthought but a foundational design constraint. Index uses a multi-layered access control model where content is organized into **indexes** with granular permissions. Users can share specific contexts without exposing their entire intentions, just like we do in real life.
 
-**Technical Implementation**: Index-based access control with five permission levels:
+**Technical Implementation**: Index-based access control with four permission levels:
 - `can-read`: View intents in the index
 - `can-write`: Add intents to the index  
 - `can-write-intents`: Create and modify intents in the index
-- `can-view-files`: Access supporting documents
 - `can-discover`: Participate in discovery within this context
 
 ### 3. Agent-Mediated Context
