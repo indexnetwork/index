@@ -441,66 +441,72 @@ export default function OnboardingPage() {
               <div>
                 <label className="block text-sm font-medium text-[#333] mb-3 font-ibm-plex-mono">What do you want to discover?</label>
                 <textarea
-                  placeholder="Type"
-                  className="w-full h-32 px-3 py-2 border border-[#E0E0E0] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#006D4B] focus:border-transparent font-ibm-plex-mono text-sm"
+                  placeholder="eg.Looking to connect with early-stage investors"
+                  className="w-full h-32 px-3 py-2 border border-[#E0E0E0] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#006D4B] focus:border-transparent font-ibm-plex-mono text-sm text-black"
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="border border-[#E0E0E0] rounded-lg p-4">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => handleFilesSelected(e.target.files)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploading}
-                    className="w-full h-12 flex items-center justify-center gap-2 text-[#333] hover:bg-[#F0F0F0] transition-colors font-ibm-plex-mono text-sm"
-                  >
-                    {isUploading ? (
-                      <>
-                        <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
-                        Uploading…
-                      </>
-                    ) : (
-                      <>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-                          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
-                          <polyline points="14,2 14,8 20,8"></polyline>
-                        </svg>
-                        Add Files
-                      </>
-                    )}
-                  </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
+                <div className="border border-[#E0E0E0] rounded-lg">
+                  <div className="relative w-full">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => handleFilesSelected(e.target.files)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-lg flex items-center justify-center gap-1.5"
+                    >
+                      {isUploading ? (
+                        <>
+                          <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                          Uploading…
+                        </>
+                      ) : (
+                        <>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                            <path d="M12 5v14"></path>
+                            <path d="M5 12h14"></path>
+                          </svg>
+                          Upload files
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="border border-[#E0E0E0] rounded-lg p-4">
-                  <div className="flex gap-2">
+                <div className="border border-[#E0E0E0] rounded-lg">
+                  <div className="relative w-full">
+                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm pointer-events-none">
+                      🔗
+                    </span>
                     <Input
-                      placeholder="Add URL"
+                      placeholder="Paste URL here"
                       value={linkUrl}
                       onChange={(e) => setLinkUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                      className="flex-1 border-0 focus:ring-0 font-ibm-plex-mono text-sm"
+                      className="text-sm bg-white rounded-lg font-ibm-plex-mono w-full pl-10 pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
                     />
-                    <button
-                      onClick={handleAddLink}
-                      disabled={!linkUrl.trim() || isAddingLink}
-                      className="px-3 text-[#666] hover:text-[#333] disabled:opacity-50"
-                    >
-                      {isAddingLink ? (
-                        <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    {isAddingLink ? (
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <button
+                        onClick={handleAddLink}
+                        disabled={!linkUrl}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        aria-label="Add URL"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
                           <line x1="12" y1="5" x2="12" y2="19"></line>
                           <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
-                      )}
-                    </button>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
