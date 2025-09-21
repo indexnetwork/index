@@ -33,7 +33,7 @@ type SharePageState = {
   user: User | null;
   
   // Flow state
-  step: 'loading' | 'ready' | 'vibecheck-running' | 'vibecheck-results' | 'auth-required' | 'onboarding-required' | 'connection-processing' | 'connection-sent' | 'error';
+  step: 'loading' | 'ready' | 'vibecheck-running' | 'vibecheck-results' | 'auth-required' | 'connection-processing' | 'connection-sent' | 'error';
   
   // Data
   uploadedFiles: File[];
@@ -126,9 +126,6 @@ export default function SharePage({ params }: SharePageProps) {
             }
             break;
 
-          case 'onboarding-required':
-            // User needs to complete onboarding - modal will be shown
-            break;
 
           case 'connection-processing':
             if (authenticated && state.index?.user?.id) {
@@ -222,7 +219,7 @@ export default function SharePage({ params }: SharePageProps) {
             // Check if needs onboarding
             if (!response.user.intro || response.user.intro.trim() === '') {
               if (state.autoRequestConnection) {
-                setState(prev => ({ ...prev, step: 'onboarding-required' }));
+                window.location.href = '/onboarding';
               }
             } else {
               // User is ready, check if should auto-connect
@@ -243,44 +240,6 @@ export default function SharePage({ params }: SharePageProps) {
     }
   }, [state.step, authenticated, ready, resolvedParams.code, state.autoRequestConnection]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Listen for onboarding completion from Header modal
-  useEffect(() => {
-    // Check for existing onboarding completion flag
-    const checkOnboardingCompletion = () => {
-      if (state.step === 'onboarding-required') {
-        try {
-          const completed = localStorage.getItem('onboarding_completed');
-          if (completed) {
-            setState(prev => ({ ...prev, step: 'connection-processing' }));
-            localStorage.removeItem('onboarding_completed');
-          }
-        } catch (error) {
-          console.warn('Failed to check onboarding completion:', error);
-        }
-      }
-    };
-
-    // Check initially
-    checkOnboardingCompletion();
-
-    // Listen for storage changes (from other tabs/windows)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'onboarding_completed' && state.step === 'onboarding-required') {
-        setState(prev => ({ ...prev, step: 'connection-processing' }));
-        localStorage.removeItem('onboarding_completed');
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Poll for changes in the same tab (since localStorage events don't fire in same tab)
-    const pollInterval = setInterval(checkOnboardingCompletion, 500);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(pollInterval);
-    };
-  }, [state.step]);
 
   // Event handlers
   const handleIntentFormSubmit = useCallback(async (data: { payload: string; files: File[]; vibeCheckIndex?: string }) => {
@@ -350,11 +309,7 @@ export default function SharePage({ params }: SharePageProps) {
     }
 
     if (!state.user?.intro || state.user.intro.trim() === '') {
-      setState(prev => ({ 
-        ...prev, 
-        step: 'onboarding-required',
-        autoRequestConnection: true 
-      }));
+      window.location.href = '/onboarding';
       return;
     }
 
@@ -497,7 +452,7 @@ export default function SharePage({ params }: SharePageProps) {
                 <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">Running vibecheck...</h3>
               )}
               
-              {(state.step === 'vibecheck-results' || state.step === 'auth-required' || state.step === 'onboarding-required' || state.step === 'connection-processing' || state.step === 'connection-sent') && (
+              {(state.step === 'vibecheck-results' || state.step === 'auth-required'  || state.step === 'connection-processing' || state.step === 'connection-sent') && (
                 <h3 className="text-xl mt-2 font-semibold text-gray-900 mb-4">What could happen here</h3>
               )}
               
@@ -525,7 +480,7 @@ export default function SharePage({ params }: SharePageProps) {
                 </div>
               )}
 
-              {(state.step === 'vibecheck-results' || state.step === 'auth-required' || state.step === 'onboarding-required' || state.step === 'connection-processing' || state.step === 'connection-sent') && (
+              {(state.step === 'vibecheck-results' || state.step === 'auth-required'  || state.step === 'connection-processing' || state.step === 'connection-sent') && (
                 <div className="mt-4 space-y-4">
                   <div className="mb-4">
                     <div className="bg-white py-3">
@@ -604,11 +559,10 @@ export default function SharePage({ params }: SharePageProps) {
                           variant="bordered"
                           className="flex-1 text-white border-black border-b-2"
                           style={{ background: state.connectionRequestSent ? '#6b7280' : '#3f6ed9' }}
-                          disabled={state.step === 'auth-required' || state.step === 'onboarding-required' || state.step === 'connection-processing' || state.connectionRequestSent}
+                          disabled={state.step === 'auth-required'  || state.step === 'connection-processing' || state.connectionRequestSent}
                         >
                           {state.connectionRequestSent ? 'Request sent' :
                            state.step === 'auth-required' ? 'Authenticating...' : 
-                           state.step === 'onboarding-required' ? 'Complete Onboarding' : 
                            state.step === 'connection-processing' ? 'Processing Connection...' :
                            'Request Connection'}
                         </Button>
