@@ -4,13 +4,14 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticatePrivy, AuthRequest } from '../middleware/auth';
 import fs from 'fs';
+import { getUploadsPath } from '../lib/paths';
 
 const router = Router();
 
 // Configure multer for avatar uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(__dirname, '../../uploads/avatars');
+    const uploadDir = getUploadsPath('avatars');
     // Ensure directory exists
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });

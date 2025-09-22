@@ -6,6 +6,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { analyzeFolder } from '../../agents/core/intent_inferrer';
 import { summarizeIntent } from '../../agents/core/intent_summarizer';
 import { Events } from '../events';
+import { getTempPath } from '../paths';
 
 import type { IntegrationFile } from '../integrations';
 
@@ -41,7 +42,7 @@ export async function processFilesToIntents(options: {
   const { userId, indexId, files, textInstruction, count, summarize = false, timeoutMs = 60000, onProgress } = options;
   if (!files.length) return { intentsGenerated: 0, filesImported: 0 };
 
-  const baseTempDir = path.join(process.cwd(), 'temp-uploads', `sync-${userId}-${Date.now()}`);
+  const baseTempDir = getTempPath('sync', `sync-${userId}-${Date.now()}`);
   await fs.promises.mkdir(baseTempDir, { recursive: true });
   try {
     // Write all files into a single temp folder and call analyze once

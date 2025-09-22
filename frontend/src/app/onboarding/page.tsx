@@ -146,7 +146,6 @@ export default function OnboardingPage() {
       
       const response = await api.patch<APIResponse<User>>('/auth/profile', {
         name: name.trim(),
-        intro: 'Onboarded user', // Set a default intro to mark onboarding as started
         avatar: avatarFilename || undefined,
       });
       

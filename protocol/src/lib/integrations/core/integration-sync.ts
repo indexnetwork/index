@@ -7,6 +7,7 @@ import { analyzeFolder } from '../../../agents/core/intent_inferrer';
 import { Events } from '../../events';
 import { handlers } from '../index';
 import { log } from '../../log';
+import { getTempPath } from '../../paths';
 
 interface SyncResult {
   success: boolean;
@@ -16,7 +17,7 @@ interface SyncResult {
 }
 
 function makeTempDir(userId: string): Promise<string> {
-  const tempDir = path.join(process.cwd(), 'temp-uploads', `sync-${userId}-${Date.now()}`);
+  const tempDir = getTempPath('sync', `sync-${userId}-${Date.now()}`);
   return fs.promises
     .mkdir(tempDir, { recursive: true })
     .then(() => tempDir);

@@ -11,6 +11,7 @@ import { config } from '../crawl/config';
 import { log } from '../log';
 import { handlers } from '../integrations';
 import { processFilesToIntents } from './process-intents';
+import { getTempPath } from '../paths';
 
 export type SyncProviderName = 'links' | 'gmail' | 'notion' | 'slack' | 'discord' | 'calendar';
 
@@ -91,7 +92,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
     let filesImported = 0;
     let skippedUnchanged = 0;
 
-    const baseTempDir = path.join(process.cwd(), 'temp-uploads', `links-${userId}-${Date.now()}`);
+    const baseTempDir = getTempPath('links-temp', `links-${userId}-${Date.now()}`);
     await fs.promises.mkdir(baseTempDir, { recursive: true });
     try {
       let completed = 0;

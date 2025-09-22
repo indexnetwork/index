@@ -11,11 +11,12 @@ import { getIndexWithPermissions } from '../lib/index-access';
 import { vibeCheck } from '../agents/external/vibe_checker_text';
 import { processUploadedFiles } from '../lib/file-processing';
 import { analyzeFolder } from '../agents/core/intent_inferrer';
+import { getTempPath } from '../lib/paths';
 
 const router = Router();
 
 // Configure multer for temporary file uploads
-const tempUploadDir = path.join(__dirname, '../../uploads/temp');
+const tempUploadDir = getTempPath('vibecheck');
 if (!fs.existsSync(tempUploadDir)) {
   fs.mkdirSync(tempUploadDir, { recursive: true });
 }
