@@ -11,7 +11,7 @@
     "drizzle/**/*",
     "*.log"
   ],
-  "exec": "node -r ts-node/register --transpile-only src/index.ts",
+  "exec": "node -r ts-node/register src/index.ts",
   "env": {
     "NODE_ENV": "development",
     "TS_NODE_TRANSPILE_ONLY": "true",
