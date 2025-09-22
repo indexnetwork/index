@@ -1,9 +1,10 @@
 {
   "name": "protocol",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "scripts": {
-    "dev": "nodemon",
+    "dev": "nodemon --inspect",
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src/**/*.ts",
