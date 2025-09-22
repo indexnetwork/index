@@ -69,6 +69,7 @@ export default function OnboardingPage() {
 
   // Create index step states
   const [indexName, setIndexName] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [createdIndex, setCreatedIndex] = useState<{ id: string; name: string; inviteCode?: string } | null>(null);
 
   // Invite members step states
@@ -323,14 +324,26 @@ export default function OnboardingPage() {
     try {
       const createRequest = {
         title: indexName.trim(),
-        // Note: Other settings like visibility and permissions are handled by the backend
       };
       
       const response = await indexService.createIndex(createRequest);
+      
+      // Set up privacy permissions based on user selection
+      if (!isPrivate) {
+        // Public: anyone can discover and join
+        await indexService.updateLinkPermissions(response.id, ['can-discover', 'can-write-intents']);
+      } else {
+        // Private: only invited users can join (no permissions = private)
+        await indexService.updateLinkPermissions(response.id, []);
+      }
+      
+      // Get updated index with link permissions
+      const updatedIndex = await indexService.getIndex(response.id);
+      
       setCreatedIndex({
-        id: response.id,
-        name: response.title,
-        inviteCode: response.linkPermissions?.code
+        id: updatedIndex.id,
+        name: updatedIndex.title,
+        inviteCode: updatedIndex.linkPermissions?.code
       });
       
       success('Index created successfully!');
@@ -431,7 +444,7 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#333] mb-3 font-ibm-plex-mono">Name Surname</label>
+                <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Name Surname</label>
                 <Input
                   type="text"
                   placeholder="Enter your name"
@@ -442,7 +455,7 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#333] mb-3 font-ibm-plex-mono">Email</label>
+                <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Email</label>
                 <Input
                   type="email"
                   placeholder={user?.email || "seren@index.network"}
@@ -458,7 +471,7 @@ export default function OnboardingPage() {
               <Button
                 onClick={handleProfileSubmit}
                 disabled={!name.trim() || isLoading}
-                className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
+                className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
               >
                 {isLoading ? 'Saving...' : 'Next'}
               </Button>
@@ -535,7 +548,7 @@ export default function OnboardingPage() {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isUploading}
-                      className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-lg flex items-center justify-center gap-1.5"
+                      className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-black hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-lg flex items-center justify-center gap-1.5"
                     >
                       {isUploading ? (
                         <>
@@ -594,7 +607,7 @@ export default function OnboardingPage() {
                         <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
                         <polyline points="14,2 14,8 20,8"></polyline>
                       </svg>
-                      <span className="text-sm text-[#333] font-ibm-plex-mono">{file.name}</span>
+                      <span className="text-sm text-black font-ibm-plex-mono">{file.name}</span>
                     </div>
                   ))}
                   {links.map((link) => (
@@ -603,7 +616,7 @@ export default function OnboardingPage() {
                         <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                         <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                       </svg>
-                      <span className="text-sm text-[#333] font-ibm-plex-mono truncate">{link.url}</span>
+                      <span className="text-sm text-black font-ibm-plex-mono truncate">{link.url}</span>
                     </div>
                   ))}
                 </div>
@@ -614,13 +627,13 @@ export default function OnboardingPage() {
               <Button
                 variant="outline"
                 onClick={() => setCurrentStep(getPreviousStep('connections'))}
-                className="flex-1 border-[#E0E0E0] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono"
+                className="flex-1 border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
               >
                 Back
               </Button>
               <Button
                 onClick={() => setCurrentStep(getNextStep('connections'))}
-                className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
+                className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
               >
                 Next
               </Button>
@@ -639,15 +652,15 @@ export default function OnboardingPage() {
         return (
           <div className="max-w-2xl mx-auto">
             <div className="mb-8">
-              <h1 className="text-2xl font-bold text-[#333] mb-4 font-ibm-plex-mono">Create your index.</h1>
-              <p className="text-[#666] font-ibm-plex-mono mb-6">
+              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Create your index.</h1>
+              <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
                 Create a space for your network to discover and share opportunities.
               </p>
             </div>
 
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-[#333] mb-3 font-ibm-plex-mono">Index Name</label>
+                <label className="block text-sm font-bold text-black mb-3 font-ibm-plex-mono">Index Name</label>
                 <Input
                   type="text"
                   placeholder="Enter your name"
@@ -658,38 +671,54 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#333] mb-4 font-ibm-plex-mono">Choose who can discover.</label>
-                <p className="text-[#666] font-ibm-plex-mono mb-6">
+                <label className="block text-sm font-bold text-black mb-2 font-ibm-plex-mono">Choose who can discover.</label>
+                <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
                   Decide who can join, what's visible, and how people discover your Index.
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                  <div className="border-2 border-[#006D4B] bg-white p-4 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setIsPrivate(false)}
+                    className={`border-2 p-4 rounded-md text-left transition-all ${
+                      !isPrivate 
+                        ? 'border-[#007EFF] bg-white' 
+                        : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
+                    }`}
+                  >
                     <div className="flex items-center gap-3 mb-2">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#006D4B]">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={!isPrivate ? "text-[#007EFF]" : "text-black"}>
                         <circle cx="12" cy="12" r="10"></circle>
                         <path d="M12 6v6l4 2"></path>
                       </svg>
-                      <h3 className="font-bold text-[#333] font-ibm-plex-mono">Anyone can join</h3>
+                      <h3 className={`font-bold font-ibm-plex-mono ${!isPrivate ? "text-black" : "text-[#666]"}`}>Anyone can join</h3>
                     </div>
-                    <p className="text-sm text-[#666] font-ibm-plex-mono">
+                    <p className="text-sm text-black font-ibm-plex-mono">
                       People can discover and join your network freely.
                     </p>
-                  </div>
+                  </button>
 
-                  <div className="border border-[#E0E0E0] bg-[#F8F9FA] p-4 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setIsPrivate(true)}
+                    className={`border-2 p-4 rounded-md text-left transition-all ${
+                      isPrivate 
+                        ? 'border-[#007EFF] bg-white' 
+                        : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
+                    }`}
+                  >
                     <div className="flex items-center gap-3 mb-2">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#666]">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className={isPrivate ? "text-[#007EFF]" : "text-black"}>
                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                         <circle cx="12" cy="16" r="1"></circle>
                         <path d="m7 11 0-4a5 5 0 0 1 10 0v4"></path>
                       </svg>
-                      <h3 className="font-bold text-[#666] font-ibm-plex-mono">Private</h3>
+                      <h3 className={`font-bold font-ibm-plex-mono ${isPrivate ? "text-black" : "text-[#666]"}`}>Private</h3>
                     </div>
                     <p className="text-sm text-[#666] font-ibm-plex-mono">
                       Only people you invited or people with the invitation link can join.
                     </p>
-                  </div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -698,14 +727,14 @@ export default function OnboardingPage() {
               <Button
                 variant="outline"
                 onClick={() => setCurrentStep(getPreviousStep('create_index'))}
-                className="flex-1 border-[#E0E0E0] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono"
+                className="flex-1 border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
               >
                 Back
               </Button>
               <Button
                 onClick={handleCreateIndex}
                 disabled={!indexName.trim() || isLoading}
-                className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
+                className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
               >
                 {isLoading ? 'Creating...' : 'Next'}
               </Button>
@@ -724,76 +753,51 @@ export default function OnboardingPage() {
         return (
           <div className="max-w-2xl mx-auto">
             <div className="mb-8">
-              <h1 className="text-2xl font-bold text-[#333] mb-4 font-ibm-plex-mono">Invite your network.</h1>
-              <p className="text-[#666] font-ibm-plex-mono mb-6">
+              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Invite your network.</h1>
+              <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
                 We found <strong>{networkParticipants} participants</strong> from your existing network. You can invite them automatically, or share a link to invite on your own.
               </p>
             </div>
 
-            <div className="space-y-6">
-              <div className="mb-6">
-                <p className="text-[#666] font-ibm-plex-mono">
-                  <strong>Note:</strong> {networkParticipants} participants will receive an email from Index Network. You'll be able to review and edit the email in the next step before anything is sent.
-                </p>
-              </div>
-
+            <div className="flex justify-between items-start gap-8 mt-8">
+              {/* Left side - Invite method buttons */}
               <div className="flex gap-4">
                 <Button
-                  onClick={() => setInviteMethod('automatic')}
-                  className={`flex-1 px-6 py-4 font-ibm-plex-mono ${
-                    inviteMethod === 'automatic' 
-                      ? 'bg-[#000] text-white' 
-                      : 'bg-white text-[#333] border border-[#E0E0E0] hover:bg-[#F0F0F0]'
-                  }`}
+                  onClick={() => {
+                    setInviteMethod('automatic');
+                    handleInviteMembers();
+                  }}
+                  className="px-6 py-4 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
                 >
                   Invite Automatically
                 </Button>
                 <Button
-                  onClick={() => setInviteMethod('link')}
-                  className={`flex-1 px-6 py-4 font-ibm-plex-mono ${
-                    inviteMethod === 'link' 
-                      ? 'bg-[#000] text-white' 
-                      : 'bg-white text-[#333] border border-[#E0E0E0] hover:bg-[#F0F0F0]'
-                  }`}
+                  onClick={() => {
+                    setInviteMethod('link');
+                    handleInviteMembers();
+                  }}
+                  className="px-6 py-4 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
                 >
-                  Copy invite link
+                  Copy Invite Link
                 </Button>
               </div>
-            </div>
 
-            <div className="flex gap-3 mt-8">
-              <Button
-                variant="outline"
-                onClick={() => setCurrentStep(getPreviousStep('invite_members'))}
-                className="flex-1 border-[#E0E0E0] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono"
-              >
-                Back
-              </Button>
-              {inviteMethod ? (
+              {/* Right side - Navigation buttons */}
+              <div className="flex gap-3">
                 <Button
-                  onClick={handleInviteMembers}
-                  className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
+                  variant="outline"
+                  onClick={() => setCurrentStep(getPreviousStep('invite_members'))}
+                  className="border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
                 >
-                  {currentFlow === 'flow_2' 
-                    ? (inviteMethod === 'automatic' ? 'Send Invites & Finish' : 'Copy Link & Finish')
-                    : (inviteMethod === 'automatic' ? 'Send Invites' : 'Copy Link & Continue')
-                  }
+                  Back
                 </Button>
-              ) : (
                 <Button
-                  onClick={() => currentFlow === 'flow_2' ? handleCompleteOnboarding() : setCurrentStep(getNextStep('invite_members'))}
-                  className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
+                  onClick={handleCompleteOnboarding}
+                  className="bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
                 >
-                  {currentFlow === 'flow_2' ? 'Finish' : 'Next'}
+                  Finish
                 </Button>
-              )}
-              <Button
-                variant="outline"
-                onClick={() => currentFlow === 'flow_2' ? handleCompleteOnboarding() : setCurrentStep(getNextStep('invite_members'))}
-                className="px-6 border-[#E0E0E0] text-[#666] hover:bg-[#F0F0F0] font-ibm-plex-mono"
-              >
-                {currentFlow === 'flow_2' ? 'Skip & Finish' : 'Skip'}
-              </Button>
+              </div>
             </div>
           </div>
         );
@@ -812,7 +816,7 @@ export default function OnboardingPage() {
               {mockIndexes.map((index) => (
                 <div key={index.id} className="border border-[#E0E0E0] rounded-lg p-6 bg-white">
                   <div className="text-center">
-                    <h3 className="text-lg font-bold text-[#333] mb-2 font-ibm-plex-mono">{index.name}</h3>
+                    <h3 className="text-lg font-bold text-black mb-2 font-ibm-plex-mono">{index.name}</h3>
                     <p className="text-sm text-[#666] mb-4 font-ibm-plex-mono">{index.description}</p>
                     <p className="text-xs text-[#888] mb-4 font-ibm-plex-mono">{index.members.toLocaleString()} members</p>
                     <Button
@@ -831,7 +835,7 @@ export default function OnboardingPage() {
                       className={`w-full font-ibm-plex-mono ${
                         selectedIndexes.has(index.id)
                           ? 'bg-[#006D4B] text-white hover:bg-[#005A3E]'
-                          : 'border-[#E0E0E0] text-[#333] hover:bg-[#F0F0F0]'
+                          : 'border-[#E0E0E0] text-black hover:bg-[#F0F0F0]'
                       }`}
                     >
                       {selectedIndexes.has(index.id) ? 'Joined' : 'Join'}
@@ -845,14 +849,14 @@ export default function OnboardingPage() {
               <Button
                 variant="outline"
                 onClick={() => setCurrentStep(getPreviousStep('join_indexes'))}
-                className="flex-1 border-[#E0E0E0] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono"
+                className="flex-1 border-[#E0E0E0] text-black hover:bg-[#F0F0F0] font-ibm-plex-mono"
               >
                 Back
               </Button>
               <Button
                 onClick={handleCompleteOnboarding}
                 disabled={isLoading}
-                className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
+                className="flex-1 bg-[#000] text-white hover:bg-black font-ibm-plex-mono"
               >
                 {isLoading ? 'Finishing...' : 'Next'}
               </Button>
