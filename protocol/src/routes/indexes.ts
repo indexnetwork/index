@@ -563,6 +563,7 @@ router.post('/:id/members',
         userId,
         permissions,
         prompt: indexData[0]?.prompt || null, // Use index prompt as default member prompt
+        autoAssign: true // Temporary: always set to true for now
       });
 
       // Get member details
