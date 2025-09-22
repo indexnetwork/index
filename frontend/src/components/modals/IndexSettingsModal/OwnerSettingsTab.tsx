@@ -439,7 +439,7 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
           {showSuggestions && dropdownPositions.suggestions && createPortal(
             <div
               ref={suggestionsRef}
-              className="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"
+              className="fixed z-[100] bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto pointer-events-auto"
               style={{
                 top: dropdownPositions.suggestions.top,
                 left: dropdownPositions.suggestions.left,
@@ -450,8 +450,13 @@ export default function OwnerSettingsTab({ index, onIndexUpdate }: OwnerSettings
                 filteredSuggestions.map((user) => (
                   <button
                     key={user.id}
-                    onClick={() => handleAddMember(user)}
-                    className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 text-left"
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleAddMember(user);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 text-left cursor-pointer"
                   >
                     <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
                       {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
