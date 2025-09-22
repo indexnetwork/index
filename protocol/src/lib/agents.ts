@@ -76,47 +76,17 @@ export function traceableStructuredLlm(name: string, tags: string[], metadata: R
   return async (prompt: string, schema: any) => {
     const handler = createLangfuseHandler(name, { ...metadata, tags });
     
-    // Add JSON formatting instructions to the prompt
-    const jsonPrompt = `${prompt}
-
-IMPORTANT: Return your response as a valid JSON object that matches this structure exactly. Do not include any text before or after the JSON.`;
+    // Use LangChain's native withStructuredOutput method
+    const structuredLlm = llm.withStructuredOutput(schema, {
+      name: schema.name || 'structured_output'
+    });
     
-    const response = await llm.invoke(jsonPrompt, { runName: name, callbacks: [handler] });
+    const response = await structuredLlm.invoke(prompt, { 
+      runName: name, 
+      callbacks: [handler] 
+    });
     
-    // Extract the text content
-    let textContent = '';
-    if (typeof response === 'string') {
-      textContent = response;
-    } else if (response && typeof response === 'object' && 'content' in response) {
-      if (Array.isArray(response.content)) {
-        for (const item of response.content) {
-          if (item.type === 'text' && item.text) {
-            textContent += item.text;
-          }
-        }
-      } else if (typeof response.content === 'string') {
-        textContent = response.content;
-      }
-    }
-    
-    // Try to parse the JSON response
-    try {
-      // Remove any markdown code blocks if present
-      textContent = textContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      
-      const parsed = JSON.parse(textContent);
-      
-      // Validate against schema if zod is available
-      if (schema && schema.parse) {
-        return schema.parse(parsed);
-      }
-      
-      return parsed;
-    } catch (error) {
-      console.error('Failed to parse structured output:', error);
-      console.error('Raw response:', textContent);
-      throw new Error('Failed to parse AI response as JSON');
-    }
+    return response;
   };
 }
 

@@ -17,7 +17,7 @@
     "@composio/core": "^0.1.44",
     "@langchain/aws": "^0.1.15",
     "@langchain/community": "^0.3.45",
-    "@langchain/core": "^0.3.57",
+    "@langchain/core": "^0.3.77",
     "@langchain/langgraph": "^0.2.73",
     "@langchain/openai": "^0.5.11",
     "@privy-io/server-auth": "^1.26.1",
