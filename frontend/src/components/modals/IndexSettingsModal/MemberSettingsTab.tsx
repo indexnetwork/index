@@ -126,7 +126,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
       setIsSavingPrompt(true);
       await api.put(`/indexes/${index.id}/member-settings`, { 
         prompt: prompt.trim() || null,
-        autoAssign: memberSettings?.isOwner ? undefined : false 
+        autoAssign: true // Temporary: always set to true for now
       });
       success('Settings saved');
       setOriginalPrompt(prompt);
