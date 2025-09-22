@@ -1,17 +1,19 @@
 "use client";
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { User, AvatarUploadResponse, APIResponse } from "@/lib/types";
 import { useAuthenticatedAPI } from "@/lib/api";
 import { getAvatarUrl } from "@/lib/file-utils";
 import { useNotifications } from "@/contexts/NotificationContext";
 import ClientLayout from "@/components/ClientLayout";
+import { useIndexService } from "@/services/indexes";
 
-type OnboardingStep = 'profile' | 'connections' | 'library' | 'indexes';
+type OnboardingStep = 'profile' | 'connections' | 'create_index' | 'invite_members' | 'indexes' | 'join_indexes';
+type OnboardingFlow = 'flow_1' | 'flow_2';
 
 interface IntegrationState {
   id: 'notion' | 'slack' | 'discord' | 'calendar' | 'gmail';
@@ -23,8 +25,11 @@ export default function OnboardingPage() {
   const [currentStep, setCurrentStep] = useState<OnboardingStep>('profile');
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentFlow, setCurrentFlow] = useState<OnboardingFlow>('flow_1');
   const router = useRouter();
+  const searchParams = useSearchParams();
   const api = useAuthenticatedAPI();
+  const indexService = useIndexService();
   const { success, error } = useNotifications();
 
   // Profile step states
@@ -62,6 +67,14 @@ export default function OnboardingPage() {
   ];
   const [selectedIndexes, setSelectedIndexes] = useState<Set<string>>(new Set());
 
+  // Create index step states
+  const [indexName, setIndexName] = useState('');
+  const [createdIndex, setCreatedIndex] = useState<{ id: string; name: string; inviteCode?: string } | null>(null);
+
+  // Invite members step states
+  const [inviteMethod, setInviteMethod] = useState<'automatic' | 'link' | null>(null);
+  const [networkParticipants] = useState(523); // Mock data as shown in the images
+
   // Load integrations status
   const loadIntegrations = React.useCallback(async () => {
     try {
@@ -92,6 +105,16 @@ export default function OnboardingPage() {
       // Keep default state if API fails
     }
   }, [api]);
+
+  // Detect flow from query string
+  useEffect(() => {
+    const flow = searchParams.get('flow');
+    if (flow === 'flow_2') {
+      setCurrentFlow('flow_2');
+    } else {
+      setCurrentFlow('flow_1');
+    }
+  }, [searchParams]);
 
   React.useEffect(() => {
     // Fetch user data on load
@@ -133,6 +156,41 @@ export default function OnboardingPage() {
     }
   };
 
+  // Navigation helpers based on flow
+  const getNextStep = (currentStep: OnboardingStep): OnboardingStep => {
+    if (currentFlow === 'flow_1') {
+      switch (currentStep) {
+        case 'profile': return 'connections';
+        case 'connections': return 'join_indexes';
+        default: return 'join_indexes';
+      }
+    } else { // flow_2
+      switch (currentStep) {
+        case 'profile': return 'create_index';
+        case 'create_index': return 'connections';
+        case 'connections': return 'invite_members';
+        default: return 'invite_members';
+      }
+    }
+  };
+
+  const getPreviousStep = (currentStep: OnboardingStep): OnboardingStep => {
+    if (currentFlow === 'flow_1') {
+      switch (currentStep) {
+        case 'connections': return 'profile';
+        case 'join_indexes': return 'connections';
+        default: return 'profile';
+      }
+    } else { // flow_2
+      switch (currentStep) {
+        case 'create_index': return 'profile';
+        case 'connections': return 'create_index';
+        case 'invite_members': return 'connections';
+        default: return 'profile';
+      }
+    }
+  };
+
   const handleProfileSubmit = async () => {
     if (!user || !name.trim()) return;
     
@@ -151,7 +209,7 @@ export default function OnboardingPage() {
       
       if (response.user) {
         setUser(response.user);
-        setCurrentStep('connections');
+        setCurrentStep(getNextStep('profile'));
       }
     } catch (err) {
       console.error('Error updating profile:', err);
@@ -258,6 +316,54 @@ export default function OnboardingPage() {
     }
   }, [api, linkUrl, success, error]);
 
+  const handleCreateIndex = async () => {
+    if (!indexName.trim()) return;
+    
+    setIsLoading(true);
+    try {
+      const createRequest = {
+        title: indexName.trim(),
+        // Note: Other settings like visibility and permissions are handled by the backend
+      };
+      
+      const response = await indexService.createIndex(createRequest);
+      setCreatedIndex({
+        id: response.id,
+        name: response.title,
+        inviteCode: response.linkPermissions?.code
+      });
+      
+      success('Index created successfully!');
+      setCurrentStep(getNextStep('create_index'));
+    } catch (err) {
+      console.error('Error creating index:', err);
+      error('Failed to create index');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleInviteMembers = async () => {
+    if (inviteMethod === 'automatic') {
+      // In a real implementation, this would send invites
+      success('Invitations will be sent to your network!');
+    } else if (inviteMethod === 'link') {
+      if (createdIndex?.inviteCode) {
+        // Copy invite link to clipboard
+        const inviteLink = `${window.location.origin}/invite/${createdIndex.inviteCode}`;
+        await navigator.clipboard.writeText(inviteLink);
+        success('Invite link copied to clipboard!');
+      }
+    }
+    
+    // In flow_2, invite_members is the final step
+    if (currentFlow === 'flow_2') {
+      handleCompleteOnboarding();
+    } else {
+      setCurrentStep(getNextStep('invite_members'));
+    }
+  };
+
   const handleCompleteOnboarding = async () => {
     try {
       setIsLoading(true);
@@ -275,12 +381,15 @@ export default function OnboardingPage() {
     switch (currentStep) {
       case 'profile':
         return (
-          <div className="max-w-md mx-auto">
+          <div className="max-w-2xl mx-auto">
             <div className="mb-8">
-              <h1 className="text-2xl font-bold text-[#333] mb-2 font-ibm-plex-mono">Tell us who you are.</h1>
+              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Tell us who you are.</h1>
+              <p className="text-black text-[14px] font-ibm-plex-mono">
+                Set up your profile to get started with Index Network.
+              </p>
             </div>
 
-            <div className="space-y-6">
+            <div className="max-w-md space-y-6">
               <div className="flex">
                 <div className="relative">
                   <div className="w-20 h-20 rounded-full overflow-hidden bg-[#F5F5F5] flex items-center justify-center">
@@ -307,7 +416,7 @@ export default function OnboardingPage() {
                     className="absolute -bottom-1 -right-1 w-6 h-6 bg-[#006D4B] text-white rounded-full flex items-center justify-center hover:bg-[#005A3E] transition-colors"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2-2z"></path>
                       <circle cx="12" cy="13" r="4"></circle>
                     </svg>
                   </button>
@@ -322,7 +431,7 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#333] mb-2 font-ibm-plex-mono">Name Surname</label>
+                <label className="block text-sm font-medium text-[#333] mb-3 font-ibm-plex-mono">Name Surname</label>
                 <Input
                   type="text"
                   placeholder="Enter your name"
@@ -333,7 +442,7 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-[#333] mb-2 font-ibm-plex-mono">Email</label>
+                <label className="block text-sm font-medium text-[#333] mb-3 font-ibm-plex-mono">Email</label>
                 <Input
                   type="email"
                   placeholder={user?.email || "seren@index.network"}
@@ -343,11 +452,13 @@ export default function OnboardingPage() {
                   disabled
                 />
               </div>
+            </div>
 
+            <div className="flex gap-3 mt-8 max-w-md">
               <Button
                 onClick={handleProfileSubmit}
                 disabled={!name.trim() || isLoading}
-                className="w-full bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
+                className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
               >
                 {isLoading ? 'Saving...' : 'Next'}
               </Button>
@@ -359,7 +470,7 @@ export default function OnboardingPage() {
         return (
           <div className="max-w-2xl mx-auto">
             <div className="mb-8">
-              <h1 className="text-2xl font-bold text-[#333] mb-4 font-ibm-plex-mono">Connect your accounts.</h1>
+              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Connect your accounts.</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
                 Link the places you already work and share. Nobody gets notified, and it's only used to understand what you're looking for.
               </p>
@@ -376,7 +487,7 @@ export default function OnboardingPage() {
                         height={24} 
                         alt={integration.name}
                       />
-                      <span className="font-small text-[#333] font-ibm-plex-mono text-[14px]">{integration.name}</span>
+                      <span className="font-small text-black font-ibm-plex-mono text-[14px]">{integration.name}</span>
                     </div>
                     <button
                       onClick={() => toggleIntegration(integration.id)}
@@ -402,8 +513,11 @@ export default function OnboardingPage() {
             </div>
 
             <div className="mb-8">
-              <h2 className="text-lg font-bold text-[#333] mb-4 font-ibm-plex-mono">Add context files & links</h2>
-              <p className="text-[#666] font-ibm-plex-mono mb-6">
+              <h2 className="text-lg font-bold text-black mb-4 font-ibm-plex-mono">
+                Add context files & links
+                </h2>
+              
+              <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
                 Add text-based context – for example, a <strong>research note</strong>, a <strong>draft proposal</strong>, or a <strong>blogpost</strong> you wrote or found inspiring.
               </p>
 
@@ -499,20 +613,20 @@ export default function OnboardingPage() {
             <div className="flex gap-3">
               <Button
                 variant="outline"
-                onClick={() => setCurrentStep('profile')}
+                onClick={() => setCurrentStep(getPreviousStep('connections'))}
                 className="flex-1 border-[#E0E0E0] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono"
               >
                 Back
               </Button>
               <Button
-                onClick={() => setCurrentStep('library')}
+                onClick={() => setCurrentStep(getNextStep('connections'))}
                 className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
               >
                 Next
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setCurrentStep('library')}
+                onClick={() => setCurrentStep(getNextStep('connections'))}
                 className="px-6 border-[#E0E0E0] text-[#666] hover:bg-[#F0F0F0] font-ibm-plex-mono"
               >
                 I'll do later
@@ -521,58 +635,176 @@ export default function OnboardingPage() {
           </div>
         );
 
-      case 'library':
+      case 'create_index':
         return (
           <div className="max-w-2xl mx-auto">
             <div className="mb-8">
-              <h1 className="text-2xl font-bold text-[#333] mb-4 font-ibm-plex-mono">Help Index guide your discovery</h1>
+              <h1 className="text-2xl font-bold text-[#333] mb-4 font-ibm-plex-mono">Create your index.</h1>
               <p className="text-[#666] font-ibm-plex-mono mb-6">
-                Write what you're curious about. Index will use your context files and connections to guide better matches.
+                Create a space for your network to discover and share opportunities.
               </p>
             </div>
 
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-[#333] mb-3 font-ibm-plex-mono">What do you want to discover?</label>
-                <textarea
-                  placeholder="eg. Looking to connect with early-stage investors"
-                  className="w-full h-32 px-3 py-2 border border-[#E0E0E0] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-[#006D4B] focus:border-transparent font-ibm-plex-mono text-sm text-black"
+                <label className="block text-sm font-medium text-[#333] mb-3 font-ibm-plex-mono">Index Name</label>
+                <Input
+                  type="text"
+                  placeholder="Enter your name"
+                  value={indexName}
+                  onChange={(e) => setIndexName(e.target.value)}
+                  className="w-full"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#333] mb-4 font-ibm-plex-mono">Choose who can discover.</label>
+                <p className="text-[#666] font-ibm-plex-mono mb-6">
+                  Decide who can join, what's visible, and how people discover your Index.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  <div className="border-2 border-[#006D4B] bg-white p-4 rounded-lg">
+                    <div className="flex items-center gap-3 mb-2">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#006D4B]">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M12 6v6l4 2"></path>
+                      </svg>
+                      <h3 className="font-bold text-[#333] font-ibm-plex-mono">Anyone can join</h3>
+                    </div>
+                    <p className="text-sm text-[#666] font-ibm-plex-mono">
+                      People can discover and join your network freely.
+                    </p>
+                  </div>
+
+                  <div className="border border-[#E0E0E0] bg-[#F8F9FA] p-4 rounded-lg">
+                    <div className="flex items-center gap-3 mb-2">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#666]">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <circle cx="12" cy="16" r="1"></circle>
+                        <path d="m7 11 0-4a5 5 0 0 1 10 0v4"></path>
+                      </svg>
+                      <h3 className="font-bold text-[#666] font-ibm-plex-mono">Private</h3>
+                    </div>
+                    <p className="text-sm text-[#666] font-ibm-plex-mono">
+                      Only people you invited or people with the invitation link can join.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
             <div className="flex gap-3 mt-8">
               <Button
                 variant="outline"
-                onClick={() => setCurrentStep('connections')}
+                onClick={() => setCurrentStep(getPreviousStep('create_index'))}
                 className="flex-1 border-[#E0E0E0] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono"
               >
                 Back
               </Button>
               <Button
-                onClick={() => setCurrentStep('indexes')}
+                onClick={handleCreateIndex}
+                disabled={!indexName.trim() || isLoading}
                 className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
               >
-                Next
+                {isLoading ? 'Creating...' : 'Next'}
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setCurrentStep('indexes')}
+                onClick={() => setCurrentStep(getNextStep('create_index'))}
                 className="px-6 border-[#E0E0E0] text-[#666] hover:bg-[#F0F0F0] font-ibm-plex-mono"
               >
-                Skip
+                I'll do later
               </Button>
             </div>
           </div>
         );
 
-      case 'indexes':
+      case 'invite_members':
+        return (
+          <div className="max-w-2xl mx-auto">
+            <div className="mb-8">
+              <h1 className="text-2xl font-bold text-[#333] mb-4 font-ibm-plex-mono">Invite your network.</h1>
+              <p className="text-[#666] font-ibm-plex-mono mb-6">
+                We found <strong>{networkParticipants} participants</strong> from your existing network. You can invite them automatically, or share a link to invite on your own.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              <div className="mb-6">
+                <p className="text-[#666] font-ibm-plex-mono">
+                  <strong>Note:</strong> {networkParticipants} participants will receive an email from Index Network. You'll be able to review and edit the email in the next step before anything is sent.
+                </p>
+              </div>
+
+              <div className="flex gap-4">
+                <Button
+                  onClick={() => setInviteMethod('automatic')}
+                  className={`flex-1 px-6 py-4 font-ibm-plex-mono ${
+                    inviteMethod === 'automatic' 
+                      ? 'bg-[#000] text-white' 
+                      : 'bg-white text-[#333] border border-[#E0E0E0] hover:bg-[#F0F0F0]'
+                  }`}
+                >
+                  Invite Automatically
+                </Button>
+                <Button
+                  onClick={() => setInviteMethod('link')}
+                  className={`flex-1 px-6 py-4 font-ibm-plex-mono ${
+                    inviteMethod === 'link' 
+                      ? 'bg-[#000] text-white' 
+                      : 'bg-white text-[#333] border border-[#E0E0E0] hover:bg-[#F0F0F0]'
+                  }`}
+                >
+                  Copy invite link
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-8">
+              <Button
+                variant="outline"
+                onClick={() => setCurrentStep(getPreviousStep('invite_members'))}
+                className="flex-1 border-[#E0E0E0] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono"
+              >
+                Back
+              </Button>
+              {inviteMethod ? (
+                <Button
+                  onClick={handleInviteMembers}
+                  className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
+                >
+                  {currentFlow === 'flow_2' 
+                    ? (inviteMethod === 'automatic' ? 'Send Invites & Finish' : 'Copy Link & Finish')
+                    : (inviteMethod === 'automatic' ? 'Send Invites' : 'Copy Link & Continue')
+                  }
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => currentFlow === 'flow_2' ? handleCompleteOnboarding() : setCurrentStep(getNextStep('invite_members'))}
+                  className="flex-1 bg-[#000] text-white hover:bg-[#333] font-ibm-plex-mono"
+                >
+                  {currentFlow === 'flow_2' ? 'Finish' : 'Next'}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => currentFlow === 'flow_2' ? handleCompleteOnboarding() : setCurrentStep(getNextStep('invite_members'))}
+                className="px-6 border-[#E0E0E0] text-[#666] hover:bg-[#F0F0F0] font-ibm-plex-mono"
+              >
+                {currentFlow === 'flow_2' ? 'Skip & Finish' : 'Skip'}
+              </Button>
+            </div>
+          </div>
+        );
+
+      case 'join_indexes':
         return (
           <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold text-[#333] mb-2 font-ibm-plex-mono">Step into the right indexes.</h1>
-              <p className="text-[#666] font-ibm-plex-mono">
-                Based on your profile, here are networks where people are already sharing opportunities and ideas.
+            <div className="mb-8">
+              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Step into the right indexes.</h1>
+              <p className="text-black text-[14px] font-ibm-plex-mono">
+              Based on your profile, here are networks where people are already sharing opportunities and ideas.
               </p>
             </div>
 
@@ -612,7 +844,7 @@ export default function OnboardingPage() {
             <div className="flex gap-3">
               <Button
                 variant="outline"
-                onClick={() => setCurrentStep('library')}
+                onClick={() => setCurrentStep(getPreviousStep('join_indexes'))}
                 className="flex-1 border-[#E0E0E0] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono"
               >
                 Back
