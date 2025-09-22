@@ -36,7 +36,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const id = Math.random().toString(36).substr(2, 9);
     const newNotification = { ...notification, id };
     
-    setNotifications(prev => [...prev, newNotification]);
+    setNotifications(prev => {
+      // Limit to maximum 3 notifications
+      const updatedNotifications = [...prev, newNotification];
+      if (updatedNotifications.length > 3) {
+        // Remove oldest notifications to maintain max of 3
+        return updatedNotifications.slice(-3);
+      }
+      return updatedNotifications;
+    });
 
     // Auto-remove after duration
     const duration = notification.duration || 4000;
