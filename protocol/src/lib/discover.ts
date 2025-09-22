@@ -181,9 +181,12 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
 
         // Check if all intents in the stake exist in the same index
         sql`EXISTS (
-          SELECT 1 
+          SELECT 1
           FROM ${intentIndexes} ii1
           WHERE ii1.intent_id = ANY(${intentStakes.intents}::uuid[])
+          ${indexIds && indexIds.length > 0
+            ? sql`AND ii1.index_id = ANY(ARRAY[${sql.join(indexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+            : sql``}
           GROUP BY ii1.index_id
           HAVING COUNT(*) = array_length(${intentStakes.intents}, 1)
         )`
