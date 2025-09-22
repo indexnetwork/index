@@ -23,6 +23,12 @@ const nextConfig: NextConfig = {
         pathname: '/uploads/**',
       },
       {
+        protocol: 'https',
+        hostname: 'dev.index.network',
+        port: '',
+        pathname: '/uploads/**',
+      },
+      {
         protocol: 'http',
         hostname: 'localhost',
         port: '3001',
