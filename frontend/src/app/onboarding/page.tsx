@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { User, AvatarUploadResponse, APIResponse } from "@/lib/types";
@@ -34,7 +35,7 @@ export default function OnboardingPage() {
 
   // Profile step states
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [intro, setIntro] = useState('');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -125,7 +126,7 @@ export default function OnboardingPage() {
         if (response.user) {
           setUser(response.user);
           setName(response.user.name || '');
-          setEmail(response.user.email || '');
+          setIntro(response.user.intro || '');
         }
       } catch (error) {
         console.error('Failed to fetch user:', error);
@@ -205,6 +206,7 @@ export default function OnboardingPage() {
       
       const response = await api.patch<APIResponse<User>>('/auth/profile', {
         name: name.trim(),
+        intro: intro.trim(),
         avatar: avatarFilename || undefined,
       });
       
@@ -455,14 +457,12 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Email</label>
-                <Input
-                  type="email"
-                  placeholder={user?.email || "seren@index.network"}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full"
-                  disabled
+                <label className="block text-sm font-medium text-black mb-3 font-ibm-plex-mono">Intro</label>
+                <Textarea
+                  placeholder="Tell us about yourself in a few words"
+                  value={intro}
+                  onChange={(e) => setIntro(e.target.value)}
+                  className="w-full min-h-[100px]"
                 />
               </div>
             </div>
@@ -483,9 +483,11 @@ export default function OnboardingPage() {
         return (
           <div className="max-w-2xl mx-auto">
             <div className="mb-8">
-              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Connect your accounts.</h1>
+              <h1 className="text-2xl font-bold text-black mb-4 font-ibm-plex-mono">Connect your accounts</h1>
               <p className="text-black text-[14px] font-ibm-plex-mono">
-                Link the places you already work and share. Nobody gets notified, and it's only used to understand what you're looking for.
+                {currentFlow === 'flow_1'
+                  ? "Link the places you already work and share. Nobody gets notified, and it's only used to understand what you're looking for."
+                  : "Link the platforms where your people already works and shares. Nobody gets notified for now. We recommend connecting every account you use regularly so Index has a full picture of your ecosystem."}
               </p>
             </div>
 
@@ -525,103 +527,105 @@ export default function OnboardingPage() {
               ))}
             </div>
 
-            <div className="mb-8">
-              <h2 className="text-lg font-bold text-black mb-4 font-ibm-plex-mono">
-                Add context files & links
-                </h2>
-              
-              <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
-                Add text-based context – for example, a <strong>research note</strong>, a <strong>draft proposal</strong>, or a <strong>blogpost</strong> you wrote or found inspiring.
-              </p>
+            {currentFlow === 'flow_1' && (
+              <div className="mb-8">
+                <h2 className="text-lg font-bold text-black mb-4 font-ibm-plex-mono">
+                  Add context files & links
+                  </h2>
+                
+                <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
+                  Add text-based context – for example, a <strong>research note</strong>, a <strong>draft proposal</strong>, or a <strong>blogpost</strong> you wrote or found inspiring.
+                </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3 mb-4">
-                <div className="border border-[#E0E0E0] rounded-lg">
-                  <div className="relative w-full">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      multiple
-                      className="hidden"
-                      onChange={(e) => handleFilesSelected(e.target.files)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploading}
-                      className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-black hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-lg flex items-center justify-center gap-1.5"
-                    >
-                      {isUploading ? (
-                        <>
-                          <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
-                          Uploading…
-                        </>
-                      ) : (
-                        <>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
-                            <path d="M12 5v14"></path>
-                            <path d="M5 12h14"></path>
-                          </svg>
-                          Upload files
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="border border-[#E0E0E0] rounded-lg">
-                  <div className="relative w-full">
-                    <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm pointer-events-none">
-                      🔗
-                    </span>
-                    <Input
-                      placeholder="Paste URL here"
-                      value={linkUrl}
-                      onChange={(e) => setLinkUrl(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                      className="text-sm bg-white rounded-lg font-ibm-plex-mono w-full pl-10 pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
-                    />
-                    {isAddingLink ? (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
-                    ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3 mb-4">
+                  <div className="border border-[#E0E0E0] rounded-lg">
+                    <div className="relative w-full">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => handleFilesSelected(e.target.files)}
+                      />
                       <button
-                        onClick={handleAddLink}
-                        disabled={!linkUrl}
-                        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                        aria-label="Add URL"
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-black hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-lg flex items-center justify-center gap-1.5"
                       >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
-                          <line x1="12" y1="5" x2="12" y2="19"></line>
-                          <line x1="5" y1="12" x2="19" y2="12"></line>
-                        </svg>
+                        {isUploading ? (
+                          <>
+                            <span className="h-4 w-4 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                            Uploading…
+                          </>
+                        ) : (
+                          <>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                              <path d="M12 5v14"></path>
+                              <path d="M5 12h14"></path>
+                            </svg>
+                            Upload files
+                          </>
+                        )}
                       </button>
-                    )}
+                    </div>
+                  </div>
+
+                  <div className="border border-[#E0E0E0] rounded-lg">
+                    <div className="relative w-full">
+                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm pointer-events-none">
+                        🔗
+                      </span>
+                      <Input
+                        placeholder="Paste URL here"
+                        value={linkUrl}
+                        onChange={(e) => setLinkUrl(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
+                        className="text-sm bg-white rounded-lg font-ibm-plex-mono w-full pl-10 pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
+                      />
+                      {isAddingLink ? (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <button
+                          onClick={handleAddLink}
+                          disabled={!linkUrl}
+                          className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                          aria-label="Add URL"
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {(files.length > 0 || links.length > 0) && (
-                <div className="space-y-2">
-                  {files.map((file) => (
-                    <div key={file.id} className="flex items-center gap-2 p-2 bg-[#F8F9FA] rounded-lg">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#666]">
-                        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
-                        <polyline points="14,2 14,8 20,8"></polyline>
-                      </svg>
-                      <span className="text-sm text-black font-ibm-plex-mono">{file.name}</span>
-                    </div>
-                  ))}
-                  {links.map((link) => (
-                    <div key={link.id} className="flex items-center gap-2 p-2 bg-[#F8F9FA] rounded-lg">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#666]">
-                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                      </svg>
-                      <span className="text-sm text-black font-ibm-plex-mono truncate">{link.url}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                {(files.length > 0 || links.length > 0) && (
+                  <div className="space-y-2">
+                    {files.map((file) => (
+                      <div key={file.id} className="flex items-center gap-2 p-2 bg-[#F8F9FA] rounded-lg">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#666]">
+                          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+                          <polyline points="14,2 14,8 20,8"></polyline>
+                        </svg>
+                        <span className="text-sm text-black font-ibm-plex-mono">{file.name}</span>
+                      </div>
+                    ))}
+                    {links.map((link) => (
+                      <div key={link.id} className="flex items-center gap-2 p-2 bg-[#F8F9FA] rounded-lg">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-[#666]">
+                          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                        </svg>
+                        <span className="text-sm text-black font-ibm-plex-mono truncate">{link.url}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex gap-3">
               <Button
@@ -637,13 +641,7 @@ export default function OnboardingPage() {
               >
                 Next
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => setCurrentStep(getNextStep('connections'))}
-                className="px-6 border-[#E0E0E0] text-[#666] hover:bg-[#F0F0F0] font-ibm-plex-mono"
-              >
-                I'll do later
-              </Button>
+
             </div>
           </div>
         );
@@ -671,10 +669,8 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-black mb-2 font-ibm-plex-mono">Choose who can discover.</label>
-                <p className="text-black text-[14px] font-ibm-plex-mono mb-6">
-                  Decide who can join, what's visible, and how people discover your Index.
-                </p>
+                <label className="block text-sm font-bold text-black mb-2 font-ibm-plex-mono">Choose who can discover</label>
+                
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                   <button
@@ -738,13 +734,7 @@ export default function OnboardingPage() {
               >
                 {isLoading ? 'Creating...' : 'Next'}
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => setCurrentStep(getNextStep('create_index'))}
-                className="px-6 border-[#E0E0E0] text-[#666] hover:bg-[#F0F0F0] font-ibm-plex-mono"
-              >
-                I'll do later
-              </Button>
+              
             </div>
           </div>
         );
