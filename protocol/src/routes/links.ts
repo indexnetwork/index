@@ -32,10 +32,11 @@ async function crawlAndStore(userId: string, linkId: string, url: string) {
     // Mark as processing; progress bars belong in the frontend.
     await db.update(indexLinks).set({ lastStatus: 'processing' }).where(eq(indexLinks.id, linkId));
     const result = await crawlLinksForIndex([url]);
-    const file = result.files[0];
-    if (!file) {
+    const files = Array.isArray(result.files) ? result.files : [];
+    const file = files[0];
+    if (!files.length || !file?.content?.trim()) {
       await db.update(indexLinks)
-        .set({ lastStatus: 'error: no-content' })
+        .set({ lastStatus: 'error: no-content', lastError: 'no-content' })
         .where(eq(indexLinks.id, linkId));
       return;
     }
@@ -46,7 +47,7 @@ async function crawlAndStore(userId: string, linkId: string, url: string) {
 
     const { intentsGenerated } = await processFilesToIntents({
       userId,
-      files: result.files,
+      files: [file],
       textInstruction: `Generate intents based on content from ${url}`,
       count: 1,
       summarize: true,
@@ -55,7 +56,7 @@ async function crawlAndStore(userId: string, linkId: string, url: string) {
     });
 
     await db.update(indexLinks)
-      .set({ lastSyncAt: new Date(), lastStatus: `ok: intents=${intentsGenerated}` })
+      .set({ lastSyncAt: new Date(), lastStatus: `ok: intents=${intentsGenerated}`, lastError: null })
       .where(eq(indexLinks.id, linkId));
   } catch (e) {
     await db.update(indexLinks)
@@ -128,9 +129,15 @@ router.get('/:linkId/content', authenticatePrivy, [param('linkId').isUUID()], as
     const rows = await db.select().from(indexLinks).where(and(eq(indexLinks.id, linkId), eq(indexLinks.userId, req.user!.id))).limit(1);
     if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
     const fp = path.join(getUploadsPath('links', req.user!.id), `${linkId}.md`);
-    if (!fs.existsSync(fp)) return res.status(202).json({ pending: true, lastStatus: rows[0].lastStatus });
+    const status = rows[0].lastStatus ?? '';
+    if (!fs.existsSync(fp)) {
+      if (status.startsWith('error')) {
+        return res.status(200).json({ pending: false, error: status, lastStatus: status, lastSyncAt: rows[0].lastSyncAt, lastError: rows[0].lastError });
+      }
+      return res.status(202).json({ pending: true, lastStatus: status });
+    }
     const content = await fs.promises.readFile(fp, 'utf-8');
-    return res.json({ content, url: rows[0].url, lastSyncAt: rows[0].lastSyncAt, lastStatus: rows[0].lastStatus });
+    return res.json({ content, url: rows[0].url, lastSyncAt: rows[0].lastSyncAt, lastStatus: rows[0].lastStatus, lastError: rows[0].lastError });
   } catch (err) {
     console.error('Get content error:', err);
     return res.status(500).json({ error: 'Failed to get content' });
