@@ -1,4 +1,5 @@
 import { pgTable, pgEnum, text, uuid, timestamp, bigint, boolean, json, varchar, integer, uniqueIndex } from 'drizzle-orm/pg-core';
+import { vector } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Enums
@@ -38,6 +39,8 @@ export const intents = pgTable('intents', {
   // Polymorphic nullable source (file | integration | link)
   sourceId: uuid('source_id'),
   sourceType: sourceType('source_type'),
+  // Vector embedding for semantic search (3072 dimensions for text-embedding-3-large)
+  embedding: vector('embedding', { dimensions: 3072 }),
 });
 
 export const indexes = pgTable('indexes', {

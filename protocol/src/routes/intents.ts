@@ -9,6 +9,7 @@ import { Events } from '../lib/events';
 import { checkMultipleIndexesIntentWriteAccess } from '../lib/index-access';
 import { validateAndGetAccessibleIndexIds } from '../lib/index-access';
 import { suggestTags } from '../agents/core/intent_tag_suggester';
+import { generateEmbedding } from '../lib/embeddings';
 
 const router = Router();
 
@@ -335,11 +336,21 @@ router.post('/',
 
       const summary = await summarizeIntent(payload);
       
+      // Generate embedding for semantic search
+      let embedding: number[] | null = null;
+      try {
+        embedding = await generateEmbedding(payload);
+      } catch (error) {
+        console.error('Failed to generate embedding:', error);
+        // Continue without embedding - it's optional
+      }
+      
       const newIntent = await db.insert(intents).values({
         payload,
         summary,
         isIncognito,
         userId: req.user!.id,
+        embedding: embedding || undefined,
               }).returning({
           id: intents.id,
           payload: intents.payload,
@@ -430,6 +441,15 @@ router.put('/:id',
         const newSummary = await summarizeIntent(payload);
         if (newSummary) {
           updateData.summary = newSummary;
+        }
+        
+        // Regenerate embedding when payload changes
+        try {
+          const embedding = await generateEmbedding(payload);
+          updateData.embedding = embedding;
+        } catch (error) {
+          console.error('Failed to regenerate embedding:', error);
+          // Continue without updating embedding
         }
       }
       if (isIncognito !== undefined) updateData.isIncognito = isIncognito;
