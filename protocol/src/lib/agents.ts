@@ -20,6 +20,7 @@ export const llm = new ChatBedrockConverse({
   temperature: 0.1,
   disableStreaming: true,
   region: "us-west-2",
+  supportsToolChoiceValues: ["auto", "any", "tool"],
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
