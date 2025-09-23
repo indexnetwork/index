@@ -505,6 +505,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const totalIntentCount = libraryIntents.length;
   const displayedIntentCount = (isSelectionFiltering || isSourceFiltering) ? visibleIntents.length : totalIntentCount;
   const intentCountLabel = (isSelectionFiltering || isSourceFiltering) ? `${displayedIntentCount} of ${totalIntentCount}` : `${displayedIntentCount}`;
+  const isAwaitingSelectedIntents = isSelectionFiltering && visibleIntents.length === 0 && selectedIds.size > 0;
 
   const handleSyncLink = useCallback(async (linkId: string) => {
     try {
@@ -990,14 +991,22 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     </div>
                   ) : intentsByDate.length === 0 ? (
                     <div className="text-xs text-[#666] font-ibm-plex-mono py-4 text-center">
-                      <p>
-                        {isSelectionFiltering && isSourceFiltering ? 
-                          `No intents match the selected sources and ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')}.` :
-                          isSourceFiltering ? 
-                            `No intents from ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')} yet.` :
-                            isSelectionFiltering ? 'No intents match the selected sources.' : 'No intents yet.'
-                        }
-                      </p>
+                      {isAwaitingSelectedIntents ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="h-5 w-5 border-2 border-[#AAAAAA] border-t-transparent rounded-full animate-spin" />
+                          <p>Generating intents for the selected item…</p>
+                          <p className="text-[10px] text-[#888]">This usually finishes within a minute. Keep the modal open.</p>
+                        </div>
+                      ) : (
+                        <p>
+                          {isSelectionFiltering && isSourceFiltering ? 
+                            `No intents match the selected sources and ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')}.` :
+                            isSourceFiltering ? 
+                              `No intents from ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')} yet.` :
+                              isSelectionFiltering ? 'No intents match the selected sources.' : 'No intents yet.'
+                          }
+                        </p>
+                      )}
                     </div>
                   ) : (
                     intentsByDate.map((section) => {
