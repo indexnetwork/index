@@ -32,7 +32,7 @@ export function createAzureOpenAI(config?: AzureOpenAIConfig): AzureChatOpenAI {
   
   const azureConfig = {
     azureOpenAIApiKey: config?.azureOpenAIApiKey || process.env.AZURE_OPENAI_API_KEY,
-    azureOpenAIEndpoint: config?.azureOpenAIEndpoint || process.env.AZURE_OPENAI_ENDPOINT || 'https://seref-mfvly7tn-eastus2.openai.azure.com',
+    azureOpenAIEndpoint: config?.azureOpenAIEndpoint || process.env.AZURE_OPENAI_ENDPOINT,
     azureOpenAIApiDeploymentName: config?.azureOpenAIApiDeploymentName || process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o',
     azureOpenAIApiVersion: config?.azureOpenAIApiVersion || process.env.AZURE_OPENAI_API_VERSION || '2024-08-01-preview',
     temperature: config?.temperature || 0.1,
