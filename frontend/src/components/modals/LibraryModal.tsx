@@ -656,13 +656,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   {integrations.filter(i => i.connected).length} of {integrations.length} connected
                 </span>
               </div>
-              {integrations.some(i => i.connected) && (
-                <div className="mb-2">
-                  <span className="text-[10px] text-[#666] font-ibm-plex-mono">
-                    Click connected sources to filter intents (multiple selection supported)
-                  </span>
-                </div>
-              )}
+
               <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-3">
                 {integrations.map((it) => {
                   const isFiltered = activeSourceFilters.has(it.id);
@@ -973,8 +967,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
               </div>
             </div>
-            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-y-auto transition-all duration-300 ease-out ${showIntentsPanel ? 'lg:opacity-100 lg:w-[340px]' : 'lg:opacity-0 lg:pointer-events-none lg:w-0 lg:overflow-hidden'}`}>
-                <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3">
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-y-auto overflow-x-hidden ease-out ${showIntentsPanel ? 'lg:opacity-100 lg:w-[340px] transition-all duration-150' : 'lg:opacity-0 lg:pointer-events-none lg:w-0 lg:overflow-hidden transition-none'}`}>
+                <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3 pr-3">
                   <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
                   <div className="flex items-center gap-2">
                     {isSourceFiltering && (
@@ -989,7 +983,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <span className="text-xs text-[#666] font-ibm-plex-mono">{intentCountLabel}</span>
                   </div>
                 </div>
-                <div className="mt-3 flex-1 pr-1 space-y-3 p-3 pt-0">
+                <div className="mt-3 flex-1 pr-3 space-y-3 p-3 pt-0">
                   {isLoadingIntents ? (
                     <div className="flex items-center justify-center py-6">
                       <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
