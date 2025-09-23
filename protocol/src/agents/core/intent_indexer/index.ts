@@ -6,6 +6,7 @@ import { evaluateIntentRelevance } from './evaluator';
 // Constants
 const RELEVANCE_THRESHOLD = 0.7;
 const BATCH_SIZE = 500;
+const PARALLEL_BATCH_SIZE = 10;
 
 export interface IntentIndexerResult {
   success: boolean;
@@ -114,30 +115,51 @@ export class IntentIndexer {
    * Process multiple intents in batches (in parallel per batch)
    */
   async processBulkIntents(intentIds: string[]): Promise<IntentIndexerResult> {
-    console.log(`🔄 Processing ${intentIds.length} intents in bulk`);
+    console.log(`🔄 Processing ${intentIds.length} intents in bulk with batches of ${PARALLEL_BATCH_SIZE}`);
     let totalIndexed = 0;
     let totalDeIndexed = 0;
     const errors: string[] = [];
 
-    // Fire off all processIntent calls in parallel, do not wait for results
-    intentIds.forEach(intentId => {
-      this.processIntent(intentId).then(result => {
-        if (result.success) {
-          totalIndexed += result.indexedCount;
-          totalDeIndexed += result.deIndexedCount;
-        } else {
-          errors.push(`Intent ${intentId}: ${result.error}`);
-        }
-      }).catch(err => {
-        errors.push(`Intent ${intentId}: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      });
-    });
+    // Split intentIds into chunks of PARALLEL_BATCH_SIZE
+    const chunks: string[][] = [];
+    for (let i = 0; i < intentIds.length; i += PARALLEL_BATCH_SIZE) {
+      chunks.push(intentIds.slice(i, i + PARALLEL_BATCH_SIZE));
+    }
 
-    // Immediately return, do not wait for any to finish
+    console.log(`📦 Split into ${chunks.length} batches`);
+
+    // Process each chunk sequentially, but process intents within each chunk in parallel
+    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+      const chunk = chunks[chunkIndex];
+      console.log(`🔄 Processing batch ${chunkIndex + 1}/${chunks.length} (${chunk.length} intents)`);
+
+      // Process all intents in this chunk in parallel
+      const batchPromises = chunk.map(intentId => this.processIntent(intentId));
+      
+      try {
+        const batchResults = await Promise.all(batchPromises);
+        
+        // Aggregate results from this batch
+        for (const result of batchResults) {
+          if (result.success) {
+            totalIndexed += result.indexedCount;
+            totalDeIndexed += result.deIndexedCount;
+          } else {
+            errors.push(result.error || 'Unknown error');
+          }
+        }
+      } catch (error) {
+        errors.push(`Batch ${chunkIndex + 1} error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    console.log(`✅ Bulk processing complete: +${totalIndexed} -${totalDeIndexed}, ${errors.length} errors`);
+
     return {
-      success: true,
-      indexedCount: 0,
-      deIndexedCount: 0
+      success: errors.length === 0,
+      indexedCount: totalIndexed,
+      deIndexedCount: totalDeIndexed,
+      error: errors.length > 0 ? errors.join('; ') : undefined
     };
   }
   /**

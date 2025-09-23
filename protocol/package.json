@@ -20,7 +20,7 @@
     "@langchain/community": "^0.3.45",
     "@langchain/core": "^0.3.77",
     "@langchain/langgraph": "^0.2.73",
-    "@langchain/openai": "^0.5.11",
+    "@langchain/openai": "^0.6.13",
     "@privy-io/server-auth": "^1.26.1",
     "@types/ioredis": "^4.28.10",
     "ai": "^4.3.19",

@@ -117,7 +117,6 @@ ${exampleOutput}
       setTimeout(() => reject(new Error('Vibe check timeout')), timeout);
     });
 
-    console.log('prompt', prompt);
     const vibeCall = traceableLlm(
       "vibe-check-synthesis",
       [],
