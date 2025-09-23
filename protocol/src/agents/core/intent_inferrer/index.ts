@@ -233,6 +233,11 @@ ${concatenatedContent.substring(0, 15000)}${concatenatedContent.length > 15000 ?
 
 `;
 
+    // Set up timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Intent generation timeout')), timeoutMs);
+    });
+
     const intentInferCall = traceableStructuredLlm(
       "intent-inferrer",
       ["structured-output"],
@@ -243,35 +248,10 @@ ${concatenatedContent.substring(0, 15000)}${concatenatedContent.length > 15000 ?
         requested_count: count
       }
     );
-    const runWithTimeout = () => {
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Intent generation timeout')), timeoutMs);
-      });
-      return Promise.race([
-        intentInferCall(prompt, IntentSchema),
-        timeoutPromise
-      ]);
-    };
-
-    let response: z.infer<typeof IntentSchema> | undefined;
-    let lastError: unknown;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        response = await runWithTimeout();
-        break;
-      } catch (err) {
-        lastError = err;
-        if (err instanceof Error && err.message.includes('No tool calls found in the response.') && attempt === 0) {
-          console.warn('⚠️  Structured output missing tool call, retrying once...');
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    if (!response) {
-      throw lastError instanceof Error ? lastError : new Error('Intent inference failed');
-    }
+    const response = await Promise.race([
+      intentInferCall(prompt, IntentSchema),
+      timeoutPromise
+    ]);
 
     console.log(`✅ Generated ${response.intents.length} intents`);
 
