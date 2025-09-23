@@ -1559,7 +1559,7 @@
     uuid "^10.0.0"
     zod "^3.23.8"
 
-"@langchain/openai@>=0.1.0 <0.6.0", "@langchain/openai@>=0.2.0 <0.6.0", "@langchain/openai@^0.5.11":
+"@langchain/openai@>=0.1.0 <0.6.0", "@langchain/openai@>=0.2.0 <0.6.0":
   version "0.5.12"
   resolved "https://registry.npmjs.org/@langchain/openai/-/openai-0.5.12.tgz"
   integrity sha512-k7rxBY3ed/HIiMLd6HBqFibsfB0+L6c82H8JgXDqKeyUoACJIi1JaKHXmofmCeF2SBXBU9dog4gEGpHfcUDGUA==
@@ -1568,6 +1568,15 @@
     openai "^4.96.0"
     zod "^3.22.4"
     zod-to-json-schema "^3.22.3"
+
+"@langchain/openai@^0.6.13":
+  version "0.6.13"
+  resolved "https://registry.yarnpkg.com/@langchain/openai/-/openai-0.6.13.tgz#87662cc27ee22ef075e2c7bbc9050c8a25fb0007"
+  integrity sha512-+QCVag3J2MeFxLMPjjYYpDCBKbmrK7D/xQGq+iWBGpNSg/08vnx7pEkkhiL2NTFIHiYu7w/7EG3UHQ8gOK/cag==
+  dependencies:
+    js-tiktoken "^1.0.12"
+    openai "5.12.2"
+    zod "^3.25.32"
 
 "@langchain/textsplitters@>=0.0.0 <0.2.0":
   version "0.1.0"
@@ -5190,6 +5199,11 @@ open@^8.4.0:
     define-lazy-prop "^2.0.0"
     is-docker "^2.1.1"
     is-wsl "^2.2.0"
+
+openai@5.12.2:
+  version "5.12.2"
+  resolved "https://registry.yarnpkg.com/openai/-/openai-5.12.2.tgz#512ab6b80eb8414837436e208f1b951442b97761"
+  integrity sha512-xqzHHQch5Tws5PcKR2xsZGX9xtch+JQFz5zb14dGqlshmmDAFBFEWmeIpf7wVqWV+w7Emj7jRgkNJakyKE0tYQ==
 
 openai@^4.103.0, openai@^4.94.0, openai@^4.96.0:
   version "4.104.0"
