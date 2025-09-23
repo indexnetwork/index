@@ -47,7 +47,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [newIntentIds, setNewIntentIds] = useState<Set<string>>(new Set());
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [activeMobileSection, setActiveMobileSection] = useState<'library' | 'intents'>('library');
-  const [showIntentsPanel, setShowIntentsPanel] = useState(true);
+  const [showIntentsPanel, setShowIntentsPanel] = useState(false);
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const knownIntentIds = useRef<Set<string>>(new Set());
   const connectSourcesRef = useRef<HTMLDivElement | null>(null);
@@ -394,6 +394,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 clearInterval(poll);
                 if (popup && !popup.closed) popup.close();
                 setIntegrations(prev => prev.map(x => x.id === id ? { ...x, connected: true } : x));
+                // Auto-filter the newly connected integration
+                setActiveSourceFilters(prev => new Set([...prev, id]));
                 success(`${item.name} connected`);
               }
               if (Date.now() - started > 90000) {
@@ -435,13 +437,18 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (!f || f.length === 0) return;
     setIsUploading(true);
     try {
-      await Promise.all(Array.from(f).map(async file => {
+      const uploadedFiles = await Promise.all(Array.from(f).map(async file => {
         const res = await api.uploadFile<{ file: { id: string; name: string; size: string; type: string; createdAt: string; url: string } }>(`/files`, file);
         return res.file;
       }));
+      
       onChanged?.();
       await loadLists();
       await loadLibraryIntents();
+      
+      // Auto-select the newly uploaded files
+      const newFileIds = uploadedFiles.map(file => `f-${file.id}`);
+      setSelectedIds(prev => new Set([...prev, ...newFileIds]));
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -459,11 +466,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     
     try {
       setIsAddingLink(true);
-      await api.post<{ link: { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string } }>(`/links`, { url: normalizedUrl });
+      const res = await api.post<{ link: { id: string; url: string; createdAt?: string; lastSyncAt?: string | null; lastStatus?: string | null; lastError?: string | null; contentUrl?: string } }>(`/links`, { url: normalizedUrl });
       setLinkUrl("");
       onChanged?.();
       await loadLists();
       await loadLibraryIntents();
+      
+      // Auto-select the newly added link
+      if (res.link?.id) {
+        setSelectedIds(prev => new Set([...prev, `l-${res.link.id}`]));
+      }
+      
       success('Link added successfully');
     } catch {
       error('Failed to add link. Please check the URL and try again.');
@@ -552,9 +565,18 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (isSelectionFiltering) setActiveMobileSection('intents');
   }, [isSelectionFiltering, open]);
 
+  // Auto-toggle intents panel based on filtering state
   useEffect(() => {
-    if (open) setShowIntentsPanel(true);
-  }, [open]);
+    if (!open) return;
+    const hasActiveFiltering = isSelectionFiltering || isSourceFiltering;
+    if (hasActiveFiltering && !showIntentsPanel) {
+      // Show panel when filtering becomes active
+      setShowIntentsPanel(true);
+    } else if (!hasActiveFiltering && showIntentsPanel) {
+      // Hide panel when no filtering is active
+      setShowIntentsPanel(false);
+    }
+  }, [isSelectionFiltering, isSourceFiltering, showIntentsPanel, open]);
 
   // no index context needed for library mode
 
@@ -562,7 +584,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
-        <Dialog.Content className="library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-w-[1050px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
+        <Dialog.Content className={`library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6 transition-all sm:duration-300 ${showIntentsPanel ? 'sm:max-w-[1020px]' : 'sm:max-w-[680px]'}`}>
           <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
             <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
             <div className="flex items-center gap-2">
@@ -622,7 +644,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           </div>
 
           <div className="relative flex flex-col lg:flex-row gap-3.5 lg:gap-4 flex-1 overflow-hidden">
-            <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block lg:flex-1 min-w-0 ${showIntentsPanel ? 'lg:pr-[360px]' : ''} transition-[padding] duration-300`}
+            <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block lg:w-[620px] lg:flex-shrink-0 min-w-0`}
             >
               <div className="space-y-2 sm:space-y-3 lg:space-y-4">
 
@@ -951,7 +973,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
               </div>
             </div>
-            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-y-auto transition-transform duration-300 ease-out lg:absolute lg:top-0 lg:right-0 lg:h-full ${showIntentsPanel ? 'lg:translate-x-0 lg:opacity-100' : 'lg:translate-x-full lg:opacity-0 lg:pointer-events-none'}`}>
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-y-auto transition-all duration-300 ease-out ${showIntentsPanel ? 'lg:opacity-100 lg:w-[340px]' : 'lg:opacity-0 lg:pointer-events-none lg:w-0 lg:overflow-hidden'}`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3">
                   <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
                   <div className="flex items-center gap-2">
