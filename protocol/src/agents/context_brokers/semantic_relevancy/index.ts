@@ -1,8 +1,9 @@
 import { BaseContextBroker } from '../base';
 import { intents, intentStakes, agents } from '../../../lib/schema';
 import { eq, sql, isNotNull } from 'drizzle-orm';
-import { traceableLlm } from "../../../lib/agents";
+import { traceableLlm, traceableStructuredLlm } from "../../../lib/agents";
 import { generateEmbedding } from "../../../lib/embeddings";
+import { z } from "zod";
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
   constructor(agentId: string) {
@@ -48,11 +49,11 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
         .orderBy(sql`${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`)
         .limit(10);
 
-      console.log(`Found ${similarIntents.length} similar intents using vector search`);
+      console.log(`Found ${similarIntents.length} similar intents using vector search`, similarIntents);
 
       // Filter by similarity threshold (equivalent to 0.7 LLM score)
       const relatedIntents = similarIntents
-        .filter(intent => intent.similarity > 0.75) // Adjust threshold as needed
+        //.filter(intent => intent.similarity > 0.75) // Adjust threshold as needed
         .map(intent => ({
           intent: {
             id: intent.id,
@@ -72,66 +73,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       
       // Fallback to original LLM-based approach if vector search fails
       console.log('Falling back to LLM-based semantic search');
-      return this.findSemanticallyRelatedIntentsLLM(currentIntent);
     }
-  }
-
-  // Keep the original LLM-based method as fallback
-  private async findSemanticallyRelatedIntentsLLM(currentIntent: any): Promise<any[]> {
-    // Use shared utility to get intents in same indexes
-    const allIntents = await this.getIntentsInSameIndexes(currentIntent.id, true);
-    console.log('Found other intents in same indexes:', allIntents.length);
-
-    // Use LLM to determine semantic relevance - PARALLEL PROCESSING
-    const scorePromises = allIntents.map(async (otherIntent) => {
-      try {
-        const prompt = `Compare these two intents and determine if there's mutual intent.
-        Return only a number between 0 and 1, where 1 means highly related and 0 means not related at all.
-        
-        Intent 1: ${JSON.stringify(currentIntent.payload)}
-        Intent 2: ${JSON.stringify(otherIntent.payload)}`;
-
-        const llmCall = traceableLlm(
-          "broker-semantic-relevancy-mutuality-score",
-          ["context-broker", "broker-semantic-relevancy"],
-          {
-            current_intent_id: currentIntent.id,
-            other_intent_id: otherIntent.id
-          }
-        );
-        const response = await llmCall(prompt);
-        const score = parseFloat(response.content.toString());
-        //console.log('LLM response for intent comparison:', { score, otherIntentId: otherIntent.id });
-
-        return {
-          intent: otherIntent,
-          score
-        };
-      } catch (error) {
-        console.error(`Error processing intent ${otherIntent.id}:`, error);
-        return {
-          intent: otherIntent,
-          score: 0
-        };
-      }
-    });
-
-    // Wait for all LLM calls to complete
-    const scoredIntents = await Promise.allSettled(scorePromises);
-    
-    // Filter and extract successful results
-    const relatedIntents = scoredIntents
-      .filter(result => result.status === 'fulfilled' && result.value.score > 0.7)
-      .map(result => result.status === 'fulfilled' ? result.value : null)
-      .filter(item => item !== null);
-
-    console.log('Related intents (LLM fallback):', relatedIntents);
-
-    // Sort by relevance score and take top 5
-    return relatedIntents
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5)
-      .map(item => item.intent);
   }
 
   async onIntentUpdated(intentId: string): Promise<void> {
@@ -153,36 +95,58 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
     console.log('Found related intents:', relatedIntents.length);
 
     // Create stakes for related intents - PARALLEL PROCESSING
-    const stakePromises = relatedIntents.map(async (relatedIntent) => {
+    const stakePromises = relatedIntents.map(async (relatedIntentData) => {
       try {
-        console.log('Created intent array:', [intentId, relatedIntent.id]);
+        // Handle different return formats from vector search vs LLM fallback
+        const relatedIntent = relatedIntentData.intent || relatedIntentData;
+        const relatedIntentId = relatedIntent.id;
         
-        // Create new stake with reasoning from LLM
-        const reasoningPrompt = `Explain why these two intents are related in one sentence:
-        Intent 1: ${JSON.stringify(currentIntent.payload)}
-        Intent 2: ${JSON.stringify(relatedIntent.payload)}`;
+        if (!relatedIntentId) {
+          console.error('Related intent missing ID:', relatedIntentData);
+          return;
+        }
+        
+        console.log('Created intent array:', [intentId, relatedIntentId]);
+        
+        // Define Zod schema for structured mutual intent check
+        const MutualIntentSchema = z.object({
+          isMutual: z.boolean().describe("Whether the two intents have mutual intent (both relate to or depend on each other)"),
+          reasoning: z.string().describe("If mutual, explain why they are mutually related in one sentence. If not mutual, provide empty string.")
+        });
 
-        const reasoningCall = traceableLlm(
+        // Create new stake with reasoning from LLM - but only if they're mutually related
+        const reasoningPrompt = `Analyze these two intents and determine if they have mutual intent (both intents relate to or depend on each other).
+
+        Intent 1: ${JSON.stringify(currentIntent.payload)}
+        Intent 2: ${JSON.stringify(relatedIntent.payload)}
+
+        Provide a structured response indicating whether they are mutually related and if so, explain why in one sentence.`;
+
+        const reasoningCall = traceableStructuredLlm(
           "broker-semantic-relevancy-reasoning-generator",
-          ["context-broker", "broker-semantic-relevancy"],
+          ["context-broker", "broker-semantic-relevancy", "structured-output"],
           {
             agent_type: "semantic_relevancy_broker",
             operation: "reasoning_generation",
             current_intent_id: intentId,
-            related_intent_id: relatedIntent.id
+            related_intent_id: relatedIntentId
           }
         );
-        const response = await reasoningCall(reasoningPrompt);
-        const reasoning = response.content.toString();
+        const response = await reasoningCall(reasoningPrompt, MutualIntentSchema);
         
-        await this.stakeManager.createStake({
-          intents: [intentId, relatedIntent.id],
-          stake: BigInt(100),
-          reasoning,
-          agentId: this.agentId
-        });
+        // Only create stake if the intents are mutually related
+        if (response.isMutual && response.reasoning.trim()) {
+          await this.stakeManager.createStake({
+            intents: [intentId, relatedIntentId],
+            stake: BigInt(100),
+            reasoning: response.reasoning,
+            agentId: this.agentId
+          });
+        } else {
+          console.log(`Skipping stake creation - intents ${intentId} and ${relatedIntentId} are not mutually related`);
+        }
       } catch (error) {
-        console.error(`Error creating stake for intent ${relatedIntent.id}:`, error);
+        console.error(`Error creating stake for intent ${relatedIntentData?.intent?.id || relatedIntentData?.id || 'unknown'}:`, error);
       }
     });
 

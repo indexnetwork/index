@@ -3,22 +3,8 @@ import OpenAI from 'openai';
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-  // Use Azure OpenAI if configured
-  ...(process.env.AZURE_OPENAI_ENDPOINT && {
-    baseURL: `${process.env.AZURE_OPENAI_ENDPOINT}/openai/deployments/${process.env.AZURE_OPENAI_DEPLOYMENT}`,
-    defaultQuery: { 'api-version': '2024-02-01' },
-    defaultHeaders: {
-      'api-key': process.env.AZURE_OPENAI_API_KEY,
-    },
-  }),
 });
 
-/**
- * Generate embeddings using OpenAI's text-embedding-3-large model
- * @param text The text to embed
- * @param dimensions Optional: Reduce dimensions (default: 3072)
- * @returns Array of numbers representing the embedding
- */
 export async function generateEmbedding(
   text: string, 
   dimensions: number = 3072
@@ -30,6 +16,8 @@ export async function generateEmbedding(
     if (!cleanText) {
       throw new Error('Text cannot be empty');
     }
+
+    console.log('Generating embedding for:', cleanText);
 
     const response = await openai.embeddings.create({
       model: 'text-embedding-3-large',
