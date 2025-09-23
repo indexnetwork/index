@@ -47,6 +47,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [newIntentIds, setNewIntentIds] = useState<Set<string>>(new Set());
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [activeMobileSection, setActiveMobileSection] = useState<'library' | 'intents'>('library');
+  const [showIntentsPanel, setShowIntentsPanel] = useState(true);
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const knownIntentIds = useRef<Set<string>>(new Set());
   const connectSourcesRef = useRef<HTMLDivElement | null>(null);
@@ -551,6 +552,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (isSelectionFiltering) setActiveMobileSection('intents');
   }, [isSelectionFiltering, open]);
 
+  useEffect(() => {
+    if (open) setShowIntentsPanel(true);
+  }, [open]);
+
   // no index context needed for library mode
 
   return (
@@ -560,16 +565,39 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
         <Dialog.Content className="library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-w-[1050px] sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6">
           <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
             <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
-            <button
-              onClick={() => onOpenChange(false)}
-              className="p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-              aria-label="Close modal"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] hover:text-[#333] transition-colors duration-150 ease-in-out">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowIntentsPanel(prev => !prev)}
+                aria-pressed={showIntentsPanel}
+                className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-ibm-plex-mono border border-[#E0E0E0] rounded-lg bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+              >
+                <span>{showIntentsPanel ? 'Hide intents' : 'Show intents'}</span>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`transition-transform duration-300 ${showIntentsPanel ? '' : 'rotate-180'}`}
+                >
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              <button
+                onClick={() => onOpenChange(false)}
+                className="p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                aria-label="Close modal"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] hover:text-[#333] transition-colors duration-150 ease-in-out">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div className="lg:hidden mb-3 flex items-center gap-2 rounded-lg bg-[#F2F2F2] p-1">
@@ -593,8 +621,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </button>
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-3.5 lg:gap-4 flex-1 overflow-hidden">
-            <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block lg:flex-1 min-w-0`}
+          <div className="relative flex flex-col lg:flex-row gap-3.5 lg:gap-4 flex-1 overflow-hidden">
+            <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block lg:flex-1 min-w-0 ${showIntentsPanel ? 'lg:pr-[360px]' : ''} transition-[padding] duration-300`}
             >
               <div className="space-y-2 sm:space-y-3 lg:space-y-4">
 
@@ -923,7 +951,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
               </div>
             </div>
-            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] overflow-y-auto`}>
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full lg:w-[330px] flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-y-auto transition-transform duration-300 ease-out lg:absolute lg:top-0 lg:right-0 lg:h-full ${showIntentsPanel ? 'lg:translate-x-0 lg:opacity-100' : 'lg:translate-x-full lg:opacity-0 lg:pointer-events-none'}`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3">
                   <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
                   <div className="flex items-center gap-2">
