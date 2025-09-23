@@ -7,6 +7,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import path from 'path';
 import fs from 'fs';
 import { crawlLinksForIndex } from '../lib/crawl/web_crawler';
+import { processFilesToIntents } from '../lib/sync/process-intents';
 import { privyClient } from '../lib/privy';
 import { users } from '../lib/schema';
 
@@ -32,13 +33,29 @@ async function crawlAndStore(userId: string, linkId: string, url: string) {
     await db.update(indexLinks).set({ lastStatus: 'processing' }).where(eq(indexLinks.id, linkId));
     const result = await crawlLinksForIndex([url]);
     const file = result.files[0];
-    if (!file) return;
+    if (!file) {
+      await db.update(indexLinks)
+        .set({ lastStatus: 'error: no-content' })
+        .where(eq(indexLinks.id, linkId));
+      return;
+    }
     const dir = getUploadsPath('links', userId);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     const filepath = path.join(dir, `${linkId}.md`);
     await fs.promises.writeFile(filepath, file.content);
+
+    const { intentsGenerated } = await processFilesToIntents({
+      userId,
+      files: result.files,
+      textInstruction: `Generate intents based on content from ${url}`,
+      count: 1,
+      summarize: true,
+      sourceId: linkId,
+      sourceType: 'link',
+    });
+
     await db.update(indexLinks)
-      .set({ lastSyncAt: new Date(), lastStatus: 'ok' })
+      .set({ lastSyncAt: new Date(), lastStatus: `ok: intents=${intentsGenerated}` })
       .where(eq(indexLinks.id, linkId));
   } catch (e) {
     await db.update(indexLinks)
