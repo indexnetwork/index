@@ -73,6 +73,7 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
       
       // Fallback to original LLM-based approach if vector search fails
       console.log('Falling back to LLM-based semantic search');
+      return []; // Return empty array as fallback
     }
   }
 
