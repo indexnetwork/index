@@ -1,22 +1,10 @@
 import db from './db';
-import { AzureChatOpenAI } from "@langchain/openai";
-import { CallbackHandler } from "langfuse-langchain";
-import { z } from "zod";
+import { ChatBedrockConverse } from "@langchain/aws";
 
-// Azure OpenAI Configuration Interface (using proper AzureChatOpenAI parameters)
-export interface AzureOpenAIConfig {
-  azureOpenAIApiKey?: string;
-  azureOpenAIEndpoint?: string;
-  azureOpenAIApiInstanceName?: string;
-  azureOpenAIApiDeploymentName?: string;
-  azureOpenAIApiVersion?: string;
-  temperature?: number;
-  maxConcurrency?: number;
-  maxRetries?: number;
-}
+import { CallbackHandler } from "langfuse-langchain";
 
 // Helper function to create Langfuse callback handler
-function createLangfuseHandler(sessionId: string, metadata: Record<string, unknown>) {
+function createLangfuseHandler(sessionId: string, metadata: Record<string, any>) {
   return new CallbackHandler({
     publicKey: process.env.LANGFUSE_PUBLIC_KEY || "",
     secretKey: process.env.LANGFUSE_SECRET_KEY || "",
@@ -26,76 +14,80 @@ function createLangfuseHandler(sessionId: string, metadata: Record<string, unkno
   });
 }
 
-// Azure OpenAI LLM setup function using proper AzureChatOpenAI
-export function createAzureOpenAI(config?: AzureOpenAIConfig): AzureChatOpenAI {
-  console.log('Setting up Azure OpenAI with LangChain');
-  
-  const azureConfig = {
-    azureOpenAIApiKey: config?.azureOpenAIApiKey || process.env.AZURE_OPENAI_API_KEY,
-    azureOpenAIEndpoint: config?.azureOpenAIEndpoint || process.env.AZURE_OPENAI_ENDPOINT,
-    azureOpenAIApiDeploymentName: config?.azureOpenAIApiDeploymentName || process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o',
-    azureOpenAIApiVersion: config?.azureOpenAIApiVersion || process.env.AZURE_OPENAI_API_VERSION || '2024-08-01-preview',
-    temperature: config?.temperature || 0.1,
-    maxConcurrency: config?.maxConcurrency || 5,
-    maxRetries: config?.maxRetries || 3,
-  };
-  
-  console.log(`Using Azure OpenAI endpoint: ${azureConfig.azureOpenAIEndpoint}`);
-  console.log(`Using deployment name: ${azureConfig.azureOpenAIApiDeploymentName}`);
-  console.log(`Using API version: ${azureConfig.azureOpenAIApiVersion}`);
-  
-  return new AzureChatOpenAI(azureConfig);
-}
+// Simple Bedrock client for agent decisions
+export const llm = new ChatBedrockConverse({
+  model: "openai.gpt-oss-120b-1:0", // Using OpenAI GPT OSS 120B
+  temperature: 0.1,
+  disableStreaming: true,
+  region: "us-west-2",
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+  //maxTokens: 512,
+  //topP: 0.5,
+  tags: ["agent", "llm", "gpt-oss-120b"],
+  metadata: { 
+    model: "gpt-oss-120b",
+    temperature: 1,
+    topP: 0.5,
+    purpose: "agent-decision-making"
+  }
+});
 
-// Main LLM export - Azure OpenAI instance
-export const llm = createAzureOpenAI();
-
-// LLM wrapper utility with Langfuse tracing (Azure OpenAI only)
-export function traceableLlm(name: string, tags: string[], metadata: Record<string, unknown>, azureConfig?: AzureOpenAIConfig) {
+// LLM wrapper utility with Langfuse tracing
+export function traceableLlm(name: string, tags: string[], metadata: Record<string, any>) {
   return async (prompt: string) => {
-    console.log('traceableLlm');
     const handler = createLangfuseHandler(name, { ...metadata, tags });
-    const selectedLlm = azureConfig ? createAzureOpenAI(azureConfig) : llm;
-    const response = await selectedLlm.invoke(prompt, { runName: name, callbacks: [handler] });
+    const response = await llm.invoke(prompt, { runName: name, callbacks: [handler] });
     
-    // Handle response format - Azure OpenAI typically returns simple string content
+    // console.log(JSON.stringify(response, null, 2));
+    // Handle new response format with reasoning content
+    if (response.content && Array.isArray(response.content)) {
+      // Extract text from the new format
+      const textContent = response.content
+        .map((item: any) => {
+          if (item.type === 'reasoning_content' && item.reasoningText?.text) {
+            //return item.reasoningText.text;
+          } else if (item.type === 'text' && item.text) {
+            return item.text;
+          } else if (typeof item === 'string') {
+            return item;
+          }
+          return '';
+        })
+        .filter(Boolean)
+        .join('');
+      
+      // Return response with content as string for backward compatibility
+      return {
+        ...response,
+        content: textContent
+      };
+    }
+    
+    // Return as-is if already in expected format
     return response;
   };
 }
 
-// Structured output wrapper utility with Langfuse tracing (Azure OpenAI only)
-export function traceableStructuredLlm(
-  name: string, 
-  tags: string[], 
-  metadata: Record<string, unknown>, 
-  azureConfig?: AzureOpenAIConfig
-) {
-  return async <T = Record<string, unknown>>(prompt: string, schema: z.ZodType<T> | Record<string, unknown>): Promise<T> => {
+// Structured output wrapper utility with Langfuse tracing
+export function traceableStructuredLlm(name: string, tags: string[], metadata: Record<string, any>) {
+  return async (prompt: string, schema: any) => {
     const handler = createLangfuseHandler(name, { ...metadata, tags });
-    const selectedLlm = azureConfig ? createAzureOpenAI(azureConfig) : llm;
-    console.log('traceableStructuredLlm');
-    try {
-      // Use AzureChatOpenAI's native withStructuredOutput method
-      const structuredLlm = selectedLlm.withStructuredOutput(schema, {
-        name: typeof schema === 'object' && 'name' in schema ? schema.name as string : 'structured_output',
-        method: 'functionCalling' // Explicitly use function calling for better reliability
-      });
-      
-      const response = await structuredLlm.invoke(prompt, { 
-        runName: name, 
-        callbacks: [handler] 
-      });
-
-      console.log(JSON.stringify(response, null, 2));
-      
-      return response as T;
-    } catch (error) {
-      console.error('Structured output error:', error);
-      console.error('Prompt:', prompt);
-      console.error('Schema:', schema);
-      throw error;
-    }
+    
+    // Use LangChain's native withStructuredOutput method
+    const structuredLlm = llm.withStructuredOutput(schema, {
+      name: schema.name || 'structured_output'
+    });
+    
+    const response = await structuredLlm.invoke(prompt, { 
+      runName: name, 
+      callbacks: [handler] 
+    });
+    
+    return response;
   };
 }
 
-export default db;
+export default db; 
