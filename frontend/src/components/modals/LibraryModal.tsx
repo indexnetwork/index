@@ -29,6 +29,31 @@ type LibrarySourceIntent = {
   sourceMeta: string | null;
 };
 
+type SelectionTone = 'info' | 'success' | 'warning' | 'error';
+
+type SelectionInsight = {
+  key: string;
+  title: string;
+  message: string;
+  tone: SelectionTone;
+  spinner?: boolean;
+  meta?: string;
+  action?: { type: 'link-sync'; id: string; label: string; disabled?: boolean };
+};
+
+const selectionToneStyles: Record<SelectionTone, { container: string; dot: string }> = {
+  info: { container: 'border-[#99CFFF] bg-[#F0F7FF] text-[#1A3D71]', dot: 'bg-[#007EFF]' },
+  success: { container: 'border-[#0A8F5A] bg-[#F1FFF5] text-[#084C35]', dot: 'bg-[#0A8F5A]' },
+  warning: { container: 'border-[#F5A524] bg-[#FFF7E6] text-[#8A5A00]', dot: 'bg-[#F5A524]' },
+  error: { container: 'border-[#FF7A7A] bg-[#FFF5F5] text-[#A11A1A]', dot: 'bg-[#FF4D4D]' },
+};
+
+type PendingSourceEntry = {
+  startedAt: number;
+  mode: 'initial' | 'retry';
+  timeout?: boolean;
+};
+
 export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
@@ -48,6 +73,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [activeMobileSection, setActiveMobileSection] = useState<'library' | 'intents'>('library');
   const [showIntentsPanel, setShowIntentsPanel] = useState(false);
+  const [pendingSources, setPendingSources] = useState<Record<string, PendingSourceEntry>>({});
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const knownIntentIds = useRef<Set<string>>(new Set());
   const connectSourcesRef = useRef<HTMLDivElement | null>(null);
@@ -449,6 +475,16 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       // Auto-select the newly uploaded files
       const newFileIds = uploadedFiles.map(file => `f-${file.id}`);
       setSelectedIds(prev => new Set([...prev, ...newFileIds]));
+      if (uploadedFiles.length > 0) {
+        setPendingSources(prev => {
+          const next = { ...prev };
+          const startedAt = Date.now();
+          uploadedFiles.forEach(file => {
+            next[file.id] = { startedAt, mode: 'initial' };
+          });
+          return next;
+        });
+      }
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -475,6 +511,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       // Auto-select the newly added link
       if (res.link?.id) {
         setSelectedIds(prev => new Set([...prev, `l-${res.link.id}`]));
+        setPendingSources(prev => ({
+          ...prev,
+          [res.link.id]: { startedAt: Date.now(), mode: 'initial' },
+        }));
       }
       
       success('Link added successfully');
@@ -502,11 +542,190 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     }
   }, [syncService, success, error, loadLibraryIntents]);
 
+  const intentCountsBySource = useMemo(() => {
+    const map = new Map<string, number>();
+    libraryIntents.forEach(intent => {
+      if (!intent.sourceId) return;
+      map.set(intent.sourceId, (map.get(intent.sourceId) ?? 0) + 1);
+    });
+    return map;
+  }, [libraryIntents]);
+
+  const parseLinkStatus = useCallback((link: typeof links[number]) => {
+    const status = (link.lastStatus ?? '').toLowerCase();
+    return {
+      isError: status.startsWith('error') || Boolean(link.lastError),
+      isOk: status.startsWith('ok'),
+      isProcessing: status.includes('processing'),
+      isQueued: status.includes('queued'),
+    };
+  }, []);
+
   const totalIntentCount = libraryIntents.length;
   const displayedIntentCount = (isSelectionFiltering || isSourceFiltering) ? visibleIntents.length : totalIntentCount;
   const intentCountLabel = (isSelectionFiltering || isSourceFiltering) ? `${displayedIntentCount} of ${totalIntentCount}` : `${displayedIntentCount}`;
 
+  const selectionInsights = useMemo<SelectionInsight[]>(() => {
+    if (selectedIds.size === 0) return [];
+    const entries: SelectionInsight[] = [];
+    const seen = new Set<string>();
+    const tokens = Array.from(selectedIds);
+
+    const parseIntentCount = (status?: string | null): number | undefined => {
+      if (!status) return undefined;
+      const match = status.match(/intents\s*=\s*(\d+)/i);
+      if (!match) return undefined;
+      const value = Number(match[1]);
+      return Number.isFinite(value) ? value : undefined;
+    };
+
+    const formatMeta = (items: Array<string | undefined | null>) => {
+      const filtered = items.filter(Boolean) as string[];
+      return filtered.length > 0 ? filtered.join(' • ') : undefined;
+    };
+
+    tokens.forEach(token => {
+      if (token.startsWith('f-')) {
+        const sourceId = token.slice(2);
+        if (seen.has(sourceId)) return;
+        seen.add(sourceId);
+        const file = files.find(f => f.id === sourceId);
+        if (!file) return;
+        const entry = pendingSources[sourceId];
+        const count = intentCountsBySource.get(sourceId) ?? 0;
+
+        let insight: SelectionInsight | null = null;
+        if (entry?.timeout) {
+          insight = {
+            key: `file-${sourceId}`,
+            title: `File · ${file.name}`,
+            message: `Generating intents from ${file.name} is taking longer than expected. You can retry by re-uploading the file if needed.`,
+            tone: 'warning',
+            meta: `Uploaded ${formatDate(file.createdAt).split(',')[0]}`,
+          };
+        } else if (entry) {
+          const isRetry = entry.mode === 'retry';
+          insight = {
+            key: `file-${sourceId}`,
+            title: `File · ${file.name}`,
+            message: isRetry
+              ? `Retrying intents for ${file.name}…`
+              : `Generating intents from ${file.name}. This can take up to a minute.`,
+            tone: 'info',
+            spinner: true,
+            meta: `Uploaded ${formatDate(file.createdAt).split(',')[0]}`,
+          };
+        } else if (count === 0) {
+          insight = {
+            key: `file-${sourceId}`,
+            title: `File · ${file.name}`,
+            message: `No intents were generated from ${file.name}. Re-upload a text-friendly version if needed.`,
+            tone: 'warning',
+            meta: `Uploaded ${formatDate(file.createdAt).split(',')[0]}`,
+          };
+        }
+
+        if (insight) entries.push(insight);
+      } else if (token.startsWith('l-')) {
+        const sourceId = token.slice(2);
+        if (seen.has(sourceId)) return;
+        seen.add(sourceId);
+        const link = links.find(l => l.id === sourceId);
+        if (!link) return;
+        const entry = pendingSources[sourceId];
+        const { isError, isOk, isProcessing, isQueued } = parseLinkStatus(link);
+        const isPending = Boolean(entry) && !entry.timeout;
+        const timedOut = Boolean(entry?.timeout);
+        const reportedCount = parseIntentCount(link.lastStatus);
+        const countedIntents = intentCountsBySource.get(sourceId) ?? 0;
+        const hasIntents = Math.max(countedIntents, reportedCount ?? 0) > 0;
+        const syncing = syncingLinks.has(sourceId);
+
+        const displayHost = (() => {
+          try {
+            const url = new URL(link.url);
+            return url.hostname || link.url;
+          } catch {
+            return link.url;
+          }
+        })();
+
+        const meta = formatMeta([
+          link.lastSyncAt ? `Last sync: ${formatDate(link.lastSyncAt)}` : undefined,
+          link.lastStatus ? `Status: ${link.lastStatus}` : undefined,
+        ]);
+
+        let insight: SelectionInsight | null = null;
+
+        if (isError) {
+          insight = {
+            key: `link-${sourceId}`,
+            title: `Link · ${displayHost}`,
+            message: link.lastError
+              ? `We hit an error while generating intents: ${link.lastError}.`
+              : `We hit an error while generating intents from ${displayHost}.`,
+            tone: 'error',
+            meta,
+            action: { type: 'link-sync', id: sourceId, label: 'Retry sync', disabled: syncing || isPending },
+          };
+        } else if (timedOut) {
+          insight = {
+            key: `link-${sourceId}`,
+            title: `Link · ${displayHost}`,
+            message: `Generating intents from ${displayHost} is taking longer than expected. You can retry the sync.`,
+            tone: 'warning',
+            meta,
+            action: { type: 'link-sync', id: sourceId, label: 'Retry sync', disabled: syncing },
+          };
+        } else if (isPending || isProcessing || isQueued) {
+          const mode = entry?.mode ?? 'initial';
+          const message = mode === 'retry'
+            ? `Retrying intents for ${displayHost}…`
+            : isQueued
+              ? `Queued to sync ${displayHost}. We'll start shortly.`
+              : `Generating intents from ${displayHost}. This usually takes under a minute.`;
+          insight = {
+            key: `link-${sourceId}`,
+            title: `Link · ${displayHost}`,
+            message,
+            tone: 'info',
+            spinner: true,
+            meta,
+          };
+        } else if (hasIntents) {
+          insight = null;
+        } else if (isOk) {
+          insight = {
+            key: `link-${sourceId}`,
+            title: `Link · ${displayHost}`,
+            message: `Synced ${displayHost}, but no intents were produced. Try syncing again if this looks wrong.`,
+            tone: 'warning',
+            meta,
+            action: { type: 'link-sync', id: sourceId, label: 'Retry sync', disabled: syncing },
+          };
+        } else {
+          insight = {
+            key: `link-${sourceId}`,
+            title: `Link · ${displayHost}`,
+            message: `Waiting to start syncing ${displayHost}. You can retry if nothing happens within a minute.`,
+            tone: 'info',
+            meta,
+            action: { type: 'link-sync', id: sourceId, label: 'Retry sync', disabled: syncing },
+          };
+        }
+
+        if (insight) entries.push(insight);
+      }
+    });
+
+    return entries;
+  }, [selectedIds, files, links, intentCountsBySource, pendingSources, syncingLinks, parseLinkStatus]);
+
   const handleSyncLink = useCallback(async (linkId: string) => {
+    setPendingSources(prev => ({
+      ...prev,
+      [linkId]: { startedAt: Date.now(), mode: 'retry' },
+    }));
     try {
       setSyncingLinks(prev => new Set([...prev, linkId]));
       await syncService.syncLink(linkId);
@@ -555,10 +774,83 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     return () => clearInterval(interval);
   }, [open, loadLibraryIntents]);
 
+  useEffect(() => {
+    if (!open) {
+      setPendingSources({});
+    }
+  }, [open]);
+
   useEffect(() => () => {
     highlightTimers.current.forEach(clearTimeout);
     highlightTimers.current.clear();
   }, []);
+
+  useEffect(() => {
+    setPendingSources(prev => {
+      if (Object.keys(prev).length === 0) return prev;
+      const next = { ...prev };
+      let changed = false;
+      Object.keys(prev).forEach((sourceId) => {
+        const isFile = files.some(f => f.id === sourceId);
+        if (!isFile) return;
+        const count = intentCountsBySource.get(sourceId) ?? 0;
+        if (count > 0) {
+          delete next[sourceId];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [files, intentCountsBySource]);
+
+  useEffect(() => {
+    setPendingSources(prev => {
+      if (Object.keys(prev).length === 0) return prev;
+      const next = { ...prev };
+      let changed = false;
+      links.forEach(link => {
+        const entry = prev[link.id];
+        if (!entry) return;
+        const { isError, isOk } = parseLinkStatus(link);
+        const count = intentCountsBySource.get(link.id) ?? 0;
+        if (isError || isOk || count > 0) {
+          delete next[link.id];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [links, intentCountsBySource, parseLinkStatus]);
+
+  useEffect(() => {
+    if (!open) return;
+    const hasActivePending = Object.values(pendingSources).some(entry => !entry.timeout);
+    if (!hasActivePending) return;
+    const interval = setInterval(() => {
+      void loadLists();
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [open, pendingSources, loadLists]);
+
+  useEffect(() => {
+    if (!open) return;
+    const interval = setInterval(() => {
+      setPendingSources(prev => {
+        if (Object.keys(prev).length === 0) return prev;
+        const next = { ...prev };
+        let changed = false;
+        const now = Date.now();
+        Object.entries(prev).forEach(([sourceId, entry]) => {
+          if (!entry.timeout && now - entry.startedAt > 120000) {
+            next[sourceId] = { ...entry, timeout: true };
+            changed = true;
+          }
+        });
+        return changed ? next : prev;
+      });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -984,6 +1276,47 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   </div>
                 </div>
                 <div className="mt-3 flex-1 pr-3 space-y-3 p-3 pt-0">
+                  {selectionInsights.length > 0 && (
+                    <div className="space-y-2">
+                      {selectionInsights.map((insight) => {
+                        const tone = selectionToneStyles[insight.tone];
+                        return (
+                          <div
+                            key={insight.key}
+                            role="status"
+                            aria-live="polite"
+                            className={`border rounded-lg px-3 py-2 text-xs font-ibm-plex-mono ${tone.container}`}
+                          >
+                            <div className="flex items-start gap-2">
+                              {insight.spinner ? (
+                                <span aria-hidden="true" className="mt-1.5 h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <span aria-hidden="true" className={`mt-2 h-2 w-2 rounded-full ${tone.dot}`} />
+                              )}
+                              <div className="flex-1 space-y-1">
+                                <div className="uppercase text-[10px] font-semibold tracking-wide">{insight.title}</div>
+                                <p className="text-xs leading-snug">{insight.message}</p>
+                                {insight.meta && (
+                                  <p className="text-[10px] text-[#555]">{insight.meta}</p>
+                                )}
+                              </div>
+                              {insight.action?.type === 'link-sync' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleSyncLink(insight.action!.id)}
+                                  disabled={insight.action.disabled}
+                                  className="ml-auto h-7 px-2 text-[10px] border-[#D0D0D0] text-[#333] hover:bg-white/80"
+                                >
+                                  {insight.action.label}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   {isLoadingIntents ? (
                     <div className="flex items-center justify-center py-6">
                       <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
