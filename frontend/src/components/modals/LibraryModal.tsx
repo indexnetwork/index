@@ -610,7 +610,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             title: `File · ${file.name}`,
             message: isRetry
               ? `Retrying intents for ${file.name}…`
-              : `Generating intents from ${file.name}. This can take up to a minute.`,
+              : `Generating intents from ${file.name}…`,
             tone: 'info',
             spinner: true,
             meta: `Uploaded ${formatDate(file.createdAt).split(',')[0]}`,
@@ -683,7 +683,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             ? `Retrying intents for ${displayHost}…`
             : isQueued
               ? `Queued to sync ${displayHost}. We'll start shortly.`
-              : `Generating intents from ${displayHost}. This usually takes under a minute.`;
+              : `Generating intents from ${displayHost}…`;
           insight = {
             key: `link-${sourceId}`,
             title: `Link · ${displayHost}`,
@@ -707,7 +707,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           insight = {
             key: `link-${sourceId}`,
             title: `Link · ${displayHost}`,
-            message: `Waiting to start syncing ${displayHost}. You can retry if nothing happens within a minute.`,
+            message: `Waiting to start syncing ${displayHost}.`,
             tone: 'info',
             meta,
             action: { type: 'link-sync', id: sourceId, label: 'Retry sync', disabled: syncing },
@@ -721,7 +721,20 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     return entries;
   }, [selectedIds, files, links, intentCountsBySource, pendingSources, syncingLinks, parseLinkStatus]);
 
+  const pendingStats = useMemo(() => {
+    const entries = Object.values(pendingSources);
+    return {
+      any: entries.length > 0,
+      active: entries.some(entry => !entry.timeout),
+    };
+  }, [pendingSources]);
+  const hasSelectionInsights = selectionInsights.length > 0;
+
   const handleSyncLink = useCallback(async (linkId: string) => {
+    const pendingEntry = pendingSources[linkId];
+    if (syncingLinks.has(linkId) || (pendingEntry && !pendingEntry.timeout)) {
+      return;
+    }
     setPendingSources(prev => ({
       ...prev,
       [linkId]: { startedAt: Date.now(), mode: 'retry' },
@@ -733,14 +746,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } catch {
       error('Failed to sync link');
     } finally {
-      void loadLibraryIntents();
+      void loadLibraryIntents({ silent: true });
       setSyncingLinks(prev => {
         const next = new Set(prev);
         next.delete(linkId);
         return next;
       });
     }
-  }, [syncService, success, error, loadLibraryIntents]);
+  }, [pendingSources, syncingLinks, syncService, success, error, loadLibraryIntents]);
 
 
   // Fetch once per open (ignore function identity changes)
@@ -823,14 +836,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   }, [links, intentCountsBySource, parseLinkStatus]);
 
   useEffect(() => {
-    if (!open) return;
-    const hasActivePending = Object.values(pendingSources).some(entry => !entry.timeout);
-    if (!hasActivePending) return;
+    if (!open || !pendingStats.active) return;
     const interval = setInterval(() => {
       void loadLists();
     }, 4500);
     return () => clearInterval(interval);
-  }, [open, pendingSources, loadLists]);
+  }, [open, pendingStats.active, loadLists]);
 
   useEffect(() => {
     if (!open) return;
@@ -860,15 +871,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   // Auto-toggle intents panel based on filtering state
   useEffect(() => {
     if (!open) return;
-    const hasActiveFiltering = isSelectionFiltering || isSourceFiltering;
-    if (hasActiveFiltering && !showIntentsPanel) {
-      // Show panel when filtering becomes active
+    const shouldBeVisible = isSelectionFiltering || isSourceFiltering || hasSelectionInsights || pendingStats.any;
+    if (shouldBeVisible && !showIntentsPanel) {
       setShowIntentsPanel(true);
-    } else if (!hasActiveFiltering && showIntentsPanel) {
-      // Hide panel when no filtering is active
+    } else if (!shouldBeVisible && showIntentsPanel) {
       setShowIntentsPanel(false);
     }
-  }, [isSelectionFiltering, isSourceFiltering, showIntentsPanel, open]);
+  }, [isSelectionFiltering, isSourceFiltering, hasSelectionInsights, pendingStats.any, showIntentsPanel, open]);
 
   // no index context needed for library mode
 
