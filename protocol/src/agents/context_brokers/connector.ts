@@ -1,7 +1,6 @@
 import db from '../../lib/db';
 import { agents } from '../../lib/schema';
 import { eq, isNull } from 'drizzle-orm';
-import { ExampleContextBroker } from './example/integration';
 import { SemanticRelevancyBroker } from './semantic_relevancy';
 
 // Context broker interface

@@ -1,8 +1,7 @@
 import { BaseContextBroker } from '../base';
-import { intents, intentStakes, agents } from '../../../lib/schema';
-import { eq, sql, isNotNull } from 'drizzle-orm';
-import { traceableLlm, traceableStructuredLlm } from "../../../lib/agents";
-import { generateEmbedding } from "../../../lib/embeddings";
+import { intents, intentStakes } from '../../../lib/schema';
+import { eq, sql } from 'drizzle-orm';
+import { traceableStructuredLlm } from "../../../lib/agents";
 import { z } from "zod";
 
 export class SemanticRelevancyBroker extends BaseContextBroker {
@@ -11,71 +10,9 @@ export class SemanticRelevancyBroker extends BaseContextBroker {
   }
 
   async onIntentCreated(intentId: string): Promise<void> {
-    console.log("manyaaa", intentId, this.agentId)
     await this.onIntentUpdated(intentId);
   }
 
-  private async findSemanticallyRelatedIntents(currentIntent: any): Promise<any[]> {
-    console.log('Finding semantically related intents for:', currentIntent);
-    
-    try {
-      // Generate embedding for current intent if it doesn't have one
-      let queryEmbedding: number[];
-      if (currentIntent.embedding) {
-        queryEmbedding = currentIntent.embedding;
-      } else {
-        console.log('Generating embedding for current intent');
-        queryEmbedding = await generateEmbedding(currentIntent.payload);
-      }
-
-      // Use pgvector for semantic similarity search with IVFFlat index
-      // Get top 10 most similar intents using cosine distance
-      const similarIntents = await this.db
-        .select({
-          id: intents.id,
-          payload: intents.payload,
-          summary: intents.summary,
-          userId: intents.userId,
-          createdAt: intents.createdAt,
-          // Calculate cosine similarity (1 - cosine distance)
-          similarity: sql<number>`1 - (${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)`
-        })
-        .from(intents)
-        .where(
-          sql`${intents.id} != ${currentIntent.id} 
-              AND ${intents.embedding} IS NOT NULL
-              AND ${intents.archivedAt} IS NULL`
-        )
-        .orderBy(sql`${intents.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`)
-        .limit(10);
-
-      console.log(`Found ${similarIntents.length} similar intents using vector search`, similarIntents);
-
-      // Filter by similarity threshold (equivalent to 0.7 LLM score)
-      const relatedIntents = similarIntents
-        //.filter(intent => intent.similarity > 0.75) // Adjust threshold as needed
-        .map(intent => ({
-          intent: {
-            id: intent.id,
-            payload: intent.payload,
-            summary: intent.summary,
-            userId: intent.userId,
-            createdAt: intent.createdAt
-          },
-          score: intent.similarity
-        }));
-
-      console.log('Related intents (vector similarity):', relatedIntents.length);
-      return relatedIntents;
-
-    } catch (error) {
-      console.error('Error in vector similarity search:', error);
-      
-      // Fallback to original LLM-based approach if vector search fails
-      console.log('Falling back to LLM-based semantic search');
-      return []; // Return empty array as fallback
-    }
-  }
 
   async onIntentUpdated(intentId: string): Promise<void> {
     // Get the current intent
