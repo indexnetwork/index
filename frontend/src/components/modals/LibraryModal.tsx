@@ -73,6 +73,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [activeMobileSection, setActiveMobileSection] = useState<'library' | 'intents'>('library');
   const [showIntentsPanel, setShowIntentsPanel] = useState(false);
+  const [panelPreference, setPanelPreference] = useState<'open' | 'closed' | null>(null);
   const [pendingSources, setPendingSources] = useState<Record<string, PendingSourceEntry>>({});
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const knownIntentIds = useRef<Set<string>>(new Set());
@@ -650,29 +651,25 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           }
         })();
 
+        const statusLabel = (() => {
+          if (!link.lastStatus) return link.lastError ? 'Error' : undefined;
+          const code = link.lastStatus.split(':')[0]?.trim() ?? '';
+          if (!code) return undefined;
+          if (code === 'ok') return 'Completed';
+          return code.charAt(0).toUpperCase() + code.slice(1);
+        })();
         const meta = formatMeta([
-          link.lastSyncAt ? `Last sync: ${formatDate(link.lastSyncAt)}` : undefined,
-          link.lastStatus ? `Status: ${link.lastStatus}` : undefined,
+          link.lastSyncAt ? `Last sync ${formatDate(link.lastSyncAt)}` : undefined,
+          statusLabel,
         ]);
 
         let insight: SelectionInsight | null = null;
 
-        if (isError) {
+        if (timedOut) {
           insight = {
             key: `link-${sourceId}`,
             title: `Link · ${displayHost}`,
-            message: link.lastError
-              ? `We hit an error while generating intents: ${link.lastError}.`
-              : `We hit an error while generating intents from ${displayHost}.`,
-            tone: 'error',
-            meta,
-            action: { type: 'link-sync', id: sourceId, label: 'Retry sync', disabled: syncing || isPending },
-          };
-        } else if (timedOut) {
-          insight = {
-            key: `link-${sourceId}`,
-            title: `Link · ${displayHost}`,
-            message: `Generating intents from ${displayHost} is taking longer than expected. You can retry the sync.`,
+            message: `Generating intents from ${displayHost} is taking longer than expected.`,
             tone: 'warning',
             meta,
             action: { type: 'link-sync', id: sourceId, label: 'Retry sync', disabled: syncing },
@@ -692,13 +689,24 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             spinner: true,
             meta,
           };
+        } else if (isError) {
+          insight = {
+            key: `link-${sourceId}`,
+            title: `Link · ${displayHost}`,
+            message: link.lastError
+              ? `We hit an error while generating intents: ${link.lastError}.`
+              : `We hit an error while generating intents from ${displayHost}.`,
+            tone: 'error',
+            meta,
+            action: { type: 'link-sync', id: sourceId, label: 'Retry sync', disabled: syncing || isPending },
+          };
         } else if (hasIntents) {
           insight = null;
         } else if (isOk) {
           insight = {
             key: `link-${sourceId}`,
             title: `Link · ${displayHost}`,
-            message: `Synced ${displayHost}, but no intents were produced. Try syncing again if this looks wrong.`,
+            message: `Synced ${displayHost}, but no intents were produced.`,
             tone: 'warning',
             meta,
             action: { type: 'link-sync', id: sourceId, label: 'Retry sync', disabled: syncing },
@@ -735,6 +743,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (syncingLinks.has(linkId) || (pendingEntry && !pendingEntry.timeout)) {
       return;
     }
+    setSelectedIds(prev => new Set([...prev, `l-${linkId}`]));
+    setActiveMobileSection('intents');
+    setShowIntentsPanel(true);
+    setPanelPreference(null);
     setPendingSources(prev => ({
       ...prev,
       [linkId]: { startedAt: Date.now(), mode: 'retry' },
@@ -753,7 +765,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
         return next;
       });
     }
-  }, [pendingSources, syncingLinks, syncService, success, error, loadLibraryIntents]);
+  }, [pendingSources, syncingLinks, syncService, success, error, loadLibraryIntents, setActiveMobileSection, setPanelPreference]);
 
 
   // Fetch once per open (ignore function identity changes)
@@ -868,16 +880,37 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     if (isSelectionFiltering) setActiveMobileSection('intents');
   }, [isSelectionFiltering, open]);
 
+  useEffect(() => {
+    if (!open || !isSelectionFiltering) return;
+    if (!showIntentsPanel) {
+      setPanelPreference(null);
+      setShowIntentsPanel(true);
+    }
+    setActiveMobileSection('intents');
+  }, [isSelectionFiltering, open, showIntentsPanel]);
+
   // Auto-toggle intents panel based on filtering state
   useEffect(() => {
     if (!open) return;
+    if (panelPreference === 'open') {
+      if (!showIntentsPanel) setShowIntentsPanel(true);
+      return;
+    }
+    if (panelPreference === 'closed') {
+      if (showIntentsPanel) setShowIntentsPanel(false);
+      return;
+    }
     const shouldBeVisible = isSelectionFiltering || isSourceFiltering || hasSelectionInsights || pendingStats.any;
     if (shouldBeVisible && !showIntentsPanel) {
       setShowIntentsPanel(true);
     } else if (!shouldBeVisible && showIntentsPanel) {
       setShowIntentsPanel(false);
     }
-  }, [isSelectionFiltering, isSourceFiltering, hasSelectionInsights, pendingStats.any, showIntentsPanel, open]);
+  }, [panelPreference, isSelectionFiltering, isSourceFiltering, hasSelectionInsights, pendingStats.any, showIntentsPanel, open]);
+
+  useEffect(() => {
+    if (!open) setPanelPreference(null);
+  }, [open]);
 
   // no index context needed for library mode
 
@@ -886,14 +919,24 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
         <Dialog.Content className={`library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6 transition-all sm:duration-300 ${showIntentsPanel ? 'sm:max-w-[1020px]' : 'sm:max-w-[680px]'}`}>
-          <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
-            <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
-            <div className="flex items-center gap-2">
+          <div className="mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
+            <div className="grid grid-cols-[auto_1fr_auto] items-center w-full lg:max-w-[620px] lg:mr-auto">
+              <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
+              <div className="hidden lg:block" />
+              <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setShowIntentsPanel(prev => !prev)}
+                onClick={() => {
+                  if (isSelectionFiltering) return;
+                  const next = !showIntentsPanel;
+                  setShowIntentsPanel(next);
+                  setPanelPreference(next ? 'open' : 'closed');
+                  if (next) setActiveMobileSection('intents');
+                }}
                 aria-pressed={showIntentsPanel}
-                className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-ibm-plex-mono border border-[#E0E0E0] rounded-lg bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                disabled={isSelectionFiltering && showIntentsPanel}
+                title={isSelectionFiltering ? 'Deselect items to hide intents' : showIntentsPanel ? 'Hide intents' : 'Show intents'}
+                className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-ibm-plex-mono border border-[#E0E0E0] rounded-lg bg-white text-[#333] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 ${isSelectionFiltering && showIntentsPanel ? 'opacity-60 cursor-not-allowed' : 'hover:bg-[#F0F0F0]'}`}
               >
                 <span>{showIntentsPanel ? 'Hide intents' : 'Show intents'}</span>
                 <svg
@@ -920,6 +963,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   <line x1="6" y1="6" x2="18" y2="18"></line>
                 </svg>
               </button>
+              </div>
             </div>
           </div>
 
@@ -1305,21 +1349,37 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                               <div className="flex-1 space-y-1">
                                 <div className="uppercase text-[10px] font-semibold tracking-wide">{insight.title}</div>
                                 <p className="text-xs leading-snug">{insight.message}</p>
-                                {insight.meta && (
-                                  <p className="text-[10px] text-[#555]">{insight.meta}</p>
+                                {(insight.meta || insight.action) && (
+                                  <p className="text-[10px] text-[#555] flex items-center flex-wrap gap-1">
+                                    {insight.meta && <span>{insight.meta}</span>}
+                                    {insight.action?.type === 'link-sync' && (
+                                      <button
+                                        onClick={() => handleSyncLink(insight.action!.id)}
+                                        disabled={insight.action.disabled}
+                                        className="inline-flex items-center gap-1 text-[10px] font-medium text-[#006D4B] hover:text-[#004d36] disabled:text-[#999] disabled:cursor-not-allowed"
+                                      >
+                                        <svg
+                                          width="9"
+                                          height="9"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          className="h-3 w-3"
+                                          aria-hidden="true"
+                                        >
+                                          <polyline points="23 4 23 10 17 10"></polyline>
+                                          <polyline points="1 20 1 14 7 14"></polyline>
+                                          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                                        </svg>
+                                        Retry sync
+                                      </button>
+                                    )}
+                                  </p>
                                 )}
                               </div>
-                              {insight.action?.type === 'link-sync' && (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleSyncLink(insight.action!.id)}
-                                  disabled={insight.action.disabled}
-                                  className="ml-auto h-7 px-2 text-[10px] border-[#D0D0D0] text-[#333] hover:bg-white/80"
-                                >
-                                  {insight.action.label}
-                                </Button>
-                              )}
                             </div>
                           </div>
                         );
