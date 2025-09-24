@@ -1267,11 +1267,18 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 ) : (
                   <p className="text-xs text-[#666] mb-4">This action can&apos;t be undone.</p>
                 )}
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" className="rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" onClick={() => setConfirm(null)}>Cancel</Button>
+                <div className="flex justify-end space-x-3">
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    onClick={() => setConfirm(null)}
+                  >
+                    Cancel
+                  </Button>
                   <Button
+                    type="button"
                     variant="outline"
-                    className="rounded-lg border-red-600 text-red-600 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                    className="border-red-600 text-red-600 hover:bg-red-50"
                     onClick={() => { if (confirm) { queueDeletion(confirm.payload, confirm.archiveIntents ? confirm.intentIds : []); setConfirm(null); } }}
                   >
                     Delete
