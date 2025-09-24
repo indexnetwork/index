@@ -59,7 +59,10 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     open: boolean;
     message: string;
     payload: { kind: 'file' | 'link'; item: { id: string; name?: string; url?: string } }[];
+    intentIds: string[];
+    archiveIntents: boolean;
   } | null>(null);
+  const relatedIntentCount = confirm?.intentIds.length ?? 0;
   type IntegrationId = 'notion' | 'slack' | 'discord' | 'calendar' | 'gmail';
   const [integrations, setIntegrations] = useState<Array<{ id: IntegrationId; name: string; connected: boolean }>>([]);
   const [pendingIntegration, setPendingIntegration] = useState<null | IntegrationId>(null);
@@ -168,35 +171,83 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } as const;
   }, [files, links, libraryIntents, selectedIds, activeSourceFilters]);
 
-  const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: { id: string } }[]) => {
+  const finalizeDeletion = useCallback(async (batch: { kind: 'file' | 'link'; item: { id: string } }[], intentIds: string[] = []) => {
     try {
-      await Promise.all(batch.map(({ kind, item }) => kind === 'file'
+      const deletions = batch.map(({ kind, item }) => kind === 'file'
         ? api.delete(`/files/${item.id}`)
         : api.delete(`/links/${item.id}`)
-      ));
-      success(batch.length === 1 ? 'Item deleted' : `${batch.length} items deleted`);
+      );
+      const uniqueIntentIds = Array.from(new Set(intentIds));
+      if (uniqueIntentIds.length > 0) {
+        uniqueIntentIds.forEach(id => {
+          deletions.push(api.patch(`/intents/${id}/archive`));
+        });
+      }
+      await Promise.all(deletions);
+      const baseMessage = batch.length === 1 ? 'Item deleted' : `${batch.length} items deleted`;
+      const intentMessage = uniqueIntentIds.length > 0 ? `; ${uniqueIntentIds.length} related intent${uniqueIntentIds.length === 1 ? '' : 's'} archived` : '';
+      success(`${baseMessage}${intentMessage}`);
       onChanged?.();
     } catch {
-      error('Failed to delete some items');
+      error('Failed to delete some items or archive related intents');
     }
   }, [api, success, error, onChanged]);
 
 
-  const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: { id: string } }[]) => {
+  const queueDeletion = useCallback((items: { kind: 'file' | 'link'; item: { id: string } }[], intentIds: string[] = []) => {
     // Remove items immediately from UI
     const fileIds = new Set(items.filter(i => i.kind === 'file').map(i => i.item.id));
     const linkIds = new Set(items.filter(i => i.kind === 'link').map(i => i.item.id));
     if (fileIds.size > 0) setFiles(prev => prev.filter(f => !fileIds.has(f.id)));
     if (linkIds.size > 0) setLinks(prev => prev.filter(l => !linkIds.has(l.id)));
 
+    if (intentIds.length > 0) {
+      const idSet = new Set(intentIds);
+      setLibraryIntents(prev => prev.filter(intent => !idSet.has(intent.id)));
+      finalizeDeletion(items, intentIds);
+      return;
+    }
+
     // Delete immediately
     finalizeDeletion(items);
   }, [finalizeDeletion]);
 
+  const findRelatedIntentIds = useCallback((items: { kind: 'file' | 'link'; item: { id: string; url?: string } }[]) => {
+    if (items.length === 0 || libraryIntents.length === 0) return [];
+    const fileIds = new Set<string>();
+    const linkIds = new Set<string>();
+    const linkUrls = new Set<string>();
+
+    items.forEach(({ kind, item }) => {
+      if (kind === 'file') fileIds.add(item.id);
+      else {
+        linkIds.add(item.id);
+        if (item.url) linkUrls.add(item.url);
+      }
+    });
+
+    return libraryIntents.reduce<string[]>((acc, intent) => {
+      if (intent.sourceType === 'file' && intent.sourceId && fileIds.has(intent.sourceId)) acc.push(intent.id);
+      else if (intent.sourceType === 'link') {
+        const matchById = intent.sourceId && linkIds.has(intent.sourceId);
+        const matchByUrl = intent.sourceValue && linkUrls.has(intent.sourceValue);
+        if (matchById || matchByUrl) acc.push(intent.id);
+      }
+      return acc;
+    }, []);
+  }, [libraryIntents]);
+
   const handleSingleDelete = useCallback((item: RecentItem) => {
     const payload = [{ kind: item.kind, item: item.raw }];
-    setConfirm({ open: true, message: 'This permanently removes it from your Library. Continue?', payload });
-  }, []);
+    const intentIds = findRelatedIntentIds(payload);
+    setConfirm({
+      open: true,
+      message: 'Remove this item from your Library?',
+      payload,
+      intentIds,
+      archiveIntents: intentIds.length > 0,
+    });
+  }, [findRelatedIntentIds]);
 
   const handleBulkDelete = useCallback(() => {
     if (selectedIds.size === 0) return;
@@ -206,8 +257,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     links.forEach(l => { if (selectedIds.has(`l-${l.id}`)) payload.push({ kind: 'link', item: l }); });
     setSelectedIds(new Set());
     setSelectMode(false);
-    if (payload.length > 0) setConfirm({ open: true, message: `This permanently removes ${payload.length} item(s) from your Library. Continue?`, payload });
-  }, [files, links, selectedIds]);
+    if (payload.length > 0) {
+      const intentIds = findRelatedIntentIds(payload);
+      setConfirm({
+        open: true,
+        message: `Remove ${payload.length} item(s) from your Library?`,
+        payload,
+        intentIds,
+        archiveIntents: intentIds.length > 0,
+      });
+    }
+  }, [files, links, selectedIds, findRelatedIntentIds]);
 
   // Integrations (compact section)
   const loadIntegrations = useCallback(async () => {
@@ -1191,13 +1251,28 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               <Dialog.Overlay className="fixed inset-0 bg-black/40" />
               <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-lg bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 p-4 shadow-lg sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-5">
                 <Dialog.Title className="text-lg font-bold mb-2 font-ibm-plex-mono text-[#333]">Confirm Delete</Dialog.Title>
-                <p className="text-sm text-[#444] mb-4">{confirm?.message}</p>
+                <p className="text-sm text-[#444] mb-2">{confirm?.message}</p>
+                {relatedIntentCount > 0 ? (
+                  <label className="flex items-start gap-2 text-sm text-[#444] mb-4">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(confirm?.archiveIntents)}
+                      onChange={(e) => setConfirm(prev => prev ? { ...prev, archiveIntents: e.target.checked } : prev)}
+                      className="mt-1 h-4 w-4 rounded border border-[#BBBBBB]"
+                    />
+                    <span>
+                      Also archive {relatedIntentCount} generated intent{relatedIntentCount === 1 ? '' : 's'} linked to these item(s).
+                    </span>
+                  </label>
+                ) : (
+                  <p className="text-xs text-[#666] mb-4">This action can&apos;t be undone.</p>
+                )}
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" className="rounded-lg border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" onClick={() => setConfirm(null)}>Cancel</Button>
                   <Button
                     variant="outline"
                     className="rounded-lg border-red-600 text-red-600 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-                    onClick={() => { if (confirm) { queueDeletion(confirm.payload); setConfirm(null); } }}
+                    onClick={() => { if (confirm) { queueDeletion(confirm.payload, confirm.archiveIntents ? confirm.intentIds : []); setConfirm(null); } }}
                   >
                     Delete
                   </Button>
