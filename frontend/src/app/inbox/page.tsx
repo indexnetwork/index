@@ -164,6 +164,7 @@ export default function InboxPage() {
           inputRef.current.focus();
           if (e.key.length === 1) {
             setInputValue(prev => prev + e.key);
+            setInputFocused(true);
           }
         }
       }
@@ -409,6 +410,8 @@ export default function InboxPage() {
                           setInputValue(e.target.value);
                           if (e.target.value === '') {
                             setInputFocused(false);
+                          } else {
+                            setInputFocused(true);
                           }
                         }}
                         onFocus={() => {
@@ -426,7 +429,14 @@ export default function InboxPage() {
                             inputRef.current?.blur();
                           }
                         }}
-                        className="w-full text-lg font-ibm-plex-mono border-none focus:outline-none bg-transparent text-black placeholder-gray-500"
+                        className="flex-1 text-lg font-ibm-plex-mono border-none focus:outline-none bg-transparent text-black placeholder-gray-500"
+                      />
+                      <Image
+                        src="/icon-black.svg"
+                        alt="Search icon"
+                        width={20}
+                        height={32}
+                        className="ml-3 flex-shrink-0"
                       />
                     </div>
                     
