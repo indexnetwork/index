@@ -364,7 +364,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
             {/* Intents Panel */}
             <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-y-auto overflow-x-hidden lg:w-[340px]`}>
               <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3 pr-3">
-                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">My Intents</h3>
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">My Intents in this Index</h3>
                 <span className="text-xs text-[#666] font-ibm-plex-mono">{indexedIntents.length}</span>
               </div>
               

@@ -14,6 +14,7 @@ export interface User {
 export interface Index {
   id: string;
   title: string;
+  prompt?: string | null;
   linkPermissions?: {
     permissions: string[];
     code: string;
@@ -187,6 +188,7 @@ export interface CreateIndexRequest {
 
 export interface UpdateIndexRequest {
   title?: string;
+  prompt?: string | null;
   linkPermissions?: {
     permissions: string[];
     code: string;

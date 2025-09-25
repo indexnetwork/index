@@ -5,9 +5,10 @@ import { createPortal } from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Copy, Globe, Lock, Trash2, Plus, Check, X } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, X, Settings, Shield } from 'lucide-react';
 import { Input } from '../ui/input';
 import { useIndexes } from '@/contexts/APIContext';
+import { useNotifications } from '@/contexts/NotificationContext';
 
 interface Member {
   id: string;
@@ -25,6 +26,18 @@ interface OwnerSettingsModalProps {
 }
 
 export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexUpdate }: OwnerSettingsModalProps) {
+  // Tab management
+  const [activeTab, setActiveTab] = useState<'settings' | 'access'>('settings');
+  
+  // Index settings state
+  const [title, setTitle] = useState(index.title);
+  const [prompt, setPrompt] = useState(index.prompt || '');
+  const [originalTitle, setOriginalTitle] = useState(index.title);
+  const [originalPrompt, setOriginalPrompt] = useState(index.prompt || '');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isDeletingIndex, setIsDeletingIndex] = useState(false);
+  
+  // Access control state
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -33,6 +46,9 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
   });
   const [anyoneCanJoin, setAnyoneCanJoin] = useState<boolean>(() => {
     return index.linkPermissions?.permissions?.includes('can-write-intents') || false;
+  });
+  const [allowVibecheck, setAllowVibecheck] = useState<boolean>(() => {
+    return !!(index.linkPermissions?.permissions && index.linkPermissions.permissions.includes('can-discover'));
   });
   const [members, setMembers] = useState<Member[]>([]);
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
@@ -43,6 +59,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const indexesService = useIndexes();
+  const { success, error } = useNotifications();
 
   // Load members on mount
   const loadMembers = useCallback(async () => {
@@ -58,10 +75,15 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
     if (open) {
       loadMembers();
       // Reset states when modal opens
+      setTitle(index.title);
+      setPrompt(index.prompt || '');
+      setOriginalTitle(index.title);
+      setOriginalPrompt(index.prompt || '');
       setPublicAccess(!!(index.linkPermissions?.permissions && index.linkPermissions.permissions.length > 0));
       setAnyoneCanJoin(index.linkPermissions?.permissions?.includes('can-write-intents') || false);
+      setAllowVibecheck(!!(index.linkPermissions?.permissions && index.linkPermissions.permissions.includes('can-discover')));
     }
-  }, [open, loadMembers, index.linkPermissions]);
+  }, [open, loadMembers, index.linkPermissions, index.title, index.prompt]);
 
   const searchUsers = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -115,35 +137,82 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleUpdatePermissions = async (publicAccess: boolean, anyoneCanJoin: boolean) => {
+  const handleSaveSettings = async () => {
+    try {
+      setIsSavingSettings(true);
+      const updatedIndex = await indexesService.updateIndex(index.id, {
+        title: title.trim(),
+        prompt: prompt.trim() || null
+      });
+      setOriginalTitle(title);
+      setOriginalPrompt(prompt);
+      onIndexUpdate?.(updatedIndex);
+      success('Index settings updated successfully');
+    } catch (err) {
+      console.error('Error updating index:', err);
+      error('Failed to update index settings');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  const handleCancelSettings = () => {
+    setTitle(originalTitle);
+    setPrompt(originalPrompt);
+  };
+
+  const handleDeleteIndex = async () => {
+    if (!window.confirm(`Are you sure you want to delete "${index.title}"? This action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      setIsDeletingIndex(true);
+      await indexesService.deleteIndex(index.id);
+      success('Index deleted successfully');
+      onOpenChange(false);
+      // Note: Parent component should handle navigation/refresh
+    } catch (err) {
+      console.error('Error deleting index:', err);
+      error('Failed to delete index');
+    } finally {
+      setIsDeletingIndex(false);
+    }
+  };
+
+  const handleUpdatePermissions = async (publicAccess: boolean, anyoneCanJoin: boolean, allowVibecheck: boolean) => {
     try {
       setIsUpdatingVisibility(true);
       const permissions: string[] = [];
       
-      if (publicAccess) {
+      if (allowVibecheck) {
         permissions.push('can-discover');
-        if (anyoneCanJoin) {
-          permissions.push('can-write-intents');
-        }
+      }
+      if (publicAccess && anyoneCanJoin) {
+        permissions.push('can-write-intents');
       }
       
       await indexesService.updateLinkPermissions(index.id, permissions);
       const updatedIndex = await indexesService.getIndex(index.id);
       onIndexUpdate?.(updatedIndex);
-    } catch (error) {
-      console.error('Error updating index permissions:', error);
+    } catch (err) {
+      console.error('Error updating index permissions:', err);
+      error('Failed to update access permissions');
     } finally {
       setIsUpdatingVisibility(false);
     }
   };
 
-  const handleCopyLink = async (url: string, linkType: string) => {
+  const handleCopyLink = async () => {
+    const url = `${window.location.origin}/index/${index.id}`;
     try {
       await navigator.clipboard.writeText(url);
-      setIsCopied(linkType);
-      setTimeout(() => setIsCopied(null), 1000);
+      setIsCopied('link');
+      success('Link copied to clipboard');
+      setTimeout(() => setIsCopied(null), 2000);
     } catch (err) {
       console.error('Failed to copy text: ', err);
+      error('Failed to copy link');
     }
   };
 
@@ -154,16 +223,22 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
     // If turning off public access, also turn off anyone can join
     if (!newPublicAccess) {
       setAnyoneCanJoin(false);
-      handleUpdatePermissions(newPublicAccess, false);
+      handleUpdatePermissions(newPublicAccess, false, allowVibecheck);
     } else {
-      handleUpdatePermissions(newPublicAccess, anyoneCanJoin);
+      handleUpdatePermissions(newPublicAccess, anyoneCanJoin, allowVibecheck);
     }
   };
 
   const handleAnyoneCanJoinToggle = () => {
     const newAnyoneCanJoin = !anyoneCanJoin;
     setAnyoneCanJoin(newAnyoneCanJoin);
-    handleUpdatePermissions(publicAccess, newAnyoneCanJoin);
+    handleUpdatePermissions(publicAccess, newAnyoneCanJoin, allowVibecheck);
+  };
+
+  const handleAllowVibecheckToggle = () => {
+    const newAllowVibecheck = !allowVibecheck;
+    setAllowVibecheck(newAllowVibecheck);
+    handleUpdatePermissions(publicAccess, anyoneCanJoin, newAllowVibecheck);
   };
 
   const handleAddMember = async (user: Member) => {
@@ -224,12 +299,8 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
     return 'Member';
   };
 
-  // Generate links based on permissions
-  const canShowShareLink = publicAccess && index.linkPermissions?.code;
-  const canShowMatchlistLink = anyoneCanJoin && index.linkPermissions?.code;
-  
-  const shareUrl = canShowShareLink && index.linkPermissions?.code ? `${window.location.origin}/vibecheck/${index.linkPermissions.code}` : '';
-  const matchlistUrl = canShowMatchlistLink && index.linkPermissions?.code ? `${window.location.origin}/matchlist/${index.linkPermissions.code}` : '';
+  // Helper functions
+  const hasSettingsChanged = title !== originalTitle || prompt !== originalPrompt;
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -247,220 +318,308 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
             <span className="sr-only">Close</span>
           </Dialog.Close>
 
-          {/* Content */}
+          {/* Tab Navigation */}
+          <div className="flex border-b border-gray-200 mb-6">
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'settings'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Settings className="h-4 w-4" />
+              Index Settings
+            </button>
+            <button
+              onClick={() => setActiveTab('access')}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'access'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Shield className="h-4 w-4" />
+              Access Control
+            </button>
+          </div>
+
+          {/* Tab Content */}
           <div className="flex-1 overflow-y-auto">
-            <div className="space-y-8 mt-6 mr-0.5">
-              <div className="space-y-4">
-                {/* Allow Incognito Visitors Toggle */}
-                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="text-md font-medium font-ibm-plex-mono text-black">Allow Incognito Visitors</h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        {publicAccess ? (
-                          <Globe className="h-4 w-4" />
-                        ) : (
-                          <Lock className="h-4 w-4" />
-                        )}
+            {activeTab === 'settings' && (
+              <div className="space-y-6">
+                {/* Index Title */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2 font-ibm-plex-mono">
+                    Index Title
+                  </label>
+                  <Input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Enter index title"
+                    className="w-full"
+                  />
+                </div>
+
+                {/* Index Prompt */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2 font-ibm-plex-mono">
+                    Index Prompt
+                  </label>
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder="Describe what people can share in this index..."
+                    className="w-full min-h-[100px] px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 font-ibm-plex-mono text-black text-sm"
+                    rows={4}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    This helps guide what kind of intents people can share in your index.
+                  </p>
+                </div>
+
+                {/* Save/Cancel Buttons */}
+                {hasSettingsChanged && (
+                  <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
+                    <Button
+                      onClick={handleSaveSettings}
+                      disabled={isSavingSettings}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {isSavingSettings ? (
+                        <>
+                          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Changes'
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleCancelSettings}
+                      disabled={isSavingSettings}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+
+                {/* Danger Zone */}
+                <div className="pt-6 border-t border-gray-200">
+                  <h3 className="text-sm font-medium text-red-900 mb-3 font-ibm-plex-mono">Danger Zone</h3>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-medium text-red-900">Delete this index</h4>
+                        <p className="text-sm text-red-700 mt-1">
+                          Once you delete an index, there is no going back. Please be certain.
+                        </p>
                       </div>
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      Non-members can view content without signing in or joining. They remain invisible to others.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 ml-4">
-                    {isUpdatingVisibility && (
-                      <div className="h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
-                    )}
-                    <button
-                      onClick={() => !isUpdatingVisibility && handlePublicAccessToggle()}
-                      disabled={isUpdatingVisibility}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                        publicAccess ? 'bg-blue-600' : 'bg-gray-300'
-                      } ${isUpdatingVisibility ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          publicAccess ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Anyone Can Join Toggle */}
-                <div className={`flex items-center justify-between p-4 bg-gray-50 rounded-lg transition-opacity ${
-                  !publicAccess ? 'opacity-50' : ''
-                }`}>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-1">
-                      <h3 className="text-md font-medium font-ibm-plex-mono text-black">Anyone Can Join</h3>
-                    </div>
-                    <p className="text-sm text-gray-600">
-                      Membership is open. People can become members instantly without an invite or approval.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 ml-4">
-                    <button
-                      onClick={() => publicAccess && !isUpdatingVisibility && handleAnyoneCanJoinToggle()}
-                      disabled={!publicAccess || isUpdatingVisibility}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                        anyoneCanJoin && publicAccess ? 'bg-blue-600' : 'bg-gray-300'
-                      } ${!publicAccess || isUpdatingVisibility ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          anyoneCanJoin && publicAccess ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Share Link */}
-                {canShowShareLink && (
-                  <div className="mt-4">
-                    <div className="mb-2">
-                      <h4 className="text-sm font-medium text-gray-900">Vibecheck</h4>
-                      <p className="text-xs text-gray-500">People can anonymously compare themselves to the index</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        readOnly
-                        value={shareUrl}
-                        className="px-4 py-3"
-                        placeholder="Share link will appear here..."
-                      />
                       <Button
                         variant="outline"
-                        size="sm"
-                        className={`h-10 px-4 transition-colors ${
-                          isCopied === 'share' ? 'bg-green-50 border-green-200 text-green-700' : ''
-                        }`}
-                        onClick={() => handleCopyLink(shareUrl, 'share')}
+                        onClick={handleDeleteIndex}
+                        disabled={isDeletingIndex}
+                        className="border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400"
                       >
-                        {isCopied === 'share' ? (
-                          <Check className="h-4 w-4" />
+                        {isDeletingIndex ? (
+                          <>
+                            <div className="h-4 w-4 border-2 border-red-700 border-t-transparent rounded-full animate-spin mr-2" />
+                            Deleting...
+                          </>
                         ) : (
-                          <Copy className="h-4 w-4" />
+                          <>
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Index
+                          </>
                         )}
                       </Button>
                     </div>
                   </div>
-                )}
-
-                {/* Matchlist Link */}
-                {canShowMatchlistLink && (
-                  <div className="mt-4">
-                    <div className="mb-2">
-                      <h4 className="text-sm font-medium text-gray-900">Matchlist</h4>
-                      <p className="text-xs text-gray-500">People can write intents, be discoverable, and discover others</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        readOnly
-                        value={matchlistUrl}
-                        className="px-4 py-3"
-                        placeholder="Matchlist link will appear here..."
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={`h-10 px-4 transition-colors ${
-                          isCopied === 'matchlist' ? 'bg-green-50 border-green-200 text-green-700' : ''
-                        }`}
-                        onClick={() => handleCopyLink(matchlistUrl, 'matchlist')}
-                      >
-                        {isCopied === 'matchlist' ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <Copy className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
+            )}
 
-              <div>
-                <h3 className="text-md font-medium font-ibm-plex-mono text-black mb-2">Members</h3>
-                <p className="text-sm text-gray-600 mb-3">Assign specific access to individuals or groups</p>
-                
-                {/* Member picker input */}
-                <div className="relative mb-4">
-                  <div className="flex items-center gap-2">
-                    <div ref={searchContainerRef} className="relative flex-1">
-                      <Plus className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input
-                        ref={searchInputRef}
-                        placeholder="Search people by name or email..."
-                        value={memberSearchQuery}
-                        onChange={(e) => handleSearchInputChange(e.target.value)}
-                        onFocus={() => {
-                          if (memberSearchQuery) {
-                            if (searchContainerRef.current) {
-                              calculateDropdownPosition(searchContainerRef.current, 'suggestions', searchContainerRef.current.offsetWidth);
-                            }
-                            setShowSuggestions(true);
+            {activeTab === 'access' && (
+              <div className="space-y-6">
+                {/* Access Control Toggles */}
+                <div className="space-y-4">
+                  {/* Anyone Can Join / Private Toggle */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-medium text-gray-900 font-ibm-plex-mono">Who can join</h3>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCopyLink}
+                        className={`transition-colors ${
+                          isCopied === 'link' ? 'bg-green-50 border-green-200 text-green-700' : ''
+                        }`}
+                      >
+                        {isCopied === 'link' ? (
+                          <>
+                            <Check className="h-4 w-4 mr-2" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copy Invitation Link
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!publicAccess) {
+                            setPublicAccess(true);
+                            setAnyoneCanJoin(true);
+                            handleUpdatePermissions(true, true, allowVibecheck);
                           }
                         }}
-                        className="pl-10 pr-4 py-3"
-                      />
+                        className={`border-2 p-3 rounded-md text-left transition-all ${
+                          publicAccess && anyoneCanJoin
+                            ? 'border-[#007EFF] bg-white' 
+                            : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Globe className={`h-4 w-4 ${publicAccess && anyoneCanJoin ? "text-[#007EFF]" : "text-gray-600"}`} />
+                          <h4 className={`text-sm font-medium font-ibm-plex-mono ${publicAccess && anyoneCanJoin ? "text-black" : "text-[#666]"}`}>
+                            Anyone can join
+                          </h4>
+                        </div>
+                        <p className="text-xs text-gray-600 font-ibm-plex-mono">
+                          People can discover and join freely.
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPublicAccess(false);
+                          setAnyoneCanJoin(false);
+                          handleUpdatePermissions(false, false, allowVibecheck);
+                        }}
+                        className={`border-2 p-3 rounded-md text-left transition-all ${
+                          !publicAccess || !anyoneCanJoin
+                            ? 'border-[#007EFF] bg-white' 
+                            : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Lock className={`h-4 w-4 ${!publicAccess || !anyoneCanJoin ? "text-[#007EFF]" : "text-gray-600"}`} />
+                          <h4 className={`text-sm font-medium font-ibm-plex-mono ${!publicAccess || !anyoneCanJoin ? "text-black" : "text-[#666]"}`}>
+                            Private
+                          </h4>
+                        </div>
+                        <p className="text-xs text-gray-600 font-ibm-plex-mono">
+                          Only people you invited or people with the invitation link can join.
+                        </p>
+                      </button>
                     </div>
                   </div>
+
+                  {/* Allow Vibecheck Toggle */}
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="allowVibecheck"
+                      checked={allowVibecheck}
+                      onChange={() => !isUpdatingVisibility && handleAllowVibecheckToggle()}
+                      disabled={isUpdatingVisibility}
+                      className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <label htmlFor="allowVibecheck" className="ml-2 text-sm text-black">
+                      Allow people to check how they vibe with your index before joining
+                    </label>
+                    {isUpdatingVisibility && (
+                      <div className="ml-2 h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
+                    )}
+                  </div>
                 </div>
-                
-                {/* Members list */}
-                <div className="space-y-3">
-                  {members.length === 0 ? (
-                    <div className="p-4 text-center">
-                      <p className="text-sm text-gray-500">No members added yet</p>
-                    </div>
-                  ) : (
-                    members.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm">
-                            {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="text-md text-black font-medium">{member.name}</p>
-                            <p className="text-sm text-gray-600">{member.email}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {/* Member role display */}
-                          <div className={`px-3 py-2 border border-gray-300 rounded-md bg-white text-sm ${
-                            member.permissions.includes('owner') ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'
-                          }`}>
-                            <span className={`${
-                              member.permissions.includes('owner') ? 'text-blue-700 font-medium' : 'text-gray-700'
-                            }`}>
-                              {getMemberRoleText(member.permissions)}
-                            </span>
-                          </div>
-                          {/* Only show remove button for non-owners */}
-                          {!member.permissions.includes('owner') && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => handleRemoveMember(member.id)}
-                              title="Remove member"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
+
+                {/* Members Section */}
+                <div className="pt-4 border-t border-gray-200">
+                  <h4 className="text-sm font-medium font-ibm-plex-mono text-black mb-2">Members</h4>
+                  <p className="text-xs text-gray-600 mb-3">Assign specific access to individuals or groups</p>
+                  
+                  {/* Member picker input */}
+                  <div className="relative mb-4">
+                    <div className="flex items-center gap-2">
+                      <div ref={searchContainerRef} className="relative flex-1">
+                        <Plus className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          ref={searchInputRef}
+                          placeholder="Search people by name or email..."
+                          value={memberSearchQuery}
+                          onChange={(e) => handleSearchInputChange(e.target.value)}
+                          onFocus={() => {
+                            if (memberSearchQuery) {
+                              if (searchContainerRef.current) {
+                                calculateDropdownPosition(searchContainerRef.current, 'suggestions', searchContainerRef.current.offsetWidth);
+                              }
+                              setShowSuggestions(true);
+                            }
+                          }}
+                          className="pl-10 pr-4 py-2 text-sm"
+                        />
                       </div>
-                    ))
-                  )}
+                    </div>
+                  </div>
+                  
+                  {/* Members list */}
+                  <div className="space-y-2">
+                    {members.length === 0 ? (
+                      <div className="p-3 text-center">
+                        <p className="text-xs text-gray-500">No members added yet</p>
+                      </div>
+                    ) : (
+                      members.map((member) => (
+                        <div
+                          key={member.id}
+                          className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-6 w-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-xs">
+                              {member.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="text-sm text-black font-medium">{member.name}</p>
+                              <p className="text-xs text-gray-600">{member.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className={`px-2 py-1 border border-gray-300 rounded text-xs ${
+                              member.permissions.includes('owner') ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'
+                            }`}>
+                              <span className={`${
+                                member.permissions.includes('owner') ? 'text-blue-700 font-medium' : 'text-gray-700'
+                              }`}>
+                                {getMemberRoleText(member.permissions)}
+                              </span>
+                            </div>
+                            {!member.permissions.includes('owner') && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50 h-6 w-6 p-0"
+                                onClick={() => handleRemoveMember(member.id)}
+                                title="Remove member"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>
