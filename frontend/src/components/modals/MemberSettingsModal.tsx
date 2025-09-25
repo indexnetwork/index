@@ -45,12 +45,10 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
   const [indexedIntents, setIndexedIntents] = useState<MemberIntent[]>([]);
   const [loadingIndexed, setLoadingIndexed] = useState(false);
   const [removingIntents, setRemovingIntents] = useState<Set<string>>(new Set());
-  const [removingAll, setRemovingAll] = useState(false);
   const [usedTags, setUsedTags] = useState<Set<string>>(new Set());
   const [suggestedTags, setSuggestedTags] = useState<TagSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [suggestionsFetched, setSuggestionsFetched] = useState(false);
-  const [showIntentsPanel, setShowIntentsPanel] = useState(false);
   const [activeMobileSection, setActiveMobileSection] = useState<'settings' | 'intents'>('settings');
 
   const { success, error } = useNotifications();
@@ -131,15 +129,13 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
     return () => clearInterval(interval);
   }, [api, index.id, open]);
 
-  // Fetch tag suggestions once when intents are loaded
+  // Fetch tag suggestions once when modal opens
   useEffect(() => {
-    if (loadingIndexed) return; // Wait for intents to finish loading
-    if (loadingSuggestions) return; // Don't make additional requests while already loading
-    if (suggestionsFetched) return; // Don't refetch if we already have results (even if empty)
-    if (indexedIntents.length > 0) {
+    if (open && !suggestionsFetched && !loadingSuggestions) {
       fetchTagSuggestions();
     }
-  }, [indexedIntents, loadingIndexed, loadingSuggestions, suggestionsFetched]);
+  }, [open, suggestionsFetched, loadingSuggestions, fetchTagSuggestions]);
+
 
   const handleLeaveIndex = async () => {
     try {
@@ -188,20 +184,6 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
     }
   };
 
-  const handleRemoveAllIntents = async () => {
-    try {
-      setRemovingAll(true);
-      await Promise.all(indexedIntents.map(intent => 
-        api.delete(`/indexes/${index.id}/member-intents/${intent.id}`)
-      ));
-      success('All intents removed from index');
-      await fetchMemberIntents();
-    } catch {
-      error('Failed to remove all intents');
-    } finally {
-      setRemovingAll(false);
-    }
-  };
 
   const handleCancel = () => {
     setPrompt(originalPrompt);
@@ -218,163 +200,248 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
     .filter(suggestion => !usedTags.has(suggestion.value))
     .slice(0, 5);
 
+  // Group intents by date (similar to LibraryModal)
+  const intentsByDate = useMemo(() => {
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const ordered = [...indexedIntents].sort((a, b) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    const sections: Array<{ label: string; key: string; items: MemberIntent[] }> = [];
+    const bucket = new Map<string, { label: string; items: MemberIntent[] }>();
+
+    for (const intent of ordered) {
+      const createdDate = new Date(intent.createdAt);
+      if (Number.isNaN(createdDate.getTime())) {
+        if (!bucket.has('unknown')) bucket.set('unknown', { label: 'Undated', items: [] });
+        bucket.get('unknown')!.items.push(intent);
+        continue;
+      }
+      const startOfCreated = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
+      const diff = Math.round((startOfToday.getTime() - startOfCreated.getTime()) / msPerDay);
+      let label: string;
+      if (diff === 0) label = 'Today';
+      else if (diff === 1) label = 'Yesterday';
+      else {
+        const dateStr = createdDate.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric',
+          year: createdDate.getFullYear() !== today.getFullYear() ? 'numeric' : undefined
+        });
+        label = dateStr;
+      }
+      const key = `${startOfCreated.getTime()}-${label}`;
+      if (!bucket.has(key)) bucket.set(key, { label, items: [] });
+      bucket.get(key)!.items.push(intent);
+    }
+
+    const sortedKeys = Array.from(bucket.keys()).sort((a, b) => {
+      const [timeA] = a.split('-');
+      const [timeB] = b.split('-');
+      return Number(timeB) - Number(timeA);
+    });
+
+    for (const key of sortedKeys) {
+      const entry = bucket.get(key);
+      if (entry) sections.push({ label: entry.label, key, items: entry.items });
+    }
+
+    return sections;
+  }, [indexedIntents]);
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[75vh] flex flex-col z-50">
-          <div className="flex items-center justify-between mb-4">
-            <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">
-              Member Settings - {index.title}
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
+        <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6 transition-all sm:duration-300 sm:max-w-[1020px]">
+          <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
+            <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">
+              {index.title} - Member Settings
             </Dialog.Title>
+            <Button
+              onClick={handleLeaveIndex}
+              disabled={isLeaving}
+              variant="outline"
+              className="font-ibm-plex-mono text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
+            >
+              {isLeaving ? 'Leaving...' : 'Leave index'}
+            </Button>
           </div>
-          
-          <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
-            <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </Dialog.Close>
 
-          {/* Content */}
-          <div className="flex flex-col flex-1">
-            {/* Fixed header section */}
-            <div className="flex-shrink-0">
-              <div className="mt-3 mb-3 flex items-center justify-between min-h-[32px]">
-                <h3 className="text-sm font-medium font-ibm-plex-mono text-black">
-                  Instruct what to share and what to keep private
-                </h3>
-                <div className="flex gap-2">
-                  {hasUnsavedChanges && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCancel}
-                      className="font-ibm-plex-mono"
-                    >
-                      Discard
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    onClick={handleSavePrompt}
-                    disabled={isSavingPrompt || !hasUnsavedChanges}
-                    className="font-ibm-plex-mono"
-                  >
-                    {isSavingPrompt ? 'Updating...' : 'Update'}
-                  </Button>
-                </div>
-              </div>
+          <div className="lg:hidden mb-3 flex items-center gap-2 rounded-lg bg-[#F2F2F2] p-1">
+            <button
+              type="button"
+              className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-md transition-colors ${activeMobileSection === 'settings' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
+              onClick={() => setActiveMobileSection('settings')}
+            >
+              Settings
+            </button>
+            <button
+              type="button"
+              className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-md transition-colors ${activeMobileSection === 'intents' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
+              onClick={() => setActiveMobileSection('intents')}
+            >
+              Intents
+              <span className="ml-1 text-[10px] text-[#666]">({indexedIntents.length})</span>
+            </button>
+          </div>
 
-              <div>
-                <div className="relative border border-gray-300 rounded-lg p-3">
-                  <textarea
-                    id="prompt"
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="e.g., Share my AI-related intents like research papers and projects, but keep personal details private..."
-                    className="w-full text-gray-900 resize-none h-15 text-sm font-ibm-plex-mono outline-none"
-                  />
-                  
-                  {/* Tag suggestions */}
-                  <div className="flex gap-2 mt-2 overflow-hidden min-h-[28px] items-center">
-                    {loadingSuggestions ? (
-                      <div className="text-xs text-gray-500 italic flex items-center gap-2">
-                        <svg className="animate-spin h-4 w-4 text-gray-400" viewBox="0 0 16 16" fill="none">
-                          <circle className="opacity-25" cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="2" />
-                          <path className="opacity-75" fill="currentColor" d="M15 8A7 7 0 1 1 8 1v2a5 5 0 1 0 5 5h2z"/>
-                        </svg>
-                        finding inspirations...
-                      </div>
-                    ) : visibleTags.length > 0 ? (
-                      visibleTags.map((suggestion) => (
-                        <button
-                          key={suggestion.value}
-                          onClick={() => handleTagClick(suggestion.value)}
-                          className="px-3 py-1 bg-gray-800 text-white rounded-full text-xs font-ibm-plex-mono hover:bg-gray-700 transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1"
-                          title={`Score: ${suggestion.score.toFixed(2)}`}
-                        >
-                          <Plus className="h-3 w-3" />
-                          {suggestion.value}
-                        </button>
-                      ))
-                    ) : null}
+          <div className="relative flex flex-col lg:flex-row gap-3.5 lg:gap-4 flex-1 overflow-hidden">
+            <div className={`${activeMobileSection === 'settings' ? 'block' : 'hidden'} lg:block lg:w-[620px] lg:flex-shrink-0 min-w-0`}>
+              <div className="space-y-2 sm:space-y-3 lg:space-y-4">
+                {/* Member Settings Section */}
+                <section className="pr-2">
+                  <div className="mt-3 mb-3">
+                    <h3 className="text-sm font-medium font-ibm-plex-mono text-[#333]">
+                      Instruct what to share and what to keep private
+                    </h3>
                   </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Fixed intent list header */}
-            <div className="flex-shrink-0 mt-6 mb-4 flex items-center justify-between">
-              <h3 className="text-sm font-medium font-ibm-plex-mono text-black">
-                My intents in {memberSettings?.indexTitle || index.title} {loadingIndexed ? '' : `(${indexedIntents.length})`}
-              </h3>
-              {indexedIntents.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRemoveAllIntents}
-                  disabled={removingAll}
-                  className="font-ibm-plex-mono text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
-                >
-                  {removingAll ? 'Removing...' : 'Remove all'}
-                </Button>
-              )}
-            </div>
-
-            {/* Scrollable intent list */}
-            <div className="overflow-y-scroll min-h-0 max-h-[300px]">
-              <div className="space-y-2 pr-2">
-                {loadingIndexed ? (
-                  <div className="text-center py-4 text-gray-500">Loading...</div>
-                ) : (
-                  indexedIntents.length > 0 ? (
-                    indexedIntents.map((intent) => (
-                      <div
-                        key={intent.id}
-                        className="group flex items-center justify-between p-3 px-4 bg-gray-50 hover:bg-gray-100 transition-colors"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="text-xs font-ibm-plex-mono font-medium text-gray-900">{intent.summary || intent.payload}</h4>
+                  <div>
+                    <div className="relative border border-[#E0E0E0] rounded-lg p-3">
+                      <textarea
+                        id="prompt"
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        placeholder="e.g., Share my AI-related intents like research papers and projects, but keep personal details private..."
+                        className="w-full text-[#333] resize-none h-25 text-sm font-ibm-plex-mono outline-none bg-transparent"
+                      />
+                      
+                      {/* Tag suggestions */}
+                      <div className="flex gap-2 mt-2 overflow-hidden min-h-[28px] items-center">
+                        {loadingSuggestions ? (
+                          <div className="text-xs text-[#666] italic flex items-center gap-2">
+                            <svg className="animate-spin h-4 w-4 text-gray-400" viewBox="0 0 16 16" fill="none">
+                              <circle className="opacity-25" cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="2" />
+                              <path className="opacity-75" fill="currentColor" d="M15 8A7 7 0 1 1 8 1v2a5 5 0 1 0 5 5h2z"/>
+                            </svg>
+                            finding inspirations...
                           </div>
-                        </div>
+                        ) : visibleTags.length > 0 ? (
+                          visibleTags.map((suggestion) => (
+                            <button
+                              key={suggestion.value}
+                              onClick={() => handleTagClick(suggestion.value)}
+                              className="px-3 py-1 bg-gray-800 text-white rounded-full text-xs font-ibm-plex-mono hover:bg-gray-700 transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1"
+                              title={`Score: ${suggestion.score.toFixed(2)}`}
+                            >
+                              <Plus className="h-3 w-3" />
+                              {suggestion.value}
+                            </button>
+                          ))
+                        ) : null}
+                      </div>
+                    </div>
+                    
+                    {/* Update/Discard buttons */}
+                    <div className="flex gap-2 mt-3 justify-end">
+                      {hasUnsavedChanges && (
                         <Button
                           variant="outline"
-                          size="sm"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleRemoveIntent(intent.id);
-                          }}
-                          disabled={removingIntents.has(intent.id)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={handleCancel}
+                          className="font-ibm-plex-mono"
                         >
-                          {removingIntents.has(intent.id) ? (
-                            <div className="h-4 w-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <div>Remove</div>
-                          )}
+                          Discard
                         </Button>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-4 text-gray-500">No intents indexed yet</div>
-                  )
-                )}
+                      )}
+                      <Button
+                        onClick={handleSavePrompt}
+                        disabled={isSavingPrompt || !hasUnsavedChanges}
+                        className="font-ibm-plex-mono"
+                      >
+                        {isSavingPrompt ? 'Updating...' : 'Update'}
+                      </Button>
+                    </div>
+                  </div>
+                </section>
+
               </div>
             </div>
 
-            {/* Leave button at bottom */}
-            <div className="flex-shrink-0 mt-4 pt-4 border-t border-gray-200">
-              <Button
-                onClick={handleLeaveIndex}
-                disabled={isLeaving}
-                variant="outline"
-                size="sm"
-                className="font-ibm-plex-mono text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
-              >
-                {isLeaving ? 'Leaving...' : 'Leave this index'}
-              </Button>
-            </div>
+            {/* Intents Panel */}
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-y-auto overflow-x-hidden lg:w-[340px]`}>
+              <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3 pr-3">
+                <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">My Intents</h3>
+                <span className="text-xs text-[#666] font-ibm-plex-mono">{indexedIntents.length}</span>
+              </div>
+              
+              <div className="mt-3 flex-1 pr-3 space-y-3 p-3 pt-0">
+                {loadingIndexed ? (
+                  <div className="flex items-center justify-center py-6">
+                    <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
+                  </div>
+                ) : intentsByDate.length === 0 ? (
+                  <div className="text-xs text-[#666] font-ibm-plex-mono py-4 text-center">
+                    <p>No intents indexed yet</p>
+                  </div>
+                ) : (
+                  intentsByDate.map((section) => (
+                    <div key={section.key} className="space-y-2">
+                      <div className="w-full flex items-center justify-between text-xs font-ibm-plex-mono font-medium text-[#444] border-b border-[#E8E8E8] pb-1">
+                        <span>{section.label}</span>
+                        <span className="text-[10px] text-[#777]">{section.items.length}</span>
+                      </div>
+                      <div className="space-y-2">
+                        {section.items.map((intent) => {
+                          const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
+                          const createdAt = new Date(intent.createdAt);
+                          const createdLabel = Number.isNaN(createdAt.getTime()) ? null : createdAt.toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric'
+                          });
+
+                          return (
+                            <div key={intent.id} className="group relative border border-[#E0E0E0] bg-white hover:border-[#CCCCCC] rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5">
+                              {createdLabel && (
+                                <div className="flex items-center justify-end gap-2 mb-1">
+                                  <span className="flex items-center gap-1 text-[10px] text-[#777] font-ibm-plex-mono whitespace-nowrap">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#777]">
+                                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                                      <line x1="16" y1="2" x2="16" y2="6" />
+                                      <line x1="8" y1="2" x2="8" y2="6" />
+                                      <line x1="3" y1="10" x2="21" y2="10" />
+                                    </svg>
+                                    {createdLabel}
+                                  </span>
+                                </div>
+                              )}
+                              <div className="mt-1 text-xs text-[#333] font-medium leading-snug line-clamp-3 break-words">{summary}</div>
+                              <div className="mt-2 flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 lg:absolute lg:right-2 lg:bottom-2">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleRemoveIntent(intent.id);
+                                  }}
+                                  disabled={removingIntents.has(intent.id)}
+                                  className="h-6 w-6 grid place-items-center rounded-md bg-[#F2F2F2] text-red-600 hover:text-red-700 hover:bg-[#E6E6E6]"
+                                  aria-label="Remove intent"
+                                >
+                                  {removingIntents.has(intent.id) ? (
+                                    <div className="h-3 w-3 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                      <polyline points="3,6 5,6 21,6"></polyline>
+                                      <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
+                                      <line x1="10" y1="11" x2="10" y2="17"></line>
+                                      <line x1="14" y1="11" x2="14" y2="17"></line>
+                                    </svg>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </aside>
           </div>
         </Dialog.Content>
       </Dialog.Portal>
