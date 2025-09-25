@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Copy, Globe, Lock, Trash2, Plus, Check, X, Settings, Shield } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, X, Settings, Shield, ChevronRight, ChevronDown } from 'lucide-react';
 import { Input } from '../ui/input';
 import { useIndexes } from '@/contexts/APIContext';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -36,6 +36,9 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
   const [originalPrompt, setOriginalPrompt] = useState(index.prompt || '');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isDeletingIndex, setIsDeletingIndex] = useState(false);
+  const [isDangerZoneExpanded, setIsDangerZoneExpanded] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   
   // Access control state
   const [isUpdatingVibeCheckPermission, setIsUpdatingVibeCheckPermission] = useState(false);
@@ -169,14 +172,15 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
   };
 
   const handleDeleteIndex = async () => {
-    if (!window.confirm(`Are you sure you want to delete "${index.title}"? This action cannot be undone.`)) {
-      return;
-    }
-    
+    setShowDeleteConfirmation(true);
+  };
+
+  const handleConfirmDelete = async () => {
     try {
       setIsDeletingIndex(true);
       await indexesService.deleteIndex(index.id);
       success('Index deleted successfully');
+      setShowDeleteConfirmation(false);
       onOpenChange(false);
       // Note: Parent component should handle navigation/refresh
     } catch (err) {
@@ -185,6 +189,11 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
     } finally {
       setIsDeletingIndex(false);
     }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirmation(false);
+    setDeleteConfirmationText('');
   };
 
   const handleUpdatePermissions = async (anyoneCanJoin: boolean, allowVibecheck: boolean) => {
@@ -307,6 +316,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
 
   // Helper functions
   const hasSettingsChanged = title !== originalTitle || prompt !== originalPrompt;
+  const isDeleteConfirmationValid = deleteConfirmationText === index.title;
 
   return (
     <Dialog.Root open={open} onOpenChange={(newOpen) => {
@@ -360,10 +370,9 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
           <div className="flex-1 mt-4 overflow-y-auto">
             {activeTab === 'settings' && (
               <div className="space-y-6">
-                {/* Index Title */}
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2 font-ibm-plex-mono">
-                    Index Title
+                    Title
                   </label>
                   <Input
                     value={title}
@@ -376,7 +385,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                 {/* Index Prompt */}
                 <div>
                   <label className="block text-sm font-medium text-gray-900 mb-2 font-ibm-plex-mono">
-                    Index Prompt
+                    Prompt
                   </label>
                   <textarea
                     value={prompt}
@@ -391,63 +400,68 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                 </div>
 
                 {/* Save/Cancel Buttons */}
-                {hasSettingsChanged && (
-                  <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
-                    <Button
-                      onClick={handleSaveSettings}
-                      disabled={isSavingSettings}
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                    >
-                      {isSavingSettings ? (
-                        <>
-                          <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                          Saving...
-                        </>
-                      ) : (
-                        'Save Changes'
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={handleCancelSettings}
-                      disabled={isSavingSettings}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                )}
+                <div className="flex justify-end space-x-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleCancelSettings}
+                    disabled={isSavingSettings}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    onClick={handleSaveSettings}
+                    disabled={isSavingSettings || !hasSettingsChanged}
+                  >
+                    {isSavingSettings ? 'Saving...' : 'Save Changes'}
+                  </Button>
+                </div>
 
                 {/* Danger Zone */}
                 <div className="pt-6 border-t border-gray-200">
-                  <h3 className="text-sm font-medium text-red-900 mb-3 font-ibm-plex-mono">Danger Zone</h3>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-medium text-red-900">Delete this index</h4>
-                        <p className="text-sm text-red-700 mt-1">
-                          Once you delete an index, there is no going back. Please be certain.
-                        </p>
+                  <button
+                    onClick={() => setIsDangerZoneExpanded(!isDangerZoneExpanded)}
+                    className="flex items-center gap-2 text-sm font-medium text-red-900 font-ibm-plex-mono hover:text-red-700 transition-colors"
+                  >
+                    {isDangerZoneExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                    Danger Zone
+                  </button>
+                  
+                  {isDangerZoneExpanded && (
+                    <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-medium text-red-900">Delete this index</h4>
+                          <p className="text-sm text-red-700 mt-1">
+                            Deleting an index is permanent.
+                          </p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          onClick={handleDeleteIndex}
+                          disabled={isDeletingIndex}
+                          className="border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400"
+                        >
+                          {isDeletingIndex ? (
+                            <>
+                              <div className="h-4 w-4 border-2 border-red-700 border-t-transparent rounded-full animate-spin mr-2" />
+                              Deleting...
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Index
+                            </>
+                          )}
+                        </Button>
                       </div>
-                      <Button
-                        variant="outline"
-                        onClick={handleDeleteIndex}
-                        disabled={isDeletingIndex}
-                        className="border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400"
-                      >
-                        {isDeletingIndex ? (
-                          <>
-                            <div className="h-4 w-4 border-2 border-red-700 border-t-transparent rounded-full animate-spin mr-2" />
-                            Deleting...
-                          </>
-                        ) : (
-                          <>
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete Index
-                          </>
-                        )}
-                      </Button>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             )}
@@ -760,6 +774,68 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
             document.body
           )}
         </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirmation && (
+        <Dialog.Root open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[60]" />
+            <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-[#2f3136] rounded-lg shadow-lg p-6 w-full max-w-md z-[70]">
+              <div className="mb-4">
+                <Dialog.Title className="text-xl font-bold text-white mb-4">
+                  Delete '{index.title}'
+                </Dialog.Title>
+                <p className="text-[#b9bbbe] text-sm mb-6">
+                  Are you sure you want to delete <span className="text-orange-400 font-medium">{index.title}</span>? This action cannot be undone.
+                </p>
+                
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-[#b9bbbe] mb-2">
+                    Enter index name
+                  </label>
+                  <Input
+                    value={deleteConfirmationText}
+                    onChange={(e) => setDeleteConfirmationText(e.target.value)}
+                    placeholder=""
+                    className="w-full bg-[#40444b] border-[#40444b] text-white placeholder-[#72767d] focus:border-blue-500 focus:ring-blue-500"
+                    autoFocus
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end space-x-3">
+                <Button
+                  variant="outline"
+                  onClick={handleCancelDelete}
+                  disabled={isDeletingIndex}
+                  className="bg-transparent border-[#4f545c] text-white hover:bg-[#4f545c] hover:border-[#4f545c]"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConfirmDelete}
+                  disabled={isDeletingIndex || !isDeleteConfirmationValid}
+                  className="bg-[#ed4245] hover:bg-[#c03537] text-white border-0"
+                >
+                  {isDeletingIndex ? (
+                    <>
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Deleting...
+                    </>
+                  ) : (
+                    'Delete Index'
+                  )}
+                </Button>
+              </div>
+              
+              <Dialog.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-white transition-opacity hover:opacity-100">
+                <X className="h-4 w-4 text-[#b9bbbe]" />
+                <span className="sr-only">Close</span>
+              </Dialog.Close>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
       )}
     </Dialog.Root>
   );
