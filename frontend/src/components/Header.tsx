@@ -164,8 +164,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
               <Image 
                 src="/logo-black.svg" 
                 alt="Index Protocol" 
-                width={200} 
-                height={48}
+                width={100} 
+                height={36}
                 className="object-contain"
               />
             </div>
@@ -201,8 +201,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
               <Image 
                 src="/logo-black.svg" 
                 alt="Index Protocol" 
-                width={200} 
-                height={48}
+                width={100} 
+                height={36}
                 className="object-contain"
               />
             </div>

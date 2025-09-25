@@ -431,13 +431,6 @@ export default function InboxPage() {
                         }}
                         className="flex-1 text-lg font-ibm-plex-mono border-none focus:outline-none bg-transparent text-black placeholder-gray-500"
                       />
-                      <Image
-                        src="/icon-black.svg"
-                        alt="Search icon"
-                        width={20}
-                        height={32}
-                        className="ml-3 flex-shrink-0"
-                      />
                     </div>
                     
                     {/* Dropdown content */}
