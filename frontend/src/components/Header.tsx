@@ -111,16 +111,18 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (dropdownOpen && dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
+    if (dropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [dropdownOpen]);
 
   // Memoize the navigation logic to avoid recalculating on every render
   const navigationItems = useMemo(() => [
@@ -243,8 +245,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                     <button
                       className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
                       onClick={() => {
-                        setProfileModalOpen(true);
                         setDropdownOpen(false);
+                        setProfileModalOpen(true);
                       }}
                     >
                       <Settings className="h-4 w-4 mr-2" />
@@ -253,8 +255,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                     <button
                       className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
                       onClick={() => {
-                        setLibraryModalOpen(true);
                         setDropdownOpen(false);
+                        setLibraryModalOpen(true);
                       }}
                     >
                       <Library className="h-4 w-4 mr-2" />
@@ -263,8 +265,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                     <button
                       className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 flex items-center"
                       onClick={() => {
-                        setCreateIndexModalOpen(true);
                         setDropdownOpen(false);
+                        setCreateIndexModalOpen(true);
                       }}
                     >
                       <Plus className="h-4 w-4 mr-2" />
@@ -273,8 +275,8 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
                     <button
                       className="w-full px-4 py-2 text-left text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center transition-colors"
                       onClick={() => {
-                        logout();
                         setDropdownOpen(false);
+                        logout();
                       }}
                     >
                       <LogIn className="h-4 w-4 mr-2" />
