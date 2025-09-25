@@ -12,6 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
+    "db:flush": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/db-flush.ts",
     "sync-all": "TS_NODE_TRANSPILE_ONLY=1 node -r ts-node/register ./src/cli/sync-all.ts"
   },
   "dependencies": {
