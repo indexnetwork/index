@@ -20,11 +20,10 @@ export default function InboxPage() {
   const [discoverStakes, setDiscoverStakes] = useState<StakesByUserResponse[]>([]);
   const [inboxConnections, setInboxConnections] = useState<UserConnection[]>([]);
   const [pendingConnections, setPendingConnections] = useState<UserConnection[]>([]);
-  const [historyConnections, setHistoryConnections] = useState<UserConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
-  const [requestsView] = useState<'received' | 'sent'>('received');
+  const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
   const { selectedIndexIds } = useIndexFilter();
   
@@ -88,10 +87,9 @@ export default function InboxPage() {
       const apiIndexIds = selectedIndexIds.length > 0 ? selectedIndexIds : undefined;
       
       // Fetch connections and discover data
-      const [inboxData, pendingData, historyData, discoverData] = await Promise.all([
+      const [inboxData, pendingData, discoverData] = await Promise.all([
         connectionsService.getConnectionsByUser('inbox', apiIndexIds),
         connectionsService.getConnectionsByUser('pending', apiIndexIds),
-        connectionsService.getConnectionsByUser('history', apiIndexIds),
         discoverService.discoverUsers({ indexIds: apiIndexIds, excludeDiscovered: true, limit: 50 })
       ]);
 
@@ -118,7 +116,6 @@ export default function InboxPage() {
       setDiscoverStakes(transformedStakesData);
       setInboxConnections(inboxData.connections);
       setPendingConnections(pendingData.connections);
-      setHistoryConnections(historyData.connections);
 
       // Clear previous synthesis cache when filters change
       fetchedSynthesesRef.current.clear();
@@ -131,7 +128,7 @@ export default function InboxPage() {
       transformedStakesData.forEach(stake => allUserIds.add(stake.user.id));
       
       // Collect user IDs from connections
-      [...inboxData.connections, ...pendingData.connections, ...historyData.connections]
+      [...inboxData.connections, ...pendingData.connections]
         .forEach(connection => allUserIds.add(connection.user.id));
 
       // Fetch synthesis for all unique users with current index filter
@@ -375,7 +372,7 @@ export default function InboxPage() {
             {activeTab === 'discover' && (
               <DiscoveryForm 
                 onRequestsClick={() => handleTabChange('requests')}
-                requestsCount={inboxConnections.length + pendingConnections.length + historyConnections.length}
+                requestsCount={inboxConnections.length + pendingConnections.length}
               />
             )}
             
@@ -413,25 +410,47 @@ export default function InboxPage() {
 
             {/* Requests Content - Incoming/Outgoing requests */}
             {activeTab === 'requests' && (
-              <div className="mt-4">
-                {(() => {
-                  const connectionsToShow = requestsView === 'received' 
-                    ? inboxConnections 
-                    : [...pendingConnections, ...historyConnections];
-                  
-                  if (connectionsToShow.length === 0) {
-                    return (
-                <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                        {requestsView === 'received' 
-                          ? 'No incoming connection requests. All caught up!'
-                          : 'No sent requests or completed connections.'
-                        }
-                </div>
-                    );
-                  }
-                  
-                  return connectionsToShow.map((connection) => renderConnectionCard(connection, 'requests'));
-                })()}
+              <div className="">
+                <Tabs.Root value={requestsView} onValueChange={(value) => setRequestsView(value as 'received' | 'sent')}>
+                  <Tabs.List className="overflow-x-auto inline-flex text-sm text-black">
+                    <Tabs.Trigger value="received" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 bg-white data-[state=active]:bg-black data-[state=active]:text-white">
+                      Incoming
+                      {inboxConnections.length > 0 && (
+                        <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
+                          {inboxConnections.length}
+                        </span>
+                      )}
+                    </Tabs.Trigger>
+                    <Tabs.Trigger value="sent" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 bg-white  data-[state=active]:bg-black data-[state=active]:text-white">
+                      Sent
+                      {pendingConnections.length > 0 && (
+                        <span className="ml-2 bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full data-[state=active]:bg-white data-[state=active]:text-black">
+                          {pendingConnections.length}
+                        </span>
+                      )}
+                    </Tabs.Trigger>
+                  </Tabs.List>
+
+                  <Tabs.Content value="received" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
+                    {inboxConnections.length === 0 ? (
+                      <div className="py-8 text-center text-gray-500">
+                        No incoming connection requests. All caught up!
+                      </div>
+                    ) : (
+                      inboxConnections.map((connection) => renderConnectionCard(connection, 'requests'))
+                    )}
+                  </Tabs.Content>
+
+                  <Tabs.Content value="sent" className="p-0 mt-0 bg-white border border-b-2 border-gray-800">
+                    {pendingConnections.length === 0 ? (
+                      <div className="py-8 text-center text-gray-500">
+                        No sent requests.
+                      </div>
+                    ) : (
+                      pendingConnections.map((connection) => renderConnectionCard(connection, 'requests'))
+                    )}
+                  </Tabs.Content>
+                </Tabs.Root>
                 </div>
               )}
           </Tabs.Root>
