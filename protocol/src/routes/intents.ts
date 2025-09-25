@@ -609,26 +609,11 @@ router.post('/suggest-tags',
 
       const { prompt = '', indexId, maxSuggestions = 10 } = req.body;
 
-      // Build query for fetching intents
-      let query = db
-        .select({
-          id: intents.id,
-          payload: intents.payload,
-          summary: intents.summary,
-          createdAt: intents.createdAt
-        })
-        .from(intents)
-        .where(
-          and(
-            eq(intents.userId, req.user!.id),
-            isNull(intents.archivedAt)
-          )
-        )
-        .orderBy(desc(intents.createdAt));
+      let userIntents: Array<{ id: string; payload: string; summary: string | null; createdAt: Date }> = [];
 
-      // If indexId is provided, filter by that index
-      if (indexId) {
-        query = db
+      if (!prompt.trim()) {
+        // If no prompt provided, use all user intents (optionally filtered by index)
+        let query = db
           .select({
             id: intents.id,
             payload: intents.payload,
@@ -636,24 +621,120 @@ router.post('/suggest-tags',
             createdAt: intents.createdAt
           })
           .from(intents)
-          .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
           .where(
             and(
-              eq(intentIndexes.indexId, indexId),
               eq(intents.userId, req.user!.id),
               isNull(intents.archivedAt)
             )
           )
           .orderBy(desc(intents.createdAt));
-      }
 
-      // Fetch all user intents (not limited to 20 for better tag generation)
-      const userIntents = await query;
+        // If indexId is provided, filter by that index
+        if (indexId) {
+          query = db
+            .select({
+              id: intents.id,
+              payload: intents.payload,
+              summary: intents.summary,
+              createdAt: intents.createdAt
+            })
+            .from(intents)
+            .innerJoin(intentIndexes, eq(intents.id, intentIndexes.intentId))
+            .where(
+              and(
+                eq(intentIndexes.indexId, indexId),
+                eq(intents.userId, req.user!.id),
+                isNull(intents.archivedAt)
+              )
+            )
+            .orderBy(desc(intents.createdAt));
+        }
+
+        userIntents = await query;
+      } else {
+        // If prompt provided, find intents similar to prompt but NOT in the specified index
+        let embedding: number[] | null = null;
+        try {
+          embedding = await generateEmbedding(prompt);
+        } catch (error) {
+          console.error('Failed to generate embedding for prompt:', error);
+          return res.status(500).json({ 
+            error: 'Failed to process prompt for similarity search' 
+          });
+        }
+
+        // Build base query for user's intents not in the specified index
+        let baseQuery = db
+          .select({
+            id: intents.id,
+            payload: intents.payload,
+            summary: intents.summary,
+            createdAt: intents.createdAt,
+            embedding: intents.embedding,
+            // Calculate cosine similarity (1 - cosine distance)
+            similarity: sql<number>`1 - (${intents.embedding} <=> ${JSON.stringify(embedding)}::vector)`
+          })
+          .from(intents)
+          .where(
+            and(
+              eq(intents.userId, req.user!.id),
+              isNull(intents.archivedAt),
+              isNotNull(intents.embedding) // Only consider intents with embeddings
+            )
+          );
+
+        // If indexId is provided, exclude intents that are already in that index
+        if (indexId) {
+          baseQuery = db
+            .select({
+              id: intents.id,
+              payload: intents.payload,
+              summary: intents.summary,
+              createdAt: intents.createdAt,
+              embedding: intents.embedding,
+              // Calculate cosine similarity (1 - cosine distance)
+              similarity: sql<number>`1 - (${intents.embedding} <=> ${JSON.stringify(embedding)}::vector)`
+            })
+            .from(intents)
+            .where(
+              and(
+                eq(intents.userId, req.user!.id),
+                isNull(intents.archivedAt),
+                isNotNull(intents.embedding),
+                sql`NOT EXISTS (
+                  SELECT 1 FROM ${intentIndexes} 
+                  WHERE ${intentIndexes.intentId} = ${intents.id} 
+                  AND ${intentIndexes.indexId} = ${indexId}
+                )`
+              )
+            );
+        }
+
+        // Order by similarity and limit results
+        const similarIntents = await baseQuery
+          .orderBy(sql`${intents.embedding} <=> ${JSON.stringify(embedding)}::vector`)
+          .limit(50); // Get top 50 most similar intents
+
+        // Filter by similarity threshold and convert to expected format
+        const similarityThreshold = 0.3; // Adjust as needed
+        userIntents = similarIntents
+          .filter(intent => intent.similarity > similarityThreshold)
+          .map(intent => ({
+            id: intent.id,
+            payload: intent.payload,
+            summary: intent.summary,
+            createdAt: intent.createdAt
+          }));
+
+        console.log(`Found ${userIntents.length} intents similar to prompt (threshold: ${similarityThreshold})`);
+      }
 
       if (userIntents.length === 0) {
         return res.json({ 
           suggestions: [],
-          message: "No intents found to generate tag suggestions"
+          message: prompt.trim() 
+            ? "No intents found similar to the prompt" 
+            : "No intents found to generate tag suggestions"
         });
       }
 
