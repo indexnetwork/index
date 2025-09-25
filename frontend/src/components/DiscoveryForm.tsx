@@ -16,7 +16,11 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
   // Auto-focus input on keypress
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (inputRef.current && !inputFocused) {
+      // Check if any modal is open by looking for modal elements
+      // Radix UI Dialog components have data-radix-dialog-content attribute
+      const hasModalOpen = document.querySelector('[data-radix-dialog-content], [role="dialog"]') !== null;
+      
+      if (inputRef.current && !inputFocused && !hasModalOpen) {
         // Focus on Enter or when typing regular characters
         if (e.key === 'Enter' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)) {
           e.preventDefault();
