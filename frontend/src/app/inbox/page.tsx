@@ -14,7 +14,7 @@ import ClientLayout from "@/components/ClientLayout";
 import ConnectionActions, { ConnectionAction } from "@/components/ConnectionActions";
 import { useIndexFilter } from "@/contexts/IndexFilterContext";
 
-const validTabs = ['discover', 'inbox', 'pending', 'history'];
+const validTabs = ['discover', 'requests'];
 
 export default function InboxPage() {
   const [discoverStakes, setDiscoverStakes] = useState<StakesByUserResponse[]>([]);
@@ -24,6 +24,11 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
+  const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
+  const [inputFocused, setInputFocused] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+  const [originalInputValue, setOriginalInputValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
   const fetchedSynthesesRef = useRef<Set<string>>(new Set());
   const { selectedIndexIds } = useIndexFilter();
   
@@ -149,6 +154,25 @@ export default function InboxPage() {
     fetchData();
   }, [fetchData]);
 
+  // Auto-focus input on keypress
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (activeTab === 'discover' && inputRef.current && !inputFocused) {
+        // Focus on Enter or when typing regular characters
+        if (e.key === 'Enter' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)) {
+          e.preventDefault();
+          inputRef.current.focus();
+          if (e.key.length === 1) {
+            setInputValue(prev => prev + e.key);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, [activeTab, inputFocused]);
+
   // Sync tab state with URL changes
   useEffect(() => {
     const urlTab = searchParams.get('tab');
@@ -190,22 +214,24 @@ export default function InboxPage() {
     }
   };
 
-  const getConnectionStatus = (tabType: 'discover' | 'inbox' | 'pending' | 'history'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
-    switch (tabType) {
-      case 'discover':
+
+  const getConnectionStatus = (tabType: 'discover' | 'requests', viewType?: 'received' | 'sent'): 'none' | 'pending_sent' | 'pending_received' | 'connected' | 'declined' | 'skipped' => {
+    if (tabType === 'discover') {
         return 'none'; // suggestions for new connections
-      case 'inbox':
-        return 'pending_received'; // items awaiting your response
-      case 'pending':
-        return 'pending_sent'; // you acted, awaiting them
-      case 'history':
-        return 'connected'; // resolved states
-      default:
-        return 'none';
     }
+    
+    if (tabType === 'requests') {
+      if (viewType === 'sent') {
+        return 'pending_sent'; // you acted, awaiting them
+      } else {
+        return 'pending_received'; // items awaiting your response
+      }
+    }
+    
+    return 'none';
   };
 
-  const renderStakeCard = (userStake: StakesByUserResponse, tabType: 'discover' | 'inbox' | 'pending' | 'history') => {
+  const renderStakeCard = (userStake: StakesByUserResponse, tabType: 'discover' | 'requests') => {
     return (
       <div key={userStake.user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
         <div className="py-4 px-2 sm:px-4 hover:bg-gray-50 transition-colors">
@@ -235,7 +261,7 @@ export default function InboxPage() {
             <ConnectionActions
               userId={userStake.user.id}
               userName={userStake.user.name}
-              connectionStatus={getConnectionStatus(tabType)}
+              connectionStatus={getConnectionStatus(tabType, requestsView)}
               onAction={handleConnectionAction}
               size="sm"
             />
@@ -283,7 +309,7 @@ export default function InboxPage() {
     );
   };
 
-  const renderConnectionCard = (connection: UserConnection, tabType: 'inbox' | 'pending' | 'history') => {
+  const renderConnectionCard = (connection: UserConnection, tabType: 'requests') => {
     return (
       <div key={connection.user.id} className="p-0 mt-0 bg-white border border-b-2 border-gray-800 mb-4">
         <div className="py-4 px-2 sm:px-4 hover:bg-gray-50 transition-colors">
@@ -309,7 +335,7 @@ export default function InboxPage() {
               <ConnectionActions
                 userId={connection.user.id}
                 userName={connection.user.name}
-                connectionStatus={getConnectionStatus(tabType)}
+                connectionStatus={getConnectionStatus(tabType, requestsView)}
                 onAction={handleConnectionAction}
                 size="sm"
               />
@@ -365,72 +391,142 @@ export default function InboxPage() {
         }}>
 
         <div className="flex flex-col justify-between mb-4">
-          <Tabs.Root value={activeTab} onValueChange={handleTabChange} className="flex-grow">
-            <div className="flex flex-row items-end justify-between">
-              <Tabs.List className="overflow-x-auto flex justify-between w-full text-sm text-black">
-                <div className="flex bg-white ">
-                  <Tabs.Trigger value="discover" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                    Discover ({discoverStakes.length})
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="inbox" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-r-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                    <div className="flex items-center gap-2">
-                      <Inbox size={16} />
-                      Inbox ({inboxConnections.length})
+          {/* Header section */}
+          <div className="space-y-4">
+            {/* Discovery input section */}
+            {activeTab === 'discover' && (
+              <div className="space-y-4">
+                {/* Input and button row */}
+                <div className="flex gap-4 items-stretch">
+                  <div className="flex-1 relative">
+                    <div className="bg-white border border-b-2 border-gray-800 flex items-center px-4 py-3">
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        placeholder="What do you want to discover?"
+                        value={inputValue}
+                        onChange={(e) => {
+                          setInputValue(e.target.value);
+                          if (e.target.value === '') {
+                            setInputFocused(false);
+                          }
+                        }}
+                        onFocus={() => {
+                          setInputFocused(true);
+                          setOriginalInputValue(inputValue);
+                        }}
+                        onBlur={() => setTimeout(() => setInputFocused(false), 100)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setInputFocused(false);
+                            inputRef.current?.blur();
+                          } else if (e.key === 'Escape') {
+                            setInputValue(originalInputValue);
+                            setInputFocused(false);
+                            inputRef.current?.blur();
+                          }
+                        }}
+                        className="w-full text-lg font-ibm-plex-mono border-none focus:outline-none bg-transparent text-black placeholder-gray-500"
+                      />
                     </div>
-                  </Tabs.Trigger>
-                  <Tabs.Trigger value="pending" className="font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                    <div className="flex items-center gap-2">
-                      <SendHorizontal size={16} />
-                      Pending ({pendingConnections.length})
+                    
+                    {/* Dropdown content */}
+                    <div 
+                      className={`absolute top-full left-0 right-0 bg-white border border-t-0 border-b-2 border-gray-800 p-4 space-y-4 z-10 -mt-0.5 ${
+                        inputFocused ? 'block' : 'hidden'
+                      }`}
+                      onMouseDown={(e) => e.preventDefault()}
+                    >
+                        {/* Example suggestions */}
+                        <ul className="space-y-1">
+                          <li>
+                            <button 
+                              onClick={() => {
+                                setInputValue("Seeking privacy founders — here's my pitch_deck");
+                                setInputFocused(false);
+                                inputRef.current?.blur();
+                              }}
+                              className="w-full text-left text-sm text-gray-600 hover:text-black hover:bg-gray-50 font-ibm-plex-mono flex items-center gap-2 px-2 py-1 rounded"
+                            >
+                              Seeking privacy founders — here's my pitch_deck <span>📎</span>
+                            </button>
+                          </li>
+                          <li>
+                            <button 
+                              onClick={() => {
+                                setInputValue("Seeking early-stage investors strong fit to one_pager");
+                                setInputFocused(false);
+                                inputRef.current?.blur();
+                              }}
+                              className="w-full text-left text-sm text-gray-600 hover:text-black hover:bg-gray-50 font-ibm-plex-mono flex items-center gap-2 px-2 py-1 rounded"
+                            >
+                              Seeking early-stage investors strong fit to one_pager <span>📎</span>
+                            </button>
+                          </li>
+                          <li>
+                            <button 
+                              onClick={() => {
+                                setInputValue("Agent infra devs for github.com/indexnetwork/index");
+                                setInputFocused(false);
+                                inputRef.current?.blur();
+                              }}
+                              className="w-full text-left text-sm text-gray-600 hover:text-black hover:bg-gray-50 font-ibm-plex-mono flex items-center gap-2 px-2 py-1 rounded"
+                            >
+                              Agent infra devs for github.com/indexnetwork/index <span>🌐</span>
+                            </button>
+                          </li>
+                        </ul>
+                        
+                        {/* Upload section */}
+                        <div className="border-t border-gray-200 pt-4 space-y-3">
+                          <p className="text-sm text-gray-600 font-ibm-plex-mono">
+                            upload your pitch deck, one-pager, or paste a repo link.
+                          </p>
+                          <div className="flex gap-3">
+                            <button className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black">
+                              <span>📄</span> Add from a file
+                            </button>
+                            <button className="flex items-center gap-2 px-3 py-2 border border-gray-300 hover:border-black text-sm font-ibm-plex-mono text-black">
+                              <span>🔗</span> Add from URL
+                            </button>
+                          </div>
+                        </div>
                     </div>
-                  </Tabs.Trigger>
-                </div>
-                <Tabs.Trigger value="history" className="bg-white font-ibm-plex-mono cursor-pointer border border-b-0 border-black px-3 py-2 data-[state=active]:bg-black data-[state=active]:text-white">
-                  <div className="flex items-center gap-2">
-                    <History size={16} />
-                    History ({historyConnections.length})
                   </div>
-                </Tabs.Trigger>
-              </Tabs.List>
+                  <button
+                    onClick={() => handleTabChange('requests')}
+                    className="font-ibm-plex-mono px-4 py-3 border border-black bg-white hover:bg-gray-50 flex items-center gap-2 text-black whitespace-nowrap"
+                  >
+                    View Requests
+                    <span className="bg-black text-white text-xs px-2 py-1 rounded">
+                      {inboxConnections.length + pendingConnections.length + historyConnections.length}
+                    </span>
+                  </button>
+                </div>
+                </div>
+            )}
+            
+            {/* Requests view button */}
+            {activeTab === 'requests' && (
+              <div className="flex justify-end">
+                <button
+                  onClick={() => handleTabChange('discover')}
+                  className="font-ibm-plex-mono px-4 py-3 border border-black bg-black text-white hover:bg-gray-800 flex items-center gap-2"
+                >
+                  Back to Discovery
+                  <span className="bg-white text-black text-xs px-2 py-1 rounded">
+                    {discoverStakes.length}
+                  </span>
+                </button>
+                </div>
+            )}
             </div>
 
-            {/* Section Descriptions */}
-            <div>
-              <Tabs.Content value="discover" className="m-0 p-0">
-                <div className="bg-white border border-b-2 border-gray-800 p-3">
-                  <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                    Discover new people based on contextual relevance. You're deciding whether to initiate a connection.
-                  </p>
-                </div>
-              </Tabs.Content>
-              
-              <Tabs.Content value="inbox" className="m-0 p-0">
-                <div className="bg-white border border-b-2 border-gray-800 p-3">
-                  <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                    Incoming connection requests from real users. Use this tab to respond to others who want to connect with you.
-                  </p>
-                </div>
-              </Tabs.Content>
-              
-              <Tabs.Content value="pending" className="m-0 p-0">
-                <div className="bg-white border border-b-2 border-gray-800 p-3">
-                  <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                    Requests you've sent to others and are still awaiting a response. Cancel if no longer relevant.
-                  </p>
-                </div>
-              </Tabs.Content>
-              
-              <Tabs.Content value="history" className="m-0 p-0">
-                <div className="bg-white border border-b-2 border-gray-800 p-3">
-                  <p className="text-sm text-gray-700 font-ibm-plex-mono">
-                    Resolved connections — accepted, declined, skipped, or canceled. A passive log of what's already been handled.
-                  </p>
-                </div>
-              </Tabs.Content>
-            </div>
+          <Tabs.Root value={activeTab} onValueChange={handleTabChange} className="flex-grow">
 
-            {/* Discover Tab Content - Connection suggestions */}
-            <Tabs.Content value="discover" className="mt-4">
+            {/* Discover Content - Connection suggestions */}
+            {activeTab === 'discover' && (
+              <div className="mt-4">
               {discoverStakes.length === 0 ? (
                 <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
                   <p>No connection suggestions available right now.</p>
@@ -439,40 +535,32 @@ export default function InboxPage() {
               ) : (
                 discoverStakes.map((userStake) => renderStakeCard(userStake, 'discover'))
               )}
-            </Tabs.Content>
-
-            {/* Inbox Tab Content - Incoming requests */}
-            <Tabs.Content value="inbox" className="mt-4">
-              {inboxConnections.length === 0 ? (
-                <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                  No incoming connection requests. All caught up!
                 </div>
-              ) : (
-                inboxConnections.map((connection) => renderConnectionCard(connection, 'inbox'))
-              )}
-            </Tabs.Content>
+            )}
 
-            {/* Pending Tab Content - Outgoing requests */}
-            <Tabs.Content value="pending" className="mt-4">
-              {pendingConnections.length === 0 ? (
+            {/* Requests Content - Incoming/Outgoing requests */}
+            {activeTab === 'requests' && (
+              <div className="mt-4">
+                {(() => {
+                  const connectionsToShow = requestsView === 'received' 
+                    ? inboxConnections 
+                    : [...pendingConnections, ...historyConnections];
+                  
+                  if (connectionsToShow.length === 0) {
+                    return (
                 <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                  No pending requests. You haven't sent any connection requests recently.
+                        {requestsView === 'received' 
+                          ? 'No incoming connection requests. All caught up!'
+                          : 'No sent requests or completed connections.'
+                        }
                 </div>
-              ) : (
-                pendingConnections.map((connection) => renderConnectionCard(connection, 'pending'))
-              )}
-            </Tabs.Content>
-
-            {/* History Tab Content - Resolved connections */}
-            <Tabs.Content value="history" className="mt-4">
-              {historyConnections.length === 0 ? (
-                <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                  No completed connections yet.
+                    );
+                  }
+                  
+                  return connectionsToShow.map((connection) => renderConnectionCard(connection, 'requests'));
+                })()}
                 </div>
-              ) : (
-                historyConnections.map((connection) => renderConnectionCard(connection, 'history'))
               )}
-            </Tabs.Content>
           </Tabs.Root>
         </div>
       </div>
