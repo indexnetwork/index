@@ -113,14 +113,21 @@ export const createIndexesService = (api: ReturnType<typeof useAuthenticatedAPI>
     return response.members || [];
   },
 
-  // Public Permissions Management
-  // Update link permissions for direct link sharing
-  updateLinkPermissions: async (indexId: string, permissions: string[]): Promise<Index> => {
-    const response = await api.patch<APIResponse<Index>>(`/indexes/${indexId}/link-permissions`, { 
-      permissions 
-    });
+  // Permissions Management
+  // Update index permissions (joinPolicy, allowGuestVibeCheck)
+  updatePermissions: async (indexId: string, permissions: { joinPolicy?: 'anyone' | 'invite_only'; allowGuestVibeCheck?: boolean }): Promise<Index> => {
+    const response = await api.patch<APIResponse<Index>>(`/indexes/${indexId}/permissions`, permissions);
     if (!response.index) {
-      throw new Error('Failed to update link permissions');
+      throw new Error('Failed to update permissions');
+    }
+    return response.index;
+  },
+
+  // Regenerate invitation link for private indexes
+  regenerateInvitationLink: async (indexId: string): Promise<Index> => {
+    const response = await api.patch<APIResponse<Index>>(`/indexes/${indexId}/regenerate-invitation`);
+    if (!response.index) {
+      throw new Error('Failed to regenerate invitation link');
     }
     return response.index;
   },

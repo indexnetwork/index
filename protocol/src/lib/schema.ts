@@ -47,10 +47,17 @@ export const indexes = pgTable('indexes', {
   id: uuid('id').primaryKey().defaultRandom(),
   title: text('title').notNull(),
   prompt: text('prompt'), // Defines what people can share in this index
-  linkPermissions: json('link_permissions').$type<{
-    permissions: string[];
-    code: string;
-  } | null>().default(null),
+  permissions: json('permissions').$type<{
+    joinPolicy: 'anyone' | 'invite_only';
+    invitationLink: {
+      code: string;
+    } | null;
+    allowGuestVibeCheck: boolean;
+  }>().default({
+    joinPolicy: 'invite_only',
+    invitationLink: null,
+    allowGuestVibeCheck: false
+  }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
   deletedAt: timestamp('deleted_at'),

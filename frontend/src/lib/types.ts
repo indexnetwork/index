@@ -15,9 +15,12 @@ export interface Index {
   id: string;
   title: string;
   prompt?: string | null;
-  linkPermissions?: {
-    permissions: string[];
-    code: string;
+  permissions?: {
+    joinPolicy: 'anyone' | 'invite_only';
+    invitationLink: {
+      code: string;
+    } | null;
+    allowGuestVibeCheck: boolean;
   } | null;
   createdAt: string;
   updatedAt: string;

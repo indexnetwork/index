@@ -10,9 +10,12 @@ export interface IndexAccessResult {
   status?: number;
   indexData?: {
     id: string;
-    linkPermissions?: {
-      permissions: string[];
-      code: string;
+    permissions?: {
+      joinPolicy: 'anyone' | 'invite_only';
+      invitationLink: {
+        code: string;
+      } | null;
+      allowGuestVibeCheck: boolean;
     } | null;
   };
   memberPermissions?: string[];
@@ -26,18 +29,18 @@ export async function getIndexWithPermissions(
   // Get index
   const query = 'id' in selector 
     ? and(eq(indexes.id, selector.id), isNull(indexes.deletedAt))
-    : and(isNull(indexes.deletedAt), sql`${indexes.linkPermissions}->>'code' = ${selector.code}`);
+    : and(isNull(indexes.deletedAt), sql`${indexes.permissions}->'invitationLink'->>'code' = ${selector.code}`);
     
   const [index] = await db.select().from(indexes).where(query).limit(1);
   if (!index) return { hasAccess: false, error: 'Index not found', status: 404 };
 
   // Code-based access
   if ('code' in selector) {
-    const permissions = index.linkPermissions?.permissions || [];
-    if (permissions.length === 0) {
-      return { hasAccess: false, error: 'Share link has no permissions', status: 403 };
+    const indexPermissions = index.permissions;
+    if (!indexPermissions?.invitationLink || indexPermissions.joinPolicy !== 'invite_only') {
+      return { hasAccess: false, error: 'Invalid invitation link', status: 403 };
     }
-    return { hasAccess: true, indexData: index, memberPermissions: permissions };
+    return { hasAccess: true, indexData: index, memberPermissions: ['can-write-intents'] };
   }
 
   // User-based access

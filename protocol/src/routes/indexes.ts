@@ -76,7 +76,7 @@ router.get('/',
           id: indexes.id,
           title: indexes.title,
           prompt: indexes.prompt,
-          linkPermissions: indexes.linkPermissions,
+          permissions: indexes.permissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt,
           ownerId: indexMembers.userId,
@@ -115,7 +115,7 @@ router.get('/',
             id: index.id,
             title: index.title,
             prompt: index.prompt,
-            linkPermissions: index.linkPermissions,
+            permissions: index.permissions,
             createdAt: index.createdAt,
             updatedAt: index.updatedAt,
             user: {
@@ -222,7 +222,7 @@ router.get('/:id',
         id: indexes.id,
         title: indexes.title,
         prompt: indexes.prompt,
-        linkPermissions: indexes.linkPermissions,
+        permissions: indexes.permissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
         ownerId: indexMembers.userId,
@@ -263,7 +263,7 @@ router.get('/:id',
         id: indexData.id,
         title: indexData.title,
         prompt: indexData.prompt,
-        linkPermissions: indexData.linkPermissions,
+        permissions: indexData.permissions,
         createdAt: indexData.createdAt,
         updatedAt: indexData.updatedAt,
         user: {
@@ -317,7 +317,7 @@ router.post('/',
         id: indexes.id,
         title: indexes.title,
         prompt: indexes.prompt,
-        linkPermissions: indexes.linkPermissions,
+        permissions: indexes.permissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt
       });
@@ -343,7 +343,7 @@ router.post('/',
       const result = {
         id: newIndex[0].id,
         title: newIndex[0].title,
-        linkPermissions: newIndex[0].linkPermissions,
+        permissions: newIndex[0].permissions,
         createdAt: newIndex[0].createdAt,
         updatedAt: newIndex[0].updatedAt,
         user: {
@@ -375,10 +375,9 @@ router.put('/:id',
     param('id').isUUID(),
     body('title').optional().trim().isLength({ min: 1, max: 255 }),
     body('prompt').optional().trim(),
-    body('linkPermissions').optional().isObject(),
-    body('linkPermissions.permissions').optional().isArray(),
-    body('linkPermissions.permissions.*').optional().isString(),
-    body('linkPermissions.code').optional().isString(),
+    body('permissions').optional().isObject(),
+    body('permissions.joinPolicy').optional().isIn(['anyone', 'invite_only']),
+    body('permissions.allowGuestVibeCheck').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -388,48 +387,46 @@ router.put('/:id',
       }
 
       const { id } = req.params;
-      const { title, prompt, linkPermissions } = req.body;
+      const { title, prompt, permissions } = req.body;
 
       const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
       if (!ownershipCheck.hasAccess) {
         return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
       }
 
-      // Validate link permissions if provided
-      if (linkPermissions) {
-        if (!linkPermissions.permissions || !Array.isArray(linkPermissions.permissions)) {
-          return res.status(400).json({ 
-            error: 'linkPermissions must have a permissions array' 
-          });
-        }
+      // Handle permissions update if provided
+      let updatedPermissions = undefined;
+      if (permissions) {
+        // Get existing permissions to merge with updates
+        const existingIndex = await db.select({
+          permissions: indexes.permissions
+        }).from(indexes)
+          .where(eq(indexes.id, id))
+          .limit(1);
         
-        const validLinkPermissions = ['can-discover', 'can-write-intents'];
-        const invalidPermissions = linkPermissions.permissions.filter((p: string) => !validLinkPermissions.includes(p));
-        if (invalidPermissions.length > 0) {
-          return res.status(400).json({ 
-            error: 'Invalid link permissions',
-            invalidPermissions 
-          });
-        }
+        const currentPermissions = existingIndex[0]?.permissions || {
+          joinPolicy: 'invite_only',
+          invitationLink: null,
+          allowGuestVibeCheck: false
+        };
 
-        // Generate code only if not provided (preserve existing codes)
-        if (!linkPermissions.code) {
-          // Check for existing code
-          const existingIndex = await db.select({
-            linkPermissions: indexes.linkPermissions
-          }).from(indexes)
-            .where(eq(indexes.id, id))
-            .limit(1);
-          
-          const existingCode = existingIndex[0]?.linkPermissions?.code;
-          linkPermissions.code = existingCode || crypto.randomUUID();
-        }
+        updatedPermissions = {
+          joinPolicy: permissions.joinPolicy || currentPermissions.joinPolicy,
+          allowGuestVibeCheck: permissions.allowGuestVibeCheck !== undefined 
+            ? permissions.allowGuestVibeCheck 
+            : currentPermissions.allowGuestVibeCheck,
+          invitationLink: currentPermissions.invitationLink || (
+            permissions.joinPolicy === 'invite_only' 
+              ? { code: crypto.randomUUID() }
+              : null
+          )
+        };
       }
 
       const updateData: any = { updatedAt: new Date() };
       if (title !== undefined) updateData.title = title;
       if (prompt !== undefined) updateData.prompt = prompt || null; // Allow empty string to clear prompt
-      if (linkPermissions !== undefined) updateData.linkPermissions = linkPermissions;
+      if (updatedPermissions !== undefined) updateData.permissions = updatedPermissions;
 
       const updatedIndex = await db.update(indexes)
         .set(updateData)
@@ -438,7 +435,7 @@ router.put('/:id',
           id: indexes.id,
           title: indexes.title,
           prompt: indexes.prompt,
-          linkPermissions: indexes.linkPermissions,
+          permissions: indexes.permissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt
         });
@@ -762,13 +759,13 @@ router.patch('/:id/members/:userId',
   }
 );
 
-// Update public permissions for direct link sharing
-router.patch('/:id/link-permissions',
+// Update index permissions (joinPolicy, allowGuestVibeCheck)
+router.patch('/:id/permissions',
   authenticatePrivy,
   [
     param('id').isUUID(),
-    body('permissions').isArray(),
-    body('permissions.*').isString(),
+    body('joinPolicy').optional().isIn(['anyone', 'invite_only']),
+    body('allowGuestVibeCheck').optional().isBoolean(),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -778,46 +775,48 @@ router.patch('/:id/link-permissions',
       }
 
       const { id } = req.params;
-      const { permissions } = req.body;
+      const { joinPolicy, allowGuestVibeCheck } = req.body;
 
       const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
       if (!ownershipCheck.hasAccess) {
         return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
       }
 
-      // Validate link permissions
-      const validLinkPermissions = ['can-discover',  'can-write-intents'];
-      const invalidPermissions = permissions.filter((p: string) => !validLinkPermissions.includes(p));
-      if (invalidPermissions.length > 0) {
-        return res.status(400).json({ 
-          error: 'Invalid link permissions',
-          invalidPermissions 
-        });
-      }
-
-      // Get existing index to preserve existing code
+      // Get existing permissions
       const existingIndex = await db.select({
-        linkPermissions: indexes.linkPermissions
+        permissions: indexes.permissions
       }).from(indexes)
         .where(eq(indexes.id, id))
         .limit(1);
 
-      // Create link permissions object preserving existing code or generating new one
-      const existingCode = existingIndex[0]?.linkPermissions?.code;
-      const linkPermissions = permissions.length > 0 
-        ? { permissions, code: existingCode || crypto.randomUUID() }
-        : null;
+      const currentPermissions = existingIndex[0]?.permissions || {
+        joinPolicy: 'invite_only',
+        invitationLink: null,
+        allowGuestVibeCheck: false
+      };
+
+      // Update permissions
+      const finalJoinPolicy = joinPolicy || currentPermissions.joinPolicy;
+      const updatedPermissions = {
+        joinPolicy: finalJoinPolicy,
+        allowGuestVibeCheck: allowGuestVibeCheck !== undefined 
+          ? allowGuestVibeCheck 
+          : currentPermissions.allowGuestVibeCheck,
+        invitationLink: finalJoinPolicy === 'invite_only'
+          ? (currentPermissions.invitationLink || { code: crypto.randomUUID() })
+          : null
+      };
 
       const updatedIndex = await db.update(indexes)
-        .set({ 
-          linkPermissions,
+        .set({
+          permissions: updatedPermissions,
           updatedAt: new Date()
         })
         .where(eq(indexes.id, id))
         .returning({
           id: indexes.id,
           title: indexes.title,
-          linkPermissions: indexes.linkPermissions,
+          permissions: indexes.permissions,
           createdAt: indexes.createdAt,
           updatedAt: indexes.updatedAt
         });
@@ -825,12 +824,81 @@ router.patch('/:id/link-permissions',
       const result = updatedIndex[0];
 
       return res.json({
-        message: 'Link permissions updated successfully',
+        message: 'Index permissions updated successfully',
         index: result
       });
     } catch (error) {
-      console.error('Update link permissions error:', error);
-      return res.status(500).json({ error: 'Failed to update link permissions' });
+      console.error('Update index permissions error:', error);
+      return res.status(500).json({ error: 'Failed to update index permissions' });
+    }
+  }
+);
+
+// Regenerate invitation link
+router.patch('/:id/regenerate-invitation',
+  authenticatePrivy,
+  [param('id').isUUID()],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { id } = req.params;
+
+      const ownershipCheck = await checkIndexOwnership(id, req.user!.id);
+      if (!ownershipCheck.hasAccess) {
+        return res.status(ownershipCheck.status!).json({ error: ownershipCheck.error });
+      }
+
+      // Get existing permissions
+      const existingIndex = await db.select({
+        permissions: indexes.permissions
+      }).from(indexes)
+        .where(eq(indexes.id, id))
+        .limit(1);
+
+      const currentPermissions = existingIndex[0]?.permissions || {
+        joinPolicy: 'invite_only',
+        invitationLink: null,
+        allowGuestVibeCheck: false
+      };
+
+      // Only regenerate if it's invite_only
+      if (currentPermissions.joinPolicy !== 'invite_only') {
+        return res.status(400).json({ error: 'Can only regenerate invitation links for private indexes' });
+      }
+
+      // Generate new invitation link
+      const updatedPermissions = {
+        ...currentPermissions,
+        invitationLink: { code: crypto.randomUUID() }
+      };
+
+      const updatedIndex = await db.update(indexes)
+        .set({
+          permissions: updatedPermissions,
+          updatedAt: new Date()
+        })
+        .where(eq(indexes.id, id))
+        .returning({
+          id: indexes.id,
+          title: indexes.title,
+          permissions: indexes.permissions,
+          createdAt: indexes.createdAt,
+          updatedAt: indexes.updatedAt
+        });
+
+      const result = updatedIndex[0];
+
+      return res.json({
+        message: 'Invitation link regenerated successfully',
+        index: result
+      });
+    } catch (error) {
+      console.error('Regenerate invitation link error:', error);
+      return res.status(500).json({ error: 'Failed to regenerate invitation link' });
     }
   }
 );
@@ -1004,7 +1072,7 @@ router.get('/share/:code',
       const index = await db.select({
         id: indexes.id,
         title: indexes.title,
-        linkPermissions: indexes.linkPermissions,
+        permissions: indexes.permissions,
         createdAt: indexes.createdAt,
         updatedAt: indexes.updatedAt,
         ownerId: indexMembers.userId,
@@ -1033,7 +1101,7 @@ router.get('/share/:code',
           name: indexResult.userName,
           avatar: indexResult.userAvatar
         },
-        linkPermissions: indexResult.linkPermissions,
+        permissions: indexResult.permissions,
       };
 
       return res.json({ index: result });

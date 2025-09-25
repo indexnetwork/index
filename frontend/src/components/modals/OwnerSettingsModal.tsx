@@ -38,22 +38,20 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
   const [isDeletingIndex, setIsDeletingIndex] = useState(false);
   
   // Access control state
-  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false);
+  const [isUpdatingVibeCheckPermission, setIsUpdatingVibeCheckPermission] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [publicAccess, setPublicAccess] = useState<boolean>(() => {
-    return !!(index.linkPermissions?.permissions && index.linkPermissions.permissions.length > 0);
-  });
   const [anyoneCanJoin, setAnyoneCanJoin] = useState<boolean>(() => {
-    return index.linkPermissions?.permissions?.includes('can-write-intents') || false;
+    return index.permissions?.joinPolicy === 'anyone';
   });
   const [allowVibecheck, setAllowVibecheck] = useState<boolean>(() => {
-    return !!(index.linkPermissions?.permissions && index.linkPermissions.permissions.includes('can-discover'));
+    return index.permissions?.allowGuestVibeCheck || false;
   });
   const [members, setMembers] = useState<Member[]>([]);
   const [suggestedUsers, setSuggestedUsers] = useState<Member[]>([]);
   const [isCopied, setIsCopied] = useState<string | null>(null);
   const [dropdownPositions, setDropdownPositions] = useState<Record<string, { top: number; left: number; width: number }>>({});
+  const [invitationLink, setInvitationLink] = useState<{ code: string; createdAt: string } | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
@@ -79,11 +77,20 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
       setPrompt(index.prompt || '');
       setOriginalTitle(index.title);
       setOriginalPrompt(index.prompt || '');
-      setPublicAccess(!!(index.linkPermissions?.permissions && index.linkPermissions.permissions.length > 0));
-      setAnyoneCanJoin(index.linkPermissions?.permissions?.includes('can-write-intents') || false);
-      setAllowVibecheck(!!(index.linkPermissions?.permissions && index.linkPermissions.permissions.includes('can-discover')));
+      setAnyoneCanJoin(index.permissions?.joinPolicy === 'anyone');
+      setAllowVibecheck(index.permissions?.allowGuestVibeCheck || false);
+      
+      // Initialize invitation link for private mode
+      if (index.permissions?.invitationLink?.code && index.permissions.joinPolicy === 'invite_only') {
+        setInvitationLink({
+          code: index.permissions.invitationLink.code,
+          createdAt: new Date().toISOString()
+        });
+      } else {
+        setInvitationLink(null);
+      }
     }
-  }, [open, loadMembers, index.linkPermissions, index.title, index.prompt]);
+  }, [open, loadMembers, index.permissions, index.title, index.prompt]);
 
   const searchUsers = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -180,34 +187,32 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
     }
   };
 
-  const handleUpdatePermissions = async (publicAccess: boolean, anyoneCanJoin: boolean, allowVibecheck: boolean) => {
+  const handleUpdatePermissions = async (anyoneCanJoin: boolean, allowVibecheck: boolean) => {
     try {
-      setIsUpdatingVisibility(true);
-      const permissions: string[] = [];
+      if (allowVibecheck === true || allowVibecheck === false) setIsUpdatingVibeCheckPermission(true);
       
-      if (allowVibecheck) {
-        permissions.push('can-discover');
-      }
-      if (publicAccess && anyoneCanJoin) {
-        permissions.push('can-write-intents');
-      }
-      
-      await indexesService.updateLinkPermissions(index.id, permissions);
+      await indexesService.updatePermissions(index.id, {
+        joinPolicy: anyoneCanJoin ? 'anyone' : 'invite_only',
+        allowGuestVibeCheck: allowVibecheck
+      });
       const updatedIndex = await indexesService.getIndex(index.id);
       onIndexUpdate?.(updatedIndex);
     } catch (err) {
       console.error('Error updating index permissions:', err);
       error('Failed to update access permissions');
     } finally {
-      setIsUpdatingVisibility(false);
+      setIsUpdatingVibeCheckPermission(false);
     }
   };
 
-  const handleCopyLink = async () => {
-    const url = `${window.location.origin}/index/${index.id}`;
+  const handleCopyLink = async (linkType: 'index' | 'invitation', code?: string) => {
+    const url = linkType === 'index' 
+      ? `${window.location.origin}/index/${index.id}`
+      : `${window.location.origin}/l/${code}`;
+    
     try {
       await navigator.clipboard.writeText(url);
-      setIsCopied('link');
+      setIsCopied(linkType === 'index' ? 'index-link' : `invitation-${code}`);
       success('Link copied to clipboard');
       setTimeout(() => setIsCopied(null), 2000);
     } catch (err) {
@@ -216,29 +221,30 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
     }
   };
 
-  const handlePublicAccessToggle = () => {
-    const newPublicAccess = !publicAccess;
-    setPublicAccess(newPublicAccess);
-    
-    // If turning off public access, also turn off anyone can join
-    if (!newPublicAccess) {
-      setAnyoneCanJoin(false);
-      handleUpdatePermissions(newPublicAccess, false, allowVibecheck);
-    } else {
-      handleUpdatePermissions(newPublicAccess, anyoneCanJoin, allowVibecheck);
+  const handleEditInvitationLink = async () => {
+    try {
+      // Use the dedicated regenerate endpoint
+      const updatedIndex = await indexesService.regenerateInvitationLink(index.id);
+      
+      if (updatedIndex.permissions?.invitationLink?.code) {
+        setInvitationLink({
+          code: updatedIndex.permissions.invitationLink.code,
+          createdAt: new Date().toISOString()
+        });
+        success('Invitation link updated');
+      } else {
+        error('Failed to update invitation link - no code generated');
+      }
+    } catch (err) {
+      console.error('Error updating invitation link:', err);
+      error('Failed to update invitation link');
     }
-  };
-
-  const handleAnyoneCanJoinToggle = () => {
-    const newAnyoneCanJoin = !anyoneCanJoin;
-    setAnyoneCanJoin(newAnyoneCanJoin);
-    handleUpdatePermissions(publicAccess, newAnyoneCanJoin, allowVibecheck);
   };
 
   const handleAllowVibecheckToggle = () => {
     const newAllowVibecheck = !allowVibecheck;
     setAllowVibecheck(newAllowVibecheck);
-    handleUpdatePermissions(publicAccess, anyoneCanJoin, newAllowVibecheck);
+    handleUpdatePermissions(anyoneCanJoin, newAllowVibecheck);
   };
 
   const handleAddMember = async (user: Member) => {
@@ -303,10 +309,16 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
   const hasSettingsChanged = title !== originalTitle || prompt !== originalPrompt;
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(newOpen) => {
+      // Only close if we're not interacting with the dropdown
+      if (!newOpen && showSuggestions) {
+        return; // Don't close modal if dropdown is open
+      }
+      onOpenChange(newOpen);
+    }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
-        <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[75vh] flex flex-col z-50">
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-40" />
+        <Dialog.Content className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg p-6 w-full max-w-2xl max-h-[85vh] flex flex-col z-50">
           <div className="flex items-center justify-between mb-4">
             <Dialog.Title className="text-xl font-bold text-gray-900 font-ibm-plex-mono">
               Owner Settings - {index.title}
@@ -319,7 +331,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
           </Dialog.Close>
 
           {/* Tab Navigation */}
-          <div className="flex border-b border-gray-200 mb-6">
+          <div className="flex border-b border-gray-200">
             <button
               onClick={() => setActiveTab('settings')}
               className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -345,7 +357,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 mt-4 overflow-y-auto">
             {activeTab === 'settings' && (
               <div className="space-y-6">
                 {/* Index Title */}
@@ -443,51 +455,32 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
             {activeTab === 'access' && (
               <div className="space-y-6">
                 {/* Access Control Toggles */}
-                <div className="space-y-4">
+                <div className="">
                   {/* Anyone Can Join / Private Toggle */}
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-sm font-medium text-gray-900 font-ibm-plex-mono">Who can join</h3>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCopyLink}
-                        className={`transition-colors ${
-                          isCopied === 'link' ? 'bg-green-50 border-green-200 text-green-700' : ''
-                        }`}
-                      >
-                        {isCopied === 'link' ? (
-                          <>
-                            <Check className="h-4 w-4 mr-2" />
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-4 w-4 mr-2" />
-                            Copy Invitation Link
-                          </>
-                        )}
-                      </Button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <button
                         type="button"
-                        onClick={() => {
-                          if (!publicAccess) {
-                            setPublicAccess(true);
+                        onClick={async () => {
+                          if (!anyoneCanJoin) {
                             setAnyoneCanJoin(true);
-                            handleUpdatePermissions(true, true, allowVibecheck);
+                            await handleUpdatePermissions(true, allowVibecheck);
+                            // Clear invitation link when switching to public
+                            setInvitationLink(null);
                           }
                         }}
                         className={`border-2 p-3 rounded-md text-left transition-all ${
-                          publicAccess && anyoneCanJoin
+                          anyoneCanJoin
                             ? 'border-[#007EFF] bg-white' 
                             : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
                         }`}
                       >
                         <div className="flex items-center gap-2 mb-1.5">
-                          <Globe className={`h-4 w-4 ${publicAccess && anyoneCanJoin ? "text-[#007EFF]" : "text-gray-600"}`} />
-                          <h4 className={`text-sm font-medium font-ibm-plex-mono ${publicAccess && anyoneCanJoin ? "text-black" : "text-[#666]"}`}>
+                          <Globe className={`h-4 w-4 ${anyoneCanJoin ? "text-[#007EFF]" : "text-gray-600"}`} />
+                          <h4 className={`text-sm font-medium font-ibm-plex-mono ${anyoneCanJoin ? "text-black" : "text-[#666]"}`}>
                             Anyone can join
                           </h4>
                         </div>
@@ -498,48 +491,146 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
 
                       <button
                         type="button"
-                        onClick={() => {
-                          setPublicAccess(false);
+                        onClick={async () => {
                           setAnyoneCanJoin(false);
-                          handleUpdatePermissions(false, false, allowVibecheck);
+                          await handleUpdatePermissions(false, allowVibecheck);
+                          // Get the updated index to ensure we have the invitation link
+                          try {
+                            const updatedIndex = await indexesService.getIndex(index.id);
+                            if (updatedIndex.permissions?.invitationLink?.code) {
+                              setInvitationLink({
+                                code: updatedIndex.permissions.invitationLink.code,
+                                createdAt: new Date().toISOString()
+                              });
+                            }
+                          } catch (err) {
+                            console.error('Error fetching updated index:', err);
+                          }
                         }}
                         className={`border-2 p-3 rounded-md text-left transition-all ${
-                          !publicAccess || !anyoneCanJoin
+                          !anyoneCanJoin
                             ? 'border-[#007EFF] bg-white' 
                             : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
                         }`}
                       >
                         <div className="flex items-center gap-2 mb-1.5">
-                          <Lock className={`h-4 w-4 ${!publicAccess || !anyoneCanJoin ? "text-[#007EFF]" : "text-gray-600"}`} />
-                          <h4 className={`text-sm font-medium font-ibm-plex-mono ${!publicAccess || !anyoneCanJoin ? "text-black" : "text-[#666]"}`}>
+                          <Lock className={`h-4 w-4 ${!anyoneCanJoin ? "text-[#007EFF]" : "text-gray-600"}`} />
+                          <h4 className={`text-sm font-medium font-ibm-plex-mono ${!anyoneCanJoin ? "text-black" : "text-[#666]"}`}>
                             Private
                           </h4>
                         </div>
                         <p className="text-xs text-gray-600 font-ibm-plex-mono">
-                          Only people you invited or people with the invitation link can join.
+                          Only people with the invitation link can join.
                         </p>
                       </button>
                     </div>
                   </div>
 
-                  {/* Allow Vibecheck Toggle */}
-                  <div className="flex items-center">
+                  {/* Link Section */}
+                  <div className="pt-4">
+                    {anyoneCanJoin ? (
+                      // Show Index Link for "Anyone can join"
+                      <div>
+                        <h4 className="text-sm font-medium font-ibm-plex-mono text-black mb-2">Index Link</h4>
+                        <p className="text-xs text-gray-600 mb-3">Share this link - anyone can discover and join your index</p>
+                        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+                          <Globe className="h-4 w-4 text-gray-500" />
+                          <code className="flex-1 text-xs text-gray-700 font-mono">
+                            {window.location.origin}/index/{index.id}
+                          </code>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCopyLink('index')}
+                            className={`transition-colors ${
+                              isCopied === 'index-link' ? 'bg-green-50 border-green-200 text-green-700' : ''
+                            }`}
+                          >
+                            {isCopied === 'index-link' ? (
+                              <>
+                                <Check className="h-4 w-4 mr-2" />
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copy
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      // Show Invitation Links for Private
+                      <div>
+                        <h4 className="text-sm font-medium font-ibm-plex-mono text-black mb-2">Invitation Link</h4>
+                        <div className="flex items-center text-xs text-gray-600 mb-3">
+                          <span>Share this link with people you want to invite to your index.</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleEditInvitationLink}
+                            disabled={!invitationLink}
+                            className="text-blue-600 ml-1 hover:text-blue-700 h-auto p-0"
+                          >
+                            Regenerate
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+                          <Lock className="h-4 w-4 text-gray-500" />
+                          <code className="flex-1 text-xs text-gray-700 font-mono">
+                            {invitationLink ? 
+                              `${window.location.origin}/l/${invitationLink.code}` :
+                              'Loading...'
+                            }
+                          </code>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => invitationLink && handleCopyLink('invitation', invitationLink.code)}
+                            disabled={!invitationLink}
+                            className={`transition-colors ${
+                              invitationLink && isCopied === `invitation-${invitationLink.code}` ? 'bg-green-50 border-green-200 text-green-700' : ''
+                            }`}
+                          >
+                            {invitationLink && isCopied === `invitation-${invitationLink.code}` ? (
+                              <>
+                                <Check className="h-4 w-4 mr-2" />
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copy
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {false && (
+                  <div className="mt-2 flex items-center">
                     <input
                       type="checkbox"
                       id="allowVibecheck"
                       checked={allowVibecheck}
-                      onChange={() => !isUpdatingVisibility && handleAllowVibecheckToggle()}
-                      disabled={isUpdatingVisibility}
+                      onChange={() => !isUpdatingVibeCheckPermission && handleAllowVibecheckToggle()}
+                      disabled={isUpdatingVibeCheckPermission}
                       className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                     />
                     <label htmlFor="allowVibecheck" className="ml-2 text-sm text-black">
                       Allow people to check how they vibe with your index before joining
                     </label>
-                    {isUpdatingVisibility && (
+                    {isUpdatingVibeCheckPermission && (
                       <div className="ml-2 h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
                     )}
                   </div>
+                  )}
+
                 </div>
+                
 
                 {/* Members Section */}
                 <div className="pt-4 border-t border-gray-200">
@@ -631,7 +722,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
           {showSuggestions && dropdownPositions.suggestions && createPortal(
             <div
               ref={suggestionsRef}
-              className="fixed z-[100] bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto pointer-events-auto"
+              className="fixed z-[200] bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto pointer-events-auto"
               style={{
                 top: dropdownPositions.suggestions.top,
                 left: dropdownPositions.suggestions.left,
