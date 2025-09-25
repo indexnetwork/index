@@ -16,9 +16,10 @@ const DEFAULT_TABLES = [
   'integrations',
   'links',
   'indexes',
-  'agents',
   'users',
 ] as const;
+
+const PROTECTED_TABLES = new Set(['agents']);
 
 type CliOptions = {
   force: boolean;
@@ -49,7 +50,17 @@ async function flushDatabase(tables: ReadonlyArray<string>): Promise<FlushResult
 
 function resolveTables(optTables: string[] | undefined): ReadonlyArray<string> {
   if (!optTables || optTables.length === 0) return DEFAULT_TABLES;
-  return Array.from(new Set(optTables.map((name) => name.trim()).filter(Boolean)));
+
+  const tables = Array.from(new Set(optTables.map((name) => name.trim()).filter(Boolean)));
+  const blocked = tables.filter((name) => PROTECTED_TABLES.has(name));
+
+  if (blocked.length > 0) {
+    const tableList = blocked.join(', ');
+    const descriptor = blocked.length > 1 ? 'tables' : 'table';
+    throw new Error(`Protected ${descriptor} cannot be flushed: ${tableList}`);
+  }
+
+  return tables;
 }
 
 async function main(): Promise<void> {
