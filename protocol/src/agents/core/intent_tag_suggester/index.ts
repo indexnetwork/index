@@ -6,7 +6,8 @@
  * what they want to share by surfacing common themes from their intent history.
  */
 
-import { traceableLlm } from "../../../lib/agents";
+import { traceableStructuredLlm } from "../../../lib/agents";
+import { z } from "zod";
 
 // Type definitions
 export interface Intent {
@@ -16,10 +17,8 @@ export interface Intent {
 }
 
 export interface TagSuggestion {
-  tag: string;
-  relevanceScore: number;
-  relatedIntentIds: string[];
-  description?: string;
+  value: string;
+  score: number;
 }
 
 export interface SuggestTagsResult {
@@ -33,6 +32,14 @@ export interface SuggestTagsOptions {
   minRelevanceScore?: number;
   timeout?: number;
 }
+
+// Zod schema for structured output
+const TagSuggestionSchema = z.object({
+  suggestions: z.array(z.object({
+    value: z.string().describe("Lowercase tag value to be added to prompt (1-3 words, clear and specific)"),
+    score: z.number().min(0).max(1).describe("Relevance score between 0 and 1")
+  })).describe("Array of tag suggestions ordered by relevance")
+});
 
 /**
  * Generate tag suggestions based on user intents and a prompt
@@ -59,7 +66,7 @@ export async function suggestTags(
 
     // Create the prompt for tag suggestion
     const intentList = intents.map(intent => 
-      `- ID: ${intent.id}\n  Content: ${intent.summary || intent.payload}`
+      `- ID: ${intent.id}\n  Content: ${intent.payload}`
     ).join('\n');
 
     const systemPrompt = `You are an intelligent tag suggester that analyzes user intents to identify themes and suggest relevant tags.
@@ -78,41 +85,22 @@ YOUR TASK:
 5. ${prompt ? 'Order tags by relevance to the prompt (most relevant first)' : 'Order tags by prominence (most common themes first)'}
 6. Return up to ${maxSuggestions} suggestions
 
-OUTPUT FORMAT (JSON):
-{
-  "suggestions": [
-    {
-      "tag": "AI Research",
-      "relevanceScore": 0.95,
-      "relatedIntentIds": ["intent_1", "intent_3", "intent_7"],
-      "description": "Your research interests in artificial intelligence and machine learning"
-    },
-    {
-      "tag": "Open Source Collaboration",
-      "relevanceScore": 0.82,
-      "relatedIntentIds": ["intent_2", "intent_5"],
-      "description": "Your contributions and interests in open source projects"
-    }
-  ]
-}
-
 GUIDELINES:
-- Tags should be 1-3 words, clear and specific
-- Relevance scores between 0 and 1 (only include scores >= ${minRelevanceScore})
-- Include intent IDs that relate to each suggested tag
-- Descriptions should be brief and personalized ("Your interest in...")
+- Tag values should be 1-3 words, clear and specific, and LOWERCASE
+- Scores between 0 and 1 (only include scores >= ${minRelevanceScore})
+- Values will be added to the prompt as comma-separated text
 - Focus on actionable, meaningful clusters that expand the user's expression
 - If the prompt is empty, suggest the most prominent themes from their intents
-- Avoid overly generic tags like "Technology" or "Work"`;
+- Avoid overly generic tags like "technology" or "work"`;
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Tag suggestion timeout')), timeout);
     });
 
-    const suggestCall = traceableLlm(
+    const suggestCall = traceableStructuredLlm(
       "intent-tag-suggester",
-      ["tag-generation", "clustering"],
+      ["tag-generation", "clustering", "structured-output"],
       {
         agent_type: "intent_tag_suggester",
         operation: "tag_suggestion",
@@ -123,18 +111,15 @@ GUIDELINES:
     );
 
     const response = await Promise.race([
-      suggestCall(systemPrompt),
+      suggestCall(systemPrompt, TagSuggestionSchema),
       timeoutPromise
     ]);
-
-    // Parse the JSON response
-    const result = JSON.parse(response.content as string);
     
     // Filter by minimum relevance score and limit suggestions
-    const filteredSuggestions = (result.suggestions || [])
-      .filter((s: TagSuggestion) => s.relevanceScore >= minRelevanceScore)
+    const filteredSuggestions = (response.suggestions || [])
+      .filter((s: TagSuggestion) => s.score >= minRelevanceScore)
       .slice(0, maxSuggestions)
-      .sort((a: TagSuggestion, b: TagSuggestion) => b.relevanceScore - a.relevanceScore);
+      .sort((a: TagSuggestion, b: TagSuggestion) => b.score - a.score);
 
     console.log(`✅ Generated ${filteredSuggestions.length} tag suggestions for prompt: "${prompt.substring(0, 50)}..."`);
 
@@ -150,19 +135,4 @@ GUIDELINES:
       error: error instanceof Error ? error.message : 'Unknown error' 
     };
   }
-}
-
-/**
- * Quick utility to get top tag suggestions
- * Returns array of tag strings ordered by relevance
- */
-export async function getTopTags(
-  intents: Intent[],
-  prompt: string,
-  count: number = 5
-): Promise<string[]> {
-  const result = await suggestTags(intents, prompt, { maxSuggestions: count });
-  return result.success 
-    ? (result.suggestions || []).map(s => s.tag)
-    : [];
 }

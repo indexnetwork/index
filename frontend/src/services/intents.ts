@@ -134,19 +134,15 @@ export const createIntentsService = (api: ReturnType<typeof import('../lib/api')
   // Suggest tags based on user intents and prompt
   suggestTags: async (prompt: string, indexId?: string, maxSuggestions?: number): Promise<{
     suggestions: Array<{
-      tag: string;
-      relevanceScore: number;
-      relatedIntentIds: string[];
-      description?: string;
+      value: string;
+      score: number;
     }>;
     intentCount: number;
   }> => {
     const response = await api.post<{
       suggestions: Array<{
-        tag: string;
-        relevanceScore: number;
-        relatedIntentIds: string[];
-        description?: string;
+        value: string;
+        score: number;
       }>;
       intentCount: number;
     }>('/intents/suggest-tags', {

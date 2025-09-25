@@ -15,10 +15,8 @@ export interface MemberSettings {
 }
 
 export interface TagSuggestion {
-  tag: string;
-  relevanceScore: number;
-  relatedIntentIds: string[];
-  description?: string;
+  value: string;
+  score: number;
 }
 
 export interface Member {

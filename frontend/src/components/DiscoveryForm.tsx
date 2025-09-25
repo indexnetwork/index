@@ -140,7 +140,7 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
         </div>
         <button
           onClick={onRequestsClick}
-          className="font-ibm-plex-mono px-4 py-3 border border-black bg-white hover:bg-gray-50 flex items-center gap-2 text-black whitespace-nowrap"
+          className="font-ibm-plex-mono px-4 py-3 border border-b-2 border-black bg-white hover:bg-gray-50 flex items-center gap-2 text-black whitespace-nowrap"
         >
           View Requests
           <span className="bg-black text-white text-xs px-2 py-1 rounded">

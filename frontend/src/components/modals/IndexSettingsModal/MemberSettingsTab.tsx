@@ -69,7 +69,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
       const result = await intentsService.suggestTags(
         '',
         index.id,
-        8
+        5
       );
       setSuggestedTags(result.suggestions);
     } catch (err) {
@@ -101,12 +101,12 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
 
   // Fetch tag suggestions once when intents are loaded
   useEffect(() => {
-    if (!indexedIntents || !loadingIndexed) return;
+    if (loadingIndexed) return; // Wait for intents to finish loading
+    if (loadingSuggestions) return; // Don't make additional requests while already loading
     if (indexedIntents.length > 0 && suggestedTags.length === 0) {
       fetchTagSuggestions();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [indexedIntents, loadingIndexed, loadingSuggestions, suggestedTags.length]); // Removed fetchTagSuggestions to prevent infinite loop
 
   const handleLeaveIndex = async () => {
     try {
@@ -174,22 +174,22 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
     setPrompt(originalPrompt);
   };
 
-  const handleTagClick = (tag: string) => {
+  const handleTagClick = (tagValue: string) => {
     const separator = prompt.trim() ? ', ' : '';
-    setPrompt(prompt + separator + tag);
-    setUsedTags(prev => new Set([...prev, tag]));
+    setPrompt(prompt + separator + tagValue);
+    setUsedTags(prev => new Set([...prev, tagValue]));
   };
 
   // Get visible tags
   const visibleTags = suggestedTags
-    .filter(suggestion => !usedTags.has(suggestion.tag))
+    .filter(suggestion => !usedTags.has(suggestion.value))
     .slice(0, 5);
 
   return (
     <div className="flex flex-col h-full">
       {/* Fixed header section */}
       <div className="flex-shrink-0">
-        <div className="mt-6 mb-3 flex items-center justify-between min-h-[32px]">
+        <div className="mt-3 mb-3 flex items-center justify-between min-h-[32px]">
           <h3 className="text-sm font-medium font-ibm-plex-mono text-black">
             Instruct what to share and what to keep private
           </h3>
@@ -222,27 +222,31 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="e.g., Share my AI-related intents like research papers and projects, but keep personal details private..."
-              className="w-full text-gray-900 resize-none h-20 text-sm font-ibm-plex-mono outline-none"
+              className="w-full text-gray-900 resize-none h-15 text-sm font-ibm-plex-mono outline-none"
             />
             
             {/* Tag suggestions */}
             <div className="flex gap-2 mt-2 overflow-hidden min-h-[28px] items-center">
               {loadingSuggestions ? (
-                <div className="text-xs text-gray-500 italic">Analyzing your intents...</div>
+                <div className="text-xs text-gray-500 italic flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4 text-gray-400" viewBox="0 0 16 16" fill="none">
+                    <circle className="opacity-25" cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="2" />
+                    <path className="opacity-75" fill="currentColor" d="M15 8A7 7 0 1 1 8 1v2a5 5 0 1 0 5 5h2z"/>
+                  </svg>
+                  finding inspirations...
+                </div>
               ) : visibleTags.length > 0 ? (
                 visibleTags.map((suggestion) => (
                   <button
-                    key={suggestion.tag}
-                    onClick={() => handleTagClick(suggestion.tag)}
+                    key={suggestion.value}
+                    onClick={() => handleTagClick(suggestion.value)}
                     className="px-3 py-1 bg-gray-800 text-white rounded-full text-xs font-ibm-plex-mono hover:bg-gray-700 transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1"
-                    title={suggestion.description || `Based on ${suggestion.relatedIntentIds.length} of your intents`}
+                    title={`Score: ${suggestion.score.toFixed(2)}`}
                   >
                     <Plus className="h-3 w-3" />
-                    {suggestion.tag}
+                    {suggestion.value}
                   </button>
                 ))
-              ) : indexedIntents.length === 0 ? (
-                <div className="text-xs text-gray-500 italic">Add intents to see tag suggestions</div>
               ) : null}
             </div>
           </div>
