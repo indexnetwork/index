@@ -27,6 +27,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
   const [usedTags, setUsedTags] = useState<Set<string>>(new Set());
   const [suggestedTags, setSuggestedTags] = useState<TagSuggestion[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [suggestionsFetched, setSuggestionsFetched] = useState(false);
 
   const { success, error } = useNotifications();
   const api = useAuthenticatedAPI();
@@ -72,9 +73,11 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
         5
       );
       setSuggestedTags(result.suggestions);
+      setSuggestionsFetched(true);
     } catch (err) {
       console.error('Failed to fetch tag suggestions:', err);
       setSuggestedTags([]);
+      setSuggestionsFetched(true);
     } finally {
       setLoadingSuggestions(false);
     }
@@ -86,6 +89,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
     fetchMemberIntents();
     setUsedTags(new Set());
     setSuggestedTags([]);
+    setSuggestionsFetched(false);
   }, [fetchMemberSettings, fetchMemberIntents]);
 
   // Auto-refresh intents every 3 seconds
@@ -103,10 +107,11 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
   useEffect(() => {
     if (loadingIndexed) return; // Wait for intents to finish loading
     if (loadingSuggestions) return; // Don't make additional requests while already loading
-    if (indexedIntents.length > 0 && suggestedTags.length === 0) {
+    if (suggestionsFetched) return; // Don't refetch if we already have results (even if empty)
+    if (indexedIntents.length > 0) {
       fetchTagSuggestions();
     }
-  }, [indexedIntents, loadingIndexed, loadingSuggestions, suggestedTags.length]); // Removed fetchTagSuggestions to prevent infinite loop
+  }, [indexedIntents, loadingIndexed, loadingSuggestions, suggestionsFetched]); // Removed fetchTagSuggestions to prevent infinite loop
 
   const handleLeaveIndex = async () => {
     try {
@@ -272,7 +277,7 @@ export default function MemberSettingsTab({ index, onLeave }: MemberSettingsTabP
       </div>
 
       {/* Scrollable intent list */}
-      <div className="flex-1 overflow-y-auto min-h-0 max-h-[300px]">
+      <div className=" overflow-y-scroll min-h-0 max-h-[300px]">
         <div className="space-y-2 pr-2">
           {loadingIndexed ? (
             <div className="text-center py-4 text-gray-500">Loading...</div>

@@ -36,7 +36,7 @@ export interface SuggestTagsOptions {
 // Zod schema for structured output
 const TagSuggestionSchema = z.object({
   suggestions: z.array(z.object({
-    value: z.string().describe("Lowercase tag value to be added to prompt (2-3 words, relatable and specific to user intents)"),
+    value: z.string().describe("Lowercase tag value to be added to prompt (1-3 words, clear and specific)"),
     score: z.number().min(0).max(1).describe("Relevance score between 0 and 1")
   })).describe("Array of tag suggestions ordered by relevance")
 });
@@ -77,29 +77,21 @@ ${intentList}
 USER'S CURRENT PROMPT:
 "${prompt || '(No prompt provided - suggest most prominent themes)'}"
 
-CONTEXT:
-${prompt ? 'These intents were selected because they are semantically similar to the user\'s current prompt but are NOT already included in their target index. This means these are related ideas the user has expressed before that could expand or complement their current prompt.' : 'These are the user\'s most recent intents to analyze for prominent themes.'}
-
 YOUR TASK:
 1. Analyze all intents to identify common themes, topics, and patterns
-2. ${prompt ? 'Since these intents are similar to the user\'s prompt, focus on finding complementary themes and aspects that could enrich their current expression' : 'Focus on the most prominent themes across all intents'}
-3. Generate 2-3 word tag suggestions that represent meaningful clusters of intents
-4. Each tag should be a natural phrase users would recognize and relate to from their content
-5. Tags should cover multiple related intents when possible and ${prompt ? 'add value to the user\'s current prompt by suggesting related concepts they might want to include' : 'represent the most significant themes'}
-6. ${prompt ? 'Order tags by relevance to expanding/complementing the prompt (most valuable additions first)' : 'Order tags by prominence (most common themes first)'}
-7. Return up to ${maxSuggestions} suggestions
+2. ${prompt ? 'Consider the user\'s prompt to understand their current focus' : 'Focus on the most prominent themes across all intents'}
+3. Generate tag suggestions that represent meaningful clusters of intents
+4. Each tag should cover multiple related intents when possible
+5. ${prompt ? 'Order tags by relevance to the prompt (most relevant first)' : 'Order tags by prominence (most common themes first)'}
+6. Return up to ${maxSuggestions} suggestions
 
 GUIDELINES:
-- Tag values should be EXACTLY 2-3 words, relatable and specific, and LOWERCASE
-- Make tags feel natural and relatable to what users would actually say about their intents
-- Use concrete, specific terms that users would recognize from their actual content
+- Tag values should be 1-3 words, clear and specific, and LOWERCASE
 - Scores between 0 and 1 (only include scores >= ${minRelevanceScore})
 - Values will be added to the prompt as comma-separated text
 - Focus on actionable, meaningful clusters that expand the user's expression
-- ${prompt ? 'Suggest tags that represent related concepts, complementary aspects, or deeper dimensions of the user\'s current focus' : 'Suggest the most prominent themes from their intents'}
-- Avoid overly generic tags like "technology", "work", or single broad words
-- Prefer specific combinations like "ai research", "startup ideas", "design feedback", "technical discussions"
-- Prioritize tags that would meaningfully enhance the user's current prompt and feel personally relevant`;
+- If the prompt is empty, suggest the most prominent themes from their intents
+- Avoid overly generic tags like "technology" or "work"`;
 
     // Set up timeout
     const timeoutPromise = new Promise<never>((_, reject) => {

@@ -84,7 +84,7 @@ export default function IndexSettingsModal({ open, onOpenChange, index, onIndexU
           </div>
 
           {/* Tab Content */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1">
             <div className={`h-full ${activeTab === 'member' ? 'block' : 'hidden'}`}>
               <MemberSettingsTab 
                 index={index} 
