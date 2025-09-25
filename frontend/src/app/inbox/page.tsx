@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import * as Tabs from "@radix-ui/react-tabs";
-import { History, SendHorizontal, Inbox } from "lucide-react";
 import { useConnections, useSynthesis, useDiscover } from "@/contexts/APIContext";
 import { StakesByUserResponse, UserConnection } from "@/lib/types";
 import { getAvatarUrl } from "@/lib/file-utils";
@@ -24,7 +23,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [syntheses, setSyntheses] = useState<Record<string, string>>({});
   const [synthesisLoading, setSynthesisLoading] = useState<Record<string, boolean>>({});
-  const [requestsView, setRequestsView] = useState<'received' | 'sent'>('received');
+  const [requestsView] = useState<'received' | 'sent'>('received');
   const [inputFocused, setInputFocused] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [originalInputValue, setOriginalInputValue] = useState('');
