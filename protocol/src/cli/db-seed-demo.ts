@@ -112,7 +112,7 @@ const COMMON_INTENTS: CommonIntentDefinition[] = [
         title: `${user.name.split(' ')[0]} Weekly Intent Digest`,
       }),
     },
-    defaultIndexKeys: ['network-lounge'],
+    defaultIndexKeys: ['demo-everything', 'network-lounge'],
   },
   {
     key: 'looking-for-intros',
@@ -127,7 +127,7 @@ const COMMON_INTENTS: CommonIntentDefinition[] = [
         title: `${user.name.split(' ')[0]} Intro Tracker`,
       }),
     },
-    defaultIndexKeys: ['network-lounge', 'deal-room'],
+    defaultIndexKeys: ['demo-everything', 'network-lounge', 'deal-room'],
   },
   {
     key: 'offering-office-hours',
@@ -143,7 +143,7 @@ const COMMON_INTENTS: CommonIntentDefinition[] = [
         type: 'text/markdown',
       }),
     },
-    defaultIndexKeys: ['network-lounge', 'support-huddle'],
+    defaultIndexKeys: ['demo-everything', 'network-lounge', 'support-huddle'],
   },
 ];
 
@@ -286,8 +286,13 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
   'test-account-1': {
     intro: 'Community lead coordinating the lounge and pairing members for support.',
     avatarSeed: 'Casey Harper',
-    indexes: ['network-lounge', 'deal-room', 'support-huddle'],
+    indexes: ['demo-everything', 'network-lounge', 'deal-room', 'support-huddle'],
     indexSettings: {
+      'demo-everything': {
+        permissions: ['owner'],
+        prompt: 'Broadcast anything that could help others route support or collaborations.',
+        autoAssign: true,
+      },
       'network-lounge': {
         permissions: ['owner'],
         prompt: 'Curate weekly recaps and highlight collaboration asks for the lounge.',
@@ -323,14 +328,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Posting the lounge recap covering new wins, open asks, and introductions needed this week.',
         summary: 'Weekly lounge recap with wins and asks.',
         source: { type: 'file', key: 'casey-weekly-brief' },
-        indexKeys: ['network-lounge'],
+        indexKeys: ['demo-everything', 'network-lounge'],
       },
       {
         key: 'talent-pairing',
         payload: 'Coordinating support pairings between builders needing help and operators volunteering time.',
         summary: 'Coordinating network talent pairings.',
         source: { type: 'link', key: 'casey-talent-sheet' },
-        indexKeys: ['network-lounge', 'support-huddle'],
+        indexKeys: ['demo-everything', 'network-lounge', 'support-huddle'],
       },
     ],
     sharedIntentKeys: ['weekly-update', 'offering-office-hours'],
@@ -338,8 +343,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
   'test-account-2': {
     intro: 'Investor operator bridging the syndicate with builders who need capital.',
     avatarSeed: 'Devon Brooks',
-    indexes: ['network-lounge', 'deal-room'],
+    indexes: ['demo-everything', 'network-lounge', 'deal-room'],
     indexSettings: {
+      'demo-everything': {
+        prompt: 'Surface investment questions and follow-ups for anyone able to help.',
+        autoAssign: true,
+      },
       'network-lounge': {
         prompt: 'Share investor lens on intros and resource asks coming through the lounge.',
         autoAssign: true,
@@ -371,14 +380,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Tracking active deals that need operator insight before next syndicate sync.',
         summary: 'Active deals requiring operator insight.',
         source: { type: 'file', key: 'devon-syndicate-pipeline' },
-        indexKeys: ['deal-room'],
+        indexKeys: ['demo-everything', 'deal-room'],
       },
       {
         key: 'due-diligence',
         payload: 'Requesting product deep dives from builders ahead of diligence reviews next week.',
         summary: 'Requests for diligence deep dives.',
         source: { type: 'link', key: 'devon-diligence-notes' },
-        indexKeys: ['deal-room', 'network-lounge'],
+        indexKeys: ['demo-everything', 'deal-room', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['looking-for-intros'],
@@ -386,8 +395,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
   'test-account-3': {
     intro: 'Release manager keeping Build Lab prototypes production-ready.',
     avatarSeed: 'Morgan Li',
-    indexes: ['network-lounge', 'build-lab'],
+    indexes: ['demo-everything', 'network-lounge', 'build-lab'],
     indexSettings: {
+      'demo-everything': {
+        prompt: 'Flag release work or blockers anyone in the network should see.',
+        autoAssign: true,
+      },
       'network-lounge': {
         prompt: 'Share build milestones and blockers that need broader support.',
         autoAssign: true,
@@ -419,14 +432,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Outlining the build lab release checklist for the upcoming deploy window.',
         summary: 'Upcoming release checklist items.',
         source: { type: 'file', key: 'morgan-release-checklist' },
-        indexKeys: ['build-lab'],
+        indexKeys: ['demo-everything', 'build-lab'],
       },
       {
         key: 'integration-help',
         payload: 'Flagging integrations that need review from data and infra partners.',
         summary: 'Integration work requiring reviews.',
         source: { type: 'link', key: 'morgan-integration-playbook' },
-        indexKeys: ['build-lab', 'network-lounge'],
+        indexKeys: ['demo-everything', 'build-lab', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['offering-office-hours'],
@@ -434,8 +447,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
   'test-account-4': {
     intro: 'Product designer capturing beta feedback to inform the build roadmap.',
     avatarSeed: 'Riley Nguyen',
-    indexes: ['network-lounge', 'build-lab'],
+    indexes: ['demo-everything', 'network-lounge', 'build-lab'],
     indexSettings: {
+      'demo-everything': {
+        prompt: 'Highlight beta learnings the whole network should be aware of.',
+        autoAssign: true,
+      },
       'network-lounge': {
         prompt: 'Surface UX learnings that impact product priorities.',
         autoAssign: true,
@@ -466,14 +483,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Logging tester requests that need engineering follow-up before the next release.',
         summary: 'Tester requests requiring engineering support.',
         source: { type: 'file', key: 'riley-beta-feedback' },
-        indexKeys: ['build-lab'],
+        indexKeys: ['demo-everything', 'build-lab'],
       },
       {
         key: 'ux-feedback',
         payload: 'Highlighting UX findings that should influence upcoming sprints.',
         summary: 'UX findings for sprint planning.',
         source: { type: 'link', key: 'riley-ux-research' },
-        indexKeys: ['build-lab', 'network-lounge'],
+        indexKeys: ['demo-everything', 'build-lab', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['weekly-update'],
@@ -481,8 +498,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
   'test-account-5': {
     intro: 'Recruiting partner aligning hiring needs with growth experiments.',
     avatarSeed: 'Taylor Singh',
-    indexes: ['network-lounge', 'growth-guild', 'support-huddle'],
+    indexes: ['demo-everything', 'network-lounge', 'growth-guild', 'support-huddle'],
     indexSettings: {
+      'demo-everything': {
+        prompt: 'Share hiring signals with the network for broader amplification.',
+        autoAssign: true,
+      },
       'network-lounge': {
         prompt: 'Highlight hiring wins and requests coming from across the lounge.',
         autoAssign: true,
@@ -517,14 +538,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Updating the roster of candidates matched with current growth initiatives.',
         summary: 'Talent roster updates tied to growth work.',
         source: { type: 'file', key: 'taylor-talent-roster' },
-        indexKeys: ['growth-guild'],
+        indexKeys: ['demo-everything', 'growth-guild'],
       },
       {
         key: 'hiring-needs',
         payload: 'Listing open roles that need referrals before the next campaign sprint.',
         summary: 'Open hiring needs and referral requests.',
         source: { type: 'link', key: 'taylor-hiring-tracker' },
-        indexKeys: ['growth-guild', 'support-huddle'],
+        indexKeys: ['demo-everything', 'growth-guild', 'support-huddle'],
       },
     ],
     sharedIntentKeys: ['weekly-update'],
@@ -532,8 +553,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
   'test-account-6': {
     intro: 'Data engineer keeping infra healthy for fast experimentation.',
     avatarSeed: 'Quinn Ramirez',
-    indexes: ['network-lounge', 'build-lab'],
+    indexes: ['demo-everything', 'network-lounge', 'build-lab'],
     indexSettings: {
+      'demo-everything': {
+        prompt: 'Broadcast critical infra updates to all collaborators.',
+        autoAssign: true,
+      },
       'network-lounge': {
         prompt: 'Post data health updates and tooling needs to unblock others.',
         autoAssign: true,
@@ -564,14 +589,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Sharing the latest data health audit and highlighting tables needing fixes.',
         summary: 'Recent data audit findings.',
         source: { type: 'file', key: 'quinn-data-audit' },
-        indexKeys: ['build-lab'],
+        indexKeys: ['demo-everything', 'build-lab'],
       },
       {
         key: 'infra-planning',
         payload: 'Coordinating infra upgrades that impact upcoming build lab releases.',
         summary: 'Infra planning tasks tied to releases.',
         source: { type: 'link', key: 'quinn-infra-plan' },
-        indexKeys: ['build-lab', 'network-lounge'],
+        indexKeys: ['demo-everything', 'build-lab', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['offering-office-hours'],
@@ -579,8 +604,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
   'test-account-7': {
     intro: 'Operations partner ensuring investor follow-ups stay on track.',
     avatarSeed: 'Emerson Blake',
-    indexes: ['network-lounge', 'deal-room'],
+    indexes: ['demo-everything', 'network-lounge', 'deal-room'],
     indexSettings: {
+      'demo-everything': {
+        prompt: 'Raise ops cadences and reminders network-wide.',
+        autoAssign: true,
+      },
       'network-lounge': {
         prompt: 'Raise operating cadences and process experiments for the group.',
         autoAssign: true,
@@ -611,14 +640,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Posting the updated ops dashboard with follow-up owners for each deal.',
         summary: 'Ops dashboard updates with owners.',
         source: { type: 'file', key: 'emerson-ops-dashboard' },
-        indexKeys: ['deal-room'],
+        indexKeys: ['demo-everything', 'deal-room'],
       },
       {
         key: 'process-improvements',
         payload: 'Capturing process tweaks that reduce handoff time between investors and builders.',
         summary: 'Process improvements for handoffs.',
         source: { type: 'link', key: 'emerson-process-playbook' },
-        indexKeys: ['deal-room', 'network-lounge'],
+        indexKeys: ['demo-everything', 'deal-room', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['looking-for-intros'],
@@ -626,8 +655,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
   'test-account-8': {
     intro: 'Growth lead running experiments and aligning launch plans.',
     avatarSeed: 'Peyton Alvarez',
-    indexes: ['network-lounge', 'growth-guild'],
+    indexes: ['demo-everything', 'network-lounge', 'growth-guild'],
     indexSettings: {
+      'demo-everything': {
+        prompt: 'Share growth signals that could inspire other teams.',
+        autoAssign: true,
+      },
       'network-lounge': {
         prompt: 'Share growth experiments seeking collaborators from other teams.',
         autoAssign: true,
@@ -659,14 +692,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Listing experiments in-flight and the metrics we need help instrumenting.',
         summary: 'Growth experiments seeking support.',
         source: { type: 'file', key: 'peyton-growth-experiments' },
-        indexKeys: ['growth-guild'],
+        indexKeys: ['demo-everything', 'growth-guild'],
       },
       {
         key: 'launch-plan',
         payload: 'Coordinating the upcoming launch plan and partner content timeline.',
         summary: 'Launch plan coordination notes.',
         source: { type: 'link', key: 'peyton-launch-plan' },
-        indexKeys: ['growth-guild', 'network-lounge'],
+        indexKeys: ['demo-everything', 'growth-guild', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['weekly-update'],
@@ -674,8 +707,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
   'test-account-9': {
     intro: 'Support lead surfacing customer signals back to the team.',
     avatarSeed: 'Sydney Clarke',
-    indexes: ['network-lounge', 'growth-guild', 'support-huddle'],
+    indexes: ['demo-everything', 'network-lounge', 'growth-guild', 'support-huddle'],
     indexSettings: {
+      'demo-everything': {
+        prompt: 'Share support insights that might trigger network follow-ups.',
+        autoAssign: true,
+      },
       'network-lounge': {
         prompt: 'Broadcast support trends that impact roadmaps.',
         autoAssign: true,
@@ -711,14 +748,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Summarizing trending support topics and the features they touch.',
         summary: 'Trending support topics summary.',
         source: { type: 'file', key: 'sydney-support-trends' },
-        indexKeys: ['support-huddle'],
+        indexKeys: ['demo-everything', 'support-huddle'],
       },
       {
         key: 'faq-refresh',
         payload: 'Tracking FAQ updates needed before the next product launch.',
         summary: 'FAQ updates needed for launch.',
         source: { type: 'link', key: 'sydney-faq-updates' },
-        indexKeys: ['support-huddle', 'growth-guild'],
+        indexKeys: ['demo-everything', 'support-huddle', 'growth-guild'],
       },
     ],
     sharedIntentKeys: ['offering-office-hours'],
@@ -726,8 +763,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
   'test-account-10': {
     intro: 'Platform engineer coordinating refactors and integration timelines.',
     avatarSeed: 'Hayden Moore',
-    indexes: ['network-lounge', 'build-lab'],
+    indexes: ['demo-everything', 'network-lounge', 'build-lab'],
     indexSettings: {
+      'demo-everything': {
+        prompt: 'Share integration status network-wide to align dependencies.',
+        autoAssign: true,
+      },
       'network-lounge': {
         prompt: 'Post integration status and blockers that need cross-team help.',
         autoAssign: true,
@@ -758,14 +799,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Detailing the refactor phases and reviewers needed this sprint.',
         summary: 'Refactor phases and reviewer needs.',
         source: { type: 'file', key: 'hayden-refactor-plan' },
-        indexKeys: ['build-lab'],
+        indexKeys: ['demo-everything', 'build-lab'],
       },
       {
         key: 'integration-pipeline',
         payload: 'Coordinating integration rollout dates across build lab partners.',
         summary: 'Integration rollout coordination.',
         source: { type: 'link', key: 'hayden-integration-pipeline' },
-        indexKeys: ['build-lab', 'network-lounge'],
+        indexKeys: ['demo-everything', 'build-lab', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['looking-for-intros'],
@@ -780,6 +821,12 @@ const INDEX_CONFIGS: Array<{
   invitationCode?: string;
   linkPermissions?: DemoIndexDefinition['linkPermissions'];
 }> = [
+  {
+    key: 'demo-everything',
+    title: 'Demo Network Feed',
+    prompt: 'Share everything you are working on so the network can find relevant collaborators.',
+    joinPolicy: 'anyone',
+  },
   {
     key: 'network-lounge',
     title: 'Network Lounge',
