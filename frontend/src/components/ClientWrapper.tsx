@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import { IndexFilterProvider } from "@/contexts/IndexFilterContext";
+import { IndexesProvider } from "@/contexts/IndexesContext";
 
 export default function ClientWrapper({ children }: PropsWithChildren) {
   const pathname = usePathname();
@@ -32,8 +33,9 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
   }
   
   return (
-    <IndexFilterProvider>
-      <div className="backdrop relative min-h-screen">
+    <IndexesProvider>
+      <IndexFilterProvider>
+        <div className="backdrop relative min-h-screen">
         <style jsx>{`
           .backdrop:after {
             content: "";
@@ -76,7 +78,8 @@ export default function ClientWrapper({ children }: PropsWithChildren) {
             </div>
           </div>
         </main>
-      </div>
-    </IndexFilterProvider>
+        </div>
+      </IndexFilterProvider>
+    </IndexesProvider>
   );
 } 

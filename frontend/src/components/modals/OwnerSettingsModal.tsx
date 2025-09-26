@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Copy, Globe, Lock, Trash2, Plus, Check, X, Settings, Shield, ChevronRight, ChevronDown } from 'lucide-react';
 import { Input } from '../ui/input';
 import { useIndexes } from '@/contexts/APIContext';
+import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 
 interface Member {
@@ -60,6 +61,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const indexesService = useIndexes();
+  const { updateIndex, removeIndex } = useIndexesState();
   const { success, error } = useNotifications();
 
   // Load members on mount
@@ -156,6 +158,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
       });
       setOriginalTitle(title);
       setOriginalPrompt(prompt);
+      updateIndex(updatedIndex); // Update global state
       onIndexUpdate?.(updatedIndex);
       success('Index settings updated successfully');
     } catch (err) {
@@ -179,10 +182,10 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
     try {
       setIsDeletingIndex(true);
       await indexesService.deleteIndex(index.id);
+      removeIndex(index.id); // Update global state
       success('Index deleted successfully');
       setShowDeleteConfirmation(false);
       onOpenChange(false);
-      // Note: Parent component should handle navigation/refresh
     } catch (err) {
       console.error('Error deleting index:', err);
       error('Failed to delete index');
@@ -205,6 +208,7 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
         allowGuestVibeCheck: allowVibecheck
       });
       const updatedIndex = await indexesService.getIndex(index.id);
+      updateIndex(updatedIndex); // Update global state
       onIndexUpdate?.(updatedIndex);
     } catch (err) {
       console.error('Error updating index permissions:', err);

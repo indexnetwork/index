@@ -9,6 +9,7 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import { User, APIResponse } from '@/lib/types';
 import { getAvatarUrl } from '@/lib/file-utils';
 import { useIndexes } from '@/contexts/APIContext';
+import { useIndexesState } from '@/contexts/IndexesContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import ProfileSettingsModal from '@/components/modals/ProfileSettingsModal';
 import LibraryModal from '@/components/modals/LibraryModal';
@@ -34,6 +35,7 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
   const [userLoading, setUserLoading] = useState(false);
   const api = useAuthenticatedAPI();
   const indexesService = useIndexes();
+  const { addIndex } = useIndexesState();
   const { success, error } = useNotifications();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -92,14 +94,15 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
         prompt: indexData.prompt
       };
       
-      await indexesService.createIndex(createRequest);
+      const newIndex = await indexesService.createIndex(createRequest);
+      addIndex(newIndex); // Update global state immediately
       setCreateIndexModalOpen(false);
       success('Index created successfully');
     } catch (err) {
       console.error('Error creating index:', err);
       error('Failed to create index');
     }
-  }, [indexesService, success, error]);
+  }, [indexesService, addIndex, success, error]);
 
   // Fetch user data when authenticated and ready
   useEffect(() => {

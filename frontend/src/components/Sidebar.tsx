@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useIndexes } from '@/contexts/APIContext';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
+import { useIndexesState } from '@/contexts/IndexesContext';
 import { Index as IndexType } from '@/lib/types';
 import { useAuthenticatedAPI } from '@/lib/api';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
@@ -19,67 +19,53 @@ interface IndexItem {
 }
 
 export default function Sidebar() {
+  const { indexes: rawIndexes, loading } = useIndexesState();
   const [indexes, setIndexes] = useState<IndexItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
   const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
   const [ownerSettingsIndex, setOwnerSettingsIndex] = useState<IndexType | null>(null);
   const [memberSettingsCache, setMemberSettingsCache] = useState<Record<string, { isOwner: boolean }>>({});
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
-  const indexesService = useIndexes();
   const { setSelectedIndexIds } = useIndexFilter();
   const api = useAuthenticatedAPI();
   
   
-  const fetchIndexes = useCallback(async () => {
-    try {
-      const response = await indexesService.getIndexes(1, 100);
-      
-      if (!response.indexes) {
-        setIndexes([{ id: 'all', name: 'All Indexes', isSelectAll: true, isSelected: true }]);
-        return;
-      }
-      
-      const indexItems: IndexItem[] = [
-        { 
-          id: 'all', 
-          name: 'All Indexes', 
-          isSelectAll: true,
-          isSelected: selectedIndexId === 'all'
-        },
-        ...response.indexes.map((index: IndexType) => ({
-          id: index.id,
-          name: index.title,
-          isSelected: selectedIndexId === index.id,
-          fullIndex: index
-        }))
-      ];
-      setIndexes(indexItems);
-      
-      // Pre-fetch member settings for all indexes
-      response.indexes?.forEach(async (index: IndexType) => {
-        try {
-          const memberSettings = await api.get<{ isOwner: boolean }>(`/indexes/${index.id}/member-settings`);
-          setMemberSettingsCache(prev => ({ 
-            ...prev, 
-            [index.id]: { isOwner: memberSettings.isOwner } 
-          }));
-        } catch (error) {
-          console.error(`Failed to fetch member settings for ${index.id}:`, error);
-        }
-      });
-    } catch (error) {
-      console.error('Error fetching indexes:', error);
-      setIndexes([{ id: 'all', name: 'All Indexes', isSelectAll: true, isSelected: true }]);
-    } finally {
-      setLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indexesService, api]);
-
+  // Transform raw indexes into sidebar items whenever rawIndexes changes
   useEffect(() => {
-    fetchIndexes();
-  }, [fetchIndexes]);
+    if (!rawIndexes) {
+      setIndexes([{ id: 'all', name: 'All Indexes', isSelectAll: true, isSelected: selectedIndexId === 'all' }]);
+      return;
+    }
+    
+    const indexItems: IndexItem[] = [
+      { 
+        id: 'all', 
+        name: 'All Indexes', 
+        isSelectAll: true,
+        isSelected: selectedIndexId === 'all'
+      },
+      ...rawIndexes.map((index: IndexType) => ({
+        id: index.id,
+        name: index.title,
+        isSelected: selectedIndexId === index.id,
+        fullIndex: index
+      }))
+    ];
+    setIndexes(indexItems);
+    
+    // Pre-fetch member settings for all indexes
+    rawIndexes.forEach(async (index: IndexType) => {
+      try {
+        const memberSettings = await api.get<{ isOwner: boolean }>(`/indexes/${index.id}/member-settings`);
+        setMemberSettingsCache(prev => ({ 
+          ...prev, 
+          [index.id]: { isOwner: memberSettings.isOwner } 
+        }));
+      } catch (error) {
+        console.error(`Failed to fetch member settings for ${index.id}:`, error);
+      }
+    });
+  }, [rawIndexes, selectedIndexId, api]);
 
   // Update selection state without refetching indexes
   useEffect(() => {
@@ -272,8 +258,7 @@ export default function Sidebar() {
           onOpenChange={(open) => !open && setOwnerSettingsIndex(null)}
           index={ownerSettingsIndex}
           onIndexUpdate={(updatedIndex) => {
-            // Refresh indexes to get updated data
-            fetchIndexes();
+            // Index is already updated in global state by OwnerSettingsModal
           }}
         />
       )}

@@ -6,6 +6,7 @@ import { Index } from '@/lib/types';
 import { X, Plus } from 'lucide-react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuthenticatedAPI } from '@/lib/api';
+import { useIndexesState } from '@/contexts/IndexesContext';
 import { Button } from '@/components/ui/button';
 import { createIntentsService } from '@/services/intents';
 
@@ -52,6 +53,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
   const [activeMobileSection, setActiveMobileSection] = useState<'settings' | 'intents'>('settings');
 
   const { success, error } = useNotifications();
+  const { removeIndex } = useIndexesState();
   const api = useAuthenticatedAPI();
   const intentsService = useMemo(() => createIntentsService(api), [api]);
 
@@ -141,6 +143,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
     try {
       setIsLeaving(true);
       await api.post(`/indexes/${index.id}/leave`, {});
+      removeIndex(index.id); // Update global state
       success(`Successfully left ${index.title}`);
       onOpenChange(false);
     } catch {
@@ -380,7 +383,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
                 ) : (
                   intentsByDate.map((section) => (
                     <div key={section.key} className="space-y-2">
-                      <div className="w-full flex items-center justify-between text-xs font-ibm-plex-mono font-medium text-[#444] border-b border-[#E8E8E8] pb-1">
+                      <div className="w-full flex items-center justify-between mb-1 text-xs font-ibm-plex-mono font-medium text-[#444] border-b border-[#E8E8E8] pb-1">
                         <span>{section.label}</span>
                         <span className="text-[10px] text-[#777]">{section.items.length}</span>
                       </div>

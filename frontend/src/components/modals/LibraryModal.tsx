@@ -1045,7 +1045,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                           <button
                             type="button"
                             onClick={() => toggleSection(section.key)}
-                            className="w-full flex items-center justify-between text-xs font-ibm-plex-mono font-medium text-[#444] border-b border-[#E8E8E8]"
+                            className="w-full flex items-center justify-between mb-1 text-xs font-ibm-plex-mono font-medium text-[#444] border-b border-[#E8E8E8]"
                             aria-expanded={!isCollapsed}
                           >
                             <span>{section.label}</span>
