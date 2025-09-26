@@ -398,10 +398,21 @@ export default function InboxPage() {
             {activeTab === 'discover' && (
               <div className="mt-4">
               {discoverStakes.length === 0 ? (
-                <div className="p-0 mt-0 bg-white border border-b-2 border-gray-800 py-8 text-center text-gray-500">
-                  <p>No connection suggestions available right now.</p>
-                  <p className="text-sm mt-2">Discovery works by finding users who have staked on your intents. Create some intents first to see suggestions!</p>
-                </div>
+                <div className="flex flex-col items-center justify-center bg-white border border-black border-b-0 border-b-2 px-6 pb-8">
+                <Image 
+                  className="h-auto"
+                  src={'/loading2.gif'} 
+                  alt="Loading..." 
+                  width={300} 
+                  height={200} 
+                  style={{
+                    imageRendering: 'auto',
+                  }}
+                />
+                <p className="text-gray-900 font-500 font-ibm-plex-mono text-md mt-4 text-center">
+                No mutual intents for now, it's not you, the world's just being shy.
+                </p>
+              </div>
               ) : (
                 discoverStakes.map((userStake) => renderStakeCard(userStake, 'discover'))
               )}

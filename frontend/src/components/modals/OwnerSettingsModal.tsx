@@ -649,8 +649,9 @@ export default function OwnerSettingsModal({ open, onOpenChange, index, onIndexU
                 
 
                 {/* Members Section */}
-                <div className="pt-4 border-t border-gray-200">
-                  <h4 className="text-sm font-medium font-ibm-plex-mono text-black mb-2">Members</h4>
+                <div className="">
+                  
+                <h3 className="text-sm font-medium text-gray-900 font-ibm-plex-mono">Members</h3>
                   <p className="text-xs text-gray-600 mb-3">Assign specific access to individuals or groups</p>
                   
                   {/* Member picker input */}
