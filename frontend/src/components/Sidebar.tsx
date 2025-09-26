@@ -26,6 +26,7 @@ export default function Sidebar() {
   const [ownerSettingsIndex, setOwnerSettingsIndex] = useState<IndexType | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
+  const [openContextMenuId, setOpenContextMenuId] = useState<string | null>(null);
   const { setSelectedIndexIds } = useIndexFilter();
   const api = useAuthenticatedAPI();
   
@@ -209,9 +210,17 @@ export default function Sidebar() {
                       {index.name}
                     </span>
                   </div>
-                  <ContextMenu items={contextMenuItems} trigger="click">
+                  <ContextMenu 
+                    items={contextMenuItems} 
+                    trigger="click"
+                    onOpenChange={(isOpen) => setOpenContextMenuId(isOpen ? index.id : null)}
+                  >
                     <button
-                      className="p-1 cursor-pointer hover:bg-gray-200 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                      className={`p-1 cursor-pointer rounded opacity-0 group-hover:opacity-100 transition-opacity ${
+                        openContextMenuId === index.id 
+                          ? 'bg-gray-200 opacity-100' 
+                          : 'hover:bg-gray-200'
+                      }`}
                     >
                       <MoreVertical className="w-4 h-4 text-black" />
                     </button>

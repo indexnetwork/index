@@ -16,13 +16,19 @@ interface ContextMenuProps {
   children: React.ReactNode;
   className?: string;
   trigger?: 'click' | 'contextmenu';
+  onOpenChange?: (isOpen: boolean) => void;
 }
 
-export default function ContextMenu({ items, children, className = '', trigger = 'contextmenu' }: ContextMenuProps) {
+export default function ContextMenu({ items, children, className = '', trigger = 'contextmenu', onOpenChange }: ContextMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
+
+  // Notify parent when open state changes
+  useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
