@@ -41,10 +41,24 @@ type SeedSummary = {
   intentCount: number;
 };
 
+type Logger = {
+  info: (message: string) => void;
+};
+
 const DEMO_NAMESPACE = uuidv5('protocol-demo-seed', uuidv5.URL);
 
 function stableId(label: string): string {
   return uuidv5(label, DEMO_NAMESPACE);
+}
+
+function createLogger(opts: CliOptions): Logger {
+  const output = opts.json ? console.error : console.log;
+  return {
+    info: (message: string) => {
+      if (opts.silent) return;
+      output(message);
+    },
+  };
 }
 
 type DemoIndexMemberConfig = {
@@ -685,7 +699,8 @@ async function ensurePrivyIdentity(email: string, name: string): Promise<{ privy
   return { privyId: privyUser.id, accessToken };
 }
 
-async function upsertIndex(def: typeof DEMO_INDEXES[number]): Promise<string> {
+async function upsertIndex(def: typeof DEMO_INDEXES[number], logger: Logger): Promise<string> {
+  logger.info(`🏛️ Ensuring index ${def.title}`);
   const indexId = stableId(`index:${def.key}`);
   const capabilities = await getSchemaCapabilities();
   const invitationCode = def.invitationCode ?? `${def.key}-invite`;
@@ -750,7 +765,8 @@ async function upsertIndex(def: typeof DEMO_INDEXES[number]): Promise<string> {
   return indexId;
 }
 
-async function upsertFile(userId: string, userKey: string, def: DemoFileDefinition): Promise<string> {
+async function upsertFile(userId: string, userKey: string, def: DemoFileDefinition, logger: Logger): Promise<string> {
+  logger.info(`📄 Attaching file ${def.name} for ${userKey}`);
   const fileId = stableId(`file:${userKey}:${def.key}`);
   const now = new Date();
   const sizeValue = BigInt(def.size);
@@ -774,7 +790,8 @@ async function upsertFile(userId: string, userKey: string, def: DemoFileDefiniti
   return fileId;
 }
 
-async function upsertLink(userId: string, userKey: string, def: DemoLinkDefinition): Promise<string> {
+async function upsertLink(userId: string, userKey: string, def: DemoLinkDefinition, logger: Logger): Promise<string> {
+  logger.info(`🔗 Attaching link ${def.url} for ${userKey}`);
   const linkId = stableId(`link:${userKey}:${def.key}`);
   const now = new Date();
 
@@ -937,8 +954,10 @@ async function upsertIntent(
   def: DemoIntentDefinition,
   indexIds: string[],
   userKey: string,
-  source?: { sourceId?: string | null; sourceType?: 'file' | 'link' }
+  source: { sourceId?: string | null; sourceType?: 'file' | 'link' } | undefined,
+  logger: Logger
 ): Promise<string> {
+  logger.info(`📝 Upserting intent ${userKey}:${def.key}`);
   const intentId = stableId(`intent:${userKey}:${def.key}`);
   const now = new Date();
   const sourcePayload = {
@@ -1049,7 +1068,8 @@ async function upsertConnectionEvents(
   }
 }
 
-async function runSeed(): Promise<SeedSummary> {
+async function runSeed(logger: Logger): Promise<SeedSummary> {
+  logger.info('🚀 Starting demo seed run');
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL must be set.');
   }
@@ -1059,11 +1079,16 @@ async function runSeed(): Promise<SeedSummary> {
 
   const indexMap = new Map<string, string>();
   for (const indexDef of DEMO_INDEXES) {
-    const indexId = await upsertIndex(indexDef);
+    const indexId = await upsertIndex(indexDef, logger);
     indexMap.set(indexDef.key, indexId);
   }
 
   const agentId = await findExistingAgent();
+  if (agentId) {
+    logger.info('🤖 Found existing demo agent; will refresh stakes.');
+  } else {
+    logger.info('🤖 Demo agent not found; skipping stake updates.');
+  }
   const intentMap = new Map<string, string>();
   const userIdMap = new Map<string, string>();
   const fileIdMap = new Map<string, string>();
@@ -1074,6 +1099,7 @@ async function runSeed(): Promise<SeedSummary> {
   let intentCount = 0;
 
   for (const userDef of DEMO_USERS) {
+    logger.info(`👤 Seeding user ${userDef.name}`);
     const { privyId, accessToken } = await ensurePrivyIdentity(userDef.email, userDef.name);
     const user = await upsertUser(userDef, privyId);
     userIdMap.set(userDef.key, user.id);
@@ -1093,6 +1119,7 @@ async function runSeed(): Promise<SeedSummary> {
       if (!indexId) continue;
       indexIds.push(indexId);
 
+      logger.info(`🤝 Adding ${userDef.name} to ${indexKey}`);
       const indexDef = INDEX_DEFINITION_MAP.get(indexKey);
       const memberConfig = indexDef?.members.find((member) => member.userKey === userDef.key);
       const membershipOptions: MembershipOptions = {};
@@ -1142,13 +1169,13 @@ async function runSeed(): Promise<SeedSummary> {
     const linkDefs = Array.from(linkDefsMap.values());
 
     for (const fileDef of fileDefs) {
-      const fileId = await upsertFile(user.id, userDef.key, fileDef);
+      const fileId = await upsertFile(user.id, userDef.key, fileDef, logger);
       fileIdMap.set(`${userDef.key}:${fileDef.key}`, fileId);
       fileCount += 1;
     }
 
     for (const linkDef of linkDefs) {
-      const linkId = await upsertLink(user.id, userDef.key, linkDef);
+      const linkId = await upsertLink(user.id, userDef.key, linkDef, logger);
       linkIdMap.set(`${userDef.key}:${linkDef.key}`, linkId);
       linkCount += 1;
     }
@@ -1198,20 +1225,25 @@ async function runSeed(): Promise<SeedSummary> {
         }
       }
 
-      const intentId = await upsertIntent(user.id, intentDef, indexIds, userDef.key, source);
+      const intentId = await upsertIntent(user.id, intentDef, indexIds, userDef.key, source, logger);
       intentMap.set(`${userDef.key}:${intentDef.key}`, intentId);
       intentCount += 1;
     }
+
+    logger.info(`✅ Finished user ${userDef.name}`);
   }
 
   if (agentId) {
+    logger.info('🎯 Updating intent stakes for demo agent');
     for (const stakeDef of DEMO_STAKES) {
       await upsertIntentStake(agentId, stakeDef, intentMap);
     }
   }
 
+  logger.info('🔁 Seeding historical connection events');
   await upsertConnectionEvents(DEMO_CONNECTION_EVENTS, userIdMap);
 
+  logger.info('📦 Demo seed run complete');
   return {
     users: seededUsers,
     indexIds: Array.from(indexMap.values()),
@@ -1234,6 +1266,7 @@ async function main(): Promise<void> {
 
   await program.parseAsync(process.argv);
   const opts = program.opts<CliOptions>();
+  const logger = createLogger(opts);
 
   if (!opts.force) {
     const message = 'Add --force to confirm demo seeding operation.';
@@ -1247,7 +1280,7 @@ async function main(): Promise<void> {
   }
 
   try {
-    const result = await runSeed();
+    const result = await runSeed(logger);
 
     if (opts.json) {
       console.log(JSON.stringify({ ok: true, ...result }));
