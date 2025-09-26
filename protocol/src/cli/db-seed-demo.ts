@@ -23,6 +23,9 @@ type CliOptions = {
   json: boolean;
   silent: boolean;
   withBrokers?: boolean;
+  concurrency?: number;
+  bulkInserts?: boolean;
+  fastSeed?: boolean;
 };
 
 type SeededUser = {
@@ -46,6 +49,34 @@ type SeedSummary = {
 type Logger = {
   info: (message: string) => void;
 };
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<void>,
+  logger: Logger
+): Promise<void> {
+  const effectiveLimit = Math.max(1, Math.floor(limit));
+  let cursor = 0;
+
+  const workers = new Array(effectiveLimit).fill(null).map(async () => {
+    while (cursor < items.length) {
+      const currentIndex = cursor;
+      cursor += 1;
+      try {
+        await worker(items[currentIndex], currentIndex);
+      } catch (error) {
+        logger.info(
+          `⚠️ Broker worker failed on item ${currentIndex}: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+    }
+  });
+
+  await Promise.all(workers);
+}
 
 function generateMockEmbedding(seed: string): number[] {
   const length = 3072;
@@ -1325,6 +1356,100 @@ async function upsertLink(userId: string, userKey: string, def: DemoLinkDefiniti
   return linkId;
 }
 
+async function upsertFilesForUser(
+  userId: string,
+  userKey: string,
+  defs: DemoFileDefinition[],
+  useBulk: boolean,
+  logger: Logger
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (defs.length === 0) return result;
+
+  if (useBulk && defs.length > 1) {
+    const rows = defs.map((def) => ({
+      key: def.key,
+      id: stableId(`file:${userKey}:${def.key}`),
+      name: def.name,
+      size: BigInt(def.size),
+      type: def.type,
+    }));
+
+    const valuesSql = sql.join(
+      rows.map((row) => sql`(${row.id}, ${row.name}, ${row.size}, ${row.type}, ${userId})`),
+      sql`, `
+    );
+
+    await db.execute(sql`
+      INSERT INTO "files" ("id","name","size","type","user_id")
+      VALUES ${valuesSql}
+      ON CONFLICT ("id") DO UPDATE SET
+        "name" = EXCLUDED."name",
+        "size" = EXCLUDED."size",
+        "type" = EXCLUDED."type",
+        "user_id" = EXCLUDED."user_id",
+        "updated_at" = NOW()
+    `);
+
+    rows.forEach((row) => result.set(row.key, row.id));
+    logger.info(`📄 Bulk upserted ${rows.length} files for ${userKey}`);
+    return result;
+  }
+
+  for (const def of defs) {
+    const id = await upsertFile(userId, userKey, def, logger);
+    result.set(def.key, id);
+  }
+  return result;
+}
+
+async function upsertLinksForUser(
+  userId: string,
+  userKey: string,
+  defs: DemoLinkDefinition[],
+  useBulk: boolean,
+  logger: Logger
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (defs.length === 0) return result;
+
+  if (useBulk && defs.length > 1) {
+    const nowIso = new Date().toISOString();
+    const rows = defs.map((def) => ({
+      key: def.key,
+      id: stableId(`link:${userKey}:${def.key}`),
+      url: def.url,
+    }));
+
+    const valuesSql = sql.join(
+      rows.map((row) => sql`(${row.id}, ${userId}, ${row.url}, ${'seeded-demo'}, ${nowIso})`),
+      sql`, `
+    );
+
+    await db.execute(sql`
+      INSERT INTO "links" ("id","user_id","url","last_status","last_sync_at")
+      VALUES ${valuesSql}
+      ON CONFLICT ("id") DO UPDATE SET
+        "url" = EXCLUDED."url",
+        "user_id" = EXCLUDED."user_id",
+        "last_status" = EXCLUDED."last_status",
+        "last_sync_at" = EXCLUDED."last_sync_at",
+        "updated_at" = NOW()
+    `);
+
+    rows.forEach((row) => result.set(row.key, row.id));
+    logger.info(`🔗 Bulk upserted ${rows.length} links for ${userKey}`);
+    return result;
+  }
+
+  for (const def of defs) {
+    const id = await upsertLink(userId, userKey, def, logger);
+    result.set(def.key, id);
+  }
+
+  return result;
+}
+
 async function findExistingAgent(): Promise<string | null> {
   const agentId = stableId(`agent:${DEMO_AGENT.key}`);
   const result = await db
@@ -1586,8 +1711,11 @@ async function upsertConnectionEvents(
   }
 }
 
-async function runSeed(logger: Logger, options: { triggerBrokers: boolean }): Promise<SeedSummary> {
-  const { triggerBrokers } = options;
+async function runSeed(
+  logger: Logger,
+  options: { triggerBrokers: boolean; concurrency: number; bulkInsert: boolean; fastSeed: boolean }
+): Promise<SeedSummary> {
+  const { triggerBrokers, concurrency, bulkInsert, fastSeed } = options;
   logger.info('🚀 Starting demo seed run');
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL must be set.');
@@ -1612,25 +1740,16 @@ async function runSeed(logger: Logger, options: { triggerBrokers: boolean }): Pr
   const userIdMap = new Map<string, string>();
   const fileIdMap = new Map<string, string>();
   const linkIdMap = new Map<string, string>();
+  const brokerIntentIds: string[] = [];
   const seededUsers: SeededUser[] = [];
   let fileCount = 0;
   let linkCount = 0;
   let intentCount = 0;
 
-  for (const userDef of DEMO_USERS) {
+  const processUser = async (userDef: DemoUserDefinition): Promise<void> => {
     logger.info(`👤 Seeding user ${userDef.name}`);
     const { privyId, accessToken } = await ensurePrivyIdentity(userDef.email, userDef.name);
     const user = await upsertUser(userDef, privyId);
-    userIdMap.set(userDef.key, user.id);
-    seededUsers.push({
-      email: userDef.email.toLowerCase(),
-      name: userDef.name,
-      userId: user.id,
-      privyId: user.privyId,
-      accessToken,
-      loginHints: userDef.loginHints,
-    });
-
     const indexIds: string[] = [];
 
     for (const indexKey of userDef.indexes) {
@@ -1687,17 +1806,17 @@ async function runSeed(logger: Logger, options: { triggerBrokers: boolean }): Pr
     const fileDefs = Array.from(fileDefsMap.values());
     const linkDefs = Array.from(linkDefsMap.values());
 
-    for (const fileDef of fileDefs) {
-      const fileId = await upsertFile(user.id, userDef.key, fileDef, logger);
-      fileIdMap.set(`${userDef.key}:${fileDef.key}`, fileId);
-      fileCount += 1;
-    }
+    const fileEntries = await upsertFilesForUser(user.id, userDef.key, fileDefs, bulkInsert, logger);
+    fileEntries.forEach((id, key) => {
+      fileIdMap.set(`${userDef.key}:${key}`, id);
+    });
+    fileCount += fileEntries.size;
 
-    for (const linkDef of linkDefs) {
-      const linkId = await upsertLink(user.id, userDef.key, linkDef, logger);
-      linkIdMap.set(`${userDef.key}:${linkDef.key}`, linkId);
-      linkCount += 1;
-    }
+    const linkEntries = await upsertLinksForUser(user.id, userDef.key, linkDefs, bulkInsert, logger);
+    linkEntries.forEach((id, key) => {
+      linkIdMap.set(`${userDef.key}:${key}`, id);
+    });
+    linkCount += linkEntries.size;
 
     const combinedIntentDefs: DemoIntentDefinition[] = [];
     const seenIntentKeys = new Set<string>();
@@ -1756,11 +1875,6 @@ async function runSeed(logger: Logger, options: { triggerBrokers: boolean }): Pr
       intentMap.set(`${userDef.key}:${intentDef.key}`, intentResult.id);
       intentCount += 1;
 
-      if (triggerBrokers && intentResult.created) {
-        logger.info(`🤖 Triggering brokers for intent ${intentResult.id.slice(0, 8)}…`);
-        await triggerBrokersOnIntentCreated(intentResult.id);
-      }
-
       const existingEmbedding = await db
         .select({ embedding: intents.embedding })
         .from(intents)
@@ -1771,9 +1885,34 @@ async function runSeed(logger: Logger, options: { triggerBrokers: boolean }): Pr
         const embedding = generateMockEmbedding(intentResult.id);
         await db.update(intents).set({ embedding }).where(eq(intents.id, intentResult.id));
       }
+
+      if (triggerBrokers && intentResult.created) {
+        brokerIntentIds.push(intentResult.id);
+      }
     }
 
+    userIdMap.set(userDef.key, user.id);
+    seededUsers.push({
+      email: userDef.email.toLowerCase(),
+      name: userDef.name,
+      userId: user.id,
+      privyId: user.privyId,
+      accessToken,
+      loginHints: userDef.loginHints,
+    });
+
     logger.info(`✅ Finished user ${userDef.name}`);
+  };
+
+  if (fastSeed) {
+    logger.info('⚡ Fast seed mode: processing users concurrently');
+    await runWithConcurrency(DEMO_USERS, 4, async (userDef) => {
+      await processUser(userDef);
+    }, logger);
+  } else {
+    for (const userDef of DEMO_USERS) {
+      await processUser(userDef);
+    }
   }
 
   if (agentId) {
@@ -1785,6 +1924,19 @@ async function runSeed(logger: Logger, options: { triggerBrokers: boolean }): Pr
 
   logger.info('🔁 Seeding historical connection events');
   await upsertConnectionEvents(DEMO_CONNECTION_EVENTS, userIdMap);
+
+  if (triggerBrokers && brokerIntentIds.length > 0) {
+    logger.info(`🤖 Triggering brokers for ${brokerIntentIds.length} intents (concurrency ${concurrency})`);
+    await runWithConcurrency(
+      brokerIntentIds,
+      concurrency,
+      async (intentId) => {
+        logger.info(`🤖 Broker run for ${intentId.slice(0, 8)}…`);
+        await triggerBrokersOnIntentCreated(intentId);
+      },
+      logger
+    );
+  }
 
   logger.info('📦 Demo seed run complete');
   return {
@@ -1806,7 +1958,10 @@ async function main(): Promise<void> {
     .option('--force', 'Skip safety check (required to run)')
     .option('--json', 'Output machine-readable JSON (no extra text)')
     .option('--silent', 'Suppress non-error output')
-    .option('--with-brokers', 'Trigger context brokers for each seeded intent');
+    .option('--with-brokers', 'Trigger context brokers for each seeded intent')
+    .option('--concurrency <number>', 'Max concurrent broker jobs (default 4)', (value) => parseInt(value, 10))
+    .option('--bulk-inserts', 'Use batched upserts for files and links')
+    .option('--fast-seed', 'Seed users concurrently for faster setup');
 
   await program.parseAsync(process.argv);
   const opts = program.opts<CliOptions>();
@@ -1830,7 +1985,25 @@ async function main(): Promise<void> {
       logger.info('✅ Context brokers ready');
     }
 
-    const result = await runSeed(logger, { triggerBrokers: Boolean(opts.withBrokers) });
+    const concurrency =
+      typeof opts.concurrency === 'number' && Number.isFinite(opts.concurrency) && opts.concurrency > 0
+        ? Math.floor(opts.concurrency)
+        : 4;
+    const bulkInsert = Boolean(opts.bulkInserts);
+    const fastSeed = Boolean(opts.fastSeed);
+    if (bulkInsert) {
+      logger.info('📦 Bulk insert mode enabled');
+    }
+    if (fastSeed) {
+      logger.info('⚡ Fast seed mode enabled');
+    }
+
+    const result = await runSeed(logger, {
+      triggerBrokers: Boolean(opts.withBrokers),
+      concurrency,
+      bulkInsert,
+      fastSeed,
+    });
 
     if (opts.json) {
       console.log(JSON.stringify({ ok: true, ...result }));
