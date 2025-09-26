@@ -145,6 +145,37 @@ const COMMON_INTENTS: CommonIntentDefinition[] = [
     },
     defaultIndexKeys: ['demo-everything', 'network-lounge', 'support-huddle'],
   },
+  {
+    key: 'network-sync',
+    payload: 'Scheduling a cross-team sync to align on priorities and unblock shared workstreams for the week.',
+    summary: 'Coordinating this week’s cross-team sync.',
+    defaultSource: {
+      type: 'link',
+      key: 'network-sync-agenda',
+      build: (user) => ({
+        key: 'network-sync-agenda',
+        url: `https://example.com/${user.key}/network-sync-agenda`,
+        title: `${user.name.split(' ')[0]} Network Sync Agenda`,
+      }),
+    },
+    defaultIndexKeys: ['demo-everything', 'network-lounge'],
+  },
+  {
+    key: 'growth-support-loop',
+    payload: 'Sharing customer signals with growth so launch campaigns reflect the latest support learnings.',
+    summary: 'Keeping growth and support aligned on customer signals.',
+    defaultSource: {
+      type: 'file',
+      key: 'growth-support-brief',
+      build: (user) => ({
+        key: 'growth-support-brief',
+        name: `${user.name.split(' ')[0]} Growth Support Brief.pdf`,
+        size: 256000,
+        type: 'application/pdf',
+      }),
+    },
+    defaultIndexKeys: ['demo-everything', 'growth-guild', 'support-huddle'],
+  },
 ];
 
 const COMMON_INTENT_MAP = new Map(COMMON_INTENTS.map((intent) => [intent.key, intent] as const));
@@ -338,7 +369,7 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         indexKeys: ['demo-everything', 'network-lounge', 'support-huddle'],
       },
     ],
-    sharedIntentKeys: ['weekly-update', 'offering-office-hours'],
+    sharedIntentKeys: ['weekly-update', 'offering-office-hours', 'network-sync'],
   },
   'test-account-2': {
     intro: 'Investor operator bridging the syndicate with builders who need capital.',
@@ -390,7 +421,7 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         indexKeys: ['demo-everything', 'deal-room', 'network-lounge'],
       },
     ],
-    sharedIntentKeys: ['looking-for-intros'],
+    sharedIntentKeys: ['looking-for-intros', 'network-sync'],
   },
   'test-account-3': {
     intro: 'Release manager keeping Build Lab prototypes production-ready.',
@@ -442,7 +473,7 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         indexKeys: ['demo-everything', 'build-lab', 'network-lounge'],
       },
     ],
-    sharedIntentKeys: ['offering-office-hours'],
+    sharedIntentKeys: ['offering-office-hours', 'network-sync'],
   },
   'test-account-4': {
     intro: 'Product designer capturing beta feedback to inform the build roadmap.',
@@ -493,7 +524,7 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         indexKeys: ['demo-everything', 'build-lab', 'network-lounge'],
       },
     ],
-    sharedIntentKeys: ['weekly-update'],
+    sharedIntentKeys: ['weekly-update', 'network-sync'],
   },
   'test-account-5': {
     intro: 'Recruiting partner aligning hiring needs with growth experiments.',
@@ -548,7 +579,7 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         indexKeys: ['demo-everything', 'growth-guild', 'support-huddle'],
       },
     ],
-    sharedIntentKeys: ['weekly-update'],
+    sharedIntentKeys: ['weekly-update', 'growth-support-loop', 'network-sync'],
   },
   'test-account-6': {
     intro: 'Data engineer keeping infra healthy for fast experimentation.',
@@ -599,7 +630,7 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         indexKeys: ['demo-everything', 'build-lab', 'network-lounge'],
       },
     ],
-    sharedIntentKeys: ['offering-office-hours'],
+    sharedIntentKeys: ['offering-office-hours', 'network-sync'],
   },
   'test-account-7': {
     intro: 'Operations partner ensuring investor follow-ups stay on track.',
@@ -650,7 +681,7 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         indexKeys: ['demo-everything', 'deal-room', 'network-lounge'],
       },
     ],
-    sharedIntentKeys: ['looking-for-intros'],
+    sharedIntentKeys: ['looking-for-intros', 'network-sync'],
   },
   'test-account-8': {
     intro: 'Growth lead running experiments and aligning launch plans.',
@@ -702,7 +733,7 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         indexKeys: ['demo-everything', 'growth-guild', 'network-lounge'],
       },
     ],
-    sharedIntentKeys: ['weekly-update'],
+    sharedIntentKeys: ['weekly-update', 'growth-support-loop', 'network-sync'],
   },
   'test-account-9': {
     intro: 'Support lead surfacing customer signals back to the team.',
@@ -758,7 +789,7 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         indexKeys: ['demo-everything', 'support-huddle', 'growth-guild'],
       },
     ],
-    sharedIntentKeys: ['offering-office-hours'],
+    sharedIntentKeys: ['offering-office-hours', 'growth-support-loop', 'network-sync'],
   },
   'test-account-10': {
     intro: 'Platform engineer coordinating refactors and integration timelines.',
@@ -809,7 +840,7 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         indexKeys: ['demo-everything', 'build-lab', 'network-lounge'],
       },
     ],
-    sharedIntentKeys: ['looking-for-intros'],
+    sharedIntentKeys: ['looking-for-intros', 'network-sync'],
   },
 };
 
@@ -962,6 +993,42 @@ const DEMO_STAKES: Array<{
     stake: '120',
     reasoning: 'Peyton’s campaigns require Taylor to staff key roles to hit launch goals.',
   },
+  {
+    key: 'sydney-casey',
+    intents: [
+      { userKey: 'test-account-9', intentKey: 'support-trends' },
+      { userKey: 'test-account-1', intentKey: 'talent-pairing' },
+    ],
+    stake: '110',
+    reasoning: 'Support trends inform Casey’s talent pairing to cover frontline needs.',
+  },
+  {
+    key: 'devon-emerson',
+    intents: [
+      { userKey: 'test-account-2', intentKey: 'due-diligence' },
+      { userKey: 'test-account-7', intentKey: 'ops-dashboards' },
+    ],
+    stake: '100',
+    reasoning: 'Devon relies on Emerson’s ops dashboards to keep diligence follow-ups on track.',
+  },
+  {
+    key: 'quinn-morgan',
+    intents: [
+      { userKey: 'test-account-6', intentKey: 'infra-planning' },
+      { userKey: 'test-account-3', intentKey: 'integration-help' },
+    ],
+    stake: '130',
+    reasoning: 'Morgan’s integration work depends on Quinn’s infra planning staying ahead.',
+  },
+  {
+    key: 'peyton-sydney',
+    intents: [
+      { userKey: 'test-account-8', intentKey: 'launch-plan' },
+      { userKey: 'test-account-9', intentKey: 'faq-refresh' },
+    ],
+    stake: '105',
+    reasoning: 'Sydney’s FAQ refresh keeps Peyton’s launch plan aligned with customer messaging.',
+  },
 ];
 
 const DEMO_CONNECTION_EVENTS: Array<{
@@ -1012,6 +1079,27 @@ const DEMO_CONNECTION_EVENTS: Array<{
     receiver: 'test-account-8',
     type: 'DECLINE',
     occurredAt: '2024-08-03T08:55:00.000Z',
+  },
+  {
+    key: 'peyton-request-quinn',
+    initiator: 'test-account-8',
+    receiver: 'test-account-6',
+    type: 'REQUEST',
+    occurredAt: '2024-08-07T12:40:00.000Z',
+  },
+  {
+    key: 'sydney-request-peyton',
+    initiator: 'test-account-9',
+    receiver: 'test-account-8',
+    type: 'REQUEST',
+    occurredAt: '2024-08-07T13:15:00.000Z',
+  },
+  {
+    key: 'hayden-request-casey',
+    initiator: 'test-account-10',
+    receiver: 'test-account-1',
+    type: 'REQUEST',
+    occurredAt: '2024-08-06T18:05:00.000Z',
   },
 ];
 
