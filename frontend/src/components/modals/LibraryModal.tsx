@@ -10,6 +10,7 @@ import ReactMarkdown from 'react-markdown';
 import { useAPI } from "@/contexts/APIContext";
 import { formatDate } from "@/lib/utils";
 import { SyncProviderName } from "@/services/sync";
+import IntentList from "@/components/IntentList";
 
 type Props = {
   open: boolean;
@@ -45,7 +46,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
   const [libraryIntents, setLibraryIntents] = useState<LibrarySourceIntent[]>([]);
   const [isLoadingIntents, setIsLoadingIntents] = useState(false);
   const [newIntentIds, setNewIntentIds] = useState<Set<string>>(new Set());
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [activeMobileSection, setActiveMobileSection] = useState<'library' | 'intents'>('library');
   const [showIntentsPanel, setShowIntentsPanel] = useState(false);
   const highlightTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -350,14 +350,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     });
   }, []);
 
-  const toggleSection = useCallback((key: string) => {
-    setCollapsedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  }, []);
-
   const handleArchiveIntent = useCallback(async (intent: LibrarySourceIntent) => {
     try {
       await api.patch(`/intents/${intent.id}/archive`);
@@ -377,49 +369,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     handleJumpToSources();
   }, [handleJumpToSources]);
 
-  const intentsByDate = useMemo(() => {
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const today = new Date();
-    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-    const ordered = [...visibleIntents].sort((a, b) => {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-
-    const sections: Array<{ label: string; key: string; items: LibrarySourceIntent[] }> = [];
-    const bucket = new Map<string, { label: string; items: LibrarySourceIntent[] }>();
-
-    for (const intent of ordered) {
-      const createdDate = new Date(intent.createdAt);
-      if (Number.isNaN(createdDate.getTime())) {
-        if (!bucket.has('unknown')) bucket.set('unknown', { label: 'Undated', items: [] });
-        bucket.get('unknown')!.items.push(intent);
-        continue;
-      }
-      const startOfCreated = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
-      const diff = Math.round((startOfToday.getTime() - startOfCreated.getTime()) / msPerDay);
-      let label: string;
-      if (diff === 0) label = 'Today';
-      else if (diff === 1) label = 'Yesterday';
-      else label = formatDate(createdDate).split(',')[0]; // Extract just the date part
-      const key = `${startOfCreated.getTime()}-${label}`;
-      if (!bucket.has(key)) bucket.set(key, { label, items: [] });
-      bucket.get(key)!.items.push(intent);
-    }
-
-    const sortedKeys = Array.from(bucket.keys()).sort((a, b) => {
-      const [timeA] = a.split('-');
-      const [timeB] = b.split('-');
-      return Number(timeB) - Number(timeA);
-    });
-
-    for (const key of sortedKeys) {
-      const entry = bucket.get(key);
-      if (entry) sections.push({ label: entry.label, key, items: entry.items });
-    }
-
-    return sections;
-  }, [visibleIntents]);
 
   const toggleIntegration = useCallback(async (id: IntegrationId) => {
     const item = integrations.find(i => i.id === id);
@@ -1021,185 +970,22 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <span className="text-xs text-[#666] font-ibm-plex-mono">{intentCountLabel}</span>
                   </div>
                 </div>
-                <div className="pt-3 flex-1 pr-3 space-y-3 p-3 pt-0 overflow-y-auto">
-                  {isLoadingIntents ? (
-                    <div className="flex items-center justify-center py-6">
-                      <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : intentsByDate.length === 0 ? (
-                    <div className="text-xs text-[#666] font-ibm-plex-mono py-4 text-center">
-                      <p>
-                        {isSelectionFiltering && isSourceFiltering ? 
-                          `No intents match the selected sources and ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')}.` :
-                          isSourceFiltering ? 
-                            `No intents from ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')} yet.` :
-                            isSelectionFiltering ? 'No intents match the selected sources.' : 'No intents yet.'
-                        }
-                      </p>
-                    </div>
-                  ) : (
-                    intentsByDate.map((section) => {
-                      const isCollapsed = collapsedSections.has(section.key);
-                      return (
-                        <div key={section.key} className="">
-                          <button
-                            type="button"
-                            onClick={() => toggleSection(section.key)}
-                            className="w-full flex items-center justify-between mb-1 text-xs font-ibm-plex-mono font-medium text-[#444] border-b border-[#E8E8E8]"
-                            aria-expanded={!isCollapsed}
-                          >
-                            <span>{section.label}</span>
-                            <span className="flex items-center gap-1 text-[10px] text-[#777]">
-                              {section.items.length}
-                              <svg
-                                width="10"
-                                height="10"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.8"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className={`transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
-                              >
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                              </svg>
-                            </span>
-                          </button>
-                          {!isCollapsed && (
-                            <div className="space-y-2">
-                              {section.items.map((intent) => {
-                                const summary = (intent.summary && intent.summary.trim().length > 0 ? intent.summary : intent.payload).trim();
-                                const createdAt = new Date(intent.createdAt);
-                                const createdLabel = Number.isNaN(createdAt.getTime()) ? null : formatDate(createdAt).split(',')[0];
-                                const detail = intent.sourceType === 'link' && intent.sourceValue && intent.sourceValue !== intent.sourceName ? intent.sourceValue : null;
-                                const metaLabel = intent.sourceType === 'integration' && intent.sourceMeta ? (() => {
-                                  const parsed = new Date(intent.sourceMeta!);
-                                  return Number.isNaN(parsed.getTime()) ? null : formatDate(parsed);
-                                })() : null;
-                                const isFresh = newIntentIds.has(intent.id);
-                                const isSelectedSource = selectedIntentIds.has(intent.id);
-                                const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
-                                const cardClasses = `relative border rounded-sm px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isSelectedSource
-                                  ? 'border-[#99CFFF] bg-[#F0F7FF] shadow-sm shadow-[rgba(0,126,255,0.16)]'
-                                  : isFresh
-                                    ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]'
-                                    : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'}`;
-
-                                const icon = (() => {
-                                  if (intent.sourceType === 'file') {
-                                    return (
-                                      <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-sm font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
-                                        {fileBadge(intent.sourceMeta ?? undefined, intent.sourceName)}
-                                      </span>
-                                    );
-                                  }
-                                  if (intent.sourceType === 'link') {
-                                    return (
-                                      <svg
-                                        width="16"
-                                        height="16"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="1.5"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        className="text-[#666]"
-                                      >
-                                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                                      </svg>
-                                    );
-                                  }
-                                  return (
-                                    <div className="h-[18px] w-[18px] rounded-sm bg-white border border-[#E0E0E0] flex items-center justify-center overflow-hidden">
-                                      {intent.sourceValue ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={`/integrations/${intent.sourceValue}.png`} alt="" className="h-4 w-4 object-contain" />
-                                      ) : (
-                                        <span className="text-[9px] font-semibold text-[#555]">APP</span>
-                                      )}
-                                    </div>
-                                  );
-                                })();
-
-                                return (
-                                    <div key={intent.id} className={`group relative ${cardClasses}`}>
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-2">
-                                        {icon}
-                                        {isFresh && !isSelectedSource && (
-                                          <span className="px-1.5 py-0.5 rounded-full bg-[#0A8F5A] text-white text-[10px] tracking-wide font-ibm-plex-mono uppercase">New</span>
-                                        )}
-                                      </div>
-                                      {createdLabel && (
-                                        <span className="flex items-center gap-1 text-[10px] text-[#777] font-ibm-plex-mono whitespace-nowrap">
-                                          <svg
-                                            width="12"
-                                            height="12"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            strokeWidth="1.5"
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            className="text-[#777]"
-                                          >
-                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                                            <line x1="16" y1="2" x2="16" y2="6" />
-                                            <line x1="8" y1="2" x2="8" y2="6" />
-                                            <line x1="3" y1="10" x2="21" y2="10" />
-                                          </svg>
-                                          {createdLabel}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="mt-1 text-xs text-[#333] font-medium leading-snug line-clamp-3 break-words">{summary}</div>
-                                    {detail && (
-                                      <div className="mt-0.5 text-[10px] text-[#888] break-words">{detail}</div>
-                                    )}
-                                    {metaLabel && (
-                                      <div className="mt-1 text-[10px] text-[#888] font-ibm-plex-mono">Synced {metaLabel}</div>
-                                    )}
-                              <div className="mt-2 flex items-center justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 lg:absolute lg:right-2 lg:bottom-2">
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleArchiveIntent(intent); }}
-                                  className="h-6 w-6 grid place-items-center rounded-sm bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]"
-                                  aria-label="Archive intent"
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="3,6 5,6 21,6"></polyline>
-                                    <path d="m19,6v14a2,2 0 0,1 -2,2H7a2,2 0 0,1 -2,-2V6m3,0V4a2,2 0 0,1 2,-2h4a2,2 0 0,1 2,2v2"></path>
-                                    <line x1="10" y1="11" x2="10" y2="17"></line>
-                                    <line x1="14" y1="11" x2="14" y2="17"></line>
-                                  </svg>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleOpenIntentSource(intent); }}
-                                  className={canOpenSource
-                                    ? 'h-6 w-6 grid place-items-center rounded-sm bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]'
-                                    : 'h-6 w-6 grid place-items-center rounded-sm bg-[#EEF5FF] text-[#3563E9]'}
-                                        aria-label={canOpenSource ? 'Open source' : 'View source details'}
-                                      >
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                                          <polyline points="7 7 17 7 17 17"></polyline>
-                                          <line x1="7" y1="17" x2="17" y2="7"></line>
-                                        </svg>
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-
+                <div className="pt-3 flex-1 pr-3 space-y-3 p-3 pt-0 overflow-y-scroll">
+                  <IntentList
+                    intents={visibleIntents}
+                    isLoading={isLoadingIntents}
+                    emptyMessage={
+                      isSelectionFiltering && isSourceFiltering ? 
+                        `No intents match the selected sources and ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')}.` :
+                        isSourceFiltering ? 
+                          `No intents from ${Array.from(activeSourceFilters).map(id => integrations.find(i => i.id === id)?.name).filter(Boolean).join(', ')} yet.` :
+                          isSelectionFiltering ? 'No intents match the selected sources.' : 'No intents yet.'
+                    }
+                    onArchiveIntent={handleArchiveIntent}
+                    onOpenIntentSource={handleOpenIntentSource}
+                    newIntentIds={newIntentIds}
+                    selectedIntentIds={selectedIntentIds}
+                  />
                 </div>
             </aside>
           </div>
@@ -1300,6 +1086,7 @@ function fileBadge(mime: string | undefined, name: string): string {
   if (mime?.startsWith('audio/')) return 'AUD';
   return 'FILE';
 }
+
 
 // Deletion helpers
 type RecentItem = { id: string; kind: 'file' | 'link'; title: string; sub: string; onClick?: () => void | Promise<void>; createdAt: number; raw: { id: string; name?: string; url?: string; type?: string; createdAt?: string; lastSyncAt?: string | null } };
