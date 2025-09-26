@@ -3,13 +3,22 @@ import 'dotenv/config';
 import { Command } from 'commander';
 import { v5 as uuidv5 } from 'uuid';
 import { eq, and, sql } from 'drizzle-orm';
+<<<<<<< HEAD
+=======
+import type { InferInsertModel } from 'drizzle-orm';
+>>>>>>> origin/feat/db-seed
 
 import db, { closeDb } from '../lib/db';
 import { privyClient } from '../lib/privy';
 import {
   agents,
+<<<<<<< HEAD
   files,
   indexLinks,
+=======
+  indexMembers,
+  indexes,
+>>>>>>> origin/feat/db-seed
   intentIndexes,
   intents,
   intentStakes,
@@ -25,17 +34,24 @@ type CliOptions = {
 
 type SeededUser = {
   email: string;
+<<<<<<< HEAD
   name: string;
   userId: string;
   privyId: string;
   accessToken?: string;
   loginHints?: DemoUserLoginHints;
+=======
+  userId: string;
+  privyId: string;
+  accessToken?: string;
+>>>>>>> origin/feat/db-seed
 };
 
 type SeedSummary = {
   users: SeededUser[];
   indexIds: string[];
   agentId: string | null;
+<<<<<<< HEAD
   fileCount: number;
   linkCount: number;
   intentCount: number;
@@ -43,6 +59,8 @@ type SeedSummary = {
 
 type Logger = {
   info: (message: string) => void;
+=======
+>>>>>>> origin/feat/db-seed
 };
 
 const DEMO_NAMESPACE = uuidv5('protocol-demo-seed', uuidv5.URL);
@@ -51,6 +69,7 @@ function stableId(label: string): string {
   return uuidv5(label, DEMO_NAMESPACE);
 }
 
+<<<<<<< HEAD
 function createLogger(opts: CliOptions): Logger {
   const output = opts.json ? console.error : console.log;
   return {
@@ -139,16 +158,40 @@ const COMMON_INTENTS: CommonIntentDefinition[] = [
         size: 35840,
         type: 'text/markdown',
       }),
+=======
+type DemoIndexDefinition = {
+  key: string;
+  title: string;
+  prompt: string;
+  linkPermissions: {
+    permissions: string[];
+    code: string;
+  };
+};
+
+const DEMO_INDEXES: DemoIndexDefinition[] = [
+  {
+    key: 'demo-network',
+    title: 'Demo Discovery Network',
+    prompt: 'Share what you are exploring so agents can surface relevant peers.',
+    linkPermissions: {
+      permissions: ['can-discover', 'can-request'],
+      code: 'demo-network',
+>>>>>>> origin/feat/db-seed
     },
   },
 ];
 
+<<<<<<< HEAD
 const COMMON_INTENT_MAP = new Map(COMMON_INTENTS.map((intent) => [intent.key, intent] as const));
 
+=======
+>>>>>>> origin/feat/db-seed
 type DemoIntentDefinition = {
   key: string;
   payload: string;
   summary: string;
+<<<<<<< HEAD
   source?: { type: 'file' | 'link'; key: string };
 };
 
@@ -169,6 +212,8 @@ type DemoLinkDefinition = {
   key: string;
   url: string;
   title?: string;
+=======
+>>>>>>> origin/feat/db-seed
 };
 
 type DemoUserDefinition = {
@@ -179,6 +224,7 @@ type DemoUserDefinition = {
   avatar: string;
   indexes: string[];
   intents: DemoIntentDefinition[];
+<<<<<<< HEAD
   sharedIntentKeys?: string[];
   files?: DemoFileDefinition[];
   links?: DemoLinkDefinition[];
@@ -397,6 +443,10 @@ const DEMO_INDEXES: DemoIndexDefinition[] = [
 
 const INDEX_DEFINITION_MAP = new Map(DEMO_INDEXES.map((index) => [index.key, index] as const));
 
+=======
+};
+
+>>>>>>> origin/feat/db-seed
 const DEMO_USERS: DemoUserDefinition[] = [
   {
     key: 'avery',
@@ -404,6 +454,7 @@ const DEMO_USERS: DemoUserDefinition[] = [
     name: 'Avery Demo',
     intro: 'Founder building collaborative AI tooling and onboarding early operators.',
     avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=AveryDemo',
+<<<<<<< HEAD
     indexes: ['demo-network', 'operators-circle', 'avery-pilot-hub', 'jordan-syndicate', 'sasha-build-lab'],
     sharedIntentKeys: ['weekly-update', 'offering-office-hours'],
     files: [
@@ -421,18 +472,27 @@ const DEMO_USERS: DemoUserDefinition[] = [
         title: 'Agent workflow teardown',
       },
     ],
+=======
+    indexes: ['demo-network'],
+>>>>>>> origin/feat/db-seed
     intents: [
       {
         key: 'ai-partnerships',
         payload: 'Looking to pair with ML researchers who want to ship copilots for strategic introductions between founders and investors.',
         summary: 'Seeking ML research partners for demo agent.',
+<<<<<<< HEAD
         source: { type: 'file', key: 'pitch-deck' },
+=======
+>>>>>>> origin/feat/db-seed
       },
       {
         key: 'capital',
         payload: 'Exploring a $500k seed extension from angels who understand agent routing and MCP integrations.',
         summary: 'Raising capital from angels focused on agent ecosystems.',
+<<<<<<< HEAD
         source: { type: 'link', key: 'workflow-article' },
+=======
+>>>>>>> origin/feat/db-seed
       },
     ],
   },
@@ -442,6 +502,7 @@ const DEMO_USERS: DemoUserDefinition[] = [
     name: 'Jordan Chen',
     intro: 'Angel investor backing infra teams solving high-signal discovery.',
     avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=JordanChen',
+<<<<<<< HEAD
     indexes: ['demo-network', 'operators-circle', 'jordan-syndicate'],
     sharedIntentKeys: ['weekly-update', 'looking-for-intros'],
     files: [
@@ -459,18 +520,27 @@ const DEMO_USERS: DemoUserDefinition[] = [
         title: 'Deal memo template',
       },
     ],
+=======
+    indexes: ['demo-network'],
+>>>>>>> origin/feat/db-seed
     intents: [
       {
         key: 'invest-in-infra',
         payload: 'Deploying 100k-250k checks into founders aligning agents with verified network signals.',
         summary: 'Investing in network signal infrastructure founders.',
+<<<<<<< HEAD
         source: { type: 'file', key: 'portfolio-brief' },
+=======
+>>>>>>> origin/feat/db-seed
       },
       {
         key: 'portfolio-support',
         payload: 'Helping existing portfolio companies find design partners working on data-rich agent workflows.',
         summary: 'Supporting portfolio with agent design partners.',
+<<<<<<< HEAD
         source: { type: 'link', key: 'deal-memo' },
+=======
+>>>>>>> origin/feat/db-seed
       },
     ],
   },
@@ -480,6 +550,7 @@ const DEMO_USERS: DemoUserDefinition[] = [
     name: 'Sasha Patel',
     intro: 'Product engineer turning research notebooks into production-ready agent copilots.',
     avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=SashaPatel',
+<<<<<<< HEAD
     indexes: ['demo-network', 'operators-circle', 'avery-pilot-hub', 'sasha-build-lab'],
     sharedIntentKeys: ['weekly-update', 'offering-office-hours', 'looking-for-intros'],
     files: [
@@ -497,17 +568,24 @@ const DEMO_USERS: DemoUserDefinition[] = [
         title: 'Prototype notes',
       },
     ],
+=======
+    indexes: ['demo-network'],
+>>>>>>> origin/feat/db-seed
     intents: [
       {
         key: 'customer-discovery',
         payload: 'Looking for GTM leaders testing intent indexing so we can co-build the first automation loops.',
         summary: 'Hunting for GTM design partners for agent loops.',
+<<<<<<< HEAD
         source: { type: 'link', key: 'prototype-notion' },
+=======
+>>>>>>> origin/feat/db-seed
       },
       {
         key: 'infra-collab',
         payload: 'Want to team up with data infra folks who can power fast embeddings for context brokers.',
         summary: 'Collaborating with data infra partners for context brokers.',
+<<<<<<< HEAD
         source: { type: 'file', key: 'integration-playbook' },
       },
     ],
@@ -533,6 +611,11 @@ const DEMO_USERS: DemoUserDefinition[] = [
       otpCode: account.otpCode,
     },
   })),
+=======
+      },
+    ],
+  },
+>>>>>>> origin/feat/db-seed
 ];
 
 const DEMO_AGENT = {
@@ -614,6 +697,7 @@ const DEMO_CONNECTION_EVENTS: Array<{
   },
 ];
 
+<<<<<<< HEAD
 type SchemaCapabilities = {
   indexHasPrompt: boolean;
   indexHasLinkPermissions: boolean;
@@ -660,6 +744,8 @@ async function getSchemaCapabilities(): Promise<SchemaCapabilities> {
   return schemaCapabilitiesPromise;
 }
 
+=======
+>>>>>>> origin/feat/db-seed
 function isUniqueViolation(error: unknown): boolean {
   return Boolean(
     error &&
@@ -699,6 +785,7 @@ async function ensurePrivyIdentity(email: string, name: string): Promise<{ privy
   return { privyId: privyUser.id, accessToken };
 }
 
+<<<<<<< HEAD
 async function upsertIndex(def: typeof DEMO_INDEXES[number], logger: Logger): Promise<string> {
   logger.info(`🏛️ Ensuring index ${def.title}`);
   const indexId = stableId(`index:${def.key}`);
@@ -761,10 +848,43 @@ async function upsertIndex(def: typeof DEMO_INDEXES[number], logger: Logger): Pr
     SET ${sql.join(updateAssignments, sql`, `)}
     WHERE "id" = ${indexId}
   `);
+=======
+async function upsertIndex(def: typeof DEMO_INDEXES[number]): Promise<string> {
+  const indexId = stableId(`index:${def.key}`);
+  const now = new Date();
+
+  try {
+    const insertValues: InferInsertModel<typeof indexes> = {
+      id: indexId,
+      title: def.title,
+      prompt: def.prompt,
+      linkPermissions: def.linkPermissions,
+    };
+
+    const inserted = await db
+      .insert(indexes)
+      .values(insertValues)
+      .returning({ id: indexes.id });
+    if (inserted.length > 0) return inserted[0].id;
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+  }
+
+  await db
+    .update(indexes)
+    .set({
+      title: def.title,
+      prompt: def.prompt,
+      linkPermissions: def.linkPermissions,
+      updatedAt: now,
+    })
+    .where(eq(indexes.id, indexId));
+>>>>>>> origin/feat/db-seed
 
   return indexId;
 }
 
+<<<<<<< HEAD
 async function upsertFile(userId: string, userKey: string, def: DemoFileDefinition, logger: Logger): Promise<string> {
   logger.info(`📄 Attaching file ${def.name} for ${userKey}`);
   const fileId = stableId(`file:${userKey}:${def.key}`);
@@ -827,6 +947,38 @@ async function findExistingAgent(): Promise<string | null> {
   }
 
   return result[0].id;
+=======
+async function upsertAgent(): Promise<string> {
+  const agentId = stableId(`agent:${DEMO_AGENT.key}`);
+  const now = new Date();
+
+  try {
+    const inserted = await db
+      .insert(agents)
+      .values({
+        id: agentId,
+        name: DEMO_AGENT.name,
+        description: DEMO_AGENT.description,
+        avatar: DEMO_AGENT.avatar,
+      })
+      .returning({ id: agents.id });
+    if (inserted.length > 0) return inserted[0].id;
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+  }
+
+  await db
+    .update(agents)
+    .set({
+      name: DEMO_AGENT.name,
+      description: DEMO_AGENT.description,
+      avatar: DEMO_AGENT.avatar,
+      updatedAt: now,
+    })
+    .where(eq(agents.id, agentId));
+
+  return agentId;
+>>>>>>> origin/feat/db-seed
 }
 
 async function upsertUser(def: DemoUserDefinition, privyId: string): Promise<{ id: string; privyId: string }> {
@@ -880,6 +1032,7 @@ async function upsertUser(def: DemoUserDefinition, privyId: string): Promise<{ i
   return existing[0];
 }
 
+<<<<<<< HEAD
 type MembershipOptions = {
   permissions?: string[];
   prompt?: string | null;
@@ -947,12 +1100,32 @@ async function ensureIndexMembership(indexId: string, userId: string, options?: 
     SET ${sql.join(updateAssignments, sql`, `)}
     WHERE "index_id" = ${indexId} AND "user_id" = ${userId}
   `);
+=======
+async function ensureIndexMembership(indexId: string, userId: string): Promise<void> {
+  const now = new Date();
+  try {
+    await db.insert(indexMembers).values({
+      indexId,
+      userId,
+      permissions: ['can-read-intents', 'can-write-intents', 'can-discover'],
+      prompt: null,
+      autoAssign: true,
+    });
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    await db
+      .update(indexMembers)
+      .set({ permissions: ['can-read-intents', 'can-write-intents', 'can-discover'], updatedAt: now })
+      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)));
+  }
+>>>>>>> origin/feat/db-seed
 }
 
 async function upsertIntent(
   userId: string,
   def: DemoIntentDefinition,
   indexIds: string[],
+<<<<<<< HEAD
   userKey: string,
   source: { sourceId?: string | null; sourceType?: 'file' | 'link' } | undefined,
   logger: Logger
@@ -964,6 +1137,12 @@ async function upsertIntent(
     sourceId: source?.sourceId ?? null,
     sourceType: source?.sourceType ?? null,
   } as const;
+=======
+  userKey: string
+): Promise<string> {
+  const intentId = stableId(`intent:${userKey}:${def.key}`);
+  const now = new Date();
+>>>>>>> origin/feat/db-seed
 
   try {
     await db.insert(intents).values({
@@ -971,12 +1150,16 @@ async function upsertIntent(
       payload: def.payload,
       summary: def.summary,
       userId,
+<<<<<<< HEAD
       ...sourcePayload,
+=======
+>>>>>>> origin/feat/db-seed
     });
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
     await db
       .update(intents)
+<<<<<<< HEAD
       .set({ payload: def.payload, summary: def.summary, updatedAt: now, ...sourcePayload })
       .where(eq(intents.id, intentId));
   }
@@ -996,6 +1179,21 @@ async function upsertIntent(
       intentId,
       indexId,
     });
+=======
+      .set({ payload: def.payload, summary: def.summary, updatedAt: now })
+      .where(eq(intents.id, intentId));
+  }
+
+  for (const indexId of indexIds) {
+    try {
+      await db.insert(intentIndexes).values({
+        intentId,
+        indexId,
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+    }
+>>>>>>> origin/feat/db-seed
   }
 
   return intentId;
@@ -1068,8 +1266,12 @@ async function upsertConnectionEvents(
   }
 }
 
+<<<<<<< HEAD
 async function runSeed(logger: Logger): Promise<SeedSummary> {
   logger.info('🚀 Starting demo seed run');
+=======
+async function runSeed(): Promise<SeedSummary> {
+>>>>>>> origin/feat/db-seed
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL must be set.');
   }
@@ -1079,6 +1281,7 @@ async function runSeed(logger: Logger): Promise<SeedSummary> {
 
   const indexMap = new Map<string, string>();
   for (const indexDef of DEMO_INDEXES) {
+<<<<<<< HEAD
     const indexId = await upsertIndex(indexDef, logger);
     indexMap.set(indexDef.key, indexId);
   }
@@ -1244,13 +1447,53 @@ async function runSeed(logger: Logger): Promise<SeedSummary> {
   await upsertConnectionEvents(DEMO_CONNECTION_EVENTS, userIdMap);
 
   logger.info('📦 Demo seed run complete');
+=======
+    const indexId = await upsertIndex(indexDef);
+    indexMap.set(indexDef.key, indexId);
+  }
+
+  const agentId = await upsertAgent();
+  const intentMap = new Map<string, string>();
+  const userIdMap = new Map<string, string>();
+  const seededUsers: SeededUser[] = [];
+
+  for (const userDef of DEMO_USERS) {
+    const { privyId, accessToken } = await ensurePrivyIdentity(userDef.email, userDef.name);
+    const user = await upsertUser(userDef, privyId);
+    userIdMap.set(userDef.key, user.id);
+    seededUsers.push({ email: userDef.email.toLowerCase(), userId: user.id, privyId: user.privyId, accessToken });
+
+    const indexIds = userDef.indexes
+      .map((key) => indexMap.get(key))
+      .filter((value): value is string => Boolean(value));
+
+    for (const indexId of indexIds) {
+      await ensureIndexMembership(indexId, user.id);
+    }
+
+    for (const intentDef of userDef.intents) {
+      const intentId = await upsertIntent(user.id, intentDef, indexIds, userDef.key);
+      intentMap.set(`${userDef.key}:${intentDef.key}`, intentId);
+    }
+  }
+
+  for (const stakeDef of DEMO_STAKES) {
+    await upsertIntentStake(agentId, stakeDef, intentMap);
+  }
+
+  await upsertConnectionEvents(DEMO_CONNECTION_EVENTS, userIdMap);
+
+>>>>>>> origin/feat/db-seed
   return {
     users: seededUsers,
     indexIds: Array.from(indexMap.values()),
     agentId,
+<<<<<<< HEAD
     fileCount,
     linkCount,
     intentCount,
+=======
+>>>>>>> origin/feat/db-seed
   };
 }
 
@@ -1266,7 +1509,10 @@ async function main(): Promise<void> {
 
   await program.parseAsync(process.argv);
   const opts = program.opts<CliOptions>();
+<<<<<<< HEAD
   const logger = createLogger(opts);
+=======
+>>>>>>> origin/feat/db-seed
 
   if (!opts.force) {
     const message = 'Add --force to confirm demo seeding operation.';
@@ -1280,7 +1526,11 @@ async function main(): Promise<void> {
   }
 
   try {
+<<<<<<< HEAD
     const result = await runSeed(logger);
+=======
+    const result = await runSeed();
+>>>>>>> origin/feat/db-seed
 
     if (opts.json) {
       console.log(JSON.stringify({ ok: true, ...result }));
@@ -1288,6 +1538,7 @@ async function main(): Promise<void> {
       console.log('Seeded demo data successfully.');
       console.log(`- Users: ${result.users.length}`);
       console.log(`- Indexes: ${result.indexIds.length}`);
+<<<<<<< HEAD
       console.log(`- Intents: ${result.intentCount}`);
       console.log(`- Files: ${result.fileCount}`);
       console.log(`- Links: ${result.linkCount}`);
@@ -1312,6 +1563,13 @@ async function main(): Promise<void> {
         }
 
         console.log(`  ${label} -> ${helperParts.join(' | ')}`);
+=======
+      console.log(`- Agent: ${result.agentId}`);
+      console.log('\nLogin helpers (test access tokens):');
+      result.users.forEach((user) => {
+        const tokenInfo = user.accessToken ? user.accessToken : 'test credentials not available (enable in Privy dashboard)';
+        console.log(`  ${user.email} -> ${tokenInfo}`);
+>>>>>>> origin/feat/db-seed
       });
     }
   } catch (error) {
