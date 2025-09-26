@@ -7,7 +7,6 @@ import { initializeBrokers } from './agents/context_brokers/connector';
 
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
-import suggestionRoutes from './routes/suggestions';
 import intentRoutes from './routes/intents';
 import fileRoutes from './routes/files';
 import indexRoutes from './routes/indexes';
@@ -47,7 +46,6 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/intents', intentRoutes);
 app.use('/api/connections', connectionRoutes);
 
-app.use('/api/indexes/:indexId/suggestions/', suggestionRoutes);
 // New library-scoped endpoints
 app.use('/api/files', fileRoutes);
 app.use('/api/links', linksRoutes);
