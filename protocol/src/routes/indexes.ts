@@ -300,6 +300,7 @@ router.post('/',
   [
     body('title').trim().isLength({ min: 1, max: 255 }),
     body('prompt').optional().trim(),
+    body('joinPolicy').optional().isIn(['anyone', 'invite_only']),
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -308,11 +309,19 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { title, prompt } = req.body;
+      const { title, prompt, joinPolicy } = req.body;
+
+      // Set up permissions with joinPolicy
+      const permissions = {
+        joinPolicy: joinPolicy || 'invite_only',
+        invitationLink: joinPolicy === 'invite_only' ? { code: crypto.randomUUID() } : null,
+        allowGuestVibeCheck: false
+      };
 
       const newIndex = await db.insert(indexes).values({
         title,
         prompt: prompt || null,
+        permissions,
       }).returning({
         id: indexes.id,
         title: indexes.title,

@@ -236,9 +236,6 @@ export default function Sidebar() {
           open={!!ownerSettingsIndex}
           onOpenChange={(open) => !open && setOwnerSettingsIndex(null)}
           index={ownerSettingsIndex}
-          onIndexUpdate={(updatedIndex) => {
-            // Index is already updated in global state by OwnerSettingsModal
-          }}
         />
       )}
     </div>

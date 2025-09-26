@@ -6,7 +6,6 @@ import { Copy, Check, ChevronRight, ChevronDown, FileText } from "lucide-react";
 import ClientLayout from "@/components/ClientLayout";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { MCP } from '@lobehub/icons';
 import Image from "next/image";
 
 interface ComponentConfig {
@@ -1039,13 +1038,6 @@ export default function IntegratePage() {
                   All endpoints require authentication.
                 </p>
               </div>
-              <Button 
-                className="flex items-center gap-2 whitespace-nowrap"
-                onClick={() => setShowConfigDialog(true)}
-              >
-                <MCP className="h-4 w-4" />
-                <span className="hidden sm:inline">Configure MCP</span>
-              </Button>
             </div>
 
             {/* Authentication Section */}

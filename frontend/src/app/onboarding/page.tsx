@@ -326,26 +326,15 @@ export default function OnboardingPage() {
     try {
       const createRequest = {
         title: indexName.trim(),
+        joinPolicy: isPrivate ? 'invite_only' : 'anyone',
       };
       
       const response = await indexService.createIndex(createRequest);
       
-      // Set up privacy permissions based on user selection
-      if (!isPrivate) {
-        // Public: anyone can discover and join
-        await indexService.updateLinkPermissions(response.id, ['can-discover', 'can-write-intents']);
-      } else {
-        // Private: only invited users can join (no permissions = private)
-        await indexService.updateLinkPermissions(response.id, []);
-      }
-      
-      // Get updated index with link permissions
-      const updatedIndex = await indexService.getIndex(response.id);
-      
       setCreatedIndex({
-        id: updatedIndex.id,
-        name: updatedIndex.title,
-        inviteCode: updatedIndex.linkPermissions?.code
+        id: response.id,
+        name: response.title,
+        inviteCode: response.permissions?.invitationLink?.code
       });
       
       success('Index created successfully!');

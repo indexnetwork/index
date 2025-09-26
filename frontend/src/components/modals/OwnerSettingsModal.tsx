@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Index } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Copy, Globe, Lock, Trash2, Plus, Check, X, Settings, Shield, ChevronRight, ChevronDown } from 'lucide-react';
+import { Copy, Globe, Lock, Trash2, Plus, Check, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { Input } from '../ui/input';
 import { useIndexes } from '@/contexts/APIContext';
 import { useIndexesState } from '@/contexts/IndexesContext';

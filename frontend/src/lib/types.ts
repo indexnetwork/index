@@ -187,6 +187,7 @@ export interface APIResponse<T> {
 export interface CreateIndexRequest {
   title: string;
   prompt?: string;
+  joinPolicy?: 'anyone' | 'invite_only';
 }
 
 export interface UpdateIndexRequest {
