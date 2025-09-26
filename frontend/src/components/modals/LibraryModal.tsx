@@ -553,7 +553,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } catch {
       error(`Failed to sync ${integrationType}`);
     } finally {
-      void loadLibraryIntents();
+      await loadLibraryIntents();
       setSyncingIntegrations(prev => {
         const next = new Set(prev);
         next.delete(integrationType);
@@ -574,7 +574,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     } catch {
       error('Failed to sync link');
     } finally {
-      void loadLibraryIntents();
+      await loadLibraryIntents();
       setSyncingLinks(prev => {
         const next = new Set(prev);
         next.delete(linkId);
@@ -644,7 +644,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
-        <Dialog.Content className={`library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6 transition-all sm:duration-300 ${showIntentsPanel ? 'sm:max-w-[1144px]' : 'sm:max-w-[804px]'}`}>
+        <Dialog.Content className={`library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-6 transition-all sm:duration-300 ${showIntentsPanel ? 'sm:max-w-[1144px]' : 'sm:max-w-[804px]'}`}>
           <div className="flex items-center justify-between mb-2 sm:mb-3 sticky top-0 bg-[#FAFAFA] z-10">
             <div>
               <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
@@ -653,7 +653,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => onOpenChange(false)}
-                className="p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                className="p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                 aria-label="Close modal"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] hover:text-[#333] transition-colors duration-150 ease-in-out">
@@ -664,17 +664,17 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </div>
           </div>
 
-          <div className="lg:hidden mb-3 mt-4 flex items-center gap-2 rounded-lg bg-[#F2F2F2] p-1">
+          <div className="lg:hidden mb-3 mt-4 flex items-center gap-2 rounded-sm bg-[#F2F2F2] p-1">
             <button
               type="button"
-              className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-md transition-colors ${activeMobileSection === 'library' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
+              className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-sm transition-colors ${activeMobileSection === 'library' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
               onClick={() => setActiveMobileSection('library')}
             >
               Library
             </button>
             <button
               type="button"
-              className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-md transition-colors ${activeMobileSection === 'intents' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
+              className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-sm transition-colors ${activeMobileSection === 'intents' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
               onClick={() => setActiveMobileSection('intents')}
             >
               Intents
@@ -707,14 +707,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   return (
                     <div 
                       key={it.id} 
-                      className={`flex flex-col gap-2 border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${
+                      className={`flex flex-col gap-2 border border-black border-b-2 rounded-none px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${
                         it.connected ? 'cursor-pointer' : 'cursor-default'
                       } ${
                         isFiltered 
                           ? 'border-[#007EFF] bg-[#F0F7FF] shadow-sm shadow-[rgba(0,126,255,0.16)]' 
                           : intentCount > 0
-                            ? 'border-[#E0E0E0] bg-[#F8F9FA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]'
-                            : 'border-[#E0E0E0] bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-[#CCCCCC]'
+                            ? 'border-black bg-[#F8F9FA] hover:bg-[#F0F0F0] hover:border-black'
+                            : 'border-black bg-[#FAFAFA] hover:bg-[#F0F0F0] hover:border-black'
                       }`}
                       onClick={() => it.connected && handleSourceFilter(it.id)}
                     >
@@ -735,11 +735,13 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 handleSyncIntegration(it.id);
                               }}
                               disabled={syncingIntegrations.has(it.id)}
-                              className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                              className="group p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                               aria-label={`Sync ${it.name}`}
                             >
                               {syncingIntegrations.has(it.id) ? (
-                                <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
+                                <div className="w-[14px] h-[14px] flex items-center justify-center">
+                                  <span className="h-3.5 w-3.5 border-2 border-[#666] border-t-transparent rounded-full animate-spin inline-block" />
+                                </div>
                               ) : (
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666] group-hover:text-[#333] transition-colors duration-150 ease-in-out">
                                   <polyline points="23 4 23 10 17 10"></polyline>
@@ -792,7 +794,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 px-2 text-xs border-[#E0E0E0] text-[#444] hover:bg-[#F5F5F5] font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        className="h-7 px-2 text-xs border-[#E0E0E0] text-[#444] hover:bg-[#F5F5F5] font-ibm-plex-mono rounded-sm focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                         onClick={() => handleBulkDelete()}
                       >
                         Delete ({selectedIds.size})
@@ -800,7 +802,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 px-2 text-xs border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono rounded-lg focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        className="h-7 px-2 text-xs border-[#DDDDDD] text-[#333] hover:bg-[#F0F0F0] font-ibm-plex-mono rounded-sm focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                         onClick={() => setSelectedIds(new Set())}
                       >
                         Clear
@@ -811,7 +813,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
                 {/* File upload */}
-                <div className="border border-[#E0E0E0] rounded-lg">
+                <div className="border border-[#E0E0E0] rounded-sm">
                   <div className="relative w-full">
                     <input
                       ref={fileInputRef}
@@ -825,7 +827,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={isUploading}
-                      className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-lg flex items-center justify-center gap-1.5"
+                      className="w-full h-10 px-3 py-2 text-sm font-ibm-plex-mono bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0 rounded-sm flex items-center justify-center gap-1.5"
                     >
                       {isUploading ? (
                         <>
@@ -846,7 +848,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                 </div>
 
                 {/* Link input */}
-                <div className="border border-[#E0E0E0] rounded-lg">
+                <div className="border border-[#E0E0E0] rounded-sm">
                   <div className="relative w-full">
                     <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm pointer-events-none">
                       🔗
@@ -856,7 +858,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       value={linkUrl}
                       onChange={(e) => setLinkUrl(e.target.value)}
                       onKeyDown={(e) => { if (e.key === "Enter") handleAddLink(); }}
-                      className="text-sm bg-white rounded-lg font-ibm-plex-mono w-full pl-10 pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
+                      className="text-sm bg-white rounded-sm font-ibm-plex-mono w-full pl-10 pr-10 focus:ring-2 focus:ring-[rgba(0,0,0,0.1)] border-0"
                     />
                     {isAddingLink ? (
                       <div className="absolute right-3 top-1/2 transform -translate-y-1/2 w-6 h-6 border-2 border-[#DDDDDD] border-t-transparent rounded-full animate-spin" />
@@ -864,7 +866,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       <button
                         onClick={handleAddLink}
                         disabled={!linkUrl}
-                        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                         aria-label="Add URL"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#666]">
@@ -913,7 +915,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                   return recent.map(item => (
                     <div
                       key={item.id}
-                      className={`w-full border rounded-lg px-2.5 py-2 transition-colors cursor-pointer md:px-3 ${
+                      className={`w-full border rounded-sm px-2.5 py-2 transition-colors cursor-pointer md:px-3 ${
                         selectedIds.has(item.id)
                           ? 'border-[#99CFFF] bg-[#F0F7FF]'
                           : 'border-[#E0E0E0] bg-white hover:border-[#CCCCCC]'
@@ -937,7 +939,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                             </button>
                           )}
                           {item.kind === 'file' && (
-                            <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-md font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
+                            <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-sm font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
                               {fileBadge(item.raw.type, item.raw.name || '')}
                             </span>
                           )}
@@ -960,7 +962,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                   e.stopPropagation();
                                   handleSyncLink(item.raw.id);
                                 }} 
-                                className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
+                                className="group p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0" 
                                 disabled={syncingLinks.has(item.raw.id)}
                                 aria-label="Sync link"
                               >
@@ -977,7 +979,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                             </>
                           )}
                           <button
-                            className="group p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
+                            className="group p-1 hover:bg-[#F0F0F0] rounded-sm cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSingleDelete(item);
@@ -1003,14 +1005,14 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </section>
               </div>
             </div>
-            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} lg:flex lg:flex-col w-full flex-shrink-0 rounded-lg bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-y-auto overflow-x-hidden ease-out ${showIntentsPanel ? 'lg:opacity-100 lg:w-[340px] transition-all duration-150' : 'lg:opacity-0 lg:pointer-events-none lg:w-0 lg:overflow-hidden transition-none'}`}>
+            <aside className={`${activeMobileSection === 'intents' ? 'flex flex-col' : 'hidden'} pr-3 lg:flex lg:flex-col w-full flex-shrink-0 bg-[#FAFAFA] shadow-[0_1px_3px_rgba(15,23,42,0.08)] max-h-[70vh] lg:max-h-none overflow-x-hidden ease-out ${showIntentsPanel ? 'lg:opacity-100 lg:w-[340px] transition-all duration-150' : 'lg:opacity-0 lg:pointer-events-none lg:w-0 lg:overflow-hidden transition-none'}`}>
                 <div className="flex items-center justify-between pb-2 border-b border-[#E4E4E4] pl-3 pr-3">
                   <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Intents</h3>
                   <div className="flex items-center gap-2">
                     {isSourceFiltering && (
                       <button
                         onClick={() => setActiveSourceFilters(new Set())}
-                        className="text-[10px] px-2 py-1 rounded-md bg-[#F0F0F0] text-[#666] hover:bg-[#E6E6E6] transition-colors font-ibm-plex-mono"
+                        className="text-[10px] px-2 py-1 rounded-sm bg-[#F0F0F0] text-[#666] hover:bg-[#E6E6E6] transition-colors font-ibm-plex-mono"
                         aria-label="Clear source filters"
                       >
                         Clear
@@ -1019,7 +1021,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     <span className="text-xs text-[#666] font-ibm-plex-mono">{intentCountLabel}</span>
                   </div>
                 </div>
-                <div className="mt-3 flex-1 pr-3 space-y-3 p-3 pt-0">
+                <div className="pt-3 flex-1 pr-3 space-y-3 p-3 pt-0 overflow-y-auto">
                   {isLoadingIntents ? (
                     <div className="flex items-center justify-center py-6">
                       <span className="h-6 w-6 border-2 border-[#CCCCCC] border-t-transparent rounded-full animate-spin" />
@@ -1039,11 +1041,11 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                     intentsByDate.map((section) => {
                       const isCollapsed = collapsedSections.has(section.key);
                       return (
-                        <div key={section.key} className="space-y-2">
+                        <div key={section.key} className="">
                           <button
                             type="button"
                             onClick={() => toggleSection(section.key)}
-                            className="w-full flex items-center justify-between text-xs font-ibm-plex-mono font-medium text-[#444] border-b border-[#E8E8E8] pb-1"
+                            className="w-full flex items-center justify-between text-xs font-ibm-plex-mono font-medium text-[#444] border-b border-[#E8E8E8]"
                             aria-expanded={!isCollapsed}
                           >
                             <span>{section.label}</span>
@@ -1078,7 +1080,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 const isFresh = newIntentIds.has(intent.id);
                                 const isSelectedSource = selectedIntentIds.has(intent.id);
                                 const canOpenSource = intent.sourceType === 'link' && intent.sourceValue && /^https?:/i.test(intent.sourceValue);
-                                const cardClasses = `relative border rounded-lg px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isSelectedSource
+                                const cardClasses = `relative border rounded-sm px-2.5 py-2 transition-colors md:px-3 md:py-2.5 ${isSelectedSource
                                   ? 'border-[#99CFFF] bg-[#F0F7FF] shadow-sm shadow-[rgba(0,126,255,0.16)]'
                                   : isFresh
                                     ? 'border-[#0A8F5A] bg-[#F1FFF5] shadow-sm shadow-[rgba(10,143,90,0.12)]'
@@ -1087,7 +1089,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 const icon = (() => {
                                   if (intent.sourceType === 'file') {
                                     return (
-                                      <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-md font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
+                                      <span className="text-[10px] px-1.5 py-0.5 border border-[#E0E0E0] rounded-sm font-ibm-plex-mono text-[#333] bg-[#F5F5F5]">
                                         {fileBadge(intent.sourceMeta ?? undefined, intent.sourceName)}
                                       </span>
                                     );
@@ -1111,7 +1113,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                     );
                                   }
                                   return (
-                                    <div className="h-[18px] w-[18px] rounded-md bg-white border border-[#E0E0E0] flex items-center justify-center overflow-hidden">
+                                    <div className="h-[18px] w-[18px] rounded-sm bg-white border border-[#E0E0E0] flex items-center justify-center overflow-hidden">
                                       {intent.sourceValue ? (
                                         // eslint-disable-next-line @next/next/no-img-element
                                         <img src={`/integrations/${intent.sourceValue}.png`} alt="" className="h-4 w-4 object-contain" />
@@ -1164,7 +1166,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); handleArchiveIntent(intent); }}
-                                  className="h-6 w-6 grid place-items-center rounded-md bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]"
+                                  className="h-6 w-6 grid place-items-center rounded-sm bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]"
                                   aria-label="Archive intent"
                                 >
                                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1178,8 +1180,8 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); handleOpenIntentSource(intent); }}
                                   className={canOpenSource
-                                    ? 'h-6 w-6 grid place-items-center rounded-md bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]'
-                                    : 'h-6 w-6 grid place-items-center rounded-md bg-[#EEF5FF] text-[#3563E9]'}
+                                    ? 'h-6 w-6 grid place-items-center rounded-sm bg-[#F2F2F2] text-[#555] hover:bg-[#E6E6E6]'
+                                    : 'h-6 w-6 grid place-items-center rounded-sm bg-[#EEF5FF] text-[#3563E9]'}
                                         aria-label={canOpenSource ? 'Open source' : 'View source details'}
                                       >
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1206,7 +1208,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           <Dialog.Root open={!!preview} onOpenChange={(v) => { if (!v) setPreview(null); }}>
             <Dialog.Portal>
               <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-              <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] shadow-lg overflow-auto sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:max-w-[760px] sm:max-h-[80vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-5">
+              <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] shadow-lg overflow-auto sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[90vw] sm:max-w-[760px] sm:max-h-[80vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-5">
                 <Dialog.Title className="text-base font-bold font-ibm-plex-mono text-[#333] mb-3">{preview?.title}</Dialog.Title>
                 {!preview?.content ? (
                   <div className="text-sm text-[#666]">Loading content…</div>
@@ -1225,7 +1227,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
           <Dialog.Root open={!!confirm?.open} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
             <Dialog.Portal>
               <Dialog.Overlay className="fixed inset-0 bg-black/40" />
-              <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-lg bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 p-4 shadow-lg sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-5">
+              <Dialog.Content className="fixed inset-x-0 bottom-0 mx-auto w-[92vw] max-w-[440px] rounded-t-lg bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 p-4 shadow-lg sm:left-1/2 sm:top-1/2 sm:inset-auto sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-sm sm:p-5">
                 <Dialog.Title className="text-lg font-bold mb-2 font-ibm-plex-mono text-[#333]">Confirm Delete</Dialog.Title>
                 <p className="text-sm text-[#444] mb-2">{confirm?.message}</p>
                 {relatedIntentCount > 0 ? (
