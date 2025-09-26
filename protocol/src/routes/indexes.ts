@@ -14,6 +14,7 @@ import {
   EVERYONE_USER_ID
 } from '../lib/index-access';
 import { summarizeIntent } from '../agents/core/intent_summarizer';
+import { generateEmbedding } from '../lib/embeddings';
 import { Events } from '../lib/events';
 // Removed intent-filtering import - using existing suggestions system
 import crypto from 'crypto';
@@ -1220,11 +1221,21 @@ router.post('/share/:code/intents',
 
       const summary = await summarizeIntent(payload);
       
+      // Generate embedding for semantic search
+      let embedding: number[] | null = null;
+      try {
+        embedding = await generateEmbedding(payload);
+      } catch (error) {
+        console.error('Failed to generate embedding:', error);
+        // Continue without embedding - it's optional
+      }
+      
       const newIntent = await db.insert(intents).values({
         payload,
         summary,
         isIncognito,
         userId: req.user!.id,
+        embedding: embedding || undefined,
       }).returning({
         id: intents.id,
         payload: intents.payload,

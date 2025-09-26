@@ -5,6 +5,7 @@ import { intents, intentIndexes } from '../schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { analyzeFolder } from '../../agents/core/intent_inferrer';
 import { summarizeIntent } from '../../agents/core/intent_summarizer';
+import { generateEmbedding } from '../embeddings';
 import { Events } from '../events';
 import { getTempPath } from '../paths';
 
@@ -71,6 +72,16 @@ export async function processFilesToIntents(options: {
       for (const intentData of result.intents) {
         if (existingIntents.has(intentData.payload)) continue;
         const summary = summarize ? await summarizeIntent(intentData.payload) : undefined;
+        
+        // Generate embedding for semantic search
+        let embedding: number[] | null = null;
+        try {
+          embedding = await generateEmbedding(intentData.payload);
+        } catch (error) {
+          console.error('Failed to generate embedding:', error);
+          // Continue without embedding - it's optional
+        }
+        
         const inserted = await db
           .insert(intents)
           .values({
@@ -78,6 +89,7 @@ export async function processFilesToIntents(options: {
             userId,
             isIncognito: false,
             summary: summary,
+            embedding: embedding || undefined,
             sourceId: options.sourceId,
             sourceType: options.sourceType,
           })

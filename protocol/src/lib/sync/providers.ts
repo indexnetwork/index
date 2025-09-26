@@ -5,6 +5,7 @@ import { indexLinks, intents, intentIndexes, userIntegrations } from '../schema'
 import { eq, and, isNull } from 'drizzle-orm';
 import { analyzeFolder } from '../../agents/core/intent_inferrer';
 import { summarizeIntent } from '../../agents/core/intent_summarizer';
+import { generateEmbedding } from '../embeddings';
 import { crawlLinksForIndex } from '../crawl/web_crawler';
 import { triggerBrokersOnIntentCreated } from '../../agents/context_brokers/connector';
 import { config } from '../crawl/config';
@@ -119,11 +120,22 @@ export const linksProvider: SyncProvider<LinksParams> = {
           const intentData = result.intents[0];
           if (!existingIntents.has(intentData.payload)) {
             const summary = await summarizeIntent(intentData.payload);
+            
+            // Generate embedding for semantic search
+            let embedding: number[] | null = null;
+            try {
+              embedding = await generateEmbedding(intentData.payload);
+            } catch (error) {
+              console.error('Failed to generate embedding:', error);
+              // Continue without embedding - it's optional
+            }
+            
             const inserted = await db.insert(intents).values({
               payload: intentData.payload,
               summary: summary || intentData.payload.slice(0, 150),
               userId,
               isIncognito: false,
+              embedding: embedding || undefined,
               sourceId: linkRow?.id,
               sourceType: 'link',
             }).returning({ id: intents.id });

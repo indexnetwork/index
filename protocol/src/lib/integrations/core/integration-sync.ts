@@ -4,6 +4,8 @@ import db from '../../db';
 import { userIntegrations, intents, intentIndexes } from '../../schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { analyzeFolder } from '../../../agents/core/intent_inferrer';
+import { summarizeIntent } from '../../../agents/core/intent_summarizer';
+import { generateEmbedding } from '../../embeddings';
 import { Events } from '../../events';
 import { handlers } from '../index';
 import { log } from '../../log';
@@ -133,10 +135,23 @@ export async function syncIntegration(
       if (result.success && result.intents.length > 0) {
         // Create intents in database
         for (const intentData of result.intents) {
+          const summary = await summarizeIntent(intentData.payload);
+          
+          // Generate embedding for semantic search
+          let embedding: number[] | null = null;
+          try {
+            embedding = await generateEmbedding(intentData.payload);
+          } catch (error) {
+            console.error('Failed to generate embedding:', error);
+            // Continue without embedding - it's optional
+          }
+          
           const newIntent = await db.insert(intents).values({
             payload: intentData.payload,
+            summary,
             userId,
             isIncognito: false,
+            embedding: embedding || undefined,
             sourceId: integration[0].id,
             sourceType: 'integration',
           }).returning();
