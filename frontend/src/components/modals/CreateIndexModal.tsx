@@ -4,12 +4,12 @@ import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X } from "lucide-react";
+import { X, Globe, Lock } from "lucide-react";
 
 interface CreateIndexModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (index: { name: string; prompt?: string }) => Promise<void>;
+  onSubmit: (index: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => Promise<void>;
 }
 
 interface DialogComponentProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -65,14 +65,16 @@ const DialogDescription = ({ className, children, ...props }: DialogDescriptionP
 export default function CreateIndexModal({ open, onOpenChange, onSubmit }: CreateIndexModalProps) {
   const [name, setName] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [joinPolicy, setJoinPolicy] = useState<'anyone' | 'invite_only'>('invite_only');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     try {
-      await onSubmit({ name, prompt: prompt.trim() || undefined });
+      await onSubmit({ name, prompt: prompt.trim() || undefined, joinPolicy });
       setName('');
       setPrompt('');
+      setJoinPolicy('invite_only');
       onOpenChange(false);
     } catch (error) {
       console.error('Error creating index:', error);
@@ -124,6 +126,53 @@ export default function CreateIndexModal({ open, onOpenChange, onSubmit }: Creat
                 placeholder="Define what people can share in this index..."
                 rows={3}
               />
+            </div>
+
+            <div>
+              <label className="text-md font-medium font-ibm-plex-mono text-black">
+                <div className="mb-2">Who can join</div>
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setJoinPolicy('anyone')}
+                  className={`border-2 p-3 rounded-md text-left transition-all ${
+                    joinPolicy === 'anyone'
+                      ? 'border-[#007EFF] bg-white' 
+                      : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Globe className={`h-4 w-4 ${joinPolicy === 'anyone' ? "text-[#007EFF]" : "text-gray-600"}`} />
+                    <h4 className={`text-sm font-medium font-ibm-plex-mono ${joinPolicy === 'anyone' ? "text-black" : "text-[#666]"}`}>
+                      Anyone can join
+                    </h4>
+                  </div>
+                  <p className="text-xs text-gray-600 font-ibm-plex-mono">
+                    People can discover and join freely.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setJoinPolicy('invite_only')}
+                  className={`border-2 p-3 rounded-md text-left transition-all ${
+                    joinPolicy === 'invite_only'
+                      ? 'border-[#007EFF] bg-white' 
+                      : 'border-[#E0E0E0] bg-[#F8F9FA] hover:border-[#007EFF]'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Lock className={`h-4 w-4 ${joinPolicy === 'invite_only' ? "text-[#007EFF]" : "text-gray-600"}`} />
+                    <h4 className={`text-sm font-medium font-ibm-plex-mono ${joinPolicy === 'invite_only' ? "text-black" : "text-[#666]"}`}>
+                      Private
+                    </h4>
+                  </div>
+                  <p className="text-xs text-gray-600 font-ibm-plex-mono">
+                    Only people with the invitation link can join.
+                  </p>
+                </button>
+              </div>
             </div>
 
             <div className="flex justify-end space-x-3">

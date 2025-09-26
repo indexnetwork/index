@@ -326,7 +326,7 @@ export default function OnboardingPage() {
     try {
       const createRequest = {
         title: indexName.trim(),
-        joinPolicy: isPrivate ? 'invite_only' : 'anyone',
+        joinPolicy: isPrivate ? 'invite_only' as const : 'anyone' as const,
       };
       
       const response = await indexService.createIndex(createRequest);

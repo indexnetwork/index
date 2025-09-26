@@ -312,9 +312,10 @@ router.post('/',
       const { title, prompt, joinPolicy } = req.body;
 
       // Set up permissions with joinPolicy
+      const finalJoinPolicy = joinPolicy || 'invite_only';
       const permissions = {
-        joinPolicy: joinPolicy || 'invite_only',
-        invitationLink: joinPolicy === 'invite_only' ? { code: crypto.randomUUID() } : null,
+        joinPolicy: finalJoinPolicy,
+        invitationLink: finalJoinPolicy === 'invite_only' ? { code: crypto.randomUUID() } : null,
         allowGuestVibeCheck: false
       };
 

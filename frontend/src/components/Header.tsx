@@ -87,11 +87,12 @@ export default function Header({ showNavigation = true, onToggleSidebar, isSideb
     }
   }, [authenticated, api, userLoading, router]);
 
-  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string }) => {
+  const handleCreateIndex = useCallback(async (indexData: { name: string; prompt?: string; joinPolicy?: 'anyone' | 'invite_only' }) => {
     try {
       const createRequest = {
         title: indexData.name,
-        prompt: indexData.prompt
+        prompt: indexData.prompt,
+        joinPolicy: indexData.joinPolicy
       };
       
       const newIndex = await indexesService.createIndex(createRequest);
