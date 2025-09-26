@@ -8,6 +8,8 @@ import db, { closeDb } from '../lib/db';
 import { privyClient } from '../lib/privy';
 import {
   agents,
+  files,
+  indexLinks,
   intentIndexes,
   intents,
   intentStakes,
@@ -34,6 +36,9 @@ type SeedSummary = {
   users: SeededUser[];
   indexIds: string[];
   agentId: string | null;
+  fileCount: number;
+  linkCount: number;
+  intentCount: number;
 };
 
 const DEMO_NAMESPACE = uuidv5('protocol-demo-seed', uuidv5.URL);
@@ -64,16 +69,50 @@ const DEMO_INDEXES: DemoIndexDefinition[] = [
   },
 ];
 
+const COMMON_INTENTS: DemoIntentDefinition[] = [
+  {
+    key: 'weekly-update',
+    payload: 'Posting a weekly summary of high-signal introductions and product learnings with the demo network.',
+    summary: 'Sharing weekly network update for collaborators.',
+  },
+  {
+    key: 'looking-for-intros',
+    payload: 'Open to intros to AI teams piloting knowledge routing so we can compare pipelines and share ops playbooks.',
+    summary: 'Requesting intros to AI teams testing knowledge routing.',
+  },
+  {
+    key: 'offering-office-hours',
+    payload: 'Hosting short office hours to review onboarding flows for founders scoping their first agent loops.',
+    summary: 'Offering office hours on agent onboarding loops.',
+  },
+];
+
+const COMMON_INTENT_MAP = new Map(COMMON_INTENTS.map((intent) => [intent.key, intent] as const));
+
 type DemoIntentDefinition = {
   key: string;
   payload: string;
   summary: string;
+  source?: { type: 'file' | 'link'; key: string };
 };
 
 type DemoUserLoginHints = {
   accountName?: string;
   phoneNumber?: string;
   otpCode?: string;
+};
+
+type DemoFileDefinition = {
+  key: string;
+  name: string;
+  size: number;
+  type: string;
+};
+
+type DemoLinkDefinition = {
+  key: string;
+  url: string;
+  title?: string;
 };
 
 type DemoUserDefinition = {
@@ -84,6 +123,9 @@ type DemoUserDefinition = {
   avatar: string;
   indexes: string[];
   intents: DemoIntentDefinition[];
+  sharedIntentKeys?: string[];
+  files?: DemoFileDefinition[];
+  links?: DemoLinkDefinition[];
   loginHints?: DemoUserLoginHints;
 };
 
@@ -174,16 +216,34 @@ const DEMO_USERS: DemoUserDefinition[] = [
     intro: 'Founder building collaborative AI tooling and onboarding early operators.',
     avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=AveryDemo',
     indexes: ['demo-network'],
+    sharedIntentKeys: ['weekly-update', 'offering-office-hours'],
+    files: [
+      {
+        key: 'pitch-deck',
+        name: 'Avery Demo Pitch Deck.pdf',
+        size: 524288,
+        type: 'application/pdf',
+      },
+    ],
+    links: [
+      {
+        key: 'workflow-article',
+        url: 'https://example.com/avery-demo-workflow',
+        title: 'Agent workflow teardown',
+      },
+    ],
     intents: [
       {
         key: 'ai-partnerships',
         payload: 'Looking to pair with ML researchers who want to ship copilots for strategic introductions between founders and investors.',
         summary: 'Seeking ML research partners for demo agent.',
+        source: { type: 'file', key: 'pitch-deck' },
       },
       {
         key: 'capital',
         payload: 'Exploring a $500k seed extension from angels who understand agent routing and MCP integrations.',
         summary: 'Raising capital from angels focused on agent ecosystems.',
+        source: { type: 'link', key: 'workflow-article' },
       },
     ],
   },
@@ -194,16 +254,34 @@ const DEMO_USERS: DemoUserDefinition[] = [
     intro: 'Angel investor backing infra teams solving high-signal discovery.',
     avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=JordanChen',
     indexes: ['demo-network'],
+    sharedIntentKeys: ['weekly-update', 'looking-for-intros'],
+    files: [
+      {
+        key: 'portfolio-brief',
+        name: 'Jordan Portfolio Brief.pdf',
+        size: 409600,
+        type: 'application/pdf',
+      },
+    ],
+    links: [
+      {
+        key: 'deal-memo',
+        url: 'https://example.com/jordan-demo-memo',
+        title: 'Deal memo template',
+      },
+    ],
     intents: [
       {
         key: 'invest-in-infra',
         payload: 'Deploying 100k-250k checks into founders aligning agents with verified network signals.',
         summary: 'Investing in network signal infrastructure founders.',
+        source: { type: 'file', key: 'portfolio-brief' },
       },
       {
         key: 'portfolio-support',
         payload: 'Helping existing portfolio companies find design partners working on data-rich agent workflows.',
         summary: 'Supporting portfolio with agent design partners.',
+        source: { type: 'link', key: 'deal-memo' },
       },
     ],
   },
@@ -214,16 +292,34 @@ const DEMO_USERS: DemoUserDefinition[] = [
     intro: 'Product engineer turning research notebooks into production-ready agent copilots.',
     avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=SashaPatel',
     indexes: ['demo-network'],
+    sharedIntentKeys: ['weekly-update', 'offering-office-hours', 'looking-for-intros'],
+    files: [
+      {
+        key: 'integration-playbook',
+        name: 'Sasha Integration Playbook.md',
+        size: 102400,
+        type: 'text/markdown',
+      },
+    ],
+    links: [
+      {
+        key: 'prototype-notion',
+        url: 'https://example.com/sasha-demo-notion',
+        title: 'Prototype notes',
+      },
+    ],
     intents: [
       {
         key: 'customer-discovery',
         payload: 'Looking for GTM leaders testing intent indexing so we can co-build the first automation loops.',
         summary: 'Hunting for GTM design partners for agent loops.',
+        source: { type: 'link', key: 'prototype-notion' },
       },
       {
         key: 'infra-collab',
         payload: 'Want to team up with data infra folks who can power fast embeddings for context brokers.',
         summary: 'Collaborating with data infra partners for context brokers.',
+        source: { type: 'file', key: 'integration-playbook' },
       },
     ],
   },
@@ -234,6 +330,13 @@ const DEMO_USERS: DemoUserDefinition[] = [
     intro: 'Privy QA test account for demo login flows.',
     avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(account.accountName)}`,
     indexes: ['demo-network'],
+    sharedIntentKeys: ['weekly-update'],
+    links: [
+      {
+        key: `${account.key}-profile`,
+        url: `https://example.com/demo/${account.key}`,
+      },
+    ],
     intents: [],
     loginHints: {
       accountName: account.accountName,
@@ -462,6 +565,53 @@ async function upsertIndex(def: typeof DEMO_INDEXES[number]): Promise<string> {
   return indexId;
 }
 
+async function upsertFile(userId: string, userKey: string, def: DemoFileDefinition): Promise<string> {
+  const fileId = stableId(`file:${userKey}:${def.key}`);
+  const now = new Date();
+  const sizeValue = BigInt(def.size);
+
+  try {
+    await db.insert(files).values({
+      id: fileId,
+      name: def.name,
+      size: sizeValue,
+      type: def.type,
+      userId,
+    });
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    await db
+      .update(files)
+      .set({ name: def.name, size: sizeValue, type: def.type, userId, updatedAt: now })
+      .where(eq(files.id, fileId));
+  }
+
+  return fileId;
+}
+
+async function upsertLink(userId: string, userKey: string, def: DemoLinkDefinition): Promise<string> {
+  const linkId = stableId(`link:${userKey}:${def.key}`);
+  const now = new Date();
+
+  try {
+    await db.insert(indexLinks).values({
+      id: linkId,
+      userId,
+      url: def.url,
+      lastStatus: 'seeded-demo',
+      lastSyncAt: now,
+    });
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    await db
+      .update(indexLinks)
+      .set({ url: def.url, userId, lastStatus: 'seeded-demo', lastSyncAt: now, updatedAt: now })
+      .where(eq(indexLinks.id, linkId));
+  }
+
+  return linkId;
+}
+
 async function findExistingAgent(): Promise<string | null> {
   const agentId = stableId(`agent:${DEMO_AGENT.key}`);
   const result = await db
@@ -583,10 +733,15 @@ async function upsertIntent(
   userId: string,
   def: DemoIntentDefinition,
   indexIds: string[],
-  userKey: string
+  userKey: string,
+  source?: { sourceId?: string | null; sourceType?: 'file' | 'link' }
 ): Promise<string> {
   const intentId = stableId(`intent:${userKey}:${def.key}`);
   const now = new Date();
+  const sourcePayload = {
+    sourceId: source?.sourceId ?? null,
+    sourceType: source?.sourceType ?? null,
+  } as const;
 
   try {
     await db.insert(intents).values({
@@ -594,12 +749,13 @@ async function upsertIntent(
       payload: def.payload,
       summary: def.summary,
       userId,
+      ...sourcePayload,
     });
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
     await db
       .update(intents)
-      .set({ payload: def.payload, summary: def.summary, updatedAt: now })
+      .set({ payload: def.payload, summary: def.summary, updatedAt: now, ...sourcePayload })
       .where(eq(intents.id, intentId));
   }
 
@@ -707,7 +863,12 @@ async function runSeed(): Promise<SeedSummary> {
   const agentId = await findExistingAgent();
   const intentMap = new Map<string, string>();
   const userIdMap = new Map<string, string>();
+  const fileIdMap = new Map<string, string>();
+  const linkIdMap = new Map<string, string>();
   const seededUsers: SeededUser[] = [];
+  let fileCount = 0;
+  let linkCount = 0;
+  let intentCount = 0;
 
   for (const userDef of DEMO_USERS) {
     const { privyId, accessToken } = await ensurePrivyIdentity(userDef.email, userDef.name);
@@ -730,9 +891,61 @@ async function runSeed(): Promise<SeedSummary> {
       await ensureIndexMembership(indexId, user.id);
     }
 
+    if (userDef.files) {
+      for (const fileDef of userDef.files) {
+        const fileId = await upsertFile(user.id, userDef.key, fileDef);
+        fileIdMap.set(`${userDef.key}:${fileDef.key}`, fileId);
+        fileCount += 1;
+      }
+    }
+
+    if (userDef.links) {
+      for (const linkDef of userDef.links) {
+        const linkId = await upsertLink(user.id, userDef.key, linkDef);
+        linkIdMap.set(`${userDef.key}:${linkDef.key}`, linkId);
+        linkCount += 1;
+      }
+    }
+
+    const combinedIntentDefs: DemoIntentDefinition[] = [];
+    const seenIntentKeys = new Set<string>();
+
     for (const intentDef of userDef.intents) {
-      const intentId = await upsertIntent(user.id, intentDef, indexIds, userDef.key);
+      if (seenIntentKeys.has(intentDef.key)) continue;
+      combinedIntentDefs.push(intentDef);
+      seenIntentKeys.add(intentDef.key);
+    }
+
+    if (userDef.sharedIntentKeys) {
+      for (const sharedKey of userDef.sharedIntentKeys) {
+        if (seenIntentKeys.has(sharedKey)) continue;
+        const sharedIntent = COMMON_INTENT_MAP.get(sharedKey);
+        if (!sharedIntent) continue;
+        combinedIntentDefs.push({ ...sharedIntent });
+        seenIntentKeys.add(sharedKey);
+      }
+    }
+
+    for (const intentDef of combinedIntentDefs) {
+      let source: { sourceId?: string | null; sourceType?: 'file' | 'link' } | undefined;
+      if (intentDef.source) {
+        const resourceKey = `${userDef.key}:${intentDef.source.key}`;
+        if (intentDef.source.type === 'file') {
+          const sourceId = fileIdMap.get(resourceKey);
+          if (sourceId) {
+            source = { sourceId, sourceType: 'file' };
+          }
+        } else if (intentDef.source.type === 'link') {
+          const sourceId = linkIdMap.get(resourceKey);
+          if (sourceId) {
+            source = { sourceId, sourceType: 'link' };
+          }
+        }
+      }
+
+      const intentId = await upsertIntent(user.id, intentDef, indexIds, userDef.key, source);
       intentMap.set(`${userDef.key}:${intentDef.key}`, intentId);
+      intentCount += 1;
     }
   }
 
@@ -748,6 +961,9 @@ async function runSeed(): Promise<SeedSummary> {
     users: seededUsers,
     indexIds: Array.from(indexMap.values()),
     agentId,
+    fileCount,
+    linkCount,
+    intentCount,
   };
 }
 
@@ -784,6 +1000,9 @@ async function main(): Promise<void> {
       console.log('Seeded demo data successfully.');
       console.log(`- Users: ${result.users.length}`);
       console.log(`- Indexes: ${result.indexIds.length}`);
+      console.log(`- Intents: ${result.intentCount}`);
+      console.log(`- Files: ${result.fileCount}`);
+      console.log(`- Links: ${result.linkCount}`);
       console.log(`- Agent: ${result.agentId}`);
       console.log('\nLogin helpers (test access tokens / OTPs):');
       result.users.forEach((user) => {
