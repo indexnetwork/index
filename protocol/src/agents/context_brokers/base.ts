@@ -111,6 +111,7 @@ export abstract class BaseContextBroker {
 
       // Use pgvector for semantic similarity search with IVFFlat index
       // Get top 10 most similar intents using cosine distance
+      // Exclude intents from the same user to avoid stake validation errors
       const similarIntents = await this.db
         .select({
           id: intents.id,
@@ -124,6 +125,7 @@ export abstract class BaseContextBroker {
         .from(intents)
         .where(
           sql`${intents.id} != ${currentIntent.id} 
+              AND ${intents.userId} != ${currentIntent.userId}
               AND ${intents.embedding} IS NOT NULL
               AND ${intents.archivedAt} IS NULL`
         )
