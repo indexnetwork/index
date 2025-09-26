@@ -1,6 +1,7 @@
 import { eq, ne, sql, and, or } from 'drizzle-orm';
 import db from './db';
-import { users, intents, intentStakes, intentIndexes, userConnectionEvents } from './schema';
+import { users, intents, intentStakes, intentIndexes, userConnectionEvents, indexMembers } from './schema';
+import { getUserAccessibleIndexIds } from './index-access';
 
 export interface DiscoverFilters {
   authenticatedUserId: string;
@@ -71,8 +72,15 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
     baseConditions.push(or(...sourceConditions)!);
   }
   
-  if (indexIds && indexIds.length > 0) {
-    // If indexIds are specified, only get intents in those indexes
+  // Determine which indexes to filter by
+  let targetIndexIds = indexIds;
+  if (!targetIndexIds || targetIndexIds.length === 0) {
+    // If no indexIds provided, default to user's accessible indexes
+    targetIndexIds = await getUserAccessibleIndexIds(authenticatedUserId);
+  }
+  
+  if (targetIndexIds && targetIndexIds.length > 0) {
+    // Get intents in the specified indexes (or user's indexes if none specified)
     authenticatedUserIntents = await db
       .select({ intentId: intents.id })
       .from(intents)
@@ -80,11 +88,11 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
       .where(
         and(
           ...baseConditions,
-          sql`${intentIndexes.indexId} = ANY(ARRAY[${sql.join(indexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+          sql`${intentIndexes.indexId} = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
         )
       );
   } else {
-    // Get all user's intents
+    // Fallback: get all user's intents (if user has no accessible indexes)
     authenticatedUserIntents = await db
       .select({ intentId: intents.id })
       .from(intents)
@@ -184,11 +192,23 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
           SELECT 1
           FROM ${intentIndexes} ii1
           WHERE ii1.intent_id = ANY(${intentStakes.intents}::uuid[])
-          ${indexIds && indexIds.length > 0
-            ? sql`AND ii1.index_id = ANY(ARRAY[${sql.join(indexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+          ${targetIndexIds && targetIndexIds.length > 0
+            ? sql`AND ii1.index_id = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
             : sql``}
           GROUP BY ii1.index_id
           HAVING COUNT(*) = array_length(${intentStakes.intents}, 1)
+        )`,
+
+        // Ensure the user who created the intents is still a member of the target indexes
+        sql`EXISTS (
+          SELECT 1
+          FROM ${intentIndexes} ii_membership
+          INNER JOIN ${indexMembers} im ON ii_membership.index_id = im.index_id
+          WHERE ii_membership.intent_id = ANY(${intentStakes.intents}::uuid[])
+          AND im.user_id = ${intents.userId}
+          ${targetIndexIds && targetIndexIds.length > 0
+            ? sql`AND ii_membership.index_id = ANY(ARRAY[${sql.join(targetIndexIds.map((id: string) => sql`${id}`), sql`, `)}]::uuid[])`
+            : sql``}
         )`
       )
     )
@@ -203,7 +223,7 @@ export async function discoverUsers(filters: DiscoverFilters): Promise<{
   // This query finds users who have stakes with the authenticated user's intents
   // It filters by:
   // - Optional intent IDs (must be authenticated user's intents)
-  // - Optional index IDs (must be authenticated user's indexes) 
+  // - Index IDs (defaults to user's accessible indexes if not specified)
   // - Optional user IDs
   // - Can exclude users with existing connections
   // - Ensures intents in stakes exist in same index
