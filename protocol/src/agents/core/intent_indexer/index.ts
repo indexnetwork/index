@@ -1,11 +1,10 @@
 import db from '../../../lib/db';
-import { intents, intentIndexes, indexes, indexMembers, users } from '../../../lib/schema';
-import { eq, and, or, inArray, isNull } from 'drizzle-orm';
+import { intents, intentIndexes, indexes, indexMembers } from '../../../lib/schema';
+import { eq, and, isNull } from 'drizzle-orm';
 import { evaluateIntentRelevance } from './evaluator';
 
 // Constants
 const RELEVANCE_THRESHOLD = 0.7;
-const BATCH_SIZE = 500;
 const PARALLEL_BATCH_SIZE = 10;
 
 export interface IntentIndexerResult {

@@ -7,7 +7,7 @@ import { analyzeFolder } from '../../agents/core/intent_inferrer';
 import { summarizeIntent } from '../../agents/core/intent_summarizer';
 import { generateEmbedding } from '../embeddings';
 import { crawlLinksForIndex } from '../crawl/web_crawler';
-import { triggerBrokersOnIntentCreated } from '../../agents/context_brokers/connector';
+import { Events } from '../events';
 import { config } from '../crawl/config';
 import { log } from '../log';
 import { handlers } from '../integrations';
@@ -146,7 +146,7 @@ export const linksProvider: SyncProvider<LinksParams> = {
             }
             existingIntents.add(intentData.payload);
             if (!skipBrokers) {
-              triggerBrokersOnIntentCreated(intentId).catch(() => void 0);
+              Events.Intent.onCreated({ intentId, userId, payload: intentData.payload }).catch(() => void 0);
             }
             intentsGenerated += 1;
           }
