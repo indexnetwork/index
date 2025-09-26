@@ -266,274 +266,587 @@ const PRIVY_TEST_ACCOUNTS: Array<{
 
 const QA_USER_KEYS = PRIVY_TEST_ACCOUNTS.map((account) => account.key);
 
-const DEMO_INDEXES: DemoIndexDefinition[] = [
-  {
-    key: 'demo-network',
-    title: 'Demo Discovery Network',
-    prompt: 'Share what you are exploring so agents can surface relevant peers.',
-    joinPolicy: 'anyone',
-    linkPermissions: {
-      permissions: ['can-discover', 'can-request'],
-      code: 'demo-network',
+type UserDetail = {
+  intro: string;
+  avatarSeed?: string;
+  indexes: string[];
+  indexSettings: Record<string, Omit<DemoIndexMemberConfig, 'userKey'>>;
+  intents: DemoIntentDefinition[];
+  sharedIntentKeys?: string[];
+  files?: DemoFileDefinition[];
+  links?: DemoLinkDefinition[];
+};
+
+const QA_USER_DETAILS: Record<string, UserDetail> = {
+  'test-account-1': {
+    intro: 'Community lead coordinating the lounge and pairing members for support.',
+    avatarSeed: 'Casey Harper',
+    indexes: ['network-lounge', 'deal-room', 'support-huddle'],
+    indexSettings: {
+      'network-lounge': {
+        permissions: ['owner'],
+        prompt: 'Curate weekly recaps and highlight collaboration asks for the lounge.',
+        autoAssign: true,
+      },
+      'deal-room': {
+        prompt: 'Share investor-ready founder updates for the syndicate to review.',
+        autoAssign: true,
+      },
+      'support-huddle': {
+        prompt: 'Escalate frontline blockers and capture next actions.',
+        autoAssign: true,
+      },
     },
-    members: [
+    files: [
       {
-        userKey: 'avery',
-        permissions: ['owner'],
-        prompt: 'Post weekly demos, pilot wins, and onboarding learnings for the full network.',
-        autoAssign: true,
-      },
-      {
-        userKey: 'jordan',
-        permissions: ['can-read-intents', 'can-write-intents', 'can-discover'],
-        prompt: 'Share portfolio highlights, diligence notes, and requests for operator intros.',
-        autoAssign: true,
-      },
-      {
-        userKey: 'sasha',
-        permissions: ['can-read-intents', 'can-write-intents', 'can-discover'],
-        prompt: 'Log build updates, integration learnings, and blockers needing network help.',
-        autoAssign: true,
-      },
-      ...QA_USER_KEYS.map((userKey) => ({
-        userKey,
-        permissions: ['can-read-intents', 'can-write-intents'],
-        prompt: 'Record QA findings, login flows, and hand-off notes for demo operators.',
-        autoAssign: false,
-      })),
-    ],
-  },
-  {
-    key: 'operators-circle',
-    title: 'Operators Circle',
-    prompt: 'Deep dive on intent routing experiments, data quality, and agent trust signals.',
-    joinPolicy: 'invite_only',
-    invitationCode: 'operators-circle',
-    members: [
-      {
-        userKey: 'sasha',
-        permissions: ['owner'],
-        prompt: 'Capture engineering insights from pilot rollouts and MCP integrations.',
-        autoAssign: true,
-      },
-      {
-        userKey: 'avery',
-        permissions: ['can-read-intents', 'can-write-intents', 'can-discover'],
-        prompt: 'Summarize founder asks, partner meetings, and design partner wins.',
-        autoAssign: true,
-      },
-      {
-        userKey: 'jordan',
-        permissions: ['can-read-intents', 'can-write-intents', 'can-discover'],
-        prompt: 'Note capital allocation decisions and signal-strength observations.',
-        autoAssign: true,
+        key: 'casey-weekly-brief',
+        name: 'Casey Weekly Brief.pdf',
+        size: 512000,
+        type: 'application/pdf',
       },
     ],
-  },
-  {
-    key: 'avery-pilot-hub',
-    title: 'Pilot Founders Hub',
-    prompt: 'Keep track of onboarding scripts, pilot readiness, and customer discovery wins.',
-    joinPolicy: 'invite_only',
-    invitationCode: 'avery-pilot-hub',
-    members: [
+    links: [
       {
-        userKey: 'avery',
-        permissions: ['owner'],
-        prompt: 'Auto-index capital asks, partner updates, and weekly pilots with operators.',
-        autoAssign: true,
-      },
-      {
-        userKey: 'sasha',
-        permissions: ['can-read-intents', 'can-write-intents'],
-        prompt: 'Log technical feedback from pilot builds and integration backlogs.',
-        autoAssign: true,
+        key: 'casey-talent-sheet',
+        url: 'https://example.com/casey/talent-sheet',
+        title: 'Talent Pairing Sheet',
       },
     ],
-  },
-  {
-    key: 'jordan-syndicate',
-    title: 'Signal Syndicate',
-    prompt: 'Collect diligence notes, signal boosts, and intros for angel syndicate members.',
-    joinPolicy: 'invite_only',
-    invitationCode: 'jordan-syndicate',
-    members: [
+    intents: [
       {
-        userKey: 'jordan',
-        permissions: ['owner'],
-        prompt: 'Auto-index investment theses, diligence calls, and follow-up asks.',
-        autoAssign: true,
+        key: 'community-update',
+        payload: 'Posting the lounge recap covering new wins, open asks, and introductions needed this week.',
+        summary: 'Weekly lounge recap with wins and asks.',
+        source: { type: 'file', key: 'casey-weekly-brief' },
       },
       {
-        userKey: 'avery',
-        permissions: ['can-read-intents', 'can-write-intents'],
-        prompt: 'Share founder pipeline updates and partnership needs.',
-        autoAssign: true,
+        key: 'talent-pairing',
+        payload: 'Coordinating support pairings between builders needing help and operators volunteering time.',
+        summary: 'Coordinating network talent pairings.',
+        source: { type: 'link', key: 'casey-talent-sheet' },
       },
     ],
-  },
-  {
-    key: 'sasha-build-lab',
-    title: 'Build Lab Sessions',
-    prompt: 'Share integration checklists, release learnings, and office hour recaps.',
-    joinPolicy: 'invite_only',
-    invitationCode: 'sasha-build-lab',
-    members: [
-      {
-        userKey: 'sasha',
-        permissions: ['owner'],
-        prompt: 'Auto-index product experiments, UX notes, and technical blockers.',
-        autoAssign: true,
-      },
-      {
-        userKey: 'avery',
-        permissions: ['can-read-intents', 'can-write-intents'],
-        prompt: 'Surface operator feedback requests needing engineering attention.',
-        autoAssign: true,
-      },
-    ],
-  },
-];
-
-const INDEX_DEFINITION_MAP = new Map(DEMO_INDEXES.map((index) => [index.key, index] as const));
-
-const DEMO_USERS: DemoUserDefinition[] = [
-  {
-    key: 'avery',
-    email: 'avery.demo@index.build',
-    name: 'Avery Demo',
-    intro: 'Founder building collaborative AI tooling and onboarding early operators.',
-    avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=AveryDemo',
-    indexes: ['demo-network', 'operators-circle', 'avery-pilot-hub', 'jordan-syndicate', 'sasha-build-lab'],
     sharedIntentKeys: ['weekly-update', 'offering-office-hours'],
+  },
+  'test-account-2': {
+    intro: 'Investor operator bridging the syndicate with builders who need capital.',
+    avatarSeed: 'Devon Brooks',
+    indexes: ['network-lounge', 'deal-room'],
+    indexSettings: {
+      'network-lounge': {
+        prompt: 'Share investor lens on intros and resource asks coming through the lounge.',
+        autoAssign: true,
+      },
+      'deal-room': {
+        permissions: ['owner'],
+        prompt: 'Collect diligence signals and prep notes before syndicate calls.',
+        autoAssign: true,
+      },
+    },
     files: [
       {
-        key: 'pitch-deck',
-        name: 'Avery Demo Pitch Deck.pdf',
-        size: 524288,
+        key: 'devon-syndicate-pipeline',
+        name: 'Devon Syndicate Pipeline.pdf',
+        size: 480000,
         type: 'application/pdf',
       },
     ],
     links: [
       {
-        key: 'workflow-article',
-        url: 'https://example.com/avery-demo-workflow',
-        title: 'Agent workflow teardown',
+        key: 'devon-diligence-notes',
+        url: 'https://example.com/devon/diligence-notes',
+        title: 'Diligence Notes Board',
       },
     ],
     intents: [
       {
-        key: 'ai-partnerships',
-        payload: 'Looking to pair with ML researchers who want to ship copilots for strategic introductions between founders and investors.',
-        summary: 'Seeking ML research partners for demo agent.',
-        source: { type: 'file', key: 'pitch-deck' },
+        key: 'syndicate-pipeline',
+        payload: 'Tracking active deals that need operator insight before next syndicate sync.',
+        summary: 'Active deals requiring operator insight.',
+        source: { type: 'file', key: 'devon-syndicate-pipeline' },
       },
       {
-        key: 'capital',
-        payload: 'Exploring a $500k seed extension from angels who understand agent routing and MCP integrations.',
-        summary: 'Raising capital from angels focused on agent ecosystems.',
-        source: { type: 'link', key: 'workflow-article' },
+        key: 'due-diligence',
+        payload: 'Requesting product deep dives from builders ahead of diligence reviews next week.',
+        summary: 'Requests for diligence deep dives.',
+        source: { type: 'link', key: 'devon-diligence-notes' },
       },
     ],
+    sharedIntentKeys: ['looking-for-intros'],
   },
-  {
-    key: 'jordan',
-    email: 'jordan.invests@index.build',
-    name: 'Jordan Chen',
-    intro: 'Angel investor backing infra teams solving high-signal discovery.',
-    avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=JordanChen',
-    indexes: ['demo-network', 'operators-circle', 'jordan-syndicate'],
-    sharedIntentKeys: ['weekly-update', 'looking-for-intros'],
+  'test-account-3': {
+    intro: 'Release manager keeping Build Lab prototypes production-ready.',
+    avatarSeed: 'Morgan Li',
+    indexes: ['network-lounge', 'build-lab'],
+    indexSettings: {
+      'network-lounge': {
+        prompt: 'Share build milestones and blockers that need broader support.',
+        autoAssign: true,
+      },
+      'build-lab': {
+        permissions: ['owner'],
+        prompt: 'Track release trains, QA signoffs, and integration tasks.',
+        autoAssign: true,
+      },
+    },
     files: [
       {
-        key: 'portfolio-brief',
-        name: 'Jordan Portfolio Brief.pdf',
-        size: 409600,
-        type: 'application/pdf',
-      },
-    ],
-    links: [
-      {
-        key: 'deal-memo',
-        url: 'https://example.com/jordan-demo-memo',
-        title: 'Deal memo template',
-      },
-    ],
-    intents: [
-      {
-        key: 'invest-in-infra',
-        payload: 'Deploying 100k-250k checks into founders aligning agents with verified network signals.',
-        summary: 'Investing in network signal infrastructure founders.',
-        source: { type: 'file', key: 'portfolio-brief' },
-      },
-      {
-        key: 'portfolio-support',
-        payload: 'Helping existing portfolio companies find design partners working on data-rich agent workflows.',
-        summary: 'Supporting portfolio with agent design partners.',
-        source: { type: 'link', key: 'deal-memo' },
-      },
-    ],
-  },
-  {
-    key: 'sasha',
-    email: 'sasha.builder@index.build',
-    name: 'Sasha Patel',
-    intro: 'Product engineer turning research notebooks into production-ready agent copilots.',
-    avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=SashaPatel',
-    indexes: ['demo-network', 'operators-circle', 'avery-pilot-hub', 'sasha-build-lab'],
-    sharedIntentKeys: ['weekly-update', 'offering-office-hours', 'looking-for-intros'],
-    files: [
-      {
-        key: 'integration-playbook',
-        name: 'Sasha Integration Playbook.md',
+        key: 'morgan-release-checklist',
+        name: 'Morgan Release Checklist.md',
         size: 102400,
         type: 'text/markdown',
       },
     ],
     links: [
       {
-        key: 'prototype-notion',
-        url: 'https://example.com/sasha-demo-notion',
-        title: 'Prototype notes',
+        key: 'morgan-integration-playbook',
+        url: 'https://example.com/morgan/integration-playbook',
+        title: 'Integration Playbook',
       },
     ],
     intents: [
       {
-        key: 'customer-discovery',
-        payload: 'Looking for GTM leaders testing intent indexing so we can co-build the first automation loops.',
-        summary: 'Hunting for GTM design partners for agent loops.',
-        source: { type: 'link', key: 'prototype-notion' },
+        key: 'release-checklist',
+        payload: 'Outlining the build lab release checklist for the upcoming deploy window.',
+        summary: 'Upcoming release checklist items.',
+        source: { type: 'file', key: 'morgan-release-checklist' },
       },
       {
-        key: 'infra-collab',
-        payload: 'Want to team up with data infra folks who can power fast embeddings for context brokers.',
-        summary: 'Collaborating with data infra partners for context brokers.',
-        source: { type: 'file', key: 'integration-playbook' },
+        key: 'integration-help',
+        payload: 'Flagging integrations that need review from data and infra partners.',
+        summary: 'Integration work requiring reviews.',
+        source: { type: 'link', key: 'morgan-integration-playbook' },
       },
     ],
+    sharedIntentKeys: ['offering-office-hours'],
   },
-  ...PRIVY_TEST_ACCOUNTS.map((account) => ({
+  'test-account-4': {
+    intro: 'Product designer capturing beta feedback to inform the build roadmap.',
+    avatarSeed: 'Riley Nguyen',
+    indexes: ['network-lounge', 'build-lab'],
+    indexSettings: {
+      'network-lounge': {
+        prompt: 'Surface UX learnings that impact product priorities.',
+        autoAssign: true,
+      },
+      'build-lab': {
+        prompt: 'Document beta feedback and polish tasks for build lab sessions.',
+        autoAssign: true,
+      },
+    },
+    files: [
+      {
+        key: 'riley-beta-feedback',
+        name: 'Riley Beta Feedback.pdf',
+        size: 268000,
+        type: 'application/pdf',
+      },
+    ],
+    links: [
+      {
+        key: 'riley-ux-research',
+        url: 'https://example.com/riley/ux-research-board',
+        title: 'UX Research Board',
+      },
+    ],
+    intents: [
+      {
+        key: 'beta-requests',
+        payload: 'Logging tester requests that need engineering follow-up before the next release.',
+        summary: 'Tester requests requiring engineering support.',
+        source: { type: 'file', key: 'riley-beta-feedback' },
+      },
+      {
+        key: 'ux-feedback',
+        payload: 'Highlighting UX findings that should influence upcoming sprints.',
+        summary: 'UX findings for sprint planning.',
+        source: { type: 'link', key: 'riley-ux-research' },
+      },
+    ],
+    sharedIntentKeys: ['weekly-update'],
+  },
+  'test-account-5': {
+    intro: 'Recruiting partner aligning hiring needs with growth experiments.',
+    avatarSeed: 'Taylor Singh',
+    indexes: ['network-lounge', 'growth-guild', 'support-huddle'],
+    indexSettings: {
+      'network-lounge': {
+        prompt: 'Highlight hiring wins and requests coming from across the lounge.',
+        autoAssign: true,
+      },
+      'growth-guild': {
+        prompt: 'Coordinate campaigns needing talent support and onboarding.',
+        autoAssign: true,
+      },
+      'support-huddle': {
+        prompt: 'Share candidate experience insights from support conversations.',
+        autoAssign: true,
+      },
+    },
+    files: [
+      {
+        key: 'taylor-talent-roster',
+        name: 'Taylor Talent Roster.csv',
+        size: 204800,
+        type: 'text/csv',
+      },
+    ],
+    links: [
+      {
+        key: 'taylor-hiring-tracker',
+        url: 'https://example.com/taylor/hiring-tracker',
+        title: 'Hiring Tracker',
+      },
+    ],
+    intents: [
+      {
+        key: 'talent-roster',
+        payload: 'Updating the roster of candidates matched with current growth initiatives.',
+        summary: 'Talent roster updates tied to growth work.',
+        source: { type: 'file', key: 'taylor-talent-roster' },
+      },
+      {
+        key: 'hiring-needs',
+        payload: 'Listing open roles that need referrals before the next campaign sprint.',
+        summary: 'Open hiring needs and referral requests.',
+        source: { type: 'link', key: 'taylor-hiring-tracker' },
+      },
+    ],
+    sharedIntentKeys: ['weekly-update'],
+  },
+  'test-account-6': {
+    intro: 'Data engineer keeping infra healthy for fast experimentation.',
+    avatarSeed: 'Quinn Ramirez',
+    indexes: ['network-lounge', 'build-lab'],
+    indexSettings: {
+      'network-lounge': {
+        prompt: 'Post data health updates and tooling needs to unblock others.',
+        autoAssign: true,
+      },
+      'build-lab': {
+        prompt: 'Document infra rollouts and dataset refresh status.',
+        autoAssign: true,
+      },
+    },
+    files: [
+      {
+        key: 'quinn-data-audit',
+        name: 'Quinn Data Audit.xlsx',
+        size: 350000,
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      },
+    ],
+    links: [
+      {
+        key: 'quinn-infra-plan',
+        url: 'https://example.com/quinn/infra-plan',
+        title: 'Infra Planning Notes',
+      },
+    ],
+    intents: [
+      {
+        key: 'data-audit',
+        payload: 'Sharing the latest data health audit and highlighting tables needing fixes.',
+        summary: 'Recent data audit findings.',
+        source: { type: 'file', key: 'quinn-data-audit' },
+      },
+      {
+        key: 'infra-planning',
+        payload: 'Coordinating infra upgrades that impact upcoming build lab releases.',
+        summary: 'Infra planning tasks tied to releases.',
+        source: { type: 'link', key: 'quinn-infra-plan' },
+      },
+    ],
+    sharedIntentKeys: ['offering-office-hours'],
+  },
+  'test-account-7': {
+    intro: 'Operations partner ensuring investor follow-ups stay on track.',
+    avatarSeed: 'Emerson Blake',
+    indexes: ['network-lounge', 'deal-room'],
+    indexSettings: {
+      'network-lounge': {
+        prompt: 'Raise operating cadences and process experiments for the group.',
+        autoAssign: true,
+      },
+      'deal-room': {
+        prompt: 'Track readiness steps for deals moving through the syndicate.',
+        autoAssign: true,
+      },
+    },
+    files: [
+      {
+        key: 'emerson-ops-dashboard',
+        name: 'Emerson Ops Dashboard.pdf',
+        size: 300000,
+        type: 'application/pdf',
+      },
+    ],
+    links: [
+      {
+        key: 'emerson-process-playbook',
+        url: 'https://example.com/emerson/process-playbook',
+        title: 'Ops Process Playbook',
+      },
+    ],
+    intents: [
+      {
+        key: 'ops-dashboards',
+        payload: 'Posting the updated ops dashboard with follow-up owners for each deal.',
+        summary: 'Ops dashboard updates with owners.',
+        source: { type: 'file', key: 'emerson-ops-dashboard' },
+      },
+      {
+        key: 'process-improvements',
+        payload: 'Capturing process tweaks that reduce handoff time between investors and builders.',
+        summary: 'Process improvements for handoffs.',
+        source: { type: 'link', key: 'emerson-process-playbook' },
+      },
+    ],
+    sharedIntentKeys: ['looking-for-intros'],
+  },
+  'test-account-8': {
+    intro: 'Growth lead running experiments and aligning launch plans.',
+    avatarSeed: 'Peyton Alvarez',
+    indexes: ['network-lounge', 'growth-guild'],
+    indexSettings: {
+      'network-lounge': {
+        prompt: 'Share growth experiments seeking collaborators from other teams.',
+        autoAssign: true,
+      },
+      'growth-guild': {
+        permissions: ['owner'],
+        prompt: 'Gather launch metrics, creative needs, and go-to-market updates.',
+        autoAssign: true,
+      },
+    },
+    files: [
+      {
+        key: 'peyton-growth-experiments',
+        name: 'Peyton Growth Experiments.csv',
+        size: 230000,
+        type: 'text/csv',
+      },
+    ],
+    links: [
+      {
+        key: 'peyton-launch-plan',
+        url: 'https://example.com/peyton/launch-plan',
+        title: 'Launch Plan',
+      },
+    ],
+    intents: [
+      {
+        key: 'growth-experiments',
+        payload: 'Listing experiments in-flight and the metrics we need help instrumenting.',
+        summary: 'Growth experiments seeking support.',
+        source: { type: 'file', key: 'peyton-growth-experiments' },
+      },
+      {
+        key: 'launch-plan',
+        payload: 'Coordinating the upcoming launch plan and partner content timeline.',
+        summary: 'Launch plan coordination notes.',
+        source: { type: 'link', key: 'peyton-launch-plan' },
+      },
+    ],
+    sharedIntentKeys: ['weekly-update'],
+  },
+  'test-account-9': {
+    intro: 'Support lead surfacing customer signals back to the team.',
+    avatarSeed: 'Sydney Clarke',
+    indexes: ['network-lounge', 'growth-guild', 'support-huddle'],
+    indexSettings: {
+      'network-lounge': {
+        prompt: 'Broadcast support trends that impact roadmaps.',
+        autoAssign: true,
+      },
+      'growth-guild': {
+        prompt: 'Share customer insights that fuel retention campaigns.',
+        autoAssign: true,
+      },
+      'support-huddle': {
+        permissions: ['owner'],
+        prompt: 'Coordinate frontline response plans and FAQ refreshes.',
+        autoAssign: true,
+      },
+    },
+    files: [
+      {
+        key: 'sydney-support-trends',
+        name: 'Sydney Support Trends.pdf',
+        size: 275000,
+        type: 'application/pdf',
+      },
+    ],
+    links: [
+      {
+        key: 'sydney-faq-updates',
+        url: 'https://example.com/sydney/faq-updates',
+        title: 'FAQ Updates',
+      },
+    ],
+    intents: [
+      {
+        key: 'support-trends',
+        payload: 'Summarizing trending support topics and the features they touch.',
+        summary: 'Trending support topics summary.',
+        source: { type: 'file', key: 'sydney-support-trends' },
+      },
+      {
+        key: 'faq-refresh',
+        payload: 'Tracking FAQ updates needed before the next product launch.',
+        summary: 'FAQ updates needed for launch.',
+        source: { type: 'link', key: 'sydney-faq-updates' },
+      },
+    ],
+    sharedIntentKeys: ['offering-office-hours'],
+  },
+  'test-account-10': {
+    intro: 'Platform engineer coordinating refactors and integration timelines.',
+    avatarSeed: 'Hayden Moore',
+    indexes: ['network-lounge', 'build-lab'],
+    indexSettings: {
+      'network-lounge': {
+        prompt: 'Post integration status and blockers that need cross-team help.',
+        autoAssign: true,
+      },
+      'build-lab': {
+        prompt: 'Outline refactor milestones and dependencies for the build lab.',
+        autoAssign: true,
+      },
+    },
+    files: [
+      {
+        key: 'hayden-refactor-plan',
+        name: 'Hayden Refactor Plan.md',
+        size: 128000,
+        type: 'text/markdown',
+      },
+    ],
+    links: [
+      {
+        key: 'hayden-integration-pipeline',
+        url: 'https://example.com/hayden/integration-pipeline',
+        title: 'Integration Pipeline',
+      },
+    ],
+    intents: [
+      {
+        key: 'refactor-plan',
+        payload: 'Detailing the refactor phases and reviewers needed this sprint.',
+        summary: 'Refactor phases and reviewer needs.',
+        source: { type: 'file', key: 'hayden-refactor-plan' },
+      },
+      {
+        key: 'integration-pipeline',
+        payload: 'Coordinating integration rollout dates across build lab partners.',
+        summary: 'Integration rollout coordination.',
+        source: { type: 'link', key: 'hayden-integration-pipeline' },
+      },
+    ],
+    sharedIntentKeys: ['looking-for-intros'],
+  },
+};
+
+const INDEX_CONFIGS: Array<{
+  key: string;
+  title: string;
+  prompt: string;
+  joinPolicy: 'anyone' | 'invite_only';
+  invitationCode?: string;
+  linkPermissions?: DemoIndexDefinition['linkPermissions'];
+}> = [
+  {
+    key: 'network-lounge',
+    title: 'Network Lounge',
+    prompt: 'Share cross-team updates and collaboration opportunities for the full demo network.',
+    joinPolicy: 'anyone',
+    linkPermissions: {
+      permissions: ['can-discover', 'can-request'],
+      code: 'network-lounge',
+    },
+  },
+  {
+    key: 'deal-room',
+    title: 'Deal Room',
+    prompt: 'Coordinate diligence notes and investor follow-ups.',
+    joinPolicy: 'invite_only',
+    invitationCode: 'deal-room',
+  },
+  {
+    key: 'build-lab',
+    title: 'Build Lab',
+    prompt: 'Keep release trains aligned across engineering, design, and data.',
+    joinPolicy: 'invite_only',
+    invitationCode: 'build-lab',
+  },
+  {
+    key: 'growth-guild',
+    title: 'Growth Guild',
+    prompt: 'Sync on launch plans, campaigns, and retention experiments.',
+    joinPolicy: 'invite_only',
+    invitationCode: 'growth-guild',
+  },
+  {
+    key: 'support-huddle',
+    title: 'Support Huddle',
+    prompt: 'Share frontline learnings and coordinate answers for customers.',
+    joinPolicy: 'invite_only',
+    invitationCode: 'support-huddle',
+  },
+];
+
+const DEMO_INDEXES: DemoIndexDefinition[] = INDEX_CONFIGS.map((config) => {
+  const members: DemoIndexMemberConfig[] = QA_USER_KEYS.flatMap((userKey) => {
+    const detail = QA_USER_DETAILS[userKey];
+    if (!detail || !detail.indexes.includes(config.key)) return [];
+    const settings = detail.indexSettings[config.key] ?? {};
+    return [
+      {
+        userKey,
+        permissions: settings.permissions,
+        prompt: settings.prompt,
+        autoAssign: settings.autoAssign,
+      },
+    ];
+  });
+
+  return {
+    key: config.key,
+    title: config.title,
+    prompt: config.prompt,
+    joinPolicy: config.joinPolicy,
+    invitationCode: config.invitationCode,
+    linkPermissions: config.linkPermissions,
+    members,
+  };
+});
+
+const INDEX_DEFINITION_MAP = new Map(DEMO_INDEXES.map((index) => [index.key, index] as const));
+
+const DEMO_USERS: DemoUserDefinition[] = PRIVY_TEST_ACCOUNTS.map((account) => {
+  const detail = QA_USER_DETAILS[account.key];
+  if (!detail) {
+    throw new Error(`Missing user detail for ${account.key}`);
+  }
+
+  return {
     key: account.key,
     email: account.email,
     name: account.accountName,
-    intro: 'Privy QA test account for demo login flows.',
-    avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(account.accountName)}`,
-    indexes: ['demo-network'],
-    sharedIntentKeys: ['weekly-update'],
-    links: [
-      {
-        key: `${account.key}-profile`,
-        url: `https://example.com/demo/${account.key}`,
-      },
-    ],
-    intents: [],
+    intro: detail.intro,
+    avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(detail.avatarSeed ?? account.accountName)}`,
+    indexes: detail.indexes,
+    intents: detail.intents,
+    sharedIntentKeys: detail.sharedIntentKeys,
+    files: detail.files ?? [],
+    links: detail.links ?? [],
     loginHints: {
       accountName: account.accountName,
       phoneNumber: account.phoneNumber,
       otpCode: account.otpCode,
     },
-  })),
-];
+  };
+});
 
 const DEMO_AGENT = {
   key: 'demo-connector',
@@ -551,22 +864,31 @@ const DEMO_STAKES: Array<{
   reasoning: string;
 }> = [
   {
-    key: 'avery-jordan',
+    key: 'casey-devon',
     intents: [
-      { userKey: 'avery', intentKey: 'ai-partnerships' },
-      { userKey: 'jordan', intentKey: 'invest-in-infra' },
+      { userKey: 'test-account-1', intentKey: 'community-update' },
+      { userKey: 'test-account-2', intentKey: 'syndicate-pipeline' },
     ],
-    stake: '200',
-    reasoning: 'Jordan is actively funding agent infra founders and Avery is raising for exactly that space.',
+    stake: '180',
+    reasoning: 'Casey’s lounge recap feeds directly into Devon’s syndicate pipeline decisions.',
   },
   {
-    key: 'avery-sasha',
+    key: 'morgan-hayden',
     intents: [
-      { userKey: 'avery', intentKey: 'capital' },
-      { userKey: 'sasha', intentKey: 'infra-collab' },
+      { userKey: 'test-account-3', intentKey: 'release-checklist' },
+      { userKey: 'test-account-10', intentKey: 'refactor-plan' },
+    ],
+    stake: '140',
+    reasoning: 'Build Lab releases depend on Morgan and Hayden coordinating refactor milestones.',
+  },
+  {
+    key: 'peyton-taylor',
+    intents: [
+      { userKey: 'test-account-8', intentKey: 'growth-experiments' },
+      { userKey: 'test-account-5', intentKey: 'hiring-needs' },
     ],
     stake: '120',
-    reasoning: 'Sasha wants infra partners; Avery needs collaborators to harden context brokers.',
+    reasoning: 'Peyton’s campaigns require Taylor to staff key roles to hit launch goals.',
   },
 ];
 
@@ -578,39 +900,46 @@ const DEMO_CONNECTION_EVENTS: Array<{
   occurredAt: string;
 }> = [
   {
-    key: 'avery-request-jordan',
-    initiator: 'avery',
-    receiver: 'jordan',
+    key: 'casey-request-devon',
+    initiator: 'test-account-1',
+    receiver: 'test-account-2',
     type: 'REQUEST',
-    occurredAt: '2024-08-01T16:00:00.000Z',
+    occurredAt: '2024-08-05T15:00:00.000Z',
   },
   {
-    key: 'jordan-accept-avery',
-    initiator: 'jordan',
-    receiver: 'avery',
+    key: 'devon-accept-casey',
+    initiator: 'test-account-2',
+    receiver: 'test-account-1',
     type: 'ACCEPT',
-    occurredAt: '2024-08-02T13:00:00.000Z',
+    occurredAt: '2024-08-06T10:30:00.000Z',
   },
   {
-    key: 'avery-request-sasha',
-    initiator: 'avery',
-    receiver: 'sasha',
+    key: 'morgan-request-hayden',
+    initiator: 'test-account-3',
+    receiver: 'test-account-10',
     type: 'REQUEST',
-    occurredAt: '2024-08-03T18:30:00.000Z',
+    occurredAt: '2024-08-04T09:45:00.000Z',
   },
   {
-    key: 'sasha-request-avery',
-    initiator: 'sasha',
-    receiver: 'avery',
+    key: 'hayden-accept-morgan',
+    initiator: 'test-account-10',
+    receiver: 'test-account-3',
+    type: 'ACCEPT',
+    occurredAt: '2024-08-04T13:10:00.000Z',
+  },
+  {
+    key: 'peyton-request-taylor',
+    initiator: 'test-account-8',
+    receiver: 'test-account-5',
     type: 'REQUEST',
-    occurredAt: '2024-07-20T11:45:00.000Z',
+    occurredAt: '2024-08-02T17:20:00.000Z',
   },
   {
-    key: 'avery-decline-sasha',
-    initiator: 'avery',
-    receiver: 'sasha',
+    key: 'taylor-decline-peyton',
+    initiator: 'test-account-5',
+    receiver: 'test-account-8',
     type: 'DECLINE',
-    occurredAt: '2024-07-21T09:15:00.000Z',
+    occurredAt: '2024-08-03T08:55:00.000Z',
   },
 ];
 
