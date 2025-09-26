@@ -6,7 +6,6 @@ import { Copy, Check, ChevronRight, ChevronDown, FileText } from "lucide-react";
 import ClientLayout from "@/components/ClientLayout";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { tomorrow } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import ConfigureModal from "@/components/modals/ConfigureModal";
 import { MCP } from '@lobehub/icons';
 import Image from "next/image";
 
@@ -818,8 +817,6 @@ export default function IntegratePage() {
   const [expandedEndpoints, setExpandedEndpoints] = useState<Record<string, boolean>>({});
   const [activeEndpointTabs, setActiveEndpointTabs] = useState<Record<string, 'params' | 'example'>>({});
 
-  const [showConfigDialog, setShowConfigDialog] = useState(false);
-
   const setActiveExample = (componentId: string, exampleIndex: number | 'overview') => {
     setActiveExamples(prev => ({
       ...prev,
@@ -1551,12 +1548,7 @@ export default function IntegratePage() {
 
       {/* Bottom spacing for sidebar navigation */}
       <div className="h-64"></div>
-      
-      {/* Configure MCP Modal */}
-      <ConfigureModal 
-        open={showConfigDialog}
-        onOpenChange={setShowConfigDialog}
-      />
+     
     </ClientLayout>
   );
 }

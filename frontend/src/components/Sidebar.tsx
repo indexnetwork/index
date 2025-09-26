@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useIndexFilter } from '@/contexts/IndexFilterContext';
 import { useIndexesState } from '@/contexts/IndexesContext';
-import { Index as IndexType } from '@/lib/types';
+import { Index as IndexType, User } from '@/lib/types';
 import { useAuthenticatedAPI } from '@/lib/api';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
 import OwnerSettingsModal from '@/components/modals/OwnerSettingsModal';
 import ContextMenu from '@/components/ContextMenu';
-import { Settings, User, Crown, MoreVertical, Link2, Check } from 'lucide-react';
+import { User as UserIcon, Crown, MoreVertical, Link2, Check } from 'lucide-react';
 
 interface IndexItem {
   id: string;
@@ -24,11 +24,26 @@ export default function Sidebar() {
   const [selectedIndexId, setSelectedIndexId] = useState<string>('all');
   const [memberSettingsIndex, setMemberSettingsIndex] = useState<IndexType | null>(null);
   const [ownerSettingsIndex, setOwnerSettingsIndex] = useState<IndexType | null>(null);
-  const [memberSettingsCache, setMemberSettingsCache] = useState<Record<string, { isOwner: boolean }>>({});
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const { setSelectedIndexIds } = useIndexFilter();
   const api = useAuthenticatedAPI();
   
+  // Fetch current user on mount
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await api.get<{ user: User }>('/auth/me');
+        if (response.user) {
+          setCurrentUser(response.user);
+        }
+      } catch (error) {
+        console.error('Failed to fetch current user:', error);
+      }
+    };
+    
+    fetchCurrentUser();
+  }, [api]);
   
   // Transform raw indexes into sidebar items whenever rawIndexes changes
   useEffect(() => {
@@ -52,20 +67,7 @@ export default function Sidebar() {
       }))
     ];
     setIndexes(indexItems);
-    
-    // Pre-fetch member settings for all indexes
-    rawIndexes.forEach(async (index: IndexType) => {
-      try {
-        const memberSettings = await api.get<{ isOwner: boolean }>(`/indexes/${index.id}/member-settings`);
-        setMemberSettingsCache(prev => ({ 
-          ...prev, 
-          [index.id]: { isOwner: memberSettings.isOwner } 
-        }));
-      } catch (error) {
-        console.error(`Failed to fetch member settings for ${index.id}:`, error);
-      }
-    });
-  }, [rawIndexes, selectedIndexId, api]);
+  }, [rawIndexes, selectedIndexId]);
 
   // Update selection state without refetching indexes
   useEffect(() => {
@@ -89,23 +91,6 @@ export default function Sidebar() {
     }
   };
 
-  // Fetch member settings for a specific index
-  const fetchMemberSettings = useCallback(async (indexId: string) => {
-    if (memberSettingsCache[indexId]) {
-      return memberSettingsCache[indexId];
-    }
-    
-    try {
-      const response = await api.get<{ isOwner: boolean }>(`/indexes/${indexId}/member-settings`);
-      const settings = { isOwner: response.isOwner };
-      setMemberSettingsCache(prev => ({ ...prev, [indexId]: settings }));
-      return settings;
-    } catch (error) {
-      console.error('Failed to fetch member settings:', error);
-      return { isOwner: false };
-    }
-  }, [api, memberSettingsCache]);
-
   // Handle context menu actions
   const handleMemberSettings = async (index: IndexType) => {
     setMemberSettingsIndex(index);
@@ -117,31 +102,27 @@ export default function Sidebar() {
 
   // Handle copy link functionality
   const handleCopyLink = async (index: IndexType) => {
-    if (!index.linkPermissions?.code) {
-      return;
-    }
-
-    // Determine which link to copy based on permissions
+    // Determine which link to copy based on join policy
     let linkUrl = '';
-    const hasPublicAccess = index.linkPermissions.permissions.includes('can-discover');
-    const anyoneCanJoin = index.linkPermissions.permissions.includes('can-write-intents');
+    const anyoneCanJoin = index.permissions?.joinPolicy === 'anyone';
 
     if (anyoneCanJoin) {
-      // If anyone can join, copy the matchlist link
-      linkUrl = `${window.location.origin}/matchlist/${index.linkPermissions.code}`;
-    } else if (hasPublicAccess) {
-      // If only public access, copy the vibecheck link
-      linkUrl = `${window.location.origin}/vibecheck/${index.linkPermissions.code}`;
+      // If anyone can join, copy the index link
+      linkUrl = `${window.location.origin}/index/${index.id}`;
+    } else if (index.permissions?.invitationLink?.code) {
+      // If private, copy the invitation link
+      linkUrl = `${window.location.origin}/l/${index.permissions.invitationLink.code}`;
+    } else {
+      // Fallback to index link if no specific permissions are set
+      linkUrl = `${window.location.origin}/index/${index.id}`;
     }
 
-    if (linkUrl) {
-      try {
-        await navigator.clipboard.writeText(linkUrl);
-        setCopiedLink(index.id);
-        setTimeout(() => setCopiedLink(null), 2000);
-      } catch (error) {
-        console.error('Failed to copy link:', error);
-      }
+    try {
+      await navigator.clipboard.writeText(linkUrl);
+      setCopiedLink(index.id);
+      setTimeout(() => setCopiedLink(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy link:', error);
     }
   };
 
@@ -183,21 +164,19 @@ export default function Sidebar() {
               // Create context menu items for non-"All Indexes" items
               const contextMenuItems = [];
 
-              // 1. Copy Link (if sharing is enabled)
-              if (index.fullIndex?.linkPermissions?.code && index.fullIndex.linkPermissions.permissions.length > 0) {
-                const isCopied = copiedLink === index.id;
-                contextMenuItems.push({
-                  id: 'copy-link',
-                  label: isCopied ? 'Copied!' : 'Copy Link',
-                  icon: isCopied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />,
-                  onClick: () => index.fullIndex && handleCopyLink(index.fullIndex),
-                  disabled: isCopied
-                });
-              }
+              // 1. Copy Link (always show for now - will determine link type in handler)
+              const isCopied = copiedLink === index.id;
+              contextMenuItems.push({
+                id: 'copy-link',
+                label: isCopied ? 'Copied!' : 'Copy Link',
+                icon: isCopied ? <Check className="w-4 h-4" /> : <Link2 className="w-4 h-4" />,
+                onClick: () => index.fullIndex && handleCopyLink(index.fullIndex),
+                disabled: isCopied
+              });
 
               // 2. Configure Index (if user is owner)
-              const memberSettings = memberSettingsCache[index.id];
-              if (memberSettings?.isOwner) {
+              const isOwner = currentUser && index.fullIndex && currentUser.id === index.fullIndex.user.id;
+              if (isOwner) {
                 contextMenuItems.push({
                   id: 'index-settings',
                   label: 'Configure Index',
@@ -210,7 +189,7 @@ export default function Sidebar() {
               contextMenuItems.push({
                 id: 'member-settings',
                 label: 'Member Settings',
-                icon: <User className="w-4 h-4" />,
+                icon: <UserIcon className="w-4 h-4" />,
                 onClick: () => index.fullIndex && handleMemberSettings(index.fullIndex)
               });
 
