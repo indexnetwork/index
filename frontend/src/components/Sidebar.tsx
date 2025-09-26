@@ -8,7 +8,7 @@ import { useAuthenticatedAPI } from '@/lib/api';
 import MemberSettingsModal from '@/components/modals/MemberSettingsModal';
 import OwnerSettingsModal from '@/components/modals/OwnerSettingsModal';
 import ContextMenu from '@/components/ContextMenu';
-import { User as UserIcon, Crown, MoreVertical, Link2, Check } from 'lucide-react';
+import { User as UserIcon, Crown, Link2, Check } from 'lucide-react';
 
 interface IndexItem {
   id: string;
@@ -26,7 +26,6 @@ export default function Sidebar() {
   const [ownerSettingsIndex, setOwnerSettingsIndex] = useState<IndexType | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
-  const [openContextMenuId, setOpenContextMenuId] = useState<string | null>(null);
   const { setSelectedIndexIds } = useIndexFilter();
   const api = useAuthenticatedAPI();
   
@@ -189,7 +188,7 @@ export default function Sidebar() {
               // 3. Member Settings (always available)
               contextMenuItems.push({
                 id: 'member-settings',
-                label: 'Member Settings',
+                label: 'Manage what you\'re sharing',
                 icon: <UserIcon className="w-4 h-4" />,
                 onClick: () => index.fullIndex && handleMemberSettings(index.fullIndex)
               });
@@ -213,18 +212,7 @@ export default function Sidebar() {
                   <ContextMenu 
                     items={contextMenuItems} 
                     trigger="click"
-                    onOpenChange={(isOpen) => setOpenContextMenuId(isOpen ? index.id : null)}
-                  >
-                    <button
-                      className={`p-1 cursor-pointer rounded opacity-0 group-hover:opacity-100 transition-opacity ${
-                        openContextMenuId === index.id 
-                          ? 'bg-gray-200 opacity-100' 
-                          : 'hover:bg-gray-200'
-                      }`}
-                    >
-                      <MoreVertical className="w-4 h-4 text-black" />
-                    </button>
-                  </ContextMenu>
+                  />
                 </div>
               );
             })

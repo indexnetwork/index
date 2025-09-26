@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { MoreVertical } from 'lucide-react';
 
 interface ContextMenuItem {
   id: string;
@@ -13,17 +14,17 @@ interface ContextMenuItem {
 
 interface ContextMenuProps {
   items: ContextMenuItem[];
-  children: React.ReactNode;
   className?: string;
   trigger?: 'click' | 'contextmenu';
   onOpenChange?: (isOpen: boolean) => void;
+  buttonClassName?: string;
 }
 
-export default function ContextMenu({ items, children, className = '', trigger = 'contextmenu', onOpenChange }: ContextMenuProps) {
+export default function ContextMenu({ items, className = '', trigger = 'contextmenu', onOpenChange, buttonClassName = '' }: ContextMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const contextMenuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Notify parent when open state changes
   useEffect(() => {
@@ -72,7 +73,9 @@ export default function ContextMenu({ items, children, className = '', trigger =
     setIsOpen(!isOpen);
   };
 
-  const handleItemClick = (item: ContextMenuItem) => {
+  const handleItemClick = (event: React.MouseEvent, item: ContextMenuItem) => {
+    event.preventDefault();
+    event.stopPropagation();
     if (!item.disabled) {
       item.onClick();
       setIsOpen(false);
@@ -85,13 +88,17 @@ export default function ContextMenu({ items, children, className = '', trigger =
 
   return (
     <>
-      <div
+      <button
         ref={triggerRef}
         {...triggerProps}
-        className={className}
+        className={`p-1 cursor-pointer rounded opacity-0 group-hover:opacity-100 transition-opacity ${
+          isOpen
+            ? 'bg-gray-200 opacity-100' 
+            : 'hover:bg-gray-200'
+        } ${buttonClassName}`}
       >
-        {children}
-      </div>
+        <MoreVertical className="w-4 h-4 text-black" />
+      </button>
       
       {isOpen && typeof window !== 'undefined' && createPortal(
         <div
@@ -105,7 +112,7 @@ export default function ContextMenu({ items, children, className = '', trigger =
           {items.map((item) => (
             <button
               key={item.id}
-              onClick={() => handleItemClick(item)}
+              onClick={(event) => handleItemClick(event, item)}
               disabled={item.disabled}
               className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50 transition-colors ${
                 item.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
