@@ -256,7 +256,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
-        <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6 transition-all sm:duration-300 sm:max-w-[1020px]">
+        <Dialog.Content className="fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[85vh] sm:min-h-[500px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6 transition-all sm:duration-300 sm:max-w-[1020px]">
           <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
             <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">
               {index.title} - Member Settings
@@ -338,7 +338,7 @@ export default function MemberSettingsModal({ open, onOpenChange, index }: Membe
                     
                     {/* Update/Discard buttons */}
                     <div className="flex gap-2 mt-3 justify-end">
-                      {hasUnsavedChanges && (
+                      {hasUnsavedChanges && !isSavingPrompt && (
                         <Button
                           variant="outline"
                           onClick={handleCancel}

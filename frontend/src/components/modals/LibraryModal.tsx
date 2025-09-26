@@ -645,30 +645,12 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 animate-in fade-in duration-200" />
         <Dialog.Content className={`library-modal fixed inset-0 w-screen h-[100dvh] p-4 rounded-none bg-[#FAFAFA] border border-[#E0E0E0] text-gray-900 shadow-lg focus:outline-none overflow-hidden overflow-x-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:w-[96vw] sm:h-auto sm:max-h-[85vh] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-lg sm:p-6 transition-all sm:duration-300 ${showIntentsPanel ? 'sm:max-w-[1020px]' : 'sm:max-w-[680px]'}`}>
-          <div className="flex items-center justify-between mb-4 sm:mb-6 sticky top-0 bg-[#FAFAFA] z-10">
-            <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
+          <div className="flex items-center justify-between mb-2 sm:mb-3 sticky top-0 bg-[#FAFAFA] z-10">
+            <div>
+              <Dialog.Title className="text-xl font-bold text-[#333] font-ibm-plex-mono">Library</Dialog.Title>
+              <p className="text-sm text-[#666] font-ibm-plex-mono mt-1">Add files, links, and integrations to generate intents.</p>
+            </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setShowIntentsPanel(prev => !prev)}
-                aria-pressed={showIntentsPanel}
-                className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-ibm-plex-mono border border-[#E0E0E0] rounded-lg bg-white text-[#333] hover:bg-[#F0F0F0] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
-              >
-                <span>{showIntentsPanel ? 'Hide intents' : 'Show intents'}</span>
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={`transition-transform duration-300 ${showIntentsPanel ? '' : 'rotate-180'}`}
-                >
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-              </button>
               <button
                 onClick={() => onOpenChange(false)}
                 className="p-1 hover:bg-[#F0F0F0] rounded-lg cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(0,109,75,0.35)] focus-visible:ring-offset-0"
@@ -682,7 +664,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </div>
           </div>
 
-          <div className="lg:hidden mb-3 flex items-center gap-2 rounded-lg bg-[#F2F2F2] p-1">
+          <div className="lg:hidden mb-3 mt-4 flex items-center gap-2 rounded-lg bg-[#F2F2F2] p-1">
             <button
               type="button"
               className={`relative flex-1 px-3 py-1.5 text-xs font-ibm-plex-mono rounded-md transition-colors ${activeMobileSection === 'library' ? 'bg-white text-[#222] shadow-sm' : 'text-[#555]'}`}
@@ -703,7 +685,7 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             </button>
           </div>
 
-          <div className="relative flex flex-col lg:flex-row gap-3.5 lg:gap-4 flex-1 overflow-hidden">
+          <div className="relative flex flex-col lg:flex-row gap-3.5 lg:gap-4 flex-1 overflow-hidden mt-4 lg:mt-6">
             <div className={`${activeMobileSection === 'library' ? 'block' : 'hidden'} lg:block lg:w-[620px] lg:flex-shrink-0 min-w-0`}
             >
               <div className="space-y-2 sm:space-y-3 lg:space-y-4">
@@ -712,9 +694,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
             <section ref={connectSourcesRef} className="pr-2">
               <div className="flex items-center justify-between mb-1.5">
                 <h3 className="text-sm font-bold font-ibm-plex-mono text-[#333]">Connect Sources</h3>
-                <span className="text-xs text-gray-500 font-ibm-plex-mono">
-                  {integrations.filter(i => i.connected).length} of {integrations.length} connected
-                </span>
               </div>
 
               <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-3">
@@ -828,9 +807,6 @@ export default function LibraryModal({ open, onOpenChange, onChanged }: Props) {
                       </Button>
                     </div>
                   )}
-                  <span className="text-xs text-gray-500 font-ibm-plex-mono">
-                    {files.length + links.length} items total
-                  </span>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
