@@ -47,43 +47,85 @@ function stableId(label: string): string {
   return uuidv5(label, DEMO_NAMESPACE);
 }
 
+type DemoIndexMemberConfig = {
+  userKey: string;
+  permissions?: string[];
+  prompt?: string;
+  autoAssign?: boolean;
+};
+
 type DemoIndexDefinition = {
   key: string;
   title: string;
   prompt?: string;
+  joinPolicy: 'anyone' | 'invite_only';
+  invitationCode?: string;
   linkPermissions?: {
     permissions: string[];
     code: string;
   };
+  members: DemoIndexMemberConfig[];
 };
 
-const DEMO_INDEXES: DemoIndexDefinition[] = [
-  {
-    key: 'demo-network',
-    title: 'Demo Discovery Network',
-    prompt: 'Share what you are exploring so agents can surface relevant peers.',
-    linkPermissions: {
-      permissions: ['can-discover', 'can-request'],
-      code: 'demo-network',
-    },
-  },
-];
+type SharedSourceInitializer =
+  | {
+      type: 'file';
+      key: string;
+      build: (user: DemoUserDefinition) => DemoFileDefinition;
+    }
+  | {
+      type: 'link';
+      key: string;
+      build: (user: DemoUserDefinition) => DemoLinkDefinition;
+    };
 
-const COMMON_INTENTS: DemoIntentDefinition[] = [
+type CommonIntentDefinition = DemoIntentDefinition & {
+  defaultSource?: SharedSourceInitializer;
+};
+
+const COMMON_INTENTS: CommonIntentDefinition[] = [
   {
     key: 'weekly-update',
     payload: 'Posting a weekly summary of high-signal introductions and product learnings with the demo network.',
     summary: 'Sharing weekly network update for collaborators.',
+    defaultSource: {
+      type: 'link',
+      key: 'community-weekly',
+      build: (user) => ({
+        key: 'community-weekly',
+        url: `https://example.com/${user.key}/weekly-update`,
+        title: `${user.name.split(' ')[0]} Weekly Intent Digest`,
+      }),
+    },
   },
   {
     key: 'looking-for-intros',
     payload: 'Open to intros to AI teams piloting knowledge routing so we can compare pipelines and share ops playbooks.',
     summary: 'Requesting intros to AI teams testing knowledge routing.',
+    defaultSource: {
+      type: 'link',
+      key: 'intros-tracker',
+      build: (user) => ({
+        key: 'intros-tracker',
+        url: `https://example.com/${user.key}/intro-requests`,
+        title: `${user.name.split(' ')[0]} Intro Tracker`,
+      }),
+    },
   },
   {
     key: 'offering-office-hours',
     payload: 'Hosting short office hours to review onboarding flows for founders scoping their first agent loops.',
     summary: 'Offering office hours on agent onboarding loops.',
+    defaultSource: {
+      type: 'file',
+      key: 'office-hours-outline',
+      build: (user) => ({
+        key: 'office-hours-outline',
+        name: `${user.name.split(' ')[0]} Office Hours Outline.md`,
+        size: 35840,
+        type: 'text/markdown',
+      }),
+    },
   },
 ];
 
@@ -208,6 +250,139 @@ const PRIVY_TEST_ACCOUNTS: Array<{
   },
 ];
 
+const QA_USER_KEYS = PRIVY_TEST_ACCOUNTS.map((account) => account.key);
+
+const DEMO_INDEXES: DemoIndexDefinition[] = [
+  {
+    key: 'demo-network',
+    title: 'Demo Discovery Network',
+    prompt: 'Share what you are exploring so agents can surface relevant peers.',
+    joinPolicy: 'anyone',
+    linkPermissions: {
+      permissions: ['can-discover', 'can-request'],
+      code: 'demo-network',
+    },
+    members: [
+      {
+        userKey: 'avery',
+        permissions: ['owner'],
+        prompt: 'Post weekly demos, pilot wins, and onboarding learnings for the full network.',
+        autoAssign: true,
+      },
+      {
+        userKey: 'jordan',
+        permissions: ['can-read-intents', 'can-write-intents', 'can-discover'],
+        prompt: 'Share portfolio highlights, diligence notes, and requests for operator intros.',
+        autoAssign: true,
+      },
+      {
+        userKey: 'sasha',
+        permissions: ['can-read-intents', 'can-write-intents', 'can-discover'],
+        prompt: 'Log build updates, integration learnings, and blockers needing network help.',
+        autoAssign: true,
+      },
+      ...QA_USER_KEYS.map((userKey) => ({
+        userKey,
+        permissions: ['can-read-intents', 'can-write-intents'],
+        prompt: 'Record QA findings, login flows, and hand-off notes for demo operators.',
+        autoAssign: false,
+      })),
+    ],
+  },
+  {
+    key: 'operators-circle',
+    title: 'Operators Circle',
+    prompt: 'Deep dive on intent routing experiments, data quality, and agent trust signals.',
+    joinPolicy: 'invite_only',
+    invitationCode: 'operators-circle',
+    members: [
+      {
+        userKey: 'sasha',
+        permissions: ['owner'],
+        prompt: 'Capture engineering insights from pilot rollouts and MCP integrations.',
+        autoAssign: true,
+      },
+      {
+        userKey: 'avery',
+        permissions: ['can-read-intents', 'can-write-intents', 'can-discover'],
+        prompt: 'Summarize founder asks, partner meetings, and design partner wins.',
+        autoAssign: true,
+      },
+      {
+        userKey: 'jordan',
+        permissions: ['can-read-intents', 'can-write-intents', 'can-discover'],
+        prompt: 'Note capital allocation decisions and signal-strength observations.',
+        autoAssign: true,
+      },
+    ],
+  },
+  {
+    key: 'avery-pilot-hub',
+    title: 'Pilot Founders Hub',
+    prompt: 'Keep track of onboarding scripts, pilot readiness, and customer discovery wins.',
+    joinPolicy: 'invite_only',
+    invitationCode: 'avery-pilot-hub',
+    members: [
+      {
+        userKey: 'avery',
+        permissions: ['owner'],
+        prompt: 'Auto-index capital asks, partner updates, and weekly pilots with operators.',
+        autoAssign: true,
+      },
+      {
+        userKey: 'sasha',
+        permissions: ['can-read-intents', 'can-write-intents'],
+        prompt: 'Log technical feedback from pilot builds and integration backlogs.',
+        autoAssign: true,
+      },
+    ],
+  },
+  {
+    key: 'jordan-syndicate',
+    title: 'Signal Syndicate',
+    prompt: 'Collect diligence notes, signal boosts, and intros for angel syndicate members.',
+    joinPolicy: 'invite_only',
+    invitationCode: 'jordan-syndicate',
+    members: [
+      {
+        userKey: 'jordan',
+        permissions: ['owner'],
+        prompt: 'Auto-index investment theses, diligence calls, and follow-up asks.',
+        autoAssign: true,
+      },
+      {
+        userKey: 'avery',
+        permissions: ['can-read-intents', 'can-write-intents'],
+        prompt: 'Share founder pipeline updates and partnership needs.',
+        autoAssign: true,
+      },
+    ],
+  },
+  {
+    key: 'sasha-build-lab',
+    title: 'Build Lab Sessions',
+    prompt: 'Share integration checklists, release learnings, and office hour recaps.',
+    joinPolicy: 'invite_only',
+    invitationCode: 'sasha-build-lab',
+    members: [
+      {
+        userKey: 'sasha',
+        permissions: ['owner'],
+        prompt: 'Auto-index product experiments, UX notes, and technical blockers.',
+        autoAssign: true,
+      },
+      {
+        userKey: 'avery',
+        permissions: ['can-read-intents', 'can-write-intents'],
+        prompt: 'Surface operator feedback requests needing engineering attention.',
+        autoAssign: true,
+      },
+    ],
+  },
+];
+
+const INDEX_DEFINITION_MAP = new Map(DEMO_INDEXES.map((index) => [index.key, index] as const));
+
 const DEMO_USERS: DemoUserDefinition[] = [
   {
     key: 'avery',
@@ -215,7 +390,7 @@ const DEMO_USERS: DemoUserDefinition[] = [
     name: 'Avery Demo',
     intro: 'Founder building collaborative AI tooling and onboarding early operators.',
     avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=AveryDemo',
-    indexes: ['demo-network'],
+    indexes: ['demo-network', 'operators-circle', 'avery-pilot-hub', 'jordan-syndicate', 'sasha-build-lab'],
     sharedIntentKeys: ['weekly-update', 'offering-office-hours'],
     files: [
       {
@@ -253,7 +428,7 @@ const DEMO_USERS: DemoUserDefinition[] = [
     name: 'Jordan Chen',
     intro: 'Angel investor backing infra teams solving high-signal discovery.',
     avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=JordanChen',
-    indexes: ['demo-network'],
+    indexes: ['demo-network', 'operators-circle', 'jordan-syndicate'],
     sharedIntentKeys: ['weekly-update', 'looking-for-intros'],
     files: [
       {
@@ -291,7 +466,7 @@ const DEMO_USERS: DemoUserDefinition[] = [
     name: 'Sasha Patel',
     intro: 'Product engineer turning research notebooks into production-ready agent copilots.',
     avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=SashaPatel',
-    indexes: ['demo-network'],
+    indexes: ['demo-network', 'operators-circle', 'avery-pilot-hub', 'sasha-build-lab'],
     sharedIntentKeys: ['weekly-update', 'offering-office-hours', 'looking-for-intros'],
     files: [
       {
@@ -513,9 +688,15 @@ async function ensurePrivyIdentity(email: string, name: string): Promise<{ privy
 async function upsertIndex(def: typeof DEMO_INDEXES[number]): Promise<string> {
   const indexId = stableId(`index:${def.key}`);
   const capabilities = await getSchemaCapabilities();
+  const invitationCode = def.invitationCode ?? `${def.key}-invite`;
+  const permissionsPayload = {
+    joinPolicy: def.joinPolicy,
+    invitationLink: def.joinPolicy === 'invite_only' ? { code: invitationCode } : null,
+    allowGuestVibeCheck: false,
+  };
 
-  const insertColumns = ['"id"', '"title"'];
-  const insertValues = [sql`${indexId}`, sql`${def.title}`];
+  const insertColumns = ['"id"', '"title"', '"permissions"'];
+  const insertValues = [sql`${indexId}`, sql`${def.title}`, sql`${JSON.stringify(permissionsPayload)}::json`];
 
   if (capabilities.indexHasPrompt) {
     insertColumns.push('"prompt"');
@@ -540,7 +721,11 @@ async function upsertIndex(def: typeof DEMO_INDEXES[number]): Promise<string> {
     ON CONFLICT ("id") DO NOTHING
   `);
 
-  const updateAssignments = [sql`"title" = ${def.title}`, sql.raw('"updated_at" = NOW()')];
+  const updateAssignments = [
+    sql`"title" = ${def.title}`,
+    sql`"permissions" = ${JSON.stringify(permissionsPayload)}::json`,
+    sql.raw('"updated_at" = NOW()'),
+  ];
 
   if (capabilities.indexHasPrompt) {
     updateAssignments.push(
@@ -678,9 +863,27 @@ async function upsertUser(def: DemoUserDefinition, privyId: string): Promise<{ i
   return existing[0];
 }
 
-async function ensureIndexMembership(indexId: string, userId: string): Promise<void> {
+type MembershipOptions = {
+  permissions?: string[];
+  prompt?: string | null;
+  autoAssign?: boolean;
+};
+
+function buildTextArray(values: string[]) {
+  if (values.length === 0) {
+    return sql`ARRAY[]::text[]`;
+  }
+
+  const joined = sql.join(values.map((value) => sql`${value}`), sql`, `);
+  return sql`ARRAY[${joined}]::text[]`;
+}
+
+async function ensureIndexMembership(indexId: string, userId: string, options?: MembershipOptions): Promise<void> {
   const capabilities = await getSchemaCapabilities();
-  const permissionsArray = sql`ARRAY['can-read-intents','can-write-intents','can-discover']::text[]`;
+  const permissionsList = options?.permissions ?? ['can-read-intents', 'can-write-intents', 'can-discover'];
+  const permissionsArray = buildTextArray(permissionsList);
+  const promptValue = options?.prompt ?? null;
+  const autoAssignValue = options?.autoAssign ?? true;
 
   const existing = await db.execute(sql`
     SELECT 1
@@ -697,12 +900,12 @@ async function ensureIndexMembership(indexId: string, userId: string): Promise<v
 
     if (capabilities.indexMembersHasPrompt) {
       insertColumns.push('"prompt"');
-      insertValues.push(sql.raw('NULL'));
+      insertValues.push(promptValue !== null ? sql`${promptValue}` : sql.raw('NULL'));
     }
 
     if (capabilities.indexMembersHasAutoAssign) {
       insertColumns.push('"auto_assign"');
-      insertValues.push(sql`TRUE`);
+      insertValues.push(autoAssignValue ? sql`TRUE` : sql`FALSE`);
     }
 
     await db.execute(sql`
@@ -715,11 +918,11 @@ async function ensureIndexMembership(indexId: string, userId: string): Promise<v
   const updateAssignments = [sql`"permissions" = ${permissionsArray}`, sql.raw('"updated_at" = NOW()')];
 
   if (capabilities.indexMembersHasPrompt) {
-    updateAssignments.push(sql`"prompt" = NULL`);
+    updateAssignments.push(promptValue !== null ? sql`"prompt" = ${promptValue}` : sql`"prompt" = NULL`);
   }
 
   if (capabilities.indexMembersHasAutoAssign) {
-    updateAssignments.push(sql`"auto_assign" = TRUE`);
+    updateAssignments.push(autoAssignValue ? sql`"auto_assign" = TRUE` : sql`"auto_assign" = FALSE`);
   }
 
   await db.execute(sql`
@@ -883,28 +1086,71 @@ async function runSeed(): Promise<SeedSummary> {
       loginHints: userDef.loginHints,
     });
 
-    const indexIds = userDef.indexes
-      .map((key) => indexMap.get(key))
-      .filter((value): value is string => Boolean(value));
+    const indexIds: string[] = [];
 
-    for (const indexId of indexIds) {
-      await ensureIndexMembership(indexId, user.id);
+    for (const indexKey of userDef.indexes) {
+      const indexId = indexMap.get(indexKey);
+      if (!indexId) continue;
+      indexIds.push(indexId);
+
+      const indexDef = INDEX_DEFINITION_MAP.get(indexKey);
+      const memberConfig = indexDef?.members.find((member) => member.userKey === userDef.key);
+      const membershipOptions: MembershipOptions = {};
+
+      if (memberConfig?.permissions) {
+        membershipOptions.permissions = memberConfig.permissions;
+      }
+      if (memberConfig?.prompt !== undefined) {
+        membershipOptions.prompt = memberConfig.prompt ?? null;
+      }
+      if (memberConfig?.autoAssign !== undefined) {
+        membershipOptions.autoAssign = memberConfig.autoAssign;
+      }
+
+      await ensureIndexMembership(indexId, user.id, membershipOptions);
     }
 
-    if (userDef.files) {
-      for (const fileDef of userDef.files) {
-        const fileId = await upsertFile(user.id, userDef.key, fileDef);
-        fileIdMap.set(`${userDef.key}:${fileDef.key}`, fileId);
-        fileCount += 1;
+    const fileDefsMap = new Map<string, DemoFileDefinition>();
+    const linkDefsMap = new Map<string, DemoLinkDefinition>();
+
+    for (const fileDef of userDef.files ?? []) {
+      fileDefsMap.set(fileDef.key, fileDef);
+    }
+
+    for (const linkDef of userDef.links ?? []) {
+      linkDefsMap.set(linkDef.key, linkDef);
+    }
+
+    if (userDef.sharedIntentKeys) {
+      for (const sharedKey of userDef.sharedIntentKeys) {
+        const sharedIntent = COMMON_INTENT_MAP.get(sharedKey);
+        if (!sharedIntent?.defaultSource) continue;
+
+        if (sharedIntent.defaultSource.type === 'file') {
+          if (!fileDefsMap.has(sharedIntent.defaultSource.key)) {
+            fileDefsMap.set(sharedIntent.defaultSource.key, sharedIntent.defaultSource.build(userDef));
+          }
+        } else if (sharedIntent.defaultSource.type === 'link') {
+          if (!linkDefsMap.has(sharedIntent.defaultSource.key)) {
+            linkDefsMap.set(sharedIntent.defaultSource.key, sharedIntent.defaultSource.build(userDef));
+          }
+        }
       }
     }
 
-    if (userDef.links) {
-      for (const linkDef of userDef.links) {
-        const linkId = await upsertLink(user.id, userDef.key, linkDef);
-        linkIdMap.set(`${userDef.key}:${linkDef.key}`, linkId);
-        linkCount += 1;
-      }
+    const fileDefs = Array.from(fileDefsMap.values());
+    const linkDefs = Array.from(linkDefsMap.values());
+
+    for (const fileDef of fileDefs) {
+      const fileId = await upsertFile(user.id, userDef.key, fileDef);
+      fileIdMap.set(`${userDef.key}:${fileDef.key}`, fileId);
+      fileCount += 1;
+    }
+
+    for (const linkDef of linkDefs) {
+      const linkId = await upsertLink(user.id, userDef.key, linkDef);
+      linkIdMap.set(`${userDef.key}:${linkDef.key}`, linkId);
+      linkCount += 1;
     }
 
     const combinedIntentDefs: DemoIntentDefinition[] = [];
@@ -921,7 +1167,16 @@ async function runSeed(): Promise<SeedSummary> {
         if (seenIntentKeys.has(sharedKey)) continue;
         const sharedIntent = COMMON_INTENT_MAP.get(sharedKey);
         if (!sharedIntent) continue;
-        combinedIntentDefs.push({ ...sharedIntent });
+        const sharedIntentCopy: DemoIntentDefinition = {
+          key: sharedIntent.key,
+          payload: sharedIntent.payload,
+          summary: sharedIntent.summary,
+          source: sharedIntent.defaultSource
+            ? { type: sharedIntent.defaultSource.type, key: sharedIntent.defaultSource.key }
+            : sharedIntent.source,
+        };
+
+        combinedIntentDefs.push(sharedIntentCopy);
         seenIntentKeys.add(sharedKey);
       }
     }
