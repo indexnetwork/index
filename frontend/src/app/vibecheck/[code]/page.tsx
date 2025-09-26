@@ -363,7 +363,7 @@ export default function SharePage({ params }: SharePageProps) {
   }
 
   // Check permissions
-  const canDiscover = state.index.linkPermissions?.permissions.includes('can-discover') || false;
+  const canDiscover = true;
 
   return (
     <ClientLayout>

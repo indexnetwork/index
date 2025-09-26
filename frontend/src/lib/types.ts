@@ -193,10 +193,7 @@ export interface CreateIndexRequest {
 export interface UpdateIndexRequest {
   title?: string;
   prompt?: string | null;
-  linkPermissions?: {
-    permissions: string[];
-    code: string;
-  } | null;
+  joinPolicy?: 'anyone' | 'invite_only';
 }
 
 export interface CreateIntentRequest {

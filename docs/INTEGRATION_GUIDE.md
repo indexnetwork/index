@@ -113,12 +113,6 @@ GET /indexes/share/{code}
       "id": "user-456",
       "name": "Prof. Alex Chen",
       "avatar": "https://example.com/avatars/alex.jpg"
-    },
-    
-    "linkPermissions": {
-      "permissions": [
-        "can-discover"
-      ]
     }
   }
 }
