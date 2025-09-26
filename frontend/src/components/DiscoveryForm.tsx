@@ -34,7 +34,7 @@ export default function DiscoveryForm({ onRequestsClick, requestsCount }: Discov
   // Update textarea when focus state or content changes
   useEffect(() => {
     autoResize();
-  }, [inputFocused, inputValue]);
+  }, [inputFocused, inputValue, autoResize]);
 
   // Ensure textarea stays focused when switching to open state
   useEffect(() => {

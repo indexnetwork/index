@@ -14,13 +14,12 @@ interface ContextMenuItem {
 
 interface ContextMenuProps {
   items: ContextMenuItem[];
-  className?: string;
   trigger?: 'click' | 'contextmenu';
   onOpenChange?: (isOpen: boolean) => void;
   buttonClassName?: string;
 }
 
-export default function ContextMenu({ items, className = '', trigger = 'contextmenu', onOpenChange, buttonClassName = '' }: ContextMenuProps) {
+export default function ContextMenu({ items, trigger = 'contextmenu', onOpenChange, buttonClassName = '' }: ContextMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const contextMenuRef = useRef<HTMLDivElement>(null);
