@@ -3,14 +3,11 @@ import 'dotenv/config';
 import { Command } from 'commander';
 import { v5 as uuidv5 } from 'uuid';
 import { eq, and, sql } from 'drizzle-orm';
-import type { InferInsertModel } from 'drizzle-orm';
 
 import db, { closeDb } from '../lib/db';
 import { privyClient } from '../lib/privy';
 import {
   agents,
-  indexMembers,
-  indexes,
   intentIndexes,
   intents,
   intentStakes,
@@ -48,8 +45,8 @@ function stableId(label: string): string {
 type DemoIndexDefinition = {
   key: string;
   title: string;
-  prompt: string;
-  linkPermissions: {
+  prompt?: string;
+  linkPermissions?: {
     permissions: string[];
     code: string;
   };
@@ -325,6 +322,52 @@ const DEMO_CONNECTION_EVENTS: Array<{
   },
 ];
 
+type SchemaCapabilities = {
+  indexHasPrompt: boolean;
+  indexHasLinkPermissions: boolean;
+  indexMembersHasPrompt: boolean;
+  indexMembersHasAutoAssign: boolean;
+};
+
+let schemaCapabilitiesPromise: Promise<SchemaCapabilities> | null = null;
+
+function extractRows<T>(result: { rows: T[] } | T[]): T[] {
+  return Array.isArray(result) ? result : result.rows;
+}
+
+async function columnExists(tableName: string, columnName: string): Promise<boolean> {
+  const result = await db.execute<{ exists: boolean }>(sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = ${tableName}
+        AND column_name = ${columnName}
+    ) AS exists
+  `);
+
+  const rows = extractRows(result);
+  return Boolean(rows[0]?.exists);
+}
+
+async function getSchemaCapabilities(): Promise<SchemaCapabilities> {
+  if (!schemaCapabilitiesPromise) {
+    schemaCapabilitiesPromise = Promise.all([
+      columnExists('indexes', 'prompt'),
+      columnExists('indexes', 'link_permissions'),
+      columnExists('index_members', 'prompt'),
+      columnExists('index_members', 'auto_assign'),
+    ]).then(([indexHasPrompt, indexHasLinkPermissions, indexMembersHasPrompt, indexMembersHasAutoAssign]) => ({
+      indexHasPrompt,
+      indexHasLinkPermissions,
+      indexMembersHasPrompt,
+      indexMembersHasAutoAssign,
+    }));
+  }
+
+  return schemaCapabilitiesPromise;
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return Boolean(
     error &&
@@ -366,34 +409,55 @@ async function ensurePrivyIdentity(email: string, name: string): Promise<{ privy
 
 async function upsertIndex(def: typeof DEMO_INDEXES[number]): Promise<string> {
   const indexId = stableId(`index:${def.key}`);
-  const now = new Date();
+  const capabilities = await getSchemaCapabilities();
 
-  try {
-    const insertValues: InferInsertModel<typeof indexes> = {
-      id: indexId,
-      title: def.title,
-      prompt: def.prompt,
-      linkPermissions: def.linkPermissions,
-    };
+  const insertColumns = ['"id"', '"title"'];
+  const insertValues = [sql`${indexId}`, sql`${def.title}`];
 
-    const inserted = await db
-      .insert(indexes)
-      .values(insertValues)
-      .returning({ id: indexes.id });
-    if (inserted.length > 0) return inserted[0].id;
-  } catch (error) {
-    if (!isUniqueViolation(error)) throw error;
+  if (capabilities.indexHasPrompt) {
+    insertColumns.push('"prompt"');
+    insertValues.push(typeof def.prompt === 'string' ? sql`${def.prompt}` : sql.raw('NULL'));
   }
 
-  await db
-    .update(indexes)
-    .set({
-      title: def.title,
-      prompt: def.prompt,
-      linkPermissions: def.linkPermissions,
-      updatedAt: now,
-    })
-    .where(eq(indexes.id, indexId));
+  if (capabilities.indexHasLinkPermissions) {
+    insertColumns.push('"link_permissions"');
+    insertValues.push(
+      def.linkPermissions
+        ? sql`${JSON.stringify(def.linkPermissions)}::json`
+        : sql.raw('NULL')
+    );
+  }
+
+  const insertColumnsSql = sql.raw(insertColumns.join(', '));
+  const insertValuesSql = sql.join(insertValues, sql`, `);
+
+  await db.execute(sql`
+    INSERT INTO "indexes" (${insertColumnsSql})
+    VALUES (${insertValuesSql})
+    ON CONFLICT ("id") DO NOTHING
+  `);
+
+  const updateAssignments = [sql`"title" = ${def.title}`, sql.raw('"updated_at" = NOW()')];
+
+  if (capabilities.indexHasPrompt) {
+    updateAssignments.push(
+      typeof def.prompt === 'string' ? sql`"prompt" = ${def.prompt}` : sql`"prompt" = NULL`
+    );
+  }
+
+  if (capabilities.indexHasLinkPermissions) {
+    updateAssignments.push(
+      def.linkPermissions
+        ? sql`"link_permissions" = ${JSON.stringify(def.linkPermissions)}::json`
+        : sql`"link_permissions" = NULL`
+    );
+  }
+
+  await db.execute(sql`
+    UPDATE "indexes"
+    SET ${sql.join(updateAssignments, sql`, `)}
+    WHERE "id" = ${indexId}
+  `);
 
   return indexId;
 }
@@ -482,22 +546,54 @@ async function upsertUser(def: DemoUserDefinition, privyId: string): Promise<{ i
 }
 
 async function ensureIndexMembership(indexId: string, userId: string): Promise<void> {
-  const now = new Date();
-  try {
-    await db.insert(indexMembers).values({
-      indexId,
-      userId,
-      permissions: ['can-read-intents', 'can-write-intents', 'can-discover'],
-      prompt: null,
-      autoAssign: true,
-    });
-  } catch (error) {
-    if (!isUniqueViolation(error)) throw error;
-    await db
-      .update(indexMembers)
-      .set({ permissions: ['can-read-intents', 'can-write-intents', 'can-discover'], updatedAt: now })
-      .where(and(eq(indexMembers.indexId, indexId), eq(indexMembers.userId, userId)));
+  const capabilities = await getSchemaCapabilities();
+  const permissionsArray = sql`ARRAY['can-read-intents','can-write-intents','can-discover']::text[]`;
+
+  const existing = await db.execute(sql`
+    SELECT 1
+    FROM "index_members"
+    WHERE "index_id" = ${indexId} AND "user_id" = ${userId}
+    LIMIT 1
+  `);
+
+  const rows = extractRows(existing);
+
+  if (rows.length === 0) {
+    const insertColumns = ['"index_id"', '"user_id"', '"permissions"'];
+    const insertValues = [sql`${indexId}`, sql`${userId}`, permissionsArray];
+
+    if (capabilities.indexMembersHasPrompt) {
+      insertColumns.push('"prompt"');
+      insertValues.push(sql.raw('NULL'));
+    }
+
+    if (capabilities.indexMembersHasAutoAssign) {
+      insertColumns.push('"auto_assign"');
+      insertValues.push(sql`TRUE`);
+    }
+
+    await db.execute(sql`
+      INSERT INTO "index_members" (${sql.raw(insertColumns.join(', '))})
+      VALUES (${sql.join(insertValues, sql`, `)})
+    `);
+    return;
   }
+
+  const updateAssignments = [sql`"permissions" = ${permissionsArray}`, sql.raw('"updated_at" = NOW()')];
+
+  if (capabilities.indexMembersHasPrompt) {
+    updateAssignments.push(sql`"prompt" = NULL`);
+  }
+
+  if (capabilities.indexMembersHasAutoAssign) {
+    updateAssignments.push(sql`"auto_assign" = TRUE`);
+  }
+
+  await db.execute(sql`
+    UPDATE "index_members"
+    SET ${sql.join(updateAssignments, sql`, `)}
+    WHERE "index_id" = ${indexId} AND "user_id" = ${userId}
+  `);
 }
 
 async function upsertIntent(
