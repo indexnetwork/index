@@ -6,6 +6,7 @@ import { eq, and, sql } from 'drizzle-orm';
 
 import db, { closeDb } from '../lib/db';
 import { privyClient } from '../lib/privy';
+import { initializeBrokers, triggerBrokersOnIntentCreated } from '../agents/context_brokers/connector';
 import {
   agents,
   files,
@@ -21,6 +22,7 @@ type CliOptions = {
   force: boolean;
   json: boolean;
   silent: boolean;
+  withBrokers?: boolean;
 };
 
 type SeededUser = {
@@ -44,6 +46,26 @@ type SeedSummary = {
 type Logger = {
   info: (message: string) => void;
 };
+
+function generateMockEmbedding(seed: string): number[] {
+  const length = 3072;
+  const embedding = new Array<number>(length);
+  let hash = 2166136261 ^ seed.length;
+
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  for (let i = 0; i < length; i += 1) {
+    hash ^= hash >>> 13;
+    hash = Math.imul(hash, 1274126177);
+    hash ^= hash >>> 16;
+    embedding[i] = ((hash >>> 0) % 2000) / 1000 - 1; // [-1, 1)
+  }
+
+  return embedding;
+}
 
 const DEMO_NAMESPACE = uuidv5('protocol-demo-seed', uuidv5.URL);
 
@@ -327,15 +349,15 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
       'network-lounge': {
         permissions: ['owner'],
         prompt: 'Curate weekly recaps and highlight collaboration asks for the lounge.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'deal-room': {
         prompt: 'Share investor-ready founder updates for the syndicate to review.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'support-huddle': {
         prompt: 'Escalate frontline blockers and capture next actions.',
-        autoAssign: true,
+        autoAssign: false,
       },
     },
     files: [
@@ -382,12 +404,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
       },
       'network-lounge': {
         prompt: 'Share investor lens on intros and resource asks coming through the lounge.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'deal-room': {
         permissions: ['owner'],
         prompt: 'Collect diligence signals and prep notes before syndicate calls.',
-        autoAssign: true,
+        autoAssign: false,
       },
     },
     files: [
@@ -434,12 +456,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
       },
       'network-lounge': {
         prompt: 'Share build milestones and blockers that need broader support.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'build-lab': {
         permissions: ['owner'],
         prompt: 'Track release trains, QA signoffs, and integration tasks.',
-        autoAssign: true,
+        autoAssign: false,
       },
     },
     files: [
@@ -486,11 +508,11 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
       },
       'network-lounge': {
         prompt: 'Surface UX learnings that impact product priorities.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'build-lab': {
         prompt: 'Document beta feedback and polish tasks for build lab sessions.',
-        autoAssign: true,
+        autoAssign: false,
       },
     },
     files: [
@@ -537,15 +559,15 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
       },
       'network-lounge': {
         prompt: 'Highlight hiring wins and requests coming from across the lounge.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'growth-guild': {
         prompt: 'Coordinate campaigns needing talent support and onboarding.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'support-huddle': {
         prompt: 'Share candidate experience insights from support conversations.',
-        autoAssign: true,
+        autoAssign: false,
       },
     },
     files: [
@@ -592,11 +614,11 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
       },
       'network-lounge': {
         prompt: 'Post data health updates and tooling needs to unblock others.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'build-lab': {
         prompt: 'Document infra rollouts and dataset refresh status.',
-        autoAssign: true,
+        autoAssign: false,
       },
     },
     files: [
@@ -643,11 +665,11 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
       },
       'network-lounge': {
         prompt: 'Raise operating cadences and process experiments for the group.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'deal-room': {
         prompt: 'Track readiness steps for deals moving through the syndicate.',
-        autoAssign: true,
+        autoAssign: false,
       },
     },
     files: [
@@ -694,12 +716,12 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
       },
       'network-lounge': {
         prompt: 'Share growth experiments seeking collaborators from other teams.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'growth-guild': {
         permissions: ['owner'],
         prompt: 'Gather launch metrics, creative needs, and go-to-market updates.',
-        autoAssign: true,
+        autoAssign: false,
       },
     },
     files: [
@@ -746,16 +768,16 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
       },
       'network-lounge': {
         prompt: 'Broadcast support trends that impact roadmaps.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'growth-guild': {
         prompt: 'Share customer insights that fuel retention campaigns.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'support-huddle': {
         permissions: ['owner'],
         prompt: 'Coordinate frontline response plans and FAQ refreshes.',
-        autoAssign: true,
+        autoAssign: false,
       },
     },
     files: [
@@ -802,11 +824,11 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
       },
       'network-lounge': {
         prompt: 'Post integration status and blockers that need cross-team help.',
-        autoAssign: true,
+        autoAssign: false,
       },
       'build-lab': {
         prompt: 'Outline refactor milestones and dependencies for the build lab.',
-        autoAssign: true,
+        autoAssign: false,
       },
     },
     files: [
@@ -1389,7 +1411,7 @@ async function ensureIndexMembership(indexId: string, userId: string, options?: 
   const permissionsList = options?.permissions ?? ['can-read-intents', 'can-write-intents', 'can-discover'];
   const permissionsArray = buildTextArray(permissionsList);
   const promptValue = options?.prompt ?? null;
-  const autoAssignValue = options?.autoAssign ?? true;
+  const autoAssignValue = options?.autoAssign ?? false;
 
   const existing = await db.execute(sql`
     SELECT 1
@@ -1438,6 +1460,11 @@ async function ensureIndexMembership(indexId: string, userId: string, options?: 
   `);
 }
 
+type UpsertIntentResult = {
+  id: string;
+  created: boolean;
+};
+
 async function upsertIntent(
   userId: string,
   def: DemoIntentDefinition,
@@ -1445,7 +1472,7 @@ async function upsertIntent(
   userKey: string,
   source: { sourceId?: string | null; sourceType?: 'file' | 'link' } | undefined,
   logger: Logger
-): Promise<string> {
+): Promise<UpsertIntentResult> {
   logger.info(`📝 Upserting intent ${userKey}:${def.key}`);
   const intentId = stableId(`intent:${userKey}:${def.key}`);
   const now = new Date();
@@ -1453,6 +1480,7 @@ async function upsertIntent(
     sourceId: source?.sourceId ?? null,
     sourceType: source?.sourceType ?? null,
   } as const;
+  let created = false;
 
   try {
     await db.insert(intents).values({
@@ -1462,6 +1490,7 @@ async function upsertIntent(
       userId,
       ...sourcePayload,
     });
+    created = true;
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
     await db
@@ -1487,7 +1516,7 @@ async function upsertIntent(
     });
   }
 
-  return intentId;
+  return { id: intentId, created };
 }
 
 async function upsertIntentStake(
@@ -1557,7 +1586,8 @@ async function upsertConnectionEvents(
   }
 }
 
-async function runSeed(logger: Logger): Promise<SeedSummary> {
+async function runSeed(logger: Logger, options: { triggerBrokers: boolean }): Promise<SeedSummary> {
+  const { triggerBrokers } = options;
   logger.info('🚀 Starting demo seed run');
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL must be set.');
@@ -1722,9 +1752,25 @@ async function runSeed(logger: Logger): Promise<SeedSummary> {
               .filter((value): value is string => Boolean(value))
           : indexIds;
 
-      const intentId = await upsertIntent(user.id, intentDef, targetedIndexIds, userDef.key, source, logger);
-      intentMap.set(`${userDef.key}:${intentDef.key}`, intentId);
+      const intentResult = await upsertIntent(user.id, intentDef, targetedIndexIds, userDef.key, source, logger);
+      intentMap.set(`${userDef.key}:${intentDef.key}`, intentResult.id);
       intentCount += 1;
+
+      if (triggerBrokers && intentResult.created) {
+        logger.info(`🤖 Triggering brokers for intent ${intentResult.id.slice(0, 8)}…`);
+        await triggerBrokersOnIntentCreated(intentResult.id);
+      }
+
+      const existingEmbedding = await db
+        .select({ embedding: intents.embedding })
+        .from(intents)
+        .where(eq(intents.id, intentResult.id))
+        .limit(1);
+
+      if (!existingEmbedding[0]?.embedding) {
+        const embedding = generateMockEmbedding(intentResult.id);
+        await db.update(intents).set({ embedding }).where(eq(intents.id, intentResult.id));
+      }
     }
 
     logger.info(`✅ Finished user ${userDef.name}`);
@@ -1759,7 +1805,8 @@ async function main(): Promise<void> {
     .description('Seed deterministic demo data for local development environments')
     .option('--force', 'Skip safety check (required to run)')
     .option('--json', 'Output machine-readable JSON (no extra text)')
-    .option('--silent', 'Suppress non-error output');
+    .option('--silent', 'Suppress non-error output')
+    .option('--with-brokers', 'Trigger context brokers for each seeded intent');
 
   await program.parseAsync(process.argv);
   const opts = program.opts<CliOptions>();
@@ -1777,7 +1824,13 @@ async function main(): Promise<void> {
   }
 
   try {
-    const result = await runSeed(logger);
+    if (opts.withBrokers) {
+      logger.info('⚙️ Initializing context brokers...');
+      await initializeBrokers();
+      logger.info('✅ Context brokers ready');
+    }
+
+    const result = await runSeed(logger, { triggerBrokers: Boolean(opts.withBrokers) });
 
     if (opts.json) {
       console.log(JSON.stringify({ ok: true, ...result }));
