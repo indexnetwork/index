@@ -462,36 +462,19 @@ async function upsertIndex(def: typeof DEMO_INDEXES[number]): Promise<string> {
   return indexId;
 }
 
-async function upsertAgent(): Promise<string> {
+async function findExistingAgent(): Promise<string | null> {
   const agentId = stableId(`agent:${DEMO_AGENT.key}`);
-  const now = new Date();
+  const result = await db
+    .select({ id: agents.id })
+    .from(agents)
+    .where(eq(agents.id, agentId))
+    .limit(1);
 
-  try {
-    const inserted = await db
-      .insert(agents)
-      .values({
-        id: agentId,
-        name: DEMO_AGENT.name,
-        description: DEMO_AGENT.description,
-        avatar: DEMO_AGENT.avatar,
-      })
-      .returning({ id: agents.id });
-    if (inserted.length > 0) return inserted[0].id;
-  } catch (error) {
-    if (!isUniqueViolation(error)) throw error;
+  if (result.length === 0) {
+    return null;
   }
 
-  await db
-    .update(agents)
-    .set({
-      name: DEMO_AGENT.name,
-      description: DEMO_AGENT.description,
-      avatar: DEMO_AGENT.avatar,
-      updatedAt: now,
-    })
-    .where(eq(agents.id, agentId));
-
-  return agentId;
+  return result[0].id;
 }
 
 async function upsertUser(def: DemoUserDefinition, privyId: string): Promise<{ id: string; privyId: string }> {
@@ -721,7 +704,7 @@ async function runSeed(): Promise<SeedSummary> {
     indexMap.set(indexDef.key, indexId);
   }
 
-  const agentId = await upsertAgent();
+  const agentId = await findExistingAgent();
   const intentMap = new Map<string, string>();
   const userIdMap = new Map<string, string>();
   const seededUsers: SeededUser[] = [];
@@ -753,8 +736,10 @@ async function runSeed(): Promise<SeedSummary> {
     }
   }
 
-  for (const stakeDef of DEMO_STAKES) {
-    await upsertIntentStake(agentId, stakeDef, intentMap);
+  if (agentId) {
+    for (const stakeDef of DEMO_STAKES) {
+      await upsertIntentStake(agentId, stakeDef, intentMap);
+    }
   }
 
   await upsertConnectionEvents(DEMO_CONNECTION_EVENTS, userIdMap);
