@@ -26,9 +26,11 @@ type CliOptions = {
 
 type SeededUser = {
   email: string;
+  name: string;
   userId: string;
   privyId: string;
   accessToken?: string;
+  loginHints?: DemoUserLoginHints;
 };
 
 type SeedSummary = {
@@ -71,6 +73,12 @@ type DemoIntentDefinition = {
   summary: string;
 };
 
+type DemoUserLoginHints = {
+  accountName?: string;
+  phoneNumber?: string;
+  otpCode?: string;
+};
+
 type DemoUserDefinition = {
   key: string;
   email: string;
@@ -79,7 +87,87 @@ type DemoUserDefinition = {
   avatar: string;
   indexes: string[];
   intents: DemoIntentDefinition[];
+  loginHints?: DemoUserLoginHints;
 };
+
+const PRIVY_TEST_ACCOUNTS: Array<{
+  key: string;
+  accountName: string;
+  email: string;
+  phoneNumber: string;
+  otpCode: string;
+}> = [
+  {
+    key: 'test-account-1',
+    accountName: 'Test account 1',
+    email: 'test-6285@privy.io',
+    phoneNumber: '+1 555 555 1625',
+    otpCode: '607027',
+  },
+  {
+    key: 'test-account-2',
+    accountName: 'Test account 2',
+    email: 'test-9716@privy.io',
+    phoneNumber: '+1 555 555 2920',
+    otpCode: '670543',
+  },
+  {
+    key: 'test-account-3',
+    accountName: 'Test account 3',
+    email: 'test-1761@privy.io',
+    phoneNumber: '+1 555 555 5724',
+    otpCode: '888893',
+  },
+  {
+    key: 'test-account-4',
+    accountName: 'Test account 4',
+    email: 'test-5331@privy.io',
+    phoneNumber: '+1 555 555 6283',
+    otpCode: '094228',
+  },
+  {
+    key: 'test-account-5',
+    accountName: 'Test account 5',
+    email: 'test-6462@privy.io',
+    phoneNumber: '+1 555 555 8175',
+    otpCode: '066860',
+  },
+  {
+    key: 'test-account-6',
+    accountName: 'Test account 6',
+    email: 'test-7106@privy.io',
+    phoneNumber: '+1 555 555 8469',
+    otpCode: '991478',
+  },
+  {
+    key: 'test-account-7',
+    accountName: 'Test account 7',
+    email: 'test-6945@privy.io',
+    phoneNumber: '+1 555 555 9096',
+    otpCode: '510460',
+  },
+  {
+    key: 'test-account-8',
+    accountName: 'Test account 8',
+    email: 'test-2676@privy.io',
+    phoneNumber: '+1 555 555 9419',
+    otpCode: '503536',
+  },
+  {
+    key: 'test-account-9',
+    accountName: 'Test account 9',
+    email: 'test-7561@privy.io',
+    phoneNumber: '+1 555 555 9497',
+    otpCode: '737681',
+  },
+  {
+    key: 'test-account-10',
+    accountName: 'Test account 10',
+    email: 'test-1093@privy.io',
+    phoneNumber: '+1 555 555 9779',
+    otpCode: '934435',
+  },
+];
 
 const DEMO_USERS: DemoUserDefinition[] = [
   {
@@ -142,6 +230,20 @@ const DEMO_USERS: DemoUserDefinition[] = [
       },
     ],
   },
+  ...PRIVY_TEST_ACCOUNTS.map((account) => ({
+    key: account.key,
+    email: account.email,
+    name: account.accountName,
+    intro: 'Privy QA test account for demo login flows.',
+    avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(account.accountName)}`,
+    indexes: ['demo-network'],
+    intents: [],
+    loginHints: {
+      accountName: account.accountName,
+      phoneNumber: account.phoneNumber,
+      otpCode: account.otpCode,
+    },
+  })),
 ];
 
 const DEMO_AGENT = {
@@ -422,15 +524,21 @@ async function upsertIntent(
       .where(eq(intents.id, intentId));
   }
 
-  for (const indexId of indexIds) {
-    try {
-      await db.insert(intentIndexes).values({
-        intentId,
-        indexId,
-      });
-    } catch (error) {
-      if (!isUniqueViolation(error)) throw error;
-    }
+  const uniqueIndexIds = Array.from(new Set(indexIds));
+
+  for (const indexId of uniqueIndexIds) {
+    const existingLink = await db
+      .select({ intentId: intentIndexes.intentId })
+      .from(intentIndexes)
+      .where(and(eq(intentIndexes.intentId, intentId), eq(intentIndexes.indexId, indexId)))
+      .limit(1);
+
+    if (existingLink.length > 0) continue;
+
+    await db.insert(intentIndexes).values({
+      intentId,
+      indexId,
+    });
   }
 
   return intentId;
@@ -526,7 +634,14 @@ async function runSeed(): Promise<SeedSummary> {
     const { privyId, accessToken } = await ensurePrivyIdentity(userDef.email, userDef.name);
     const user = await upsertUser(userDef, privyId);
     userIdMap.set(userDef.key, user.id);
-    seededUsers.push({ email: userDef.email.toLowerCase(), userId: user.id, privyId: user.privyId, accessToken });
+    seededUsers.push({
+      email: userDef.email.toLowerCase(),
+      name: userDef.name,
+      userId: user.id,
+      privyId: user.privyId,
+      accessToken,
+      loginHints: userDef.loginHints,
+    });
 
     const indexIds = userDef.indexes
       .map((key) => indexMap.get(key))
@@ -589,10 +704,26 @@ async function main(): Promise<void> {
       console.log(`- Users: ${result.users.length}`);
       console.log(`- Indexes: ${result.indexIds.length}`);
       console.log(`- Agent: ${result.agentId}`);
-      console.log('\nLogin helpers (test access tokens):');
+      console.log('\nLogin helpers (test access tokens / OTPs):');
       result.users.forEach((user) => {
-        const tokenInfo = user.accessToken ? user.accessToken : 'test credentials not available (enable in Privy dashboard)';
-        console.log(`  ${user.email} -> ${tokenInfo}`);
+        const label = `${user.name} <${user.email}>`;
+        const helperParts: string[] = [];
+
+        if (user.accessToken) {
+          helperParts.push(`token ${user.accessToken}`);
+        } else {
+          helperParts.push('test credentials not available (enable in Privy dashboard)');
+        }
+
+        if (user.loginHints?.phoneNumber) {
+          helperParts.push(`phone ${user.loginHints.phoneNumber}`);
+        }
+
+        if (user.loginHints?.otpCode) {
+          helperParts.push(`otp ${user.loginHints.otpCode}`);
+        }
+
+        console.log(`  ${label} -> ${helperParts.join(' | ')}`);
       });
     }
   } catch (error) {
