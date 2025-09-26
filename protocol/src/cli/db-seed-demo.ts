@@ -95,6 +95,7 @@ type SharedSourceInitializer =
 
 type CommonIntentDefinition = DemoIntentDefinition & {
   defaultSource?: SharedSourceInitializer;
+  defaultIndexKeys?: string[];
 };
 
 const COMMON_INTENTS: CommonIntentDefinition[] = [
@@ -111,6 +112,7 @@ const COMMON_INTENTS: CommonIntentDefinition[] = [
         title: `${user.name.split(' ')[0]} Weekly Intent Digest`,
       }),
     },
+    defaultIndexKeys: ['network-lounge'],
   },
   {
     key: 'looking-for-intros',
@@ -125,6 +127,7 @@ const COMMON_INTENTS: CommonIntentDefinition[] = [
         title: `${user.name.split(' ')[0]} Intro Tracker`,
       }),
     },
+    defaultIndexKeys: ['network-lounge', 'deal-room'],
   },
   {
     key: 'offering-office-hours',
@@ -140,6 +143,7 @@ const COMMON_INTENTS: CommonIntentDefinition[] = [
         type: 'text/markdown',
       }),
     },
+    defaultIndexKeys: ['network-lounge', 'support-huddle'],
   },
 ];
 
@@ -150,6 +154,7 @@ type DemoIntentDefinition = {
   payload: string;
   summary: string;
   source?: { type: 'file' | 'link'; key: string };
+  indexKeys?: string[];
 };
 
 type DemoUserLoginHints = {
@@ -318,12 +323,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Posting the lounge recap covering new wins, open asks, and introductions needed this week.',
         summary: 'Weekly lounge recap with wins and asks.',
         source: { type: 'file', key: 'casey-weekly-brief' },
+        indexKeys: ['network-lounge'],
       },
       {
         key: 'talent-pairing',
         payload: 'Coordinating support pairings between builders needing help and operators volunteering time.',
         summary: 'Coordinating network talent pairings.',
         source: { type: 'link', key: 'casey-talent-sheet' },
+        indexKeys: ['network-lounge', 'support-huddle'],
       },
     ],
     sharedIntentKeys: ['weekly-update', 'offering-office-hours'],
@@ -364,12 +371,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Tracking active deals that need operator insight before next syndicate sync.',
         summary: 'Active deals requiring operator insight.',
         source: { type: 'file', key: 'devon-syndicate-pipeline' },
+        indexKeys: ['deal-room'],
       },
       {
         key: 'due-diligence',
         payload: 'Requesting product deep dives from builders ahead of diligence reviews next week.',
         summary: 'Requests for diligence deep dives.',
         source: { type: 'link', key: 'devon-diligence-notes' },
+        indexKeys: ['deal-room', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['looking-for-intros'],
@@ -410,12 +419,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Outlining the build lab release checklist for the upcoming deploy window.',
         summary: 'Upcoming release checklist items.',
         source: { type: 'file', key: 'morgan-release-checklist' },
+        indexKeys: ['build-lab'],
       },
       {
         key: 'integration-help',
         payload: 'Flagging integrations that need review from data and infra partners.',
         summary: 'Integration work requiring reviews.',
         source: { type: 'link', key: 'morgan-integration-playbook' },
+        indexKeys: ['build-lab', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['offering-office-hours'],
@@ -455,12 +466,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Logging tester requests that need engineering follow-up before the next release.',
         summary: 'Tester requests requiring engineering support.',
         source: { type: 'file', key: 'riley-beta-feedback' },
+        indexKeys: ['build-lab'],
       },
       {
         key: 'ux-feedback',
         payload: 'Highlighting UX findings that should influence upcoming sprints.',
         summary: 'UX findings for sprint planning.',
         source: { type: 'link', key: 'riley-ux-research' },
+        indexKeys: ['build-lab', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['weekly-update'],
@@ -504,12 +517,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Updating the roster of candidates matched with current growth initiatives.',
         summary: 'Talent roster updates tied to growth work.',
         source: { type: 'file', key: 'taylor-talent-roster' },
+        indexKeys: ['growth-guild'],
       },
       {
         key: 'hiring-needs',
         payload: 'Listing open roles that need referrals before the next campaign sprint.',
         summary: 'Open hiring needs and referral requests.',
         source: { type: 'link', key: 'taylor-hiring-tracker' },
+        indexKeys: ['growth-guild', 'support-huddle'],
       },
     ],
     sharedIntentKeys: ['weekly-update'],
@@ -549,12 +564,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Sharing the latest data health audit and highlighting tables needing fixes.',
         summary: 'Recent data audit findings.',
         source: { type: 'file', key: 'quinn-data-audit' },
+        indexKeys: ['build-lab'],
       },
       {
         key: 'infra-planning',
         payload: 'Coordinating infra upgrades that impact upcoming build lab releases.',
         summary: 'Infra planning tasks tied to releases.',
         source: { type: 'link', key: 'quinn-infra-plan' },
+        indexKeys: ['build-lab', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['offering-office-hours'],
@@ -594,12 +611,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Posting the updated ops dashboard with follow-up owners for each deal.',
         summary: 'Ops dashboard updates with owners.',
         source: { type: 'file', key: 'emerson-ops-dashboard' },
+        indexKeys: ['deal-room'],
       },
       {
         key: 'process-improvements',
         payload: 'Capturing process tweaks that reduce handoff time between investors and builders.',
         summary: 'Process improvements for handoffs.',
         source: { type: 'link', key: 'emerson-process-playbook' },
+        indexKeys: ['deal-room', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['looking-for-intros'],
@@ -640,12 +659,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Listing experiments in-flight and the metrics we need help instrumenting.',
         summary: 'Growth experiments seeking support.',
         source: { type: 'file', key: 'peyton-growth-experiments' },
+        indexKeys: ['growth-guild'],
       },
       {
         key: 'launch-plan',
         payload: 'Coordinating the upcoming launch plan and partner content timeline.',
         summary: 'Launch plan coordination notes.',
         source: { type: 'link', key: 'peyton-launch-plan' },
+        indexKeys: ['growth-guild', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['weekly-update'],
@@ -690,12 +711,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Summarizing trending support topics and the features they touch.',
         summary: 'Trending support topics summary.',
         source: { type: 'file', key: 'sydney-support-trends' },
+        indexKeys: ['support-huddle'],
       },
       {
         key: 'faq-refresh',
         payload: 'Tracking FAQ updates needed before the next product launch.',
         summary: 'FAQ updates needed for launch.',
         source: { type: 'link', key: 'sydney-faq-updates' },
+        indexKeys: ['support-huddle', 'growth-guild'],
       },
     ],
     sharedIntentKeys: ['offering-office-hours'],
@@ -735,12 +758,14 @@ const QA_USER_DETAILS: Record<string, UserDetail> = {
         payload: 'Detailing the refactor phases and reviewers needed this sprint.',
         summary: 'Refactor phases and reviewer needs.',
         source: { type: 'file', key: 'hayden-refactor-plan' },
+        indexKeys: ['build-lab'],
       },
       {
         key: 'integration-pipeline',
         payload: 'Coordinating integration rollout dates across build lab partners.',
         summary: 'Integration rollout coordination.',
         source: { type: 'link', key: 'hayden-integration-pipeline' },
+        indexKeys: ['build-lab', 'network-lounge'],
       },
     ],
     sharedIntentKeys: ['looking-for-intros'],
@@ -1530,6 +1555,7 @@ async function runSeed(logger: Logger): Promise<SeedSummary> {
           source: sharedIntent.defaultSource
             ? { type: sharedIntent.defaultSource.type, key: sharedIntent.defaultSource.key }
             : sharedIntent.source,
+          indexKeys: sharedIntent.defaultIndexKeys,
         };
 
         combinedIntentDefs.push(sharedIntentCopy);
@@ -1554,7 +1580,14 @@ async function runSeed(logger: Logger): Promise<SeedSummary> {
         }
       }
 
-      const intentId = await upsertIntent(user.id, intentDef, indexIds, userDef.key, source, logger);
+      const targetedIndexIds =
+        intentDef.indexKeys && intentDef.indexKeys.length > 0
+          ? intentDef.indexKeys
+              .map((key) => indexMap.get(key))
+              .filter((value): value is string => Boolean(value))
+          : indexIds;
+
+      const intentId = await upsertIntent(user.id, intentDef, targetedIndexIds, userDef.key, source, logger);
       intentMap.set(`${userDef.key}:${intentDef.key}`, intentId);
       intentCount += 1;
     }
